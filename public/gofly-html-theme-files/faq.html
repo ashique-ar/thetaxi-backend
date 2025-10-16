@@ -1,0 +1,1022 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <!-- Required meta tags -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <!-- Bootstrap CSS -->
+    <link href="assets/css/bootstrap.min.css" rel="stylesheet">
+    <link href="assets/css/jquery-ui.css" rel="stylesheet">
+    <!-- Bootstrap Icon CSS -->
+    <link href="assets/css/bootstrap-icons.css" rel="stylesheet">
+    <!-- CSS -->
+    <link href="assets/css/animate.min.css" rel="stylesheet">
+    <!-- FancyBox CSS -->
+    <link href="assets/css/jquery.fancybox.min.css" rel="stylesheet">
+    <!-- Swiper slider CSS -->
+    <link rel="stylesheet" href="assets/css/swiper-bundle.min.css">
+    <!-- Slick slider CSS -->
+    <link rel="stylesheet" href="assets/css/slick.css">
+    <link rel="stylesheet" href="assets/css/slick-theme.css">
+    <link rel="stylesheet" href="assets/css/daterangepicker.css">
+    <!-- BoxIcon  CSS -->
+    <link href="assets/css/boxicons.min.css" rel="stylesheet">
+    <!--  Style CSS  -->
+    <link rel="stylesheet" href="assets/css/style.css">
+    <!-- Title -->
+    <title>Gofly - Tour & Travel Booking Website.</title>
+    <link rel="icon" href="assets/img/fav-icon.svg" type="image/gif" sizes="20x20">
+</head>
+
+<body class="tt-magic-cursor">
+
+    <div id="magic-cursor">
+        <div id="ball"></div>
+    </div>
+
+    <!-- Back To Top -->
+    <div class="progress-wrap">
+        <svg class="progress-circle svg-content" width="100%" height="100%" viewBox="-1 -1 102 102">
+            <path d="M50,1 a49,49 0 0,1 0,98 a49,49 0 0,1 0,-98"/>
+        </svg>
+        <svg class="arrow" width="22" height="25" viewBox="0 0 24 23" xmlns="http://www.w3.org/2000/svg">
+            <path
+                d="M0.556131 11.4439L11.8139 0.186067L13.9214 2.29352L13.9422 20.6852L9.70638 20.7061L9.76793 8.22168L3.6064 14.4941L0.556131 11.4439Z"/>
+            <path d="M23.1276 11.4999L16.0288 4.40105L15.9991 10.4203L20.1031 14.5243L23.1276 11.4999Z"/>
+        </svg>
+    </div>
+
+    <!-- header Section Start-->
+    <div class="topbar-area d-lg-block d-none">
+        <div class="container">
+            <div class="topbar-wrap">
+                <div class="logo-and-search-area">
+                    <a href="index.html" class="header-logo">
+                        <img src="assets/img/header-logo.svg" alt="">
+                    </a>
+                    <form class="search-area">
+                        <div class="form-inner">
+                            <button type="submit">
+                                <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+                                    <g>
+                                        <path
+                                            d="M15.8044 14.8855L13.0544 12.198L12.99 12.1002C12.8688 11.9807 12.7055 11.9137 12.5353 11.9137C12.3651 11.9137 12.2018 11.9807 12.0806 12.1002C9.74343 14.2443 6.14312 14.3605 3.66561 12.3724C1.18811 10.3843 0.604677 6.90645 2.30061 4.24832C3.99655 1.5902 7.44655 0.573637 10.3631 1.87332C13.2797 3.17301 14.755 6.38739 13.8125 9.38239C13.7793 9.48905 13.7753 9.60268 13.8011 9.71137C13.8269 9.82007 13.8815 9.91983 13.9591 10.0002C14.0375 10.082 14.1358 10.1421 14.2443 10.1746C14.3528 10.2071 14.4679 10.211 14.5784 10.1858C14.6883 10.1616 14.79 10.109 14.8732 10.0332C14.9564 9.95744 15.0182 9.86113 15.0525 9.75395C16.1775 6.19989 14.4781 2.37489 11.0525 0.75395C7.62686 -0.866988 3.50468 0.200824 1.35124 3.26864C-0.802198 6.33645 -0.34001 10.4818 2.43905 13.0239C5.21811 15.5661 9.47968 15.7408 12.4687 13.4377L14.9037 15.8183C15.026 15.9358 15.1889 16.0014 15.3584 16.0014C15.5279 16.0014 15.6909 15.9358 15.8131 15.8183C15.8728 15.7599 15.9201 15.6902 15.9525 15.6133C15.9848 15.5363 16.0015 15.4537 16.0015 15.3702C16.0015 15.2867 15.9848 15.2041 15.9525 15.1271C15.9201 15.0502 15.8728 14.9805 15.8131 14.9221L15.8044 14.8855Z"/>
+                                    </g>
+                                </svg>
+                            </button>
+                            <input type="text" placeholder="Find Your Perfect Tour Package">
+                        </div>
+                    </form>
+                </div>
+                <div class="topbar-right">
+                    <div class="support-and-language-area">
+                        <a href="#">Need Help?</a>
+                        <div class="language-area">
+                            <div class="language-btn">
+                                <svg width="14" height="14" viewBox="0 0 14 14" xmlns="http://www.w3.org/2000/svg">
+                                    <g>
+                                        <path
+                                            d="M7 14C5.13023 14 3.37239 13.2719 2.05023 11.9498C0.728137 10.6276 0 8.86977 0 7C0 5.13023 0.728137 3.37239 2.05023 2.05023C3.37239 0.728137 5.13023 0 7 0C8.86977 0 10.6276 0.728137 11.9498 2.05023C13.2719 3.37239 14 5.13023 14 7C14 8.86977 13.2719 10.6276 11.9498 11.9498C10.6276 13.2719 8.86977 14 7 14ZM7 0.583324C3.46183 0.583324 0.583324 3.46183 0.583324 7C0.583324 10.5382 3.46183 13.4166 7 13.4166C10.5382 13.4166 13.4166 10.5382 13.4166 7C13.4166 3.46183 10.5382 0.583324 7 0.583324Z"/>
+                                        <path
+                                            d="M7 14C5.90297 14 4.8854 13.2486 4.13468 11.8841C3.41431 10.5747 3.01758 8.84018 3.01758 7C3.01758 5.15982 3.41431 3.42527 4.13468 2.11589C4.8854 0.751433 5.90297 0 7 0C8.09704 0 9.11461 0.751433 9.8653 2.11589C10.5857 3.42527 10.9824 5.15982 10.9824 7C10.9824 8.84018 10.5857 10.5747 9.8653 11.8841C9.11461 13.2486 8.09704 14 7 14ZM7 0.583324C6.12536 0.583324 5.2893 1.22746 4.64579 2.39709C3.97198 3.62179 3.6009 5.25645 3.6009 7C3.6009 8.74355 3.97198 10.3782 4.64576 11.6029C5.28927 12.7725 6.12533 13.4166 6.99998 13.4166C7.87462 13.4166 8.71068 12.7725 9.35419 11.6029C10.028 10.3782 10.3991 8.74355 10.3991 7C10.3991 5.25645 10.028 3.62179 9.35419 2.39709C8.71071 1.22746 7.87462 0.583324 7 0.583324Z"/>
+                                        <path
+                                            d="M6.99968 13.9573C6.8386 13.9573 6.70801 13.8267 6.70801 13.6657V0.334156C6.70801 0.173074 6.83857 0.0424805 6.99968 0.0424805C7.16077 0.0424805 7.29136 0.173074 7.29136 0.334156V13.6657C7.29136 13.8267 7.16077 13.9573 6.99968 13.9573Z"/>
+                                        <path
+                                            d="M13.6661 7.29147H0.334644C0.173562 7.29147 0.0429688 7.16088 0.0429688 6.99979C0.0429688 6.83871 0.173562 6.70812 0.334644 6.70812H13.6661C13.8272 6.70812 13.9578 6.83868 13.9578 6.99979C13.9578 7.16088 13.8272 7.29147 13.6661 7.29147ZM12.7022 3.81187H1.29862C1.13754 3.81187 1.00695 3.6813 1.00695 3.52019C1.00695 3.35908 1.13751 3.22852 1.29862 3.22852H12.7022C12.8633 3.22852 12.9939 3.35908 12.9939 3.52019C12.9939 3.6813 12.8632 3.81187 12.7022 3.81187ZM12.7022 10.771H1.29862C1.13754 10.771 1.00695 10.6404 1.00695 10.4794C1.00695 10.3183 1.13751 10.1877 1.29862 10.1877H12.7022C12.8633 10.1877 12.9939 10.3183 12.9939 10.4794C12.9939 10.6404 12.8632 10.771 12.7022 10.771Z"/>
+                                    </g>
+                                </svg>
+                                <span>EN</span>
+                                <i class="bi bi-caret-down-fill"></i>
+                            </div>
+                            <ul class="language-list">
+                                <li><a href="#"><img src="assets/img/home1/england-flag.png" alt="">English</a></li>
+                                <li><a href="#"><img src="assets/img/home1/netherlands-flag.png" alt="">Dutch</a></li>
+                                <li><a href="#"><img src="assets/img/home1/japan-flag.png" alt="">Japanese</a></li>
+                                <li><a href="#"><img src="assets/img/home1/korea-flag.png" alt="">Korean</a></li>
+                                <li><a href="#"><img src="assets/img/home1/china-flag.png" alt="">Chinese</a></li>
+                            </ul>
+                        </div>
+                    </div>
+                    <a href="#" class="primary-btn1 black-bg">
+                        <span>
+                            <svg width="15" height="15" viewBox="0 0 15 15" xmlns="http://www.w3.org/2000/svg">
+                                <g>
+                                    <path
+                                        d="M7.50105 7.78913C9.64392 7.78913 11.3956 6.03744 11.3956 3.89456C11.3956 1.75169 9.64392 0 7.50105 0C5.35818 0 3.60652 1.75169 3.60652 3.89456C3.60652 6.03744 5.35821 7.78913 7.50105 7.78913ZM14.1847 10.9014C14.0827 10.6463 13.9467 10.4082 13.7936 10.1871C13.0113 9.0306 11.8038 8.2653 10.4433 8.07822C10.2732 8.06123 10.0861 8.09522 9.95007 8.19727C9.23578 8.72448 8.38546 8.99658 7.50108 8.99658C6.61671 8.99658 5.76638 8.72448 5.05209 8.19727C4.91603 8.09522 4.72895 8.04421 4.5589 8.07822C3.19835 8.2653 1.97387 9.0306 1.20857 10.1871C1.05551 10.4082 0.919443 10.6633 0.817424 10.9014C0.766415 11.0034 0.783407 11.1225 0.834416 11.2245C0.970484 11.4626 1.14054 11.7007 1.2936 11.9048C1.53168 12.2279 1.78679 12.517 2.07592 12.7891C2.31401 13.0272 2.58611 13.2483 2.85824 13.4694C4.20177 14.4728 5.81742 15 7.48409 15C9.15076 15 10.7664 14.4728 12.1099 13.4694C12.382 13.2653 12.6541 13.0272 12.8923 12.7891C13.1644 12.517 13.4365 12.2279 13.6746 11.9048C13.8446 11.6837 13.9977 11.4626 14.1338 11.2245C14.2188 11.1225 14.2358 11.0034 14.1847 10.9014Z"/>
+                                </g>
+                            </svg>
+                            Login
+                        </span>
+                        <span>
+                            <svg width="15" height="15" viewBox="0 0 15 15" xmlns="http://www.w3.org/2000/svg">
+                                <g>
+                                    <path
+                                        d="M7.50105 7.78913C9.64392 7.78913 11.3956 6.03744 11.3956 3.89456C11.3956 1.75169 9.64392 0 7.50105 0C5.35818 0 3.60652 1.75169 3.60652 3.89456C3.60652 6.03744 5.35821 7.78913 7.50105 7.78913ZM14.1847 10.9014C14.0827 10.6463 13.9467 10.4082 13.7936 10.1871C13.0113 9.0306 11.8038 8.2653 10.4433 8.07822C10.2732 8.06123 10.0861 8.09522 9.95007 8.19727C9.23578 8.72448 8.38546 8.99658 7.50108 8.99658C6.61671 8.99658 5.76638 8.72448 5.05209 8.19727C4.91603 8.09522 4.72895 8.04421 4.5589 8.07822C3.19835 8.2653 1.97387 9.0306 1.20857 10.1871C1.05551 10.4082 0.919443 10.6633 0.817424 10.9014C0.766415 11.0034 0.783407 11.1225 0.834416 11.2245C0.970484 11.4626 1.14054 11.7007 1.2936 11.9048C1.53168 12.2279 1.78679 12.517 2.07592 12.7891C2.31401 13.0272 2.58611 13.2483 2.85824 13.4694C4.20177 14.4728 5.81742 15 7.48409 15C9.15076 15 10.7664 14.4728 12.1099 13.4694C12.382 13.2653 12.6541 13.0272 12.8923 12.7891C13.1644 12.517 13.4365 12.2279 13.6746 11.9048C13.8446 11.6837 13.9977 11.4626 14.1338 11.2245C14.2188 11.1225 14.2358 11.0034 14.1847 10.9014Z"/>
+                                </g>
+                            </svg>
+                            Login
+                        </span>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    <header class="style-1">
+        <div class="container d-flex flex-nowrap align-items-center justify-content-between">
+            <a href="index.html" class="header-logo d-lg-none d-block">
+                <img src="assets/img/header-logo.svg" alt="">
+            </a>
+            <div class="main-menu">
+                <div class="mobile-logo-area d-lg-none d-flex align-items-center justify-content-between">
+                    <a href="index.html" class="mobile-logo-wrap">
+                        <img src="assets/img/header-logo.svg" alt="">
+                    </a>
+                    <div class="menu-close-btn">
+                        <i class="bi bi-x"></i>
+                    </div>
+                </div>
+                <ul class="menu-list">
+                    <li class="menu-item-has-children">
+                        <a href="index.html" class="drop-down">
+                            Home
+                            <i class="bi bi-caret-down-fill"></i>
+                        </a>
+                        <i class="bi bi-plus dropdown-icon"></i>
+                        <ul class="sub-menu">
+                            <li><a href="index.html">Main Home</a></li>
+                            <li><a href="travel-agency-01.html">Travel Agency-01</a></li>
+                            <li><a href="travel-agency-02.html">Travel Agency-02</a></li>
+                            <li><a href="travel-agency-03.html">Travel Agency-03</a></li>
+                            <li><a href="travel-agency-04.html">Travel Agency-04</a></li>
+                            <li><a href="experience-01.html">Experience-01</a></li>
+                            <li><a href="experience-02.html">Experience-02</a></li>
+                            <li><a href="visa-agency.html">Visa Agency</a></li>
+                        </ul>
+                    </li>
+                    <li class="menu-item-has-children position-inherit">
+                        <a href="destination-01.html" class="drop-down">
+                            Destination
+                            <i class="bi bi-caret-down-fill"></i>
+                        </a>
+                        <i class="bi bi-plus dropdown-icon"></i>
+                        <div class="mega-menu">
+                            <div class="container">
+                                <div class="menu-row">
+                                    <div class="menu-single-item">
+                                        <div class="menu-title">
+                                            <h5>Europe</h5>
+                                        </div>
+                                        <i class="bi bi-plus dropdown-icon"></i>
+                                        <ul>
+                                            <li>
+                                                <a href="destination-details.html">
+                                                    <img src="assets/img/home1/france-flag.png" alt="">
+                                                    Paris, France
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a href="destination-details.html">
+                                                    <img src="assets/img/home1/uk-flag.png" alt="">
+                                                    United Kingdom
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a href="destination-details.html">
+                                                    <img src="assets/img/home1/netherland-flag.png" alt="">
+                                                    Netherlands
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a href="destination-details.html">
+                                                    <img src="assets/img/home1/italy-flag.png" alt="">
+                                                    Italy
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a href="destination-details.html">
+                                                    <img src="assets/img/home1/greece-flag.png" alt="">
+                                                    Greece
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a href="destination-details.html">
+                                                    <img src="assets/img/home1/romania-flag.png" alt="">
+                                                    Romania
+                                                </a>
+                                            </li>
+                                        </ul>
+                                    </div>
+                                    <div class="menu-single-item">
+                                        <div class="menu-title">
+                                            <h5>Asia</h5>
+                                        </div>
+                                        <i class="bi bi-plus dropdown-icon"></i>
+                                        <ul>
+                                            <li>
+                                                <a href="destination-details.html">
+                                                    <img src="assets/img/home1/japan-flag2.png" alt="">
+                                                    Tokyo, Japan
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a href="destination-details.html">
+                                                    <img src="assets/img/home1/indonesia-flag.png" alt="">
+                                                    Indonesia
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a href="destination-details.html">
+                                                    <img src="assets/img/home1/thailand-flag.png" alt="">
+                                                    Thailand
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a href="destination-details.html">
+                                                    <img src="assets/img/home1/malaysia-flag.png" alt="">
+                                                    Malaysia
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a href="destination-details.html">
+                                                    <img src="assets/img/home1/vietnam-flag.png" alt="">
+                                                    Hanoi, Vietnam
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a href="destination-details.html">
+                                                    <img src="assets/img/home1/india-flag.png" alt="">
+                                                    India
+                                                </a>
+                                            </li>
+                                        </ul>
+                                    </div>
+                                    <div class="menu-single-item">
+                                        <div class="menu-title">
+                                            <h5>Africa</h5>
+                                        </div>
+                                        <i class="bi bi-plus dropdown-icon"></i>
+                                        <ul>
+                                            <li>
+                                                <a href="destination-details.html">
+                                                    <img src="assets/img/home1/egypt-flag.png" alt="">
+                                                    Egypt
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a href="destination-details.html">
+                                                    <img src="assets/img/home1/south-africa-flag.png" alt="">
+                                                    South Africa
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a href="destination-details.html">
+                                                    <img src="assets/img/home1/zimbabwe-flag.png" alt="">
+                                                    Zimbabwe
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a href="destination-details.html">
+                                                    <img src="assets/img/home1/kenya-flag.png" alt="">
+                                                    Kenya
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a href="destination-details.html">
+                                                    <img src="assets/img/home1/morocco-flag.png" alt="">
+                                                    Morocco
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a href="destination-details.html">
+                                                    <img src="assets/img/home1/senegal-flag.png" alt="">
+                                                    Senegal
+                                                </a>
+                                            </li>
+                                        </ul>
+                                    </div>
+                                    <div class="menu-single-item">
+                                        <div class="menu-title">
+                                            <h5>Oceania</h5>
+                                        </div>
+                                        <i class="bi bi-plus dropdown-icon"></i>
+                                        <ul>
+                                            <li>
+                                                <a href="destination-details.html">
+                                                    <img src="assets/img/home1/australia-flag.png" alt="">
+                                                    Australia
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a href="destination-details.html">
+                                                    <img src="assets/img/home1/south-africa-flag.png" alt="">
+                                                    New Zealand
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a href="destination-details.html">
+                                                    <img src="assets/img/home1/papua-new-guinea-flag.png" alt="">
+                                                    Papua New Guinea
+                                                </a>
+                                            </li>
+                                        </ul>
+                                    </div>
+                                    <div class="menu-single-item">
+                                        <div class="menu-title">
+                                            <h5>Middle East</h5>
+                                        </div>
+                                        <i class="bi bi-plus dropdown-icon"></i>
+                                        <ul>
+                                            <li>
+                                                <a href="destination-details.html">
+                                                    <img src="assets/img/home1/uae-flag.png" alt="">
+                                                    United Arab Emirates
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a href="destination-details.html">
+                                                    <img src="assets/img/home1/qatar-flag.png" alt="">
+                                                    Qatar
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a href="destination-details.html">
+                                                    <img src="assets/img/home1/bahrain-flag.png" alt="">
+                                                    Bahrain
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a href="destination-details.html">
+                                                    <img src="assets/img/home1/saudi-arabia-flag.png" alt="">
+                                                    Saudi Arabia
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a href="destination-details.html">
+                                                    <img src="assets/img/home1/jordan-flag.png" alt="">
+                                                    Jordan
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a href="destination-details.html">
+                                                    <img src="assets/img/home1/palestine-flag.png" alt="">
+                                                    Palestine
+                                                </a>
+                                            </li>
+                                        </ul>
+                                    </div>
+                                    <div class="menu-single-item">
+                                        <div class="menu-title">
+                                            <h5>North America</h5>
+                                        </div>
+                                        <i class="bi bi-plus dropdown-icon"></i>
+                                        <ul>
+                                            <li>
+                                                <a href="destination-details.html">
+                                                    <img src="assets/img/home1/us-flag.png" alt="">
+                                                    United States
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a href="destination-details.html">
+                                                    <img src="assets/img/home1/canada-flag.png" alt="">
+                                                    Canada
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a href="destination-details.html">
+                                                    <img src="assets/img/home1/mexico-flag.png" alt="">
+                                                    Mexico
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a href="destination-details.html">
+                                                    <img src="assets/img/home1/jamaica-flag.png" alt="">
+                                                    Jamaica
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a href="destination-details.html">
+                                                    <img src="assets/img/home1/costa-rica-flag.png" alt="">
+                                                    Costa Rica
+                                                </a>
+                                            </li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                            <img src="assets/img/home1/mega-menu-vector1.svg" alt="" class="vector1">
+                            <img src="assets/img/home1/mega-menu-vector2.svg" alt="" class="vector2">
+                        </div>
+                    </li>
+                    <li class="menu-item-has-children">
+                        <a href="travel-package-01.html" class="drop-down">
+                            Travel Package
+                            <i class="bi bi-caret-down-fill"></i>
+                        </a>
+                        <i class="bi bi-plus dropdown-icon"></i>
+                        <ul class="sub-menu">
+                            <li><a href="travel-package-01.html">Travel Package Style 01</a></li>
+                            <li><a href="travel-package-02.html">Travel Package Style 02</a></li>
+                            <li><a href="travel-package-details.html">Travel Package Details</a></li>
+                        </ul>
+                    </li>
+                    <li class="menu-item-has-children">
+                        <a href="visa.html" class="drop-down">
+                            Visa
+                            <i class="bi bi-caret-down-fill"></i>
+                        </a>
+                        <i class="bi bi-plus dropdown-icon"></i>
+                        <ul class="sub-menu">
+                            <li><a href="visa.html">Visa Package</a></li>
+                            <li><a href="visa-details.html">Visa Package Details</a></li>
+                        </ul>
+                    </li>
+                    <li class="menu-item-has-children active">
+                        <a href="#" class="drop-down">
+                            Pages
+                            <i class="bi bi-caret-down-fill"></i>
+                        </a>
+                        <i class="bi bi-plus dropdown-icon"></i>
+                        <ul class="sub-menu">
+                            <li><a href="about.html">About GoFly</a></li>
+                            <li>
+                                <a href="destination-01.html">Destination</a>
+                                <i class="d-lg-flex d-none bi-caret-right-fill dropdown-icon"></i>
+                                <i class="d-lg-none d-flex bi bi-plus dropdown-icon"></i>
+                                <ul class="sub-menu">
+                                    <li><a href="destination-01.html">Destination Style 01</a></li>
+                                    <li><a href="destination-02.html">Destination Style 02</a></li>
+                                    <li><a href="destination-03.html">Destination Style 03</a></li>
+                                    <li><a href="destination-04.html">Destination Style 04</a></li>
+                                    <li><a href="destination-05.html">Destination Style 05</a></li>
+                                    <li><a href="destination-06.html">Destination Style 06</a></li>
+                                    <li><a href="destination-details.html">Destination Details</a></li>
+                                </ul>
+                            </li>
+                            <li>
+                                <a href="experience-grid.html">Experience</a>
+                                <i class="d-lg-flex d-none bi-caret-right-fill dropdown-icon"></i>
+                                <i class="d-lg-none d-flex bi bi-plus dropdown-icon"></i>
+                                <ul class="sub-menu">
+                                    <li><a href="experience-grid.html">Experience Grid</a></li>
+                                    <li><a href="experience-details.html">Experience Details</a></li>
+                                </ul>
+                            </li>
+                            <li>
+                                <a href="hotel.html">Hotel</a>
+                                <i class="d-lg-flex d-none bi-caret-right-fill dropdown-icon"></i>
+                                <i class="d-lg-none d-flex bi bi-plus dropdown-icon"></i>
+                                <ul class="sub-menu">
+                                    <li><a href="hotel.html">Hotel</a></li>
+                                    <li><a href="hotel-details.html">Hotel Details</a></li>
+                                </ul>
+                            </li>
+                            <li>
+                                <a href="travel-inspiration-01.html">Travel Inspiration</a>
+                                <i class="d-lg-flex d-none bi-caret-right-fill dropdown-icon"></i>
+                                <i class="d-lg-none d-flex bi bi-plus dropdown-icon"></i>
+                                <ul class="sub-menu">
+                                    <li><a href="travel-inspiration-01.html">Travel Inspiration Style 01</a></li>
+                                    <li><a href="travel-inspiration-02.html">Travel Inspiration Style 02</a></li>
+                                    <li><a href="travel-inspiration-03.html">Travel Inspiration Style 03</a></li>
+                                    <li><a href="travel-inspiration-details.html">Travel Inspiration Details</a></li>
+                                </ul>
+                            </li>
+                            <li>
+                                <a href="guider.html">Guider</a>
+                                <i class="d-lg-flex d-none bi-caret-right-fill dropdown-icon"></i>
+                                <i class="d-lg-none d-flex bi bi-plus dropdown-icon"></i>
+                                <ul class="sub-menu">
+                                    <li><a href="guider.html">Guider</a></li>
+                                    <li><a href="guider-details.html">Guider Details</a></li>
+                                </ul>
+                            </li>
+                            <li>
+                                <a href="shop.html">Shop</a>
+                                <i class="d-lg-flex d-none bi-caret-right-fill dropdown-icon"></i>
+                                <i class="d-lg-none d-flex bi bi-plus dropdown-icon"></i>
+                                <ul class="sub-menu">
+                                    <li><a href="shop.html">Shop</a></li>
+                                    <li><a href="cart.html">Cart</a></li>
+                                    <li><a href="checkout.html">Checkout</a></li>
+                                    <li><a href="product-details.html">Product Details</a></li>
+                                </ul>
+                            </li>
+                            <li class="active"><a href="faq.html">Faq</a></li>
+                            <li><a href="error.html">404</a></li>
+                        </ul>
+                    </li>
+                    <li><a href="contact.html">Contact</a></li>
+                </ul>
+                <div class="contact-area d-lg-none d-flex">
+                    <div class="single-contact">
+                        <div class="icon">
+                            <img src="assets/img/home1/icon/whatsapp-icon.svg" alt="">
+                        </div>
+                        <div class="content">
+                            <span>WhatsApp</span>
+                            <a href="https://wa.me/91345533865">+91 345 533 865</a>
+                        </div>
+                    </div>  
+                    <i class="bi bi-caret-down-fill contact-dropdown-btn"></i>
+                    <ul class="contact-list">
+                        <li class="single-contact">
+                            <div class="icon">
+                                <img src="assets/img/home1/icon/mail-icon.svg" alt="">
+                            </div>
+                            <div class="content">
+                                <span>Mail Support</span>
+                                <a href="mailto:info@example.com">info@example.com</a>
+                            </div>
+                        </li>
+                        <li class="single-contact">
+                            <div class="icon">
+                                <img src="assets/img/home1/icon/live-chat.svg" alt="">
+                            </div>
+                            <div class="content">
+                                <span>More Inquery</span>
+                                <a href="https://wa.me/91345533865">+91 345 533 865</a>
+                            </div>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+            <div class="nav-right">
+                <div class="contact-area d-lg-flex d-none">
+                    <div class="single-contact">
+                        <div class="icon">
+                            <img src="assets/img/home1/icon/whatsapp-icon.svg" alt="">
+                        </div>
+                        <div class="content">
+                            <span>WhatsApp</span>
+                            <a href="https://wa.me/91345533865">+91 345 533 865</a>
+                        </div>
+                    </div>  
+                    <i class="bi bi-caret-down-fill contact-dropdown-btn"></i>
+                    <ul class="contact-list">
+                        <li class="single-contact">
+                            <div class="icon">
+                                <img src="assets/img/home1/icon/mail-icon.svg" alt="">
+                            </div>
+                            <div class="content">
+                                <span>Mail Support</span>
+                                <a href="mailto:info@example.com">info@example.com</a>
+                            </div>
+                        </li>
+                        <li class="single-contact">
+                            <div class="icon">
+                                <img src="assets/img/home1/icon/live-chat.svg" alt="">
+                            </div>
+                            <div class="content">
+                                <span>More Inquery</span>
+                                <a href="https://wa.me/91345533865">+91 345 533 865</a>
+                            </div>
+                        </li>
+                    </ul>
+                </div>
+                <div class="language-area d-lg-none d-block">
+                    <div class="language-btn">
+                        <svg width="14" height="14" viewBox="0 0 14 14" xmlns="http://www.w3.org/2000/svg">
+                            <g>
+                                <path
+                                    d="M7 14C5.13023 14 3.37239 13.2719 2.05023 11.9498C0.728137 10.6276 0 8.86977 0 7C0 5.13023 0.728137 3.37239 2.05023 2.05023C3.37239 0.728137 5.13023 0 7 0C8.86977 0 10.6276 0.728137 11.9498 2.05023C13.2719 3.37239 14 5.13023 14 7C14 8.86977 13.2719 10.6276 11.9498 11.9498C10.6276 13.2719 8.86977 14 7 14ZM7 0.583324C3.46183 0.583324 0.583324 3.46183 0.583324 7C0.583324 10.5382 3.46183 13.4166 7 13.4166C10.5382 13.4166 13.4166 10.5382 13.4166 7C13.4166 3.46183 10.5382 0.583324 7 0.583324Z"/>
+                                <path
+                                    d="M7 14C5.90297 14 4.8854 13.2486 4.13468 11.8841C3.41431 10.5747 3.01758 8.84018 3.01758 7C3.01758 5.15982 3.41431 3.42527 4.13468 2.11589C4.8854 0.751433 5.90297 0 7 0C8.09704 0 9.11461 0.751433 9.8653 2.11589C10.5857 3.42527 10.9824 5.15982 10.9824 7C10.9824 8.84018 10.5857 10.5747 9.8653 11.8841C9.11461 13.2486 8.09704 14 7 14ZM7 0.583324C6.12536 0.583324 5.2893 1.22746 4.64579 2.39709C3.97198 3.62179 3.6009 5.25645 3.6009 7C3.6009 8.74355 3.97198 10.3782 4.64576 11.6029C5.28927 12.7725 6.12533 13.4166 6.99998 13.4166C7.87462 13.4166 8.71068 12.7725 9.35419 11.6029C10.028 10.3782 10.3991 8.74355 10.3991 7C10.3991 5.25645 10.028 3.62179 9.35419 2.39709C8.71071 1.22746 7.87462 0.583324 7 0.583324Z"/>
+                                <path
+                                    d="M6.99968 13.9573C6.8386 13.9573 6.70801 13.8267 6.70801 13.6657V0.334156C6.70801 0.173074 6.83857 0.0424805 6.99968 0.0424805C7.16077 0.0424805 7.29136 0.173074 7.29136 0.334156V13.6657C7.29136 13.8267 7.16077 13.9573 6.99968 13.9573Z"/>
+                                <path
+                                    d="M13.6661 7.29147H0.334644C0.173562 7.29147 0.0429688 7.16088 0.0429688 6.99979C0.0429688 6.83871 0.173562 6.70812 0.334644 6.70812H13.6661C13.8272 6.70812 13.9578 6.83868 13.9578 6.99979C13.9578 7.16088 13.8272 7.29147 13.6661 7.29147ZM12.7022 3.81187H1.29862C1.13754 3.81187 1.00695 3.6813 1.00695 3.52019C1.00695 3.35908 1.13751 3.22852 1.29862 3.22852H12.7022C12.8633 3.22852 12.9939 3.35908 12.9939 3.52019C12.9939 3.6813 12.8632 3.81187 12.7022 3.81187ZM12.7022 10.771H1.29862C1.13754 10.771 1.00695 10.6404 1.00695 10.4794C1.00695 10.3183 1.13751 10.1877 1.29862 10.1877H12.7022C12.8633 10.1877 12.9939 10.3183 12.9939 10.4794C12.9939 10.6404 12.8632 10.771 12.7022 10.771Z"/>
+                            </g>
+                        </svg>
+                        <span>EN</span>
+                        <i class="bi bi-caret-down-fill"></i>
+                    </div>
+                    <ul class="language-list">
+                        <li><a href="#"><img src="assets/img/home1/england-flag.png" alt="">English</a></li>
+                        <li><a href="#"><img src="assets/img/home1/netherlands-flag.png" alt="">Dutch</a></li>
+                        <li><a href="#"><img src="assets/img/home1/japan-flag.png" alt="">Japanese</a></li>
+                        <li><a href="#"><img src="assets/img/home1/korea-flag.png" alt="">Korean</a></li>
+                        <li><a href="#"><img src="assets/img/home1/china-flag.png" alt="">Chinese</a></li>
+                    </ul>
+                </div>
+                <div class="search-bar d-lg-none d-block">
+                    <div class="search-btn">
+                        <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+                            <g>
+                                <path
+                                    d="M15.7417 14.6098L13.486 12.3621C14.7088 10.8514 15.3054 8.9291 15.1526 6.99153C14.9998 5.05396 14.1093 3.24888 12.6648 1.94851C11.2203 0.648146 9.33193 -0.0483622 7.38901 0.00261294C5.44609 0.0535881 3.59681 0.84816 2.22248 2.22248C0.84816 3.59681 0.0535881 5.44609 0.00261294 7.38901C-0.0483622 9.33193 0.648146 11.2203 1.94851 12.6648C3.24888 14.1093 5.05396 14.9998 6.99153 15.1526C8.9291 15.3054 10.8514 14.7088 12.3621 13.486L14.6098 15.7417C14.6839 15.8164 14.7721 15.8757 14.8692 15.9161C14.9664 15.9566 15.0705 15.9774 15.1758 15.9774C15.281 15.9774 15.3852 15.9566 15.4823 15.9161C15.5794 15.8757 15.6676 15.8164 15.7417 15.7417C15.8164 15.6676 15.8757 15.5794 15.9161 15.4823C15.9566 15.3852 15.9774 15.281 15.9774 15.1758C15.9774 15.0705 15.9566 14.9664 15.9161 14.8692C15.8757 14.7721 15.8164 14.6839 15.7417 14.6098ZM1.62572 7.60368C1.62572 6.42135 1.97632 5.26557 2.63319 4.2825C3.29005 3.29943 4.22368 2.53322 5.31601 2.08076C6.40834 1.62831 7.61031 1.50992 8.76992 1.74058C9.92953 1.97124 10.9947 2.54059 11.8307 3.37662C12.6668 4.21266 13.2361 5.27783 13.4668 6.43744C13.6974 7.59705 13.579 8.79902 13.1266 9.89134C12.6741 10.9837 11.9079 11.9173 10.9249 12.5742C9.94178 13.231 8.78601 13.5816 7.60368 13.5816C6.01822 13.5816 4.49771 12.9518 3.37662 11.8307C2.25554 10.7096 1.62572 9.18913 1.62572 7.60368Z"/>
+                            </g>
+                        </svg>
+                    </div>
+                    <div class="search-input">
+                        <div class="search-close"></div>
+                        <form>
+                            <div class="search-group">
+                                <div class="form-inner2">
+                                    <input type="text" placeholder="Find Your Perfect Tour Package">
+                                    <button type="submit"><i class="bi bi-search"></i></button>
+                                </div>
+                            </div>
+                            <div class="quick-search">
+                                <ul>
+                                    <li>Quick Search :</li>
+                                    <li><a href="travel-package-01.html">Thailand Tour,</a></li>
+                                    <li><a href="travel-package-01.html">Philippines Tour,</a></li>
+                                    <li><a href="travel-package-01.html">Bali Tour,</a></li>
+                                    <li><a href="travel-package-01.html">Hawaii, USA Tour,</a></li>
+                                    <li><a href="travel-package-01.html">Switzerland Tour,</a></li>
+                                    <li><a href="travel-package-01.html">Maldives Tour,</a></li>
+                                    <li><a href="travel-package-01.html">Paris Tour,</a></li>
+                                </ul>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+                <div class="sidebar-button mobile-menu-btn">
+                    <svg width="20" height="18" viewBox="0 0 20 18" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M1.29445 2.8421H10.5237C11.2389 2.8421 11.8182 2.2062 11.8182 1.42105C11.8182 0.635903 11.2389 0 10.5237 0H1.29445C0.579249 0 0 0.635903 0 1.42105C0 2.2062 0.579249 2.8421 1.29445 2.8421Z"></path>
+                        <path d="M1.23002 10.421H18.77C19.4496 10.421 20 9.78506 20 8.99991C20 8.21476 19.4496 7.57886 18.77 7.57886H1.23002C0.550421 7.57886 0 8.21476 0 8.99991C0 9.78506 0.550421 10.421 1.23002 10.421Z"></path>
+                        <path d="M18.8052 15.1579H10.2858C9.62563 15.1579 9.09094 15.7938 9.09094 16.5789C9.09094 17.3641 9.62563 18 10.2858 18H18.8052C19.4653 18 20 17.3641 20 16.5789C20 15.7938 19.4653 15.1579 18.8052 15.1579Z"></path>
+                    </svg>
+                </div>
+            </div>
+        </div>
+    </header>
+    <!-- header Section End-->
+
+    <!-- Start Breadcrumb section -->
+    <div class="breadcrumb-section" style="background-image:linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url(assets/img/innerpages/breadcrumb-bg2.jpg);">  
+        <div class="container">
+            <div class="banner-content">
+                <h1>Ask & Question</h1>
+                <ul class="breadcrumb-list">
+                    <li><a href="index.html">Home</a></li>
+                    <li>FAQ</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+    <!-- End Breadcrumb section -->
+
+    <!-- faq Page Start-->
+    <div class="faq-page pt-100 mb-100">
+        <div class="container">
+            <div class="row justify-content-center mb-50 wow animate fadeInDown" data-wow-delay="200ms" data-wow-duration="1500ms">
+                <div class="col-xl-6 col-lg-8">
+                    <div class="section-title text-center">
+                        <h2>General Questions</h2>
+                        <p>We’re committed to offering more than just products—we provide exceptional experiences.</p>
+                    </div>
+                </div>
+            </div> 
+            <div class="row justify-content-center">
+                <div class="col-xl-8 col-lg-10">
+                    <div class="faq-wrap">
+                        <div class="accordion accordion-flush" id="accordionFlushExample">
+                            <div class="accordion-item wow animate fadeInDown" data-wow-delay="200ms" data-wow-duration="1500ms">
+                                <h5 class="accordion-header" id="flush-headingOne">
+                                    <button class="accordion-button" type="button"
+                                        data-bs-toggle="collapse" data-bs-target="#flush-collapseOne"
+                                        aria-expanded="false" aria-controls="flush-collapseOne">What Services Does Your Travel Agency Provide?</button>
+                                </h5>
+                                <div id="flush-collapseOne" class="accordion-collapse collapse show"
+                                    aria-labelledby="flush-headingOne" data-bs-parent="#accordionFlushExample">
+                                    <div class="accordion-body">
+                                        A travel agency typically provides a wide range of services to ensure a smooth and enjoyable travel experience. As like- <span>Hotel booking, Flight Booking, Visa & Customized Travel Pakcge etc.</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="accordion-item wow animate fadeInDown" data-wow-delay="400ms" data-wow-duration="1500ms">
+                                <h5 class="accordion-header" id="flush-headingTwo">
+                                    <button class="accordion-button collapsed" type="button"
+                                        data-bs-toggle="collapse" data-bs-target="#flush-collapseTwo"
+                                        aria-expanded="false" aria-controls="flush-collapseTwo">Do You Offer Customized Travel Packages?</button>
+                                </h5>
+                                <div id="flush-collapseTwo" class="accordion-collapse collapse"
+                                    aria-labelledby="flush-headingTwo" data-bs-parent="#accordionFlushExample">
+                                    <div class="accordion-body">
+                                       Absolutely! We offer fully customized travel packages based on your interests, budget, and schedule. Whether you're planning <span>a solo adventure, a family vacation, a romantic getaway, or a group tour</span>, our team will tailor every detail to create a personalized travel experience just for you.
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="accordion-item wow animate fadeInDown" data-wow-delay="600ms" data-wow-duration="1500ms">
+                                <h5 class="accordion-header" id="flush-headingThree">
+                                    <button class="accordion-button collapsed" type="button"
+                                        data-bs-toggle="collapse" data-bs-target="#flush-collapseThree"
+                                        aria-expanded="false" aria-controls="flush-collapseThree">How do I book a tour or vacation package?</button>
+                                </h5>
+                                <div id="flush-collapseThree" class="accordion-collapse collapse"
+                                    aria-labelledby="flush-headingThree" data-bs-parent="#accordionFlushExample">
+                                    <div class="accordion-body">
+                                       Booking a tour or vacation package is easy! Simply browse our website to explore destinations and packages. Once you've found the perfect option, click “Book Now” and follow the steps to complete your reservation. If you need help, our travel experts are just a call or message away to assist you with the booking process.
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="accordion-item wow animate fadeInDown" data-wow-delay="800ms" data-wow-duration="1500ms">
+                                <h5 class="accordion-header" id="flush-headingFour">
+                                    <button class="accordion-button collapsed" type="button"
+                                        data-bs-toggle="collapse" data-bs-target="#flush-collapseFour"
+                                        aria-expanded="false" aria-controls="flush-collapseFour">Do You Provide Visa Assistance?</button>
+                                </h5>
+                                <div id="flush-collapseFour" class="accordion-collapse collapse"
+                                    aria-labelledby="flush-headingFour" data-bs-parent="#accordionFlushExample">
+                                    <div class="accordion-body">
+                                        Yes, we do! Our team offers complete <span>visa assistance services</span> to help you navigate the application process smoothly. From providing guidance on required documents to scheduling appointments and submitting applications, we're here to support you every step of the way.
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="accordion-item wow animate fadeInDown" data-wow-delay="800ms" data-wow-duration="1500ms">
+                                <h5 class="accordion-header" id="flush-headingFive">
+                                    <button class="accordion-button collapsed" type="button"
+                                        data-bs-toggle="collapse" data-bs-target="#flush-collapseFive"
+                                        aria-expanded="false" aria-controls="flush-collapseFive">Do you provide travel insurance options?</button>
+                                </h5>
+                                <div id="flush-collapseFive" class="accordion-collapse collapse"
+                                    aria-labelledby="flush-headingFive" data-bs-parent="#accordionFlushExample">
+                                    <div class="accordion-body">
+                                        Yes, we do! We offer travel insurance options to ensure peace of mind during your trip. Our insurance plans cover trip cancellations, medical emergencies, lost luggage, and more. You can choose to add travel insurance during the booking process or contact our team for personalized assistance.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!--faq Page End-->
+
+    <!--faq Page Banner Start-->
+    <div class="faq-page-banner mb-100" style="background-image: url(assets/img/home7/home7-testimonial-bg.jpg);"></div>
+    <!--faq Page Banner End-->
+
+    <!-- faq Page Start-->
+    <div class="faq-page mb-100">
+        <div class="container">
+            <div class="row justify-content-center mb-50 wow animate fadeInDown" data-wow-delay="200ms" data-wow-duration="1500ms">
+                <div class="col-xl-6 col-lg-8">
+                    <div class="section-title text-center">
+                        <h2>Visa & Documentation</h2>
+                        <p>We’re committed to offering more than just products—we provide exceptional experiences.</p>
+                    </div>
+                </div>
+            </div> 
+            <div class="row justify-content-center">
+                <div class="col-xl-8 col-lg-10">
+                    <div class="faq-wrap">
+                        <div class="accordion accordion-flush" id="accordionFlushExample2">
+                            <div class="accordion-item wow animate fadeInDown" data-wow-delay="200ms" data-wow-duration="1500ms">
+                                <h5 class="accordion-header" id="flush-visa-headingOne">
+                                    <button class="accordion-button" type="button"
+                                        data-bs-toggle="collapse" data-bs-target="#flush-visa-collapseOne"
+                                        aria-expanded="false" aria-controls="flush-visa-collapseOne">Do I need a visa for my destination?</button>
+                                </h5>
+                                <div id="flush-visa-collapseOne" class="accordion-collapse collapse show"
+                                    aria-labelledby="flush-visa-headingOne" data-bs-parent="#accordionFlushExample2">
+                                    <div class="accordion-body">
+                                        Visa requirements depend on your <span>nationality, destination, purpose, and duration of travel</span>. Some countries offer <span>visa-free entry</span>, while others require <span>pre-approved visas</span> or provide visa-on-arrival.
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="accordion-item wow animate fadeInDown" data-wow-delay="400ms" data-wow-duration="1500ms">
+                                <h5 class="accordion-header" id="flush-visa-headingTwo">
+                                    <button class="accordion-button collapsed" type="button"
+                                        data-bs-toggle="collapse" data-bs-target="#flush-visa-collapseTwo"
+                                        aria-expanded="false" aria-controls="flush-visa-collapseTwo">What documents are required for visa processing?</button>
+                                </h5>
+                                <div id="flush-visa-collapseTwo" class="accordion-collapse collapse"
+                                    aria-labelledby="flush-visa-headingTwo" data-bs-parent="#accordionFlushExample2">
+                                    <div class="accordion-body">
+                                        Required documents may vary by destination, but generally include a <span>valid passport, recent photographs, completed visa application form, travel itinerary, proof of accommodation, financial statements</span>, and sometimes a <span>letter of invitation or employment letter</span>. We recommend checking with the specific embassy or consulate for the most accurate and updated list.
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="accordion-item wow animate fadeInDown" data-wow-delay="600ms" data-wow-duration="1500ms">
+                                <h5 class="accordion-header" id="flush-visa-headingThree">
+                                    <button class="accordion-button collapsed" type="button"
+                                        data-bs-toggle="collapse" data-bs-target="#flush-visa-collapseThree"
+                                        aria-expanded="false" aria-controls="flush-visa-collapseThree">How long does visa approval take?</button>
+                                </h5>
+                                <div id="flush-visa-collapseThree" class="accordion-collapse collapse"
+                                    aria-labelledby="flush-visa-headingThree" data-bs-parent="#accordionFlushExample2">
+                                    <div class="accordion-body">
+                                       Visa processing times can vary greatly depending on the <span>country, type of visa, your nationality, and current application volumes</span>. It may take anywhere from a <span>few days to several weeks</span>. We recommend applying well in advance and checking the official embassy or consulate website for estimated processing times.
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="accordion-item wow animate fadeInDown" data-wow-delay="800ms" data-wow-duration="1500ms">
+                                <h5 class="accordion-header" id="flush-visa-headingFour">
+                                    <button class="accordion-button collapsed" type="button"
+                                        data-bs-toggle="collapse" data-bs-target="#flush-visa-collapseFour"
+                                        aria-expanded="false" aria-controls="flush-visa-collapseFour">Can you assist with passport renewals?</button>
+                                </h5>
+                                <div id="flush-visa-collapseFour" class="accordion-collapse collapse"
+                                    aria-labelledby="flush-visa-headingFour" data-bs-parent="#accordionFlushExample2">
+                                    <div class="accordion-body">
+                                        Yes, we can guide you through the <span>passport renewal process</span>. While we don't issue passports ourselves, we provide <span>information, documentation checklists, and support</span> to help ensure your application is complete and correctly submitted to the relevant authority.
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="accordion-item wow animate fadeInDown" data-wow-delay="800ms" data-wow-duration="1500ms">
+                                <h5 class="accordion-header" id="flush-visa-headingFive">
+                                    <button class="accordion-button collapsed" type="button"
+                                        data-bs-toggle="collapse" data-bs-target="#flush-visa-collapseFive"
+                                        aria-expanded="false" aria-controls="flush-visa-collapseFive">What happens if my visa is rejected?</button>
+                                </h5>
+                                <div id="flush-visa-collapseFive" class="accordion-collapse collapse"
+                                    aria-labelledby="flush-visa-headingFive" data-bs-parent="#accordionFlushExample2">
+                                    <div class="accordion-body">
+                                        If your visa is rejected, we will help you <span>understand the reason for the denial</span> and guide you on the <span>next steps</span>. This may include correcting documentation, providing additional information, or reapplying. Our team is here to support you through the process.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!--faq Page End-->
+
+    <!-- Footer Section Start-->
+    <footer class="footer-section">
+        <div class="container">
+            <div class="footer-contact-wrap">
+                <div class="inquiry-area">
+                    <svg width="36" height="36" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg">
+                        <g>
+                            <path
+                                d="M35.8703 28.2548L33.7795 22.1697C34.7873 20.1094 35.3199 17.8181 35.3235 15.5126C35.3297 11.5039 33.7788 7.71355 30.9563 4.83988C28.1332 1.96565 24.3714 0.347686 20.3636 0.284193C16.2077 0.218522 12.3015 1.79929 9.36472 4.73596C6.53295 7.56766 4.96231 11.3008 4.9126 15.29C2.12162 17.3914 0.474267 20.6676 0.479681 24.167C0.482282 25.8045 0.850861 27.4323 1.54927 28.9043L0.109064 33.0955C-0.138507 33.816 0.0423371 34.5983 0.581071 35.1371C0.960196 35.5162 1.46005 35.7181 1.9741 35.7181C2.19038 35.7181 2.4092 35.6824 2.62259 35.6091L6.81385 34.1688C8.28584 34.8673 9.91365 35.2358 11.5512 35.2384H11.5687C15.1201 35.2383 18.4213 33.5485 20.515 30.6891C22.6938 30.6317 24.8495 30.1043 26.7983 29.1509L32.8835 31.2419C33.1314 31.3274 33.3918 31.3712 33.654 31.3715C34.2649 31.3715 34.8589 31.1316 35.3095 30.6809C35.9497 30.0407 36.1645 29.1111 35.8703 28.2548ZM11.5685 33.0956H11.5545C10.1051 33.0934 8.66574 32.7361 7.39231 32.0624C7.2628 31.9939 7.12062 31.9526 6.97456 31.9412C6.82849 31.9299 6.68164 31.9485 6.54308 31.9961L2.24537 33.4729L3.72214 29.1753C3.76974 29.0367 3.78843 28.8898 3.77703 28.7438C3.76564 28.5977 3.72442 28.4555 3.65591 28.326C2.98217 27.0525 2.62484 25.6132 2.62259 24.1637C2.61901 21.8322 3.52597 19.6224 5.11201 17.9676C5.63007 21.1258 7.13525 24.036 9.46836 26.3277C11.7842 28.6023 14.6953 30.0506 17.8363 30.5241C16.1778 32.1588 13.9421 33.0956 11.5685 33.0956ZM33.7942 29.1656C33.7332 29.2266 33.6609 29.2432 33.5796 29.2152L27.0653 26.9767C26.9268 26.9291 26.7799 26.9104 26.6339 26.9218C26.4878 26.9332 26.3456 26.9744 26.2162 27.043C24.3562 28.0269 22.2544 28.5488 20.1379 28.552H20.1176C13.0257 28.552 7.16774 22.791 7.05538 15.7008C6.99877 12.13 8.35707 8.77401 10.88 6.25112C13.4028 3.72824 16.7593 2.37044 20.3297 2.42669C27.4267 2.53926 33.1917 8.40803 33.1807 15.5092C33.1774 17.6258 32.6556 19.7276 31.6717 21.5875C31.6032 21.717 31.562 21.8592 31.5506 22.0052C31.5392 22.1513 31.5579 22.2981 31.6055 22.4367L33.8439 28.951C33.8718 29.0326 33.8551 29.1048 33.7942 29.1656Z"/>
+                            <path
+                                d="M26.5002 9.80957H13.7343C13.1426 9.80957 12.6629 10.2893 12.6629 10.881C12.6629 11.4727 13.1426 11.9524 13.7343 11.9524H26.5002C27.092 11.9524 27.5717 11.4727 27.5717 10.881C27.5717 10.2893 27.092 9.80957 26.5002 9.80957ZM26.5002 14.2161H13.7343C13.1426 14.2161 12.6629 14.6959 12.6629 15.2875C12.6629 15.8792 13.1426 16.359 13.7343 16.359H26.5002C27.092 16.359 27.5717 15.8792 27.5717 15.2875C27.5717 14.6959 27.092 14.2161 26.5002 14.2161ZM21.5862 18.6225H13.7342C13.1425 18.6225 12.6628 19.1023 12.6628 19.694C12.6628 20.2857 13.1426 20.7654 13.7342 20.7654H21.5862C22.1779 20.7654 22.6576 20.2856 22.6576 19.694C22.6576 19.1023 22.178 18.6225 21.5862 18.6225Z"/>
+                        </g>
+                    </svg>
+                    <div class="content">
+                        <h6>To More Inquiry</h6>
+                        <span>Don’t hesitate Call  to GoFly.</span>
+                    </div>
+                </div>
+                <ul class="contact-area">
+                    <li class="single-contact">
+                        <div class="icon">
+                            <img src="assets/img/home1/icon/whatsapp-icon2.svg" alt="">
+                        </div>
+                        <div class="content">
+                            <span>WhatsApp</span>
+                            <a href="https://wa.me/91345533865">+91 345 533 865</a>
+                        </div>
+                    </li>
+                    <li class="single-contact">
+                        <div class="icon">
+                            <img src="assets/img/home1/icon/mail-icon2.svg" alt="">
+                        </div>
+                        <div class="content">
+                            <span>Mail Us</span>
+                            <a href="mailto:info@example.com">info@example.com</a>
+                        </div>
+                    </li>
+                    <li class="single-contact">
+                        <div class="icon">
+                            <img src="assets/img/home1/icon/call-icon.svg" alt="">
+                        </div>
+                        <div class="content">
+                            <span>Call Us</span>
+                            <a href="tel:+91456453345">+91 456 453 345</a>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+            <svg class="divider" width="1320" height="6" viewBox="0 0 1320 6" xmlns="http://www.w3.org/2000/svg">
+                <path
+                    d="M5 2.5L0 0.113249V5.88675L5 3.5V2.5ZM1315 3.5L1320 5.88675V0.113249L1315 2.5V3.5ZM4.5 3.5H1315.5V2.5H4.5V3.5Z"/>
+            </svg>
+            <div class="footer-menu-wrap">
+                <div class="row gy-md-4 gy-5">
+                    <div class="col-lg-3 col-md-4 col-sm-6">
+                        <div class="footer-logo-and-addition-info">
+                            <a href="index.html" class="footer-logo">
+                                <img src="assets/img/footer-logo.svg" alt="">
+                            </a>
+                            <div class="address-area">
+                                <span>GoFly Travel Agency</span>
+                                <a href="#">Skyline Plaza, 5th Floor, 123 Main Street Los Angeles, CA 90001, USA</a>
+                            </div>
+                            <ul class="social-list">
+                                <li><a href="https://www.facebook.com/"><i class="bx bxl-facebook"></i></a></li>
+                                <li><a href="https://www.linkedin.com/"><i class="bx bxl-linkedin"></i></a></li>
+                                <li><a href="https://www.youtube.com/"><i class="bx bxl-youtube"></i></a></li>
+                                <li><a href="https://www.instagram.com/"><i class="bx bxl-instagram-alt"></i></a></li>
+                            </ul>
+                            <a href="#"><img src="assets/img/home1/icon/google-play.svg" alt=""></a>
+                        </div>
+                    </div>
+                    <div class="col-lg-3 col-md-4 col-sm-6 d-flex justify-content-md-end">
+                        <div class="footer-widget">
+                            <div class="widget-title">
+                                <h5>Top Destination</h5>
+                            </div>
+                            <ul class="widget-list">
+                                <li><a href="travel-package-01.html">Maldives Tour</a></li>
+                                <li><a href="travel-package-01.html">Bali, Indonesia Tour</a></li>
+                                <li><a href="travel-package-01.html">Thailand Tour</a></li>
+                                <li><a href="travel-package-01.html">Philippines Tour</a></li>
+                                <li><a href="travel-package-01.html">Hawaii, USA Tour</a></li>
+                                <li><a href="travel-package-01.html">Switzerland Tour</a></li>
+                                <li><a href="travel-package-01.html">New Zealand Tour </a></li>
+                                <li><a href="travel-package-01.html">Costa Rica Tour</a></li>
+                                <li><a href="travel-package-01.html">Peru (Machu Picchu)</a></li>
+                                <li><a href="travel-package-01.html">Paris, France Tour</a></li>
+                                <li><a href="travel-package-01.html">Rome, Italy Tour</a></li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="col-lg-3 col-md-4 col-sm-6 d-flex justify-content-md-end">
+                        <div class="footer-widget">
+                            <div class="widget-title">
+                                <h5>Popular Search</h5>
+                            </div>
+                            <ul class="widget-list">
+                                <li><a href="travel-package-02.html">Adventure</a></li>
+                                <li><a href="travel-package-02.html">Hiking & Stiking</a></li>
+                                <li><a href="travel-package-02.html">Holiday Packages</a></li>
+                                <li><a href="travel-package-02.html">Flights And Hotels</a></li>
+                                <li><a href="travel-package-02.html">Honeymoon Trip</a></li>
+                                <li><a href="travel-package-02.html">Bali Vacation Package</a></li>
+                                <li><a href="travel-package-02.html">Desert Safari</a></li>
+                                <li><a href="travel-package-02.html">Last-Minute Deals</a></li>
+                                <li><a href="travel-package-02.html">Summer Vacation</a></li>
+                                <li><a href="travel-package-02.html">Wildlife Safari</a></li>
+                                <li><a href="travel-package-02.html"> Dubai Luxury Tours</a></li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="col-lg-3 col-sm-6 d-flex justify-content-lg-end">
+                        <div class="footer-widget">
+                            <div class="widget-title">
+                                <h5>Resources</h5>
+                            </div>
+                            <ul class="widget-list">
+                                <li><a href="about.html">About GoFly</a></li>
+                                <li><a href="#">Health & Safety Measure</a></li>
+                                <li><a href="visa.html">Visa Processing</a></li>
+                                <li><a href="contact.html">Customize Tour</a></li>
+                                <li><a href="travel-inspiration-01.html">Travel Inspirations</a></li>
+                                <li><a href="#">Traveler Reviews</a></li>
+                                <li><a href="#">Terms & Condition</a></li>
+                                <li><a href="https://www.google.com/maps">Sitemap</a></li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <div class="container">
+                <div class="copyright-and-payment-method-area">
+                    <p>Copyright 2025 <a href="https://www.egenslab.com/">Egens Lab</a> | All Right Reserved.</p>
+                    <div class="payment-method-area">
+                        <span>Accepted Payment Methods :</span>
+                        <ul>
+                            <li><img src="assets/img/home1/icon/mastar-card-icon.svg" alt=""></li>
+                            <li><img src="assets/img/home1/icon/visa-icon.svg" alt=""></li>
+                            <li><img src="assets/img/home1/icon/paypal-icon.svg" alt=""></li>
+                            <li><img src="assets/img/home1/icon/gpay-icon.svg" alt=""></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </footer>
+    <!-- Footer Section End-->
+
+
+    <!--  Main jQuery  -->
+    <script src="assets/js/jquery-3.7.1.min.js"></script>
+    <script src="assets/js/jquery-ui.js"></script>
+    <script src="assets/js/moment.min.js"></script>
+    <script src="assets/js/daterangepicker.min.js"></script>
+    
+    <!-- Popper and Bootstrap JS -->
+    <script src="assets/js/bootstrap.min.js"></script>
+    <script src="assets/js/popper.min.js"></script>
+    <!-- Swiper slider JS -->
+    <script src="assets/js/swiper-bundle.min.js"></script>
+    <script src="assets/js/slick.js"></script>
+    <!-- Waypoints JS -->
+    <script src="assets/js/waypoints.min.js"></script>
+    <!-- Counterup JS -->
+    <script src="assets/js/jquery.counterup.min.js"></script>
+    <!-- Wow JS -->
+    <script src="assets/js/wow.min.js"></script>
+    <!-- Gsap  JS -->
+    <script src="assets/js/gsap.min.js"></script>
+    <script src="assets/js/ScrollTrigger.min.js"></script>
+    <script src="assets/js/jquery.fancybox.min.js"></script>
+    <!-- Custom JS -->
+    <script src="assets/js/select-dropdown.js"></script>
+    <script src="assets/js/custom.js"></script>
+</body>
+
+</html>

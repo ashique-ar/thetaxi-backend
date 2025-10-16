@@ -1,0 +1,338 @@
+
+.calendar-wrapper {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    z-index: 99;
+    left: 10px;
+    /* display: none; */
+}
+
+.calendar-wrapper .calendar-inner {
+    display: flex;
+    flex-direction: column;
+    background-color: #fff;
+    border-radius: 1rem;
+    box-shadow: 1px 9px 26px 0px rgba(0,0,0,.04);
+    -webkit-box-shadow: 1px 9px 26px 0px rgba(0,0,0,.04);
+    -moz-box-shadow: 1px 9px 26px 0px rgba(0,0,0,.04);
+    transform: translateY(0.75rem)
+}
+
+.calendar-wrapper .calendar-container {
+    display: flex
+}
+
+.calendar-wrapper .calendar-actions {
+    display: flex;
+    justify-content: flex-end;
+    padding: 0 1.5rem 1.5rem
+}
+
+.calendar-wrapper .calendar {
+    padding: 1.5rem
+}
+
+.calendar-wrapper .calendar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1.5rem
+}
+
+.calendar-wrapper .calendar-header button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    height: 2.25rem;
+    width: 2.25rem;
+    border: 1px solid var(--togo-border-color-04);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all .3s
+}
+
+.calendar-wrapper .calendar-header button:hover {
+    box-shadow: 0px 0px 10px 0px rgba(0,0,0,.1)
+}
+
+.calendar-wrapper .calendar-days {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    column-gap: 1.5rem;
+    margin-bottom: 1.5rem
+}
+
+.calendar-wrapper .calendar-days .day-name {
+    font-weight: 500;
+    width: 100%
+}
+
+.calendar-wrapper .calendar-dates {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    row-gap: 1rem;
+    column-gap: 1.75rem
+}
+
+.calendar-wrapper .calendar-dates .date {
+    width: 100%;
+    text-align: center;
+    position: relative;
+    font-weight: 500;
+    padding-bottom: 20px;
+    cursor: pointer
+}
+
+.calendar-wrapper .calendar-dates .date.disabled,.calendar-wrapper .calendar-dates .date.disabled .price {
+    color: #999;
+    cursor: not-allowed
+}
+
+/* .calendar-wrapper .calendar-dates .date.disabled:not(.today)::before {
+    content: "";
+    display: none
+} */
+
+.calendar-wrapper .calendar-dates .date::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    right: 0;
+    bottom: 0;
+    width: 3.125rem;
+    height: 3.125rem;
+    border-radius: 50%;
+    border: 1px solid #111;
+    background-color: rgba(0,0,0,0);
+    z-index: 1;
+    transform: translate(-50%, -50%);
+    opacity: 0;
+    visibility: hidden
+}
+
+/* .calendar-wrapper .calendar-dates .date.today.disabled::before,.calendar-wrapper .calendar-dates .date.is-selected::before {
+    content: "";
+    background-color: #111;
+    opacity: 1;
+    visibility: visible
+} */
+
+.calendar-wrapper .calendar-dates .date:hover:before {
+    opacity: 1;
+    visibility: visible
+}
+
+.calendar-wrapper .calendar-dates .date.today.disabled,.calendar-wrapper .calendar-dates .date.is-selected {
+    color: #fff
+}
+
+.calendar-wrapper .calendar-dates .date.today.disabled .price,.calendar-wrapper .calendar-dates .date.is-selected .price {
+    color: var(--togo-accent-color)
+}
+
+.calendar-wrapper .calendar-dates .date>* {
+    position: relative;
+    z-index: 2
+}
+
+.calendar-wrapper .calendar-dates .date .price {
+    color: var(--togo-accent-color);
+    font-size: .625rem;
+    line-height: 1.25rem;
+    position: absolute;
+    left: 50%;
+    bottom: 0;
+    transform: translateX(-50%);
+    min-width: max-content;
+    max-width: 4ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap
+}
+
+.calendar-wrapper #calendar-prev .next-month {
+    display: none
+}
+
+@media screen and (max-width: 992px) {
+    .calendar-container {
+        flex-direction:column
+    }
+
+    .calendar-wrapper #calendar-prev .next-month {
+        display: block
+    }
+
+    .calendar-wrapper #calendar-prev .next-month+span {
+        display: none
+    }
+}
+
+@media screen and (max-width: 767px) {
+    .calendar-wrapper {
+        position:fixed;
+        top: 0;
+        height: 100%;
+        width: 100%;
+        left: 0;
+        background: rgba(0,0,0,.5);
+        right: unset;
+        bottom: unset
+    }
+
+    .calendar-wrapper .calendar-inner {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        transform: unset;
+        border-radius: 0;
+        height: 100%;
+        padding-top: 32px
+    }
+
+    .calendar-wrapper .calendar-header>span {
+        display: none
+    }
+
+    .calendar-wrapper .calendar {
+        padding: 1rem
+    }
+
+    .calendar-wrapper .calendar-days {
+        column-gap: .75rem;
+        margin-bottom: .75rem
+    }
+
+    .calendar-wrapper .calendar-dates {
+        column-gap: .75rem
+    }
+
+    .togo-st-form-booking .booking-form .form-group {
+        flex-direction: column;
+        align-items: unset
+    }
+
+    .togo-st-form-booking .booking-form .form-group .form-field {
+        flex: 0 0 100%;
+        max-width: 100%
+    }
+
+    .togo-st-form-booking .booking-form .form-field .label {
+        border-radius: .5rem .5rem 0 0
+    }
+
+    .togo-st-form-booking .booking-form .form-field:last-child .label {
+        border-radius: 0 0 .5rem .5rem;
+        border-left: 1px solid var(--togo-border-color-02);
+        border-top: 0
+    }
+
+    .togo-st-form-booking .booking-form .form-field.is-active .label {
+        border-color: var(--togo-border-color-02)
+    }
+
+    .guest-box {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        width: 100%;
+        height: 100%;
+        border-radius: 0;
+        box-shadow: unset;
+        transform: unset;
+        padding: 60px 16px
+    }
+}
+.trip-search-form .calendar-wrapper {
+    right: auto;
+    left: 0
+}
+
+.trip-search-form .calendar-wrapper .calendar {
+    overflow: hidden
+}
+
+.trip-search-form .calendar-wrapper #calendar-prev .next-month {
+    display: none
+}
+
+.trip-search-form .calendar-wrapper .calendar-header h6 {
+    font-size: 1.125rem;
+    font-weight: 500
+}
+
+.trip-search-form .calendar-wrapper .calendar-days {
+    margin-bottom: 1rem
+}
+
+.trip-search-form .calendar-wrapper .calendar-days .day-name {
+    text-align: center
+}
+
+.trip-search-form .calendar-wrapper .calendar-days,.trip-search-form .calendar-wrapper .calendar-dates {
+    column-gap: 0;
+    row-gap: .75rem
+}
+
+.trip-search-form .calendar-wrapper .calendar-dates>div {
+    width: 2.5rem;
+    height: 2.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center
+}
+
+.trip-search-form .calendar-wrapper .calendar-dates .date {
+    padding-bottom: 0
+}
+
+.trip-search-form .calendar-wrapper .calendar-dates .date:before {
+    height: 2.5rem;
+    width: 2.5rem
+}
+
+.trip-search-form .calendar-wrapper .calendar-dates .date.in-range {
+    background-color: rgba(var(--togo-accent-color-unrgb), 0.1)
+}
+
+.trip-search-form .calendar-wrapper .calendar-dates .date.in-range.first-range,.trip-search-form .calendar-wrapper .calendar-dates .date.in-range.last-range {
+    color: var(--togo-text-color-04)
+}
+
+.trip-search-form .calendar-wrapper .calendar-dates .date.in-range.first-range:before,.trip-search-form .calendar-wrapper .calendar-dates .date.in-range.last-range:before {
+    background-color: var(--togo-accent-color);
+    border-color: var(--togo-accent-color);
+    opacity: 1;
+    visibility: visible
+}
+
+.trip-search-form .calendar-wrapper .calendar-dates .date.in-range.first-range {
+    border-radius: 50% 0 0 50%
+}
+
+.trip-search-form .calendar-wrapper .calendar-dates .date.in-range.last-range {
+    border-radius: 0 50% 50% 0
+}
+
+@media screen and (max-width: 992px) {
+    .trip-search-form .calendar-wrapper #calendar-prev .next-month {
+        display:block
+    }
+
+    .trip-search-form .calendar-wrapper #calendar-prev .next-month+span {
+        display: none
+    }
+}
+
+
+
+
+
+
+
