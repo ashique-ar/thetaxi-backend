@@ -1,0 +1,30 @@
+<?php
+// app/Http/Resources/Vehicle/VehicleOwnerResource.php
+
+namespace App\Http\Resources\Vehicle;
+
+use App\Http\Resources\UserResource;
+use Illuminate\Http\Resources\Json\JsonResource;
+
+class VehicleOwnerResource extends JsonResource
+{
+    public function toArray($request)
+    {
+        return [
+            'id' => $this->id,
+            'owner_type_id' => $this->owner_type_id,
+            'address' => $this->address,
+            'country_id' => $this->country_id,
+            'state_id' => $this->state_id,
+            'city' => $this->city,
+            'first_name' => $this->user?->first_name,
+            'last_name' => $this->user?->last_name,
+            'user' => new UserResource($this->whenLoaded('user')),
+            'postal_code' => $this->postal_code,
+            'license_number' => $this->license_number,
+            'license_expiry' => $this->license_expiry,
+            'dob' => $this->dob,
+            'notes' => $this->notes,
+        ];
+    }
+}

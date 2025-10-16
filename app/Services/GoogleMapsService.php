@@ -1,0 +1,140 @@
+<?php
+
+namespace App\Services;
+
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+
+class GoogleMapsService
+{
+    private string $apiKey;
+    private int $ttl; // seconds
+
+    public function __construct()
+    {
+        // Use a dedicated MAPS key, or fall back to the PLACES key you already use
+        $this->apiKey = config('services.google.places_api_key','');
+        $this->ttl = config('services.google.cache_ttl', 3600); // 1h default
+
+        if (empty($this->apiKey)) {
+            Log::warning('Google Maps API key not configured (services.google.maps_api_key / services.google.places_api_key)');
+        }
+    }
+
+    /**
+     * Get road distance in KM using Distance Matrix (best for accuracy & performance).
+     * Accepts:
+     *  - array with ['lat','lng'] or ['latitude','longitude'] or ['place_id' => '...']
+     *  - string "lat,lng" or "place_id:XXXX" or a free-text address
+     */
+    public function distanceKm(array|string $origin, array|string $destination, string $mode = 'driving', bool $avoidTolls = false, bool $avoidHighways = false): float
+    {
+        $o = $this->formatLocation($origin);
+        $d = $this->formatLocation($destination);
+
+        if (empty($this->apiKey) || !$o || !$d) {
+            return 0.0;
+        }
+
+        $cacheKey = 'gm:distancematrix:' . md5(json_encode([$o, $d, $mode, $avoidTolls, $avoidHighways]));
+        return Cache::remember($cacheKey, $this->ttl, function () use ($o, $d, $mode, $avoidTolls, $avoidHighways) {
+            try {
+                $params = [
+                    'key'    => $this->apiKey,
+                    'origins' => $o,                // can be "lat,lng" or "place_id:..."
+                    'destinations' => $d,
+                    'mode'   => $mode,              // driving|walking|bicycling|transit
+                    'units'  => 'metric',
+                ];
+                if ($avoidTolls)    $params['avoid'] = ($params['avoid'] ?? '') . (empty($params['avoid']) ? 'tolls' : '|tolls');
+                if ($avoidHighways) $params['avoid'] = ($params['avoid'] ?? '') . (empty($params['avoid']) ? 'highways' : '|highways');
+
+                $resp = Http::timeout(12)->get('https://maps.googleapis.com/maps/api/distancematrix/json', $params);
+                if (!$resp->successful()) {
+                    Log::error('Distance Matrix HTTP error', ['status' => $resp->status(), 'body' => $resp->body()]);
+                    return 0.0;
+                }
+
+                $data = $resp->json();
+                if (($data['status'] ?? '') !== 'OK') {
+                    Log::warning('Distance Matrix Google status not OK', ['status' => $data['status'] ?? 'UNKNOWN', 'error_message' => $data['error_message'] ?? null]);
+                    // Optional: fall back to Directions if ZERO_RESULTS
+                    return $this->directionsFallbackKm($o, $d, $mode);
+                }
+
+                $element = $data['rows'][0]['elements'][0] ?? null;
+                if (!$element || ($element['status'] ?? '') !== 'OK') {
+                    return $this->directionsFallbackKm($o, $d, $mode);
+                }
+
+                $meters = $element['distance']['value'] ?? 0;
+                return $meters > 0 ? round($meters / 1000, 3) : 0.0;
+            } catch (\Throwable $e) {
+                Log::error('Distance Matrix exception', ['error' => $e->getMessage()]);
+                return 0.0;
+            }
+        });
+    }
+
+    /** Optional fallback using Directions API */
+    private function directionsFallbackKm(string $origin, string $destination, string $mode = 'driving'): float
+    {
+        try {
+            $params = [
+                'key' => $this->apiKey,
+                'origin' => $origin,
+                'destination' => $destination,
+                'mode' => $mode,
+                'units' => 'metric',
+            ];
+
+            $resp = Http::timeout(12)->get('https://maps.googleapis.com/maps/api/directions/json', $params);
+            if (!$resp->successful()) {
+                Log::error('Directions HTTP error', ['status' => $resp->status(), 'body' => $resp->body()]);
+                return 0.0;
+            }
+
+            $data = $resp->json();
+            if (($data['status'] ?? '') !== 'OK' || empty($data['routes'][0]['legs'][0]['distance']['value'])) {
+                Log::info('Directions no route', ['status' => $data['status'] ?? 'UNKNOWN']);
+                return 0.0;
+            }
+
+            $meters = $data['routes'][0]['legs'][0]['distance']['value'];
+            return $meters > 0 ? round($meters / 1000, 3) : 0.0;
+        } catch (\Throwable $e) {
+            Log::error('Directions exception', ['error' => $e->getMessage()]);
+            return 0.0;
+        }
+    }
+
+    /** Normalize different location inputs into what Google accepts */
+    private function formatLocation(array|string $loc): ?string
+    {
+        if (is_string($loc)) {
+            // Accept "lat,lng" | "place_id:..." | free-text address
+            return trim($loc);
+        }
+
+        // place_id first (best precision)
+        if (!empty($loc['place_id'])) {
+            return 'place_id:' . $loc['place_id'];
+        }
+
+        // lat/lng variants
+        $lat = $loc['lat'] ?? $loc['latitude'] ?? null;
+        $lng = $loc['lng'] ?? $loc['longitude'] ?? null;
+
+        if (is_numeric($lat) && is_numeric($lng)) {
+            return $lat . ',' . $lng;
+        }
+
+        // fallback: address strings if present
+        foreach (['address', 'formatted_address', 'name'] as $k) {
+            if (!empty($loc[$k])) return (string) $loc[$k];
+        }
+
+        return null;
+    }
+}

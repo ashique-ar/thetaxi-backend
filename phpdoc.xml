@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpdocumentor
+    configVersion="3.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="https://www.phpdoc.org"
+    xsi:noNamespaceSchemaLocation="https://raw.githubusercontent.com/phpDocumentor/phpDocumentor/main/data/xsd/phpdoc.xsd"
+>
+  <!-- where all transformed docs go -->
+  <paths>
+    <output>docs/api</output>
+    <cache>docs/cache</cache>
+  </paths>
+
+  <!-- define a single “version” for your API docs -->
+  <version number="1.0">
+    <api>
+      <!-- scan these folders under your project root -->
+      <source dsn=".">
+        <path>app</path>
+        <path>routes</path>
+      </source>
+      <!-- optionally ignore vendor/ -->
+      <ignore hidden="true">
+        <path>vendor/**/*</path>
+      </ignore>
+    </api>
+  </version>
+</phpdocumentor>
