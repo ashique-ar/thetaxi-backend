@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -13,7 +14,7 @@ return new class extends Migration
     {
         Schema::create('cms_contents', function (Blueprint $table) {
             $table->uuid('id')->primary();
-            $table->string('cms_content_type_id')->index();
+            $table->uuid('cms_content_type_id')->index();
             $table->string('title')->nullable();
             $table->string('slug')->unique();
             $table->string('author')->unique();
