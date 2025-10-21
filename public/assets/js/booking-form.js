@@ -26,6 +26,8 @@
             "Sigiriya, Sri Lanka",
             "Dambulla, Sri Lanka",
             "Colombo BIA Airport",
+            "Mattala Rajapaksa Airport",
+            "Jaffna International Airport",
         ],
         cityCoordinates: {
             "Colombo, Sri Lanka": { lat: 6.9271, lng: 79.8612 },
@@ -44,6 +46,8 @@
             "Sigiriya, Sri Lanka": { lat: 7.9568, lng: 80.7599 },
             "Dambulla, Sri Lanka": { lat: 7.8731, lng: 80.6511 },
             "Colombo BIA Airport": { lat: 7.1808, lng: 79.8841 },
+            "Mattala Rajapaksa Airport": { lat: 6.2847, lng: 81.1242 },
+            "Jaffna International Airport": { lat: 9.7923, lng: 80.0701 },
         },
     };
 
@@ -74,8 +78,104 @@
         setupFormAnimations();
         loadMapsAPI();
         initializeDatePickers();
+        setDefaultDatesAndLocations();
 
         console.log("TheTaxi Enhanced Booking Form initialized");
+    }
+
+    /**
+     * Set default dates and locations for all forms
+     */
+    function setDefaultDatesAndLocations() {
+        // Get today's date
+        const today = new Date();
+        const todayFormatted = formatDate(today);
+        
+        // Get date 3 days from now
+        const threeDaysLater = new Date();
+        threeDaysLater.setDate(today.getDate() + 3);
+        const threeDaysFormatted = formatDate(threeDaysLater);
+        
+        // Airport Transfer - set today's date
+        const airportDateInput = document.querySelector('#airport-transfer-form input[name="date"]');
+        if (airportDateInput && !airportDateInput.value) {
+            airportDateInput.value = todayFormatted;
+        }
+        
+        // Drop & Pickup - set today's date and default locations
+        const dropPickupForm = document.getElementById('drop-pickup-form');
+        if (dropPickupForm) {
+            const dateInput = dropPickupForm.querySelector('input[name="date"]');
+            if (dateInput && !dateInput.value) {
+                dateInput.value = todayFormatted;
+            }
+            
+            // Set default locations: Colombo BIA to Colombo
+            const pickupInput = dropPickupForm.querySelector('input[name="pickup"]');
+            const dropoffInput = dropPickupForm.querySelector('input[name="dropoff"]');
+            const pickupLat = dropPickupForm.querySelector('input[name="pickup_lat"]');
+            const pickupLng = dropPickupForm.querySelector('input[name="pickup_lng"]');
+            const dropoffLat = dropPickupForm.querySelector('input[name="dropoff_lat"]');
+            const dropoffLng = dropPickupForm.querySelector('input[name="dropoff_lng"]');
+            
+            if (pickupInput && !pickupInput.value) {
+                pickupInput.value = "Colombo BIA Airport";
+                if (pickupLat) pickupLat.value = CONFIG.cityCoordinates["Colombo BIA Airport"].lat;
+                if (pickupLng) pickupLng.value = CONFIG.cityCoordinates["Colombo BIA Airport"].lng;
+            }
+            if (dropoffInput && !dropoffInput.value) {
+                dropoffInput.value = "Colombo, Sri Lanka";
+                if (dropoffLat) dropoffLat.value = CONFIG.cityCoordinates["Colombo, Sri Lanka"].lat;
+                if (dropoffLng) dropoffLng.value = CONFIG.cityCoordinates["Colombo, Sri Lanka"].lng;
+            }
+        }
+        
+        // Rental Packages - set today and 3 days later
+        const rentalForm = document.getElementById('rental-packages-form');
+        if (rentalForm) {
+            const pickupDateInput = rentalForm.querySelector('input[name="pickup_date"]');
+            const dropoffDateInput = rentalForm.querySelector('input[name="dropoff_date"]');
+            
+            if (pickupDateInput && !pickupDateInput.value) {
+                pickupDateInput.value = todayFormatted;
+            }
+            if (dropoffDateInput && !dropoffDateInput.value) {
+                dropoffDateInput.value = threeDaysFormatted;
+            }
+            
+            // Set default locations: Colombo BIA to Colombo
+            const pickupInput = rentalForm.querySelector('input[name="pickup"]');
+            const dropoffInput = rentalForm.querySelector('input[name="dropoff"]');
+            const pickupLat = rentalForm.querySelector('input[name="pickup_lat"]');
+            const pickupLng = rentalForm.querySelector('input[name="pickup_lng"]');
+            const dropoffLat = rentalForm.querySelector('input[name="dropoff_lat"]');
+            const dropoffLng = rentalForm.querySelector('input[name="dropoff_lng"]');
+            
+            if (pickupInput && !pickupInput.value) {
+                pickupInput.value = "Colombo BIA Airport";
+                if (pickupLat) pickupLat.value = CONFIG.cityCoordinates["Colombo BIA Airport"].lat;
+                if (pickupLng) pickupLng.value = CONFIG.cityCoordinates["Colombo BIA Airport"].lng;
+            }
+            if (dropoffInput && !dropoffInput.value) {
+                dropoffInput.value = "Colombo, Sri Lanka";
+                if (dropoffLat) dropoffLat.value = CONFIG.cityCoordinates["Colombo, Sri Lanka"].lat;
+                if (dropoffLng) dropoffLng.value = CONFIG.cityCoordinates["Colombo, Sri Lanka"].lng;
+            }
+        }
+        
+        // Custom Tour - set today and 3 days later
+        const customTourForm = document.getElementById('custom-tour-form');
+        if (customTourForm) {
+            const startDateInput = customTourForm.querySelector('input[name="start_date"]');
+            const endDateInput = customTourForm.querySelector('input[name="end_date"]');
+            
+            if (startDateInput && !startDateInput.value) {
+                startDateInput.value = todayFormatted;
+            }
+            if (endDateInput && !endDateInput.value) {
+                endDateInput.value = threeDaysFormatted;
+            }
+        }
     }
 
     /**
@@ -127,6 +227,9 @@
 
         locationInputs.forEach((input) => {
             if (input.getAttribute("readonly")) return;
+            
+            // Skip if already initialized to prevent duplicate dropdowns
+            if (input.getAttribute("data-autocomplete-initialized") === "true") return;
 
             if (
                 state.mapsLoaded &&
@@ -145,15 +248,45 @@
      * Initialize Google Places Autocomplete for regular form inputs
      */
     function initializeGooglePlacesAutocomplete(input) {
-        const autocomplete = new google.maps.places.Autocomplete(input, {
+        // Prevent duplicate initialization
+        if (input.getAttribute("data-autocomplete-initialized") === "true") {
+            return;
+        }
+        
+        // Destroy any existing jQuery autocomplete to prevent conflicts
+        if (typeof $ !== "undefined" && $.fn.autocomplete && $(input).data('ui-autocomplete')) {
+            $(input).autocomplete('destroy');
+        }
+        
+        // Clear any existing Google Places autocomplete listeners
+        // This prevents duplicate dropdowns when re-initializing
+        google.maps.event.clearInstanceListeners(input);
+        
+        // Check if this input should be filtered for airports only
+        const isAirportField = input.classList.contains("airport-search-field");
+        
+        const autocompleteOptions = {
             componentRestrictions: { country: "lk" },
             fields: ["place_id", "geometry", "name", "formatted_address"],
-        });
+        };
+        
+        // Add airport filter if this is an airport search field
+        if (isAirportField) {
+            autocompleteOptions.types = ['airport'];
+        }
+        
+        const autocomplete = new google.maps.places.Autocomplete(input, autocompleteOptions);
 
         autocomplete.addListener("place_changed", function () {
             const place = autocomplete.getPlace();
             updateLocationData(input, place);
         });
+        
+        // Store the autocomplete instance on the input element for later cleanup
+        input.googleAutocomplete = autocomplete;
+        
+        // Mark as initialized
+        input.setAttribute("data-autocomplete-initialized", "true");
     }
 
     /**
@@ -216,10 +349,29 @@
      * Initialize basic autocomplete with predefined cities
      */
     function initializeBasicAutocomplete(input) {
+        // Don't use jQuery autocomplete if Google Maps is available
+        // This prevents duplicate dropdowns
+        if (state.mapsLoaded && window.google && window.google.maps && window.google.maps.places) {
+            return; // Google Places will handle it
+        }
+        
         if (typeof $ !== "undefined" && $.fn.autocomplete) {
+            // Prevent duplicate initialization
+            if ($(input).data('ui-autocomplete')) {
+                return;
+            }
+            
+            // Check if this input should be filtered for airports only
+            const isAirportField = input.classList.contains("airport-search-field");
+            
+            // Use airports list if it's an airport field, otherwise use all cities
+            const sourceList = isAirportField 
+                ? ["Colombo BIA Airport", "Mattala Rajapaksa Airport", "Jaffna International Airport"]
+                : CONFIG.sriLankaCities;
+            
             $(input).autocomplete({
-                source: CONFIG.sriLankaCities,
-                minLength: 2,
+                source: sourceList,
+                minLength: isAirportField ? 0 : 2,  // Show all airports on focus
                 select: function (event, ui) {
                     const coordinates = CONFIG.cityCoordinates[ui.item.value];
                     updateLocationData(input, {
@@ -235,6 +387,13 @@
                     });
                 },
             });
+            
+            // Show dropdown on focus for airport fields
+            if (isAirportField) {
+                $(input).on('focus', function() {
+                    $(this).autocomplete('search', '');
+                });
+            }
         }
     }
 
@@ -336,29 +495,92 @@
         const toDisplay = form.querySelector(".to-display");
         const fromValue = form.querySelector(".from-value");
         const toValue = form.querySelector(".to-value");
+        const fromLat = form.querySelector('.from-location .location-lat');
+        const fromLng = form.querySelector('.from-location .location-lng');
+        const toLat = form.querySelector('.to-location .location-lat');
+        const toLng = form.querySelector('.to-location .location-lng');
 
-        if (type === "from-airport") {
-            fromDisplay.value = "Colombo BIA Airport";
-            fromDisplay.setAttribute("readonly", true);
-            fromDisplay.style.backgroundColor = "#f8f9fa";
-            toDisplay.value = "";
-            toDisplay.removeAttribute("readonly");
-            toDisplay.style.backgroundColor = "transparent";
-            fromValue.value = "Colombo BIA Airport";
-            toValue.value = "";
-        } else {
-            fromDisplay.value = "";
-            fromDisplay.removeAttribute("readonly");
-            fromDisplay.style.backgroundColor = "transparent";
-            toDisplay.value = "Colombo BIA Airport";
-            toDisplay.setAttribute("readonly", true);
-            toDisplay.style.backgroundColor = "#f8f9fa";
-            fromValue.value = "";
-            toValue.value = "Colombo BIA Airport";
+        const colomboCoords = CONFIG.cityCoordinates["Colombo, Sri Lanka"];
+        const defaultAirport = "Colombo BIA Airport";
+        const defaultAirportCoords = CONFIG.cityCoordinates[defaultAirport];
+
+        // CRITICAL: Properly destroy Google Places Autocomplete instances
+        // This prevents duplicate dropdowns when toggling
+        if (fromDisplay.googleAutocomplete) {
+            google.maps.event.clearInstanceListeners(fromDisplay);
+            fromDisplay.googleAutocomplete = null;
+        }
+        if (toDisplay.googleAutocomplete) {
+            google.maps.event.clearInstanceListeners(toDisplay);
+            toDisplay.googleAutocomplete = null;
+        }
+        
+        // Clear previous autocomplete initialization to allow re-initialization
+        fromDisplay.removeAttribute("data-autocomplete-initialized");
+        toDisplay.removeAttribute("data-autocomplete-initialized");
+        
+        // Destroy any existing jQuery autocomplete to prevent conflicts
+        if (typeof $ !== "undefined" && $.fn.autocomplete) {
+            if ($(fromDisplay).data('ui-autocomplete')) {
+                $(fromDisplay).autocomplete('destroy');
+            }
+            if ($(toDisplay).data('ui-autocomplete')) {
+                $(toDisplay).autocomplete('destroy');
+            }
         }
 
-        // Re-initialize location search
-        setTimeout(initializeLocationSearch, 100);
+        if (type === "from-airport") {
+            // FROM field = Airport (with filtering)
+            fromDisplay.value = defaultAirport; // Always set BIA as default
+            fromDisplay.removeAttribute("readonly");
+            fromDisplay.style.backgroundColor = "white";
+            fromDisplay.classList.add("airport-search-field");
+            fromDisplay.placeholder = "Search airport...";
+            
+            // TO field = Any location (no filtering)
+            toDisplay.value = "Colombo, Sri Lanka";
+            toDisplay.removeAttribute("readonly");
+            toDisplay.style.backgroundColor = "white";
+            toDisplay.classList.remove("airport-search-field");
+            toDisplay.placeholder = "Enter destination";
+            
+            fromValue.value = defaultAirport;
+            toValue.value = "Colombo, Sri Lanka";
+            
+            // Set coordinates
+            fromLat.value = defaultAirportCoords.lat;
+            fromLng.value = defaultAirportCoords.lng;
+            toLat.value = colomboCoords.lat;
+            toLng.value = colomboCoords.lng;
+        } else {
+            // FROM field = Any location (no filtering)
+            fromDisplay.value = "Colombo, Sri Lanka";
+            fromDisplay.removeAttribute("readonly");
+            fromDisplay.style.backgroundColor = "white";
+            fromDisplay.classList.remove("airport-search-field");
+            fromDisplay.placeholder = "Enter pickup location";
+            
+            // TO field = Airport (with filtering)
+            toDisplay.value = defaultAirport; // Always set BIA as default
+            toDisplay.removeAttribute("readonly");
+            toDisplay.style.backgroundColor = "white";
+            toDisplay.classList.add("airport-search-field");
+            toDisplay.placeholder = "Search airport...";
+            
+            fromValue.value = "Colombo, Sri Lanka";
+            toValue.value = defaultAirport;
+            
+            // Set coordinates
+            fromLat.value = colomboCoords.lat;
+            fromLng.value = colomboCoords.lng;
+            toLat.value = defaultAirportCoords.lat;
+            toLng.value = defaultAirportCoords.lng;
+        }
+
+        // Re-initialize location search (now handles airport filtering automatically)
+        setTimeout(() => {
+            initializeLocationSearch();
+        }, 100);
     }
 
     /**
@@ -389,6 +611,15 @@
                 .forEach((input) => {
                     input.setAttribute("required", "required");
                 });
+            
+            // Set return date to +3 days from today
+            const returnDateInput = container.querySelector('input[name="return_date"]');
+            if (returnDateInput && !returnDateInput.value) {
+                const today = new Date();
+                const threeDaysLater = new Date();
+                threeDaysLater.setDate(today.getDate() + 3);
+                returnDateInput.value = formatDate(threeDaysLater);
+            }
         } else {
             container.style.display = "none";
             container.classList.remove("show");
