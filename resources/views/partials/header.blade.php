@@ -52,16 +52,7 @@
                     </div>
                 </div>
                 <ul class="menu-list">
-                    <li class="menu-item-has-children {{ Request::routeIs('home') ? 'active' : '' }}">
-                        <a href="{{ route('home') }}" class="drop-down">
-                            Home
-                            <i class="bi bi-caret-down-fill"></i>
-                        </a>
-                        <i class="bi bi-plus dropdown-icon"></i>
-                        <ul class="sub-menu">
-                            <li><a href="{{ route('home') }}">Main Home</a></li>
-                        </ul>
-                    </li>
+                    <li class="{{ Request::routeIs('home') ? 'active' : '' }}"><a href="{{ route('home') }}">Home</a></li>
                     <li class="menu-item-has-children">
                         <a href="#" class="drop-down">
                             Services
