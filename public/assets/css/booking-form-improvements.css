@@ -73,7 +73,7 @@
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
-    padding: 10px 20px !important;
+    padding: 0 !important;
     border-radius: 6px !important;
     cursor: pointer !important;
     transition: all 0.3s ease !important;
@@ -122,7 +122,7 @@
     .transfer-type-option {
         flex: 1 !important;
         min-width: 0 !important;
-        padding: 10px 15px !important;
+        padding: 0 !important;
     }
 }
 
@@ -141,7 +141,7 @@
     gap: 12px !important;
     cursor: pointer !important;
     user-select: none !important;
-    padding: 12px 16px !important;
+    padding: 0 !important;
     background-color: #f8f9fa !important;
     border: 1px solid #e9ecef !important;
     border-radius: 8px !important;
@@ -930,4 +930,125 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 .drag-handle:hover {
     background: rgba(26, 115, 232, 0.1);
     color: #1a73e8;
+}
+/* ==================== ADD DESTINATION BUTTON IN MODAL ==================== */
+
+#addDestinationModal {
+    background: linear-gradient(135deg, #1a73e8 0%, #0d47a1 100%);
+    border: none;
+    font-weight: 600;
+    padding: 10px 20px;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 4px rgba(26, 115, 232, 0.2);
+}
+
+#addDestinationModal:hover {
+    background: linear-gradient(135deg, #0d47a1 0%, #1a73e8 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(26, 115, 232, 0.3);
+}
+
+#addDestinationModal:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px rgba(26, 115, 232, 0.2);
+}
+
+#addDestinationModal i {
+    margin-right: 6px;
+}
+
+/* Make modal destination cards more distinct */
+.modal-destination-card {
+    transition: all 0.3s ease;
+}
+
+.modal-destination-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* Empty state message for destinations */
+.destination-list:empty::after {
+    content: "No destinations added yet. Click 'Add Another Destination' to get started.";
+    display: block;
+    padding: 20px;
+    text-align: center;
+    color: #6c757d;
+    font-style: italic;
+}
+/* ==================== GOOGLE PLACES AUTOCOMPLETE FIX FOR MODAL ==================== */
+
+/* Critical: Ensure Google Places autocomplete dropdown appears ABOVE modal */
+.pac-container {
+    z-index: 10500 !important;
+    background-color: #fff !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+    border: 1px solid #dee2e6 !important;
+    border-radius: 8px !important;
+    margin-top: 4px !important;
+}
+
+/* Modal has z-index of 1050 by default, autocomplete needs to be higher */
+.modal {
+    z-index: 1050 !important;
+}
+
+.modal-backdrop {
+    z-index: 1040 !important;
+}
+
+/* Style autocomplete items */
+.pac-container .pac-item {
+    padding: 10px 12px !important;
+    cursor: pointer !important;
+    border-top: 1px solid #f0f0f0 !important;
+    font-size: 14px !important;
+    line-height: 1.5 !important;
+}
+
+.pac-container .pac-item:first-child {
+    border-top: none !important;
+}
+
+.pac-container .pac-item:hover {
+    background-color: #f8f9fa !important;
+}
+
+.pac-container .pac-item-selected,
+.pac-container .pac-item-selected:hover {
+    background-color: #e3f2fd !important;
+}
+
+.pac-icon {
+    width: 18px !important;
+    height: 18px !important;
+    margin-right: 10px !important;
+    background-size: contain !important;
+}
+
+.pac-item-query {
+    font-weight: 600 !important;
+    color: #1a73e8 !important;
+}
+
+/* Ensure location inputs in modal can trigger autocomplete */
+.location-input-modal {
+    position: relative !important;
+    z-index: 1 !important;
+}
+
+.location-input-modal:focus {
+    border-color: #1a73e8 !important;
+    box-shadow: 0 0 0 0.2rem rgba(26, 115, 232, 0.25) !important;
+    outline: none !important;
+}
+
+/* Fix for modal content scrolling */
+.modal-body {
+    overflow: visible !important;
+}
+
+.destination-list {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
 }

@@ -553,6 +553,11 @@
                                 <!-- Destinations will be populated here -->
                             </div>
                             
+                            <!-- Add Destination Button in Modal -->
+                            <button type="button" class="btn btn-primary btn-sm w-100 mt-2" id="addDestinationModal">
+                                <i class="bi bi-plus-circle"></i> Add Another Destination
+                            </button>
+                            
                             <div class="route-actions mt-3">
                                 <button type="button" class="btn btn-success" id="confirmRoute">
                                     <i class="bi bi-check-circle"></i> Confirm Route

@@ -142,7 +142,7 @@
     }
 
     /**
-     * Initialize Google Places Autocomplete
+     * Initialize Google Places Autocomplete for regular form inputs
      */
     function initializeGooglePlacesAutocomplete(input) {
         const autocomplete = new google.maps.places.Autocomplete(input, {
@@ -154,6 +154,62 @@
             const place = autocomplete.getPlace();
             updateLocationData(input, place);
         });
+    }
+
+    /**
+     * Initialize Google Places Autocomplete for modal location inputs
+     */
+    function initializeGooglePlacesAutocompleteForModal(input) {
+        const autocomplete = new google.maps.places.Autocomplete(input, {
+            componentRestrictions: { country: "lk" },
+            fields: ["place_id", "geometry", "name", "formatted_address"],
+        });
+
+        autocomplete.addListener("place_changed", function () {
+            const place = autocomplete.getPlace();
+            const index = parseInt(input.getAttribute('data-index'));
+            
+            if (place.geometry && !isNaN(index)) {
+                // Update state with new location
+                state.customTourDestinations[index].name = place.formatted_address || place.name;
+                state.customTourDestinations[index].lat = place.geometry.location.lat();
+                state.customTourDestinations[index].lng = place.geometry.location.lng();
+                
+                // Update the input value
+                input.value = place.formatted_address || place.name;
+                
+                // Sync to form and refresh map
+                updateFormFromState();
+                setTimeout(() => initializeRouteMap(), 200);
+            }
+        });
+    }
+
+    /**
+     * Initialize basic autocomplete for modal inputs
+     */
+    function initializeBasicAutocompleteForModal(input) {
+        if (typeof $ !== "undefined" && $.fn.autocomplete) {
+            $(input).autocomplete({
+                source: CONFIG.sriLankaCities,
+                minLength: 2,
+                select: function (event, ui) {
+                    const index = parseInt(input.getAttribute('data-index'));
+                    const coordinates = CONFIG.cityCoordinates[ui.item.value];
+                    
+                    if (!isNaN(index) && coordinates) {
+                        // Update state
+                        state.customTourDestinations[index].name = ui.item.value;
+                        state.customTourDestinations[index].lat = coordinates.lat;
+                        state.customTourDestinations[index].lng = coordinates.lng;
+                        
+                        // Sync to form and refresh map
+                        updateFormFromState();
+                        setTimeout(() => initializeRouteMap(), 200);
+                    }
+                },
+            });
+        }
     }
 
     /**
@@ -604,7 +660,53 @@
         modal.show();
 
         // Initialize map after modal is shown
-        setTimeout(initializeRouteMap, 300);
+        setTimeout(() => {
+            initializeRouteMap();
+            setupModalAddDestinationButton();
+        }, 300);
+    }
+
+    /**
+     * Setup "Add Destination" button in modal
+     */
+    function setupModalAddDestinationButton() {
+        const addBtn = document.getElementById('addDestinationModal');
+        if (!addBtn) return;
+
+        // Remove existing listener to avoid duplicates
+        const newBtn = addBtn.cloneNode(true);
+        addBtn.parentNode.replaceChild(newBtn, addBtn);
+
+        newBtn.addEventListener('click', function() {
+            // Add new destination to state
+            const newDestination = {
+                name: '',
+                lat: 0,
+                lng: 0,
+                date: '',
+                time: '09:00',
+                notes: ''
+            };
+
+            state.customTourDestinations.push(newDestination);
+
+            // Update modal list
+            updateDestinationList();
+
+            // Update form
+            updateFormFromState();
+
+            // Initialize autocomplete for the newly added input
+            setTimeout(() => {
+                initializeModalLocationAutocomplete();
+                
+                // Scroll to the new destination in modal
+                const destinationList = document.getElementById('destinationList');
+                if (destinationList) {
+                    destinationList.scrollTop = destinationList.scrollHeight;
+                }
+            }, 100);
+        });
     }
 
     /**
@@ -877,18 +979,23 @@
 
         state.customTourDestinations.forEach((dest, index) => {
             const item = document.createElement("div");
-            item.className = "destination-item-modal mb-3";
-            item.setAttribute('draggable', 'true');
-            item.setAttribute('data-index', index);
-
             const isStart = index === 0;
             const isEnd = index === state.customTourDestinations.length - 1;
+            
+            // Start location is NOT draggable (locked)
+            item.className = isStart ? "destination-item-modal start-location-locked start-card mb-3" : "destination-item-modal mb-3";
+            
+            // Only set draggable for non-start items
+            if (!isStart) {
+                item.setAttribute('draggable', 'true');
+            }
+            item.setAttribute('data-index', index);
 
             item.innerHTML = `
                 <div class="modal-destination-card">
                     <div class="modal-destination-header">
                         <div class="d-flex align-items-center">
-                            <div class="drag-handle-modal me-2">☰</div>
+                            <div class="${isStart ? 'drag-handle-locked' : 'drag-handle-modal'} me-2">${isStart ? '🔒' : '☰'}</div>
                             <strong>${
                                 isStart ? "🚀 Starting Point" : isEnd ? "🏁 Final Destination" : `📍 Stop ${index}`
                             }</strong>
@@ -938,10 +1045,100 @@
             // Add event listeners for form inputs
             setupModalFormListeners(item, index);
             
-            // Add drag event listeners for modal list
-            setupDragAndDrop(item, 'modal');
+            // Add drag event listeners for modal list (but NOT for start location)
+            if (!isStart) {
+                setupDragAndDrop(item, 'modal');
+            }
 
             listElement.appendChild(item);
+        });
+        
+        // Initialize autocomplete for all modal location inputs
+        // Use longer delay to ensure modal is fully rendered
+        setTimeout(() => {
+            initializeModalLocationAutocomplete();
+        }, 300);
+    }
+    
+    /**
+     * Initialize Google Places Autocomplete specifically for modal inputs
+     * This ensures the autocomplete dropdown appears correctly
+     * Call this whenever new inputs are added to the modal
+     */
+    function initializeModalLocationAutocomplete() {
+        const modalLocationInputs = document.querySelectorAll(".location-input-modal");
+        
+        console.log(`[Autocomplete] Found ${modalLocationInputs.length} modal location inputs`);
+        
+        modalLocationInputs.forEach((input, idx) => {
+            const dataIndex = input.getAttribute('data-index');
+            
+            // Skip if already initialized
+            if (input.dataset.googleAutocompleteInitialized === 'true') {
+                console.log(`[Autocomplete] Skipping already initialized input at index ${dataIndex}`);
+                return;
+            }
+            
+            // Check if Google Maps API is loaded
+            if (window.google && window.google.maps && window.google.maps.places) {
+                const autocomplete = new google.maps.places.Autocomplete(input, {
+                    componentRestrictions: { country: "lk" },
+                    fields: ["place_id", "geometry", "name", "formatted_address"],
+                });
+
+                autocomplete.addListener("place_changed", function () {
+                    const place = autocomplete.getPlace();
+                    const index = parseInt(input.getAttribute('data-index'));
+                    
+                    console.log(`[Autocomplete] Place selected for index ${index}:`, place);
+                    
+                    if (place.geometry && !isNaN(index)) {
+                        // Update state with new location
+                        state.customTourDestinations[index].name = place.formatted_address || place.name;
+                        state.customTourDestinations[index].lat = place.geometry.location.lat();
+                        state.customTourDestinations[index].lng = place.geometry.location.lng();
+                        
+                        // Update the input value
+                        input.value = place.formatted_address || place.name;
+                        
+                        console.log(`[Autocomplete] State updated for index ${index}:`, state.customTourDestinations[index]);
+                        
+                        // Sync to form and refresh map
+                        updateFormFromState();
+                        setTimeout(() => initializeRouteMap(), 200);
+                    }
+                });
+                
+                // Mark as initialized
+                input.dataset.googleAutocompleteInitialized = 'true';
+                
+                console.log(`[Autocomplete] ✓ Google autocomplete initialized for modal input at index ${dataIndex}`);
+            } else {
+                console.warn('Google Maps API not loaded yet. Autocomplete not available.');
+                
+                // Fallback to basic autocomplete if available
+                if (typeof $ !== "undefined" && $.fn.autocomplete) {
+                    $(input).autocomplete({
+                        source: CONFIG.sriLankaCities,
+                        minLength: 2,
+                        select: function (event, ui) {
+                            const index = parseInt(input.getAttribute('data-index'));
+                            const coordinates = CONFIG.cityCoordinates[ui.item.value];
+                            
+                            if (!isNaN(index) && coordinates) {
+                                state.customTourDestinations[index].name = ui.item.value;
+                                state.customTourDestinations[index].lat = coordinates.lat;
+                                state.customTourDestinations[index].lng = coordinates.lng;
+                                
+                                updateFormFromState();
+                                setTimeout(() => initializeRouteMap(), 200);
+                            }
+                        },
+                    });
+                    
+                    input.dataset.googleAutocompleteInitialized = 'true';
+                }
+            }
         });
     }
     
@@ -949,12 +1146,18 @@
      * Setup event listeners for modal form inputs
      */
     function setupModalFormListeners(itemElement, index) {
-        // Location input
+        // Location input - Initialize autocomplete and handle changes
         const locationInput = itemElement.querySelector('.location-input-modal');
         if (locationInput) {
+            // Manual input change (not from autocomplete)
             locationInput.addEventListener('blur', function() {
-                state.customTourDestinations[index].name = this.value;
-                updateFormFromState();
+                if (this.value !== state.customTourDestinations[index].name) {
+                    state.customTourDestinations[index].name = this.value;
+                    updateFormFromState();
+                    
+                    // If location changed, update map
+                    setTimeout(() => initializeRouteMap(), 200);
+                }
             });
         }
         
@@ -1000,27 +1203,63 @@
         if (removeBtn) {
             removeBtn.addEventListener('click', function() {
                 const idx = parseInt(this.getAttribute('data-index'));
+                
+                // Don't allow removing the starting point
+                if (idx === 0) {
+                    alert('Cannot remove the starting point');
+                    return;
+                }
+                
+                // Remove from state
                 state.customTourDestinations.splice(idx, 1);
+                
+                // Update everything
                 updateDestinationList();
                 updateFormFromState();
-                setTimeout(() => initializeRouteMap(), 100);
+                setTimeout(() => initializeRouteMap(), 150);
             });
         }
     }
     
     /**
-     * Update form fields from state (sync modal changes to form)
+     * Update form fields from state (sync modal changes to main form)
      */
     function updateFormFromState() {
+        // Update starting location if changed
+        if (state.customTourDestinations.length > 0) {
+            const startDest = state.customTourDestinations[0];
+            const startingLocation = document.querySelector('input[name="starting_location"]');
+            const startingLat = document.querySelector('input[name="starting_lat"]');
+            const startingLng = document.querySelector('input[name="starting_lng"]');
+            
+            if (startingLocation && startDest.name) {
+                startingLocation.value = startDest.name;
+            }
+            if (startingLat && startDest.lat) {
+                startingLat.value = startDest.lat;
+            }
+            if (startingLng && startDest.lng) {
+                startingLng.value = startDest.lng;
+            }
+        }
+        
+        // Rebuild destinations in the main form
         updateFormDestinations();
     }
 
     /**
-     * Setup drag-and-drop functionality - FIXED VERSION
+     * Setup drag-and-drop functionality - FIXED VERSION with start location lock
      */
     function setupDragAndDrop(element, context) {
         element.addEventListener('dragstart', function(e) {
             const index = parseInt(this.getAttribute('data-index'));
+            
+            // PREVENT dragging of start location (index 0)
+            if (index === 0) {
+                e.preventDefault();
+                return false;
+            }
+            
             e.dataTransfer.effectAllowed = 'move';
             e.dataTransfer.setData('text/plain', index);
             this.classList.add('dragging');
@@ -1041,6 +1280,15 @@
 
         element.addEventListener('dragover', function(e) {
             e.preventDefault();
+            
+            const dropIndex = parseInt(this.getAttribute('data-index'));
+            
+            // PREVENT dropping on start location (index 0)
+            if (dropIndex === 0) {
+                e.dataTransfer.dropEffect = 'none';
+                return false;
+            }
+            
             e.dataTransfer.dropEffect = 'move';
             
             // Only add drag-over class if not dragging this element
@@ -1063,13 +1311,24 @@
             
             this.classList.remove('drag-over');
             
+            const dropIndex = parseInt(this.getAttribute('data-index'));
+            
+            // PREVENT dropping on start location (index 0)
+            if (dropIndex === 0) {
+                return false;
+            }
+            
             // Don't drop on itself
             if (this.dataset.dragging === 'true') {
                 return false;
             }
             
             const draggedIndex = parseInt(e.dataTransfer.getData('text/plain'));
-            const dropIndex = parseInt(this.getAttribute('data-index'));
+            
+            // PREVENT moving start location (index 0)
+            if (draggedIndex === 0) {
+                return false;
+            }
             
             if (!isNaN(draggedIndex) && !isNaN(dropIndex) && draggedIndex !== dropIndex) {
                 // Reorder the destinations array
