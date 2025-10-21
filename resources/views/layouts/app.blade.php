@@ -17,7 +17,7 @@
     <!-- FancyBox CSS -->
     <link href="{{ asset('assets/css/jquery.fancybox.min.css') }}" rel="stylesheet">
 
-    <link href="{{ asset('assets/css/nice-select.css') }}" rel="stylesheet">    
+    <link href="{{ asset('assets/css/nice-select.css') }}" rel="stylesheet">
 
     <!-- Swiper slider CSS -->
     <link rel="stylesheet" href="{{ asset('assets/css/swiper-bundle.min.css') }}">
@@ -29,12 +29,20 @@
     <link href="{{ asset('assets/css/boxicons.min.css') }}" rel="stylesheet">
     <!--  Style CSS  -->
     <link rel="stylesheet" href="{{ asset('assets/css/style.css') }}">
+    <!-- Booking Form Improvements CSS -->
+    <link rel="stylesheet" href="{{ asset('assets/css/booking-form-improvements.css') }}">
 
     <!-- Title -->
     <title>@yield('title', 'TheTaxi - Your Reliable Taxi Service')</title>
     <link rel="icon" href="{{ asset('assets/img/fav-icon.svg') }}" type="image/gif" sizes="20x20">
 
     @stack('styles')
+    <style>
+        :root {
+            --primary-color1: #BF2629 !important;
+            --black-color: #717171 !important;
+        }
+    </style>
 </head>
 
 <body class="tt-magic-cursor">
@@ -65,26 +73,27 @@
     <script src="{{ asset('assets/js/jquery-ui.js') }}"></script>
     <script src="{{ asset('assets/js/moment.min.js') }}"></script>
     <script src="{{ asset('assets/js/daterangepicker.min.js') }}"></script>
-    
+
     <script src="{{ asset('assets/js/bootstrap.min.js') }}"></script>
     <script src="{{ asset('assets/js/popper.min.js') }}"></script>
-    
+
     <script src="{{ asset('assets/js/swiper-bundle.min.js') }}"></script>
     <script src="{{ asset('assets/js/slick.js') }}"></script>
-    
+
     <script src="{{ asset('assets/js/waypoints.min.js') }}"></script>
-    
+
     <script src="{{ asset('assets/js/jquery.counterup.min.js') }}"></script>
-    
+
     <script src="{{ asset('assets/js/wow.min.js') }}"></script>
-     <!-- Nice Select JS -->
+    <!-- Nice Select JS -->
     <script src="{{ asset('assets/js/jquery.nice-select.min.js') }}"></script>
     <script src="{{ asset('assets/js/gsap.min.js') }}"></script>
     <script src="{{ asset('assets/js/ScrollTrigger.min.js') }}"></script>
     <script src="{{ asset('assets/js/jquery.fancybox.min.js') }}"></script>
-    
+
     <script src="{{ asset('assets/js/select-dropdown.js') }}"></script>
     <script src="{{ asset('assets/js/custom.js') }}"></script>
+    <script src="{{ asset('assets/js/booking-form.js') }}"></script>
 
     @stack('scripts')
 </body>

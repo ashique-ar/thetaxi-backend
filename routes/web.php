@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\FileUploadController;
+use App\Http\Controllers\BookingController;
 use Illuminate\Support\Facades\Route;
 
 // TheTaxi Website Routes
@@ -48,6 +49,13 @@ Route::get('/checkout', function () {
 Route::post('/contact', function () {
     // Handle contact form submission
 })->name('contact.store');
+
+// Booking routes
+Route::post('/booking/search', [BookingController::class, 'search'])->name('booking.search');
+Route::post('/booking/enquiry', [BookingController::class, 'enquiry'])->name('booking.enquiry');
+
+// cms type and cms page will user blogs and blog single pages
+
 
 // blog.single
 Route::get('/blog/{id}', function ($id) {
