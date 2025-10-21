@@ -28,9 +28,9 @@
     <!-- BoxIcon  CSS -->
     <link href="{{ asset('assets/css/boxicons.min.css') }}" rel="stylesheet">
     <!--  Style CSS  -->
-    <link rel="stylesheet" href="{{ asset('assets/css/style.css') }}">
+    <link rel="stylesheet" href="{{ asset('assets/css/style.css?v=1.0') }}">
     <!-- Booking Form Improvements CSS -->
-    <link rel="stylesheet" href="{{ asset('assets/css/booking-form-improvements.css') }}">
+    <link rel="stylesheet" href="{{ asset('assets/css/booking-form-improvements.css?v=1.0') }}">
 
     <!-- Title -->
     <title>@yield('title', 'TheTaxi - Your Reliable Taxi Service')</title>
@@ -92,8 +92,8 @@
     <script src="{{ asset('assets/js/jquery.fancybox.min.js') }}"></script>
 
     <script src="{{ asset('assets/js/select-dropdown.js') }}"></script>
-    <script src="{{ asset('assets/js/custom.js') }}"></script>
-    <script src="{{ asset('assets/js/booking-form.js') }}"></script>
+    <script src="{{ asset('assets/js/custom.js?v=1.0') }}"></script>
+    <script src="{{ asset('assets/js/booking-form.js?v=1.0') }}"></script>
 
     @stack('scripts')
 </body>
