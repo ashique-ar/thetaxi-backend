@@ -117,8 +117,8 @@ function renderCalendar(date, calendarId, monthYearId) {
             dateDiv.addClass("is-selected");
           }
 
-          // Disable past dates
-          if (dayDate <= today) {
+          // Disable only past dates (dates before today, not including today)
+          if (dayDate < today) {
             dateDiv.addClass("disabled").attr("aria-disabled", "true");
           }
 

@@ -1170,7 +1170,14 @@
                     format: 'dd/mm/yyyy',
                     startDate: new Date(),
                     autoclose: true,
-                    todayHighlight: true
+                    todayHighlight: true,
+                    beforeShowDay: function(date) {
+                        // Disable dates before today
+                        const today = new Date();
+                        today.setHours(0, 0, 0, 0);
+                        // Return [enabled, css_class] - true to enable, false to disable
+                        return [date >= today, ''];
+                    }
                 }).on('changeDate', function(e) {
                     const formattedDate = formatDate(e.date);
                     state.customTourDestinations[index].date = formattedDate;
@@ -1533,7 +1540,8 @@
                     // Disable dates before today
                     const today = new Date();
                     today.setHours(0, 0, 0, 0);
-                    return date >= today;
+                    // Return [enabled, css_class] - true to enable, false to disable
+                    return [date >= today, ''];
                 }
             }).on('changeDate', function(e) {
                 // Ensure the selected date is properly set in the input

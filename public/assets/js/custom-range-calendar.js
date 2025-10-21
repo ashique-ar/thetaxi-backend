@@ -86,7 +86,8 @@
         dayDate.setHours(0, 0, 0, 0);
         const priceForDate = getPriceForDate(dayDate);
         const offerPriceForDate = getOfferPriceFromData(dayDate);
-        const isDisabled = dayDate <= currentDate || priceForDate === "-";
+        // Disable only dates before today (not including today)
+        const isDisabled = dayDate < today || priceForDate === "-";
             const dateDiv = $(`
                 <div data-date="${formattedDate}" class="date ${isDisabled ? "disabled" : ""}">
                 <span>${day}</span>
@@ -122,10 +123,7 @@
             dateDiv.addClass("is-selected");
             }
 
-            // Disable past dates
-            if (dayDate <= today) {
-                dateDiv.addClass("disabled").attr("aria-disabled", "true");
-            }
+            // Note: disabled class is already added above based on isDisabled check
             $(`.calendar-wrapper.full-date #${calendarId}`).append(dateDiv);
         }
     }

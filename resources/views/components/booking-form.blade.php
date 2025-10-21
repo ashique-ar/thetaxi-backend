@@ -89,9 +89,7 @@
                 <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
                     <path d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z"/>
                 </svg>
-                <div class="custom-select-dropdown">
-                    <input type="text" name="date" placeholder="Select Date" class="custom-datepicker" required>
-                </div>
+                <input type="text" name="date" placeholder="DD/MM/YYYY" class="custom-datepicker" required autocomplete="off">
             </div>
 
             <!-- Time -->
@@ -149,9 +147,7 @@
                 <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
                     <path d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z"/>
                 </svg>
-                <div class="custom-select-dropdown">
-                    <input type="text" name="date" placeholder="Select Date" class="custom-datepicker" required>
-                </div>
+                <input type="text" name="date" placeholder="DD/MM/YYYY" class="custom-datepicker" required autocomplete="off">
             </div>
 
             <!-- Time -->
@@ -210,9 +206,7 @@
                     <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
                         <path d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z"/>
                     </svg>
-                    <div class="custom-select-dropdown">
-                        <input type="text" name="return_date" placeholder="Return Date" class="custom-datepicker">
-                    </div>
+                    <input type="text" name="return_date" placeholder="DD/MM/YYYY" class="custom-datepicker" autocomplete="off">
                 </div>
 
                 <!-- Return Time -->
@@ -285,9 +279,7 @@
                 <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
                     <path d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z"/>
                 </svg>
-                <div class="custom-select-dropdown">
-                    <input type="text" name="pickup_date" placeholder="Pickup Date" class="custom-datepicker" required>
-                </div>
+                <input type="text" name="pickup_date" placeholder="DD/MM/YYYY" class="custom-datepicker" required autocomplete="off">
             </div>
 
             <!-- Pickup Time -->
@@ -305,9 +297,7 @@
                 <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
                     <path d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z"/>
                 </svg>
-                <div class="custom-select-dropdown">
-                    <input type="text" name="dropoff_date" placeholder="Drop Off Date" class="custom-datepicker" required>
-                </div>
+                <input type="text" name="dropoff_date" placeholder="DD/MM/YYYY" class="custom-datepicker" required autocomplete="off">
             </div>
 
             <!-- Drop Off Time -->
@@ -355,10 +345,10 @@
                 <label style="display: block; margin-bottom: 5px; font-weight: 500;">Tour Period</label>
                 <div style="display: flex; gap: 10px;">
                     <div style="flex: 1;">
-                        <input type="text" name="start_date" placeholder="Start Date" class="custom-datepicker" required>
+                        <input type="text" name="start_date" placeholder="DD/MM/YYYY" class="custom-datepicker" required autocomplete="off">
                     </div>
                     <div style="flex: 1;">
-                        <input type="text" name="end_date" placeholder="End Date" class="custom-datepicker" required>
+                        <input type="text" name="end_date" placeholder="DD/MM/YYYY" class="custom-datepicker" required autocomplete="off">
                     </div>
                 </div>
             </div>
@@ -416,9 +406,7 @@
                                     <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
                                         <path d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z"/>
                                     </svg>
-                                    <div class="custom-select-dropdown">
-                                        <input type="text" name="destinations[0][visit_date]" placeholder="Visit Date" class="custom-datepicker" required>
-                                    </div>
+                                    <input type="text" name="destinations[0][visit_date]" placeholder="DD/MM/YYYY" class="custom-datepicker" required autocomplete="off">
                                 </div>
                                 <div class="single-search-box">
                                     <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
