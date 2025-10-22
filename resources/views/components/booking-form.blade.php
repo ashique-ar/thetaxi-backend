@@ -38,6 +38,27 @@
     </ul>
 
     <div class="filter-input-wrap">
+        <!-- Validation Errors Display -->
+        @if ($errors->any())
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                <strong>Please correct the following errors:</strong>
+                <ul class="mb-0 mt-2">
+                    @foreach ($errors->all() as $error)
+                        <li>{{ $error }}</li>
+                    @endforeach
+                </ul>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        @endif
+
+        <!-- Success Message Display -->
+        @if (session('success'))
+            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                {{ session('success') }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        @endif
+
         <!-- Airport Transfer Form -->
         <form id="airport-transfer-form" class="filter-input show" data-service="airport-transfer"
             action="{{ route('booking.search') }}" method="POST">
@@ -48,14 +69,19 @@
             <div class="transfer-type-selector">
                 <div class="transfer-type-toggle">
                     <label class="transfer-type-option">
-                        <input type="radio" name="transfer_type" value="from-airport" checked>
+                        <input type="radio" name="transfer_type" value="from-airport"
+                            {{ old('transfer_type', 'from-airport') === 'from-airport' ? 'checked' : '' }}>
                         <span>From Airport</span>
                     </label>
                     <label class="transfer-type-option">
-                        <input type="radio" name="transfer_type" value="to-airport">
+                        <input type="radio" name="transfer_type" value="to-airport"
+                            {{ old('transfer_type') === 'to-airport' ? 'checked' : '' }}>
                         <span>To Airport</span>
                     </label>
                 </div>
+                @error('transfer_type')
+                    <span class="text-danger small">{{ $message }}</span>
+                @enderror
             </div>
 
             <!-- From Location -->
@@ -69,12 +95,15 @@
                     </g>
                 </svg>
                 <div class="custom-select-dropdown">
-                    <input type="text" class="from-display location-search" placeholder="Enter pickup location"
-                        readonly>
-                    <input type="hidden" name="from" class="from-value">
-                    <input type="hidden" name="from_lat" class="location-lat">
-                    <input type="hidden" name="from_lng" class="location-lng">
+                    <input type="text" class="from-display location-search @error('from') is-invalid @enderror"
+                        placeholder="Enter pickup location" value="{{ old('from') }}" readonly>
+                    <input type="hidden" name="from" class="from-value" value="{{ old('from') }}">
+                    <input type="hidden" name="from_lat" class="location-lat" value="{{ old('from_lat') }}">
+                    <input type="hidden" name="from_lng" class="location-lng" value="{{ old('from_lng') }}">
                 </div>
+                @error('from')
+                    <span class="text-danger small">{{ $message }}</span>
+                @enderror
             </div>
 
             <!-- To Location -->
@@ -88,11 +117,15 @@
                     </g>
                 </svg>
                 <div class="custom-select-dropdown">
-                    <input type="text" class="to-display location-search" placeholder="Enter destination" readonly>
-                    <input type="hidden" name="to" class="to-value">
-                    <input type="hidden" name="to_lat" class="location-lat">
-                    <input type="hidden" name="to_lng" class="location-lng">
+                    <input type="text" class="to-display location-search @error('to') is-invalid @enderror"
+                        placeholder="Enter destination" value="{{ old('to') }}" readonly>
+                    <input type="hidden" name="to" class="to-value" value="{{ old('to') }}">
+                    <input type="hidden" name="to_lat" class="location-lat" value="{{ old('to_lat') }}">
+                    <input type="hidden" name="to_lng" class="location-lng" value="{{ old('to_lng') }}">
                 </div>
+                @error('to')
+                    <span class="text-danger small">{{ $message }}</span>
+                @enderror
             </div>
 
             <!-- Date -->
@@ -101,8 +134,12 @@
                     <path
                         d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z" />
                 </svg>
-                <input type="text" name="date" placeholder="DD/MM/YYYY" class="custom-datepicker" required
-                    autocomplete="off">
+                <input type="text" name="date" placeholder="DD/MM/YYYY"
+                    class="custom-datepicker @error('date') is-invalid @enderror" value="{{ old('date') }}"
+                    required autocomplete="off">
+                @error('date')
+                    <span class="text-danger small">{{ $message }}</span>
+                @enderror
             </div>
 
             <!-- Time -->
@@ -112,8 +149,12 @@
                         d="M9 0C4.03 0 0 4.03 0 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm.5-12H8v5l4.25 2.52.75-1.23-3.5-2.08V4z" />
                 </svg>
                 <div class="custom-select-dropdown">
-                    <input type="time" name="time" value="00:00" required>
+                    <input type="time" name="time" class="@error('time') is-invalid @enderror"
+                        value="{{ old('time', '00:00') }}" required>
                 </div>
+                @error('time')
+                    <span class="text-danger small">{{ $message }}</span>
+                @enderror
             </div>
 
             <button type="submit" class="primary-btn1">
@@ -138,11 +179,15 @@
                     </g>
                 </svg>
                 <div class="custom-select-dropdown">
-                    <input type="text" name="pickup" placeholder="Pickup Location" class="location-search"
+                    <input type="text" name="pickup" placeholder="Pickup Location"
+                        class="location-search @error('pickup') is-invalid @enderror" value="{{ old('pickup') }}"
                         required>
-                    <input type="hidden" name="pickup_lat" class="location-lat">
-                    <input type="hidden" name="pickup_lng" class="location-lng">
+                    <input type="hidden" name="pickup_lat" class="location-lat" value="{{ old('pickup_lat') }}">
+                    <input type="hidden" name="pickup_lng" class="location-lng" value="{{ old('pickup_lng') }}">
                 </div>
+                @error('pickup')
+                    <span class="text-danger small">{{ $message }}</span>
+                @enderror
             </div>
 
             <!-- Drop Off Location -->
@@ -156,11 +201,15 @@
                     </g>
                 </svg>
                 <div class="custom-select-dropdown">
-                    <input type="text" name="dropoff" placeholder="Drop Off Location" class="location-search"
+                    <input type="text" name="dropoff" placeholder="Drop Off Location"
+                        class="location-search @error('dropoff') is-invalid @enderror" value="{{ old('dropoff') }}"
                         required>
-                    <input type="hidden" name="dropoff_lat" class="location-lat">
-                    <input type="hidden" name="dropoff_lng" class="location-lng">
+                    <input type="hidden" name="dropoff_lat" class="location-lat" value="{{ old('dropoff_lat') }}">
+                    <input type="hidden" name="dropoff_lng" class="location-lng" value="{{ old('dropoff_lng') }}">
                 </div>
+                @error('dropoff')
+                    <span class="text-danger small">{{ $message }}</span>
+                @enderror
             </div>
 
             <!-- Date -->
@@ -169,8 +218,12 @@
                     <path
                         d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z" />
                 </svg>
-                <input type="text" name="date" placeholder="DD/MM/YYYY" class="custom-datepicker" required
-                    autocomplete="off">
+                <input type="text" name="date" placeholder="DD/MM/YYYY"
+                    class="custom-datepicker @error('date') is-invalid @enderror" value="{{ old('date') }}"
+                    required autocomplete="off">
+                @error('date')
+                    <span class="text-danger small">{{ $message }}</span>
+                @enderror
             </div>
 
             <!-- Time -->
@@ -180,17 +233,25 @@
                         d="M9 0C4.03 0 0 4.03 0 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm.5-12H8v5l4.25 2.52.75-1.23-3.5-2.08V4z" />
                 </svg>
                 <div class="custom-select-dropdown">
-                    <input type="time" name="time" value="00:00" required>
+                    <input type="time" name="time" class="@error('time') is-invalid @enderror"
+                        value="{{ old('time', '00:00') }}" required>
                 </div>
+                @error('time')
+                    <span class="text-danger small">{{ $message }}</span>
+                @enderror
             </div>
 
             <!-- Return Transfer Toggle Switch -->
             <div class="return-transfer-toggle-container">
                 <label class="toggle-switch">
-                    <input type="checkbox" id="need-return" name="need_return" value="1">
+                    <input type="checkbox" id="need-return" name="need_return" value="1"
+                        {{ old('need_return') ? 'checked' : '' }}>
                     <span class="toggle-slider"></span>
                     <span class="toggle-label">Return Transfer</span>
                 </label>
+                @error('need_return')
+                    <span class="text-danger small">{{ $message }}</span>
+                @enderror
             </div>
 
             <!-- Return Transfer Fields (Hidden by default) -->
@@ -210,8 +271,12 @@
                         </g>
                     </svg>
                     <div class="custom-select-dropdown">
-                        <input type="text" name="return_pickup" placeholder="Return Pickup Location">
+                        <input type="text" name="return_pickup" placeholder="Return Pickup Location"
+                            class="@error('return_pickup') is-invalid @enderror" value="{{ old('return_pickup') }}">
                     </div>
+                    @error('return_pickup')
+                        <span class="text-danger small">{{ $message }}</span>
+                    @enderror
                 </div>
 
                 <!-- Return Drop Off Location -->
@@ -225,8 +290,13 @@
                         </g>
                     </svg>
                     <div class="custom-select-dropdown">
-                        <input type="text" name="return_dropoff" placeholder="Return Drop Off Location">
+                        <input type="text" name="return_dropoff" placeholder="Return Drop Off Location"
+                            class="@error('return_dropoff') is-invalid @enderror"
+                            value="{{ old('return_dropoff') }}">
                     </div>
+                    @error('return_dropoff')
+                        <span class="text-danger small">{{ $message }}</span>
+                    @enderror
                 </div>
 
                 <!-- Return Date -->
@@ -276,11 +346,15 @@
                     </g>
                 </svg>
                 <div class="custom-select-dropdown">
-                    <input type="text" name="pickup" placeholder="Pick up Location" class="location-search"
+                    <input type="text" name="pickup" placeholder="Pick up Location"
+                        class="location-search @error('pickup') is-invalid @enderror" value="{{ old('pickup') }}"
                         required>
-                    <input type="hidden" name="pickup_lat" class="location-lat">
-                    <input type="hidden" name="pickup_lng" class="location-lng">
+                    <input type="hidden" name="pickup_lat" class="location-lat" value="{{ old('pickup_lat') }}">
+                    <input type="hidden" name="pickup_lng" class="location-lng" value="{{ old('pickup_lng') }}">
                 </div>
+                @error('pickup')
+                    <span class="text-danger small">{{ $message }}</span>
+                @enderror
             </div>
 
             <!-- Drop Off Location -->
@@ -294,11 +368,15 @@
                     </g>
                 </svg>
                 <div class="custom-select-dropdown">
-                    <input type="text" name="dropoff" placeholder="Drop Off Location" class="location-search"
+                    <input type="text" name="dropoff" placeholder="Drop Off Location"
+                        class="location-search @error('dropoff') is-invalid @enderror" value="{{ old('dropoff') }}"
                         required>
-                    <input type="hidden" name="dropoff_lat" class="location-lat">
-                    <input type="hidden" name="dropoff_lng" class="location-lng">
+                    <input type="hidden" name="dropoff_lat" class="location-lat" value="{{ old('dropoff_lat') }}">
+                    <input type="hidden" name="dropoff_lng" class="location-lng" value="{{ old('dropoff_lng') }}">
                 </div>
+                @error('dropoff')
+                    <span class="text-danger small">{{ $message }}</span>
+                @enderror
             </div>
 
             <!-- Pickup Date -->
@@ -307,8 +385,12 @@
                     <path
                         d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z" />
                 </svg>
-                <input type="text" name="pickup_date" placeholder="DD/MM/YYYY" class="custom-datepicker" required
-                    autocomplete="off">
+                <input type="text" name="pickup_date" placeholder="DD/MM/YYYY"
+                    class="custom-datepicker @error('pickup_date') is-invalid @enderror"
+                    value="{{ old('pickup_date') }}" required autocomplete="off">
+                @error('pickup_date')
+                    <span class="text-danger small">{{ $message }}</span>
+                @enderror
             </div>
 
             <!-- Pickup Time -->
@@ -318,8 +400,12 @@
                         d="M9 0C4.03 0 0 4.03 0 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm.5-12H8v5l4.25 2.52.75-1.23-3.5-2.08V4z" />
                 </svg>
                 <div class="custom-select-dropdown">
-                    <input type="time" name="pickup_time" value="00:00" required>
+                    <input type="time" name="pickup_time" class="@error('pickup_time') is-invalid @enderror"
+                        value="{{ old('pickup_time', '00:00') }}" required>
                 </div>
+                @error('pickup_time')
+                    <span class="text-danger small">{{ $message }}</span>
+                @enderror
             </div>
 
             <!-- Drop Off Date -->
@@ -328,8 +414,12 @@
                     <path
                         d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z" />
                 </svg>
-                <input type="text" name="dropoff_date" placeholder="DD/MM/YYYY" class="custom-datepicker"
-                    required autocomplete="off">
+                <input type="text" name="dropoff_date" placeholder="DD/MM/YYYY"
+                    class="custom-datepicker @error('dropoff_date') is-invalid @enderror"
+                    value="{{ old('dropoff_date') }}" required autocomplete="off">
+                @error('dropoff_date')
+                    <span class="text-danger small">{{ $message }}</span>
+                @enderror
             </div>
 
             <!-- Drop Off Time -->
@@ -339,20 +429,30 @@
                         d="M9 0C4.03 0 0 4.03 0 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm.5-12H8v5l4.25 2.52.75-1.23-3.5-2.08V4z" />
                 </svg>
                 <div class="custom-select-dropdown">
-                    <input type="time" name="dropoff_time" value="00:00" required>
+                    <input type="time" name="dropoff_time" class="@error('dropoff_time') is-invalid @enderror"
+                        value="{{ old('dropoff_time', '00:00') }}" required>
                 </div>
+                @error('dropoff_time')
+                    <span class="text-danger small">{{ $message }}</span>
+                @enderror
             </div>
+
             <div class="package-type-selector">
                 <div style="display: flex; gap: 20px; justify-content: center;">
                     <label>
-                        <input type="radio" name="package_type" value="taxi-100km" checked>
+                        <input type="radio" name="package_type" value="taxi-100km"
+                            {{ old('package_type', 'taxi-100km') == 'taxi-100km' ? 'checked' : '' }}>
                         <span>TAXI 100 KM per day</span>
                     </label>
                     <label>
-                        <input type="radio" name="package_type" value="tour-200km">
+                        <input type="radio" name="package_type" value="tour-200km"
+                            {{ old('package_type') == 'tour-200km' ? 'checked' : '' }}>
                         <span>TOUR 200 KM Per day</span>
                     </label>
                 </div>
+                @error('package_type')
+                    <span class="text-danger small">{{ $message }}</span>
+                @enderror
             </div>
             <button type="submit" class="primary-btn1">
                 <span>Search For Vehicles</span>
@@ -368,7 +468,11 @@
             <!-- Tour Title -->
             <div class="single-search-box" style="width: 100%; margin-bottom: 15px;">
                 <input type="text" name="tour_title" placeholder="Tour Title (Optional)"
+                    class="@error('tour_title') is-invalid @enderror" value="{{ old('tour_title') }}"
                     style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 5px;">
+                @error('tour_title')
+                    <span class="text-danger small">{{ $message }}</span>
+                @enderror
             </div>
 
             <!-- Starting Location -->
@@ -383,10 +487,16 @@
                 </svg>
                 <div class="custom-select-dropdown">
                     <input type="text" name="starting_location" placeholder="Starting Location"
-                        class="location-search" required>
-                    <input type="hidden" name="starting_lat" class="location-lat">
-                    <input type="hidden" name="starting_lng" class="location-lng">
+                        class="location-search @error('starting_location') is-invalid @enderror"
+                        value="{{ old('starting_location') }}" required>
+                    <input type="hidden" name="starting_lat" class="location-lat"
+                        value="{{ old('starting_lat') }}">
+                    <input type="hidden" name="starting_lng" class="location-lng"
+                        value="{{ old('starting_lng') }}">
                 </div>
+                @error('starting_location')
+                    <span class="text-danger small">{{ $message }}</span>
+                @enderror
             </div>
 
             <!-- Pickup Date -->
@@ -395,9 +505,13 @@
                     <path
                         d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z" />
                 </svg>
-                <input type="text" name="pickup_date" placeholder="DD/MM/YYYY" class="custom-datepicker" required
-                    autocomplete="off">
-            </div>            
+                <input type="text" name="pickup_date" placeholder="DD/MM/YYYY"
+                    class="custom-datepicker @error('pickup_date') is-invalid @enderror"
+                    value="{{ old('pickup_date') }}" required autocomplete="off">
+                @error('pickup_date')
+                    <span class="text-danger small">{{ $message }}</span>
+                @enderror
+            </div>
 
             <!-- Destinations Container -->
             <div id="tour-destinations-section" style="width: 100%; margin-top: 20px;">
@@ -520,8 +634,13 @@
                         d="M12 7V3H2v18h20V7H12zM6 19H4v-2h2v2zm0-4H4v-2h2v2zm0-4H4V9h2v2zm0-4H4V5h2v2zm4 12H8v-2h2v2zm0-4H8v-2h2v2zm0-4H8V9h2v2zm0-4H8V5h2v2zm10 12h-8v-2h2v-2h-2v-2h2v-2h-2V9h8v10zm-2-8h-2v2h2v-2zm0 4h-2v2h2v-2z" />
                 </svg>
                 <div class="custom-select-dropdown">
-                    <input type="text" name="company_name" placeholder="Company Name" required>
+                    <input type="text" name="company_name" placeholder="Company Name"
+                        class="@error('company_name') is-invalid @enderror" value="{{ old('company_name') }}"
+                        required>
                 </div>
+                @error('company_name')
+                    <span class="text-danger small">{{ $message }}</span>
+                @enderror
             </div>
 
             <!-- Contact Person -->
@@ -531,8 +650,13 @@
                         d="M9 9c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
                 </svg>
                 <div class="custom-select-dropdown">
-                    <input type="text" name="contact_person" placeholder="Contact Person" required>
+                    <input type="text" name="contact_person" placeholder="Contact Person"
+                        class="@error('contact_person') is-invalid @enderror" value="{{ old('contact_person') }}"
+                        required>
                 </div>
+                @error('contact_person')
+                    <span class="text-danger small">{{ $message }}</span>
+                @enderror
             </div>
 
             <!-- Email -->
@@ -542,8 +666,12 @@
                         d="M16 2H2C0.9 2 0.01 2.9 0.01 4L0 14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 4l-7 4.5L2 6V4l7 4.5L16 4v2z" />
                 </svg>
                 <div class="custom-select-dropdown">
-                    <input type="email" name="email" placeholder="Email Address" required>
+                    <input type="email" name="email" placeholder="Email Address"
+                        class="@error('email') is-invalid @enderror" value="{{ old('email') }}" required>
                 </div>
+                @error('email')
+                    <span class="text-danger small">{{ $message }}</span>
+                @enderror
             </div>
 
             <!-- Phone -->
@@ -553,14 +681,21 @@
                         d="M3.62 7.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V17c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z" />
                 </svg>
                 <div class="custom-select-dropdown">
-                    <input type="tel" name="phone" placeholder="Phone Number" required>
+                    <input type="tel" name="phone" placeholder="Phone Number"
+                        class="@error('phone') is-invalid @enderror" value="{{ old('phone') }}" required>
                 </div>
+                @error('phone')
+                    <span class="text-danger small">{{ $message }}</span>
+                @enderror
             </div>
 
             <!-- Service Requirements - Full Width -->
             <div class="corporate-requirements-field">
-                <textarea name="requirements" placeholder="Describe your corporate transport requirements..." rows="4"
-                    required></textarea>
+                <textarea name="requirements" placeholder="Describe your corporate transport requirements..."
+                    class="@error('requirements') is-invalid @enderror" rows="4" required>{{ old('requirements') }}</textarea>
+                @error('requirements')
+                    <span class="text-danger small">{{ $message }}</span>
+                @enderror
             </div>
 
             <button type="submit" class="primary-btn1 corporate-submit-btn">
@@ -629,6 +764,60 @@
         </div>
     </div>
 </div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Add loading states to all form submissions
+        const forms = document.querySelectorAll('.filter-input');
+
+        forms.forEach(form => {
+            form.addEventListener('submit', function(e) {
+                const submitBtn = form.querySelector('button[type="submit"]');
+                const btnText = submitBtn.querySelector('span');
+                const originalText = btnText.textContent;
+
+                // Prevent double submission
+                if (submitBtn.disabled) {
+                    e.preventDefault();
+                    return;
+                }
+
+                // Add loading state
+                submitBtn.disabled = true;
+                submitBtn.style.opacity = '0.7';
+                btnText.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Searching...';
+
+                // If form submission takes too long, restore button (fallback)
+                setTimeout(() => {
+                    if (submitBtn.disabled) {
+                        submitBtn.disabled = false;
+                        submitBtn.style.opacity = '1';
+                        btnText.textContent = originalText;
+                    }
+                }, 30000); // 30 seconds timeout
+            });
+        });
+
+        // Show return transfer fields when checkbox is checked
+        const returnTransferCheckbox = document.getElementById('need-return');
+        const returnTransferFields = document.getElementById('return-transfer-fields');
+
+        if (returnTransferCheckbox && returnTransferFields) {
+            // Check if we need to show return fields on page load (for old input)
+            if (returnTransferCheckbox.checked) {
+                returnTransferFields.style.display = 'block';
+            }
+
+            returnTransferCheckbox.addEventListener('change', function() {
+                if (this.checked) {
+                    returnTransferFields.style.display = 'block';
+                } else {
+                    returnTransferFields.style.display = 'none';
+                }
+            });
+        }
+    });
+</script>
 
 @push('scripts')
     <!-- Leaflet CSS for route visualization fallback -->

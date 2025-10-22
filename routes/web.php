@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\Api\FileUploadController;
 use App\Http\Controllers\BookingController;
+use App\Http\Controllers\CartController;
+use App\Http\Controllers\VehicleController;
 use Illuminate\Support\Facades\Route;
 
 // TheTaxi Website Routes
@@ -9,9 +11,9 @@ Route::get('/', function () {
     return view('home');
 })->name('home');
 
-Route::get('/search', function () {
-    return view('search');
-})->name('search');
+// Search routes
+Route::get('/search', [BookingController::class, 'showResults'])->name('search');
+Route::get('/search/{id}', [BookingController::class, 'showResults'])->name('search.results');
 
 Route::get('/services/{type?}', function ($type = null) {
     return view('services', compact('type'));
@@ -21,9 +23,8 @@ Route::get('/vehicles', function () {
     return view('vehicles');
 })->name('vehicles');
 
-Route::get('/vehicle/{id}', function ($id) {
-    return view('vehicle-details', compact('id'));
-})->name('vehicle.details');
+// Vehicle routes
+Route::get('/vehicle/{id}', [VehicleController::class, 'show'])->name('vehicle.details');
 
 Route::get('/about', function () {
     return view('about');
@@ -37,9 +38,13 @@ Route::get('/faq', function () {
     return view('faq');
 })->name('faq');
 
-Route::get('/cart', function () {
-    return view('cart');
-})->name('cart');
+// Cart routes
+Route::get('/cart', [CartController::class, 'index'])->name('cart');
+Route::post('/cart/add', [CartController::class, 'add'])->name('cart.add');
+Route::patch('/cart/update/{itemKey}', [CartController::class, 'update'])->name('cart.update');
+Route::delete('/cart/remove/{itemKey}', [CartController::class, 'remove'])->name('cart.remove');
+Route::delete('/cart/clear', [CartController::class, 'clear'])->name('cart.clear');
+Route::post('/cart/checkout', [CartController::class, 'checkout'])->name('cart.checkout');
 
 Route::get('/checkout', function () {
     return view('checkout');

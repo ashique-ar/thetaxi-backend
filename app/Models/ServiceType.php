@@ -118,4 +118,15 @@ class ServiceType extends BaseModel
     {
         return $this->hasMany(\App\Models\Analytics\DemandForecast::class);
     }
+
+    /**
+     * Scope a query to only include active service types.
+     *
+     * @param \Illuminate\Database\Eloquent\Builder $query
+     * @return \Illuminate\Database\Eloquent\Builder
+     */
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true)->whereNull('deleted_at');
+    }
 }

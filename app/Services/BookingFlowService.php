@@ -1960,7 +1960,7 @@ class BookingFlowService
                 ->first();
 
             if (!$calculationDefinition) {
-                Log::warning("No active calculation definition found for service type: {$serviceTypeId}");
+                Log::info("No active calculation definition found for service type: {$serviceTypeId}, using fallback pricing");
                 return $this->calculateFallbackPricing($params);
             }
 
