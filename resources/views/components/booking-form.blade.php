@@ -135,7 +135,12 @@
                         d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z" />
                 </svg>
                 <input type="text" name="date" placeholder="DD/MM/YYYY"
-                    class="custom-datepicker @error('date') is-invalid @enderror" value="{{ old('date') }}"
+                    class="custom-datepicker @error('date') is-invalid @enderror" 
+                    value="{{ old('date') }}"
+                    data-date-format="dd/mm/yyyy"
+                    data-date-autoclose="true"
+                    data-date-today-highlight="true"
+                    data-date-start-date="0d"
                     required autocomplete="off">
                 @error('date')
                     <span class="text-danger small">{{ $message }}</span>
@@ -820,24 +825,111 @@
 </script>
 
 @push('scripts')
+    <!-- Bootstrap Datepicker CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datepicker/1.9.0/css/bootstrap-datepicker.min.css">
+    
+    <!-- Bootstrap Datepicker JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datepicker/1.9.0/js/bootstrap-datepicker.min.js"></script>
+
     <!-- Leaflet CSS for route visualization fallback -->
     <link rel="stylesheet" href="{{ asset('assets/css/leaflet.css') }}">
 
     <!-- Leaflet JS -->
     <script src="{{ asset('assets/js/leaflet.js') }}"></script>
 
-    <!-- jQuery UI for enhanced date pickers -->
     <script>
-        // Enhanced date picker initialization if available
+        // Enhanced date picker initialization
         $(document).ready(function() {
-            if ($.fn.datepicker) {
-                $('.custom-datepicker').datepicker({
-                    format: 'dd/mm/yyyy',
-                    startDate: new Date(),
-                    autoclose: true,
-                    todayHighlight: true,
-                    orientation: 'bottom auto'
-                });
+            // Initialize all date pickers with DD/MM/YYYY format
+            $('.custom-datepicker').datepicker({
+                format: 'dd/mm/yyyy',
+                autoclose: true,
+                todayHighlight: true,
+                startDate: '0d', // Today or later
+                orientation: 'bottom auto'
+            });
+
+            // Handle date input manually to ensure DD/MM/YYYY format
+            $('.custom-datepicker').on('input', function() {
+                let value = $(this).val();
+                
+                // Remove any non-numeric characters except /
+                value = value.replace(/[^\d\/]/g, '');
+                
+                // Auto-add slashes
+                if (value.length === 2 && !value.includes('/')) {
+                    value += '/';
+                } else if (value.length === 5 && value.split('/').length === 2) {
+                    value += '/';
+                }
+                
+                // Limit to DD/MM/YYYY format
+                if (value.length > 10) {
+                    value = value.substring(0, 10);
+                }
+                
+                $(this).val(value);
+            });
+
+            // Validate date format on blur
+            $('.custom-datepicker').on('blur', function() {
+                let value = $(this).val();
+                if (value && !isValidDDMMYYYY(value)) {
+                    $(this).addClass('is-invalid');
+                    $(this).siblings('.invalid-feedback').remove();
+                    $(this).after('<div class="invalid-feedback">Please enter date in DD/MM/YYYY format</div>');
+                } else {
+                    $(this).removeClass('is-invalid');
+                    $(this).siblings('.invalid-feedback').remove();
+                }
+            });
+
+            // Date validation function
+            function isValidDDMMYYYY(dateString) {
+                const regex = /^\d{2}\/\d{2}\/\d{4}$/;
+                if (!regex.test(dateString)) return false;
+                
+                const parts = dateString.split('/');
+                const day = parseInt(parts[0], 10);
+                const month = parseInt(parts[1], 10);
+                const year = parseInt(parts[2], 10);
+                
+                // Check if date is valid
+                const date = new Date(year, month - 1, day);
+                return date.getFullYear() === year && 
+                       date.getMonth() === month - 1 && 
+                       date.getDate() === day &&
+                       date >= new Date().setHours(0, 0, 0, 0); // Today or later
+            }
+
+            // Ensure return date is after pickup date
+            $('.custom-datepicker[name="return_date"], .custom-datepicker[name="dropoff_date"]').on('change', function() {
+                const $form = $(this).closest('form');
+                const pickupDateField = $form.find('.custom-datepicker[name="date"], .custom-datepicker[name="pickup_date"]');
+                const returnDateField = $(this);
+                
+                const pickupDate = pickupDateField.val();
+                const returnDate = returnDateField.val();
+                
+                if (pickupDate && returnDate && isValidDDMMYYYY(pickupDate) && isValidDDMMYYYY(returnDate)) {
+                    const pickup = parseDate(pickupDate);
+                    const returnD = parseDate(returnDate);
+                    
+                    if (returnD <= pickup) {
+                        returnDateField.addClass('is-invalid');
+                        returnDateField.siblings('.invalid-feedback').remove();
+                        returnDateField.after('<div class="invalid-feedback">Return/Drop-off date must be after pickup date</div>');
+                    } else {
+                        returnDateField.removeClass('is-invalid');
+                        returnDateField.siblings('.invalid-feedback').remove();
+                    }
+                }
+            });
+
+            // Parse DD/MM/YYYY to Date object
+            function parseDate(dateString) {
+                const parts = dateString.split('/');
+                return new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
             }
         });
     </script>

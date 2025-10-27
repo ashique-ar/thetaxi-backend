@@ -6,9 +6,12 @@ use App\Services\BookingSearchService;
 use App\Services\BookingFlowService;
 use App\Services\CurrencyService;
 use App\Services\DiscountService;
+use App\Services\ServiceMappingService;
+use App\Services\DynamicServiceConfigurationService;
 use App\Models\BookingSearch;
 use App\Models\Vehicle\VehicleGroup;
 use App\Models\ServiceType;
+use App\Http\Requests\BookingSearchRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
@@ -23,57 +26,66 @@ class BookingController extends Controller
     protected BookingFlowService $bookingFlowService;
     protected CurrencyService $currencyService;
     protected DiscountService $discountService;
+    protected ServiceMappingService $serviceMappingService;
+    protected DynamicServiceConfigurationService $dynamicServiceConfig;
     
     public function __construct(
         BookingSearchService $searchService,
         BookingFlowService $bookingFlowService,
         CurrencyService $currencyService,
-        DiscountService $discountService
+        DiscountService $discountService,
+        ServiceMappingService $serviceMappingService,
+        DynamicServiceConfigurationService $dynamicServiceConfig
     ) {
         $this->searchService = $searchService;
         $this->bookingFlowService = $bookingFlowService;
         $this->currencyService = $currencyService;
         $this->discountService = $discountService;
+        $this->serviceMappingService = $serviceMappingService;
+        $this->dynamicServiceConfig = $dynamicServiceConfig;
     }
     
     /**
      * Handle enhanced booking search request with advanced pricing
      */
-    public function search(Request $request)
+    public function search(BookingSearchRequest $request)
     {
         try {
-            // Validate based on service type
-            $serviceType = $request->input('service_type');
-            
-            $validator = $this->getValidator($request, $serviceType);
-            
-            if ($validator->fails()) {
-                return redirect()->back()
-                    ->withErrors($validator)
-                    ->withInput()
-                    ->with('error', 'Please check your search criteria and try again.');
-            }
-
             // Get or create session ID for this search
             $sessionId = $this->getOrCreateSessionId();
 
-            // Enhanced search data preparation
+            // Get service mapping information for enhanced tracking
+            $frontendService = $request->input('service_type');
+            $backendServiceType = $this->serviceMappingService->getBackendServiceType($request->all());
+            $pricingContext = $this->serviceMappingService->getServicePricingContext($frontendService, $request->all());
+
+            // Enhanced search data preparation with automatic date conversion
             $searchData = $this->prepareSearchData($request->all(), $sessionId);
+            
+            // Add service mapping information to search data
+            $searchData['frontend_service'] = $frontendService;
+            $searchData['backend_service_type'] = $backendServiceType?->code ?? $frontendService;
+            $searchData['pricing_context'] = json_encode($pricingContext);
             
             // Store search in database with enhanced tracking
             $bookingSearch = $this->searchService->storeSearch($searchData, $sessionId);
             
-            // Store search ID in session for easy access
+            // Store search ID and service info in session for easy access
             session()->put('current_search_id', $bookingSearch->id);
             session()->put('search_timestamp', now());
+            session()->put('backend_service_type', $backendServiceType);
+            session()->put('pricing_context', $pricingContext);
 
             // Log search activity for analytics
             Log::info('Public booking search initiated', [
                 'search_id' => $bookingSearch->id,
-                'service_type' => $serviceType,
+                'frontend_service' => $frontendService,
+                'backend_service' => $backendServiceType?->code ?? 'unknown',
+                'service_type' => $request->input('service_type'),
                 'session_id' => $sessionId,
                 'user_ip' => $request->ip(),
-                'user_agent' => $request->userAgent()
+                'user_agent' => $request->userAgent(),
+                'pricing_context' => $pricingContext
             ]);
 
             // Redirect to enhanced search results page
@@ -146,6 +158,15 @@ class BookingController extends Controller
      */
     private function getEnhancedSearchResults(BookingSearch $search)
     {
+        // Get pricing context and service information from session or recalculate
+        $pricingContext = session('pricing_context');
+        if (!$pricingContext && isset($search->frontend_service)) {
+            $pricingContext = $this->serviceMappingService->getServicePricingContext(
+                $search->frontend_service, 
+                $search->toArray()
+            );
+        }
+
         // Prepare API-style parameters for BookingFlowService
         $params = [
             'service_type' => $search->service_type,
@@ -168,6 +189,11 @@ class BookingController extends Controller
             'force_refresh' => false
         ];
 
+        // Add pricing context to params if available
+        if ($pricingContext) {
+            $params['pricing_context'] = $pricingContext;
+        }
+
         // Use BookingFlowService for comprehensive availability checking
         $availability = $this->bookingFlowService->getAvailableVehicleGroups($params);
         
@@ -184,7 +210,8 @@ class BookingController extends Controller
                 'meta' => [
                     'total' => 0,
                     'message' => 'No vehicles available for your search criteria'
-                ]
+                ],
+                'pricing_context' => $pricingContext
             ];
         }
         
@@ -202,9 +229,10 @@ class BookingController extends Controller
         // Enhanced pricing calculation for each vehicle group
         foreach ($availability['data'] as &$group) {
             try {
-                $group['enhanced_pricing'] = $this->calculateEnhancedPricing($group, $search);
+                $group['enhanced_pricing'] = $this->calculateEnhancedPricing($group, $search, $pricingContext);
                 $group['availability_details'] = $this->getAvailabilityDetails($group, $params);
                 $group['recommended'] = $this->isRecommendedGroup($group, $search);
+                $group['service_features'] = $this->getServiceFeatures($search->frontend_service ?? $search->service_type);
             } catch (\Exception $e) {
                 Log::warning('Pricing calculation failed for vehicle group ' . ($group['id'] ?? 'unknown'), [
                     'error' => $e->getMessage(),
@@ -236,7 +264,7 @@ class BookingController extends Controller
     /**
      * Calculate enhanced pricing with discounts and dynamic adjustments
      */
-    private function calculateEnhancedPricing($group, BookingSearch $search)
+    private function calculateEnhancedPricing($group, BookingSearch $search, $pricingContext = null)
     {
         // Ensure service_type is UUID, not string code
         $serviceTypeId = $search->service_type;
@@ -1179,5 +1207,113 @@ class BookingController extends Controller
     private function isValidUuid(string $uuid): bool
     {
         return preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $uuid) === 1;
+    }
+
+    /**
+     * Get service features based on frontend service type
+     */
+    private function getServiceFeatures(string $serviceType): array
+    {
+        $serviceDescriptions = $this->serviceMappingService->getAllFrontendServices();
+        
+        // Get features from ServiceMappingService descriptions
+        $features = $serviceDescriptions[$serviceType]['features'] ?? [];
+        
+        // Add default features if none found
+        if (empty($features)) {
+            $features = ['Professional Service', 'Reliable Transport', 'Competitive Pricing'];
+        }
+        
+        return $features;
+    }
+
+    /**
+     * Get dynamic service configuration for frontend
+     */
+    public function getServiceConfiguration()
+    {
+        try {
+            $serviceTypes = $this->dynamicServiceConfig->getServiceTypesByCategory();
+            $frontendOptions = $this->dynamicServiceConfig->getFrontendServiceOptions();
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'service_types' => $serviceTypes,
+                    'frontend_options' => $frontendOptions,
+                    'categories' => array_keys($serviceTypes)
+                ]
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error fetching service configuration', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Unable to load service configuration'
+            ], 500);
+        }
+    }
+
+    /**
+     * Get form configuration for a specific service type
+     */
+    public function getServiceFormConfig(Request $request, string $serviceCode)
+    {
+        try {
+            $config = $this->dynamicServiceConfig->getServiceFormConfiguration($serviceCode);
+            
+            if (isset($config['error'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $config['error']
+                ], 404);
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => $config
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error fetching service form configuration', [
+                'service_code' => $serviceCode,
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Unable to load form configuration'
+            ], 500);
+        }
+    }
+
+    /**
+     * Get validation rules for a specific service type
+     */
+    public function getServiceValidationRules(string $serviceCode)
+    {
+        try {
+            $rules = $this->dynamicServiceConfig->getServiceValidationRules($serviceCode);
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'rules' => $rules,
+                    'service_code' => $serviceCode
+                ]
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error fetching validation rules', [
+                'service_code' => $serviceCode,
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Unable to load validation rules'
+            ], 500);
+        }
     }
 }

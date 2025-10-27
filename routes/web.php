@@ -41,6 +41,8 @@ Route::get('/faq', function () {
 // Cart routes
 Route::get('/cart', [CartController::class, 'index'])->name('cart');
 Route::post('/cart/add', [CartController::class, 'add'])->name('cart.add');
+Route::post('/cart/sync', [CartController::class, 'sync'])->name('cart.sync');
+Route::get('/cart/count', [CartController::class, 'count'])->name('cart.count');
 Route::patch('/cart/update/{itemKey}', [CartController::class, 'update'])->name('cart.update');
 Route::delete('/cart/remove/{itemKey}', [CartController::class, 'remove'])->name('cart.remove');
 Route::delete('/cart/clear', [CartController::class, 'clear'])->name('cart.clear');
@@ -58,6 +60,11 @@ Route::post('/contact', function () {
 // Booking routes
 Route::post('/booking/search', [BookingController::class, 'search'])->name('booking.search');
 Route::post('/booking/enquiry', [BookingController::class, 'enquiry'])->name('booking.enquiry');
+
+// Dynamic service configuration API routes
+Route::get('/api/services/configuration', [BookingController::class, 'getServiceConfiguration'])->name('api.services.configuration');
+Route::get('/api/services/{serviceCode}/form-config', [BookingController::class, 'getServiceFormConfig'])->name('api.services.form-config');
+Route::get('/api/services/{serviceCode}/validation-rules', [BookingController::class, 'getServiceValidationRules'])->name('api.services.validation-rules');
 
 // cms type and cms page will user blogs and blog single pages
 

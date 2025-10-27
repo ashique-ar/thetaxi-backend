@@ -13,7 +13,7 @@
                 <div class="banner-content">
                     <h1>All-in-one Travel Booking.</h1>
                     <p>Best travel agency in world-wide & achieve <span>“World Travel Award”</span></p>
-                    @include('components.booking-form')
+                    @include('components.dynamic-booking-form')
                 </div>
             </div>
         </div>

@@ -16,10 +16,6 @@ return new class extends Migration
             $t->boolean('force_default_driver')->default(false)->after('default_driver_id');
             $t->boolean('allow_concurrent_assignments')->default(true)->after('force_default_driver');
         });
-
-        Schema::table('drivers', function (Blueprint $t) {
-            $t->uuid('default_vehicle_id')->nullable()->index();
-        });
     }
 
     /**

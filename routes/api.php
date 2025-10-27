@@ -76,6 +76,7 @@ use App\Http\Controllers\Api\FileUploadController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\StaffController;
+use App\Http\Controllers\BookingController;
 
 /*
 |--------------------------------------------------------------------------
@@ -86,6 +87,7 @@ use App\Http\Controllers\Api\StaffController;
 | logout, password reset, email verification, and two-factor authentication
 |
 */
+// Dynamic service configuration API routes
 
 Route::prefix('auth')->group(function () {
     // Public authentication routes
@@ -261,6 +263,12 @@ Route::middleware(['auth:api'])->group(function () {
         Route::apiResource('website-settings', WebsiteSettingController::class);
         Route::apiResource('vip-types', VipTypeController::class);
         Route::apiResource('service-types', ServiceTypeController::class);
+        
+        // Service Configuration API routes for dynamic forms
+        Route::get('services/configuration', [BookingController::class, 'getServiceConfiguration'])->name('api.services.configuration');
+        Route::get('services/{serviceCode}/form-config', [BookingController::class, 'getServiceFormConfig']);
+        Route::get('services/{serviceCode}/validation-rules', [BookingController::class, 'getServiceValidationRules']);
+        
         Route::apiResource('driving-license-types', DrivingLicenseTypeController::class);
         Route::apiResource('driving-licenses', DrivingLicenseController::class);
     });

@@ -45,6 +45,7 @@ class ComprehensivePricingSeeder extends Seeder
             ['code' => 'corporate', 'name' => 'Corporate Hires', 'description' => 'A service for corporate vehicle hires.', 'type' => 'with_driver', 'priority' => 7],
             ['code' => 'corporate_self', 'name' => 'Corporate Self Drive', 'description' => 'A service for corporate self-drive vehicle hires.', 'type' => 'self_driven', 'priority' => 8],
             ['code' => 'self_driven', 'name' => 'Self Driven', 'description' => 'A service for self-driven vehicle hires.', 'type' => 'self_driven', 'priority' => 9],
+             ['name' => 'Custom Tour', 'code' => 'custom_tour', 'category' => 'special', 'is_active' => 1, 'is_internal' => 0, 'priority' => 4],
         ];
 
         ServiceType::truncate();
