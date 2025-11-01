@@ -96,21 +96,48 @@
         threeDaysLater.setDate(today.getDate() + 3);
         const threeDaysFormatted = formatDate(threeDaysLater);
         
-        // Airport Transfer - set today's date
-        const airportDateInput = document.querySelector('#airport-transfer-form input[name="date"]');
-        if (airportDateInput && !airportDateInput.value) {
-            airportDateInput.value = todayFormatted;
+        // Airport Transfer - set today's date and initialize airport logic
+        const airportForm = document.getElementById('airport-transfer-form');
+        if (airportForm) {
+            const airportDateInput = airportForm.querySelector('input[name="date"]');
+            const airportTimeInput = airportForm.querySelector('input[name="time"]');
+            
+            if (airportDateInput && !airportDateInput.value) {
+                airportDateInput.value = todayFormatted;
+            }
+            if (airportTimeInput && !airportTimeInput.value) {
+                airportTimeInput.value = '12:00';
+            }
+            
+            // Set proper defaults based on transfer type
+            const transferTypeChecked = airportForm.querySelector('input[name="transfer_type"]:checked');
+            if (transferTypeChecked) {
+                // Initialize locations based on selected transfer type
+                updateAirportTransferLocations(transferTypeChecked.value);
+            } else {
+                // Default to "from-airport" if none checked
+                const fromAirportRadio = airportForm.querySelector('input[name="transfer_type"][value="from-airport"]');
+                if (fromAirportRadio) {
+                    fromAirportRadio.checked = true;
+                    updateAirportTransferLocations('from-airport');
+                }
+            }
         }
         
         // Drop & Pickup - set today's date and default locations
         const dropPickupForm = document.getElementById('drop-pickup-form');
         if (dropPickupForm) {
             const dateInput = dropPickupForm.querySelector('input[name="date"]');
+            const timeSelect = dropPickupForm.querySelector('select[name="time"]');
+            
             if (dateInput && !dateInput.value) {
                 dateInput.value = todayFormatted;
             }
+            if (timeSelect && !timeSelect.value) {
+                timeSelect.value = '12:00';
+            }
             
-            // Set default locations: Colombo BIA to Colombo
+            // Set default locations: Colombo to Galle (point-to-point)
             const pickupInput = dropPickupForm.querySelector('input[name="pickup"]');
             const dropoffInput = dropPickupForm.querySelector('input[name="dropoff"]');
             const pickupLat = dropPickupForm.querySelector('input[name="pickup_lat"]');
@@ -119,14 +146,14 @@
             const dropoffLng = dropPickupForm.querySelector('input[name="dropoff_lng"]');
             
             if (pickupInput && !pickupInput.value) {
-                pickupInput.value = "Colombo BIA Airport";
-                if (pickupLat) pickupLat.value = CONFIG.cityCoordinates["Colombo BIA Airport"].lat;
-                if (pickupLng) pickupLng.value = CONFIG.cityCoordinates["Colombo BIA Airport"].lng;
+                pickupInput.value = "Colombo, Sri Lanka";
+                if (pickupLat) pickupLat.value = CONFIG.cityCoordinates["Colombo, Sri Lanka"].lat;
+                if (pickupLng) pickupLng.value = CONFIG.cityCoordinates["Colombo, Sri Lanka"].lng;
             }
             if (dropoffInput && !dropoffInput.value) {
-                dropoffInput.value = "Colombo, Sri Lanka";
-                if (dropoffLat) dropoffLat.value = CONFIG.cityCoordinates["Colombo, Sri Lanka"].lat;
-                if (dropoffLng) dropoffLng.value = CONFIG.cityCoordinates["Colombo, Sri Lanka"].lng;
+                dropoffInput.value = "Galle, Sri Lanka";
+                if (dropoffLat) dropoffLat.value = CONFIG.cityCoordinates["Galle, Sri Lanka"].lat;
+                if (dropoffLng) dropoffLng.value = CONFIG.cityCoordinates["Galle, Sri Lanka"].lng;
             }
         }
         
@@ -135,6 +162,8 @@
         if (rentalForm) {
             const pickupDateInput = rentalForm.querySelector('input[name="pickup_date"]');
             const dropoffDateInput = rentalForm.querySelector('input[name="dropoff_date"]');
+            const pickupTimeInput = rentalForm.querySelector('input[name="pickup_time"]');
+            const dropoffTimeInput = rentalForm.querySelector('input[name="dropoff_time"]');
             
             if (pickupDateInput && !pickupDateInput.value) {
                 pickupDateInput.value = todayFormatted;
@@ -142,8 +171,14 @@
             if (dropoffDateInput && !dropoffDateInput.value) {
                 dropoffDateInput.value = threeDaysFormatted;
             }
+            if (pickupTimeInput && !pickupTimeInput.value) {
+                pickupTimeInput.value = '12:00';
+            }
+            if (dropoffTimeInput && !dropoffTimeInput.value) {
+                dropoffTimeInput.value = '12:00';
+            }
             
-            // Set default locations: Colombo BIA to Colombo
+            // Set default locations: Colombo to Galle (for rentals)
             const pickupInput = rentalForm.querySelector('input[name="pickup"]');
             const dropoffInput = rentalForm.querySelector('input[name="dropoff"]');
             const pickupLat = rentalForm.querySelector('input[name="pickup_lat"]');
@@ -152,14 +187,14 @@
             const dropoffLng = rentalForm.querySelector('input[name="dropoff_lng"]');
             
             if (pickupInput && !pickupInput.value) {
-                pickupInput.value = "Colombo BIA Airport";
-                if (pickupLat) pickupLat.value = CONFIG.cityCoordinates["Colombo BIA Airport"].lat;
-                if (pickupLng) pickupLng.value = CONFIG.cityCoordinates["Colombo BIA Airport"].lng;
+                pickupInput.value = "Colombo, Sri Lanka";
+                if (pickupLat) pickupLat.value = CONFIG.cityCoordinates["Colombo, Sri Lanka"].lat;
+                if (pickupLng) pickupLng.value = CONFIG.cityCoordinates["Colombo, Sri Lanka"].lng;
             }
             if (dropoffInput && !dropoffInput.value) {
-                dropoffInput.value = "Colombo, Sri Lanka";
-                if (dropoffLat) dropoffLat.value = CONFIG.cityCoordinates["Colombo, Sri Lanka"].lat;
-                if (dropoffLng) dropoffLng.value = CONFIG.cityCoordinates["Colombo, Sri Lanka"].lng;
+                dropoffInput.value = "Galle, Sri Lanka";
+                if (dropoffLat) dropoffLat.value = CONFIG.cityCoordinates["Galle, Sri Lanka"].lat;
+                if (dropoffLng) dropoffLng.value = CONFIG.cityCoordinates["Galle, Sri Lanka"].lng;
             }
         }
         
@@ -401,21 +436,43 @@
      * Update location data in hidden fields
      */
     function updateLocationData(input, place) {
-        const container = input.closest(".location-search-box");
-        if (!container) return;
-
-        const latInput = container.querySelector(".location-lat");
-        const lngInput = container.querySelector(".location-lng");
-
-        if (place.geometry && latInput && lngInput) {
-            latInput.value = place.geometry.location.lat();
-            lngInput.value = place.geometry.location.lng();
-        }
-
-        // Update value inputs for airport transfer
-        const valueInput = container.querySelector(".from-value, .to-value");
-        if (valueInput) {
-            valueInput.value = place.formatted_address || input.value;
+        // For airport transfer form
+        if (input.name === 'from') {
+            const form = input.closest('form');
+            const latInput = form.querySelector('input[name="from_lat"]');
+            const lngInput = form.querySelector('input[name="from_lng"]');
+            
+            if (place.geometry && latInput && lngInput) {
+                latInput.value = place.geometry.location.lat();
+                lngInput.value = place.geometry.location.lng();
+            }
+        } else if (input.name === 'to') {
+            const form = input.closest('form');
+            const latInput = form.querySelector('input[name="to_lat"]');
+            const lngInput = form.querySelector('input[name="to_lng"]');
+            
+            if (place.geometry && latInput && lngInput) {
+                latInput.value = place.geometry.location.lat();
+                lngInput.value = place.geometry.location.lng();
+            }
+        } else if (input.name === 'pickup') {
+            const form = input.closest('form');
+            const latInput = form.querySelector('input[name="pickup_lat"]');
+            const lngInput = form.querySelector('input[name="pickup_lng"]');
+            
+            if (place.geometry && latInput && lngInput) {
+                latInput.value = place.geometry.location.lat();
+                lngInput.value = place.geometry.location.lng();
+            }
+        } else if (input.name === 'dropoff') {
+            const form = input.closest('form');
+            const latInput = form.querySelector('input[name="dropoff_lat"]');
+            const lngInput = form.querySelector('input[name="dropoff_lng"]');
+            
+            if (place.geometry && latInput && lngInput) {
+                latInput.value = place.geometry.location.lat();
+                lngInput.value = place.geometry.location.lng();
+            }
         }
     }
 
@@ -491,14 +548,14 @@
         const form = document.getElementById("airport-transfer-form");
         if (!form) return;
 
-        const fromDisplay = form.querySelector(".from-display");
-        const toDisplay = form.querySelector(".to-display");
-        const fromValue = form.querySelector(".from-value");
-        const toValue = form.querySelector(".to-value");
-        const fromLat = form.querySelector('.from-location .location-lat');
-        const fromLng = form.querySelector('.from-location .location-lng');
-        const toLat = form.querySelector('.to-location .location-lat');
-        const toLng = form.querySelector('.to-location .location-lng');
+        const fromInput = form.querySelector('input[name="from"]');
+        const toInput = form.querySelector('input[name="to"]');
+        const fromLat = form.querySelector('input[name="from_lat"]');
+        const fromLng = form.querySelector('input[name="from_lng"]');
+        const toLat = form.querySelector('input[name="to_lat"]');
+        const toLng = form.querySelector('input[name="to_lng"]');
+
+        if (!fromInput || !toInput || !fromLat || !fromLng || !toLat || !toLng) return;
 
         const colomboCoords = CONFIG.cityCoordinates["Colombo, Sri Lanka"];
         const defaultAirport = "Colombo BIA Airport";
@@ -506,46 +563,43 @@
 
         // CRITICAL: Properly destroy Google Places Autocomplete instances
         // This prevents duplicate dropdowns when toggling
-        if (fromDisplay.googleAutocomplete) {
-            google.maps.event.clearInstanceListeners(fromDisplay);
-            fromDisplay.googleAutocomplete = null;
+        if (fromInput.googleAutocomplete) {
+            google.maps.event.clearInstanceListeners(fromInput);
+            fromInput.googleAutocomplete = null;
         }
-        if (toDisplay.googleAutocomplete) {
-            google.maps.event.clearInstanceListeners(toDisplay);
-            toDisplay.googleAutocomplete = null;
+        if (toInput.googleAutocomplete) {
+            google.maps.event.clearInstanceListeners(toInput);
+            toInput.googleAutocomplete = null;
         }
         
         // Clear previous autocomplete initialization to allow re-initialization
-        fromDisplay.removeAttribute("data-autocomplete-initialized");
-        toDisplay.removeAttribute("data-autocomplete-initialized");
+        fromInput.removeAttribute("data-autocomplete-initialized");
+        toInput.removeAttribute("data-autocomplete-initialized");
         
         // Destroy any existing jQuery autocomplete to prevent conflicts
         if (typeof $ !== "undefined" && $.fn.autocomplete) {
-            if ($(fromDisplay).data('ui-autocomplete')) {
-                $(fromDisplay).autocomplete('destroy');
+            if ($(fromInput).data('ui-autocomplete')) {
+                $(fromInput).autocomplete('destroy');
             }
-            if ($(toDisplay).data('ui-autocomplete')) {
-                $(toDisplay).autocomplete('destroy');
+            if ($(toInput).data('ui-autocomplete')) {
+                $(toInput).autocomplete('destroy');
             }
         }
 
         if (type === "from-airport") {
             // FROM field = Airport (with filtering)
-            fromDisplay.value = defaultAirport; // Always set BIA as default
-            fromDisplay.removeAttribute("readonly");
-            fromDisplay.style.backgroundColor = "white";
-            fromDisplay.classList.add("airport-search-field");
-            fromDisplay.placeholder = "Search airport...";
+            fromInput.value = defaultAirport; // Always set BIA as default
+            fromInput.removeAttribute("readonly");
+            fromInput.style.backgroundColor = "white";
+            fromInput.classList.add("airport-search-field");
+            fromInput.placeholder = "Search airport...";
             
             // TO field = Any location (no filtering)
-            toDisplay.value = "Colombo, Sri Lanka";
-            toDisplay.removeAttribute("readonly");
-            toDisplay.style.backgroundColor = "white";
-            toDisplay.classList.remove("airport-search-field");
-            toDisplay.placeholder = "Enter destination";
-            
-            fromValue.value = defaultAirport;
-            toValue.value = "Colombo, Sri Lanka";
+            toInput.value = "Colombo, Sri Lanka";
+            toInput.removeAttribute("readonly");
+            toInput.style.backgroundColor = "white";
+            toInput.classList.remove("airport-search-field");
+            toInput.placeholder = "Enter destination";
             
             // Set coordinates
             fromLat.value = defaultAirportCoords.lat;
@@ -554,21 +608,18 @@
             toLng.value = colomboCoords.lng;
         } else {
             // FROM field = Any location (no filtering)
-            fromDisplay.value = "Colombo, Sri Lanka";
-            fromDisplay.removeAttribute("readonly");
-            fromDisplay.style.backgroundColor = "white";
-            fromDisplay.classList.remove("airport-search-field");
-            fromDisplay.placeholder = "Enter pickup location";
+            fromInput.value = "Colombo, Sri Lanka";
+            fromInput.removeAttribute("readonly");
+            fromInput.style.backgroundColor = "white";
+            fromInput.classList.remove("airport-search-field");
+            fromInput.placeholder = "Enter pickup location";
             
             // TO field = Airport (with filtering)
-            toDisplay.value = defaultAirport; // Always set BIA as default
-            toDisplay.removeAttribute("readonly");
-            toDisplay.style.backgroundColor = "white";
-            toDisplay.classList.add("airport-search-field");
-            toDisplay.placeholder = "Search airport...";
-            
-            fromValue.value = "Colombo, Sri Lanka";
-            toValue.value = defaultAirport;
+            toInput.value = defaultAirport; // Always set BIA as default
+            toInput.removeAttribute("readonly");
+            toInput.style.backgroundColor = "white";
+            toInput.classList.add("airport-search-field");
+            toInput.placeholder = "Search airport...";
             
             // Set coordinates
             fromLat.value = colomboCoords.lat;
@@ -1897,6 +1948,25 @@
 
         forms.forEach((form) => {
             form.addEventListener("submit", function (e) {
+                // Debug: Log form data including coordinates before submission
+                const formData = new FormData(form);
+                const formDataObj = {};
+                formData.forEach((value, key) => {
+                    formDataObj[key] = value;
+                });
+                
+                console.log('Form submission - All form data:', formDataObj);
+                console.log('Form submission - Coordinates check:', {
+                    from_lat: formData.get('from_lat'),
+                    from_lng: formData.get('from_lng'),
+                    to_lat: formData.get('to_lat'),
+                    to_lng: formData.get('to_lng'),
+                    pickup_lat: formData.get('pickup_lat'),
+                    pickup_lng: formData.get('pickup_lng'),
+                    dropoff_lat: formData.get('dropoff_lat'),
+                    dropoff_lng: formData.get('dropoff_lng')
+                });
+                
                 if (!validateForm(form)) {
                     e.preventDefault();
                 }

@@ -12,8 +12,7 @@ Route::get('/', function () {
 })->name('home');
 
 // Search routes
-Route::get('/search', [BookingController::class, 'showResults'])->name('search');
-Route::get('/search/{id}', [BookingController::class, 'showResults'])->name('search.results');
+Route::get('/search/{id?}', [BookingController::class, 'showResults'])->name('search.results');
 
 Route::get('/services/{type?}', function ($type = null) {
     return view('services', compact('type'));
@@ -51,6 +50,10 @@ Route::post('/cart/checkout', [CartController::class, 'checkout'])->name('cart.c
 Route::get('/checkout', function () {
     return view('checkout');
 })->name('checkout');
+
+// Service-specific pages
+Route::get('/point-to-point', [BookingController::class, 'pointToPoint'])->name('point-to-point');
+Route::get('/corporate-transfers', [BookingController::class, 'corporateTransfers'])->name('corporate-transfers');
 
 // contact.store
 Route::post('/contact', function () {

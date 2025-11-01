@@ -22,7 +22,6 @@ use Carbon\Carbon;
 
 class BookingController extends Controller
 {
-    protected BookingSearchService $searchService;
     protected BookingFlowService $bookingFlowService;
     protected CurrencyService $currencyService;
     protected DiscountService $discountService;
@@ -30,14 +29,12 @@ class BookingController extends Controller
     protected DynamicServiceConfigurationService $dynamicServiceConfig;
     
     public function __construct(
-        BookingSearchService $searchService,
         BookingFlowService $bookingFlowService,
         CurrencyService $currencyService,
         DiscountService $discountService,
         ServiceMappingService $serviceMappingService,
         DynamicServiceConfigurationService $dynamicServiceConfig
     ) {
-        $this->searchService = $searchService;
         $this->bookingFlowService = $bookingFlowService;
         $this->currencyService = $currencyService;
         $this->discountService = $discountService;
@@ -54,42 +51,51 @@ class BookingController extends Controller
             // Get or create session ID for this search
             $sessionId = $this->getOrCreateSessionId();
 
-            // Get service mapping information for enhanced tracking
+            // Get service mapping information
             $frontendService = $request->input('service_type');
             $backendServiceType = $this->serviceMappingService->getBackendServiceType($request->all());
             $pricingContext = $this->serviceMappingService->getServicePricingContext($frontendService, $request->all());
 
-            // Enhanced search data preparation with automatic date conversion
-            $searchData = $this->prepareSearchData($request->all(), $sessionId);
+            Log::info('Service mapping resolved', [
+                'frontend_service' => $frontendService,
+                'backend_service_type' => $backendServiceType ? $backendServiceType->code : 'not found',
+                'pricing_context' => $pricingContext,
+                'request_data' => $request->all()
+            ]);
+            if (!$backendServiceType) {
+                Log::warning('Backend service type not found for frontend service', [
+                    'frontend_service' => $frontendService,
+                    'request_data' => $request->all()
+                ]);
+                
+                return redirect()->back()
+                    ->withInput()
+                    ->with('error', 'Service type not configured. Please contact support.');
+            }
+
+            // Transform frontend request data to BookingFlowService format
+            $searchParams = $this->transformSearchParams($request->all(), $backendServiceType);
             
-            // Add service mapping information to search data
-            $searchData['frontend_service'] = $frontendService;
-            $searchData['backend_service_type'] = $backendServiceType?->code ?? $frontendService;
-            $searchData['pricing_context'] = json_encode($pricingContext);
-            
-            // Store search in database with enhanced tracking
-            $bookingSearch = $this->searchService->storeSearch($searchData, $sessionId);
-            
-            // Store search ID and service info in session for easy access
-            session()->put('current_search_id', $bookingSearch->id);
+            // Store search params and context in session for results page
+            session()->put('current_search_params', $searchParams);
             session()->put('search_timestamp', now());
-            session()->put('backend_service_type', $backendServiceType);
+            session()->put('session_id', $sessionId);
+            session()->put('backend_service_type', $backendServiceType->code);
+            session()->put('backend_service_type_id',  $backendServiceType->id);
+            session()->put('frontend_service', $frontendService);
             session()->put('pricing_context', $pricingContext);
 
             // Log search activity for analytics
             Log::info('Public booking search initiated', [
-                'search_id' => $bookingSearch->id,
                 'frontend_service' => $frontendService,
-                'backend_service' => $backendServiceType?->code ?? 'unknown',
-                'service_type' => $request->input('service_type'),
+                'backend_service' => $backendServiceType->code,
                 'session_id' => $sessionId,
-                'user_ip' => $request->ip(),
-                'user_agent' => $request->userAgent(),
-                'pricing_context' => $pricingContext
+                'search_params' => $searchParams,
+                'user_ip' => $request->ip()
             ]);
 
-            // Redirect to enhanced search results page
-            return redirect()->route('search.results', ['id' => $bookingSearch->id])
+            // Redirect to search results page
+            return redirect()->route('search.results')
                 ->with('success', 'Search completed! Here are the available vehicles for your journey.');
 
         } catch (\Exception $e) {
@@ -106,44 +112,154 @@ class BookingController extends Controller
     }
     
     /**
-     * Show enhanced search results page with comprehensive pricing
+     * Transform frontend search parameters to BookingFlowService format
+     * Maps frontend service types and field names to backend format
+     */
+    protected function transformSearchParams(array $requestData, $backendServiceType): array
+    {
+        $params = [
+            // Pass UUID as service_type for BookingFlowService compatibility
+            // It will try to resolve by ID first, then fallback to code
+            'service_type' => $backendServiceType->id,
+            'service_type_id' => $backendServiceType->id,
+            'page' => 1,
+            'per_page' => 50,
+        ];
+
+        // Handle different frontend service types
+        $frontendService = $requestData['service_type'] ?? 'airport-transfer';
+        
+        switch ($frontendService) {
+            case 'airport-transfer':
+                $params['from_date'] = Carbon::parse($requestData['date'])->format('Y-m-d');
+                $params['to_date'] = Carbon::parse($requestData['date'])->format('Y-m-d');
+                $params['from_time'] = $requestData['time'] ?? '00:00';
+                $params['to_time'] = $requestData['time'] ?? '00:00';
+                $params['pickup_location'] = $this->formatLocation($requestData, 'from');
+                $params['dropoff_location'] = $this->formatLocation($requestData, 'to');
+                break;
+                
+            case 'drop-pickup':
+            case 'point-to-point':
+                $params['from_date'] = Carbon::parse($requestData['date'])->format('Y-m-d');
+                $params['to_date'] = isset($requestData['return_date']) 
+                    ? Carbon::parse($requestData['return_date'])->format('Y-m-d')
+                    : Carbon::parse($requestData['date'])->format('Y-m-d');
+                $params['from_time'] = $requestData['time'] ?? '00:00';
+                $params['to_time'] = $requestData['return_time'] ?? $requestData['time'] ?? '00:00';
+                $params['pickup_location'] = $this->formatLocation($requestData, 'pickup');
+                $params['dropoff_location'] = $this->formatLocation($requestData, 'dropoff');
+                break;
+                
+            case 'rental-packages':
+                $params['from_date'] = Carbon::parse($requestData['pickup_date'])->format('Y-m-d');
+                $params['to_date'] = Carbon::parse($requestData['dropoff_date'])->format('Y-m-d');
+                $params['from_time'] = $requestData['pickup_time'] ?? '00:00';
+                $params['to_time'] = $requestData['dropoff_time'] ?? '00:00';
+                $params['pickup_location'] = $this->formatLocation($requestData, 'pickup');
+                $params['dropoff_location'] = $this->formatLocation($requestData, 'dropoff');
+                $params['package_type'] = $requestData['package_type'] ?? 'multi-day';
+                break;
+        }
+        
+        // Add common parameters
+        $params['passengers'] = $requestData['passengers'] ?? 1;
+        
+        return $params;
+    }
+    
+    /**
+     * Format location data for BookingFlowService
+     */
+    protected function formatLocation(array $data, string $prefix): array
+    {
+        $location = [
+            'address' => $data[$prefix] ?? '',
+            'latitude' => $data["{$prefix}_lat"] ?? null,
+            'longitude' => $data["{$prefix}_lng"] ?? null,
+        ];
+        
+        // Ensure numeric values
+        if ($location['latitude']) {
+            $location['latitude'] = (float) $location['latitude'];
+        }
+        if ($location['longitude']) {
+            $location['longitude'] = (float) $location['longitude'];
+        }
+        
+        return $location;
+    }
+    
+    /**
+     * Show search results page using BookingFlowService
+     * Now calls the same service as the API for consistency
      */
     public function showResults(Request $request, ?string $id = null)
     {
         try {
-            // Get search from ID or session
-            if ($id) {
-                $search = $this->searchService->getSearch($id);
-            } else {
-                $searchId = session()->get('current_search_id');
-                $search = $searchId ? $this->searchService->getSearch($searchId) : null;
-            }
+            // Get search parameters from session
+            $searchParams = session()->get('current_search_params');
+            $searchTimestamp = session()->get('search_timestamp');
+            $pricingContext = session()->get('pricing_context');
+            $frontendService = session()->get('frontend_service');
             
-            if (!$search) {
+            if (!$searchParams) {
                 return redirect()->route('home')
                     ->with('error', 'No search data found. Please start a new search.');
             }
             
             // Check if search is expired (older than 2 hours)
-            if ($search->created_at->diffInHours(now()) > 2) {
+            if ($searchTimestamp && Carbon::parse($searchTimestamp)->diffInHours(now()) > 2) {
                 return redirect()->route('home')
                     ->with('warning', 'Your search has expired. Please start a new search for updated prices.');
             }
             
-            // Get enhanced vehicle groups with comprehensive pricing
-            $results = $this->getEnhancedSearchResults($search);
+            // Call BookingFlowService to get available vehicle groups (same as API)
+            Log::info('Calling BookingFlowService with params', ['params' => $searchParams]);
+            $availabilityData = $this->bookingFlowService->getAvailableVehicleGroups($searchParams);
+            Log::info('BookingFlowService returned', [
+                'data_count' => isset($availabilityData['data']) ? count($availabilityData['data']) : count($availabilityData),
+                'has_pagination' => isset($availabilityData['pagination'])
+            ]);
+            
+            // Extract data and pagination
+            $vehicleGroups = $availabilityData['data'] ?? $availabilityData;
+            $pagination = $availabilityData['pagination'] ?? null;
+            
+            Log::info('Vehicle groups extracted', ['count' => count($vehicleGroups)]);
+            
+            // Transform results for view (add public-specific enhancements)
+            $transformedData = $this->transformResultsForPublicView($vehicleGroups, $searchParams, $pricingContext);
+            
+            Log::info('Transformed data', ['count' => count($transformedData)]);
+            
+            // Wrap results in expected structure for blade template
+            $results = [
+                'data' => $transformedData,
+                'total' => count($transformedData),
+                'pagination' => $pagination
+            ];
+            
+            // Prepare search object for view compatibility (include ID for blade template)
+            $search = (object) [
+                'id' => session('session_id'), // Add ID for blade compatibility
+                'search_params' => $searchParams,
+                'pricing_context' => $pricingContext,
+                'frontend_service' => $frontendService,
+                'created_at' => $searchTimestamp,
+            ];
             
             // Get additional data for enhanced UI
-            $additionalData = $this->getAdditionalSearchData($search);
-            
-            // Track search result view
-            $this->trackSearchResultView($search, $request);
+            $additionalData = [
+                'popular_destinations' => $this->getPopularDestinations(),
+                'active_promotions' => $this->getActivePromotionalOffers($search),
+                'pagination' => $pagination,
+            ];
             
             return view('search-results', array_merge(compact('search', 'results'), $additionalData));
 
         } catch (\Exception $e) {
             Log::error('Error displaying search results', [
-                'search_id' => $id,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
@@ -152,207 +268,96 @@ class BookingController extends Controller
                 ->with('error', 'An error occurred while loading search results. Please try again.');
         }
     }
-
+    
     /**
-     * Get enhanced search results with comprehensive pricing and availability
+     * Transform BookingFlowService results for public view
+     * Adds customer-facing enhancements and formatting
      */
-    private function getEnhancedSearchResults(BookingSearch $search)
+    protected function transformResultsForPublicView(array $vehicleGroups, array $searchParams, $pricingContext): array
     {
-        // Get pricing context and service information from session or recalculate
-        $pricingContext = session('pricing_context');
-        if (!$pricingContext && isset($search->frontend_service)) {
-            $pricingContext = $this->serviceMappingService->getServicePricingContext(
-                $search->frontend_service, 
-                $search->toArray()
-            );
-        }
-
-        // Prepare API-style parameters for BookingFlowService
-        $params = [
-            'service_type' => $search->service_type,
-            'from_date' => $search->from_date?->format('Y-m-d'),
-            'to_date' => $search->to_date?->format('Y-m-d'),
-            'from_time' => $search->from_time,
-            'to_time' => $search->to_time,
-            'pickup_location' => [
-                'latitude' => $search->pickup_lat,
-                'longitude' => $search->pickup_lng,
-                'address' => $search->pickup_location
-            ],
-            'dropoff_location' => [
-                'latitude' => $search->dropoff_lat,
-                'longitude' => $search->dropoff_lng,
-                'address' => $search->dropoff_location
-            ],
-            'passengers' => $search->passengers ?? 1,
-            'currency' => session('currency', 'USD'),
-            'force_refresh' => false
-        ];
-
-        // Add pricing context to params if available
-        if ($pricingContext) {
-            $params['pricing_context'] = $pricingContext;
-        }
-
-        // Use BookingFlowService for comprehensive availability checking
-        $availability = $this->bookingFlowService->getAvailableVehicleGroups($params);
+        $results = [];
         
-        // Check if we have valid data - BookingFlowService returns array directly
-        if (!$availability || !is_array($availability) || empty($availability)) {
-            Log::info('BookingFlowService returned no vehicle data', [
-                'params' => $params,
-                'response_type' => gettype($availability),
-                'response_count' => is_array($availability) ? count($availability) : 0
+        foreach ($vehicleGroups as $index => $groupData) {
+            // BookingFlowService returns data FLAT, not nested under 'group' key
+            // The structure has: id, name, category, pricing_info, available_count, etc. directly
+            
+            Log::info("Processing vehicle group {$index}", [
+                'id' => $groupData['id'] ?? 'no id',
+                'name' => $groupData['name'] ?? 'no name',
+                'has_pricing' => isset($groupData['pricing_info']),
+                'available_count' => $groupData['available_count'] ?? 0
             ]);
             
-            return [
-                'data' => [],
-                'meta' => [
-                    'total' => 0,
-                    'message' => 'No vehicles available for your search criteria'
+            // Check if we have minimum required data
+            if (!isset($groupData['id']) || !isset($groupData['name'])) {
+                Log::warning("Skipping vehicle group {$index} - missing required data");
+                continue;
+            }
+            
+            // Format pricing from the structure returned by BookingFlowService
+            $pricingInfo = $groupData['pricing_info'] ?? [];
+            $formattedPricing = !empty($pricingInfo) ? [
+                'base_amount' => $pricingInfo['base_amount'] ?? 0,
+                'total_amount' => $pricingInfo['total_amount'] ?? 0,
+                'currency' => $pricingInfo['currency'] ?? 'LKR',
+                'breakdown' => $pricingInfo['breakdown'] ?? [],
+            ] : [];
+            
+            // Build result using the ACTUAL structure from BookingFlowService
+            $results[] = [
+                // Direct mapping from BookingFlowService response
+                'id' => $groupData['id'],
+                'name' => $groupData['name'],
+                'description' => $groupData['description'] ?? '',
+                'seating_capacity' => $groupData['features']['seating_capacity'] ?? null,
+                'luggage_capacity' => $groupData['features']['luggage_capacity'] ?? null,
+                'category' => [
+                    'name' => $groupData['category'] ?? null,
                 ],
-                'pricing_context' => $pricingContext
+                'transmission' => [
+                    'name' => $groupData['features']['transmission'] ?? null,
+                ],
+                'fuel_type' => [
+                    'name' => $groupData['features']['fuel_type'] ?? null,
+                ],
+                // Pricing and availability
+                'pricing_info' => $formattedPricing,
+                'enhanced_pricing' => [],
+                'available_count' => $groupData['available_count'] ?? 0,
+                'total_count' => $groupData['total_count'] ?? 0,
+                'recommended' => false, // Can be enhanced later
+                'service_features' => $this->getServiceFeatures($searchParams['service_type'] ?? 'airport-transfer'),
+                'savings_info' => [],
+                'payment_options' => $this->getAvailablePaymentOptions($formattedPricing),
             ];
         }
         
-        // Wrap the response in expected format if it's a direct array
-        if (is_array($availability) && !isset($availability['data'])) {
-            $availability = [
-                'data' => $availability,
-                'meta' => [
-                    'total' => count($availability),
-                    'message' => 'Vehicles found successfully'
-                ]
-            ];
-        }
+        Log::info("Transformation complete", ['result_count' => count($results)]);
         
-        // Enhanced pricing calculation for each vehicle group
-        foreach ($availability['data'] as &$group) {
-            try {
-                $group['enhanced_pricing'] = $this->calculateEnhancedPricing($group, $search, $pricingContext);
-                $group['availability_details'] = $this->getAvailabilityDetails($group, $params);
-                $group['recommended'] = $this->isRecommendedGroup($group, $search);
-                $group['service_features'] = $this->getServiceFeatures($search->frontend_service ?? $search->service_type);
-            } catch (\Exception $e) {
-                Log::warning('Pricing calculation failed for vehicle group ' . ($group['id'] ?? 'unknown'), [
-                    'error' => $e->getMessage(),
-                    'group' => $group
-                ]);
-                
-                // Set default values for failed calculations
-                $group['enhanced_pricing'] = [
-                    'total_amount' => 0,
-                    'currency' => session('currency', 'USD'),
-                    'error' => 'Pricing calculation failed'
-                ];
-                $group['availability_details'] = [];
-                $group['recommended'] = false;
-            }
-        }
-        
-        // Sort by recommendation and price
-        usort($availability['data'], function($a, $b) {
-            if ($a['recommended'] !== $b['recommended']) {
-                return $b['recommended'] - $a['recommended'];
-            }
-            return $a['enhanced_pricing']['total_amount'] <=> $b['enhanced_pricing']['total_amount'];
-        });
-
-        return $availability;
+        return $results;
     }
-
+    
     /**
-     * Calculate enhanced pricing with discounts and dynamic adjustments
+     * Format pricing data for public display
      */
-    private function calculateEnhancedPricing($group, BookingSearch $search, $pricingContext = null)
+    protected function formatPricingForPublic(array $pricing): array
     {
-        // Ensure service_type is UUID, not string code
-        $serviceTypeId = $search->service_type;
-        if (!$this->isValidUuid($serviceTypeId)) {
-            // Convert kebab-case to UPPER_CASE format for database lookup
-            $codeToSearch = strtoupper(str_replace('-', '_', $serviceTypeId));
-            
-            $serviceType = ServiceType::where('code', $codeToSearch)
-                ->orWhere('name', $serviceTypeId)
-                ->orWhere('code', $serviceTypeId)
-                ->first();
-            $serviceTypeId = $serviceType?->id ?? $serviceTypeId;
+        if (empty($pricing)) {
+            return [];
         }
         
-        $pricingParams = [
-            'vehicle_group_id' => $group['id'],
-            'service_type' => $serviceTypeId,
-            'from_date' => $search->from_date?->format('Y-m-d'),
-            'to_date' => $search->to_date?->format('Y-m-d'),
-            'from_time' => $search->from_time,
-            'to_time' => $search->to_time,
-            'pickup_location' => [
-                'latitude' => $search->pickup_lat,
-                'longitude' => $search->pickup_lng
-            ],
-            'dropoff_location' => [
-                'latitude' => $search->dropoff_lat,
-                'longitude' => $search->dropoff_lng
-            ],
-            'distance_km' => $search->distance_km ?? 0,
-            'duration_hours' => $search->duration_hours ?? 1,
-            'currency' => session('currency', 'USD')
-        ];
-
-        try {
-            // Use BookingFlowService for comprehensive pricing
-            $pricing = $this->bookingFlowService->calculatePricing($pricingParams);
-            
-            // Check if pricing calculation was successful
-            if (!$pricing || !isset($pricing['data'])) {
-                throw new \Exception('Invalid pricing response from BookingFlowService');
-            }
-            
-            // Add public-specific enhancements
-            $pricing['data']['savings'] = $this->calculatePotentialSavings($group, $pricing['data']);
-            $pricing['data']['price_breakdown_public'] = $this->getPublicPriceBreakdown($pricing['data']);
-            $pricing['data']['payment_options'] = $this->getAvailablePaymentOptions($pricing['data']);
-            
-            return $pricing['data'];
-            
-        } catch (\Exception $e) {
-            Log::warning('Enhanced pricing calculation failed', [
-                'vehicle_group_id' => $group['id'] ?? 'unknown',
-                'service_type' => $serviceTypeId,
-                'error' => $e->getMessage(),
-                'params' => $pricingParams
-            ]);
-            
-            // Return fallback pricing
-            return [
-                'total_amount' => 0,
-                'currency' => session('currency', 'USD'),
-                'base_price' => 0,
-                'taxes' => 0,
-                'fees' => 0,
-                'error' => 'Pricing calculation failed: ' . $e->getMessage(),
-                'savings' => [],
-                'price_breakdown_public' => [],
-                'payment_options' => []
-            ];
-        }
-    }
-
-    /**
-     * Get additional data for enhanced search results UI
-     */
-    private function getAdditionalSearchData(BookingSearch $search)
-    {
         return [
-            'service_types' => ServiceType::active()->get(),
-            'popular_destinations' => $this->getPopularDestinations(),
-            'current_currency' => session('currency', 'USD'),
-            'available_currencies' => $this->currencyService->getAvailableCurrencies(),
-            'search_summary' => $this->getSearchSummary($search),
-            'similar_searches' => $this->getSimilarSearches($search),
-            'promotional_offers' => $this->getActivePromotionalOffers($search)
+            'base_amount' => $pricing['base_pricing']['total_amount'] ?? 0,
+            'total_amount' => $pricing['summary']['total_amount'] ?? 0,
+            'currency' => $pricing['currency'] ?? 'LKR',
+            'duration' => $pricing['duration'] ?? [],
+            'breakdown' => $this->getPublicPriceBreakdown($pricing),
+            'includes' => $pricing['base_pricing']['includes'] ?? [],
         ];
     }
+
+    // Removed getEnhancedSearchResults, calculateEnhancedPricing, and getAdditionalSearchData
+    // Now using BookingFlowService directly which handles all pricing logic
 
     /**
      * Handle corporate enquiry submission
@@ -430,16 +435,17 @@ class BookingController extends Controller
                 ], 422);
             }
 
-            $search = $this->searchService->getSearch($request->search_id);
-            if (!$search) {
+            // Get search params from session
+            $searchParams = session()->get('current_search_params');
+            if (!$searchParams) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Search not found'
+                    'message' => 'Search session expired. Please search again.'
                 ], 404);
             }
 
             // Add to cart with pricing calculation
-            $cartItem = $this->addVehicleToCart($search, $request->all());
+            $cartItem = $this->addVehicleToCart($searchParams, $request->all());
 
             return response()->json([
                 'success' => true,
@@ -481,7 +487,7 @@ class BookingController extends Controller
                 'success' => true,
                 'cart_items' => $cartDetails,
                 'total_amount' => $total,
-                'currency' => session('currency', 'USD'),
+                'currency' => session('currency', 'LKR'),
                 'item_count' => count($cartDetails)
             ]);
 
@@ -636,6 +642,7 @@ class BookingController extends Controller
 
     /**
      * Prepare enhanced search data
+     * Note: service_type should already be converted to UUID by the calling method
      */
     private function prepareSearchData(array $requestData, string $sessionId): array
     {
@@ -644,26 +651,8 @@ class BookingController extends Controller
         $searchData['ip_address'] = request()->ip();
         $searchData['user_agent'] = request()->userAgent();
         
-        // Convert service type code to UUID if it's a string
-        if (!empty($searchData['service_type']) && !$this->isValidUuid($searchData['service_type'])) {
-            // Convert kebab-case to UPPER_CASE format for database lookup
-            $codeToSearch = strtoupper(str_replace('-', '_', $searchData['service_type']));
-            
-            $serviceType = ServiceType::where('code', $codeToSearch)
-                ->orWhere('name', $searchData['service_type'])
-                ->orWhere('code', $searchData['service_type'])
-                ->first();
-            
-            if ($serviceType) {
-                $searchData['service_type'] = $serviceType->id;
-            } else {
-                Log::warning('Service type not found in database', [
-                    'requested_type' => $searchData['service_type'],
-                    'converted_code' => $codeToSearch,
-                    'available_types' => ServiceType::pluck('code', 'id')->toArray()
-                ]);
-            }
-        }
+        // Service type conversion is now handled in the search() method before calling this
+        // This ensures consistency and prevents multiple conversion attempts
         
         // Add coordinate resolution if needed
         if (empty($searchData['pickup_lat']) && !empty($searchData['pickup'])) {
@@ -744,12 +733,15 @@ class BookingController extends Controller
             'total_savings' => 0
         ];
 
+        // Get base amount from nested structure
+        $baseAmount = $pricing['base_pricing']['base_amount'] ?? $pricing['summary']['subtotal'] ?? 0;
+
         // Calculate advance booking savings
         $bookingDaysAhead = Carbon::parse($pricing['from_date'] ?? now())->diffInDays(now());
         if ($bookingDaysAhead >= 7) {
-            $savings['advance_booking'] = $pricing['base_amount'] * 0.1; // 10% for 7+ days
+            $savings['advance_booking'] = $baseAmount * 0.1; // 10% for 7+ days
         } elseif ($bookingDaysAhead >= 3) {
-            $savings['advance_booking'] = $pricing['base_amount'] * 0.05; // 5% for 3+ days
+            $savings['advance_booking'] = $baseAmount * 0.05; // 5% for 3+ days
         }
 
         // TODO: Add other savings calculations
@@ -769,29 +761,32 @@ class BookingController extends Controller
      */
     private function getPublicPriceBreakdown($pricing): array
     {
+        $basePricing = $pricing['base_pricing'] ?? [];
+        $summary = $pricing['summary'] ?? [];
+        
         return [
             'base_fare' => [
-                'amount' => $pricing['base_amount'] ?? 0,
+                'amount' => $basePricing['base_amount'] ?? 0,
                 'description' => 'Base transportation cost'
             ],
             'distance_charges' => [
-                'amount' => $pricing['distance_charges'] ?? 0,
+                'amount' => $basePricing['distance_charges'] ?? 0,
                 'description' => 'Distance-based charges'
             ],
             'time_charges' => [
-                'amount' => $pricing['time_charges'] ?? 0,
+                'amount' => $basePricing['time_charges'] ?? 0,
                 'description' => 'Time-based charges'
             ],
             'addon_charges' => [
-                'amount' => $pricing['addon_total'] ?? 0,
+                'amount' => $summary['addons_total'] ?? 0,
                 'description' => 'Additional services'
             ],
             'taxes' => [
-                'amount' => $pricing['tax_amount'] ?? 0,
+                'amount' => $basePricing['tax_amount'] ?? 0,
                 'description' => 'Taxes and fees'
             ],
             'total' => [
-                'amount' => $pricing['total_amount'] ?? 0,
+                'amount' => $summary['total'] ?? 0,
                 'description' => 'Total amount'
             ]
         ];
@@ -802,6 +797,8 @@ class BookingController extends Controller
      */
     private function getAvailablePaymentOptions($pricing): array
     {
+        $totalAmount = $pricing['summary']['total'] ?? 0;
+        
         return [
             'cash' => [
                 'available' => true,
@@ -810,14 +807,14 @@ class BookingController extends Controller
             'card' => [
                 'available' => true,
                 'description' => 'Credit/Debit card',
-                'processing_fee' => $pricing['total_amount'] * 0.03 // 3% processing fee
+                'processing_fee' => $totalAmount * 0.03 // 3% processing fee
             ],
             'wallet' => [
                 'available' => true,
                 'description' => 'Digital wallet payment'
             ],
             'installments' => [
-                'available' => ($pricing['total_amount'] ?? 0) > 1000,
+                'available' => $totalAmount > 1000,
                 'description' => 'Pay in installments',
                 'min_amount' => 1000
             ]
@@ -871,6 +868,8 @@ class BookingController extends Controller
      */
     private function getSearchSummary(BookingSearch $search): array
     {
+        Log::info('Generating search summary', ['search_id' => $search->id]);
+        Log::info('Generating search summary', ['search' => $search]);
         return [
             'service_type' => ucwords(str_replace('-', ' ', $search->service_type)),
             'route' => $search->pickup_location . ' → ' . $search->dropoff_location,
@@ -894,9 +893,10 @@ class BookingController extends Controller
     /**
      * Get active promotional offers
      */
-    private function getActivePromotionalOffers(BookingSearch $search): array
+    private function getActivePromotionalOffers($search): array
     {
         // TODO: Query active promotions from database
+        // Accept both BookingSearch model and stdClass/array for session-based searches
         return [
             [
                 'title' => 'First Time User Discount',
@@ -986,9 +986,11 @@ class BookingController extends Controller
         $cart[$itemId]['selected_addons'] = $data['selected_addons'] ?? [];
         $cart[$itemId]['updated_at'] = now();
         
-        // Recalculate pricing
-        $search = $this->searchService->getSearch($cart[$itemId]['search_id']);
-        $cart[$itemId]['pricing_snapshot'] = $this->getCartItemPricing($search, $cart[$itemId]);
+        // Recalculate pricing using current search params
+        $searchParams = session()->get('current_search_params');
+        if ($searchParams) {
+            $cart[$itemId]['pricing_snapshot'] = $this->getCartItemPricing($searchParams, $cart[$itemId]);
+        }
         
         session()->put('booking_cart', $cart);
         return true;
@@ -1067,138 +1069,6 @@ class BookingController extends Controller
         if ($percentage >= 0.2) return 'limited';
         
         return 'low';
-    }
-
-    /**
-     * Get validator based on service type with enhanced validation
-     */
-    private function getValidator(Request $request, $serviceType)
-    {
-        switch ($serviceType) {
-            case 'airport-transfer':
-                return Validator::make($request->all(), [
-                    'service_type' => 'required|string',
-                    'transfer_type' => 'required|in:from-airport,to-airport',
-                    'from' => 'nullable|string|max:255',
-                    'to' => 'nullable|string|max:255',
-                    'from_lat' => 'nullable|numeric|between:-90,90',
-                    'from_lng' => 'nullable|numeric|between:-180,180',
-                    'to_lat' => 'nullable|numeric|between:-90,90',
-                    'to_lng' => 'nullable|numeric|between:-180,180',
-                    'date' => 'required|date|after_or_equal:today',
-                    'time' => 'required|date_format:H:i',
-                    'passengers' => 'nullable|integer|min:1|max:15'
-                ], [
-                    'date.after_or_equal' => 'Booking date must be today or in the future.',
-                    'time.date_format' => 'Please enter a valid time format.',
-                    'passengers.max' => 'Maximum 15 passengers allowed per booking.'
-                ]);
-
-            case 'drop-pickup':
-                $rules = [
-                    'service_type' => 'required|string',
-                    'pickup' => 'required|string|max:255',
-                    'dropoff' => 'required|string|max:255',
-                    'pickup_lat' => 'nullable|numeric|between:-90,90',
-                    'pickup_lng' => 'nullable|numeric|between:-180,180',
-                    'dropoff_lat' => 'nullable|numeric|between:-90,90',
-                    'dropoff_lng' => 'nullable|numeric|between:-180,180',
-                    'date' => 'required|date|after_or_equal:today',
-                    'time' => 'required|date_format:H:i',
-                    'passengers' => 'nullable|integer|min:1|max:15',
-                    'need_return' => 'nullable|boolean'
-                ];
-
-                // Add return transfer validation if needed
-                if ($request->input('need_return') == '1') {
-                    $rules['return_pickup'] = 'required|string|max:255';
-                    $rules['return_dropoff'] = 'required|string|max:255';
-                    $rules['return_date'] = 'required|date|after_or_equal:date';
-                    $rules['return_time'] = 'required|date_format:H:i';
-                }
-
-                return Validator::make($request->all(), $rules, [
-                    'date.after_or_equal' => 'Pickup date must be today or in the future.',
-                    'return_date.after_or_equal' => 'Return date must be on or after pickup date.',
-                    'pickup.required' => 'Pickup location is required.',
-                    'dropoff.required' => 'Drop-off location is required.'
-                ]);
-
-            case 'rental-packages':
-                return Validator::make($request->all(), [
-                    'service_type' => 'required|string',
-                    'package_type' => 'required|in:taxi-100km,tour-200km',
-                    'pickup' => 'required|string|max:255',
-                    'dropoff' => 'required|string|max:255',
-                    'pickup_lat' => 'nullable|numeric|between:-90,90',
-                    'pickup_lng' => 'nullable|numeric|between:-180,180',
-                    'dropoff_lat' => 'nullable|numeric|between:-90,90',
-                    'dropoff_lng' => 'nullable|numeric|between:-180,180',
-                    'pickup_date' => 'required|date|after_or_equal:today',
-                    'pickup_time' => 'required|date_format:H:i',
-                    'dropoff_date' => 'required|date|after_or_equal:pickup_date',
-                    'dropoff_time' => 'required|date_format:H:i',
-                    'passengers' => 'nullable|integer|min:1|max:15'
-                ], [
-                    'pickup_date.after_or_equal' => 'Pickup date must be today or in the future.',
-                    'dropoff_date.after_or_equal' => 'Drop-off date must be on or after pickup date.',
-                    'package_type.required' => 'Please select a rental package type.'
-                ]);
-
-            case 'custom-tour':
-                $rules = [
-                    'service_type' => 'required|string',
-                    'tour_title' => 'nullable|string|max:255',
-                    'starting_location' => 'required|string|max:255',
-                    'starting_lat' => 'nullable|numeric|between:-90,90',
-                    'starting_lng' => 'nullable|numeric|between:-180,180',
-                    'pickup_date' => 'required|date|after_or_equal:today',
-                    'passengers' => 'nullable|integer|min:1|max:15',
-                    'destinations' => 'nullable|array|min:1|max:10',
-                    'destinations.*.location' => 'required_with:destinations|string|max:255',
-                    'destinations.*.visit_date' => 'nullable|date',
-                    'destinations.*.visit_time' => 'nullable|date_format:H:i',
-                    'destinations.*.notes' => 'nullable|string|max:500',
-                    'destinations.*.lat' => 'nullable|numeric|between:-90,90',
-                    'destinations.*.lng' => 'nullable|numeric|between:-180,180',
-                    'tour_duration_days' => 'nullable|integer|min:1|max:30',
-                    'budget_range' => 'nullable|string|in:budget,standard,premium,luxury'
-                ];
-                
-                return Validator::make($request->all(), $rules, [
-                    'pickup_date.after_or_equal' => 'Tour start date must be today or in the future.',
-                    'starting_location.required' => 'Starting location is required.',
-                    'destinations.min' => 'At least one destination is required for custom tours.',
-                    'destinations.max' => 'Maximum 10 destinations allowed per tour.',
-                    'tour_duration_days.max' => 'Maximum tour duration is 30 days.'
-                ]);
-
-            case 'corporate-transport':
-                return Validator::make($request->all(), [
-                    'service_type' => 'required|string',
-                    'company_name' => 'required|string|max:255',
-                    'contact_person' => 'required|string|max:255',
-                    'email' => 'required|email|max:255',
-                    'phone' => 'required|string|max:20|regex:/^[\+]?[0-9\s\-\(\)]+$/',
-                    'requirements' => 'required|string|min:10|max:1000',
-                    'service_frequency' => 'nullable|string|in:one-time,weekly,monthly,ongoing',
-                    'estimated_passengers' => 'nullable|integer|min:1|max:50',
-                    'preferred_contact_time' => 'nullable|string|in:morning,afternoon,evening,anytime'
-                ], [
-                    'company_name.required' => 'Company name is required for corporate enquiries.',
-                    'email.email' => 'Please provide a valid business email address.',
-                    'phone.regex' => 'Please provide a valid phone number.',
-                    'requirements.min' => 'Please provide detailed transport requirements (minimum 10 characters).',
-                    'requirements.max' => 'Requirements description is too long (maximum 1000 characters).'
-                ]);
-
-            default:
-                return Validator::make($request->all(), [
-                    'service_type' => 'required|string|in:airport-transfer,drop-pickup,rental-packages,custom-tour,corporate-transport',
-                ], [
-                    'service_type.in' => 'Please select a valid service type.'
-                ]);
-        }
     }
 
     /**
@@ -1314,6 +1184,36 @@ class BookingController extends Controller
                 'success' => false,
                 'message' => 'Unable to load validation rules'
             ], 500);
+        }
+    }
+
+    /**
+     * Show the Point-to-Point (Drop & Pickup) service page
+     */
+    public function pointToPoint()
+    {
+        try {
+            return view('point-to-point');
+        } catch (\Exception $e) {
+            Log::error('Error loading point-to-point page', [
+                'error' => $e->getMessage()
+            ]);
+            return redirect()->route('home')->with('error', 'Unable to load the Point-to-Point service page.');
+        }
+    }
+
+    /**
+     * Show the Corporate Transfers service page
+     */
+    public function corporateTransfers()
+    {
+        try {
+            return view('corporate-transfers');
+        } catch (\Exception $e) {
+            Log::error('Error loading corporate-transfers page', [
+                'error' => $e->getMessage()
+            ]);
+            return redirect()->route('home')->with('error', 'Unable to load the Corporate Transfers service page.');
         }
     }
 }

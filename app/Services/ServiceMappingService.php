@@ -15,10 +15,11 @@ class ServiceMappingService
      * Map frontend service types to backend service codes
      */
     public const FRONTEND_TO_BACKEND_MAPPING = [
+
         // Frontend form service => Backend service code
-        'airport-transfer' => ['airport_drop', 'airport_pickup'], // Both depending on transfer_type
-        'drop-pickup' => ['transfers'], // Point to point transfers
-        'rental-packages' => ['chauffeur_driven', 'self_driven'], // Based on driver requirement
+        'airport-transfer' => ['airport_transfers'], // Both depending on transfer_type
+        'drop-pickup' => ['point_to_point'], // Point to point transfers
+        'rental-packages' => ['rental_package'], // Based on driver requirement
         'custom-tour' => ['chauffeur_driven'], // Usually with driver
         'corporate-transport' => ['corporate', 'corporate_self'], // Based on self-drive option
     ];
@@ -67,6 +68,10 @@ class ServiceMappingService
         $frontendService = $formData['service_type'] ?? null;
         
         if (!$frontendService || !isset(self::FRONTEND_TO_BACKEND_MAPPING[$frontendService])) {
+            Log::warning('Frontend service type not recognized', [
+                'frontend_service' => $frontendService,
+                'available_mappings' => array_keys(self::FRONTEND_TO_BACKEND_MAPPING)
+            ]);
             return null;
         }
 
@@ -90,12 +95,53 @@ class ServiceMappingService
                 $selfDrive = $formData['self_drive'] ?? false;
                 $code = $selfDrive ? 'corporate_self' : 'corporate';
                 break;
+            
+            case 'drop-pickup':
+                // Point to point transfers
+                $code = 'point_to_point';
+                break;
                 
             default:
                 $code = $backendCodes[0]; // Use first available
         }
 
-        return ServiceType::where('code', $code)->first();
+        // Try to find service type by code
+        $serviceType = ServiceType::where('code', $code)->first();
+        
+        // If not found, try alternative codes
+        if (!$serviceType) {
+            Log::warning('Service type not found in database', [
+                'requested_type' => $frontendService,
+                'converted_code' => $code,
+                'available_types' => ServiceType::pluck('code', 'id')->toArray()
+            ]);
+            
+            // Try alternative mappings
+            $alternativeCodes = [
+                'airport_pickup' => ['airport_transfers', 'airport_transfer', 'airport'],
+                'airport_drop' => ['airport_transfers', 'airport_transfer', 'airport'],
+                'point_to_point' => ['transfers', 'drop_pickup', 'point-to-point'],
+                'chauffeur_driven' => ['rental_package', 'rental', 'chauffeur'],
+                'self_driven' => ['rental_package', 'rental', 'self_drive'],
+                'corporate' => ['corporate_transport', 'corporate_transfer'],
+            ];
+            
+            if (isset($alternativeCodes[$code])) {
+                foreach ($alternativeCodes[$code] as $altCode) {
+                    $serviceType = ServiceType::where('code', $altCode)->first();
+                    if ($serviceType) {
+                        Log::info('Found service type using alternative code', [
+                            'original_code' => $code,
+                            'found_code' => $altCode,
+                            'service_type_id' => $serviceType->id
+                        ]);
+                        break;
+                    }
+                }
+            }
+        }
+
+        return $serviceType;
     }
 
     /**

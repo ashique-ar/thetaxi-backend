@@ -22,7 +22,7 @@
     <div class="filter-wrapper hotel mb-40">
         <div class="container">
             <!-- Dynamic Booking Form for modifications -->
-            @include('components.dynamic-booking-form')
+            @include('components.booking-form')
         </div>
     </div>
 
@@ -83,10 +83,9 @@
                                             <i class="bi bi-star-fill"></i> Recommended
                                         </span>
                                     @endif
-                                    
                                     <!-- Category Badge -->
-                                    @if(isset($result['category']['name']))
-                                        <span class="category-badge">{{ $result['category']['name'] }}</span>
+                                    @if(isset($result['category']['name']['name']))
+                                        <span class="category-badge">{{ $result['category']['name']['name'] }}</span>
                                     @endif
                                 </div>
 

@@ -33,7 +33,7 @@ class VehicleGroupCommonRatePricingSeeder extends Seeder
 
         // Define common rate pricing by service type and vehicle group category
         $commonRatePricingMatrix = [
-            'chauffeur_driven' => [
+            'point_to_point' => [
                 'economy' => [
                     'vehicle_delivery_rate_per_km' => 50.00,
                     'vehicle_pickup_rate_per_km' => 50.00,
@@ -60,7 +60,7 @@ class VehicleGroupCommonRatePricingSeeder extends Seeder
                     'driver_allowance' => 1000.00,
                 ]
             ],
-            'self_driven' => [
+            'rental_package' => [
                 'economy' => [
                     'vehicle_pickup_rate_per_km' => 35.00,
                     'vehicle_return_rate_per_km' => 25.00,
@@ -78,29 +78,7 @@ class VehicleGroupCommonRatePricingSeeder extends Seeder
                     'vehicle_pickup_rate_per_km' => 65.00
                 ]
             ],
-            'wedding_hire' => [
-                'economy' => [
-                    'taxi_rate' => 2500.00,
-                    'vehicle_pickup_rate_per_km' => 45.00,
-                    'vehicle_return_rate_per_km' => 35.00
-                ],
-                'standard' => [
-                    'taxi_rate' => 4000.00,
-                    'vehicle_pickup_rate_per_km' => 65.00,
-                    'vehicle_return_rate_per_km' => 50.00
-                ],
-                'premium' => [
-                    'taxi_rate' => 6500.00,
-                    'vehicle_pickup_rate_per_km' => 85.00,
-                    'vehicle_return_rate_per_km' => 70.00
-                ],
-                'luxury' => [
-                    'taxi_rate' => 10000.00,
-                    'vehicle_pickup_rate_per_km' => 120.00,
-                    'vehicle_return_rate_per_km' => 100.00
-                ]
-            ],
-            'airport_drop' => [
+            'airport_transfers' => [
                 'economy' => [
                     'taxi_rate' => 2500.00,
                     'vehicle_pickup_rate_per_km' => 45.00,
@@ -127,77 +105,7 @@ class VehicleGroupCommonRatePricingSeeder extends Seeder
                     'vehicle_return_rate_per_km' => 60.00
                 ]
             ],
-            'airport_pickup' => [
-                'economy' => [
-                    'taxi_rate' => 2500.00,
-                    'vehicle_pickup_rate_per_km' => 45.00,
-                    'vehicle_return_rate_per_km' => 35.00
-                ],
-                'standard' => [
-                    'taxi_rate' => 3500.00,
-                    'vehicle_pickup_rate_per_km' => 65.00,
-                    'vehicle_return_rate_per_km' => 50.00
-                ],
-                'premium' => [
-                    'taxi_rate' => 5000.00,
-                    'vehicle_pickup_rate_per_km' => 85.00,
-                    'vehicle_return_rate_per_km' => 70.00
-                ],
-                'luxury' => [
-                    'taxi_rate' => 8000.00,
-                    'vehicle_pickup_rate_per_km' => 120.00,
-                    'vehicle_return_rate_per_km' => 100.00
-                ],
-                'commercial' => [
-                    'taxi_rate' => 4500.00,
-                    'vehicle_pickup_rate_per_km' => 75.00,
-                    'vehicle_return_rate_per_km' => 60.00
-                ]
-            ],
-            'transfers' => [
-                'economy' => [
-                    'taxi_rate' => 1800.00,
-                    'vehicle_pickup_rate_per_km' => 45.00,
-                    'vehicle_return_rate_per_km' => 35.00
-                ],
-                'standard' => [
-                    'taxi_rate' => 2500.00,
-                    'vehicle_pickup_rate_per_km' => 65.00,
-                    'vehicle_return_rate_per_km' => 50.00
-                ],
-                'premium' => [
-                    'taxi_rate' => 3500.00,
-                    'vehicle_pickup_rate_per_km' => 85.00,
-                    'vehicle_return_rate_per_km' => 70.00
-                ],
-                'commercial' => [
-                    'taxi_rate' => 3000.00,
-                    'vehicle_pickup_rate_per_km' => 75.00,
-                    'vehicle_return_rate_per_km' => 60.00
-                ]
-            ],
-            'break_down_service' => [
-                'economy' => [
-                    'taxi_rate' => 3500.00,
-                    'vehicle_pickup_rate_per_km' => 60.00,
-                    'vehicle_return_rate_per_km' => 50.00
-                ],
-                'standard' => [
-                    'taxi_rate' => 5000.00,
-                    'vehicle_pickup_rate_per_km' => 80.00,
-                    'vehicle_return_rate_per_km' => 65.00
-                ],
-                'premium' => [
-                    'taxi_rate' => 7500.00,
-                    'vehicle_pickup_rate_per_km' => 100.00,
-                    'vehicle_return_rate_per_km' => 85.00
-                ],
-                'commercial' => [
-                    'taxi_rate' => 6000.00,
-                    'vehicle_pickup_rate_per_km' => 90.00,
-                    'vehicle_return_rate_per_km' => 75.00
-                ]
-            ],
+            
             'corporate' => [
                 'standard' => [
                     'contract_base_rate' => 8000.00,

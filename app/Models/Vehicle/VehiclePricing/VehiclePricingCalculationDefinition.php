@@ -107,7 +107,6 @@ class VehiclePricingCalculationDefinition extends Model
             $slabInfo = $this->getSlabInformation($inputs);
 
             $kmCalculations = $this->calculateKmOverages($inputs, $slabInfo);
-
             try {
                 $resolvedVariables = $this->resolveAllVariables($inputs, $slabInfo, $kmCalculations, $appliedCustomizations);
 
@@ -140,9 +139,8 @@ class VehiclePricingCalculationDefinition extends Model
             $built['variables_used'] = $metadata['variables_used'];
             $built['conditions_evaluated'] = $metadata['conditions_evaluated'];
 
-
             return $built;
-        } catch (\Exception $e) {
+        } catch (\Exception $e) {          
             Log::error("Price calculation failed for definition {$this->id}: " . $e->getMessage(), [
                 'inputs' => $inputs,
                 'variables' => $this->variables,
@@ -199,7 +197,6 @@ class VehiclePricingCalculationDefinition extends Model
                         'type' => str_replace('_distance', '', $distanceType)
                     ]
                 ];
-
             } elseif ($distance > 0 && $rate == 0) {
                 // Log when distance exists but no rate is found
                 Log::warning("Distance found but no rate available", [
@@ -820,7 +817,7 @@ class VehiclePricingCalculationDefinition extends Model
                 ->where('is_active', true)
                 ->first();
 
-            if ($commonRatePricing && $commonRatePricing->value) {             
+            if ($commonRatePricing && $commonRatePricing->value) {
                 return (float) $commonRatePricing->value;
             }
 

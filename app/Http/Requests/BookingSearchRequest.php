@@ -60,74 +60,26 @@ class BookingSearchRequest extends FormRequest
     {
         $serviceType = $this->input('service_type');
         
-        // Get dynamic validation rules based on service type
-        $dynamicServiceConfig = app(DynamicServiceConfigurationService::class);
-        $dynamicRules = [];
-        
-        if ($serviceType) {
-            try {
-                $dynamicRules = $dynamicServiceConfig->getServiceValidationRules($serviceType);
-            } catch (\Exception $e) {
-                // Log error but continue with base rules
-                Log::warning('Failed to get dynamic validation rules for service: ' . $serviceType, [
-                    'error' => $e->getMessage()
-                ]);
-            }
+        // Service-specific validation rules
+        switch ($serviceType) {
+            case 'airport-transfer':
+                return $this->airportTransferRules();
+            
+            case 'drop-pickup':
+                return $this->dropPickupRules();
+            
+            case 'rental-packages':
+                return $this->rentalPackagesRules();
+            
+            case 'custom-tour':
+                return $this->customTourRules();
+            
+            case 'corporate-transport':
+                return $this->corporateTransportRules();
+            
+            default:
+                return $this->defaultRules();
         }
-        
-        // Base validation rules that apply to all services
-        $baseRules = [
-            'service_type' => 'required|string',
-            'pickup_location' => 'required|string|min:3|max:255',
-            'from_date' => 'required|date|after_or_equal:today',
-            'from_time' => 'nullable|date_format:H:i',
-            'passengers' => 'required|integer|min:1|max:50',
-            'luggage' => 'nullable|integer|min:0|max:20',
-            'special_instructions' => 'nullable|string|max:1000'
-        ];
-        
-        // Merge base rules with dynamic service-specific rules
-        $finalRules = array_merge($baseRules, $dynamicRules);
-        
-        // Add conditional rules based on service type
-        $finalRules = $this->addConditionalRules($finalRules, $serviceType);
-        
-        return $finalRules;
-    }
-    
-    /**
-     * Add conditional validation rules based on service type
-     */
-    private function addConditionalRules(array $rules, string $serviceType): array
-    {
-        // Add dropoff location requirement for transfer services
-        $transferServices = ['airport_drop', 'airport_pickup', 'transfers'];
-        if (in_array($serviceType, $transferServices)) {
-            $rules['dropoff_location'] = 'required|string|min:3|max:255';
-        } else {
-            $rules['dropoff_location'] = 'nullable|string|max:255';
-        }
-        
-        // Add to_date requirement for rental services
-        $rentalServices = ['chauffeur_driven', 'self_driven', 'corporate', 'corporate_self'];
-        if (in_array($serviceType, $rentalServices)) {
-            $rules['to_date'] = 'required|date|after:from_date';
-            $rules['to_time'] = 'nullable|date_format:H:i';
-        } else {
-            $rules['to_date'] = 'nullable|date|after:from_date';
-            $rules['to_time'] = 'nullable|date_format:H:i';
-        }
-        
-        return $rules;
-    }
-    
-    /**
-     * Legacy method support for backward compatibility
-     */
-    private function getServiceSpecificRules(string $serviceType): array
-    {
-        // This method can be removed once all legacy references are updated
-        return [];
     }
 
     /**
@@ -138,15 +90,22 @@ class BookingSearchRequest extends FormRequest
         return [
             'date.after_or_equal' => 'The date must be today or in the future.',
             'date.date_format' => 'The date must be in DD/MM/YYYY format.',
+            'date.required' => 'The date field is required.',
             'return_date.after_or_equal' => 'Return date must be on or after the pickup date.',
             'pickup_date.after_or_equal' => 'Pickup date must be today or in the future.',
+            'pickup_date.required' => 'The pickup date field is required.',
             'dropoff_date.after' => 'Drop-off date must be after pickup date.',
+            'dropoff_date.required' => 'The drop-off date field is required.',
             'time.date_format' => 'Please enter a valid time format (HH:MM).',
+            'time.required' => 'The time field is required.',
+            'pickup_time.required' => 'The pickup time field is required.',
+            'dropoff_time.required' => 'The drop-off time field is required.',
+            'passengers.required' => 'The passengers field is required.',
             'passengers.max' => 'Maximum 15 passengers allowed per booking.',
-            'from.required' => 'Pickup location is required.',
-            'to.required' => 'Drop-off location is required.',
-            'pickup.required' => 'Pickup location is required.',
-            'dropoff.required' => 'Drop-off location is required.',
+            'from.required' => 'The pickup location is required.',
+            'to.required' => 'The drop-off location is required.',
+            'pickup.required' => 'The pickup location is required.',
+            'dropoff.required' => 'The drop-off location is required.',
         ];
     }
 
@@ -158,15 +117,15 @@ class BookingSearchRequest extends FormRequest
         return [
             'service_type' => 'required|string',
             'transfer_type' => 'required|in:from-airport,to-airport',
-            'from' => 'nullable|string|max:255',
-            'to' => 'nullable|string|max:255',
+            'from' => 'required|string|max:255',
+            'to' => 'required|string|max:255',
             'from_lat' => 'nullable|numeric|between:-90,90',
             'from_lng' => 'nullable|numeric|between:-180,180',
             'to_lat' => 'nullable|numeric|between:-90,90',
             'to_lng' => 'nullable|numeric|between:-180,180',
             'date' => 'required|date|after_or_equal:today',
             'time' => 'required|date_format:H:i',
-            'passengers' => 'nullable|integer|min:1|max:15'
+            'passengers' => 'required|integer|min:1|max:15'
         ];
     }
 
@@ -185,7 +144,7 @@ class BookingSearchRequest extends FormRequest
             'dropoff_lng' => 'nullable|numeric|between:-180,180',
             'date' => 'required|date|after_or_equal:today',
             'time' => 'required|date_format:H:i',
-            'passengers' => 'nullable|integer|min:1|max:15',
+            'passengers' => 'required|integer|min:1|max:15',
             'need_return' => 'nullable|boolean'
         ];
 
@@ -217,8 +176,8 @@ class BookingSearchRequest extends FormRequest
             'pickup_time' => 'required|date_format:H:i',
             'dropoff_date' => 'required|date|after:pickup_date',
             'dropoff_time' => 'required|date_format:H:i',
-            'package_type' => 'nullable|string|in:half-day,full-day,multi-day',
-            'passengers' => 'nullable|integer|min:1|max:15'
+            'package_type' => 'nullable|string|in:half-day,full-day,multi-day,hourly,daily',
+            'passengers' => 'required|integer|min:1|max:15'
         ];
     }
 

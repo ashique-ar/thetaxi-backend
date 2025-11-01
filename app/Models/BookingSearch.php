@@ -59,10 +59,11 @@ class BookingSearch extends BaseModel
 
     /**
      * Get the service type for this search
+     * Now uses UUID (id) instead of code for proper foreign key relationship
      */
     public function serviceType(): BelongsTo
     {
-        return $this->belongsTo(ServiceType::class, 'service_type', 'code');
+        return $this->belongsTo(ServiceType::class, 'service_type', 'id');
     }
 
     /**
@@ -77,6 +78,11 @@ class BookingSearch extends BaseModel
             if ($this->duration_days == 0) {
                 $this->duration_days = 1; // Minimum 1 day
             }
+        } else {
+            // For services without a dropoff date (like airport transfers), set default duration
+            // Airport transfers are typically point-to-point, so we set 1 hour as a reasonable estimate
+            $this->duration_hours = 1;
+            $this->duration_days = 1;
         }
     }
 

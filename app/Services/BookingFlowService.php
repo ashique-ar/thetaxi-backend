@@ -177,7 +177,7 @@ class BookingFlowService
             $pricingInfo = null;
             $isPricingConfigured = false;
             $pricingError = null;
-
+            
             try {
                 // Calculate duration
                 $durationInfo = $this->calculateDurationInDaysAndHours($fromDate, $toDate);
@@ -201,7 +201,7 @@ class BookingFlowService
                     ];
 
                     $basePricing = $this->calculateDynamicPricing($pricingParams);
-
+Log::info('Calculated pricing', ['vehicle_group_id' => $group->id, 'pricing' => $basePricing]);
                     if ($basePricing && isset($basePricing['total_amount']) && $basePricing['total_amount'] > 0) {
                         $isPricingConfigured = true;
                         $pricingInfo = [
@@ -818,7 +818,7 @@ class BookingFlowService
 
             $booking->customer_id       = $params['customer_id']        ?? null;
             $booking->service_type_id   = $params['service_type']       ?? ($params['service_type_id'] ?? null);
-            
+
             // For multi-group bookings, use first group as primary or null
             $isMultiGroup = !empty($params['vehicle_groups']) && count($params['vehicle_groups']) > 1;
             if ($isMultiGroup) {
@@ -906,26 +906,26 @@ class BookingFlowService
         $vehicles = $params['vehicles'] ?? [];
         $drivers = $params['drivers'] ?? [];
         $vehicleDriverAssignments = $params['vehicle_driver_assignments'] ?? [];
-        
+
         foreach ($pricing['groups'] as $groupPricing) {
             $groupId = $groupPricing['group_id'];
             $quantity = $groupPricing['quantity'];
-            
+
             // Find group selection data
             $groupSelection = collect($vehicleGroups)->firstWhere('id', $groupId);
             if (!$groupSelection) {
                 continue;
             }
-            
+
             // Get group-specific vehicles and drivers
-            $groupVehicles = array_filter($vehicles, function($vehicle) use ($groupId) {
+            $groupVehicles = array_filter($vehicles, function ($vehicle) use ($groupId) {
                 return $vehicle['group_id'] === $groupId;
             });
-            
-            $groupDrivers = array_filter($drivers, function($driver) use ($groupId) {
+
+            $groupDrivers = array_filter($drivers, function ($driver) use ($groupId) {
                 return !isset($driver['group_id']) || $driver['group_id'] === $groupId;
             });
-            
+
             // Create booking items for each quantity of this group
             for ($i = 0; $i < $quantity; $i++) {
                 // Assign specific vehicle if available
@@ -934,7 +934,7 @@ class BookingFlowService
                 if (!empty($availableVehicles) && isset($availableVehicles[$i])) {
                     $assignedVehicleId = $availableVehicles[$i]['id'];
                 }
-                
+
                 // Assign driver based on vehicle-driver assignments
                 $assignedDriverId = null;
                 if ($assignedVehicleId) {
@@ -948,7 +948,7 @@ class BookingFlowService
                         }
                     }
                 }
-                
+
                 $bookingItem = BookingItem::create([
                     'booking_id' => $booking->id,
                     'vehicle_group_id' => $groupId,
@@ -969,7 +969,7 @@ class BookingFlowService
                     'approved_by' => ($groupPricing['requires_approval'] ?? false) ? null : Auth::id(),
                     'item_type' => 'vehicle_group'
                 ]);
-                
+
                 // Update additional JSON fields after creation
                 $bookingItem->update([
                     'pricing_breakdown' => [
@@ -988,7 +988,7 @@ class BookingFlowService
                         'assignment_index' => $i
                     ]
                 ]);
-                
+
                 // Create assignments for this booking item if needed
                 if ($bookingItem->vehicle_id || $bookingItem->driver_id) {
                     $this->createBookingItemAssignments($bookingItem, [
@@ -1011,7 +1011,7 @@ class BookingFlowService
     {
         // This method can be expanded to create specific vehicle and driver assignments
         // for each booking item in a multi-group booking scenario
-        
+
         // For now, we'll use the existing assignment logic but scoped to the booking item
         if (!empty($assignmentData['vehicle_id']) || !empty($assignmentData['driver_id'])) {
             Log::info('Creating booking item assignments', [
@@ -1020,7 +1020,7 @@ class BookingFlowService
                 'vehicle_id' => $assignmentData['vehicle_id'] ?? null,
                 'driver_id' => $assignmentData['driver_id'] ?? null
             ]);
-            
+
             // Future implementation: Create specific assignment records for booking items
             // This might involve a new table like booking_item_assignments or extending 
             // existing assignment tables to reference booking_item_id
@@ -1966,10 +1966,10 @@ class BookingFlowService
 
             // Prepare calculation inputs
             $calculationInputs = $this->prepareCalculationInputs($params);
-
+            Log::info("Dynamic pricing calculation inputs", ['inputs' => $calculationInputs]);
             // Execute the calculation
             $calculationResult = $calculationDefinition->calculatePrice($calculationInputs, $appliedCustomizations);
-
+Log::info("Dynamic pricing calculation result", ['result' => $calculationResult]);
             // Transform result to standard pricing structure
             return $this->transformCalculationResult($calculationResult, $params, $mode);
         } catch (\Exception $e) {
@@ -2177,13 +2177,12 @@ class BookingFlowService
             } else {
                 throw new \Exception('No vehicle groups specified for pricing calculation');
             }
-
         } catch (\Exception $e) {
             Log::error('Pricing calculation failed', [
                 'error' => $e->getMessage(),
                 'params' => $params
             ]);
-            
+
             throw $e;
         }
     }
@@ -2197,7 +2196,7 @@ class BookingFlowService
         $vehicles = $params['vehicles'] ?? [];
         $selectedAddons = $params['selected_addons'] ?? [];
         $variableCustomizations = $params['variable_customizations'] ?? [];
-        
+
         $groupPricingResults = [];
         $totalSubtotal = 0;
         $totalAddons = 0;
@@ -2207,19 +2206,19 @@ class BookingFlowService
         foreach ($vehicleGroups as $groupSelection) {
             $groupId = $groupSelection['id'];
             $quantity = $groupSelection['quantity'];
-            
+
             // Get group-specific vehicles
-            $groupVehicles = array_filter($vehicles, function($vehicle) use ($groupId) {
+            $groupVehicles = array_filter($vehicles, function ($vehicle) use ($groupId) {
                 return $vehicle['group_id'] === $groupId;
             });
-            
+
             // Get group-specific addons
-            $groupAddons = array_filter($selectedAddons, function($addon) use ($groupId) {
+            $groupAddons = array_filter($selectedAddons, function ($addon) use ($groupId) {
                 return !isset($addon['vehicle_group_id']) || $addon['vehicle_group_id'] === $groupId;
             });
-            
+
             // Get group-specific customizations
-            $groupCustomizations = array_filter($variableCustomizations, function($customization) use ($groupId) {
+            $groupCustomizations = array_filter($variableCustomizations, function ($customization) use ($groupId) {
                 return !isset($customization['vehicle_group_id']) || $customization['vehicle_group_id'] === $groupId;
             });
 
@@ -2231,28 +2230,28 @@ class BookingFlowService
                 'variable_customizations' => array_values($groupCustomizations),
                 'quantity' => $quantity
             ]);
-            
+
             $groupResult = $this->calculateSingleGroupPricing($groupParams, $duration, $baseCurrency, $targetCurrency);
-            
+
             // Multiply by quantity for this group
             $groupResult['base_pricing']['total_amount'] *= $quantity;
             $groupResult['addons_pricing']['addons_total'] *= $quantity;
             $groupResult['summary']['total'] *= $quantity;
             $groupResult['summary']['subtotal'] *= $quantity;
             $groupResult['summary']['addons_total'] *= $quantity;
-            
+
             // Add group metadata
             $groupResult['group_id'] = $groupId;
             $groupResult['quantity'] = $quantity;
             $groupResult['group_info'] = $this->getVehicleGroupInfo($groupId);
-            
+
             $groupPricingResults[] = $groupResult;
-            
+
             // Aggregate totals
             $totalSubtotal += $groupResult['summary']['subtotal'];
-            $totalAddons += $groupResult['summary']['addons_total']; 
+            $totalAddons += $groupResult['summary']['addons_total'];
             $totalAmount += $groupResult['summary']['total'];
-            
+
             // Collect all customizations
             if (!empty($groupResult['applied_customizations'])) {
                 $allAppliedCustomizations = array_merge($allAppliedCustomizations, $groupResult['applied_customizations']);
@@ -2291,7 +2290,7 @@ class BookingFlowService
     {
         $sessionId = $params['session_id'] ?? null;
         $bookingId = $params['booking_id'] ?? null;
-        
+
         // Ensure we have a vehicle_group_id for single group calculation
         if (empty($params['vehicle_group_id']) && !empty($params['vehicle_groups'])) {
             $params['vehicle_group_id'] = $params['vehicle_groups'][0]['id'];
@@ -2306,11 +2305,11 @@ class BookingFlowService
             // Edit mode: Load existing persisted customizations for this vehicle group
             $vehicleGroupId = $params['vehicle_group_id'] ?? null;
             $query = \App\Models\Booking\BookingVariableCustomization::where('booking_id', $bookingId);
-            
+
             if ($vehicleGroupId) {
                 $query->where('vehicle_group_id', $vehicleGroupId);
             }
-            
+
             $existingCustomizations = $query->orderBy('updated_at', 'desc')
                 ->get()
                 ->groupBy('variable_name')
@@ -2478,7 +2477,7 @@ class BookingFlowService
                 'group_id' => $groupId,
                 'error' => $e->getMessage()
             ]);
-            
+
             return ['id' => $groupId, 'name' => 'Unknown Group'];
         }
     }
@@ -2637,7 +2636,7 @@ class BookingFlowService
                 $variableWithGroup['vehicle_group_id'] = $vehicleGroupId;
                 $variableWithGroup['unique_key'] = $variableName . '_' . $vehicleGroupId; // Unique identifier
                 $variableWithGroup['applicable_groups'] = [$vehicleGroupId]; // Only applicable to this specific group
-                
+
                 $allVariables[] = $variableWithGroup;
             }
         }
@@ -2661,7 +2660,7 @@ class BookingFlowService
                 $variableName = $variable['name'] ?? $variable['variable_name'] ?? null;
                 $vehicleGroupId = $variable['vehicle_group_id'];
                 $uniqueKey = $variableName . '_' . $vehicleGroupId;
-                
+
                 if (!$variableName || !$vehicleGroupId) continue;
 
                 $customization = $existingCustomizations->get($uniqueKey);
@@ -5252,7 +5251,7 @@ class BookingFlowService
             try {
                 // Get vehicle_group_id from customization data or params
                 $customizationGroupId = $customization['vehicle_group_id'] ?? $vehicleGroupId;
-                
+
                 // Store or update variable customization in database
                 $customizationRecord = \App\Models\Booking\BookingVariableCustomization::updateOrCreate([
                     'session_id' => $sessionId,
@@ -5327,12 +5326,12 @@ class BookingFlowService
         $originalParams = $params;
         if (!empty($params['applied_customizations'])) {
             $params = $this->pricingVariableService->applyVariableCustomizations(
-                $params, 
-                $params['applied_customizations'], 
+                $params,
+                $params['applied_customizations'],
                 'base_pricing'
             );
         }
-        
+
         // Get base pricing calculations
         $basePricing = $this->calculateDynamicPricing($params);
 
