@@ -2429,16 +2429,16 @@ header.style-1.sticky {
   }
 }
 header.style-1 .header-logo img {
-  width: 120px;
+  width: 150px;
 }
 @media (max-width: 991px) {
   header.style-1 .header-logo img {
-    width: 110px;
+    width: 120px;
   }
 }
 @media (max-width: 576px) {
   header.style-1 .header-logo img {
-    width: 100px;
+    width: 120px;
   }
 }
 header.style-1 .contact-area {
@@ -4369,16 +4369,16 @@ header.style-2.sticky {
   }
 }
 header.style-2 .header-logo {
-  width: 120px;
+  width: 150px;
 }
 @media (max-width: 1399px) {
   header.style-2 .header-logo {
-    width: 110px;
+    width: 120px;
   }
 }
 @media (min-width: 992px) and (max-width: 1199px) {
   header.style-2 .header-logo {
-    width: 105px;
+    width: 115px;
   }
 }
 header.style-2 .logo-and-menu-area {
@@ -5792,11 +5792,11 @@ header.style-3.sticky {
   }
 }
 header.style-3 .header-logo {
-  width: 120px;
+  width: 150px;
 }
 @media (max-width: 1399px) {
   header.style-3 .header-logo {
-    width: 105px;
+    width: 125px;
   }
 }
 header.style-3 .logo-and-menu-area {

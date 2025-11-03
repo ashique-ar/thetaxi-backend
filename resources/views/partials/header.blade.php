@@ -40,12 +40,12 @@
     <div class="container-fluid d-flex flex-nowrap align-items-center justify-content-between">
         <div class="logo-and-menu-area">
             <a href="{{ route('home') }}" class="header-logo">
-                <img src="{{ asset('gofly-html-theme-files/assets/img/header-logo2.svg') }}" alt="TheTaxi">
+                <img src="{{ asset('assets/img/header-logo.png') }}" alt="TheTaxi">
             </a>
             <div class="main-menu">
                 <div class="mobile-logo-area d-xl-none d-flex align-items-center justify-content-between">
                     <a href="{{ route('home') }}" class="mobile-logo-wrap">
-                        <img src="{{ asset('gofly-html-theme-files/assets/img/header-logo2.svg') }}" alt="TheTaxi">
+                        <img src="{{ asset('assets/img/header-logo.png') }}" alt="TheTaxi">
                     </a>
                     <div class="menu-close-btn">
                         <i class="bi bi-x"></i>

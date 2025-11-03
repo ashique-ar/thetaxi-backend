@@ -35,7 +35,7 @@
 
     <!-- Title -->
     <title>@yield('title', 'TheTaxi - Your Reliable Taxi Service')</title>
-    <link rel="icon" href="{{ asset('assets/img/fav-icon.svg') }}" type="image/gif" sizes="20x20">
+    <link rel="icon" href="{{ asset('assets/img/favicon.ico') }}" type="image/gif" sizes="20x20">
 
     @stack('styles')
     <style>

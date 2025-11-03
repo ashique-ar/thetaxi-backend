@@ -2754,14 +2754,14 @@ header.style-1 {
 
   .header-logo {
     img {
-      width: 120px;
+      width: 140px;
 
       @include lg-down-device() {
-        width: 110px;
+        width: 120px;
       }
 
       @include sm-down-device() {
-        width: 100px;
+        width: 120px;
       }
     }
   }
@@ -5077,14 +5077,14 @@ header.style-2 {
   }
 
   .header-logo {
-    width: 120px;
+    width: 150px;
 
     @include xxl-down-device() {
-      width: 110px;
+      width: 120px;
     }
 
     @include lg-device() {
-      width: 105px;
+      width: 120px;
     }
   }
 
@@ -6704,7 +6704,7 @@ header.style-3 {
   }
 
   .header-logo {
-    width: 120px;
+    width: 150px;
 
     @include xxl-down-device() {
       width: 105px;

@@ -55,7 +55,7 @@
                 <div class="col-lg-3 col-md-4 col-sm-6">
                     <div class="footer-logo-and-addition-info">
                         <a href="{{ route('home') }}" class="footer-logo">
-                            <img src="{{ asset('assets/img/footer-logo.svg') }}" alt="TheTaxi">
+                            <img src="{{ asset('assets/img/header-logo.png') }}" alt="TheTaxi">
                         </a>
                         <div class="address-area">
                             <span>TheTaxi Professional Services</span>
