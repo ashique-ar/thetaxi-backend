@@ -28,10 +28,10 @@
     <!-- BoxIcon  CSS -->
     <link href="{{ asset('assets/css/boxicons.min.css') }}" rel="stylesheet">
     <!--  Style CSS  -->
-    <link rel="stylesheet" href="{{ asset('assets/css/style.css?v=1.0') }}">
+    <link rel="stylesheet" href="{{ asset('assets/css/style.css?v=1.0.1') }}">
     
     <!-- Booking Form CSS -->
-    <link rel="stylesheet" href="{{ asset('assets/css/booking-form.css?v=1.0') }}">
+    <link rel="stylesheet" href="{{ asset('assets/css/booking-form.css?v=1.0.1') }}">
 
     <!-- Title -->
     <title>@yield('title', 'TheTaxi - Your Reliable Taxi Service')</title>
