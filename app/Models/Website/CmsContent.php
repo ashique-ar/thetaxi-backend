@@ -14,9 +14,18 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string $cms_content_type_id
  * @property string|null $title
  * @property string $slug
- * @property string $author
- * @property string $thumbnail
+ * @property string|null $author
+ * @property string|null $thumbnail
  * @property string|null $body
+ * @property \Carbon\Carbon|null $published_at
+ * @property string $status
+ * @property string|null $excerpt
+ * @property array|null $custom_fields
+ * @property string|null $featured_image
+ * @property array|null $gallery_images
+ * @property int $views_count
+ * @property bool $is_featured
+ * @property bool $allow_comments
  * @property string|null $meta_title
  * @property string|null $meta_description
  * @property string|null $meta_tags
@@ -49,6 +58,15 @@ class CmsContent extends BaseModel
         'author',
         'thumbnail',
         'body',
+        'published_at',
+        'status',
+        'excerpt',
+        'custom_fields',
+        'featured_image',
+        'gallery_images',
+        'views_count',
+        'is_featured',
+        'allow_comments',
         'meta_title',
         'meta_description',
         'meta_tags',
@@ -65,6 +83,12 @@ class CmsContent extends BaseModel
      * @var array<string, string>
      */
     protected $casts = [
+        'published_at' => 'datetime',
+        'custom_fields' => 'array',
+        'gallery_images' => 'array',
+        'views_count' => 'integer',
+        'is_featured' => 'boolean',
+        'allow_comments' => 'boolean',
         'is_active' => 'boolean',
         'display_order' => 'integer',
         'created_at' => 'datetime',
@@ -94,5 +118,51 @@ class CmsContent extends BaseModel
     public function updatedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'updated_user_id');
+    }
+
+    /**
+     * Scope to get published content only.
+     */
+    public function scopePublished($query)
+    {
+        return $query->where('status', 'published')
+                    ->where('is_active', true)
+                    ->whereNotNull('published_at')
+                    ->where('published_at', '<=', now());
+    }
+
+    /**
+     * Scope to get featured content.
+     */
+    public function scopeFeatured($query)
+    {
+        return $query->where('is_featured', true);
+    }
+
+    /**
+     * Scope to filter by content type.
+     */
+    public function scopeByType($query, $typeSlug)
+    {
+        return $query->whereHas('contentType', function ($q) use ($typeSlug) {
+            $q->where('slug', $typeSlug);
+        });
+    }
+
+    /**
+     * Get the full URL for this content.
+     */
+    public function getFullUrlAttribute()
+    {
+        $prefix = $this->contentType->url_prefix ?? $this->contentType->slug;
+        return "/{$prefix}/{$this->slug}";
+    }
+
+    /**
+     * Increment views count.
+     */
+    public function incrementViews()
+    {
+        $this->increment('views_count');
     }
 }

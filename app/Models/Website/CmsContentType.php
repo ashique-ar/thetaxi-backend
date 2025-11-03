@@ -15,6 +15,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $title
  * @property string $slug
  * @property string $description
+ * @property string|null $icon
+ * @property array|null $template_config
+ * @property bool $is_active
+ * @property int|null $display_order
+ * @property string|null $url_prefix
  * @property string|null $created_user_id
  * @property string|null $updated_user_id
  * @property \Carbon\Carbon|null $created_at
@@ -38,6 +43,11 @@ class CmsContentType extends BaseModel
         'title',
         'slug',
         'description',
+        'icon',
+        'template_config',
+        'is_active',
+        'display_order',
+        'url_prefix',
         'created_user_id',
         'updated_user_id',
     ];
@@ -48,6 +58,9 @@ class CmsContentType extends BaseModel
      * @var array<string, string>
      */
     protected $casts = [
+        'template_config' => 'array',
+        'is_active' => 'boolean',
+        'display_order' => 'integer',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
         'deleted_at' => 'datetime',

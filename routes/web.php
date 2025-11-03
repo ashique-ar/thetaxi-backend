@@ -4,6 +4,8 @@ use App\Http\Controllers\Api\FileUploadController;
 use App\Http\Controllers\BookingController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\VehicleController;
+use App\Http\Controllers\Website\CmsController;
+use App\Http\Controllers\TestController;
 use Illuminate\Support\Facades\Route;
 
 // TheTaxi Website Routes
@@ -69,13 +71,15 @@ Route::get('/api/services/configuration', [BookingController::class, 'getService
 Route::get('/api/services/{serviceCode}/form-config', [BookingController::class, 'getServiceFormConfig'])->name('api.services.form-config');
 Route::get('/api/services/{serviceCode}/validation-rules', [BookingController::class, 'getServiceValidationRules'])->name('api.services.validation-rules');
 
-// cms type and cms page will user blogs and blog single pages
+// Dynamic CMS content routes - these handle all content types dynamically
+Route::get('/{contentType}', [CmsController::class, 'index'])
+    ->name('cms.index')
+    ->where('contentType', '[a-zA-Z0-9-_]+'); // Simple pattern for content types
 
-
-// blog.single
-Route::get('/blog/{id}', function ($id) {
-    return view('blog.single', compact('id'));
-})->name('blog.single');
+Route::get('/{contentType}/{content}', [CmsController::class, 'show'])
+    ->name('cms.show')
+    ->where('contentType', '[a-zA-Z0-9-_]+') // Simple pattern for content types
+    ->where('content', '[a-zA-Z0-9-_]+'); // Simple pattern for content slugs
 
 // File upload routes for admin system
 Route::controller(FileUploadController::class)->group(function () {

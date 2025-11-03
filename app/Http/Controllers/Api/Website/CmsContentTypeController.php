@@ -23,10 +23,24 @@ class CmsContentTypeController extends Controller
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        $q = CmsContentType::query();
+        $q = CmsContentType::with(['createdBy'])
+            ->withCount('contents');
+            
         if ($request->filled('search')) {
-            $q->where('title', 'like', '%' . $request->search . '%');
+            $q->where(function ($query) use ($request) {
+                $query->where('title', 'like', '%' . $request->search . '%')
+                      ->orWhere('slug', 'like', '%' . $request->search . '%')
+                      ->orWhere('description', 'like', '%' . $request->search . '%');
+            });
         }
+        
+        if ($request->filled('is_active')) {
+            $q->where('is_active', $request->boolean('is_active'));
+        }
+        
+        $q->orderBy('display_order', 'asc')
+          ->orderBy('title', 'asc');
+          
         return CmsContentTypeResource::collection(
             $q->paginate($request->per_page ?? 15)
         );
@@ -47,6 +61,8 @@ class CmsContentTypeController extends Controller
 
     public function show(CmsContentType $cms_content_type): JsonResponse
     {
+        $cms_content_type->load(['createdBy', 'updatedBy']);
+        
         return response()->json([
             'status' => 'success',
             'data' => ['type' => new CmsContentTypeResource($cms_content_type)]

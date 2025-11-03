@@ -19,6 +19,11 @@ class UpdateCmsContentTypeRequest extends FormRequest
             'title' => ['sometimes', 'nullable', 'string', 'max:255'],
             'slug' => ['sometimes', 'required', 'string', 'max:255', "unique:cms_content_types,slug,{$id}"],
             'description' => ['sometimes', 'nullable', 'string'],
+            'icon' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'template_config' => ['sometimes', 'nullable', 'array'],
+            'is_active' => ['sometimes', 'boolean'],
+            'display_order' => ['sometimes', 'nullable', 'integer'],
+            'url_prefix' => ['sometimes', 'nullable', 'string', 'max:255'],
         ];
     }
 }
