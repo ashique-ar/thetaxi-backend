@@ -1,0 +1,61 @@
+                @if(isset($inspirationContent) && $inspirationContent->count() > 0)
+                    @foreach($inspirationContent->take(3) as $index => $inspiration)
+                        <div class="col-lg-4 col-md-6 wow animate fadeInDown" 
+                             data-wow-delay="{{ 200 + ($index * 200) }}ms" 
+                             data-wow-duration="1500ms">
+                            <div class="blog-card2 two">
+                                <div class="blog-img-wrap">
+                                    <a href="{{ $inspiration->link ?? '#' }}" class="blog-img">
+                                        @if($inspiration->image)
+                                            <img src="{{ Storage::url($inspiration->image) }}" alt="{{ $inspiration->title }}">
+                                        @else
+                                            <img src="{{ asset('assets/img/home3/blog-img' . ($index + 1) . '.jpg') }}" alt="{{ $inspiration->title }}">
+                                        @endif
+                                    </a>
+                                    <a href="{{ $inspiration->link ?? '#' }}" class="location">
+                                        <svg width="14" height="14" viewBox="0 0 14 14"
+                                            xmlns="http://www.w3.org/2000/svg">
+                                            <path
+                                                d="M6.83615 0C3.77766 0 1.28891 2.48879 1.28891 5.54892C1.28891 7.93837 4.6241 11.8351 6.05811 13.3994C6.25669 13.6175 6.54154 13.7411 6.83615 13.7411C7.13076 13.7411 7.41561 13.6175 7.6142 13.3994C9.04821 11.8351 12.3834 7.93833 12.3834 5.54892C12.3834 2.48879 9.89464 0 6.83615 0ZM7.31469 13.1243C7.18936 13.2594 7.02008 13.3342 6.83615 13.3342C6.65222 13.3342 6.48295 13.2594 6.35761 13.1243C4.95614 11.5959 1.69584 7.79515 1.69584 5.54896C1.69584 2.7134 4.00067 0.406933 6.83615 0.406933C9.67164 0.406933 11.9765 2.7134 11.9765 5.54896C11.9765 7.79515 8.71617 11.5959 7.31469 13.1243Z" />
+                                            <path
+                                                d="M6.83618 8.54529C8.4624 8.54529 9.7807 7.22698 9.7807 5.60077C9.7807 3.97456 8.4624 2.65625 6.83618 2.65625C5.20997 2.65625 3.89166 3.97456 3.89166 5.60077C3.89166 7.22698 5.20997 8.54529 6.83618 8.54529Z" />
+                                        </svg>
+                                        {{ $inspiration->subtitle ?? 'Inspiration' }}
+                                    </a>
+                                </div>
+                                <div class="blog-content">
+                                    <a href="{{ $inspiration->link ?? '#' }}" class="blog-date">{{ $inspiration->created_at ? $inspiration->created_at->format('d F, Y') : 'Travel Inspiration' }}</a>
+                                    <h4><a href="{{ $inspiration->link ?? '#' }}">{{ $inspiration->title }}</a></h4>
+                                    <p>{{ Str::limit($inspiration->description, 100) }}</p>
+                                </div>
+                            </div>
+                        </div>
+                    @endforeach
+                @else
+                    <!-- Fallback content when no CMS content is available -->
+                    <div class="col-lg-4 col-md-6 wow animate fadeInDown" data-wow-delay="200ms"
+                        data-wow-duration="1500ms">
+                        <div class="blog-card2 two">
+                            <div class="blog-img-wrap">
+                                <a href="#" class="blog-img">
+                                    <img src="{{ asset('assets/img/home3/blog-img1.jpg') }}" alt="">
+                                </a>
+                                <a href="#" class="location">
+                                    <svg width="14" height="14" viewBox="0 0 14 14"
+                                        xmlns="http://www.w3.org/2000/svg">
+                                        <path
+                                            d="M6.83615 0C3.77766 0 1.28891 2.48879 1.28891 5.54892C1.28891 7.93837 4.6241 11.8351 6.05811 13.3994C6.25669 13.6175 6.54154 13.7411 6.83615 13.7411C7.13076 13.7411 7.41561 13.6175 7.6142 13.3994C9.04821 11.8351 12.3834 7.93833 12.3834 5.54892C12.3834 2.48879 9.89464 0 6.83615 0ZM7.31469 13.1243C7.18936 13.2594 7.02008 13.3342 6.83615 13.3342C6.65222 13.3342 6.48295 13.2594 6.35761 13.1243C4.95614 11.5959 1.69584 7.79515 1.69584 5.54896C1.69584 2.7134 4.00067 0.406933 6.83615 0.406933C9.67164 0.406933 11.9765 2.7134 11.9765 5.54896C11.9765 7.79515 8.71617 11.5959 7.31469 13.1243Z" />
+                                        <path
+                                            d="M6.83618 8.54529C8.4624 8.54529 9.7807 7.22698 9.7807 5.60077C9.7807 3.97456 8.4624 2.65625 6.83618 2.65625C5.20997 2.65625 3.89166 3.97456 3.89166 5.60077C3.89166 7.22698 5.20997 8.54529 6.83618 8.54529Z" />
+                                    </svg>
+                                    Sample Location
+                                </a>
+                            </div>
+                            <div class="blog-content">
+                                <a href="#" class="blog-date">Travel Inspiration</a>
+                                <h4><a href="#">Sample Travel Inspiration Title</a></h4>
+                                <p>Add travel inspiration content through the CMS to showcase your latest travel stories and destinations.</p>
+                            </div>
+                        </div>
+                    </div>
+                @endif

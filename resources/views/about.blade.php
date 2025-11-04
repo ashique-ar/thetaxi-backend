@@ -9,10 +9,10 @@
         style="background-image:linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url(assets/img/innerpages/breadcrumb-bg2.jpg);">
         <div class="container">
             <div class="banner-content">
-                <h1>About GoFLy</h1>
+                <h1>About TheTaxi</h1>
                 <ul class="breadcrumb-list">
                     <li><a href="index.html">Home</a></li>
-                    <li>About GoFLy</li>
+                    <li>About TheTaxi</li>
                 </ul>
             </div>
         </div>
@@ -28,8 +28,8 @@
                         <div class="about-content">
                             <div class="section-title">
                                 <h2>Why We’re Best Agency</h2>
-                                <h4>Welcome to GoFly Travel Agency – Your Gateway to Unforgettable Journeys!</h4>
-                                <p>GoFly Travel Agency is a trusted name in the travel industry, offering seamless travel
+                                <h4>Welcome to TheTaxi Travel Agency – Your Gateway to Unforgettable Journeys!</h4>
+                                <p>TheTaxi Travel Agency is a trusted name in the travel industry, offering seamless travel
                                     planning, personalized itineraries, and unforgettable adventures. With years of
                                     experience and a network of global partners, we ensure a hassle-free and memorable
                                     journey for every traveler.</p>
@@ -42,7 +42,7 @@
                                     alt="">
                                 <div class="founder-info">
                                     <h6>Robert Harringson</h6>
-                                    <span>Founder at GoFly</span>
+                                    <span>Founder at TheTaxi</span>
                                 </div>
                             </div>
                         </div>
@@ -471,7 +471,7 @@
                                         </div>
                                         <div class="author-info">
                                             <h5>Robert Kcarery </h5>
-                                            <span>GoFly Traveler</span>
+                                            <span>TheTaxi Traveler</span>
                                         </div>
                                     </div>
                                     <ul class="rating-area">
@@ -497,7 +497,7 @@
                                         </div>
                                         <div class="author-info">
                                             <h5>Selina Henry</h5>
-                                            <span>GoFly Traveler</span>
+                                            <span>TheTaxi Traveler</span>
                                         </div>
                                     </div>
                                     <ul class="rating-area trustpilot">
@@ -566,7 +566,7 @@
                                         </div>
                                         <div class="author-info">
                                             <h5>James Bonde</h5>
-                                            <span>GoFly Traveler</span>
+                                            <span>TheTaxi Traveler</span>
                                         </div>
                                     </div>
                                     <ul class="rating-area">
@@ -604,7 +604,7 @@
                                         </div>
                                         <div class="author-info">
                                             <h5>Michael D Linda</h5>
-                                            <span>GoFly Traveler</span>
+                                            <span>TheTaxi Traveler</span>
                                         </div>
                                     </div>
                                     <ul class="rating-area">
@@ -630,7 +630,7 @@
                                         </div>
                                         <div class="author-info">
                                             <h5>Amber Lashley</h5>
-                                            <span>GoFly Traveler</span>
+                                            <span>TheTaxi Traveler</span>
                                         </div>
                                     </div>
                                     <ul class="rating-area trustpilot">

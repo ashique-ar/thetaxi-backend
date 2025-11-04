@@ -64,4 +64,39 @@ class WebsiteSetting extends BaseModel
     {
         return $this->belongsTo(User::class, 'updated_user_id');
     }
+
+    /**
+     * Get a setting value by type.
+     */
+    public static function getValue(string $type, $default = null)
+    {
+        $setting = static::where('type', $type)->first();
+        return $setting ? $setting->value : $default;
+    }
+
+    /**
+     * Set a setting value by type.
+     */
+    public static function setValue(string $type, $value): void
+    {
+        static::updateOrCreate(
+            ['type' => $type],
+            ['value' => $value]
+        );
+    }
+
+    /**
+     * Get multiple settings by types.
+     */
+    public static function getValues(array $types): array
+    {
+        $settings = static::whereIn('type', $types)->get()->keyBy('type');
+        
+        $result = [];
+        foreach ($types as $type) {
+            $result[$type] = $settings->has($type) ? $settings[$type]->value : null;
+        }
+        
+        return $result;
+    }
 }

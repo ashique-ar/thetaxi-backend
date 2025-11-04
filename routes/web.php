@@ -5,13 +5,12 @@ use App\Http\Controllers\BookingController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\VehicleController;
 use App\Http\Controllers\Website\CmsController;
+use App\Http\Controllers\Website\HomeController;
 use App\Http\Controllers\TestController;
 use Illuminate\Support\Facades\Route;
 
 // TheTaxi Website Routes
-Route::get('/', function () {
-    return view('home');
-})->name('home');
+Route::get('/', [HomeController::class, 'index'])->name('home');
 
 // Search routes
 Route::get('/search/{id?}', [BookingController::class, 'showResults'])->name('search.results');

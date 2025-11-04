@@ -266,6 +266,8 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('public/{contentTypeSlug}/{contentSlug}', [CmsContentController::class, 'getBySlug'])->name('api.cms-contents.public');
         
         Route::apiResource('website-settings', WebsiteSettingController::class);
+        Route::post('website-settings/update-multiple', [WebsiteSettingController::class, 'updateMultiple']);
+        Route::get('website-settings/homepage/settings', [WebsiteSettingController::class, 'homepage']);
         Route::apiResource('vip-types', VipTypeController::class);
         Route::apiResource('service-types', ServiceTypeController::class);
         

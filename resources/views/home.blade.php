@@ -6,13 +6,14 @@
     <!-- home4 Banner Section Start-->
     <div class="home4-banner-section mb-100">
         <div class="banner-video-area">
-            <video autoplay loop muted playsinline src="{{ asset('assets/video/home4-banner-video.mp4')}}"></video>
+            <video autoplay loop muted playsinline src="{{ $settings['banner_video'] ?? asset('assets/video/home4-banner-video.mp4') }}"></video>
         </div>
         <div class="banner-content-wrap">
             <div class="container">
                 <div class="banner-content">
-                    <h1>All-in-one Travel Booking.</h1>
-                    <p>Best travel agency in world-wide & achieve <span>“World Travel Award”</span></p>
+                    <h1>{{ $settings['banner_heading'] ?? 'All-in-one Travel Booking.' }}</h1>
+                    <p>{{ $settings['banner_subheading'] ?? 'Best travel agency in world-wide & achieve' }} <span>“World
+                            Travel Award”</span></p>
                     @include('components.booking-form')
                 </div>
             </div>
@@ -24,25 +25,45 @@
     <div class="partner-section mb-100">
         <div class="container">
             <div class="partner-title wow animate fadeInDown" data-wow-delay="200ms" data-wow-duration="1500ms">
-                <h5>Those Company You Can Easily Trust!</h5>
+                <h5>{{ $settings['partner_section_title'] ?? 'Those Company You Can Easily Trust!' }}</h5>
             </div>
             <div class="partner-wrap">
                 <div class="marquee">
                     <div class="marquee__group">
-                        <a href="#"><img src="{{ asset('assets/img/home1/partner-01.png')}}" alt=""></a>
-                        <a href="#"><img src="{{ asset('assets/img/home1/partner-02.png')}}" alt=""></a>
-                        <a href="#"><img src="{{ asset('assets/img/home1/partner-03.png')}}" alt=""></a>
-                        <a href="#"><img src="{{ asset('assets/img/home1/partner-04.png')}}" alt=""></a>
-                        <a href="#"><img src="{{ asset('assets/img/home1/partner-05.png')}}" alt=""></a>
-                        <a href="#"><img src="{{ asset('assets/img/home1/partner-06.png')}}" alt=""></a>
+                        @if(isset($partners) && $partners->count() > 0)
+                            @foreach($partners as $partner)
+                                <a href="{{ $partner->link ?? '#' }}">
+                                    <img src="{{ $partner->image ? Storage::url($partner->image) : asset('assets/img/home1/partner-01.png') }}" 
+                                         alt="{{ $partner->title ?? 'Partner' }}">
+                                </a>
+                            @endforeach
+                        @else
+                            <!-- Fallback static partners when no CMS content -->
+                            <a href="#"><img src="{{ asset('assets/img/home1/partner-01.png') }}" alt=""></a>
+                            <a href="#"><img src="{{ asset('assets/img/home1/partner-02.png') }}" alt=""></a>
+                            <a href="#"><img src="{{ asset('assets/img/home1/partner-03.png') }}" alt=""></a>
+                            <a href="#"><img src="{{ asset('assets/img/home1/partner-04.png') }}" alt=""></a>
+                            <a href="#"><img src="{{ asset('assets/img/home1/partner-05.png') }}" alt=""></a>
+                            <a href="#"><img src="{{ asset('assets/img/home1/partner-06.png') }}" alt=""></a>
+                        @endif
                     </div>
                     <div aria-hidden="true" class="marquee__group">
-                        <a href="#"><img src="{{ asset('assets/img/home1/partner-01.png')}}" alt=""></a>
-                        <a href="#"><img src="{{ asset('assets/img/home1/partner-02.png')}}" alt=""></a>
-                        <a href="#"><img src="{{ asset('assets/img/home1/partner-03.png')}}" alt=""></a>
-                        <a href="#"><img src="{{ asset('assets/img/home1/partner-04.png')}}" alt=""></a>
-                        <a href="#"><img src="{{ asset('assets/img/home1/partner-05.png')}}" alt=""></a>
-                        <a href="#"><img src="{{ asset('assets/img/home1/partner-06.png')}}" alt=""></a>
+                        @if(isset($partners) && $partners->count() > 0)
+                            @foreach($partners as $partner)
+                                <a href="{{ $partner->link ?? '#' }}">
+                                    <img src="{{ $partner->image ? Storage::url($partner->image) : asset('assets/img/home1/partner-01.png') }}" 
+                                         alt="{{ $partner->title ?? 'Partner' }}">
+                                </a>
+                            @endforeach
+                        @else
+                            <!-- Fallback static partners when no CMS content -->
+                            <a href="#"><img src="{{ asset('assets/img/home1/partner-01.png') }}" alt=""></a>
+                            <a href="#"><img src="{{ asset('assets/img/home1/partner-02.png') }}" alt=""></a>
+                            <a href="#"><img src="{{ asset('assets/img/home1/partner-03.png') }}" alt=""></a>
+                            <a href="#"><img src="{{ asset('assets/img/home1/partner-04.png') }}" alt=""></a>
+                            <a href="#"><img src="{{ asset('assets/img/home1/partner-05.png') }}" alt=""></a>
+                            <a href="#"><img src="{{ asset('assets/img/home1/partner-06.png') }}" alt=""></a>
+                        @endif
                     </div>
                 </div>
             </div>
@@ -57,42 +78,47 @@
                 <div class="col-lg-4 col-md-6 wow animate fadeInDown" data-wow-delay="200ms" data-wow-duration="1500ms">
                     <div class="feature-card">
                         <div class="icon">
-                            <img src="{{ asset('assets/img/home4/icon/feature-icon1.svg')}}" alt="">
+                            <img src="{{ $settings['feature_1_icon'] ?? asset('assets/img/home4/icon/feature-icon1.svg') }}" alt="">
                         </div>
-                        <h4>One Click Booking.</h4>
-                        <p>You can hassle-free and fast tour & travel package booking by GoFly.</p>
-                        <img src="{{ asset('assets/img/home4/vector/feature-card-vector.svg')}}" alt="" class="vector">
+                        <h4>{{ $settings['feature_1_title'] ?? 'One Click Booking.' }}</h4>
+                        <p>{{ $settings['feature_1_description'] ?? 'You can hassle-free and fast tour & travel package booking by TheTaxi.' }}
+                        </p>
+                        <img src="{{ $settings['feature_card_vector'] ?? asset('assets/img/home4/vector/feature-card-vector.svg') }}" alt=""
+                            class="vector">
                     </div>
                 </div>
                 <div class="col-lg-4 col-md-6 wow animate fadeInDown" data-wow-delay="400ms" data-wow-duration="1500ms">
                     <div class="feature-card two">
                         <div class="icon">
-                            <img src="{{ asset('assets/img/home4/icon/feature-icon2.svg')}}" alt="">
+                            <img src="{{ $settings['feature_2_icon'] ?? asset('assets/img/home4/icon/feature-icon2.svg') }}" alt="">
                         </div>
-                        <h4>Discount & Offer.</h4>
-                        <p>Agencies have special discounts on flights, hotels, & packages.</p>
-                        <img src="{{ asset('assets/img/home4/vector/feature-card-vector.svg')}}" alt="" class="vector">
+                        <h4>{{ $settings['feature_2_title'] ?? 'Discount & Offer.' }}</h4>
+                        <p>{{ $settings['feature_2_description'] ?? 'Agencies have special discounts on flights, hotels, & packages.' }}
+                        </p>
+                        <img src="{{ $settings['feature_card_vector'] ?? asset('assets/img/home4/vector/feature-card-vector.svg') }}" alt=""
+                            class="vector">
                     </div>
                 </div>
                 <div class="col-lg-4 col-md-6 wow animate fadeInDown" data-wow-delay="600ms" data-wow-duration="1500ms">
                     <div class="feature-card three">
                         <div class="icon">
-                            <img src="{{ asset('assets/img/home4/icon/feature-icon3.svg')}}" alt="">
+                            <img src="{{ $settings['feature_3_icon'] ?? asset('assets/img/home4/icon/feature-icon3.svg') }}" alt="">
                         </div>
-                        <h4>Local Experties.</h4>
-                        <p>You can hassle-free and fast tour & travel package booking by GoFly.</p>
-                        <img src="{{ asset('assets/img/home4/vector/feature-card-vector.svg')}}" alt="" class="vector">
+                        <h4>{{ $settings['feature_3_title'] ?? 'Local Experties.' }}</h4>
+                        <p>{{ $settings['feature_3_description'] ?? 'You can hassle-free and fast tour & travel package booking by TheTaxi.' }}
+                        </p>
+                        <img src="{{ $settings['feature_card_vector'] ?? asset('assets/img/home4/vector/feature-card-vector.svg') }}" alt=""
+                            class="vector">
                     </div>
                 </div>
             </div>
             <div class="bottom-area d-flex justify-content-center wow animate fadeInUp" data-wow-delay="200ms"
-                data-wow-duration="1500ms"
-                style="visibility: visible; animation-duration: 1500ms; animation-delay: 200ms;">
+                data-wow-duration="1500ms" style="visibility: visible; animation-duration: 1500ms; animation-delay: 200ms;">
                 <div class="batch">
                     <span>You’ve Customize Your Travel Package by One Click.</span>
                 </div>
                 <div class="batch two">
-                    <a href="contact.html">Customize Package
+                    <a href="{{ $settings['feature_cta_link'] ?? 'contact.html' }}">{{ $settings['feature_cta_text'] ?? 'Customize Package' }}
                         <svg width="10" height="10" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg">
                             <path d="M1 9L9 1M9 1C7.22222 1.33333 3.33333 2 1 1M9 1C8.66667 2.66667 8 6.33333 9 9"
                                 stroke-width="1.5" stroke-linecap="round"></path>
@@ -101,8 +127,9 @@
                 </div>
             </div>
         </div>
-        <img src="{{ asset('assets/img/home4/feature-section-vector.png')}}" alt="" class="section-vector">
-        <img src="{{ asset('assets/img/home4/vector/feature-section-vector2.svg')}}" alt="" class="section-vector2">
+        <img src="{{ $settings['feature_section_vector'] ?? asset('assets/img/home4/feature-section-vector.png') }}" alt="" class="section-vector">
+        <img src="{{ $settings['feature_section_vector2'] ?? asset('assets/img/home4/vector/feature-section-vector2.svg') }}" alt=""
+            class="section-vector2">
     </div>
     <!-- home4 Feature Section End-->
 
@@ -113,282 +140,205 @@
                 data-wow-duration="1500ms">
                 <div class="col-xl-6 col-lg-8">
                     <div class="section-title text-center">
-                        <h2>Top Destinations</h2>
+                        <h2>{{ $settings['destinations_section_title'] ?? 'Top Destinations' }}</h2>
                     </div>
                 </div>
             </div>
             <div class="destination-slider-area mb-40">
                 <div class="swiper home3-destination-slider">
                     <div class="swiper-wrapper">
-                        <div class="swiper-slide">
-                            <div class="destination-card2 three">
-                                <div class="destination-img">
-                                    <img src="{{ asset('assets/img/home2/destination-img1.jpg')}}" alt="">
-                                    <a href="destination-details.html" class="arrow">
-                                        <svg width="14" height="14" viewBox="0 0 14 14"
-                                            xmlns="http://www.w3.org/2000/svg">
-                                            <path
-                                                d="M1 13C5.94664 8.05336 13 1 13 1M13 1C10.1852 1.52778 6.69444 2.58333 3 1M13 1C12.4722 3.63889 11.4167 6.77778 13 11"
-                                                stroke-width="1.5" stroke-linecap="round" />
-                                        </svg>
-                                    </a>
+                        @if ($destinations->count() > 0)
+                            @foreach ($destinations as $destination)
+                                <div class="swiper-slide">
+                                    <div class="destination-card2 three">
+                                        <div class="destination-img">
+                                            <img src="{{ $destination->featured_image ? asset('storage/' . $destination->featured_image) : asset('assets/img/home2/destination-img1.jpg') }}"
+                                                alt="{{ $destination->title }}">
+                                            <a href="{{ route('cms.show', ['type' => 'destinations', 'slug' => $destination->slug]) }}"
+                                                class="arrow">
+                                                <svg width="14" height="14" viewBox="0 0 14 14"
+                                                    xmlns="http://www.w3.org/2000/svg">
+                                                    <path
+                                                        d="M1 13C5.94664 8.05336 13 1 13 1M13 1C10.1852 1.52778 6.69444 2.58333 3 1M13 1C12.4722 3.63889 11.4167 6.77778 13 11"
+                                                        stroke-width="1.5" stroke-linecap="round" />
+                                                </svg>
+                                            </a>
+                                        </div>
+                                        <div class="destination-content">
+                                            <h5><a
+                                                    href="{{ route('cms.show', ['type' => 'destinations', 'slug' => $destination->slug]) }}">{{ $destination->title }}</a>
+                                            </h5>
+                                            <span>{{ $destination->excerpt ?: 'Explore this destination' }}</span>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div class="destination-content">
-                                    <h5><a href="destination-details.html">Great Wall of China</a></h5>
-                                    <span>Tours (12)</span>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="swiper-slide">
-                            <div class="destination-card2 three">
-                                <div class="destination-img">
-                                    <img src="{{ asset('assets/img/home2/destination-img2.jpg')}}" alt="">
-                                    <a href="destination-details.html" class="arrow">
-                                        <svg width="14" height="14" viewBox="0 0 14 14"
-                                            xmlns="http://www.w3.org/2000/svg">
-                                            <path
-                                                d="M1 13C5.94664 8.05336 13 1 13 1M13 1C10.1852 1.52778 6.69444 2.58333 3 1M13 1C12.4722 3.63889 11.4167 6.77778 13 11"
-                                                stroke-width="1.5" stroke-linecap="round" />
-                                        </svg>
-                                    </a>
-                                </div>
-                                <div class="destination-content">
-                                    <h5><a href="destination-details.html">Rome, Itlay</a></h5>
-                                    <span>Tours (06)</span>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="swiper-slide">
-                            <div class="destination-card2 three">
-                                <div class="destination-img">
-                                    <img src="{{ asset('assets/img/home2/destination-img3.jpg')}}" alt="">
-                                    <a href="destination-details.html" class="arrow">
-                                        <svg width="14" height="14" viewBox="0 0 14 14"
-                                            xmlns="http://www.w3.org/2000/svg">
-                                            <path
-                                                d="M1 13C5.94664 8.05336 13 1 13 1M13 1C10.1852 1.52778 6.69444 2.58333 3 1M13 1C12.4722 3.63889 11.4167 6.77778 13 11"
-                                                stroke-width="1.5" stroke-linecap="round" />
-                                        </svg>
-                                    </a>
-                                </div>
-                                <div class="destination-content">
-                                    <h5><a href="destination-details.html">Machu Picchu of Peru</a></h5>
-                                    <span>Tours (16)</span>
+                            @endforeach
+                        @else
+                            <!-- Fallback content when no destinations are available -->
+                            <div class="swiper-slide">
+                                <div class="destination-card2 three">
+                                    <div class="destination-img">
+                                        <img src="{{ $settings['destination_fallback_image'] ?? asset('assets/img/home2/destination-img1.jpg') }}" alt="">
+                                        <a href="#" class="arrow">
+                                            <svg width="14" height="14" viewBox="0 0 14 14"
+                                                xmlns="http://www.w3.org/2000/svg">
+                                                <path
+                                                    d="M1 13C5.94664 8.05336 13 1 13 1M13 1C10.1852 1.52778 6.69444 2.58333 3 1M13 1C12.4722 3.63889 11.4167 6.77778 13 11"
+                                                    stroke-width="1.5" stroke-linecap="round" />
+                                            </svg>
+                                        </a>
+                                    </div>
+                                    <div class="destination-content">
+                                        <h5><a href="#">Coming Soon</a></h5>
+                                        <span>New destinations coming soon</span>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                        <div class="swiper-slide">
-                            <div class="destination-card2 three">
-                                <div class="destination-img">
-                                    <img src="{{ asset('assets/img/home2/destination-img4.jpg')}}" alt="">
-                                    <a href="destination-details.html" class="arrow">
-                                        <svg width="14" height="14" viewBox="0 0 14 14"
-                                            xmlns="http://www.w3.org/2000/svg">
-                                            <path
-                                                d="M1 13C5.94664 8.05336 13 1 13 1M13 1C10.1852 1.52778 6.69444 2.58333 3 1M13 1C12.4722 3.63889 11.4167 6.77778 13 11"
-                                                stroke-width="1.5" stroke-linecap="round" />
-                                        </svg>
-                                    </a>
-                                </div>
-                                <div class="destination-content">
-                                    <h5><a href="destination-details.html">Great Temple Jordan</a></h5>
-                                    <span>Tours (10)</span>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="swiper-slide">
-                            <div class="destination-card2 three">
-                                <div class="destination-img">
-                                    <img src="{{ asset('assets/img/home2/destination-img5.jpg')}}" alt="">
-                                    <a href="destination-details.html" class="arrow">
-                                        <svg width="14" height="14" viewBox="0 0 14 14"
-                                            xmlns="http://www.w3.org/2000/svg">
-                                            <path
-                                                d="M1 13C5.94664 8.05336 13 1 13 1M13 1C10.1852 1.52778 6.69444 2.58333 3 1M13 1C12.4722 3.63889 11.4167 6.77778 13 11"
-                                                stroke-width="1.5" stroke-linecap="round" />
-                                        </svg>
-                                    </a>
-                                </div>
-                                <div class="destination-content">
-                                    <h5><a href="destination-details.html">Athens Greece</a></h5>
-                                    <span>Tours (15)</span>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="swiper-slide">
-                            <div class="destination-card2 three">
-                                <div class="destination-img">
-                                    <img src="{{ asset('assets/img/home2/destination-img6.jpg')}}" alt="">
-                                    <a href="destination-details.html" class="arrow">
-                                        <svg width="14" height="14" viewBox="0 0 14 14"
-                                            xmlns="http://www.w3.org/2000/svg">
-                                            <path
-                                                d="M1 13C5.94664 8.05336 13 1 13 1M13 1C10.1852 1.52778 6.69444 2.58333 3 1M13 1C12.4722 3.63889 11.4167 6.77778 13 11"
-                                                stroke-width="1.5" stroke-linecap="round" />
-                                        </svg>
-                                    </a>
-                                </div>
-                                <div class="destination-content">
-                                    <h5><a href="destination-details.html">Switzerland</a></h5>
-                                    <span>Tours (27)</span>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="swiper-slide">
-                            <div class="destination-card2 three">
-                                <div class="destination-img">
-                                    <img src="{{ asset('assets/img/home2/destination-img7.jpg')}}" alt="">
-                                    <a href="destination-details.html" class="arrow">
-                                        <svg width="14" height="14" viewBox="0 0 14 14"
-                                            xmlns="http://www.w3.org/2000/svg">
-                                            <path
-                                                d="M1 13C5.94664 8.05336 13 1 13 1M13 1C10.1852 1.52778 6.69444 2.58333 3 1M13 1C12.4722 3.63889 11.4167 6.77778 13 11"
-                                                stroke-width="1.5" stroke-linecap="round" />
-                                        </svg>
-                                    </a>
-                                </div>
-                                <div class="destination-content">
-                                    <h5><a href="destination-details.html">Norway</a></h5>
-                                    <span>Tours (08)</span>
-                                </div>
-                            </div>
-                        </div>
+                        @endif
                     </div>
-                </div>
-                <div class="slider-btn-grp two">
-                    <div class="slider-btn destination-slider-prev">
-                        <svg width="16" height="12" viewBox="0 0 16 12" fill="none"
-                            xmlns="http://www.w3.org/2000/svg">
-                            <path fill-rule="evenodd" clip-rule="evenodd" d="M0 5.31421H16V6.68564H0V5.31421Z" />
-                            <path fill-rule="evenodd" clip-rule="evenodd"
-                                d="M0.685714 6.68569C3.9104 6.68569 6.54629 3.84958 6.54629 0.825119V0.139404H5.17486V0.825119C5.17486 3.12181 3.12412 5.31426 0.685714 5.31426H0V6.68569H0.685714Z" />
-                            <path fill-rule="evenodd" clip-rule="evenodd"
-                                d="M0.685714 5.31421C3.9104 5.31421 6.54629 8.15032 6.54629 11.1748V11.8605H5.17486V11.1748C5.17486 8.87901 3.12412 6.68564 0.685714 6.68564H0V5.31421H0.685714Z" />
-                        </svg>
-                    </div>
-                    <div class="slider-btn destination-slider-next">
-                        <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
-                            <g>
-                                <path fill-rule="evenodd" clip-rule="evenodd"
-                                    d="M16 7.31421H-3.8147e-06V8.68564H16V7.31421Z" />
-                                <path fill-rule="evenodd" clip-rule="evenodd"
-                                    d="M15.3143 8.68569C12.0896 8.68569 9.45371 5.84958 9.45371 2.82512V2.1394H10.8251V2.82512C10.8251 5.12181 12.8759 7.31426 15.3143 7.31426H16V8.68569H15.3143Z" />
-                                <path fill-rule="evenodd" clip-rule="evenodd"
-                                    d="M15.3143 7.31421C12.0896 7.31421 9.45371 10.1503 9.45371 13.1748V13.8605H10.8251V13.1748C10.8251 10.879 12.8759 8.68564 15.3143 8.68564H16V7.31421H15.3143Z" />
-                            </g>
-                        </svg>
-                    </div>
-                </div>
-            </div>
-            <div class="row">
-                <div class="col-lg-12 d-flex justify-content-center">
-                    <div class="swiper-pagination1 paginations two"></div>
-                </div>
-            </div>
-        </div>
-        <img src="{{ asset('assets/img/home4/vector/destination-section-vector.svg')}}" alt="" class="vector">
-    </div>
-    <!-- home4 Destination Section End-->
-
-    <!-- home4 About Section Start-->
-    <div class="home4-about-section mb-100">
-        <div class="container">
-            <div class="about-wrapper">
-                <div class="row justify-content-between">
-                    <div class="col-xl-5 col-lg-6 wow animate fadeInLeft" data-wow-delay="200ms"
-                        data-wow-duration="1500ms">
-                        <div class="about-content">
-                            <div class="section-title">
-                                <h2>We’re Best Travel Agency Ever.</h2>
-                                <p>We provides information on flight bookings, hotel reservations, and other travel-related
-                                    services. For more detailed information about their offerings, you can visit their
-                                    official website.</p>
-                            </div>
-                            <ul>
-                                <li>
-                                    <svg width="18" height="18" viewBox="0 0 18 18"
-                                        xmlns="http://www.w3.org/2000/svg">
-                                        <path
-                                            d="M6.24999 16.2334C6.18965 16.2334 6.13035 16.2177 6.07799 16.1877C6.02563 16.1577 5.98201 16.1146 5.95146 16.0625C4.65758 13.8582 1.20971 9.16675 1.17503 9.1196C1.12576 9.05264 1.10224 8.97019 1.10876 8.88731C1.11528 8.80444 1.15141 8.72668 1.21054 8.66825L2.2704 7.62096C2.32798 7.56406 2.40368 7.52914 2.48433 7.52227C2.56499 7.51541 2.64551 7.53702 2.71188 7.58337L6.17781 10.0035C8.48209 7.04337 10.6235 5.00047 12.0309 3.79676C13.6085 2.44735 14.6115 1.84099 14.6535 1.81572C14.7073 1.78342 14.7688 1.76636 14.8316 1.76636H16.5462C16.6163 1.76635 16.6849 1.78767 16.7426 1.82749C16.8004 1.86731 16.8447 1.92376 16.8697 1.98934C16.8947 2.05493 16.8991 2.12656 16.8825 2.19473C16.8658 2.2629 16.8288 2.32439 16.7764 2.37105C14.2345 4.6349 11.5919 8.23189 9.82257 10.8506C7.89924 13.6972 6.56405 16.0353 6.55079 16.0586C6.52074 16.1114 6.47733 16.1553 6.42494 16.186C6.37254 16.2167 6.31299 16.233 6.25227 16.2334L6.24999 16.2334Z" />
-                                    </svg>
-                                    Affordable Travel
-                                </li>
-                                <li>
-                                    <svg width="18" height="18" viewBox="0 0 18 18"
-                                        xmlns="http://www.w3.org/2000/svg">
-                                        <path
-                                            d="M6.24999 16.2334C6.18965 16.2334 6.13035 16.2177 6.07799 16.1877C6.02563 16.1577 5.98201 16.1146 5.95146 16.0625C4.65758 13.8582 1.20971 9.16675 1.17503 9.1196C1.12576 9.05264 1.10224 8.97019 1.10876 8.88731C1.11528 8.80444 1.15141 8.72668 1.21054 8.66825L2.2704 7.62096C2.32798 7.56406 2.40368 7.52914 2.48433 7.52227C2.56499 7.51541 2.64551 7.53702 2.71188 7.58337L6.17781 10.0035C8.48209 7.04337 10.6235 5.00047 12.0309 3.79676C13.6085 2.44735 14.6115 1.84099 14.6535 1.81572C14.7073 1.78342 14.7688 1.76636 14.8316 1.76636H16.5462C16.6163 1.76635 16.6849 1.78767 16.7426 1.82749C16.8004 1.86731 16.8447 1.92376 16.8697 1.98934C16.8947 2.05493 16.8991 2.12656 16.8825 2.19473C16.8658 2.2629 16.8288 2.32439 16.7764 2.37105C14.2345 4.6349 11.5919 8.23189 9.82257 10.8506C7.89924 13.6972 6.56405 16.0353 6.55079 16.0586C6.52074 16.1114 6.47733 16.1553 6.42494 16.186C6.37254 16.2167 6.31299 16.233 6.25227 16.2334L6.24999 16.2334Z" />
-                                    </svg>
-                                    Trusted Experience
-                                </li>
-                                <li>
-                                    <svg width="18" height="18" viewBox="0 0 18 18"
-                                        xmlns="http://www.w3.org/2000/svg">
-                                        <path
-                                            d="M6.24999 16.2334C6.18965 16.2334 6.13035 16.2177 6.07799 16.1877C6.02563 16.1577 5.98201 16.1146 5.95146 16.0625C4.65758 13.8582 1.20971 9.16675 1.17503 9.1196C1.12576 9.05264 1.10224 8.97019 1.10876 8.88731C1.11528 8.80444 1.15141 8.72668 1.21054 8.66825L2.2704 7.62096C2.32798 7.56406 2.40368 7.52914 2.48433 7.52227C2.56499 7.51541 2.64551 7.53702 2.71188 7.58337L6.17781 10.0035C8.48209 7.04337 10.6235 5.00047 12.0309 3.79676C13.6085 2.44735 14.6115 1.84099 14.6535 1.81572C14.7073 1.78342 14.7688 1.76636 14.8316 1.76636H16.5462C16.6163 1.76635 16.6849 1.78767 16.7426 1.82749C16.8004 1.86731 16.8447 1.92376 16.8697 1.98934C16.8947 2.05493 16.8991 2.12656 16.8825 2.19473C16.8658 2.2629 16.8288 2.32439 16.7764 2.37105C14.2345 4.6349 11.5919 8.23189 9.82257 10.8506C7.89924 13.6972 6.56405 16.0353 6.55079 16.0586C6.52074 16.1114 6.47733 16.1553 6.42494 16.186C6.37254 16.2167 6.31299 16.233 6.25227 16.2334L6.24999 16.2334Z" />
-                                    </svg>
-                                    Effortless Booking Process
-                                </li>
-                            </ul>
-                            <div class="counter-wrapper">
-                                <div class="single-counter">
-                                    <h2><strong class="counter">12</strong><sup>+</sup></h2>
-                                    <span>Years <br> of Experience</span>
-                                </div>
-                                <div class="counter-area">
-                                    <ul class="counter-img-grp">
-                                        <li><img src="{{ asset('assets/img/home3/counter-people-img1.png')}}" alt=""></li>
-                                        <li><img src="{{ asset('assets/img/home3/counter-people-img2.png')}}" alt=""></li>
-                                        <li><img src="{{ asset('assets/img/home3/counter-people-img3.png')}}" alt=""></li>
-                                        <li><img src="{{ asset('assets/img/home3/counter-people-img4.png')}}" alt=""></li>
-                                    </ul>
-                                    <h6> <strong><span class="counter">25</span>k+</strong> Customer <br> in Worldwide.
-                                    </h6>
-                                </div>
-                            </div>
-                            <svg class="divider" width="536" height="6" viewBox="0 0 536 6"
+                    <div class="slider-btn-grp two">
+                        <div class="slider-btn destination-slider-prev">
+                            <svg width="16" height="12" viewBox="0 0 16 12" fill="none"
                                 xmlns="http://www.w3.org/2000/svg">
-                                <path
-                                    d="M5 2.5L0 0.113249V5.88675L5 3.5V2.5ZM531 3.5L536 5.88675V0.113249L531 2.5V3.5ZM4.5 3.5H531.5V2.5H4.5V3.5Z" />
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M0 5.31421H16V6.68564H0V5.31421Z" />
+                                <path fill-rule="evenodd" clip-rule="evenodd"
+                                    d="M0.685714 6.68569C3.9104 6.68569 6.54629 3.84958 6.54629 0.825119V0.139404H5.17486V0.825119C5.17486 3.12181 3.12412 5.31426 0.685714 5.31426H0V6.68569H0.685714Z" />
+                                <path fill-rule="evenodd" clip-rule="evenodd"
+                                    d="M0.685714 5.31421C3.9104 5.31421 6.54629 8.15032 6.54629 11.1748V11.8605H5.17486V11.1748C5.17486 8.87901 3.12412 6.68564 0.685714 6.68564H0V5.31421H0.685714Z" />
                             </svg>
-                            <div class="btn-area">
-                                <a href="about.html" class="about-btn">
-                                    About More GoFly
-                                    <svg width="10" height="10" viewBox="0 0 10 10"
-                                        xmlns="http://www.w3.org/2000/svg">
-                                        <path
-                                            d="M1 9L9 1M9 1C7.22222 1.33333 3.33333 2 1 1M9 1C8.66667 2.66667 8 6.33333 9 9"
-                                            stroke-width="1.5" stroke-linecap="round" />
-                                    </svg>
-                                </a>
-                            </div>
+                        </div>
+                        <div class="slider-btn destination-slider-next">
+                            <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+                                <g>
+                                    <path fill-rule="evenodd" clip-rule="evenodd"
+                                        d="M16 7.31421H-3.8147e-06V8.68564H16V7.31421Z" />
+                                    <path fill-rule="evenodd" clip-rule="evenodd"
+                                        d="M15.3143 8.68569C12.0896 8.68569 9.45371 5.84958 9.45371 2.82512V2.1394H10.8251V2.82512C10.8251 5.12181 12.8759 7.31426 15.3143 7.31426H16V8.68569H15.3143Z" />
+                                    <path fill-rule="evenodd" clip-rule="evenodd"
+                                        d="M15.3143 7.31421C12.0896 7.31421 9.45371 10.1503 9.45371 13.1748V13.8605H10.8251V13.1748C10.8251 10.879 12.8759 8.68564 15.3143 8.68564H16V7.31421H15.3143Z" />
+                                </g>
+                            </svg>
                         </div>
                     </div>
-                    <div class="col-lg-6 d-lg-flex d-none justify-content-lg-end wow animate fadeInRight"
-                        data-wow-delay="200ms" data-wow-duration="1500ms">
-                        <div class="about-img-grp">
-                            <div class="single-grp">
+                </div>
+                <div class="row">
+                    <div class="col-lg-12 d-flex justify-content-center">
+                        <div class="swiper-pagination1 paginations two"></div>
+                    </div>
+                </div>
+            </div>
+            <img src="{{ $settings['destination_section_vector'] ?? asset('assets/img/home4/vector/destination-section-vector.svg') }}" alt=""
+                class="vector">
+        </div>
+        <!-- home4 Destination Section End-->
+
+        <!-- home4 About Section Start-->
+        <div class="home4-about-section mb-100">
+            <div class="container">
+                <div class="about-wrapper">
+                    <div class="row justify-content-between">
+                        <div class="col-xl-5 col-lg-6 wow animate fadeInLeft" data-wow-delay="200ms"
+                            data-wow-duration="1500ms">
+                            <div class="about-content">
+                                <div class="section-title">
+                                    <h2>We’re Best Travel Agency Ever.</h2>
+                                    <p>{{ $settings['about_section_description'] ?? 'We provides information on flight bookings, hotel reservations, and other travel-related services. For more detailed information about their offerings, you can visit their official website.' }}
+                                    </p>
+                                </div>
+                                <ul>
+                                    <li>
+                                        <svg width="18" height="18" viewBox="0 0 18 18"
+                                            xmlns="http://www.w3.org/2000/svg">
+                                            <path
+                                                d="M6.24999 16.2334C6.18965 16.2334 6.13035 16.2177 6.07799 16.1877C6.02563 16.1577 5.98201 16.1146 5.95146 16.0625C4.65758 13.8582 1.20971 9.16675 1.17503 9.1196C1.12576 9.05264 1.10224 8.97019 1.10876 8.88731C1.11528 8.80444 1.15141 8.72668 1.21054 8.66825L2.2704 7.62096C2.32798 7.56406 2.40368 7.52914 2.48433 7.52227C2.56499 7.51541 2.64551 7.53702 2.71188 7.58337L6.17781 10.0035C8.48209 7.04337 10.6235 5.00047 12.0309 3.79676C13.6085 2.44735 14.6115 1.84099 14.6535 1.81572C14.7073 1.78342 14.7688 1.76636 14.8316 1.76636H16.5462C16.6163 1.76635 16.6849 1.78767 16.7426 1.82749C16.8004 1.86731 16.8447 1.92376 16.8697 1.98934C16.8947 2.05493 16.8991 2.12656 16.8825 2.19473C16.8658 2.2629 16.8288 2.32439 16.7764 2.37105C14.2345 4.6349 11.5919 8.23189 9.82257 10.8506C7.89924 13.6972 6.56405 16.0353 6.55079 16.0586C6.52074 16.1114 6.47733 16.1553 6.42494 16.186C6.37254 16.2167 6.31299 16.233 6.25227 16.2334L6.24999 16.2334Z" />
+                                        </svg>
+                                        {{ $settings['about_feature_1'] ?? 'Affordable Travel' }}
+                                    </li>
+                                    <li>
+                                        <svg width="18" height="18" viewBox="0 0 18 18"
+                                            xmlns="http://www.w3.org/2000/svg">
+                                            <path
+                                                d="M6.24999 16.2334C6.18965 16.2334 6.13035 16.2177 6.07799 16.1877C6.02563 16.1577 5.98201 16.1146 5.95146 16.0625C4.65758 13.8582 1.20971 9.16675 1.17503 9.1196C1.12576 9.05264 1.10224 8.97019 1.10876 8.88731C1.11528 8.80444 1.15141 8.72668 1.21054 8.66825L2.2704 7.62096C2.32798 7.56406 2.40368 7.52914 2.48433 7.52227C2.56499 7.51541 2.64551 7.53702 2.71188 7.58337L6.17781 10.0035C8.48209 7.04337 10.6235 5.00047 12.0309 3.79676C13.6085 2.44735 14.6115 1.84099 14.6535 1.81572C14.7073 1.78342 14.7688 1.76636 14.8316 1.76636H16.5462C16.6163 1.76635 16.6849 1.78767 16.7426 1.82749C16.8004 1.86731 16.8447 1.92376 16.8697 1.98934C16.8947 2.05493 16.8991 2.12656 16.8825 2.19473C16.8658 2.2629 16.8288 2.32439 16.7764 2.37105C14.2345 4.6349 11.5919 8.23189 9.82257 10.8506C7.89924 13.6972 6.56405 16.0353 6.55079 16.0586C6.52074 16.1114 6.47733 16.1553 6.42494 16.186C6.37254 16.2167 6.31299 16.233 6.25227 16.2334L6.24999 16.2334Z" />
+                                        </svg>
+                                        {{ $settings['about_feature_2'] ?? 'Trusted Experience' }}
+                                    </li>
+                                    <li>
+                                        <svg width="18" height="18" viewBox="0 0 18 18"
+                                            xmlns="http://www.w3.org/2000/svg">
+                                            <path
+                                                d="M6.24999 16.2334C6.18965 16.2334 6.13035 16.2177 6.07799 16.1877C6.02563 16.1577 5.98201 16.1146 5.95146 16.0625C4.65758 13.8582 1.20971 9.16675 1.17503 9.1196C1.12576 9.05264 1.10224 8.97019 1.10876 8.88731C1.11528 8.80444 1.15141 8.72668 1.21054 8.66825L2.2704 7.62096C2.32798 7.56406 2.40368 7.52914 2.48433 7.52227C2.56499 7.51541 2.64551 7.53702 2.71188 7.58337L6.17781 10.0035C8.48209 7.04337 10.6235 5.00047 12.0309 3.79676C13.6085 2.44735 14.6115 1.84099 14.6535 1.81572C14.7073 1.78342 14.7688 1.76636 14.8316 1.76636H16.5462C16.6163 1.76635 16.6849 1.78767 16.7426 1.82749C16.8004 1.86731 16.8447 1.92376 16.8697 1.98934C16.8947 2.05493 16.8991 2.12656 16.8825 2.19473C16.8658 2.2629 16.8288 2.32439 16.7764 2.37105C14.2345 4.6349 11.5919 8.23189 9.82257 10.8506C7.89924 13.6972 6.56405 16.0353 6.55079 16.0586C6.52074 16.1114 6.47733 16.1553 6.42494 16.186C6.37254 16.2167 6.31299 16.233 6.25227 16.2334L6.24999 16.2334Z" />
+                                        </svg>
+                                        {{ $settings['about_feature_3'] ?? 'Effortless Booking Process' }}
+                                    </li>
+                                </ul>
                                 <div class="counter-wrapper">
+                                    <div class="single-counter">
+                                        <h2><strong
+                                                class="counter">{{ $settings['about_years_experience'] ?? '12' }}</strong><sup>+</sup>
+                                        </h2>
+                                        <span>{{ $settings['about_years_label'] ?? 'Years <br> of Experience' }}</span>
+                                    </div>
                                     <div class="counter-area">
-                                        <h2><strong>26</strong>K+</h2>
-                                        <span>Tour Completed</span>
+                                        <ul class="counter-img-grp">
+                                            <li><img src="{{ $settings['about_customer_img_1'] ?? asset('assets/img/home3/counter-people-img1.png') }}"
+                                                    alt=""></li>
+                                            <li><img src="{{ $settings['about_customer_img_2'] ?? asset('assets/img/home3/counter-people-img2.png') }}"
+                                                    alt=""></li>
+                                            <li><img src="{{ $settings['about_customer_img_3'] ?? asset('assets/img/home3/counter-people-img3.png') }}"
+                                                    alt=""></li>
+                                            <li><img src="{{ $settings['about_customer_img_4'] ?? asset('assets/img/home3/counter-people-img4.png') }}"
+                                                    alt=""></li>
+                                        </ul>
+                                        <h6> <strong><span
+                                                    class="counter">{{ $settings['about_customers_count'] ?? '25' }}</span>k+</strong>
+                                            {{ $settings['about_customers_label'] ?? 'Customer <br> in Worldwide.' }}
+                                        </h6>
                                     </div>
-                                    <svg class="vector" width="55" height="55" viewBox="0 0 55 55"
-                                        xmlns="http://www.w3.org/2000/svg">
-                                        <path fill-rule="evenodd" clip-rule="evenodd"
-                                            d="M48.3953 19.3234C46.5928 21.0856 49.1783 24.8855 45.1628 27.3609C42.8491 28.7873 46.4538 31.6364 45.1628 34.9688C44.9762 35.4504 44.938 35.9362 45.2063 36.4593C42.0435 38.8936 38.0818 40.3413 33.7819 40.3413C32.6391 40.3413 31.5202 40.2389 30.4337 40.043L30.0167 41.4955C31.2582 41.7286 32.5188 41.8457 33.782 41.8452C44.9663 41.8452 54.0332 32.7783 54.0332 21.5941C54.0332 10.4098 44.9663 1.34277 33.7819 1.34277C29.4125 1.34277 25.1885 2.74141 21.6888 5.35111C24.3124 9.39308 24.2598 14.705 21.5556 18.6946C22.5728 20.4768 24.035 20.5296 24.6011 20.7501C26.7583 21.591 28.3803 26.5747 29.7306 28.1757C31.6603 27.0616 33.7557 26.7059 35.9213 27.385C35.5639 25.6287 33.5082 23.6465 32.8831 23.0953C30.6562 21.132 31.5914 20.176 33.345 19.6904C35.3627 19.1317 38.4639 19.1959 39.0785 19.0651C40.5177 18.7589 40.9324 17.7467 39.8315 16.7925C38.5393 15.6725 36.2766 14.4403 35.7499 13.4377C35.0217 12.0512 35.5506 11.6375 36.4901 11.347C38.3992 10.7566 42.0025 10.6734 40.2002 3.97439C46.4804 6.26248 51.1061 11.765 52.2518 18.3652C50.1517 18.3532 49.0145 18.718 48.3953 19.3234ZM7.92247 45.6491L1.71875 40.5901L3.98342 39.0886L10.0496 41.2748L30.9044 29.2343C34.3621 27.238 41.2161 29.9589 34.6547 33.7471L29.8863 36.5002L25.452 51.9436L22.4839 53.6572L22.6915 40.5937C22.6915 40.5937 10.2446 47.4544 7.92247 45.6491ZM11.5466 1.34277C17.3893 1.34277 22.1263 6.07965 22.1263 11.9225C22.1263 17.7654 17.3895 22.5023 11.5466 22.5023C5.70378 22.5023 0.966797 17.7653 0.966797 11.9225C0.966797 6.07976 5.70378 1.34277 11.5466 1.34277ZM5.09448 18.3054C5.5376 15.1383 8.25752 12.7006 11.5467 12.7006C14.8359 12.7006 17.5554 15.1382 17.9985 18.3054C19.6206 16.666 20.6223 14.4113 20.6223 11.9225C20.6223 6.90991 16.5591 2.84668 11.5465 2.84668C6.53394 2.84668 2.4707 6.90991 2.4707 11.9225C2.4707 14.4113 3.47252 16.6659 5.09448 18.3054ZM8.53531 7.95373C8.53531 9.61694 9.88356 10.9652 11.5468 10.9652C13.21 10.9652 14.5582 9.61694 14.5582 7.95373C14.5582 6.29095 13.21 4.9427 11.5468 4.9427C9.88356 4.9428 8.53531 6.29095 8.53531 7.95373ZM9.88088 31.828L12.8488 30.1144L22.298 32.4668L16.7678 35.6596L9.88088 31.828ZM16.8012 29.5485C15.9014 27.6309 15.3353 25.5737 15.1273 23.4657C14.6436 23.6154 14.1511 23.7346 13.6525 23.8224C13.8498 25.6299 14.2911 27.4023 14.9644 29.0912L16.8012 29.5485Z" />
-                                    </svg>
                                 </div>
-                                <div class="single-img">
-                                    <img src="{{ asset('assets/img/home4/about-img1.jpg')}}" alt="">
+                                <svg class="divider" width="536" height="6" viewBox="0 0 536 6"
+                                    xmlns="http://www.w3.org/2000/svg">
+                                    <path
+                                        d="M5 2.5L0 0.113249V5.88675L5 3.5V2.5ZM531 3.5L536 5.88675V0.113249L531 2.5V3.5ZM4.5 3.5H531.5V2.5H4.5V3.5Z" />
+                                </svg>
+                                <div class="btn-area">
+                                    <a href="about.html" class="about-btn">
+                                        {{ $settings['about_button_text'] ?? 'About More TheTaxi' }}
+                                        <svg width="10" height="10" viewBox="0 0 10 10"
+                                            xmlns="http://www.w3.org/2000/svg">
+                                            <path
+                                                d="M1 9L9 1M9 1C7.22222 1.33333 3.33333 2 1 1M9 1C8.66667 2.66667 8 6.33333 9 9"
+                                                stroke-width="1.5" stroke-linecap="round" />
+                                        </svg>
+                                    </a>
                                 </div>
                             </div>
-                            <div class="single-grp">
-                                <div class="single-img two">
-                                    <img src="{{ asset('assets/img/home4/about-img2.jpg')}}" alt="">
+                        </div>
+                        <div class="col-lg-6 d-lg-flex d-none justify-content-lg-end wow animate fadeInRight"
+                            data-wow-delay="200ms" data-wow-duration="1500ms">
+                            <div class="about-img-grp">
+                                <div class="single-grp">
+                                    <div class="counter-wrapper">
+                                        <div class="counter-area">
+                                            <h2><strong>{{ $settings['about_tours_completed'] ?? '26' }}</strong>K+</h2>
+                                            <span>{{ $settings['about_tours_label'] ?? 'Tour Completed' }}</span>
+                                        </div>
+                                        <svg class="vector" width="55" height="55" viewBox="0 0 55 55"
+                                            xmlns="http://www.w3.org/2000/svg">
+                                            <path fill-rule="evenodd" clip-rule="evenodd"
+                                                d="M48.3953 19.3234C46.5928 21.0856 49.1783 24.8855 45.1628 27.3609C42.8491 28.7873 46.4538 31.6364 45.1628 34.9688C44.9762 35.4504 44.938 35.9362 45.2063 36.4593C42.0435 38.8936 38.0818 40.3413 33.7819 40.3413C32.6391 40.3413 31.5202 40.2389 30.4337 40.043L30.0167 41.4955C31.2582 41.7286 32.5188 41.8457 33.782 41.8452C44.9663 41.8452 54.0332 32.7783 54.0332 21.5941C54.0332 10.4098 44.9663 1.34277 33.7819 1.34277C29.4125 1.34277 25.1885 2.74141 21.6888 5.35111C24.3124 9.39308 24.2598 14.705 21.5556 18.6946C22.5728 20.4768 24.035 20.5296 24.6011 20.7501C26.7583 21.591 28.3803 26.5747 29.7306 28.1757C31.6603 27.0616 33.7557 26.7059 35.9213 27.385C35.5639 25.6287 33.5082 23.6465 32.8831 23.0953C30.6562 21.132 31.5914 20.176 33.345 19.6904C35.3627 19.1317 38.4639 19.1959 39.0785 19.0651C40.5177 18.7589 40.9324 17.7467 39.8315 16.7925C38.5393 15.6725 36.2766 14.4403 35.7499 13.4377C35.0217 12.0512 35.5506 11.6375 36.4901 11.347C38.3992 10.7566 42.0025 10.6734 40.2002 3.97439C46.4804 6.26248 51.1061 11.765 52.2518 18.3652C50.1517 18.3532 49.0145 18.718 48.3953 19.3234ZM7.92247 45.6491L1.71875 40.5901L3.98342 39.0886L10.0496 41.2748L30.9044 29.2343C34.3621 27.238 41.2161 29.9589 34.6547 33.7471L29.8863 36.5002L25.452 51.9436L22.4839 53.6572L22.6915 40.5937C22.6915 40.5937 10.2446 47.4544 7.92247 45.6491ZM11.5466 1.34277C17.3893 1.34277 22.1263 6.07965 22.1263 11.9225C22.1263 17.7654 17.3895 22.5023 11.5466 22.5023C5.70378 22.5023 0.966797 17.7653 0.966797 11.9225C0.966797 6.07976 5.70378 1.34277 11.5466 1.34277ZM5.09448 18.3054C5.5376 15.1383 8.25752 12.7006 11.5467 12.7006C14.8359 12.7006 17.5554 15.1382 17.9985 18.3054C19.6206 16.666 20.6223 14.4113 20.6223 11.9225C20.6223 6.90991 16.5591 2.84668 11.5465 2.84668C6.53394 2.84668 2.4707 6.90991 2.4707 11.9225C2.4707 14.4113 3.47252 16.6659 5.09448 18.3054ZM8.53531 7.95373C8.53531 9.61694 9.88356 10.9652 11.5468 10.9652C13.21 10.9652 14.5582 9.61694 14.5582 7.95373C14.5582 6.29095 13.21 4.9427 11.5468 4.9427C9.88356 4.9428 8.53531 6.29095 8.53531 7.95373ZM9.88088 31.828L12.8488 30.1144L22.298 32.4668L16.7678 35.6596L9.88088 31.828ZM16.8012 29.5485C15.9014 27.6309 15.3353 25.5737 15.1273 23.4657C14.6436 23.6154 14.1511 23.7346 13.6525 23.8224C13.8498 25.6299 14.2911 27.4023 14.9644 29.0912L16.8012 29.5485Z" />
+                                        </svg>
+                                    </div>
+                                    <div class="single-img">
+                                        <img src="{{ $settings['about_image_1'] ?? asset('assets/img/home4/about-img1.jpg') }}" alt="">
+                                    </div>
                                 </div>
-                                <div class="single-img three">
-                                    <img src="{{ asset('assets/img/home4/about-img3.jpg')}}" alt="">
+                                <div class="single-grp">
+                                    <div class="single-img two">
+                                        <img src="{{ $settings['about_image_2'] ?? asset('assets/img/home4/about-img2.jpg') }}" alt="">
+                                    </div>
+                                    <div class="single-img three">
+                                        <img src="{{ $settings['about_image_3'] ?? asset('assets/img/home4/about-img3.jpg') }}" alt="">
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -396,763 +346,109 @@
                 </div>
             </div>
         </div>
-    </div>
-    <!-- home4 About Section End-->
+        <!-- home4 About Section End-->
 
-    <!-- home4 Travel Package Section Start-->
-    <div class="home4-travel-package-section mt-100 mb-100">
-        <div class="container">
-            <div class="row justify-content-center mb-50 wow animate fadeInDown" data-wow-delay="200ms"
-                data-wow-duration="1500ms">
-                <div class="col-xl-6 col-lg-8">
-                    <div class="section-title text-center">
-                        <h2>Popular Package</h2>
-                        <p>A curated list of the most popular travel packages based on different destinations.</p>
-                    </div>
-                </div>
-            </div>
-            <div class="row gy-lg-5 gy-4">
-                <div class="col-lg-4 col-md-6 wow animate fadeInDown" data-wow-delay="200ms" data-wow-duration="1500ms">
-                    <div class="package-card">
-                        <div class="package-img-wrap">
-                            <a href="travel-package-details.html" class="package-img">
-                                <img src="{{ asset('assets/img/home1/tour-package-img1.jpg')}}" alt="">
-                            </a>
-                            <div class="batch">
-                                <span>Hot Sale!</span>
-                            </div>
-                        </div>
-                        <div class="package-content">
-                            <h5><a href="travel-package-details.html">Maldives Beach Paradise</a></h5>
-                            <div class="location-and-time">
-                                <div class="location">
-                                    <svg width="14" height="14" viewBox="0 0 14 14"
-                                        xmlns="http://www.w3.org/2000/svg">
-                                        <path
-                                            d="M6.83615 0C3.77766 0 1.28891 2.48879 1.28891 5.54892C1.28891 7.93837 4.6241 11.8351 6.05811 13.3994C6.25669 13.6175 6.54154 13.7411 6.83615 13.7411C7.13076 13.7411 7.41561 13.6175 7.6142 13.3994C9.04821 11.8351 12.3834 7.93833 12.3834 5.54892C12.3834 2.48879 9.89464 0 6.83615 0ZM7.31469 13.1243C7.18936 13.2594 7.02008 13.3342 6.83615 13.3342C6.65222 13.3342 6.48295 13.2594 6.35761 13.1243C4.95614 11.5959 1.69584 7.79515 1.69584 5.54896C1.69584 2.7134 4.00067 0.406933 6.83615 0.406933C9.67164 0.406933 11.9765 2.7134 11.9765 5.54896C11.9765 7.79515 8.71617 11.5959 7.31469 13.1243Z" />
-                                        <path
-                                            d="M6.83618 8.54554C8.4624 8.54554 9.7807 7.22723 9.7807 5.60102C9.7807 3.9748 8.4624 2.65649 6.83618 2.65649C5.20997 2.65649 3.89166 3.9748 3.89166 5.60102C3.89166 7.22723 5.20997 8.54554 6.83618 8.54554Z" />
-                                    </svg>
-                                    <a href="travel-package-01.html">Maldives</a>
-                                </div>
-                                <svg class="arrow" width="25" height="6" viewBox="0 0 25 6"
-                                    xmlns="http://www.w3.org/2000/svg">
-                                    <path
-                                        d="M0 3L5 5.88675V0.113249L0 3ZM25 3L20 0.113249V5.88675L25 3ZM4.5 3.5H20.5V2.5H4.5V3.5Z" />
-                                </svg>
-                                <span>05 Days</span>
-                            </div>
-                            <div class="btn-and-price-area">
-                                <a href="travel-package-details.html" class="primary-btn1">
-                                    <span>
-                                        Book Now
-                                        <svg width="10" height="10" viewBox="0 0 10 10"
-                                            xmlns="http://www.w3.org/2000/svg">
-                                            <path
-                                                d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z" />
-                                        </svg>
-                                    </span>
-                                    <span>
-                                        Book Now
-                                        <svg width="10" height="10" viewBox="0 0 10 10"
-                                            xmlns="http://www.w3.org/2000/svg">
-                                            <path
-                                                d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z" />
-                                        </svg>
-                                    </span>
-                                </a>
-                                <div class="price-area">
-                                    <h6>Per Person</h6>
-                                    <span>$399</span>
-                                </div>
-                            </div>
-                            <svg class="divider" height="6" viewBox="0 0 374 6" xmlns="http://www.w3.org/2000/svg">
-                                <path
-                                    d="M5 2.5L0 0.113249V5.88675L5 3.5V2.5ZM369 3.5L374 5.88675V0.113249L369 2.5V3.5ZM4.5 3.5H369.5V2.5H4.5V3.5Z" />
-                            </svg>
-                            <div class="bottom-area">
-                                <ul>
-                                    <li>
-                                        <svg width="16" height="16" viewBox="0 0 16 16"
-                                            xmlns="http://www.w3.org/2000/svg">
-                                            <path
-                                                d="M9.2732 12.9807H6.7268C6.68429 12.9807 6.64298 12.9666 6.60935 12.9406C6.55906 12.9018 5.36398 11.9718 4.14989 10.4857C3.43499 9.61078 2.86499 8.72565 2.45543 7.8549C1.93974 6.75846 1.67834 5.68141 1.67834 4.65329C1.67834 3.50657 2.36043 2.33394 3.54995 1.43595C4.1378 0.992226 4.81163 0.641781 5.55321 0.394396C6.33797 0.132617 7.16112 0 8 0C8.83888 0 9.66203 0.132617 10.4466 0.394396C11.1882 0.641781 11.862 0.992035 12.4499 1.43595C13.6392 2.33394 14.3215 3.50676 14.3215 4.65329C14.3215 5.63247 14.0599 6.67939 13.544 7.7647C13.1348 8.62565 12.5652 9.51367 11.8511 10.4036C10.6383 11.9148 9.40697 12.9272 9.39468 12.9371C9.36046 12.9653 9.31752 12.9807 9.2732 12.9807ZM6.79378 12.5969H9.20334C9.4465 12.3905 10.5082 11.4651 11.5563 10.1576C12.6425 8.8026 13.9374 6.74772 13.9374 4.65329C13.9374 2.63794 11.3981 0.38384 7.99981 0.38384C4.60148 0.38384 2.06238 2.63794 2.06238 4.65329C2.06238 6.85769 3.3563 8.90624 4.44199 10.2364C5.49084 11.5215 6.55311 12.4032 6.79378 12.5969Z" />
-                                            <path
-                                                d="M7.51886 12.7888C7.51886 12.7888 5.68372 9.03538 5.68372 4.65327C5.68372 2.43045 6.72066 0.191895 8 0.191895C9.27934 0.191895 10.3163 2.43045 10.3163 4.65327C10.3163 8.82024 8.48114 12.7888 8.48114 12.7888" />
-                                            <path
-                                                d="M7.34653 12.873C7.32753 12.8343 6.87594 11.9042 6.41802 10.4209C5.9956 9.05229 5.492 6.94079 5.492 4.65329C5.492 3.53843 5.74668 2.39036 6.19079 1.50312C6.67577 0.533921 7.31832 0 8.00002 0C8.68172 0 9.32426 0.53373 9.80944 1.50312C10.2535 2.39036 10.5082 3.53843 10.5082 4.65329C10.5082 6.82928 10.0048 8.94655 9.5824 10.3393C9.12505 11.8478 8.67423 12.8283 8.65542 12.8692L8.30709 12.7082C8.31169 12.6984 8.7675 11.7058 9.21717 10.2213C9.63114 8.85481 10.1246 6.77977 10.1246 4.65329C10.1246 3.5962 9.88467 2.51051 9.46648 1.67489C9.05577 0.854428 8.52146 0.38384 8.00021 0.38384C7.47895 0.38384 6.94465 0.854428 6.53394 1.67489C6.11574 2.51051 5.87584 3.5962 5.87584 4.65329C5.87584 6.893 6.37023 8.96439 6.78497 10.3076C7.23406 11.7626 7.68699 12.6951 7.6916 12.7043L7.34653 12.873ZM8.77038 16H7.22965C6.84658 16 6.5349 15.6883 6.5349 15.3052V13.9892C6.5349 13.8833 6.62088 13.7973 6.72682 13.7973H9.27321C9.37915 13.7973 9.46513 13.8833 9.46513 13.9892V15.3052C9.46513 15.6883 9.15346 16 8.77038 16ZM6.91874 14.1812V15.3052C6.91874 15.4766 7.05826 15.6162 7.22965 15.6162H8.77038C8.94177 15.6162 9.08129 15.4766 9.08129 15.3052V14.1812H6.91874Z" />
-                                            <path
-                                                d="M8.90952 14.1812H7.0907C7.00606 14.1812 6.93159 14.126 6.90703 14.045L6.54334 12.8445C6.52568 12.7863 6.53662 12.7232 6.5729 12.6745C6.60917 12.6257 6.66636 12.5969 6.72701 12.5969H9.2734C9.33424 12.5969 9.39143 12.6257 9.42751 12.6745C9.4454 12.6985 9.45739 12.7264 9.46252 12.756C9.46765 12.7855 9.46579 12.8158 9.45707 12.8445L9.09338 14.045C9.06862 14.1258 8.99397 14.1812 8.90952 14.1812ZM7.23291 13.7974H8.76693L9.01431 12.9808H6.98552L7.23291 13.7974Z" />
-                                        </svg>
-                                        Experience
-                                        <div class="info">
-                                            <svg width="12" height="12" viewBox="0 0 12 12"
-                                                xmlns="http://www.w3.org/2000/svg">
-                                                <g>
-                                                    <path
-                                                        d="M6 0.375C4.88748 0.375 3.79995 0.704901 2.87492 1.32298C1.94989 1.94107 1.22892 2.81957 0.80318 3.84741C0.377437 4.87524 0.266043 6.00624 0.483085 7.09738C0.700127 8.18853 1.23586 9.19081 2.02253 9.97748C2.8092 10.7641 3.81148 11.2999 4.90262 11.5169C5.99376 11.734 7.12476 11.6226 8.1526 11.1968C9.18043 10.7711 10.0589 10.0501 10.677 9.12508C11.2951 8.20006 11.625 7.11252 11.625 6C11.6245 4.50831 11.0317 3.07786 9.97693 2.02307C8.92215 0.968289 7.49169 0.375497 6 0.375ZM6 9.375C5.85167 9.375 5.70666 9.33101 5.58333 9.2486C5.45999 9.16619 5.36386 9.04906 5.30709 8.91201C5.25033 8.77497 5.23548 8.62417 5.26441 8.47868C5.29335 8.3332 5.36478 8.19956 5.46967 8.09467C5.57456 7.98978 5.7082 7.91835 5.85369 7.88941C5.99917 7.86047 6.14997 7.87533 6.28702 7.93209C6.42406 7.98886 6.54119 8.08499 6.62361 8.20832C6.70602 8.33166 6.75 8.47666 6.75 8.625C6.74941 8.82373 6.6702 9.01415 6.52968 9.15468C6.38915 9.2952 6.19873 9.37441 6 9.375ZM6.85875 3.55875L6.6075 6.56625C6.5944 6.71834 6.52472 6.85999 6.41224 6.9632C6.29976 7.0664 6.15266 7.12367 6 7.12367C5.84735 7.12367 5.70024 7.0664 5.58776 6.9632C5.47528 6.85999 5.40561 6.71834 5.3925 6.56625L5.14125 3.55875C5.13042 3.44226 5.1434 3.32478 5.1794 3.21346C5.2154 3.10214 5.27367 2.99931 5.35067 2.91123C5.42767 2.82314 5.52178 2.75165 5.62729 2.70108C5.73279 2.65052 5.84748 2.62195 5.96437 2.61711C6.08127 2.61227 6.19793 2.63126 6.30725 2.67294C6.41657 2.71461 6.51627 2.77808 6.60029 2.8595C6.6843 2.94092 6.75087 3.03858 6.79595 3.14655C6.84103 3.25451 6.86367 3.37051 6.8625 3.4875C6.86313 3.51131 6.86187 3.53514 6.85875 3.55875Z" />
-                                                </g>
-                                            </svg>
-                                            <div class="tooltip-text">Including Activities <span>Scuba Diving, Zip-lining,
-                                                    Rafting & Rock Climbing</span> with this premium package.</div>
-                                        </div>
-                                    </li>
-                                    <li>
-                                        <svg width="16" height="16" viewBox="0 0 16 16"
-                                            xmlns="http://www.w3.org/2000/svg">
-                                            <g>
-                                                <path
-                                                    d="M8 0C3.58853 0 0 3.58853 0 8C0 12.4115 3.58853 16 8 16C12.4115 16 16 12.4108 16 8C16 3.58916 12.4115 0 8 0ZM8 14.7607C4.27266 14.7607 1.23934 11.728 1.23934 8C1.23934 4.27203 4.27266 1.23934 8 1.23934C11.7273 1.23934 14.7607 4.27203 14.7607 8C14.7607 11.728 11.728 14.7607 8 14.7607Z" />
-                                                <path
-                                                    d="M11.0984 7.32445H8.6197V4.84576C8.6197 4.5037 8.3427 4.22607 8.00001 4.22607C7.65733 4.22607 7.38033 4.5037 7.38033 4.84576V7.32445H4.90164C4.55895 7.32445 4.28195 7.60207 4.28195 7.94414C4.28195 8.2862 4.55895 8.56382 4.90164 8.56382H7.38033V11.0425C7.38033 11.3846 7.65733 11.6622 8.00001 11.6622C8.3427 11.6622 8.6197 11.3846 8.6197 11.0425V8.56382H11.0984C11.4411 8.56382 11.7181 8.2862 11.7181 7.94414C11.7181 7.60207 11.4411 7.32445 11.0984 7.32445Z" />
-                                            </g>
-                                        </svg>
-                                        Inclusion
-                                        <div class="info">
-                                            <svg width="12" height="12" viewBox="0 0 12 12"
-                                                xmlns="http://www.w3.org/2000/svg">
-                                                <g>
-                                                    <path
-                                                        d="M6 0.375C4.88748 0.375 3.79995 0.704901 2.87492 1.32298C1.94989 1.94107 1.22892 2.81957 0.80318 3.84741C0.377437 4.87524 0.266043 6.00624 0.483085 7.09738C0.700127 8.18853 1.23586 9.19081 2.02253 9.97748C2.8092 10.7641 3.81148 11.2999 4.90262 11.5169C5.99376 11.734 7.12476 11.6226 8.1526 11.1968C9.18043 10.7711 10.0589 10.0501 10.677 9.12508C11.2951 8.20006 11.625 7.11252 11.625 6C11.6245 4.50831 11.0317 3.07786 9.97693 2.02307C8.92215 0.968289 7.49169 0.375497 6 0.375ZM6 9.375C5.85167 9.375 5.70666 9.33101 5.58333 9.2486C5.45999 9.16619 5.36386 9.04906 5.30709 8.91201C5.25033 8.77497 5.23548 8.62417 5.26441 8.47868C5.29335 8.3332 5.36478 8.19956 5.46967 8.09467C5.57456 7.98978 5.7082 7.91835 5.85369 7.88941C5.99917 7.86047 6.14997 7.87533 6.28702 7.93209C6.42406 7.98886 6.54119 8.08499 6.62361 8.20832C6.70602 8.33166 6.75 8.47666 6.75 8.625C6.74941 8.82373 6.6702 9.01415 6.52968 9.15468C6.38915 9.2952 6.19873 9.37441 6 9.375ZM6.85875 3.55875L6.6075 6.56625C6.5944 6.71834 6.52472 6.85999 6.41224 6.9632C6.29976 7.0664 6.15266 7.12367 6 7.12367C5.84735 7.12367 5.70024 7.0664 5.58776 6.9632C5.47528 6.85999 5.40561 6.71834 5.3925 6.56625L5.14125 3.55875C5.13042 3.44226 5.1434 3.32478 5.1794 3.21346C5.2154 3.10214 5.27367 2.99931 5.35067 2.91123C5.42767 2.82314 5.52178 2.75165 5.62729 2.70108C5.73279 2.65052 5.84748 2.62195 5.96437 2.61711C6.08127 2.61227 6.19793 2.63126 6.30725 2.67294C6.41657 2.71461 6.51627 2.77808 6.60029 2.8595C6.6843 2.94092 6.75087 3.03858 6.79595 3.14655C6.84103 3.25451 6.86367 3.37051 6.8625 3.4875C6.86313 3.51131 6.86187 3.53514 6.85875 3.55875Z" />
-                                                </g>
-                                            </svg>
-                                            <div class="tooltip-text">This package covers <span>Accommodation, Daily Meals,
-                                                    Entry Fees & Local Transfers</span> to ensure a worry-free trip.</div>
-                                        </div>
-                                    </li>
-                                </ul>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-lg-4 col-md-6 wow animate fadeInDown" data-wow-delay="400ms" data-wow-duration="1500ms">
-                    <div class="package-card">
-                        <div class="package-img-wrap">
-                            <div class="swiper package-card-img-slider">
-                                <div class="swiper-wrapper">
-                                    <div class="swiper-slide">
-                                        <a href="travel-package-details.html" class="package-img">
-                                            <img src="{{ asset('assets/img/home1/tour-package-img2.jpg')}}" alt="">
-                                        </a>
-                                    </div>
-                                    <div class="swiper-slide">
-                                        <a href="travel-package-details.html" class="package-img">
-                                            <img src="{{ asset('assets/img/home1/tour-package-img10.jpg')}}" alt="">
-                                        </a>
-                                    </div>
-                                    <div class="swiper-slide">
-                                        <a href="travel-package-details.html" class="package-img">
-                                            <img src="{{ asset('assets/img/home1/tour-package-img11.jpg')}}" alt="">
-                                        </a>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="slider-pagi-wrap">
-                                <div class="package-card-img-pagi paginations"></div>
-                            </div>
-                            <div class="batch">
-                                <span>Hot Sale!</span>
-                            </div>
-                        </div>
-                        <div class="package-content">
-                            <h5><a href="travel-package-details.html">Bali Paradise Tour</a></h5>
-                            <div class="location-and-time">
-                                <div class="location">
-                                    <svg width="14" height="14" viewBox="0 0 14 14"
-                                        xmlns="http://www.w3.org/2000/svg">
-                                        <path
-                                            d="M6.83615 0C3.77766 0 1.28891 2.48879 1.28891 5.54892C1.28891 7.93837 4.6241 11.8351 6.05811 13.3994C6.25669 13.6175 6.54154 13.7411 6.83615 13.7411C7.13076 13.7411 7.41561 13.6175 7.6142 13.3994C9.04821 11.8351 12.3834 7.93833 12.3834 5.54892C12.3834 2.48879 9.89464 0 6.83615 0ZM7.31469 13.1243C7.18936 13.2594 7.02008 13.3342 6.83615 13.3342C6.65222 13.3342 6.48295 13.2594 6.35761 13.1243C4.95614 11.5959 1.69584 7.79515 1.69584 5.54896C1.69584 2.7134 4.00067 0.406933 6.83615 0.406933C9.67164 0.406933 11.9765 2.7134 11.9765 5.54896C11.9765 7.79515 8.71617 11.5959 7.31469 13.1243Z" />
-                                        <path
-                                            d="M6.83618 8.54554C8.4624 8.54554 9.7807 7.22723 9.7807 5.60102C9.7807 3.9748 8.4624 2.65649 6.83618 2.65649C5.20997 2.65649 3.89166 3.9748 3.89166 5.60102C3.89166 7.22723 5.20997 8.54554 6.83618 8.54554Z" />
-                                    </svg>
-                                    <a href="travel-package-01.html">Indonesia</a>
-                                </div>
-                                <svg class="arrow" width="25" height="6" viewBox="0 0 25 6"
-                                    xmlns="http://www.w3.org/2000/svg">
-                                    <path
-                                        d="M0 3L5 5.88675V0.113249L0 3ZM25 3L20 0.113249V5.88675L25 3ZM4.5 3.5H20.5V2.5H4.5V3.5Z" />
-                                </svg>
-                                <span>07 Days</span>
-                            </div>
-                            <div class="btn-and-price-area">
-                                <a href="travel-package-details.html" class="primary-btn1">
-                                    <span>
-                                        Book Now
-                                        <svg width="10" height="10" viewBox="0 0 10 10"
-                                            xmlns="http://www.w3.org/2000/svg">
-                                            <path
-                                                d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z" />
-                                        </svg>
-                                    </span>
-                                    <span>
-                                        Book Now
-                                        <svg width="10" height="10" viewBox="0 0 10 10"
-                                            xmlns="http://www.w3.org/2000/svg">
-                                            <path
-                                                d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z" />
-                                        </svg>
-                                    </span>
-                                </a>
-                                <div class="price-area">
-                                    <h6>Per Person</h6>
-                                    <span>$599</span>
-                                </div>
-                            </div>
-                            <svg class="divider" height="6" viewBox="0 0 374 6" xmlns="http://www.w3.org/2000/svg">
-                                <path
-                                    d="M5 2.5L0 0.113249V5.88675L5 3.5V2.5ZM369 3.5L374 5.88675V0.113249L369 2.5V3.5ZM4.5 3.5H369.5V2.5H4.5V3.5Z" />
-                            </svg>
-                            <div class="bottom-area">
-                                <ul>
-                                    <li>
-                                        <svg width="16" height="16" viewBox="0 0 16 16"
-                                            xmlns="http://www.w3.org/2000/svg">
-                                            <path
-                                                d="M9.2732 12.9807H6.7268C6.68429 12.9807 6.64298 12.9666 6.60935 12.9406C6.55906 12.9018 5.36398 11.9718 4.14989 10.4857C3.43499 9.61078 2.86499 8.72565 2.45543 7.8549C1.93974 6.75846 1.67834 5.68141 1.67834 4.65329C1.67834 3.50657 2.36043 2.33394 3.54995 1.43595C4.1378 0.992226 4.81163 0.641781 5.55321 0.394396C6.33797 0.132617 7.16112 0 8 0C8.83888 0 9.66203 0.132617 10.4466 0.394396C11.1882 0.641781 11.862 0.992035 12.4499 1.43595C13.6392 2.33394 14.3215 3.50676 14.3215 4.65329C14.3215 5.63247 14.0599 6.67939 13.544 7.7647C13.1348 8.62565 12.5652 9.51367 11.8511 10.4036C10.6383 11.9148 9.40697 12.9272 9.39468 12.9371C9.36046 12.9653 9.31752 12.9807 9.2732 12.9807ZM6.79378 12.5969H9.20334C9.4465 12.3905 10.5082 11.4651 11.5563 10.1576C12.6425 8.8026 13.9374 6.74772 13.9374 4.65329C13.9374 2.63794 11.3981 0.38384 7.99981 0.38384C4.60148 0.38384 2.06238 2.63794 2.06238 4.65329C2.06238 6.85769 3.3563 8.90624 4.44199 10.2364C5.49084 11.5215 6.55311 12.4032 6.79378 12.5969Z" />
-                                            <path
-                                                d="M7.51886 12.7888C7.51886 12.7888 5.68372 9.03538 5.68372 4.65327C5.68372 2.43045 6.72066 0.191895 8 0.191895C9.27934 0.191895 10.3163 2.43045 10.3163 4.65327C10.3163 8.82024 8.48114 12.7888 8.48114 12.7888" />
-                                            <path
-                                                d="M7.34653 12.873C7.32753 12.8343 6.87594 11.9042 6.41802 10.4209C5.9956 9.05229 5.492 6.94079 5.492 4.65329C5.492 3.53843 5.74668 2.39036 6.19079 1.50312C6.67577 0.533921 7.31832 0 8.00002 0C8.68172 0 9.32426 0.53373 9.80944 1.50312C10.2535 2.39036 10.5082 3.53843 10.5082 4.65329C10.5082 6.82928 10.0048 8.94655 9.5824 10.3393C9.12505 11.8478 8.67423 12.8283 8.65542 12.8692L8.30709 12.7082C8.31169 12.6984 8.7675 11.7058 9.21717 10.2213C9.63114 8.85481 10.1246 6.77977 10.1246 4.65329C10.1246 3.5962 9.88467 2.51051 9.46648 1.67489C9.05577 0.854428 8.52146 0.38384 8.00021 0.38384C7.47895 0.38384 6.94465 0.854428 6.53394 1.67489C6.11574 2.51051 5.87584 3.5962 5.87584 4.65329C5.87584 6.893 6.37023 8.96439 6.78497 10.3076C7.23406 11.7626 7.68699 12.6951 7.6916 12.7043L7.34653 12.873ZM8.77038 16H7.22965C6.84658 16 6.5349 15.6883 6.5349 15.3052V13.9892C6.5349 13.8833 6.62088 13.7973 6.72682 13.7973H9.27321C9.37915 13.7973 9.46513 13.8833 9.46513 13.9892V15.3052C9.46513 15.6883 9.15346 16 8.77038 16ZM6.91874 14.1812V15.3052C6.91874 15.4766 7.05826 15.6162 7.22965 15.6162H8.77038C8.94177 15.6162 9.08129 15.4766 9.08129 15.3052V14.1812H6.91874Z" />
-                                            <path
-                                                d="M8.90952 14.1812H7.0907C7.00606 14.1812 6.93159 14.126 6.90703 14.045L6.54334 12.8445C6.52568 12.7863 6.53662 12.7232 6.5729 12.6745C6.60917 12.6257 6.66636 12.5969 6.72701 12.5969H9.2734C9.33424 12.5969 9.39143 12.6257 9.42751 12.6745C9.4454 12.6985 9.45739 12.7264 9.46252 12.756C9.46765 12.7855 9.46579 12.8158 9.45707 12.8445L9.09338 14.045C9.06862 14.1258 8.99397 14.1812 8.90952 14.1812ZM7.23291 13.7974H8.76693L9.01431 12.9808H6.98552L7.23291 13.7974Z" />
-                                        </svg>
-                                        Experience
-                                        <div class="info">
-                                            <svg width="12" height="12" viewBox="0 0 12 12"
-                                                xmlns="http://www.w3.org/2000/svg">
-                                                <g>
-                                                    <path
-                                                        d="M6 0.375C4.88748 0.375 3.79995 0.704901 2.87492 1.32298C1.94989 1.94107 1.22892 2.81957 0.80318 3.84741C0.377437 4.87524 0.266043 6.00624 0.483085 7.09738C0.700127 8.18853 1.23586 9.19081 2.02253 9.97748C2.8092 10.7641 3.81148 11.2999 4.90262 11.5169C5.99376 11.734 7.12476 11.6226 8.1526 11.1968C9.18043 10.7711 10.0589 10.0501 10.677 9.12508C11.2951 8.20006 11.625 7.11252 11.625 6C11.6245 4.50831 11.0317 3.07786 9.97693 2.02307C8.92215 0.968289 7.49169 0.375497 6 0.375ZM6 9.375C5.85167 9.375 5.70666 9.33101 5.58333 9.2486C5.45999 9.16619 5.36386 9.04906 5.30709 8.91201C5.25033 8.77497 5.23548 8.62417 5.26441 8.47868C5.29335 8.3332 5.36478 8.19956 5.46967 8.09467C5.57456 7.98978 5.7082 7.91835 5.85369 7.88941C5.99917 7.86047 6.14997 7.87533 6.28702 7.93209C6.42406 7.98886 6.54119 8.08499 6.62361 8.20832C6.70602 8.33166 6.75 8.47666 6.75 8.625C6.74941 8.82373 6.6702 9.01415 6.52968 9.15468C6.38915 9.2952 6.19873 9.37441 6 9.375ZM6.85875 3.55875L6.6075 6.56625C6.5944 6.71834 6.52472 6.85999 6.41224 6.9632C6.29976 7.0664 6.15266 7.12367 6 7.12367C5.84735 7.12367 5.70024 7.0664 5.58776 6.9632C5.47528 6.85999 5.40561 6.71834 5.3925 6.56625L5.14125 3.55875C5.13042 3.44226 5.1434 3.32478 5.1794 3.21346C5.2154 3.10214 5.27367 2.99931 5.35067 2.91123C5.42767 2.82314 5.52178 2.75165 5.62729 2.70108C5.73279 2.65052 5.84748 2.62195 5.96437 2.61711C6.08127 2.61227 6.19793 2.63126 6.30725 2.67294C6.41657 2.71461 6.51627 2.77808 6.60029 2.8595C6.6843 2.94092 6.75087 3.03858 6.79595 3.14655C6.84103 3.25451 6.86367 3.37051 6.8625 3.4875C6.86313 3.51131 6.86187 3.53514 6.85875 3.55875Z" />
-                                                </g>
-                                            </svg>
-                                            <div class="tooltip-text">Including Activities <span>Scuba Diving, Zip-lining,
-                                                    Rafting & Rock Climbing</span> with this premium package.</div>
-                                        </div>
-                                    </li>
-                                    <li>
-                                        <svg width="16" height="16" viewBox="0 0 16 16"
-                                            xmlns="http://www.w3.org/2000/svg">
-                                            <g>
-                                                <path
-                                                    d="M8 0C3.58853 0 0 3.58853 0 8C0 12.4115 3.58853 16 8 16C12.4115 16 16 12.4108 16 8C16 3.58916 12.4115 0 8 0ZM8 14.7607C4.27266 14.7607 1.23934 11.728 1.23934 8C1.23934 4.27203 4.27266 1.23934 8 1.23934C11.7273 1.23934 14.7607 4.27203 14.7607 8C14.7607 11.728 11.728 14.7607 8 14.7607Z" />
-                                                <path
-                                                    d="M11.0984 7.32445H8.6197V4.84576C8.6197 4.5037 8.3427 4.22607 8.00001 4.22607C7.65733 4.22607 7.38033 4.5037 7.38033 4.84576V7.32445H4.90164C4.55895 7.32445 4.28195 7.60207 4.28195 7.94414C4.28195 8.2862 4.55895 8.56382 4.90164 8.56382H7.38033V11.0425C7.38033 11.3846 7.65733 11.6622 8.00001 11.6622C8.3427 11.6622 8.6197 11.3846 8.6197 11.0425V8.56382H11.0984C11.4411 8.56382 11.7181 8.2862 11.7181 7.94414C11.7181 7.60207 11.4411 7.32445 11.0984 7.32445Z" />
-                                            </g>
-                                        </svg>
-                                        Inclusion
-                                        <div class="info">
-                                            <svg width="12" height="12" viewBox="0 0 12 12"
-                                                xmlns="http://www.w3.org/2000/svg">
-                                                <g>
-                                                    <path
-                                                        d="M6 0.375C4.88748 0.375 3.79995 0.704901 2.87492 1.32298C1.94989 1.94107 1.22892 2.81957 0.80318 3.84741C0.377437 4.87524 0.266043 6.00624 0.483085 7.09738C0.700127 8.18853 1.23586 9.19081 2.02253 9.97748C2.8092 10.7641 3.81148 11.2999 4.90262 11.5169C5.99376 11.734 7.12476 11.6226 8.1526 11.1968C9.18043 10.7711 10.0589 10.0501 10.677 9.12508C11.2951 8.20006 11.625 7.11252 11.625 6C11.6245 4.50831 11.0317 3.07786 9.97693 2.02307C8.92215 0.968289 7.49169 0.375497 6 0.375ZM6 9.375C5.85167 9.375 5.70666 9.33101 5.58333 9.2486C5.45999 9.16619 5.36386 9.04906 5.30709 8.91201C5.25033 8.77497 5.23548 8.62417 5.26441 8.47868C5.29335 8.3332 5.36478 8.19956 5.46967 8.09467C5.57456 7.98978 5.7082 7.91835 5.85369 7.88941C5.99917 7.86047 6.14997 7.87533 6.28702 7.93209C6.42406 7.98886 6.54119 8.08499 6.62361 8.20832C6.70602 8.33166 6.75 8.47666 6.75 8.625C6.74941 8.82373 6.6702 9.01415 6.52968 9.15468C6.38915 9.2952 6.19873 9.37441 6 9.375ZM6.85875 3.55875L6.6075 6.56625C6.5944 6.71834 6.52472 6.85999 6.41224 6.9632C6.29976 7.0664 6.15266 7.12367 6 7.12367C5.84735 7.12367 5.70024 7.0664 5.58776 6.9632C5.47528 6.85999 5.40561 6.71834 5.3925 6.56625L5.14125 3.55875C5.13042 3.44226 5.1434 3.32478 5.1794 3.21346C5.2154 3.10214 5.27367 2.99931 5.35067 2.91123C5.42767 2.82314 5.52178 2.75165 5.62729 2.70108C5.73279 2.65052 5.84748 2.62195 5.96437 2.61711C6.08127 2.61227 6.19793 2.63126 6.30725 2.67294C6.41657 2.71461 6.51627 2.77808 6.60029 2.8595C6.6843 2.94092 6.75087 3.03858 6.79595 3.14655C6.84103 3.25451 6.86367 3.37051 6.8625 3.4875C6.86313 3.51131 6.86187 3.53514 6.85875 3.55875Z" />
-                                                </g>
-                                            </svg>
-                                            <div class="tooltip-text">This package covers <span>Accommodation, Daily Meals,
-                                                    Entry Fees & Local Transfers</span> to ensure a worry-free trip.</div>
-                                        </div>
-                                    </li>
-                                </ul>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-lg-4 col-md-6 wow animate fadeInDown" data-wow-delay="600ms" data-wow-duration="1500ms">
-                    <div class="package-card">
-                        <div class="package-img-wrap">
-                            <a href="travel-package-details.html" class="package-img">
-                                <img src="{{ asset('assets/img/home1/tour-package-img3.jpg')}}" alt="">
-                            </a>
-                        </div>
-                        <div class="package-content">
-                            <h5><a href="travel-package-details.html">Phuket & Krabi Island</a></h5>
-                            <div class="location-and-time">
-                                <div class="location">
-                                    <svg width="14" height="14" viewBox="0 0 14 14"
-                                        xmlns="http://www.w3.org/2000/svg">
-                                        <path
-                                            d="M6.83615 0C3.77766 0 1.28891 2.48879 1.28891 5.54892C1.28891 7.93837 4.6241 11.8351 6.05811 13.3994C6.25669 13.6175 6.54154 13.7411 6.83615 13.7411C7.13076 13.7411 7.41561 13.6175 7.6142 13.3994C9.04821 11.8351 12.3834 7.93833 12.3834 5.54892C12.3834 2.48879 9.89464 0 6.83615 0ZM7.31469 13.1243C7.18936 13.2594 7.02008 13.3342 6.83615 13.3342C6.65222 13.3342 6.48295 13.2594 6.35761 13.1243C4.95614 11.5959 1.69584 7.79515 1.69584 5.54896C1.69584 2.7134 4.00067 0.406933 6.83615 0.406933C9.67164 0.406933 11.9765 2.7134 11.9765 5.54896C11.9765 7.79515 8.71617 11.5959 7.31469 13.1243Z" />
-                                        <path
-                                            d="M6.83618 8.54554C8.4624 8.54554 9.7807 7.22723 9.7807 5.60102C9.7807 3.9748 8.4624 2.65649 6.83618 2.65649C5.20997 2.65649 3.89166 3.9748 3.89166 5.60102C3.89166 7.22723 5.20997 8.54554 6.83618 8.54554Z" />
-                                    </svg>
-                                    <a href="travel-package-01.html">Thailand</a>
-                                </div>
-                                <svg class="arrow" width="25" height="6" viewBox="0 0 25 6"
-                                    xmlns="http://www.w3.org/2000/svg">
-                                    <path
-                                        d="M0 3L5 5.88675V0.113249L0 3ZM25 3L20 0.113249V5.88675L25 3ZM4.5 3.5H20.5V2.5H4.5V3.5Z" />
-                                </svg>
-                                <span>08 Days</span>
-                            </div>
-                            <div class="btn-and-price-area">
-                                <a href="travel-package-details.html" class="primary-btn1">
-                                    <span>
-                                        Book Now
-                                        <svg width="10" height="10" viewBox="0 0 10 10"
-                                            xmlns="http://www.w3.org/2000/svg">
-                                            <path
-                                                d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z" />
-                                        </svg>
-                                    </span>
-                                    <span>
-                                        Book Now
-                                        <svg width="10" height="10" viewBox="0 0 10 10"
-                                            xmlns="http://www.w3.org/2000/svg">
-                                            <path
-                                                d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z" />
-                                        </svg>
-                                    </span>
-                                </a>
-                                <div class="price-area">
-                                    <h6>Per Person</h6>
-                                    <span>$499</span>
-                                </div>
-                            </div>
-                            <svg class="divider" height="6" viewBox="0 0 374 6" xmlns="http://www.w3.org/2000/svg">
-                                <path
-                                    d="M5 2.5L0 0.113249V5.88675L5 3.5V2.5ZM369 3.5L374 5.88675V0.113249L369 2.5V3.5ZM4.5 3.5H369.5V2.5H4.5V3.5Z" />
-                            </svg>
-                            <div class="bottom-area">
-                                <ul>
-                                    <li>
-                                        <svg width="16" height="16" viewBox="0 0 16 16"
-                                            xmlns="http://www.w3.org/2000/svg">
-                                            <path
-                                                d="M9.2732 12.9807H6.7268C6.68429 12.9807 6.64298 12.9666 6.60935 12.9406C6.55906 12.9018 5.36398 11.9718 4.14989 10.4857C3.43499 9.61078 2.86499 8.72565 2.45543 7.8549C1.93974 6.75846 1.67834 5.68141 1.67834 4.65329C1.67834 3.50657 2.36043 2.33394 3.54995 1.43595C4.1378 0.992226 4.81163 0.641781 5.55321 0.394396C6.33797 0.132617 7.16112 0 8 0C8.83888 0 9.66203 0.132617 10.4466 0.394396C11.1882 0.641781 11.862 0.992035 12.4499 1.43595C13.6392 2.33394 14.3215 3.50676 14.3215 4.65329C14.3215 5.63247 14.0599 6.67939 13.544 7.7647C13.1348 8.62565 12.5652 9.51367 11.8511 10.4036C10.6383 11.9148 9.40697 12.9272 9.39468 12.9371C9.36046 12.9653 9.31752 12.9807 9.2732 12.9807ZM6.79378 12.5969H9.20334C9.4465 12.3905 10.5082 11.4651 11.5563 10.1576C12.6425 8.8026 13.9374 6.74772 13.9374 4.65329C13.9374 2.63794 11.3981 0.38384 7.99981 0.38384C4.60148 0.38384 2.06238 2.63794 2.06238 4.65329C2.06238 6.85769 3.3563 8.90624 4.44199 10.2364C5.49084 11.5215 6.55311 12.4032 6.79378 12.5969Z" />
-                                            <path
-                                                d="M7.51886 12.7888C7.51886 12.7888 5.68372 9.03538 5.68372 4.65327C5.68372 2.43045 6.72066 0.191895 8 0.191895C9.27934 0.191895 10.3163 2.43045 10.3163 4.65327C10.3163 8.82024 8.48114 12.7888 8.48114 12.7888" />
-                                            <path
-                                                d="M7.34653 12.873C7.32753 12.8343 6.87594 11.9042 6.41802 10.4209C5.9956 9.05229 5.492 6.94079 5.492 4.65329C5.492 3.53843 5.74668 2.39036 6.19079 1.50312C6.67577 0.533921 7.31832 0 8.00002 0C8.68172 0 9.32426 0.53373 9.80944 1.50312C10.2535 2.39036 10.5082 3.53843 10.5082 4.65329C10.5082 6.82928 10.0048 8.94655 9.5824 10.3393C9.12505 11.8478 8.67423 12.8283 8.65542 12.8692L8.30709 12.7082C8.31169 12.6984 8.7675 11.7058 9.21717 10.2213C9.63114 8.85481 10.1246 6.77977 10.1246 4.65329C10.1246 3.5962 9.88467 2.51051 9.46648 1.67489C9.05577 0.854428 8.52146 0.38384 8.00021 0.38384C7.47895 0.38384 6.94465 0.854428 6.53394 1.67489C6.11574 2.51051 5.87584 3.5962 5.87584 4.65329C5.87584 6.893 6.37023 8.96439 6.78497 10.3076C7.23406 11.7626 7.68699 12.6951 7.6916 12.7043L7.34653 12.873ZM8.77038 16H7.22965C6.84658 16 6.5349 15.6883 6.5349 15.3052V13.9892C6.5349 13.8833 6.62088 13.7973 6.72682 13.7973H9.27321C9.37915 13.7973 9.46513 13.8833 9.46513 13.9892V15.3052C9.46513 15.6883 9.15346 16 8.77038 16ZM6.91874 14.1812V15.3052C6.91874 15.4766 7.05826 15.6162 7.22965 15.6162H8.77038C8.94177 15.6162 9.08129 15.4766 9.08129 15.3052V14.1812H6.91874Z" />
-                                            <path
-                                                d="M8.90952 14.1812H7.0907C7.00606 14.1812 6.93159 14.126 6.90703 14.045L6.54334 12.8445C6.52568 12.7863 6.53662 12.7232 6.5729 12.6745C6.60917 12.6257 6.66636 12.5969 6.72701 12.5969H9.2734C9.33424 12.5969 9.39143 12.6257 9.42751 12.6745C9.4454 12.6985 9.45739 12.7264 9.46252 12.756C9.46765 12.7855 9.46579 12.8158 9.45707 12.8445L9.09338 14.045C9.06862 14.1258 8.99397 14.1812 8.90952 14.1812ZM7.23291 13.7974H8.76693L9.01431 12.9808H6.98552L7.23291 13.7974Z" />
-                                        </svg>
-                                        Experience
-                                        <div class="info">
-                                            <svg width="12" height="12" viewBox="0 0 12 12"
-                                                xmlns="http://www.w3.org/2000/svg">
-                                                <g>
-                                                    <path
-                                                        d="M6 0.375C4.88748 0.375 3.79995 0.704901 2.87492 1.32298C1.94989 1.94107 1.22892 2.81957 0.80318 3.84741C0.377437 4.87524 0.266043 6.00624 0.483085 7.09738C0.700127 8.18853 1.23586 9.19081 2.02253 9.97748C2.8092 10.7641 3.81148 11.2999 4.90262 11.5169C5.99376 11.734 7.12476 11.6226 8.1526 11.1968C9.18043 10.7711 10.0589 10.0501 10.677 9.12508C11.2951 8.20006 11.625 7.11252 11.625 6C11.6245 4.50831 11.0317 3.07786 9.97693 2.02307C8.92215 0.968289 7.49169 0.375497 6 0.375ZM6 9.375C5.85167 9.375 5.70666 9.33101 5.58333 9.2486C5.45999 9.16619 5.36386 9.04906 5.30709 8.91201C5.25033 8.77497 5.23548 8.62417 5.26441 8.47868C5.29335 8.3332 5.36478 8.19956 5.46967 8.09467C5.57456 7.98978 5.7082 7.91835 5.85369 7.88941C5.99917 7.86047 6.14997 7.87533 6.28702 7.93209C6.42406 7.98886 6.54119 8.08499 6.62361 8.20832C6.70602 8.33166 6.75 8.47666 6.75 8.625C6.74941 8.82373 6.6702 9.01415 6.52968 9.15468C6.38915 9.2952 6.19873 9.37441 6 9.375ZM6.85875 3.55875L6.6075 6.56625C6.5944 6.71834 6.52472 6.85999 6.41224 6.9632C6.29976 7.0664 6.15266 7.12367 6 7.12367C5.84735 7.12367 5.70024 7.0664 5.58776 6.9632C5.47528 6.85999 5.40561 6.71834 5.3925 6.56625L5.14125 3.55875C5.13042 3.44226 5.1434 3.32478 5.1794 3.21346C5.2154 3.10214 5.27367 2.99931 5.35067 2.91123C5.42767 2.82314 5.52178 2.75165 5.62729 2.70108C5.73279 2.65052 5.84748 2.62195 5.96437 2.61711C6.08127 2.61227 6.19793 2.63126 6.30725 2.67294C6.41657 2.71461 6.51627 2.77808 6.60029 2.8595C6.6843 2.94092 6.75087 3.03858 6.79595 3.14655C6.84103 3.25451 6.86367 3.37051 6.8625 3.4875C6.86313 3.51131 6.86187 3.53514 6.85875 3.55875Z" />
-                                                </g>
-                                            </svg>
-                                            <div class="tooltip-text">Including Activities <span>Scuba Diving, Zip-lining,
-                                                    Rafting & Rock Climbing</span> with this premium package.</div>
-                                        </div>
-                                    </li>
-                                    <li>
-                                        <svg width="16" height="16" viewBox="0 0 16 16"
-                                            xmlns="http://www.w3.org/2000/svg">
-                                            <g>
-                                                <path
-                                                    d="M8 0C3.58853 0 0 3.58853 0 8C0 12.4115 3.58853 16 8 16C12.4115 16 16 12.4108 16 8C16 3.58916 12.4115 0 8 0ZM8 14.7607C4.27266 14.7607 1.23934 11.728 1.23934 8C1.23934 4.27203 4.27266 1.23934 8 1.23934C11.7273 1.23934 14.7607 4.27203 14.7607 8C14.7607 11.728 11.728 14.7607 8 14.7607Z" />
-                                                <path
-                                                    d="M11.0984 7.32445H8.6197V4.84576C8.6197 4.5037 8.3427 4.22607 8.00001 4.22607C7.65733 4.22607 7.38033 4.5037 7.38033 4.84576V7.32445H4.90164C4.55895 7.32445 4.28195 7.60207 4.28195 7.94414C4.28195 8.2862 4.55895 8.56382 4.90164 8.56382H7.38033V11.0425C7.38033 11.3846 7.65733 11.6622 8.00001 11.6622C8.3427 11.6622 8.6197 11.3846 8.6197 11.0425V8.56382H11.0984C11.4411 8.56382 11.7181 8.2862 11.7181 7.94414C11.7181 7.60207 11.4411 7.32445 11.0984 7.32445Z" />
-                                            </g>
-                                        </svg>
-                                        Inclusion
-                                        <div class="info">
-                                            <svg width="12" height="12" viewBox="0 0 12 12"
-                                                xmlns="http://www.w3.org/2000/svg">
-                                                <g>
-                                                    <path
-                                                        d="M6 0.375C4.88748 0.375 3.79995 0.704901 2.87492 1.32298C1.94989 1.94107 1.22892 2.81957 0.80318 3.84741C0.377437 4.87524 0.266043 6.00624 0.483085 7.09738C0.700127 8.18853 1.23586 9.19081 2.02253 9.97748C2.8092 10.7641 3.81148 11.2999 4.90262 11.5169C5.99376 11.734 7.12476 11.6226 8.1526 11.1968C9.18043 10.7711 10.0589 10.0501 10.677 9.12508C11.2951 8.20006 11.625 7.11252 11.625 6C11.6245 4.50831 11.0317 3.07786 9.97693 2.02307C8.92215 0.968289 7.49169 0.375497 6 0.375ZM6 9.375C5.85167 9.375 5.70666 9.33101 5.58333 9.2486C5.45999 9.16619 5.36386 9.04906 5.30709 8.91201C5.25033 8.77497 5.23548 8.62417 5.26441 8.47868C5.29335 8.3332 5.36478 8.19956 5.46967 8.09467C5.57456 7.98978 5.7082 7.91835 5.85369 7.88941C5.99917 7.86047 6.14997 7.87533 6.28702 7.93209C6.42406 7.98886 6.54119 8.08499 6.62361 8.20832C6.70602 8.33166 6.75 8.47666 6.75 8.625C6.74941 8.82373 6.6702 9.01415 6.52968 9.15468C6.38915 9.2952 6.19873 9.37441 6 9.375ZM6.85875 3.55875L6.6075 6.56625C6.5944 6.71834 6.52472 6.85999 6.41224 6.9632C6.29976 7.0664 6.15266 7.12367 6 7.12367C5.84735 7.12367 5.70024 7.0664 5.58776 6.9632C5.47528 6.85999 5.40561 6.71834 5.3925 6.56625L5.14125 3.55875C5.13042 3.44226 5.1434 3.32478 5.1794 3.21346C5.2154 3.10214 5.27367 2.99931 5.35067 2.91123C5.42767 2.82314 5.52178 2.75165 5.62729 2.70108C5.73279 2.65052 5.84748 2.62195 5.96437 2.61711C6.08127 2.61227 6.19793 2.63126 6.30725 2.67294C6.41657 2.71461 6.51627 2.77808 6.60029 2.8595C6.6843 2.94092 6.75087 3.03858 6.79595 3.14655C6.84103 3.25451 6.86367 3.37051 6.8625 3.4875C6.86313 3.51131 6.86187 3.53514 6.85875 3.55875Z" />
-                                                </g>
-                                            </svg>
-                                            <div class="tooltip-text">This package covers <span>Accommodation, Daily Meals,
-                                                    Entry Fees & Local Transfers</span> to ensure a worry-free trip.</div>
-                                        </div>
-                                    </li>
-                                </ul>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-lg-4 col-md-6 wow animate fadeInDown" data-wow-delay="800ms" data-wow-duration="1500ms">
-                    <div class="package-card">
-                        <div class="package-img-wrap">
-                            <div class="swiper package-card-img-slider">
-                                <div class="swiper-wrapper">
-                                    <div class="swiper-slide">
-                                        <a href="travel-package-details.html" class="package-img">
-                                            <img src="{{ asset('assets/img/home1/tour-package-img4.jpg')}}" alt="">
-                                        </a>
-                                    </div>
-                                    <div class="swiper-slide">
-                                        <a href="travel-package-details.html" class="package-img">
-                                            <img src="{{ asset('assets/img/home1/tour-package-img13.jpg')}}" alt="">
-                                        </a>
-                                    </div>
-                                    <div class="swiper-slide">
-                                        <a href="travel-package-details.html" class="package-img">
-                                            <img src="{{ asset('assets/img/home1/tour-package-img14.jpg')}}" alt="">
-                                        </a>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="slider-pagi-wrap">
-                                <div class="package-card-img-pagi paginations"></div>
-                            </div>
-                            <div class="batch">
-                                <span>Hot Sale!</span>
-                            </div>
-                        </div>
-                        <div class="package-content">
-                            <h5><a href="travel-package-details.html">Rome, Florence & Venice</a></h5>
-                            <div class="location-and-time">
-                                <div class="location">
-                                    <svg width="14" height="14" viewBox="0 0 14 14"
-                                        xmlns="http://www.w3.org/2000/svg">
-                                        <path
-                                            d="M6.83615 0C3.77766 0 1.28891 2.48879 1.28891 5.54892C1.28891 7.93837 4.6241 11.8351 6.05811 13.3994C6.25669 13.6175 6.54154 13.7411 6.83615 13.7411C7.13076 13.7411 7.41561 13.6175 7.6142 13.3994C9.04821 11.8351 12.3834 7.93833 12.3834 5.54892C12.3834 2.48879 9.89464 0 6.83615 0ZM7.31469 13.1243C7.18936 13.2594 7.02008 13.3342 6.83615 13.3342C6.65222 13.3342 6.48295 13.2594 6.35761 13.1243C4.95614 11.5959 1.69584 7.79515 1.69584 5.54896C1.69584 2.7134 4.00067 0.406933 6.83615 0.406933C9.67164 0.406933 11.9765 2.7134 11.9765 5.54896C11.9765 7.79515 8.71617 11.5959 7.31469 13.1243Z" />
-                                        <path
-                                            d="M6.83618 8.54554C8.4624 8.54554 9.7807 7.22723 9.7807 5.60102C9.7807 3.9748 8.4624 2.65649 6.83618 2.65649C5.20997 2.65649 3.89166 3.9748 3.89166 5.60102C3.89166 7.22723 5.20997 8.54554 6.83618 8.54554Z" />
-                                    </svg>
-                                    <a href="travel-package-01.html">Italy,</a>
-                                    <a href="travel-package-01.html">France</a>
-                                </div>
-                                <svg class="arrow" width="25" height="6" viewBox="0 0 25 6"
-                                    xmlns="http://www.w3.org/2000/svg">
-                                    <path
-                                        d="M0 3L5 5.88675V0.113249L0 3ZM25 3L20 0.113249V5.88675L25 3ZM4.5 3.5H20.5V2.5H4.5V3.5Z" />
-                                </svg>
-                                <span>06 Days/07 Nights</span>
-                            </div>
-                            <div class="btn-and-price-area">
-                                <a href="travel-package-details.html" class="primary-btn1">
-                                    <span>
-                                        Book Now
-                                        <svg width="10" height="10" viewBox="0 0 10 10"
-                                            xmlns="http://www.w3.org/2000/svg">
-                                            <path
-                                                d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z" />
-                                        </svg>
-                                    </span>
-                                    <span>
-                                        Book Now
-                                        <svg width="10" height="10" viewBox="0 0 10 10"
-                                            xmlns="http://www.w3.org/2000/svg">
-                                            <path
-                                                d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z" />
-                                        </svg>
-                                    </span>
-                                </a>
-                                <div class="price-area">
-                                    <h6>Per Person</h6>
-                                    <span>$999</span>
-                                </div>
-                            </div>
-                            <svg class="divider" height="6" viewBox="0 0 374 6"
-                                xmlns="http://www.w3.org/2000/svg">
-                                <path
-                                    d="M5 2.5L0 0.113249V5.88675L5 3.5V2.5ZM369 3.5L374 5.88675V0.113249L369 2.5V3.5ZM4.5 3.5H369.5V2.5H4.5V3.5Z" />
-                            </svg>
-                            <div class="bottom-area">
-                                <ul>
-                                    <li>
-                                        <svg width="16" height="16" viewBox="0 0 16 16"
-                                            xmlns="http://www.w3.org/2000/svg">
-                                            <path
-                                                d="M9.2732 12.9807H6.7268C6.68429 12.9807 6.64298 12.9666 6.60935 12.9406C6.55906 12.9018 5.36398 11.9718 4.14989 10.4857C3.43499 9.61078 2.86499 8.72565 2.45543 7.8549C1.93974 6.75846 1.67834 5.68141 1.67834 4.65329C1.67834 3.50657 2.36043 2.33394 3.54995 1.43595C4.1378 0.992226 4.81163 0.641781 5.55321 0.394396C6.33797 0.132617 7.16112 0 8 0C8.83888 0 9.66203 0.132617 10.4466 0.394396C11.1882 0.641781 11.862 0.992035 12.4499 1.43595C13.6392 2.33394 14.3215 3.50676 14.3215 4.65329C14.3215 5.63247 14.0599 6.67939 13.544 7.7647C13.1348 8.62565 12.5652 9.51367 11.8511 10.4036C10.6383 11.9148 9.40697 12.9272 9.39468 12.9371C9.36046 12.9653 9.31752 12.9807 9.2732 12.9807ZM6.79378 12.5969H9.20334C9.4465 12.3905 10.5082 11.4651 11.5563 10.1576C12.6425 8.8026 13.9374 6.74772 13.9374 4.65329C13.9374 2.63794 11.3981 0.38384 7.99981 0.38384C4.60148 0.38384 2.06238 2.63794 2.06238 4.65329C2.06238 6.85769 3.3563 8.90624 4.44199 10.2364C5.49084 11.5215 6.55311 12.4032 6.79378 12.5969Z" />
-                                            <path
-                                                d="M7.51886 12.7888C7.51886 12.7888 5.68372 9.03538 5.68372 4.65327C5.68372 2.43045 6.72066 0.191895 8 0.191895C9.27934 0.191895 10.3163 2.43045 10.3163 4.65327C10.3163 8.82024 8.48114 12.7888 8.48114 12.7888" />
-                                            <path
-                                                d="M7.34653 12.873C7.32753 12.8343 6.87594 11.9042 6.41802 10.4209C5.9956 9.05229 5.492 6.94079 5.492 4.65329C5.492 3.53843 5.74668 2.39036 6.19079 1.50312C6.67577 0.533921 7.31832 0 8.00002 0C8.68172 0 9.32426 0.53373 9.80944 1.50312C10.2535 2.39036 10.5082 3.53843 10.5082 4.65329C10.5082 6.82928 10.0048 8.94655 9.5824 10.3393C9.12505 11.8478 8.67423 12.8283 8.65542 12.8692L8.30709 12.7082C8.31169 12.6984 8.7675 11.7058 9.21717 10.2213C9.63114 8.85481 10.1246 6.77977 10.1246 4.65329C10.1246 3.5962 9.88467 2.51051 9.46648 1.67489C9.05577 0.854428 8.52146 0.38384 8.00021 0.38384C7.47895 0.38384 6.94465 0.854428 6.53394 1.67489C6.11574 2.51051 5.87584 3.5962 5.87584 4.65329C5.87584 6.893 6.37023 8.96439 6.78497 10.3076C7.23406 11.7626 7.68699 12.6951 7.6916 12.7043L7.34653 12.873ZM8.77038 16H7.22965C6.84658 16 6.5349 15.6883 6.5349 15.3052V13.9892C6.5349 13.8833 6.62088 13.7973 6.72682 13.7973H9.27321C9.37915 13.7973 9.46513 13.8833 9.46513 13.9892V15.3052C9.46513 15.6883 9.15346 16 8.77038 16ZM6.91874 14.1812V15.3052C6.91874 15.4766 7.05826 15.6162 7.22965 15.6162H8.77038C8.94177 15.6162 9.08129 15.4766 9.08129 15.3052V14.1812H6.91874Z" />
-                                            <path
-                                                d="M8.90952 14.1812H7.0907C7.00606 14.1812 6.93159 14.126 6.90703 14.045L6.54334 12.8445C6.52568 12.7863 6.53662 12.7232 6.5729 12.6745C6.60917 12.6257 6.66636 12.5969 6.72701 12.5969H9.2734C9.33424 12.5969 9.39143 12.6257 9.42751 12.6745C9.4454 12.6985 9.45739 12.7264 9.46252 12.756C9.46765 12.7855 9.46579 12.8158 9.45707 12.8445L9.09338 14.045C9.06862 14.1258 8.99397 14.1812 8.90952 14.1812ZM7.23291 13.7974H8.76693L9.01431 12.9808H6.98552L7.23291 13.7974Z" />
-                                        </svg>
-                                        Experience
-                                        <div class="info">
-                                            <svg width="12" height="12" viewBox="0 0 12 12"
-                                                xmlns="http://www.w3.org/2000/svg">
-                                                <g>
-                                                    <path
-                                                        d="M6 0.375C4.88748 0.375 3.79995 0.704901 2.87492 1.32298C1.94989 1.94107 1.22892 2.81957 0.80318 3.84741C0.377437 4.87524 0.266043 6.00624 0.483085 7.09738C0.700127 8.18853 1.23586 9.19081 2.02253 9.97748C2.8092 10.7641 3.81148 11.2999 4.90262 11.5169C5.99376 11.734 7.12476 11.6226 8.1526 11.1968C9.18043 10.7711 10.0589 10.0501 10.677 9.12508C11.2951 8.20006 11.625 7.11252 11.625 6C11.6245 4.50831 11.0317 3.07786 9.97693 2.02307C8.92215 0.968289 7.49169 0.375497 6 0.375ZM6 9.375C5.85167 9.375 5.70666 9.33101 5.58333 9.2486C5.45999 9.16619 5.36386 9.04906 5.30709 8.91201C5.25033 8.77497 5.23548 8.62417 5.26441 8.47868C5.29335 8.3332 5.36478 8.19956 5.46967 8.09467C5.57456 7.98978 5.7082 7.91835 5.85369 7.88941C5.99917 7.86047 6.14997 7.87533 6.28702 7.93209C6.42406 7.98886 6.54119 8.08499 6.62361 8.20832C6.70602 8.33166 6.75 8.47666 6.75 8.625C6.74941 8.82373 6.6702 9.01415 6.52968 9.15468C6.38915 9.2952 6.19873 9.37441 6 9.375ZM6.85875 3.55875L6.6075 6.56625C6.5944 6.71834 6.52472 6.85999 6.41224 6.9632C6.29976 7.0664 6.15266 7.12367 6 7.12367C5.84735 7.12367 5.70024 7.0664 5.58776 6.9632C5.47528 6.85999 5.40561 6.71834 5.3925 6.56625L5.14125 3.55875C5.13042 3.44226 5.1434 3.32478 5.1794 3.21346C5.2154 3.10214 5.27367 2.99931 5.35067 2.91123C5.42767 2.82314 5.52178 2.75165 5.62729 2.70108C5.73279 2.65052 5.84748 2.62195 5.96437 2.61711C6.08127 2.61227 6.19793 2.63126 6.30725 2.67294C6.41657 2.71461 6.51627 2.77808 6.60029 2.8595C6.6843 2.94092 6.75087 3.03858 6.79595 3.14655C6.84103 3.25451 6.86367 3.37051 6.8625 3.4875C6.86313 3.51131 6.86187 3.53514 6.85875 3.55875Z" />
-                                                </g>
-                                            </svg>
-                                            <div class="tooltip-text">Including Activities <span>Scuba Diving, Zip-lining,
-                                                    Rafting & Rock Climbing</span> with this premium package.</div>
-                                        </div>
-                                    </li>
-                                    <li>
-                                        <svg width="16" height="16" viewBox="0 0 16 16"
-                                            xmlns="http://www.w3.org/2000/svg">
-                                            <g>
-                                                <path
-                                                    d="M8 0C3.58853 0 0 3.58853 0 8C0 12.4115 3.58853 16 8 16C12.4115 16 16 12.4108 16 8C16 3.58916 12.4115 0 8 0ZM8 14.7607C4.27266 14.7607 1.23934 11.728 1.23934 8C1.23934 4.27203 4.27266 1.23934 8 1.23934C11.7273 1.23934 14.7607 4.27203 14.7607 8C14.7607 11.728 11.728 14.7607 8 14.7607Z" />
-                                                <path
-                                                    d="M11.0984 7.32445H8.6197V4.84576C8.6197 4.5037 8.3427 4.22607 8.00001 4.22607C7.65733 4.22607 7.38033 4.5037 7.38033 4.84576V7.32445H4.90164C4.55895 7.32445 4.28195 7.60207 4.28195 7.94414C4.28195 8.2862 4.55895 8.56382 4.90164 8.56382H7.38033V11.0425C7.38033 11.3846 7.65733 11.6622 8.00001 11.6622C8.3427 11.6622 8.6197 11.3846 8.6197 11.0425V8.56382H11.0984C11.4411 8.56382 11.7181 8.2862 11.7181 7.94414C11.7181 7.60207 11.4411 7.32445 11.0984 7.32445Z" />
-                                            </g>
-                                        </svg>
-                                        Inclusion
-                                        <div class="info">
-                                            <svg width="12" height="12" viewBox="0 0 12 12"
-                                                xmlns="http://www.w3.org/2000/svg">
-                                                <g>
-                                                    <path
-                                                        d="M6 0.375C4.88748 0.375 3.79995 0.704901 2.87492 1.32298C1.94989 1.94107 1.22892 2.81957 0.80318 3.84741C0.377437 4.87524 0.266043 6.00624 0.483085 7.09738C0.700127 8.18853 1.23586 9.19081 2.02253 9.97748C2.8092 10.7641 3.81148 11.2999 4.90262 11.5169C5.99376 11.734 7.12476 11.6226 8.1526 11.1968C9.18043 10.7711 10.0589 10.0501 10.677 9.12508C11.2951 8.20006 11.625 7.11252 11.625 6C11.6245 4.50831 11.0317 3.07786 9.97693 2.02307C8.92215 0.968289 7.49169 0.375497 6 0.375ZM6 9.375C5.85167 9.375 5.70666 9.33101 5.58333 9.2486C5.45999 9.16619 5.36386 9.04906 5.30709 8.91201C5.25033 8.77497 5.23548 8.62417 5.26441 8.47868C5.29335 8.3332 5.36478 8.19956 5.46967 8.09467C5.57456 7.98978 5.7082 7.91835 5.85369 7.88941C5.99917 7.86047 6.14997 7.87533 6.28702 7.93209C6.42406 7.98886 6.54119 8.08499 6.62361 8.20832C6.70602 8.33166 6.75 8.47666 6.75 8.625C6.74941 8.82373 6.6702 9.01415 6.52968 9.15468C6.38915 9.2952 6.19873 9.37441 6 9.375ZM6.85875 3.55875L6.6075 6.56625C6.5944 6.71834 6.52472 6.85999 6.41224 6.9632C6.29976 7.0664 6.15266 7.12367 6 7.12367C5.84735 7.12367 5.70024 7.0664 5.58776 6.9632C5.47528 6.85999 5.40561 6.71834 5.3925 6.56625L5.14125 3.55875C5.13042 3.44226 5.1434 3.32478 5.1794 3.21346C5.2154 3.10214 5.27367 2.99931 5.35067 2.91123C5.42767 2.82314 5.52178 2.75165 5.62729 2.70108C5.73279 2.65052 5.84748 2.62195 5.96437 2.61711C6.08127 2.61227 6.19793 2.63126 6.30725 2.67294C6.41657 2.71461 6.51627 2.77808 6.60029 2.8595C6.6843 2.94092 6.75087 3.03858 6.79595 3.14655C6.84103 3.25451 6.86367 3.37051 6.8625 3.4875C6.86313 3.51131 6.86187 3.53514 6.85875 3.55875Z" />
-                                                </g>
-                                            </svg>
-                                            <div class="tooltip-text">This package covers <span>Accommodation, Daily
-                                                    Meals, Entry Fees & Local Transfers</span> to ensure a worry-free trip.
-                                            </div>
-                                        </div>
-                                    </li>
-                                </ul>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-lg-4 col-md-6 wow animate fadeInDown" data-wow-delay="600ms"
+        <!-- home4 Travel Package Section Start-->
+        <div class="home4-travel-package-section mt-100 mb-100">
+            <div class="container">
+                <div class="row justify-content-center mb-50 wow animate fadeInDown" data-wow-delay="200ms"
                     data-wow-duration="1500ms">
-                    <div class="package-card">
-                        <div class="package-img-wrap">
-                            <a href="travel-package-details.html" class="package-img">
-                                <img src="{{ asset('assets/img/home1/tour-package-img5.jpg')}}" alt="">
-                            </a>
-                        </div>
-                        <div class="package-content">
-                            <h5><a href="travel-package-details.html">Egypt & Nile Cruise Adventure</a></h5>
-                            <div class="location-and-time">
-                                <div class="location">
-                                    <svg width="14" height="14" viewBox="0 0 14 14"
-                                        xmlns="http://www.w3.org/2000/svg">
-                                        <path
-                                            d="M6.83615 0C3.77766 0 1.28891 2.48879 1.28891 5.54892C1.28891 7.93837 4.6241 11.8351 6.05811 13.3994C6.25669 13.6175 6.54154 13.7411 6.83615 13.7411C7.13076 13.7411 7.41561 13.6175 7.6142 13.3994C9.04821 11.8351 12.3834 7.93833 12.3834 5.54892C12.3834 2.48879 9.89464 0 6.83615 0ZM7.31469 13.1243C7.18936 13.2594 7.02008 13.3342 6.83615 13.3342C6.65222 13.3342 6.48295 13.2594 6.35761 13.1243C4.95614 11.5959 1.69584 7.79515 1.69584 5.54896C1.69584 2.7134 4.00067 0.406933 6.83615 0.406933C9.67164 0.406933 11.9765 2.7134 11.9765 5.54896C11.9765 7.79515 8.71617 11.5959 7.31469 13.1243Z" />
-                                        <path
-                                            d="M6.83618 8.54554C8.4624 8.54554 9.7807 7.22723 9.7807 5.60102C9.7807 3.9748 8.4624 2.65649 6.83618 2.65649C5.20997 2.65649 3.89166 3.9748 3.89166 5.60102C3.89166 7.22723 5.20997 8.54554 6.83618 8.54554Z" />
-                                    </svg>
-                                    <a href="travel-package-01.html">Egypt</a>
-                                </div>
-                                <svg class="arrow" width="25" height="6" viewBox="0 0 25 6"
-                                    xmlns="http://www.w3.org/2000/svg">
-                                    <path
-                                        d="M0 3L5 5.88675V0.113249L0 3ZM25 3L20 0.113249V5.88675L25 3ZM4.5 3.5H20.5V2.5H4.5V3.5Z" />
-                                </svg>
-                                <span>10 Days</span>
-                            </div>
-                            <div class="btn-and-price-area">
-                                <a href="travel-package-details.html" class="primary-btn1">
-                                    <span>
-                                        Book Now
-                                        <svg width="10" height="10" viewBox="0 0 10 10"
-                                            xmlns="http://www.w3.org/2000/svg">
-                                            <path
-                                                d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z" />
-                                        </svg>
-                                    </span>
-                                    <span>
-                                        Book Now
-                                        <svg width="10" height="10" viewBox="0 0 10 10"
-                                            xmlns="http://www.w3.org/2000/svg">
-                                            <path
-                                                d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z" />
-                                        </svg>
-                                    </span>
-                                </a>
-                                <div class="price-area">
-                                    <h6>Per Person</h6>
-                                    <span>$499</span>
-                                </div>
-                            </div>
-                            <svg class="divider" height="6" viewBox="0 0 374 6"
-                                xmlns="http://www.w3.org/2000/svg">
-                                <path
-                                    d="M5 2.5L0 0.113249V5.88675L5 3.5V2.5ZM369 3.5L374 5.88675V0.113249L369 2.5V3.5ZM4.5 3.5H369.5V2.5H4.5V3.5Z" />
-                            </svg>
-                            <div class="bottom-area">
-                                <ul>
-                                    <li>
-                                        <svg width="16" height="16" viewBox="0 0 16 16"
-                                            xmlns="http://www.w3.org/2000/svg">
-                                            <path
-                                                d="M9.2732 12.9807H6.7268C6.68429 12.9807 6.64298 12.9666 6.60935 12.9406C6.55906 12.9018 5.36398 11.9718 4.14989 10.4857C3.43499 9.61078 2.86499 8.72565 2.45543 7.8549C1.93974 6.75846 1.67834 5.68141 1.67834 4.65329C1.67834 3.50657 2.36043 2.33394 3.54995 1.43595C4.1378 0.992226 4.81163 0.641781 5.55321 0.394396C6.33797 0.132617 7.16112 0 8 0C8.83888 0 9.66203 0.132617 10.4466 0.394396C11.1882 0.641781 11.862 0.992035 12.4499 1.43595C13.6392 2.33394 14.3215 3.50676 14.3215 4.65329C14.3215 5.63247 14.0599 6.67939 13.544 7.7647C13.1348 8.62565 12.5652 9.51367 11.8511 10.4036C10.6383 11.9148 9.40697 12.9272 9.39468 12.9371C9.36046 12.9653 9.31752 12.9807 9.2732 12.9807ZM6.79378 12.5969H9.20334C9.4465 12.3905 10.5082 11.4651 11.5563 10.1576C12.6425 8.8026 13.9374 6.74772 13.9374 4.65329C13.9374 2.63794 11.3981 0.38384 7.99981 0.38384C4.60148 0.38384 2.06238 2.63794 2.06238 4.65329C2.06238 6.85769 3.3563 8.90624 4.44199 10.2364C5.49084 11.5215 6.55311 12.4032 6.79378 12.5969Z" />
-                                            <path
-                                                d="M7.51886 12.7888C7.51886 12.7888 5.68372 9.03538 5.68372 4.65327C5.68372 2.43045 6.72066 0.191895 8 0.191895C9.27934 0.191895 10.3163 2.43045 10.3163 4.65327C10.3163 8.82024 8.48114 12.7888 8.48114 12.7888" />
-                                            <path
-                                                d="M7.34653 12.873C7.32753 12.8343 6.87594 11.9042 6.41802 10.4209C5.9956 9.05229 5.492 6.94079 5.492 4.65329C5.492 3.53843 5.74668 2.39036 6.19079 1.50312C6.67577 0.533921 7.31832 0 8.00002 0C8.68172 0 9.32426 0.53373 9.80944 1.50312C10.2535 2.39036 10.5082 3.53843 10.5082 4.65329C10.5082 6.82928 10.0048 8.94655 9.5824 10.3393C9.12505 11.8478 8.67423 12.8283 8.65542 12.8692L8.30709 12.7082C8.31169 12.6984 8.7675 11.7058 9.21717 10.2213C9.63114 8.85481 10.1246 6.77977 10.1246 4.65329C10.1246 3.5962 9.88467 2.51051 9.46648 1.67489C9.05577 0.854428 8.52146 0.38384 8.00021 0.38384C7.47895 0.38384 6.94465 0.854428 6.53394 1.67489C6.11574 2.51051 5.87584 3.5962 5.87584 4.65329C5.87584 6.893 6.37023 8.96439 6.78497 10.3076C7.23406 11.7626 7.68699 12.6951 7.6916 12.7043L7.34653 12.873ZM8.77038 16H7.22965C6.84658 16 6.5349 15.6883 6.5349 15.3052V13.9892C6.5349 13.8833 6.62088 13.7973 6.72682 13.7973H9.27321C9.37915 13.7973 9.46513 13.8833 9.46513 13.9892V15.3052C9.46513 15.6883 9.15346 16 8.77038 16ZM6.91874 14.1812V15.3052C6.91874 15.4766 7.05826 15.6162 7.22965 15.6162H8.77038C8.94177 15.6162 9.08129 15.4766 9.08129 15.3052V14.1812H6.91874Z" />
-                                            <path
-                                                d="M8.90952 14.1812H7.0907C7.00606 14.1812 6.93159 14.126 6.90703 14.045L6.54334 12.8445C6.52568 12.7863 6.53662 12.7232 6.5729 12.6745C6.60917 12.6257 6.66636 12.5969 6.72701 12.5969H9.2734C9.33424 12.5969 9.39143 12.6257 9.42751 12.6745C9.4454 12.6985 9.45739 12.7264 9.46252 12.756C9.46765 12.7855 9.46579 12.8158 9.45707 12.8445L9.09338 14.045C9.06862 14.1258 8.99397 14.1812 8.90952 14.1812ZM7.23291 13.7974H8.76693L9.01431 12.9808H6.98552L7.23291 13.7974Z" />
-                                        </svg>
-                                        Experience
-                                        <div class="info">
-                                            <svg width="12" height="12" viewBox="0 0 12 12"
-                                                xmlns="http://www.w3.org/2000/svg">
-                                                <g>
-                                                    <path
-                                                        d="M6 0.375C4.88748 0.375 3.79995 0.704901 2.87492 1.32298C1.94989 1.94107 1.22892 2.81957 0.80318 3.84741C0.377437 4.87524 0.266043 6.00624 0.483085 7.09738C0.700127 8.18853 1.23586 9.19081 2.02253 9.97748C2.8092 10.7641 3.81148 11.2999 4.90262 11.5169C5.99376 11.734 7.12476 11.6226 8.1526 11.1968C9.18043 10.7711 10.0589 10.0501 10.677 9.12508C11.2951 8.20006 11.625 7.11252 11.625 6C11.6245 4.50831 11.0317 3.07786 9.97693 2.02307C8.92215 0.968289 7.49169 0.375497 6 0.375ZM6 9.375C5.85167 9.375 5.70666 9.33101 5.58333 9.2486C5.45999 9.16619 5.36386 9.04906 5.30709 8.91201C5.25033 8.77497 5.23548 8.62417 5.26441 8.47868C5.29335 8.3332 5.36478 8.19956 5.46967 8.09467C5.57456 7.98978 5.7082 7.91835 5.85369 7.88941C5.99917 7.86047 6.14997 7.87533 6.28702 7.93209C6.42406 7.98886 6.54119 8.08499 6.62361 8.20832C6.70602 8.33166 6.75 8.47666 6.75 8.625C6.74941 8.82373 6.6702 9.01415 6.52968 9.15468C6.38915 9.2952 6.19873 9.37441 6 9.375ZM6.85875 3.55875L6.6075 6.56625C6.5944 6.71834 6.52472 6.85999 6.41224 6.9632C6.29976 7.0664 6.15266 7.12367 6 7.12367C5.84735 7.12367 5.70024 7.0664 5.58776 6.9632C5.47528 6.85999 5.40561 6.71834 5.3925 6.56625L5.14125 3.55875C5.13042 3.44226 5.1434 3.32478 5.1794 3.21346C5.2154 3.10214 5.27367 2.99931 5.35067 2.91123C5.42767 2.82314 5.52178 2.75165 5.62729 2.70108C5.73279 2.65052 5.84748 2.62195 5.96437 2.61711C6.08127 2.61227 6.19793 2.63126 6.30725 2.67294C6.41657 2.71461 6.51627 2.77808 6.60029 2.8595C6.6843 2.94092 6.75087 3.03858 6.79595 3.14655C6.84103 3.25451 6.86367 3.37051 6.8625 3.4875C6.86313 3.51131 6.86187 3.53514 6.85875 3.55875Z" />
-                                                </g>
-                                            </svg>
-                                            <div class="tooltip-text">Including Activities <span>Scuba Diving, Zip-lining,
-                                                    Rafting & Rock Climbing</span> with this premium package.</div>
-                                        </div>
-                                    </li>
-                                    <li>
-                                        <svg width="16" height="16" viewBox="0 0 16 16"
-                                            xmlns="http://www.w3.org/2000/svg">
-                                            <g>
-                                                <path
-                                                    d="M8 0C3.58853 0 0 3.58853 0 8C0 12.4115 3.58853 16 8 16C12.4115 16 16 12.4108 16 8C16 3.58916 12.4115 0 8 0ZM8 14.7607C4.27266 14.7607 1.23934 11.728 1.23934 8C1.23934 4.27203 4.27266 1.23934 8 1.23934C11.7273 1.23934 14.7607 4.27203 14.7607 8C14.7607 11.728 11.728 14.7607 8 14.7607Z" />
-                                                <path
-                                                    d="M11.0984 7.32445H8.6197V4.84576C8.6197 4.5037 8.3427 4.22607 8.00001 4.22607C7.65733 4.22607 7.38033 4.5037 7.38033 4.84576V7.32445H4.90164C4.55895 7.32445 4.28195 7.60207 4.28195 7.94414C4.28195 8.2862 4.55895 8.56382 4.90164 8.56382H7.38033V11.0425C7.38033 11.3846 7.65733 11.6622 8.00001 11.6622C8.3427 11.6622 8.6197 11.3846 8.6197 11.0425V8.56382H11.0984C11.4411 8.56382 11.7181 8.2862 11.7181 7.94414C11.7181 7.60207 11.4411 7.32445 11.0984 7.32445Z" />
-                                            </g>
-                                        </svg>
-                                        Inclusion
-                                        <div class="info">
-                                            <svg width="12" height="12" viewBox="0 0 12 12"
-                                                xmlns="http://www.w3.org/2000/svg">
-                                                <g>
-                                                    <path
-                                                        d="M6 0.375C4.88748 0.375 3.79995 0.704901 2.87492 1.32298C1.94989 1.94107 1.22892 2.81957 0.80318 3.84741C0.377437 4.87524 0.266043 6.00624 0.483085 7.09738C0.700127 8.18853 1.23586 9.19081 2.02253 9.97748C2.8092 10.7641 3.81148 11.2999 4.90262 11.5169C5.99376 11.734 7.12476 11.6226 8.1526 11.1968C9.18043 10.7711 10.0589 10.0501 10.677 9.12508C11.2951 8.20006 11.625 7.11252 11.625 6C11.6245 4.50831 11.0317 3.07786 9.97693 2.02307C8.92215 0.968289 7.49169 0.375497 6 0.375ZM6 9.375C5.85167 9.375 5.70666 9.33101 5.58333 9.2486C5.45999 9.16619 5.36386 9.04906 5.30709 8.91201C5.25033 8.77497 5.23548 8.62417 5.26441 8.47868C5.29335 8.3332 5.36478 8.19956 5.46967 8.09467C5.57456 7.98978 5.7082 7.91835 5.85369 7.88941C5.99917 7.86047 6.14997 7.87533 6.28702 7.93209C6.42406 7.98886 6.54119 8.08499 6.62361 8.20832C6.70602 8.33166 6.75 8.47666 6.75 8.625C6.74941 8.82373 6.6702 9.01415 6.52968 9.15468C6.38915 9.2952 6.19873 9.37441 6 9.375ZM6.85875 3.55875L6.6075 6.56625C6.5944 6.71834 6.52472 6.85999 6.41224 6.9632C6.29976 7.0664 6.15266 7.12367 6 7.12367C5.84735 7.12367 5.70024 7.0664 5.58776 6.9632C5.47528 6.85999 5.40561 6.71834 5.3925 6.56625L5.14125 3.55875C5.13042 3.44226 5.1434 3.32478 5.1794 3.21346C5.2154 3.10214 5.27367 2.99931 5.35067 2.91123C5.42767 2.82314 5.52178 2.75165 5.62729 2.70108C5.73279 2.65052 5.84748 2.62195 5.96437 2.61711C6.08127 2.61227 6.19793 2.63126 6.30725 2.67294C6.41657 2.71461 6.51627 2.77808 6.60029 2.8595C6.6843 2.94092 6.75087 3.03858 6.79595 3.14655C6.84103 3.25451 6.86367 3.37051 6.8625 3.4875C6.86313 3.51131 6.86187 3.53514 6.85875 3.55875Z" />
-                                                </g>
-                                            </svg>
-                                            <div class="tooltip-text">This package covers <span>Accommodation, Daily
-                                                    Meals, Entry Fees & Local Transfers</span> to ensure a worry-free trip.
-                                            </div>
-                                        </div>
-                                    </li>
-                                </ul>
-                            </div>
+                    <div class="col-xl-6 col-lg-8">
+                        <div class="section-title text-center">
+                            <h2>{{ $settings['packages_section_title'] ?? 'Popular Package' }}</h2>
+                            <p>{{ $settings['packages_section_description'] ?? 'A curated list of the most popular travel packages based on different destinations.' }}
+                            </p>
                         </div>
                     </div>
                 </div>
-                <div class="col-lg-4 col-md-6 wow animate fadeInDown" data-wow-delay="400ms"
-                    data-wow-duration="1500ms">
-                    <div class="package-card">
-                        <div class="package-img-wrap">
-                            <div class="swiper package-card-img-slider">
-                                <div class="swiper-wrapper">
-                                    <div class="swiper-slide">
-                                        <a href="travel-package-details.html" class="package-img">
-                                            <img src="{{ asset('assets/img/home1/tour-package-img6.jpg')}}" alt="">
+                <div class="row gy-lg-5 gy-4">
+                    @if ($packages->count() > 0)
+                        @foreach ($packages as $package)
+                            <div class="col-lg-4 col-md-6 wow animate fadeInDown" data-wow-delay="200ms"
+                                data-wow-duration="1500ms">
+                                <div class="package-card">
+                                    <div class="package-img-wrap">
+                                        <a href="{{ route('cms.show', ['type' => 'things-to-do', 'slug' => $package->slug]) }}"
+                                            class="package-img">
+                                            <img src="{{ $package->featured_image ? asset('storage/' . $package->featured_image) : asset('assets/img/home1/tour-package-img1.jpg') }}"
+                                                alt="{{ $package->title }}">
                                         </a>
-                                    </div>
-                                    <div class="swiper-slide">
-                                        <a href="travel-package-details.html" class="package-img">
-                                            <img src="{{ asset('assets/img/home1/tour-package-img15.jpg')}}" alt="">
-                                        </a>
-                                    </div>
-                                    <div class="swiper-slide">
-                                        <a href="travel-package-details.html" class="package-img">
-                                            <img src="{{ asset('assets/img/home1/tour-package-img16.jpg')}}" alt="">
-                                        </a>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="slider-pagi-wrap">
-                                <div class="package-card-img-pagi paginations"></div>
-                            </div>
-                            <div class="batch">
-                                <span>Hot Sale!</span>
-                            </div>
-                        </div>
-                        <div class="package-content">
-                            <h5><a href="travel-package-details.html">Norway Northern Lights</a></h5>
-                            <div class="location-and-time">
-                                <div class="location">
-                                    <svg width="14" height="14" viewBox="0 0 14 14"
-                                        xmlns="http://www.w3.org/2000/svg">
-                                        <path
-                                            d="M6.83615 0C3.77766 0 1.28891 2.48879 1.28891 5.54892C1.28891 7.93837 4.6241 11.8351 6.05811 13.3994C6.25669 13.6175 6.54154 13.7411 6.83615 13.7411C7.13076 13.7411 7.41561 13.6175 7.6142 13.3994C9.04821 11.8351 12.3834 7.93833 12.3834 5.54892C12.3834 2.48879 9.89464 0 6.83615 0ZM7.31469 13.1243C7.18936 13.2594 7.02008 13.3342 6.83615 13.3342C6.65222 13.3342 6.48295 13.2594 6.35761 13.1243C4.95614 11.5959 1.69584 7.79515 1.69584 5.54896C1.69584 2.7134 4.00067 0.406933 6.83615 0.406933C9.67164 0.406933 11.9765 2.7134 11.9765 5.54896C11.9765 7.79515 8.71617 11.5959 7.31469 13.1243Z" />
-                                        <path
-                                            d="M6.83618 8.54554C8.4624 8.54554 9.7807 7.22723 9.7807 5.60102C9.7807 3.9748 8.4624 2.65649 6.83618 2.65649C5.20997 2.65649 3.89166 3.9748 3.89166 5.60102C3.89166 7.22723 5.20997 8.54554 6.83618 8.54554Z" />
-                                    </svg>
-                                    <a href="travel-package-01.html">Norway</a>
-                                </div>
-                                <svg class="arrow" width="25" height="6" viewBox="0 0 25 6"
-                                    xmlns="http://www.w3.org/2000/svg">
-                                    <path
-                                        d="M0 3L5 5.88675V0.113249L0 3ZM25 3L20 0.113249V5.88675L25 3ZM4.5 3.5H20.5V2.5H4.5V3.5Z" />
-                                </svg>
-                                <span>07 Days/06 Nights</span>
-                            </div>
-                            <div class="btn-and-price-area">
-                                <a href="travel-package-details.html" class="primary-btn1">
-                                    <span>
-                                        Book Now
-                                        <svg width="10" height="10" viewBox="0 0 10 10"
-                                            xmlns="http://www.w3.org/2000/svg">
-                                            <path
-                                                d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z" />
-                                        </svg>
-                                    </span>
-                                    <span>
-                                        Book Now
-                                        <svg width="10" height="10" viewBox="0 0 10 10"
-                                            xmlns="http://www.w3.org/2000/svg">
-                                            <path
-                                                d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z" />
-                                        </svg>
-                                    </span>
-                                </a>
-                                <div class="price-area">
-                                    <h6>Per Person</h6>
-                                    <span>$359</span>
-                                </div>
-                            </div>
-                            <svg class="divider" height="6" viewBox="0 0 374 6"
-                                xmlns="http://www.w3.org/2000/svg">
-                                <path
-                                    d="M5 2.5L0 0.113249V5.88675L5 3.5V2.5ZM369 3.5L374 5.88675V0.113249L369 2.5V3.5ZM4.5 3.5H369.5V2.5H4.5V3.5Z" />
-                            </svg>
-                            <div class="bottom-area">
-                                <ul>
-                                    <li>
-                                        <svg width="16" height="16" viewBox="0 0 16 16"
-                                            xmlns="http://www.w3.org/2000/svg">
-                                            <path
-                                                d="M9.2732 12.9807H6.7268C6.68429 12.9807 6.64298 12.9666 6.60935 12.9406C6.55906 12.9018 5.36398 11.9718 4.14989 10.4857C3.43499 9.61078 2.86499 8.72565 2.45543 7.8549C1.93974 6.75846 1.67834 5.68141 1.67834 4.65329C1.67834 3.50657 2.36043 2.33394 3.54995 1.43595C4.1378 0.992226 4.81163 0.641781 5.55321 0.394396C6.33797 0.132617 7.16112 0 8 0C8.83888 0 9.66203 0.132617 10.4466 0.394396C11.1882 0.641781 11.862 0.992035 12.4499 1.43595C13.6392 2.33394 14.3215 3.50676 14.3215 4.65329C14.3215 5.63247 14.0599 6.67939 13.544 7.7647C13.1348 8.62565 12.5652 9.51367 11.8511 10.4036C10.6383 11.9148 9.40697 12.9272 9.39468 12.9371C9.36046 12.9653 9.31752 12.9807 9.2732 12.9807ZM6.79378 12.5969H9.20334C9.4465 12.3905 10.5082 11.4651 11.5563 10.1576C12.6425 8.8026 13.9374 6.74772 13.9374 4.65329C13.9374 2.63794 11.3981 0.38384 7.99981 0.38384C4.60148 0.38384 2.06238 2.63794 2.06238 4.65329C2.06238 6.85769 3.3563 8.90624 4.44199 10.2364C5.49084 11.5215 6.55311 12.4032 6.79378 12.5969Z" />
-                                            <path
-                                                d="M7.51886 12.7888C7.51886 12.7888 5.68372 9.03538 5.68372 4.65327C5.68372 2.43045 6.72066 0.191895 8 0.191895C9.27934 0.191895 10.3163 2.43045 10.3163 4.65327C10.3163 8.82024 8.48114 12.7888 8.48114 12.7888" />
-                                            <path
-                                                d="M7.34653 12.873C7.32753 12.8343 6.87594 11.9042 6.41802 10.4209C5.9956 9.05229 5.492 6.94079 5.492 4.65329C5.492 3.53843 5.74668 2.39036 6.19079 1.50312C6.67577 0.533921 7.31832 0 8.00002 0C8.68172 0 9.32426 0.53373 9.80944 1.50312C10.2535 2.39036 10.5082 3.53843 10.5082 4.65329C10.5082 6.82928 10.0048 8.94655 9.5824 10.3393C9.12505 11.8478 8.67423 12.8283 8.65542 12.8692L8.30709 12.7082C8.31169 12.6984 8.7675 11.7058 9.21717 10.2213C9.63114 8.85481 10.1246 6.77977 10.1246 4.65329C10.1246 3.5962 9.88467 2.51051 9.46648 1.67489C9.05577 0.854428 8.52146 0.38384 8.00021 0.38384C7.47895 0.38384 6.94465 0.854428 6.53394 1.67489C6.11574 2.51051 5.87584 3.5962 5.87584 4.65329C5.87584 6.893 6.37023 8.96439 6.78497 10.3076C7.23406 11.7626 7.68699 12.6951 7.6916 12.7043L7.34653 12.873ZM8.77038 16H7.22965C6.84658 16 6.5349 15.6883 6.5349 15.3052V13.9892C6.5349 13.8833 6.62088 13.7973 6.72682 13.7973H9.27321C9.37915 13.7973 9.46513 13.8833 9.46513 13.9892V15.3052C9.46513 15.6883 9.15346 16 8.77038 16ZM6.91874 14.1812V15.3052C6.91874 15.4766 7.05826 15.6162 7.22965 15.6162H8.77038C8.94177 15.6162 9.08129 15.4766 9.08129 15.3052V14.1812H6.91874Z" />
-                                            <path
-                                                d="M8.90952 14.1812H7.0907C7.00606 14.1812 6.93159 14.126 6.90703 14.045L6.54334 12.8445C6.52568 12.7863 6.53662 12.7232 6.5729 12.6745C6.60917 12.6257 6.66636 12.5969 6.72701 12.5969H9.2734C9.33424 12.5969 9.39143 12.6257 9.42751 12.6745C9.4454 12.6985 9.45739 12.7264 9.46252 12.756C9.46765 12.7855 9.46579 12.8158 9.45707 12.8445L9.09338 14.045C9.06862 14.1258 8.99397 14.1812 8.90952 14.1812ZM7.23291 13.7974H8.76693L9.01431 12.9808H6.98552L7.23291 13.7974Z" />
-                                        </svg>
-                                        Experience
-                                        <div class="info">
-                                            <svg width="12" height="12" viewBox="0 0 12 12"
-                                                xmlns="http://www.w3.org/2000/svg">
-                                                <g>
-                                                    <path
-                                                        d="M6 0.375C4.88748 0.375 3.79995 0.704901 2.87492 1.32298C1.94989 1.94107 1.22892 2.81957 0.80318 3.84741C0.377437 4.87524 0.266043 6.00624 0.483085 7.09738C0.700127 8.18853 1.23586 9.19081 2.02253 9.97748C2.8092 10.7641 3.81148 11.2999 4.90262 11.5169C5.99376 11.734 7.12476 11.6226 8.1526 11.1968C9.18043 10.7711 10.0589 10.0501 10.677 9.12508C11.2951 8.20006 11.625 7.11252 11.625 6C11.6245 4.50831 11.0317 3.07786 9.97693 2.02307C8.92215 0.968289 7.49169 0.375497 6 0.375ZM6 9.375C5.85167 9.375 5.70666 9.33101 5.58333 9.2486C5.45999 9.16619 5.36386 9.04906 5.30709 8.91201C5.25033 8.77497 5.23548 8.62417 5.26441 8.47868C5.29335 8.3332 5.36478 8.19956 5.46967 8.09467C5.57456 7.98978 5.7082 7.91835 5.85369 7.88941C5.99917 7.86047 6.14997 7.87533 6.28702 7.93209C6.42406 7.98886 6.54119 8.08499 6.62361 8.20832C6.70602 8.33166 6.75 8.47666 6.75 8.625C6.74941 8.82373 6.6702 9.01415 6.52968 9.15468C6.38915 9.2952 6.19873 9.37441 6 9.375ZM6.85875 3.55875L6.6075 6.56625C6.5944 6.71834 6.52472 6.85999 6.41224 6.9632C6.29976 7.0664 6.15266 7.12367 6 7.12367C5.84735 7.12367 5.70024 7.0664 5.58776 6.9632C5.47528 6.85999 5.40561 6.71834 5.3925 6.56625L5.14125 3.55875C5.13042 3.44226 5.1434 3.32478 5.1794 3.21346C5.2154 3.10214 5.27367 2.99931 5.35067 2.91123C5.42767 2.82314 5.52178 2.75165 5.62729 2.70108C5.73279 2.65052 5.84748 2.62195 5.96437 2.61711C6.08127 2.61227 6.19793 2.63126 6.30725 2.67294C6.41657 2.71461 6.51627 2.77808 6.60029 2.8595C6.6843 2.94092 6.75087 3.03858 6.79595 3.14655C6.84103 3.25451 6.86367 3.37051 6.8625 3.4875C6.86313 3.51131 6.86187 3.53514 6.85875 3.55875Z" />
-                                                </g>
-                                            </svg>
-                                            <div class="tooltip-text">Including Activities <span>Scuba Diving, Zip-lining,
-                                                    Rafting & Rock Climbing</span> with this premium package.</div>
-                                        </div>
-                                    </li>
-                                    <li>
-                                        <svg width="16" height="16" viewBox="0 0 16 16"
-                                            xmlns="http://www.w3.org/2000/svg">
-                                            <g>
-                                                <path
-                                                    d="M8 0C3.58853 0 0 3.58853 0 8C0 12.4115 3.58853 16 8 16C12.4115 16 16 12.4108 16 8C16 3.58916 12.4115 0 8 0ZM8 14.7607C4.27266 14.7607 1.23934 11.728 1.23934 8C1.23934 4.27203 4.27266 1.23934 8 1.23934C11.7273 1.23934 14.7607 4.27203 14.7607 8C14.7607 11.728 11.728 14.7607 8 14.7607Z" />
-                                                <path
-                                                    d="M11.0984 7.32445H8.6197V4.84576C8.6197 4.5037 8.3427 4.22607 8.00001 4.22607C7.65733 4.22607 7.38033 4.5037 7.38033 4.84576V7.32445H4.90164C4.55895 7.32445 4.28195 7.60207 4.28195 7.94414C4.28195 8.2862 4.55895 8.56382 4.90164 8.56382H7.38033V11.0425C7.38033 11.3846 7.65733 11.6622 8.00001 11.6622C8.3427 11.6622 8.6197 11.3846 8.6197 11.0425V8.56382H11.0984C11.4411 8.56382 11.7181 8.2862 11.7181 7.94414C11.7181 7.60207 11.4411 7.32445 11.0984 7.32445Z" />
-                                            </g>
-                                        </svg>
-                                        Inclusion
-                                        <div class="info">
-                                            <svg width="12" height="12" viewBox="0 0 12 12"
-                                                xmlns="http://www.w3.org/2000/svg">
-                                                <g>
-                                                    <path
-                                                        d="M6 0.375C4.88748 0.375 3.79995 0.704901 2.87492 1.32298C1.94989 1.94107 1.22892 2.81957 0.80318 3.84741C0.377437 4.87524 0.266043 6.00624 0.483085 7.09738C0.700127 8.18853 1.23586 9.19081 2.02253 9.97748C2.8092 10.7641 3.81148 11.2999 4.90262 11.5169C5.99376 11.734 7.12476 11.6226 8.1526 11.1968C9.18043 10.7711 10.0589 10.0501 10.677 9.12508C11.2951 8.20006 11.625 7.11252 11.625 6C11.6245 4.50831 11.0317 3.07786 9.97693 2.02307C8.92215 0.968289 7.49169 0.375497 6 0.375ZM6 9.375C5.85167 9.375 5.70666 9.33101 5.58333 9.2486C5.45999 9.16619 5.36386 9.04906 5.30709 8.91201C5.25033 8.77497 5.23548 8.62417 5.26441 8.47868C5.29335 8.3332 5.36478 8.19956 5.46967 8.09467C5.57456 7.98978 5.7082 7.91835 5.85369 7.88941C5.99917 7.86047 6.14997 7.87533 6.28702 7.93209C6.42406 7.98886 6.54119 8.08499 6.62361 8.20832C6.70602 8.33166 6.75 8.47666 6.75 8.625C6.74941 8.82373 6.6702 9.01415 6.52968 9.15468C6.38915 9.2952 6.19873 9.37441 6 9.375ZM6.85875 3.55875L6.6075 6.56625C6.5944 6.71834 6.52472 6.85999 6.41224 6.9632C6.29976 7.0664 6.15266 7.12367 6 7.12367C5.84735 7.12367 5.70024 7.0664 5.58776 6.9632C5.47528 6.85999 5.40561 6.71834 5.3925 6.56625L5.14125 3.55875C5.13042 3.44226 5.1434 3.32478 5.1794 3.21346C5.2154 3.10214 5.27367 2.99931 5.35067 2.91123C5.42767 2.82314 5.52178 2.75165 5.62729 2.70108C5.73279 2.65052 5.84748 2.62195 5.96437 2.61711C6.08127 2.61227 6.19793 2.63126 6.30725 2.67294C6.41657 2.71461 6.51627 2.77808 6.60029 2.8595C6.6843 2.94092 6.75087 3.03858 6.79595 3.14655C6.84103 3.25451 6.86367 3.37051 6.8625 3.4875C6.86313 3.51131 6.86187 3.53514 6.85875 3.55875Z" />
-                                                </g>
-                                            </svg>
-                                            <div class="tooltip-text">This package covers <span>Accommodation, Daily
-                                                    Meals, Entry Fees & Local Transfers</span> to ensure a worry-free trip.
+                                        @if ($package->is_featured)
+                                            <div class="batch">
+                                                <span>Featured!</span>
                                             </div>
+                                        @endif
+                                    </div>
+                                    <div class="package-content">
+                                        <h5><a
+                                                href="{{ route('cms.show', ['type' => 'things-to-do', 'slug' => $package->slug]) }}">{{ $package->title }}</a>
+                                        </h5>
+                                        <div class="location-and-time">
+                                            <div class="location">
+                                                <svg width="14" height="14" viewBox="0 0 14 14"
+                                                    xmlns="http://www.w3.org/2000/svg">
+                                                    <path
+                                                        d="M6.83615 0C3.77766 0 1.28891 2.48879 1.28891 5.54892C1.28891 7.93837 4.6241 11.8351 6.05811 13.3994C6.25669 13.6175 6.54154 13.7411 6.83615 13.7411C7.13076 13.7411 7.41561 13.6175 7.6142 13.3994C9.04821 11.8351 12.3834 7.93833 12.3834 5.54892C12.3834 2.48879 9.89464 0 6.83615 0ZM7.31469 13.1243C7.18936 13.2594 7.02008 13.3342 6.83615 13.3342C6.65222 13.3342 6.48295 13.2594 6.35761 13.1243C4.95614 11.5959 1.69584 7.79515 1.69584 5.54896C1.69584 2.7134 4.00067 0.406933 6.83615 0.406933C9.67164 0.406933 11.9765 2.7134 11.9765 5.54896C11.9765 7.79515 8.71617 11.5959 7.31469 13.1243Z" />
+                                                    <path
+                                                        d="M6.83618 8.54554C8.4624 8.54554 9.7807 7.22723 9.7807 5.60102C9.7807 3.9748 8.4624 2.65649 6.83618 2.65649C5.20997 2.65649 3.89166 3.9748 3.89166 5.60102C3.89166 7.22723 5.20997 8.54554 6.83618 8.54554Z" />
+                                                </svg>
+                                                <span>{{ $package->excerpt ?: 'Package Location' }}</span>
+                                            </div>
+                                            <svg class="arrow" width="25" height="6" viewBox="0 0 25 6"
+                                                xmlns="http://www.w3.org/2000/svg">
+                                                <path
+                                                    d="M0 3L5 5.88675V0.113249L0 3ZM25 3L20 0.113249V5.88675L25 3ZM4.5 3.5H20.5V2.5H4.5V3.5Z" />
+                                            </svg>
+                                            <span>{{ $package->published_at ? $package->published_at->format('M d, Y') : 'Available' }}</span>
                                         </div>
-                                    </li>
-                                </ul>
+                                        <div class="btn-and-price-area">
+                                            <a href="{{ route('cms.show', ['type' => 'things-to-do', 'slug' => $package->slug]) }}"
+                                                class="primary-btn1">
+                                                <span>
+                                                    View Details
+                                                    <svg width="10" height="10" viewBox="0 0 10 10"
+                                                        xmlns="http://www.w3.org/2000/svg">
+                                                        <path
+                                                            d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z" />
+                                                    </svg>
+                                                </span>
+                                                <span>
+                                                    View Details
+                                                    <svg width="10" height="10" viewBox="0 0 10 10"
+                                                        xmlns="http://www.w3.org/2000/svg">
+                                                        <path
+                                                            d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z" />
+                                                    </svg>
+                                                </span>
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        @endforeach
+                    @else
+                        <!-- Fallback content when no packages are available -->
+                        <div class="col-lg-4 col-md-6 wow animate fadeInDown" data-wow-delay="200ms"
+                            data-wow-duration="1500ms">
+                            <div class="package-card">
+                                <div class="package-img-wrap">
+                                    <div class="package-img">
+                                        <img src="{{ $settings['package_fallback_image'] ?? asset('assets/img/home1/tour-package-img1.jpg') }}" alt="">
+                                    </div>
+                                </div>
+                                <div class="package-content">
+                                    <h5>Coming Soon</h5>
+                                    <p>New packages will be available soon!</p>
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    @endif
                 </div>
+
             </div>
         </div>
     </div>
+
     <!-- home4 Travel Package Section End-->
 
     <!-- home4 Offer Slider Section Start-->
@@ -1164,11 +460,13 @@
                         <div class="swiper-wrapper">
                             <div class="swiper-slide">
                                 <a href="travel-package-details.html"><img
-                                        src="{{ asset('assets/img/home4/home4-offer-slider-img1.jpg')}}" alt=""></a>
+                                        src="{{ $settings['offer_slider_img_1'] ?? asset('assets/img/home4/home4-offer-slider-img1.jpg') }}"
+                                        alt=""></a>
                             </div>
                             <div class="swiper-slide">
                                 <a href="travel-package-details.html"><img
-                                        src="{{ asset('assets/img/home4/home4-offer-slider-img2.jpg')}}" alt=""></a>
+                                        src="{{ $settings['offer_slider_img_2'] ?? asset('assets/img/home4/home4-offer-slider-img2.jpg') }}"
+                                        alt=""></a>
                             </div>
                         </div>
                     </div>
@@ -1195,13 +493,13 @@
                     </div>
                 </div>
                 <div class="col-lg-3 d-flex justify-content-lg-end">
-                    <a href="https://www.tripadvisor.com/" class="single-rating">
-                        <strong>4.5</strong>
+                    <a href="{{ $settings['tripadvisor_url'] ?? 'https://www.tripadvisor.com/' }}" class="single-rating">
+                        <strong>{{ $settings['tripadvisor_rating'] ?? '4.5' }}</strong>
                         <div class="tripadvisor-rating">
-                            <img src="{{ asset('assets/img/home1/icon/tripadvisor-logo.svg')}}" alt="">
+                            <img src="{{ $settings['tripadvisor_logo'] ?? asset('assets/img/home1/icon/tripadvisor-logo.svg') }}" alt="">
                             <div class="rating-area">
-                                <span>Reviews</span>
-                                <img src="{{ asset('assets/img/home1/icon/tripadvisor-start.svg')}}" alt="">
+                                <span>{{ $settings['tripadvisor_label'] ?? 'Reviews' }}</span>
+                                <img src="{{ $settings['tripadvisor_stars'] ?? asset('assets/img/home1/icon/tripadvisor-start.svg') }}" alt="">
                             </div>
                         </div>
                     </a>
@@ -1212,36 +510,36 @@
                     data-wow-duration="1500ms">
                     <div class="single-feature">
                         <div class="icon">
-                            <img src="{{ asset('assets/img/home3/icon/destination-feature-icon1.svg')}}" alt="">
+                            <img src="{{ $settings['why_feature_1_icon'] ?? asset('assets/img/home3/icon/destination-feature-icon1.svg') }}" alt="">
                         </div>
-                        <h5>Customizable Package.</h5>
+                        <h5>{{ $settings['why_feature_1'] ?? 'Customizable Package.' }}</h5>
                     </div>
                 </div>
                 <div class="col-lg-3 col-md-4 col-sm-6 wow animate fadeInUp" data-wow-delay="400ms"
                     data-wow-duration="1500ms">
                     <div class="single-feature">
                         <div class="icon">
-                            <img src="{{ asset('assets/img/home3/icon/destination-feature-icon2.svg')}}" alt="">
+                            <img src="{{ $settings['why_feature_2_icon'] ?? asset('assets/img/home3/icon/destination-feature-icon2.svg') }}" alt="">
                         </div>
-                        <h5>24/7 Support</h5>
+                        <h5>{{ $settings['why_feature_2'] ?? '24/7 Support' }}</h5>
                     </div>
                 </div>
                 <div class="col-lg-3 col-md-4 col-sm-6 wow animate fadeInUp" data-wow-delay="600ms"
                     data-wow-duration="1500ms">
                     <div class="single-feature">
                         <div class="icon">
-                            <img src="{{ asset('assets/img/home3/icon/destination-feature-icon3.svg')}}" alt="">
+                            <img src="{{ $settings['why_feature_3_icon'] ?? asset('assets/img/home3/icon/destination-feature-icon3.svg') }}" alt="">
                         </div>
-                        <h5>Trusted by Thousands</h5>
+                        <h5>{{ $settings['why_feature_3'] ?? 'Trusted by Thousands' }}</h5>
                     </div>
                 </div>
                 <div class="col-lg-3 col-md-4 col-sm-6 wow animate fadeInUp" data-wow-delay="800ms"
                     data-wow-duration="1500ms">
                     <div class="single-feature">
                         <div class="icon">
-                            <img src="{{ asset('assets/img/home3/icon/destination-feature-icon4.svg')}}" alt="">
+                            <img src="{{ $settings['why_feature_4_icon'] ?? asset('assets/img/home3/icon/destination-feature-icon4.svg') }}" alt="">
                         </div>
-                        <h5>Local Experties</h5>
+                        <h5>{{ $settings['why_feature_4'] ?? 'Local Experties' }}</h5>
                     </div>
                 </div>
             </div>
@@ -1250,8 +548,8 @@
     <div class="why-choose-video-area mb-100">
         <div class="container">
             <div class="why-choose-video-wrap">
-                <img src="{{ asset('assets/img/home4/why-choose-video-img.jpg')}}" alt="">
-                <a data-fancybox="video-player" href="https://www.youtube.com/watch?v=u31qwQUeGuM" class="play-btn">
+                <img src="{{ $settings['why_video_thumbnail'] ?? asset('assets/img/home4/why-choose-video-img.jpg') }}" alt="">
+                <a data-fancybox="video-player" href="{{ $settings['why_video_url'] ?? 'https://www.youtube.com/watch?v=u31qwQUeGuM' }}" class="play-btn">
                     <i class="bi bi-play-fill"></i>
                     <div class="waves-block">
                         <div class="waves wave-1"></div>
@@ -1319,7 +617,7 @@
                                             <div class="author-area">
                                                 <div class="author-info">
                                                     <h5>James Bonde</h5>
-                                                    <span>GoFly Traveler</span>
+                                                    <span>TheTaxi Traveler</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -1370,7 +668,7 @@
                                             <div class="author-area">
                                                 <div class="author-info">
                                                     <h5>Selina Henry</h5>
-                                                    <span>GoFly Traveler</span>
+                                                    <span>TheTaxi Traveler</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -1391,7 +689,7 @@
                                             <div class="author-area">
                                                 <div class="author-info">
                                                     <h5>Robert Kcarery </h5>
-                                                    <span>GoFly Traveler</span>
+                                                    <span>TheTaxi Traveler</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -1412,7 +710,7 @@
                                             <div class="author-area">
                                                 <div class="author-info">
                                                     <h5>James Bonde</h5>
-                                                    <span>GoFly Traveler</span>
+                                                    <span>TheTaxi Traveler</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -1463,7 +761,7 @@
                                             <div class="author-area">
                                                 <div class="author-info">
                                                     <h5>Selina Henry</h5>
-                                                    <span>GoFly Traveler</span>
+                                                    <span>TheTaxi Traveler</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -1474,8 +772,7 @@
                     </div>
                     <div class="slider-btn-grp">
                         <div class="slider-btn testimonial-slider-prev">
-                            <svg width="14" height="14" viewBox="0 0 14 14"
-                                xmlns="http://www.w3.org/2000/svg">
+                            <svg width="14" height="14" viewBox="0 0 14 14" xmlns="http://www.w3.org/2000/svg">
                                 <g>
                                     <path
                                         d="M11.002 13.0005C10.002 10.5005 5.00195 8.00049 2.00195 7.00049C5.00195 6.00049 9.50195 4.50049 11.002 1.00049"
@@ -1484,8 +781,7 @@
                             </svg>
                         </div>
                         <div class="slider-btn testimonial-slider-next">
-                            <svg width="14" height="14" viewBox="0 0 14 14"
-                                xmlns="http://www.w3.org/2000/svg">
+                            <svg width="14" height="14" viewBox="0 0 14 14" xmlns="http://www.w3.org/2000/svg">
                                 <g>
                                     <path
                                         d="M2.99805 13.0005C3.99805 10.5005 8.99805 8.00049 11.998 7.00049C8.99805 6.00049 4.49805 4.50049 2.99805 1.00049"
@@ -1501,27 +797,32 @@
                             <div class="swiper-wrapper">
                                 <div class="swiper-slide">
                                     <div class="testimonial-author-img">
-                                        <img src="{{ asset('assets/img/home4/testimonial-author-img1.png')}}" alt="">
+                                        <img src="{{ $settings['testimonial_author_img_1'] ?? asset('assets/img/home4/testimonial-author-img1.png') }}"
+                                            alt="">
                                     </div>
                                 </div>
                                 <div class="swiper-slide">
                                     <div class="testimonial-author-img">
-                                        <img src="{{ asset('assets/img/home4/testimonial-author-img2.png')}}" alt="">
+                                        <img src="{{ $settings['testimonial_author_img_2'] ?? asset('assets/img/home4/testimonial-author-img2.png') }}"
+                                            alt="">
                                     </div>
                                 </div>
                                 <div class="swiper-slide">
                                     <div class="testimonial-author-img">
-                                        <img src="{{ asset('assets/img/home4/testimonial-author-img3.png')}}" alt="">
+                                        <img src="{{ $settings['testimonial_author_img_3'] ?? asset('assets/img/home4/testimonial-author-img3.png') }}"
+                                            alt="">
                                     </div>
                                 </div>
                                 <div class="swiper-slide">
                                     <div class="testimonial-author-img">
-                                        <img src="{{ asset('assets/img/home4/testimonial-author-img4.png')}}" alt="">
+                                        <img src="{{ $settings['testimonial_author_img_4'] ?? asset('assets/img/home4/testimonial-author-img4.png') }}"
+                                            alt="">
                                     </div>
                                 </div>
                                 <div class="swiper-slide">
                                     <div class="testimonial-author-img">
-                                        <img src="{{ asset('assets/img/home4/testimonial-author-img5.png')}}" alt="">
+                                        <img src="{{ $settings['testimonial_author_img_5'] ?? asset('assets/img/home4/testimonial-author-img5.png') }}"
+                                            alt="">
                                     </div>
                                 </div>
                             </div>
@@ -1530,7 +831,7 @@
                 </div>
             </div>
         </div>
-        <img src="{{ asset('assets/img/home4/vector/home4-testimonial-vector.png')}}" alt="" class="vector">
+        <img src="{{ $settings['testimonial_vector'] ?? asset('assets/img/home4/vector/home4-testimonial-vector.png') }}" alt="" class="vector">
     </div>
     <!-- home4 Testimonial Section End-->
 
@@ -1604,8 +905,7 @@
     <!-- home4 location search Section Start-->
     <div class="home1-location-search-section two mb-100">
         <div class="container">
-            <div class="location-search-wrapper wow animate fadeInUp" data-wow-delay="200ms"
-                data-wow-duration="1500ms">
+            <div class="location-search-wrapper wow animate fadeInUp" data-wow-delay="200ms" data-wow-duration="1500ms">
                 <div class="location-search-content">
                     <h2>Customize Your Travel Package!</h2>
                     <form class="location-search-area">
@@ -1649,8 +949,7 @@
                     </form>
                     <ul>
                         <li>
-                            <svg width="18" height="18" viewBox="0 0 18 18"
-                                xmlns="http://www.w3.org/2000/svg">
+                            <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
                                 <circle cx="9" cy="9" r="8.5" />
                                 <path
                                     d="M13.6193 7.07207L8.05903 12.6354C7.97043 12.721 7.85813 12.7654 7.74593 12.7654C7.68772 12.7655 7.63008 12.754 7.57632 12.7317C7.52256 12.7094 7.47376 12.6767 7.43272 12.6354L4.38073 9.58337C4.20642 9.41197 4.20642 9.13137 4.38073 8.95707L5.45912 7.87567C5.62462 7.71027 5.92002 7.71027 6.08552 7.87567L7.74593 9.53607L11.9146 5.36438C11.9557 5.32322 12.0045 5.29055 12.0581 5.26825C12.1118 5.24594 12.1694 5.23443 12.2275 5.23438C12.3456 5.23438 12.4579 5.28168 12.5406 5.36438L13.619 6.44587C13.7936 6.62017 13.7936 6.90077 13.6193 7.07207Z" />
@@ -1658,8 +957,7 @@
                             Make Your Favourite Package
                         </li>
                         <li>
-                            <svg width="18" height="18" viewBox="0 0 18 18"
-                                xmlns="http://www.w3.org/2000/svg">
+                            <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
                                 <circle cx="9" cy="9" r="8.5" />
                                 <path
                                     d="M13.6193 7.07207L8.05903 12.6354C7.97043 12.721 7.85813 12.7654 7.74593 12.7654C7.68772 12.7655 7.63008 12.754 7.57632 12.7317C7.52256 12.7094 7.47376 12.6767 7.43272 12.6354L4.38073 9.58337C4.20642 9.41197 4.20642 9.13137 4.38073 8.95707L5.45912 7.87567C5.62462 7.71027 5.92002 7.71027 6.08552 7.87567L7.74593 9.53607L11.9146 5.36438C11.9557 5.32322 12.0045 5.29055 12.0581 5.26825C12.1118 5.24594 12.1694 5.23443 12.2275 5.23438C12.3456 5.23438 12.4579 5.28168 12.5406 5.36438L13.619 6.44587C13.7936 6.62017 13.7936 6.90077 13.6193 7.07207Z" />
@@ -1667,8 +965,7 @@
                             Easily Customize Tours
                         </li>
                         <li>
-                            <svg width="18" height="18" viewBox="0 0 18 18"
-                                xmlns="http://www.w3.org/2000/svg">
+                            <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
                                 <circle cx="9" cy="9" r="8.5" />
                                 <path
                                     d="M13.6193 7.07207L8.05903 12.6354C7.97043 12.721 7.85813 12.7654 7.74593 12.7654C7.68772 12.7655 7.63008 12.754 7.57632 12.7317C7.52256 12.7094 7.47376 12.6767 7.43272 12.6354L4.38073 9.58337C4.20642 9.41197 4.20642 9.13137 4.38073 8.95707L5.45912 7.87567C5.62462 7.71027 5.92002 7.71027 6.08552 7.87567L7.74593 9.53607L11.9146 5.36438C11.9557 5.32322 12.0045 5.29055 12.0581 5.26825C12.1118 5.24594 12.1694 5.23443 12.2275 5.23438C12.3456 5.23438 12.4579 5.28168 12.5406 5.36438L13.619 6.44587C13.7936 6.62017 13.7936 6.90077 13.6193 7.07207Z" />
@@ -1679,8 +976,7 @@
                     <div class="contact-area">
                         <span>Meet Our Local Tour Guider!</span>
                         <a href="contact.html">Contact Now
-                            <svg width="10" height="10" viewBox="0 0 10 10"
-                                xmlns="http://www.w3.org/2000/svg">
+                            <svg width="10" height="10" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg">
                                 <path d="M1 9L9 1M9 1C7.22222 1.33333 3.33333 2 1 1M9 1C8.66667 2.66667 8 6.33333 9 9"
                                     stroke-width="1.5" stroke-linecap="round"></path>
                             </svg>
@@ -1699,18 +995,18 @@
                 data-wow-duration="1500ms">
                 <div class="col-xl-6 col-lg-8">
                     <div class="section-title text-center">
-                        <h2>Travel Inspirations</h2>
-                        <p>A curated list of the most popular travel packages based on different destinations.</p>
+                        <h2>{{ $settings['inspirations_section_title'] ?? 'Travel Inspirations' }}</h2>
+                        <p>{{ $settings['inspirations_section_description'] ?? 'A curated list of the most popular travel packages based on different destinations.' }}
+                        </p>
                     </div>
                 </div>
             </div>
             <div class="row g-4 mb-40">
-                <div class="col-lg-4 col-md-6 wow animate fadeInDown" data-wow-delay="200ms"
-                    data-wow-duration="1500ms">
+                <div class="col-lg-4 col-md-6 wow animate fadeInDown" data-wow-delay="200ms" data-wow-duration="1500ms">
                     <div class="blog-card2 two">
                         <div class="blog-img-wrap">
                             <a href="travel-inspiration-details.html" class="blog-img">
-                                <img src="{{ asset('assets/img/home3/blog-img1.jpg')}}" alt="">
+                                <img src="{{ $settings['inspiration_fallback_img_1'] ?? asset('assets/img/home3/blog-img1.jpg') }}" alt="">
                             </a>
                             <a href="travel-inspiration-01.html" class="location">
                                 <svg width="14" height="14" viewBox="0 0 14 14"
@@ -1725,19 +1021,19 @@
                         </div>
                         <div class="blog-content">
                             <a href="travel-inspiration-01.html" class="blog-date">24 February, 2025</a>
-                            <h4><a href="travel-inspiration-details.html">Nature, Culture & Thrill: Travel Stories That
-                                    Inspire.</a></h4>
+                            <h4><a
+                                    href="travel-inspiration-details.html">{{ isset($inspirations) && $inspirations->count() > 0 ? $inspirations->first()->title : 'Nature, Culture & Thrill: Travel Stories That Inspire.' }}</a>
+                            </h4>
                             <p>Nature, Culture & Thrill: Travel Stories Inspire is a collection of experiences from
                                 explorers.</p>
                         </div>
                     </div>
                 </div>
-                <div class="col-lg-4 col-md-6 wow animate fadeInDown" data-wow-delay="400ms"
-                    data-wow-duration="1500ms">
+                <div class="col-lg-4 col-md-6 wow animate fadeInDown" data-wow-delay="400ms" data-wow-duration="1500ms">
                     <div class="blog-card2 two">
                         <div class="blog-img-wrap">
                             <a href="travel-inspiration-details.html" class="blog-img">
-                                <img src="{{ asset('assets/img/home3/blog-img2.jpg')}}" alt="">
+                                <img src="{{ $settings['inspiration_fallback_img_2'] ?? asset('assets/img/home3/blog-img2.jpg') }}" alt="">
                             </a>
                             <a href="travel-inspiration-01.html" class="location">
                                 <svg width="14" height="14" viewBox="0 0 14 14"
@@ -1759,12 +1055,11 @@
                         </div>
                     </div>
                 </div>
-                <div class="col-lg-4 col-md-6 wow animate fadeInDown" data-wow-delay="600ms"
-                    data-wow-duration="1500ms">
+                <div class="col-lg-4 col-md-6 wow animate fadeInDown" data-wow-delay="600ms" data-wow-duration="1500ms">
                     <div class="blog-card2 two">
                         <div class="blog-img-wrap">
                             <a href="travel-inspiration-details.html" class="blog-img">
-                                <img src="{{ asset('assets/img/home3/blog-img3.jpg')}}" alt="">
+                                <img src="{{ asset('assets/img/home3/blog-img3.jpg') }}" alt="">
                             </a>
                             <a href="travel-inspiration-01.html" class="location">
                                 <svg width="14" height="14" viewBox="0 0 14 14"
@@ -1791,16 +1086,14 @@
                     <a href="travel-inspiration-01.html" class="primary-btn1 two transparent">
                         <span>
                             View All Inspiration
-                            <svg width="10" height="10" viewBox="0 0 10 10"
-                                xmlns="http://www.w3.org/2000/svg">
+                            <svg width="10" height="10" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg">
                                 <path
                                     d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z" />
                             </svg>
                         </span>
                         <span>
                             View All Inspiration
-                            <svg width="10" height="10" viewBox="0 0 10 10"
-                                xmlns="http://www.w3.org/2000/svg">
+                            <svg width="10" height="10" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg">
                                 <path
                                     d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z" />
                             </svg>
@@ -1809,7 +1102,7 @@
                 </div>
             </div>
         </div>
-        <img src="{{ asset('assets/img/home4/vector/blog-section-vector.svg')}}" alt="" class="vector">
+        <img src="{{ asset('assets/img/home4/vector/blog-section-vector.svg') }}" alt="" class="vector">
     </div>
     <!-- home4 blog Section End-->
 
@@ -1849,9 +1142,9 @@
                             <div class="accordion-item wow animate fadeInDown" data-wow-delay="400ms"
                                 data-wow-duration="1500ms">
                                 <h5 class="accordion-header" id="flush-headingTwo">
-                                    <button class="accordion-button collapsed" type="button"
-                                        data-bs-toggle="collapse" data-bs-target="#flush-collapseTwo"
-                                        aria-expanded="false" aria-controls="flush-collapseTwo">Do You Offer Customized
+                                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                                        data-bs-target="#flush-collapseTwo" aria-expanded="false"
+                                        aria-controls="flush-collapseTwo">Do You Offer Customized
                                         Travel Packages?</button>
                                 </h5>
                                 <div id="flush-collapseTwo" class="accordion-collapse collapse"
@@ -1867,9 +1160,9 @@
                             <div class="accordion-item wow animate fadeInDown" data-wow-delay="600ms"
                                 data-wow-duration="1500ms">
                                 <h5 class="accordion-header" id="flush-headingThree">
-                                    <button class="accordion-button collapsed" type="button"
-                                        data-bs-toggle="collapse" data-bs-target="#flush-collapseThree"
-                                        aria-expanded="false" aria-controls="flush-collapseThree">Can I Book Flights,
+                                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                                        data-bs-target="#flush-collapseThree" aria-expanded="false"
+                                        aria-controls="flush-collapseThree">Can I Book Flights,
                                         Hotels, and Tours Separately?</button>
                                 </h5>
                                 <div id="flush-collapseThree" class="accordion-collapse collapse"
@@ -1885,9 +1178,9 @@
                             <div class="accordion-item wow animate fadeInDown" data-wow-delay="800ms"
                                 data-wow-duration="1500ms">
                                 <h5 class="accordion-header" id="flush-headingFour">
-                                    <button class="accordion-button collapsed" type="button"
-                                        data-bs-toggle="collapse" data-bs-target="#flush-collapseFour"
-                                        aria-expanded="false" aria-controls="flush-collapseFour">Do You Provide Visa
+                                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                                        data-bs-target="#flush-collapseFour" aria-expanded="false"
+                                        aria-controls="flush-collapseFour">Do You Provide Visa
                                         Assistance?</button>
                                 </h5>
                                 <div id="flush-collapseFour" class="accordion-collapse collapse"
@@ -1903,9 +1196,9 @@
                             <div class="accordion-item wow animate fadeInDown" data-wow-delay="800ms"
                                 data-wow-duration="1500ms">
                                 <h5 class="accordion-header" id="flush-headingFive">
-                                    <button class="accordion-button collapsed" type="button"
-                                        data-bs-toggle="collapse" data-bs-target="#flush-collapseFive"
-                                        aria-expanded="false" aria-controls="flush-collapseFive">What Payment Methods Do
+                                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                                        data-bs-target="#flush-collapseFive" aria-expanded="false"
+                                        aria-controls="flush-collapseFive">What Payment Methods Do
                                         You Accept?</button>
                                 </h5>
                                 <div id="flush-collapseFive" class="accordion-collapse collapse"
@@ -1921,9 +1214,9 @@
                             <div class="accordion-item wow animate fadeInDown" data-wow-delay="800ms"
                                 data-wow-duration="1500ms">
                                 <h5 class="accordion-header" id="flush-headingSix">
-                                    <button class="accordion-button collapsed" type="button"
-                                        data-bs-toggle="collapse" data-bs-target="#flush-collapseSix"
-                                        aria-expanded="false" aria-controls="flush-collapseSix">What Travel Documents
+                                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                                        data-bs-target="#flush-collapseSix" aria-expanded="false"
+                                        aria-controls="flush-collapseSix">What Travel Documents
                                         are Required for International Travel?</button>
                                 </h5>
                                 <div id="flush-collapseSix" class="accordion-collapse collapse"
@@ -1942,7 +1235,7 @@
                 </div>
             </div>
         </div>
-        <img src="{{ asset('assets/img/home4/vector/faq-section-vector.svg')}}" alt="" class="vector">
+        <img src="{{ asset('assets/img/home4/vector/faq-section-vector.svg') }}" alt="" class="vector">
     </div>
     <!-- home4 faq Section End-->
 @endsection
