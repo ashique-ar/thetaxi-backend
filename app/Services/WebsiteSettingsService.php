@@ -71,7 +71,7 @@ class WebsiteSettingsService
     public function getHomepageSettings(): array
     {
         $types = [
-            // Banner Section
+            // Banner Section - Media & Text
             'banner_heading',
             'banner_subheading',
             'banner_video',
@@ -79,7 +79,7 @@ class WebsiteSettingsService
             // Partner Section
             'partner_section_title',
             
-            // Feature Section
+            // Feature Section - Text, Icons & Vectors
             'feature_1_title',
             'feature_1_description',
             'feature_1_icon',
@@ -92,14 +92,13 @@ class WebsiteSettingsService
             'feature_cta_text',
             'feature_cta_link',
             'feature_card_vector',
-            'feature_section_vector',
+            'feature_section_vector1',
             'feature_section_vector2',
             
             // Destinations Section
             'destinations_section_title',
-            'destination_section_vector',
             
-            // About Section
+            // About Section - Text & Images
             'about_section_title',
             'about_section_description',
             'about_feature_1',
@@ -115,59 +114,75 @@ class WebsiteSettingsService
             'about_image_1',
             'about_image_2',
             'about_image_3',
-            'about_customer_img_1',
-            'about_customer_img_2',
-            'about_customer_img_3',
-            'about_customer_img_4',
+            'counter_people_img_1',
+            'counter_people_img_2',
+            'counter_people_img_3',
+            'counter_people_img_4',
+            
+            // Partner/Sponsor Logos
+            'partner_logo_1',
+            'partner_logo_2',
+            'partner_logo_3',
+            'partner_logo_4',
+            'partner_logo_5',
+            'partner_logo_6',
+            'partner_link_1',
+            'partner_link_2',
+            'partner_link_3',
+            'partner_link_4',
+            'partner_link_5',
+            'partner_link_6',
+            
+            // Fallback Images
+            'fallback_destination_image',
+            'fallback_package_image',
+            
+            // Offer Slider Images
+            'offer_slider_img_1',
+            'offer_slider_img_2',
             
             // Packages Section
             'packages_section_title',
             'packages_section_description',
             
-            // Why Section
+            // Why Section - Text & Icons
             'why_section_title',
             'why_section_description',
             'why_feature_1',
-            'why_feature_1_icon',
             'why_feature_2',
-            'why_feature_2_icon',
             'why_feature_3',
-            'why_feature_3_icon',
             'why_feature_4',
-            'why_feature_4_icon',
-            'why_video_thumbnail',
-            'why_video_url',
+            'why_feature_icon_1',
+            'why_feature_icon_2',
+            'why_feature_icon_3',
+            'why_feature_icon_4',
+            'why_video_image',
+            'tripadvisor_logo',
+            'tripadvisor_stars',
             
             // Inspirations Section
             'inspirations_section_title',
             'inspirations_section_description',
             
-            // TripAdvisor Section
-            'tripadvisor_logo',
-            'tripadvisor_stars',
-            'tripadvisor_rating',
-            'tripadvisor_url',
-            'tripadvisor_label',
-            
-            // Testimonial Section
+            // Testimonials Section - Images & Vectors
+            'testimonials_section_title',
+            'testimonials_section_description',
+            'testimonial_vector',
             'testimonial_author_img_1',
             'testimonial_author_img_2',
             'testimonial_author_img_3',
             'testimonial_author_img_4',
             'testimonial_author_img_5',
-            'testimonial_vector',
             
-            // Package and Destination Fallbacks
-            'package_fallback_image',
-            'destination_fallback_image',
+            // Vector Graphics & Decorative Images
+            'destination_section_vector',
+            'blog_section_vector',
+            'faq_section_vector',
             
-            // Offer Slider
-            'offer_slider_img_1',
-            'offer_slider_img_2',
-            
-            // Inspiration Fallbacks
-            'inspiration_fallback_img_1',
-            'inspiration_fallback_img_2',
+            // Blog Section Images
+            'blog_img_1',
+            'blog_img_2',
+            'blog_img_3',
             
             // General Settings
             'homepage_title',

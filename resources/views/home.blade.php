@@ -6,7 +6,8 @@
     <!-- home4 Banner Section Start-->
     <div class="home4-banner-section mb-100">
         <div class="banner-video-area">
-            <video autoplay loop muted playsinline src="{{ $settings['banner_video'] ?? asset('assets/video/home4-banner-video.mp4') }}"></video>
+            <video autoplay loop muted playsinline
+                src="{{ $settings['banner_video'] ? Storage::url($settings['banner_video']) : asset('assets/video/home4-banner-video.mp4') }}"></video>
         </div>
         <div class="banner-content-wrap">
             <div class="container">
@@ -21,94 +22,72 @@
     </div>
     <!-- home4 Banner Section End-->
 
-    <!-- home4 partner area Section Start-->
-    <div class="partner-section mb-100">
-        <div class="container">
-            <div class="partner-title wow animate fadeInDown" data-wow-delay="200ms" data-wow-duration="1500ms">
-                <h5>{{ $settings['partner_section_title'] ?? 'Those Company You Can Easily Trust!' }}</h5>
-            </div>
-            <div class="partner-wrap">
-                <div class="marquee">
-                    <div class="marquee__group">
-                        @if(isset($partners) && $partners->count() > 0)
-                            @foreach($partners as $partner)
+    @if (isset($partners) && $partners->count() > 0)
+        <!-- home4 partner area Section Start-->
+        <div class="partner-section mb-100">
+            <div class="container">
+                <div class="partner-title wow animate fadeInDown" data-wow-delay="200ms" data-wow-duration="1500ms">
+                    <h5>{{ $settings['partner_section_title'] ?? 'Those Company You Can Easily Trust!' }}</h5>
+                </div>
+                <div class="partner-wrap">
+                    <div class="marquee">
+                        <div class="marquee__group">
+
+                            @foreach ($partners as $partner)
                                 <a href="{{ $partner->link ?? '#' }}">
-                                    <img src="{{ $partner->image ? Storage::url($partner->image) : asset('assets/img/home1/partner-01.png') }}" 
-                                         alt="{{ $partner->title ?? 'Partner' }}">
+                                    <img src="{{ $partner->image ? Storage::url($partner->image) : Storage::url($settings['partner_logo_1']) }}"
+                                        alt="{{ $partner->title }}">
                                 </a>
                             @endforeach
-                        @else
-                            <!-- Fallback static partners when no CMS content -->
-                            <a href="#"><img src="{{ asset('assets/img/home1/partner-01.png') }}" alt=""></a>
-                            <a href="#"><img src="{{ asset('assets/img/home1/partner-02.png') }}" alt=""></a>
-                            <a href="#"><img src="{{ asset('assets/img/home1/partner-03.png') }}" alt=""></a>
-                            <a href="#"><img src="{{ asset('assets/img/home1/partner-04.png') }}" alt=""></a>
-                            <a href="#"><img src="{{ asset('assets/img/home1/partner-05.png') }}" alt=""></a>
-                            <a href="#"><img src="{{ asset('assets/img/home1/partner-06.png') }}" alt=""></a>
-                        @endif
-                    </div>
-                    <div aria-hidden="true" class="marquee__group">
-                        @if(isset($partners) && $partners->count() > 0)
-                            @foreach($partners as $partner)
-                                <a href="{{ $partner->link ?? '#' }}">
-                                    <img src="{{ $partner->image ? Storage::url($partner->image) : asset('assets/img/home1/partner-01.png') }}" 
-                                         alt="{{ $partner->title ?? 'Partner' }}">
-                                </a>
-                            @endforeach
-                        @else
-                            <!-- Fallback static partners when no CMS content -->
-                            <a href="#"><img src="{{ asset('assets/img/home1/partner-01.png') }}" alt=""></a>
-                            <a href="#"><img src="{{ asset('assets/img/home1/partner-02.png') }}" alt=""></a>
-                            <a href="#"><img src="{{ asset('assets/img/home1/partner-03.png') }}" alt=""></a>
-                            <a href="#"><img src="{{ asset('assets/img/home1/partner-04.png') }}" alt=""></a>
-                            <a href="#"><img src="{{ asset('assets/img/home1/partner-05.png') }}" alt=""></a>
-                            <a href="#"><img src="{{ asset('assets/img/home1/partner-06.png') }}" alt=""></a>
-                        @endif
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
+    @endif
     <!-- home4 partner area Section End-->
 
     <!-- home4 Feature Section Start-->
-    <div class="home4-feature-section mb-100">
+    {{-- <div class="home4-feature-section mb-100">
         <div class="container">
             <div class="row g-4">
                 <div class="col-lg-4 col-md-6 wow animate fadeInDown" data-wow-delay="200ms" data-wow-duration="1500ms">
                     <div class="feature-card">
                         <div class="icon">
-                            <img src="{{ $settings['feature_1_icon'] ?? asset('assets/img/home4/icon/feature-icon1.svg') }}" alt="">
+                            <img src="{{ $settings['feature_1_icon'] ? Storage::url($settings['feature_1_icon']) : asset('assets/img/home4/icon/feature-icon1.svg') }}"
+                                alt="">
                         </div>
                         <h4>{{ $settings['feature_1_title'] ?? 'One Click Booking.' }}</h4>
                         <p>{{ $settings['feature_1_description'] ?? 'You can hassle-free and fast tour & travel package booking by TheTaxi.' }}
                         </p>
-                        <img src="{{ $settings['feature_card_vector'] ?? asset('assets/img/home4/vector/feature-card-vector.svg') }}" alt=""
-                            class="vector">
+                        <img src="{{ $settings['feature_card_vector'] ? Storage::url($settings['feature_card_vector']) : asset('assets/img/home4/vector/feature-card-vector.svg') }}"
+                            alt="" class="vector">
                     </div>
                 </div>
                 <div class="col-lg-4 col-md-6 wow animate fadeInDown" data-wow-delay="400ms" data-wow-duration="1500ms">
                     <div class="feature-card two">
                         <div class="icon">
-                            <img src="{{ $settings['feature_2_icon'] ?? asset('assets/img/home4/icon/feature-icon2.svg') }}" alt="">
+                            <img src="{{ $settings['feature_2_icon'] ? Storage::url($settings['feature_2_icon']) : asset('assets/img/home4/icon/feature-icon2.svg') }}"
+                                alt="">
                         </div>
                         <h4>{{ $settings['feature_2_title'] ?? 'Discount & Offer.' }}</h4>
                         <p>{{ $settings['feature_2_description'] ?? 'Agencies have special discounts on flights, hotels, & packages.' }}
                         </p>
-                        <img src="{{ $settings['feature_card_vector'] ?? asset('assets/img/home4/vector/feature-card-vector.svg') }}" alt=""
-                            class="vector">
+                        <img src="{{ $settings['feature_card_vector'] ? Storage::url($settings['feature_card_vector']) : asset('assets/img/home4/vector/feature-card-vector.svg') }}"
+                            alt="" class="vector">
                     </div>
                 </div>
                 <div class="col-lg-4 col-md-6 wow animate fadeInDown" data-wow-delay="600ms" data-wow-duration="1500ms">
                     <div class="feature-card three">
                         <div class="icon">
-                            <img src="{{ $settings['feature_3_icon'] ?? asset('assets/img/home4/icon/feature-icon3.svg') }}" alt="">
+                            <img src="{{ $settings['feature_3_icon'] ? Storage::url($settings['feature_3_icon']) : asset('assets/img/home4/icon/feature-icon3.svg') }}"
+                                alt="">
                         </div>
                         <h4>{{ $settings['feature_3_title'] ?? 'Local Experties.' }}</h4>
                         <p>{{ $settings['feature_3_description'] ?? 'You can hassle-free and fast tour & travel package booking by TheTaxi.' }}
                         </p>
-                        <img src="{{ $settings['feature_card_vector'] ?? asset('assets/img/home4/vector/feature-card-vector.svg') }}" alt=""
-                            class="vector">
+                        <img src="{{ $settings['feature_card_vector'] ? Storage::url($settings['feature_card_vector']) : asset('assets/img/home4/vector/feature-card-vector.svg') }}"
+                            alt="" class="vector">
                     </div>
                 </div>
             </div>
@@ -127,27 +106,28 @@
                 </div>
             </div>
         </div>
-        <img src="{{ $settings['feature_section_vector'] ?? asset('assets/img/home4/feature-section-vector.png') }}" alt="" class="section-vector">
-        <img src="{{ $settings['feature_section_vector2'] ?? asset('assets/img/home4/vector/feature-section-vector2.svg') }}" alt=""
-            class="section-vector2">
-    </div>
+        <img src="{{ $settings['feature_section_vector1'] ? Storage::url($settings['feature_section_vector1']) : asset('assets/img/home4/feature-section-vector.png') }}"
+            alt="" class="section-vector">
+        <img src="{{ $settings['feature_section_vector2'] ? Storage::url($settings['feature_section_vector2']) : asset('assets/img/home4/vector/feature-section-vector2.svg') }}"
+            alt="" class="section-vector2">
+    </div> --}}
     <!-- home4 Feature Section End-->
 
     <!-- home4 Destination Section Start-->
-    <div class="home4-destination-section mb-100">
-        <div class="container">
-            <div class="row justify-content-center mb-50 wow animate fadeInDown" data-wow-delay="200ms"
-                data-wow-duration="1500ms">
-                <div class="col-xl-6 col-lg-8">
-                    <div class="section-title text-center">
-                        <h2>{{ $settings['destinations_section_title'] ?? 'Top Destinations' }}</h2>
+    @if ($destinations->count() > 0)
+        <div class="home4-destination-section mb-100">
+            <div class="container">
+                <div class="row justify-content-center mb-50 wow animate fadeInDown" data-wow-delay="200ms"
+                    data-wow-duration="1500ms">
+                    <div class="col-xl-6 col-lg-8">
+                        <div class="section-title text-center">
+                            <h2>{{ $settings['destinations_section_title'] ?? 'Top Destinations' }}</h2>
+                        </div>
                     </div>
                 </div>
-            </div>
-            <div class="destination-slider-area mb-40">
-                <div class="swiper home3-destination-slider">
-                    <div class="swiper-wrapper">
-                        @if ($destinations->count() > 0)
+                <div class="destination-slider-area mb-40">
+                    <div class="swiper home3-destination-slider">
+                        <div class="swiper-wrapper">
                             @foreach ($destinations as $destination)
                                 <div class="swiper-slide">
                                     <div class="destination-card2 three">
@@ -173,172 +153,156 @@
                                     </div>
                                 </div>
                             @endforeach
-                        @else
-                            <!-- Fallback content when no destinations are available -->
-                            <div class="swiper-slide">
-                                <div class="destination-card2 three">
-                                    <div class="destination-img">
-                                        <img src="{{ $settings['destination_fallback_image'] ?? asset('assets/img/home2/destination-img1.jpg') }}" alt="">
-                                        <a href="#" class="arrow">
-                                            <svg width="14" height="14" viewBox="0 0 14 14"
-                                                xmlns="http://www.w3.org/2000/svg">
-                                                <path
-                                                    d="M1 13C5.94664 8.05336 13 1 13 1M13 1C10.1852 1.52778 6.69444 2.58333 3 1M13 1C12.4722 3.63889 11.4167 6.77778 13 11"
-                                                    stroke-width="1.5" stroke-linecap="round" />
-                                            </svg>
-                                        </a>
-                                    </div>
-                                    <div class="destination-content">
-                                        <h5><a href="#">Coming Soon</a></h5>
-                                        <span>New destinations coming soon</span>
-                                    </div>
-                                </div>
-                            </div>
-                        @endif
-                    </div>
-                    <div class="slider-btn-grp two">
-                        <div class="slider-btn destination-slider-prev">
-                            <svg width="16" height="12" viewBox="0 0 16 12" fill="none"
-                                xmlns="http://www.w3.org/2000/svg">
-                                <path fill-rule="evenodd" clip-rule="evenodd" d="M0 5.31421H16V6.68564H0V5.31421Z" />
-                                <path fill-rule="evenodd" clip-rule="evenodd"
-                                    d="M0.685714 6.68569C3.9104 6.68569 6.54629 3.84958 6.54629 0.825119V0.139404H5.17486V0.825119C5.17486 3.12181 3.12412 5.31426 0.685714 5.31426H0V6.68569H0.685714Z" />
-                                <path fill-rule="evenodd" clip-rule="evenodd"
-                                    d="M0.685714 5.31421C3.9104 5.31421 6.54629 8.15032 6.54629 11.1748V11.8605H5.17486V11.1748C5.17486 8.87901 3.12412 6.68564 0.685714 6.68564H0V5.31421H0.685714Z" />
-                            </svg>
-                        </div>
-                        <div class="slider-btn destination-slider-next">
-                            <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
-                                <g>
-                                    <path fill-rule="evenodd" clip-rule="evenodd"
-                                        d="M16 7.31421H-3.8147e-06V8.68564H16V7.31421Z" />
-                                    <path fill-rule="evenodd" clip-rule="evenodd"
-                                        d="M15.3143 8.68569C12.0896 8.68569 9.45371 5.84958 9.45371 2.82512V2.1394H10.8251V2.82512C10.8251 5.12181 12.8759 7.31426 15.3143 7.31426H16V8.68569H15.3143Z" />
-                                    <path fill-rule="evenodd" clip-rule="evenodd"
-                                        d="M15.3143 7.31421C12.0896 7.31421 9.45371 10.1503 9.45371 13.1748V13.8605H10.8251V13.1748C10.8251 10.879 12.8759 8.68564 15.3143 8.68564H16V7.31421H15.3143Z" />
-                                </g>
-                            </svg>
-                        </div>
-                    </div>
-                </div>
-                <div class="row">
-                    <div class="col-lg-12 d-flex justify-content-center">
-                        <div class="swiper-pagination1 paginations two"></div>
-                    </div>
-                </div>
-            </div>
-            <img src="{{ $settings['destination_section_vector'] ?? asset('assets/img/home4/vector/destination-section-vector.svg') }}" alt=""
-                class="vector">
-        </div>
-        <!-- home4 Destination Section End-->
 
-        <!-- home4 About Section Start-->
-        <div class="home4-about-section mb-100">
-            <div class="container">
-                <div class="about-wrapper">
-                    <div class="row justify-content-between">
-                        <div class="col-xl-5 col-lg-6 wow animate fadeInLeft" data-wow-delay="200ms"
-                            data-wow-duration="1500ms">
-                            <div class="about-content">
-                                <div class="section-title">
-                                    <h2>We’re Best Travel Agency Ever.</h2>
-                                    <p>{{ $settings['about_section_description'] ?? 'We provides information on flight bookings, hotel reservations, and other travel-related services. For more detailed information about their offerings, you can visit their official website.' }}
-                                    </p>
-                                </div>
-                                <ul>
-                                    <li>
-                                        <svg width="18" height="18" viewBox="0 0 18 18"
-                                            xmlns="http://www.w3.org/2000/svg">
-                                            <path
-                                                d="M6.24999 16.2334C6.18965 16.2334 6.13035 16.2177 6.07799 16.1877C6.02563 16.1577 5.98201 16.1146 5.95146 16.0625C4.65758 13.8582 1.20971 9.16675 1.17503 9.1196C1.12576 9.05264 1.10224 8.97019 1.10876 8.88731C1.11528 8.80444 1.15141 8.72668 1.21054 8.66825L2.2704 7.62096C2.32798 7.56406 2.40368 7.52914 2.48433 7.52227C2.56499 7.51541 2.64551 7.53702 2.71188 7.58337L6.17781 10.0035C8.48209 7.04337 10.6235 5.00047 12.0309 3.79676C13.6085 2.44735 14.6115 1.84099 14.6535 1.81572C14.7073 1.78342 14.7688 1.76636 14.8316 1.76636H16.5462C16.6163 1.76635 16.6849 1.78767 16.7426 1.82749C16.8004 1.86731 16.8447 1.92376 16.8697 1.98934C16.8947 2.05493 16.8991 2.12656 16.8825 2.19473C16.8658 2.2629 16.8288 2.32439 16.7764 2.37105C14.2345 4.6349 11.5919 8.23189 9.82257 10.8506C7.89924 13.6972 6.56405 16.0353 6.55079 16.0586C6.52074 16.1114 6.47733 16.1553 6.42494 16.186C6.37254 16.2167 6.31299 16.233 6.25227 16.2334L6.24999 16.2334Z" />
-                                        </svg>
-                                        {{ $settings['about_feature_1'] ?? 'Affordable Travel' }}
-                                    </li>
-                                    <li>
-                                        <svg width="18" height="18" viewBox="0 0 18 18"
-                                            xmlns="http://www.w3.org/2000/svg">
-                                            <path
-                                                d="M6.24999 16.2334C6.18965 16.2334 6.13035 16.2177 6.07799 16.1877C6.02563 16.1577 5.98201 16.1146 5.95146 16.0625C4.65758 13.8582 1.20971 9.16675 1.17503 9.1196C1.12576 9.05264 1.10224 8.97019 1.10876 8.88731C1.11528 8.80444 1.15141 8.72668 1.21054 8.66825L2.2704 7.62096C2.32798 7.56406 2.40368 7.52914 2.48433 7.52227C2.56499 7.51541 2.64551 7.53702 2.71188 7.58337L6.17781 10.0035C8.48209 7.04337 10.6235 5.00047 12.0309 3.79676C13.6085 2.44735 14.6115 1.84099 14.6535 1.81572C14.7073 1.78342 14.7688 1.76636 14.8316 1.76636H16.5462C16.6163 1.76635 16.6849 1.78767 16.7426 1.82749C16.8004 1.86731 16.8447 1.92376 16.8697 1.98934C16.8947 2.05493 16.8991 2.12656 16.8825 2.19473C16.8658 2.2629 16.8288 2.32439 16.7764 2.37105C14.2345 4.6349 11.5919 8.23189 9.82257 10.8506C7.89924 13.6972 6.56405 16.0353 6.55079 16.0586C6.52074 16.1114 6.47733 16.1553 6.42494 16.186C6.37254 16.2167 6.31299 16.233 6.25227 16.2334L6.24999 16.2334Z" />
-                                        </svg>
-                                        {{ $settings['about_feature_2'] ?? 'Trusted Experience' }}
-                                    </li>
-                                    <li>
-                                        <svg width="18" height="18" viewBox="0 0 18 18"
-                                            xmlns="http://www.w3.org/2000/svg">
-                                            <path
-                                                d="M6.24999 16.2334C6.18965 16.2334 6.13035 16.2177 6.07799 16.1877C6.02563 16.1577 5.98201 16.1146 5.95146 16.0625C4.65758 13.8582 1.20971 9.16675 1.17503 9.1196C1.12576 9.05264 1.10224 8.97019 1.10876 8.88731C1.11528 8.80444 1.15141 8.72668 1.21054 8.66825L2.2704 7.62096C2.32798 7.56406 2.40368 7.52914 2.48433 7.52227C2.56499 7.51541 2.64551 7.53702 2.71188 7.58337L6.17781 10.0035C8.48209 7.04337 10.6235 5.00047 12.0309 3.79676C13.6085 2.44735 14.6115 1.84099 14.6535 1.81572C14.7073 1.78342 14.7688 1.76636 14.8316 1.76636H16.5462C16.6163 1.76635 16.6849 1.78767 16.7426 1.82749C16.8004 1.86731 16.8447 1.92376 16.8697 1.98934C16.8947 2.05493 16.8991 2.12656 16.8825 2.19473C16.8658 2.2629 16.8288 2.32439 16.7764 2.37105C14.2345 4.6349 11.5919 8.23189 9.82257 10.8506C7.89924 13.6972 6.56405 16.0353 6.55079 16.0586C6.52074 16.1114 6.47733 16.1553 6.42494 16.186C6.37254 16.2167 6.31299 16.233 6.25227 16.2334L6.24999 16.2334Z" />
-                                        </svg>
-                                        {{ $settings['about_feature_3'] ?? 'Effortless Booking Process' }}
-                                    </li>
-                                </ul>
-                                <div class="counter-wrapper">
-                                    <div class="single-counter">
-                                        <h2><strong
-                                                class="counter">{{ $settings['about_years_experience'] ?? '12' }}</strong><sup>+</sup>
-                                        </h2>
-                                        <span>{{ $settings['about_years_label'] ?? 'Years <br> of Experience' }}</span>
-                                    </div>
-                                    <div class="counter-area">
-                                        <ul class="counter-img-grp">
-                                            <li><img src="{{ $settings['about_customer_img_1'] ?? asset('assets/img/home3/counter-people-img1.png') }}"
-                                                    alt=""></li>
-                                            <li><img src="{{ $settings['about_customer_img_2'] ?? asset('assets/img/home3/counter-people-img2.png') }}"
-                                                    alt=""></li>
-                                            <li><img src="{{ $settings['about_customer_img_3'] ?? asset('assets/img/home3/counter-people-img3.png') }}"
-                                                    alt=""></li>
-                                            <li><img src="{{ $settings['about_customer_img_4'] ?? asset('assets/img/home3/counter-people-img4.png') }}"
-                                                    alt=""></li>
-                                        </ul>
-                                        <h6> <strong><span
-                                                    class="counter">{{ $settings['about_customers_count'] ?? '25' }}</span>k+</strong>
-                                            {{ $settings['about_customers_label'] ?? 'Customer <br> in Worldwide.' }}
-                                        </h6>
-                                    </div>
-                                </div>
-                                <svg class="divider" width="536" height="6" viewBox="0 0 536 6"
+
+                        </div>
+                        <div class="slider-btn-grp two">
+                            <div class="slider-btn destination-slider-prev">
+                                <svg width="16" height="12" viewBox="0 0 16 12" fill="none"
                                     xmlns="http://www.w3.org/2000/svg">
-                                    <path
-                                        d="M5 2.5L0 0.113249V5.88675L5 3.5V2.5ZM531 3.5L536 5.88675V0.113249L531 2.5V3.5ZM4.5 3.5H531.5V2.5H4.5V3.5Z" />
+                                    <path fill-rule="evenodd" clip-rule="evenodd" d="M0 5.31421H16V6.68564H0V5.31421Z" />
+                                    <path fill-rule="evenodd" clip-rule="evenodd"
+                                        d="M0.685714 6.68569C3.9104 6.68569 6.54629 3.84958 6.54629 0.825119V0.139404H5.17486V0.825119C5.17486 3.12181 3.12412 5.31426 0.685714 5.31426H0V6.68569H0.685714Z" />
+                                    <path fill-rule="evenodd" clip-rule="evenodd"
+                                        d="M0.685714 5.31421C3.9104 5.31421 6.54629 8.15032 6.54629 11.1748V11.8605H5.17486V11.1748C5.17486 8.87901 3.12412 6.68564 0.685714 6.68564H0V5.31421H0.685714Z" />
                                 </svg>
-                                <div class="btn-area">
-                                    <a href="about.html" class="about-btn">
-                                        {{ $settings['about_button_text'] ?? 'About More TheTaxi' }}
-                                        <svg width="10" height="10" viewBox="0 0 10 10"
-                                            xmlns="http://www.w3.org/2000/svg">
-                                            <path
-                                                d="M1 9L9 1M9 1C7.22222 1.33333 3.33333 2 1 1M9 1C8.66667 2.66667 8 6.33333 9 9"
-                                                stroke-width="1.5" stroke-linecap="round" />
-                                        </svg>
-                                    </a>
-                                </div>
+                            </div>
+                            <div class="slider-btn destination-slider-next">
+                                <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+                                    <g>
+                                        <path fill-rule="evenodd" clip-rule="evenodd"
+                                            d="M16 7.31421H-3.8147e-06V8.68564H16V7.31421Z" />
+                                        <path fill-rule="evenodd" clip-rule="evenodd"
+                                            d="M15.3143 8.68569C12.0896 8.68569 9.45371 5.84958 9.45371 2.82512V2.1394H10.8251V2.82512C10.8251 5.12181 12.8759 7.31426 15.3143 7.31426H16V8.68569H15.3143Z" />
+                                        <path fill-rule="evenodd" clip-rule="evenodd"
+                                            d="M15.3143 7.31421C12.0896 7.31421 9.45371 10.1503 9.45371 13.1748V13.8605H10.8251V13.1748C10.8251 10.879 12.8759 8.68564 15.3143 8.68564H16V7.31421H15.3143Z" />
+                                    </g>
+                                </svg>
                             </div>
                         </div>
-                        <div class="col-lg-6 d-lg-flex d-none justify-content-lg-end wow animate fadeInRight"
-                            data-wow-delay="200ms" data-wow-duration="1500ms">
-                            <div class="about-img-grp">
-                                <div class="single-grp">
-                                    <div class="counter-wrapper">
-                                        <div class="counter-area">
-                                            <h2><strong>{{ $settings['about_tours_completed'] ?? '26' }}</strong>K+</h2>
-                                            <span>{{ $settings['about_tours_label'] ?? 'Tour Completed' }}</span>
-                                        </div>
-                                        <svg class="vector" width="55" height="55" viewBox="0 0 55 55"
-                                            xmlns="http://www.w3.org/2000/svg">
-                                            <path fill-rule="evenodd" clip-rule="evenodd"
-                                                d="M48.3953 19.3234C46.5928 21.0856 49.1783 24.8855 45.1628 27.3609C42.8491 28.7873 46.4538 31.6364 45.1628 34.9688C44.9762 35.4504 44.938 35.9362 45.2063 36.4593C42.0435 38.8936 38.0818 40.3413 33.7819 40.3413C32.6391 40.3413 31.5202 40.2389 30.4337 40.043L30.0167 41.4955C31.2582 41.7286 32.5188 41.8457 33.782 41.8452C44.9663 41.8452 54.0332 32.7783 54.0332 21.5941C54.0332 10.4098 44.9663 1.34277 33.7819 1.34277C29.4125 1.34277 25.1885 2.74141 21.6888 5.35111C24.3124 9.39308 24.2598 14.705 21.5556 18.6946C22.5728 20.4768 24.035 20.5296 24.6011 20.7501C26.7583 21.591 28.3803 26.5747 29.7306 28.1757C31.6603 27.0616 33.7557 26.7059 35.9213 27.385C35.5639 25.6287 33.5082 23.6465 32.8831 23.0953C30.6562 21.132 31.5914 20.176 33.345 19.6904C35.3627 19.1317 38.4639 19.1959 39.0785 19.0651C40.5177 18.7589 40.9324 17.7467 39.8315 16.7925C38.5393 15.6725 36.2766 14.4403 35.7499 13.4377C35.0217 12.0512 35.5506 11.6375 36.4901 11.347C38.3992 10.7566 42.0025 10.6734 40.2002 3.97439C46.4804 6.26248 51.1061 11.765 52.2518 18.3652C50.1517 18.3532 49.0145 18.718 48.3953 19.3234ZM7.92247 45.6491L1.71875 40.5901L3.98342 39.0886L10.0496 41.2748L30.9044 29.2343C34.3621 27.238 41.2161 29.9589 34.6547 33.7471L29.8863 36.5002L25.452 51.9436L22.4839 53.6572L22.6915 40.5937C22.6915 40.5937 10.2446 47.4544 7.92247 45.6491ZM11.5466 1.34277C17.3893 1.34277 22.1263 6.07965 22.1263 11.9225C22.1263 17.7654 17.3895 22.5023 11.5466 22.5023C5.70378 22.5023 0.966797 17.7653 0.966797 11.9225C0.966797 6.07976 5.70378 1.34277 11.5466 1.34277ZM5.09448 18.3054C5.5376 15.1383 8.25752 12.7006 11.5467 12.7006C14.8359 12.7006 17.5554 15.1382 17.9985 18.3054C19.6206 16.666 20.6223 14.4113 20.6223 11.9225C20.6223 6.90991 16.5591 2.84668 11.5465 2.84668C6.53394 2.84668 2.4707 6.90991 2.4707 11.9225C2.4707 14.4113 3.47252 16.6659 5.09448 18.3054ZM8.53531 7.95373C8.53531 9.61694 9.88356 10.9652 11.5468 10.9652C13.21 10.9652 14.5582 9.61694 14.5582 7.95373C14.5582 6.29095 13.21 4.9427 11.5468 4.9427C9.88356 4.9428 8.53531 6.29095 8.53531 7.95373ZM9.88088 31.828L12.8488 30.1144L22.298 32.4668L16.7678 35.6596L9.88088 31.828ZM16.8012 29.5485C15.9014 27.6309 15.3353 25.5737 15.1273 23.4657C14.6436 23.6154 14.1511 23.7346 13.6525 23.8224C13.8498 25.6299 14.2911 27.4023 14.9644 29.0912L16.8012 29.5485Z" />
-                                        </svg>
-                                    </div>
-                                    <div class="single-img">
-                                        <img src="{{ $settings['about_image_1'] ?? asset('assets/img/home4/about-img1.jpg') }}" alt="">
-                                    </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-lg-12 d-flex justify-content-center">
+                            <div class="swiper-pagination1 paginations two"></div>
+                        </div>
+                    </div>
+                </div>
+                <img src="{{ $settings['destination_section_vector'] ? Storage::url($settings['destination_section_vector']) : asset('assets/img/home4/vector/destination-section-vector.svg') }}"
+                    alt="" class="vector">
+            </div>
+        </div>
+
+    @endif
+    <!-- home4 Destination Section End-->
+
+    <!-- home4 About Section Start-->
+    <div class="home4-about-section mb-100">
+        <div class="container">
+            <div class="about-wrapper">
+                <div class="row justify-content-between">
+                    <div class="col-xl-5 col-lg-6 wow animate fadeInLeft" data-wow-delay="200ms" data-wow-duration="1500ms">
+                        <div class="about-content">
+                            <div class="section-title">
+                                <h2>We’re Best Travel Agency Ever.</h2>
+                                <p>{{ $settings['about_section_description'] ?? 'We provides information on flight bookings, hotel reservations, and other travel-related services. For more detailed information about their offerings, you can visit their official website.' }}
+                                </p>
+                            </div>
+                            <ul>
+                                <li>
+                                    <svg width="18" height="18" viewBox="0 0 18 18"
+                                        xmlns="http://www.w3.org/2000/svg">
+                                        <path
+                                            d="M6.24999 16.2334C6.18965 16.2334 6.13035 16.2177 6.07799 16.1877C6.02563 16.1577 5.98201 16.1146 5.95146 16.0625C4.65758 13.8582 1.20971 9.16675 1.17503 9.1196C1.12576 9.05264 1.10224 8.97019 1.10876 8.88731C1.11528 8.80444 1.15141 8.72668 1.21054 8.66825L2.2704 7.62096C2.32798 7.56406 2.40368 7.52914 2.48433 7.52227C2.56499 7.51541 2.64551 7.53702 2.71188 7.58337L6.17781 10.0035C8.48209 7.04337 10.6235 5.00047 12.0309 3.79676C13.6085 2.44735 14.6115 1.84099 14.6535 1.81572C14.7073 1.78342 14.7688 1.76636 14.8316 1.76636H16.5462C16.6163 1.76635 16.6849 1.78767 16.7426 1.82749C16.8004 1.86731 16.8447 1.92376 16.8697 1.98934C16.8947 2.05493 16.8991 2.12656 16.8825 2.19473C16.8658 2.2629 16.8288 2.32439 16.7764 2.37105C14.2345 4.6349 11.5919 8.23189 9.82257 10.8506C7.89924 13.6972 6.56405 16.0353 6.55079 16.0586C6.52074 16.1114 6.47733 16.1553 6.42494 16.186C6.37254 16.2167 6.31299 16.233 6.25227 16.2334L6.24999 16.2334Z" />
+                                    </svg>
+                                    {{ $settings['about_feature_1'] ?? 'Affordable Travel' }}
+                                </li>
+                                <li>
+                                    <svg width="18" height="18" viewBox="0 0 18 18"
+                                        xmlns="http://www.w3.org/2000/svg">
+                                        <path
+                                            d="M6.24999 16.2334C6.18965 16.2334 6.13035 16.2177 6.07799 16.1877C6.02563 16.1577 5.98201 16.1146 5.95146 16.0625C4.65758 13.8582 1.20971 9.16675 1.17503 9.1196C1.12576 9.05264 1.10224 8.97019 1.10876 8.88731C1.11528 8.80444 1.15141 8.72668 1.21054 8.66825L2.2704 7.62096C2.32798 7.56406 2.40368 7.52914 2.48433 7.52227C2.56499 7.51541 2.64551 7.53702 2.71188 7.58337L6.17781 10.0035C8.48209 7.04337 10.6235 5.00047 12.0309 3.79676C13.6085 2.44735 14.6115 1.84099 14.6535 1.81572C14.7073 1.78342 14.7688 1.76636 14.8316 1.76636H16.5462C16.6163 1.76635 16.6849 1.78767 16.7426 1.82749C16.8004 1.86731 16.8447 1.92376 16.8697 1.98934C16.8947 2.05493 16.8991 2.12656 16.8825 2.19473C16.8658 2.2629 16.8288 2.32439 16.7764 2.37105C14.2345 4.6349 11.5919 8.23189 9.82257 10.8506C7.89924 13.6972 6.56405 16.0353 6.55079 16.0586C6.52074 16.1114 6.47733 16.1553 6.42494 16.186C6.37254 16.2167 6.31299 16.233 6.25227 16.2334L6.24999 16.2334Z" />
+                                    </svg>
+                                    {{ $settings['about_feature_2'] ?? 'Trusted Experience' }}
+                                </li>
+                                <li>
+                                    <svg width="18" height="18" viewBox="0 0 18 18"
+                                        xmlns="http://www.w3.org/2000/svg">
+                                        <path
+                                            d="M6.24999 16.2334C6.18965 16.2334 6.13035 16.2177 6.07799 16.1877C6.02563 16.1577 5.98201 16.1146 5.95146 16.0625C4.65758 13.8582 1.20971 9.16675 1.17503 9.1196C1.12576 9.05264 1.10224 8.97019 1.10876 8.88731C1.11528 8.80444 1.15141 8.72668 1.21054 8.66825L2.2704 7.62096C2.32798 7.56406 2.40368 7.52914 2.48433 7.52227C2.56499 7.51541 2.64551 7.53702 2.71188 7.58337L6.17781 10.0035C8.48209 7.04337 10.6235 5.00047 12.0309 3.79676C13.6085 2.44735 14.6115 1.84099 14.6535 1.81572C14.7073 1.78342 14.7688 1.76636 14.8316 1.76636H16.5462C16.6163 1.76635 16.6849 1.78767 16.7426 1.82749C16.8004 1.86731 16.8447 1.92376 16.8697 1.98934C16.8947 2.05493 16.8991 2.12656 16.8825 2.19473C16.8658 2.2629 16.8288 2.32439 16.7764 2.37105C14.2345 4.6349 11.5919 8.23189 9.82257 10.8506C7.89924 13.6972 6.56405 16.0353 6.55079 16.0586C6.52074 16.1114 6.47733 16.1553 6.42494 16.186C6.37254 16.2167 6.31299 16.233 6.25227 16.2334L6.24999 16.2334Z" />
+                                    </svg>
+                                    {{ $settings['about_feature_3'] ?? 'Effortless Booking Process' }}
+                                </li>
+                            </ul>
+                            <div class="counter-wrapper">
+                                <div class="single-counter">
+                                    <h2><strong
+                                            class="counter">{{ $settings['about_years_experience'] ?? '12' }}</strong><sup>+</sup>
+                                    </h2>
+                                    <span>{{ $settings['about_years_label'] ?? 'Years <br> of Experience' }}</span>
                                 </div>
-                                <div class="single-grp">
-                                    <div class="single-img two">
-                                        <img src="{{ $settings['about_image_2'] ?? asset('assets/img/home4/about-img2.jpg') }}" alt="">
+                                <div class="counter-area">
+                                    <ul class="counter-img-grp">
+                                        <li><img src="{{ $settings['counter_people_img_1'] ? Storage::url($settings['counter_people_img_1']) : asset('assets/img/home3/counter-people-img1.png') }}"
+                                                alt=""></li>
+                                        <li><img src="{{ $settings['counter_people_img_2'] ? Storage::url($settings['counter_people_img_2']) : asset('assets/img/home3/counter-people-img2.png') }}"
+                                                alt=""></li>
+                                        <li><img src="{{ $settings['counter_people_img_3'] ? Storage::url($settings['counter_people_img_3']) : asset('assets/img/home3/counter-people-img3.png') }}"
+                                                alt=""></li>
+                                        <li><img src="{{ $settings['counter_people_img_4'] ? Storage::url($settings['counter_people_img_4']) : asset('assets/img/home3/counter-people-img4.png') }}"
+                                                alt=""></li>
+                                    </ul>
+                                    <h6> <strong><span
+                                                class="counter">{{ $settings['about_customers_count'] ?? '25' }}</span>k+</strong>
+                                        {{ $settings['about_customers_label'] ?? 'Customer <br> in Worldwide.' }}
+                                    </h6>
+                                </div>
+                            </div>
+                            <svg class="divider" width="536" height="6" viewBox="0 0 536 6"
+                                xmlns="http://www.w3.org/2000/svg">
+                                <path
+                                    d="M5 2.5L0 0.113249V5.88675L5 3.5V2.5ZM531 3.5L536 5.88675V0.113249L531 2.5V3.5ZM4.5 3.5H531.5V2.5H4.5V3.5Z" />
+                            </svg>
+                            <div class="btn-area">
+                                <a href="about.html" class="about-btn">
+                                    {{ $settings['about_button_text'] ?? 'About More TheTaxi' }}
+                                    <svg width="10" height="10" viewBox="0 0 10 10"
+                                        xmlns="http://www.w3.org/2000/svg">
+                                        <path
+                                            d="M1 9L9 1M9 1C7.22222 1.33333 3.33333 2 1 1M9 1C8.66667 2.66667 8 6.33333 9 9"
+                                            stroke-width="1.5" stroke-linecap="round" />
+                                    </svg>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-6 d-lg-flex d-none justify-content-lg-end wow animate fadeInRight"
+                        data-wow-delay="200ms" data-wow-duration="1500ms">
+                        <div class="about-img-grp">
+                            <div class="single-grp">
+                                <div class="counter-wrapper">
+                                    <div class="counter-area">
+                                        <h2><strong>{{ $settings['about_tours_completed'] ?? '26' }}</strong>K+</h2>
+                                        <span>{{ $settings['about_tours_label'] ?? 'Tour Completed' }}</span>
                                     </div>
-                                    <div class="single-img three">
-                                        <img src="{{ $settings['about_image_3'] ?? asset('assets/img/home4/about-img3.jpg') }}" alt="">
-                                    </div>
+                                    <svg class="vector" width="55" height="55" viewBox="0 0 55 55"
+                                        xmlns="http://www.w3.org/2000/svg">
+                                        <path fill-rule="evenodd" clip-rule="evenodd"
+                                            d="M48.3953 19.3234C46.5928 21.0856 49.1783 24.8855 45.1628 27.3609C42.8491 28.7873 46.4538 31.6364 45.1628 34.9688C44.9762 35.4504 44.938 35.9362 45.2063 36.4593C42.0435 38.8936 38.0818 40.3413 33.7819 40.3413C32.6391 40.3413 31.5202 40.2389 30.4337 40.043L30.0167 41.4955C31.2582 41.7286 32.5188 41.8457 33.782 41.8452C44.9663 41.8452 54.0332 32.7783 54.0332 21.5941C54.0332 10.4098 44.9663 1.34277 33.7819 1.34277C29.4125 1.34277 25.1885 2.74141 21.6888 5.35111C24.3124 9.39308 24.2598 14.705 21.5556 18.6946C22.5728 20.4768 24.035 20.5296 24.6011 20.7501C26.7583 21.591 28.3803 26.5747 29.7306 28.1757C31.6603 27.0616 33.7557 26.7059 35.9213 27.385C35.5639 25.6287 33.5082 23.6465 32.8831 23.0953C30.6562 21.132 31.5914 20.176 33.345 19.6904C35.3627 19.1317 38.4639 19.1959 39.0785 19.0651C40.5177 18.7589 40.9324 17.7467 39.8315 16.7925C38.5393 15.6725 36.2766 14.4403 35.7499 13.4377C35.0217 12.0512 35.5506 11.6375 36.4901 11.347C38.3992 10.7566 42.0025 10.6734 40.2002 3.97439C46.4804 6.26248 51.1061 11.765 52.2518 18.3652C50.1517 18.3532 49.0145 18.718 48.3953 19.3234ZM7.92247 45.6491L1.71875 40.5901L3.98342 39.0886L10.0496 41.2748L30.9044 29.2343C34.3621 27.238 41.2161 29.9589 34.6547 33.7471L29.8863 36.5002L25.452 51.9436L22.4839 53.6572L22.6915 40.5937C22.6915 40.5937 10.2446 47.4544 7.92247 45.6491ZM11.5466 1.34277C17.3893 1.34277 22.1263 6.07965 22.1263 11.9225C22.1263 17.7654 17.3895 22.5023 11.5466 22.5023C5.70378 22.5023 0.966797 17.7653 0.966797 11.9225C0.966797 6.07976 5.70378 1.34277 11.5466 1.34277ZM5.09448 18.3054C5.5376 15.1383 8.25752 12.7006 11.5467 12.7006C14.8359 12.7006 17.5554 15.1382 17.9985 18.3054C19.6206 16.666 20.6223 14.4113 20.6223 11.9225C20.6223 6.90991 16.5591 2.84668 11.5465 2.84668C6.53394 2.84668 2.4707 6.90991 2.4707 11.9225C2.4707 14.4113 3.47252 16.6659 5.09448 18.3054ZM8.53531 7.95373C8.53531 9.61694 9.88356 10.9652 11.5468 10.9652C13.21 10.9652 14.5582 9.61694 14.5582 7.95373C14.5582 6.29095 13.21 4.9427 11.5468 4.9427C9.88356 4.9428 8.53531 6.29095 8.53531 7.95373ZM9.88088 31.828L12.8488 30.1144L22.298 32.4668L16.7678 35.6596L9.88088 31.828ZM16.8012 29.5485C15.9014 27.6309 15.3353 25.5737 15.1273 23.4657C14.6436 23.6154 14.1511 23.7346 13.6525 23.8224C13.8498 25.6299 14.2911 27.4023 14.9644 29.0912L16.8012 29.5485Z" />
+                                    </svg>
+                                </div>
+                                <div class="single-img">
+                                    <img src="{{ $settings['about_image_1'] ? Storage::url($settings['about_image_1']) : asset('assets/img/home4/about-img1.jpg') }}"
+                                        alt="">
+                                </div>
+                            </div>
+                            <div class="single-grp">
+                                <div class="single-img two">
+                                    <img src="{{ $settings['about_image_2'] ? Storage::url($settings['about_image_2']) : asset('assets/img/home4/about-img2.jpg') }}"
+                                        alt="">
+                                </div>
+                                <div class="single-img three">
+                                    <img src="{{ $settings['about_image_3'] ? Storage::url($settings['about_image_3']) : asset('assets/img/home4/about-img3.jpg') }}"
+                                        alt="">
                                 </div>
                             </div>
                         </div>
@@ -346,8 +310,10 @@
                 </div>
             </div>
         </div>
-        <!-- home4 About Section End-->
+    </div>
+    <!-- home4 About Section End-->
 
+    @if ($packages->count() > 0)
         <!-- home4 Travel Package Section Start-->
         <div class="home4-travel-package-section mt-100 mb-100">
             <div class="container">
@@ -362,92 +328,78 @@
                     </div>
                 </div>
                 <div class="row gy-lg-5 gy-4">
-                    @if ($packages->count() > 0)
-                        @foreach ($packages as $package)
-                            <div class="col-lg-4 col-md-6 wow animate fadeInDown" data-wow-delay="200ms"
-                                data-wow-duration="1500ms">
-                                <div class="package-card">
-                                    <div class="package-img-wrap">
-                                        <a href="{{ route('cms.show', ['type' => 'things-to-do', 'slug' => $package->slug]) }}"
-                                            class="package-img">
-                                            <img src="{{ $package->featured_image ? asset('storage/' . $package->featured_image) : asset('assets/img/home1/tour-package-img1.jpg') }}"
-                                                alt="{{ $package->title }}">
-                                        </a>
-                                        @if ($package->is_featured)
-                                            <div class="batch">
-                                                <span>Featured!</span>
-                                            </div>
-                                        @endif
-                                    </div>
-                                    <div class="package-content">
-                                        <h5><a
-                                                href="{{ route('cms.show', ['type' => 'things-to-do', 'slug' => $package->slug]) }}">{{ $package->title }}</a>
-                                        </h5>
-                                        <div class="location-and-time">
-                                            <div class="location">
-                                                <svg width="14" height="14" viewBox="0 0 14 14"
-                                                    xmlns="http://www.w3.org/2000/svg">
-                                                    <path
-                                                        d="M6.83615 0C3.77766 0 1.28891 2.48879 1.28891 5.54892C1.28891 7.93837 4.6241 11.8351 6.05811 13.3994C6.25669 13.6175 6.54154 13.7411 6.83615 13.7411C7.13076 13.7411 7.41561 13.6175 7.6142 13.3994C9.04821 11.8351 12.3834 7.93833 12.3834 5.54892C12.3834 2.48879 9.89464 0 6.83615 0ZM7.31469 13.1243C7.18936 13.2594 7.02008 13.3342 6.83615 13.3342C6.65222 13.3342 6.48295 13.2594 6.35761 13.1243C4.95614 11.5959 1.69584 7.79515 1.69584 5.54896C1.69584 2.7134 4.00067 0.406933 6.83615 0.406933C9.67164 0.406933 11.9765 2.7134 11.9765 5.54896C11.9765 7.79515 8.71617 11.5959 7.31469 13.1243Z" />
-                                                    <path
-                                                        d="M6.83618 8.54554C8.4624 8.54554 9.7807 7.22723 9.7807 5.60102C9.7807 3.9748 8.4624 2.65649 6.83618 2.65649C5.20997 2.65649 3.89166 3.9748 3.89166 5.60102C3.89166 7.22723 5.20997 8.54554 6.83618 8.54554Z" />
-                                                </svg>
-                                                <span>{{ $package->excerpt ?: 'Package Location' }}</span>
-                                            </div>
-                                            <svg class="arrow" width="25" height="6" viewBox="0 0 25 6"
-                                                xmlns="http://www.w3.org/2000/svg">
-                                                <path
-                                                    d="M0 3L5 5.88675V0.113249L0 3ZM25 3L20 0.113249V5.88675L25 3ZM4.5 3.5H20.5V2.5H4.5V3.5Z" />
-                                            </svg>
-                                            <span>{{ $package->published_at ? $package->published_at->format('M d, Y') : 'Available' }}</span>
-                                        </div>
-                                        <div class="btn-and-price-area">
-                                            <a href="{{ route('cms.show', ['type' => 'things-to-do', 'slug' => $package->slug]) }}"
-                                                class="primary-btn1">
-                                                <span>
-                                                    View Details
-                                                    <svg width="10" height="10" viewBox="0 0 10 10"
-                                                        xmlns="http://www.w3.org/2000/svg">
-                                                        <path
-                                                            d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z" />
-                                                    </svg>
-                                                </span>
-                                                <span>
-                                                    View Details
-                                                    <svg width="10" height="10" viewBox="0 0 10 10"
-                                                        xmlns="http://www.w3.org/2000/svg">
-                                                        <path
-                                                            d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z" />
-                                                    </svg>
-                                                </span>
-                                            </a>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        @endforeach
-                    @else
-                        <!-- Fallback content when no packages are available -->
+
+                    @foreach ($packages as $package)
                         <div class="col-lg-4 col-md-6 wow animate fadeInDown" data-wow-delay="200ms"
                             data-wow-duration="1500ms">
                             <div class="package-card">
                                 <div class="package-img-wrap">
-                                    <div class="package-img">
-                                        <img src="{{ $settings['package_fallback_image'] ?? asset('assets/img/home1/tour-package-img1.jpg') }}" alt="">
-                                    </div>
+                                    <a href="{{ route('cms.show', ['type' => 'things-to-do', 'slug' => $package->slug]) }}"
+                                        class="package-img">
+                                        <img src="{{ $package->featured_image ? asset('storage/' . $package->featured_image) : asset('assets/img/home1/tour-package-img1.jpg') }}"
+                                            alt="{{ $package->title }}">
+                                    </a>
+                                    @if ($package->is_featured)
+                                        <div class="batch">
+                                            <span>Featured!</span>
+                                        </div>
+                                    @endif
                                 </div>
                                 <div class="package-content">
-                                    <h5>Coming Soon</h5>
-                                    <p>New packages will be available soon!</p>
+                                    <h5><a
+                                            href="{{ route('cms.show', ['type' => 'things-to-do', 'slug' => $package->slug]) }}">{{ $package->title }}</a>
+                                    </h5>
+                                    <div class="location-and-time">
+                                        <div class="location">
+                                            <svg width="14" height="14" viewBox="0 0 14 14"
+                                                xmlns="http://www.w3.org/2000/svg">
+                                                <path
+                                                    d="M6.83615 0C3.77766 0 1.28891 2.48879 1.28891 5.54892C1.28891 7.93837 4.6241 11.8351 6.05811 13.3994C6.25669 13.6175 6.54154 13.7411 6.83615 13.7411C7.13076 13.7411 7.41561 13.6175 7.6142 13.3994C9.04821 11.8351 12.3834 7.93833 12.3834 5.54892C12.3834 2.48879 9.89464 0 6.83615 0ZM7.31469 13.1243C7.18936 13.2594 7.02008 13.3342 6.83615 13.3342C6.65222 13.3342 6.48295 13.2594 6.35761 13.1243C4.95614 11.5959 1.69584 7.79515 1.69584 5.54896C1.69584 2.7134 4.00067 0.406933 6.83615 0.406933C9.67164 0.406933 11.9765 2.7134 11.9765 5.54896C11.9765 7.79515 8.71617 11.5959 7.31469 13.1243Z" />
+                                                <path
+                                                    d="M6.83618 8.54554C8.4624 8.54554 9.7807 7.22723 9.7807 5.60102C9.7807 3.9748 8.4624 2.65649 6.83618 2.65649C5.20997 2.65649 3.89166 3.9748 3.89166 5.60102C3.89166 7.22723 5.20997 8.54554 6.83618 8.54554Z" />
+                                            </svg>
+                                            <span>{{ $package->excerpt ?: 'Package Location' }}</span>
+                                        </div>
+                                        <svg class="arrow" width="25" height="6" viewBox="0 0 25 6"
+                                            xmlns="http://www.w3.org/2000/svg">
+                                            <path
+                                                d="M0 3L5 5.88675V0.113249L0 3ZM25 3L20 0.113249V5.88675L25 3ZM4.5 3.5H20.5V2.5H4.5V3.5Z" />
+                                        </svg>
+                                        <span>{{ $package->published_at ? $package->published_at->format('M d, Y') : 'Available' }}</span>
+                                    </div>
+                                    <div class="btn-and-price-area">
+                                        <a href="{{ route('cms.show', ['type' => 'things-to-do', 'slug' => $package->slug]) }}"
+                                            class="primary-btn1">
+                                            <span>
+                                                View Details
+                                                <svg width="10" height="10" viewBox="0 0 10 10"
+                                                    xmlns="http://www.w3.org/2000/svg">
+                                                    <path
+                                                        d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z" />
+                                                </svg>
+                                            </span>
+                                            <span>
+                                                View Details
+                                                <svg width="10" height="10" viewBox="0 0 10 10"
+                                                    xmlns="http://www.w3.org/2000/svg">
+                                                    <path
+                                                        d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z" />
+                                                </svg>
+                                            </span>
+                                        </a>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                    @endif
+                    @endforeach
+
+
                 </div>
 
             </div>
         </div>
-    </div>
+
+    @endif
 
     <!-- home4 Travel Package Section End-->
 
@@ -460,12 +412,12 @@
                         <div class="swiper-wrapper">
                             <div class="swiper-slide">
                                 <a href="travel-package-details.html"><img
-                                        src="{{ $settings['offer_slider_img_1'] ?? asset('assets/img/home4/home4-offer-slider-img1.jpg') }}"
+                                        src="{{ $settings['offer_slider_img_1'] ? Storage::url($settings['offer_slider_img_1']) : asset('assets/img/home4/home4-offer-slider-img1.jpg') }}"
                                         alt=""></a>
                             </div>
                             <div class="swiper-slide">
                                 <a href="travel-package-details.html"><img
-                                        src="{{ $settings['offer_slider_img_2'] ?? asset('assets/img/home4/home4-offer-slider-img2.jpg') }}"
+                                        src="{{ $settings['offer_slider_img_2'] ? Storage::url($settings['offer_slider_img_2']) : asset('assets/img/home4/home4-offer-slider-img2.jpg') }}"
                                         alt=""></a>
                             </div>
                         </div>
@@ -493,13 +445,15 @@
                     </div>
                 </div>
                 <div class="col-lg-3 d-flex justify-content-lg-end">
-                    <a href="{{ $settings['tripadvisor_url'] ?? 'https://www.tripadvisor.com/' }}" class="single-rating">
-                        <strong>{{ $settings['tripadvisor_rating'] ?? '4.5' }}</strong>
+                    <a href="https://www.tripadvisor.com/" class="single-rating">
+                        <strong>4.5</strong>
                         <div class="tripadvisor-rating">
-                            <img src="{{ $settings['tripadvisor_logo'] ?? asset('assets/img/home1/icon/tripadvisor-logo.svg') }}" alt="">
+                            <img src="{{ $settings['tripadvisor_logo'] ? Storage::url($settings['tripadvisor_logo']) : asset('assets/img/home1/icon/tripadvisor-logo.svg') }}"
+                                alt="">
                             <div class="rating-area">
-                                <span>{{ $settings['tripadvisor_label'] ?? 'Reviews' }}</span>
-                                <img src="{{ $settings['tripadvisor_stars'] ?? asset('assets/img/home1/icon/tripadvisor-start.svg') }}" alt="">
+                                <span>Reviews</span>
+                                <img src="{{ $settings['tripadvisor_stars'] ? Storage::url($settings['tripadvisor_stars']) : asset('assets/img/home1/icon/tripadvisor-start.svg') }}"
+                                    alt="">
                             </div>
                         </div>
                     </a>
@@ -510,7 +464,8 @@
                     data-wow-duration="1500ms">
                     <div class="single-feature">
                         <div class="icon">
-                            <img src="{{ $settings['why_feature_1_icon'] ?? asset('assets/img/home3/icon/destination-feature-icon1.svg') }}" alt="">
+                            <img src="{{ $settings['why_feature_icon_1'] ? Storage::url($settings['why_feature_icon_1']) : asset('assets/img/home3/icon/destination-feature-icon1.svg') }}"
+                                alt="">
                         </div>
                         <h5>{{ $settings['why_feature_1'] ?? 'Customizable Package.' }}</h5>
                     </div>
@@ -519,7 +474,8 @@
                     data-wow-duration="1500ms">
                     <div class="single-feature">
                         <div class="icon">
-                            <img src="{{ $settings['why_feature_2_icon'] ?? asset('assets/img/home3/icon/destination-feature-icon2.svg') }}" alt="">
+                            <img src="{{ $settings['why_feature_icon_2'] ? Storage::url($settings['why_feature_icon_2']) : asset('assets/img/home3/icon/destination-feature-icon2.svg') }}"
+                                alt="">
                         </div>
                         <h5>{{ $settings['why_feature_2'] ?? '24/7 Support' }}</h5>
                     </div>
@@ -528,7 +484,8 @@
                     data-wow-duration="1500ms">
                     <div class="single-feature">
                         <div class="icon">
-                            <img src="{{ $settings['why_feature_3_icon'] ?? asset('assets/img/home3/icon/destination-feature-icon3.svg') }}" alt="">
+                            <img src="{{ $settings['why_feature_icon_3'] ? Storage::url($settings['why_feature_icon_3']) : asset('assets/img/home3/icon/destination-feature-icon3.svg') }}"
+                                alt="">
                         </div>
                         <h5>{{ $settings['why_feature_3'] ?? 'Trusted by Thousands' }}</h5>
                     </div>
@@ -537,7 +494,8 @@
                     data-wow-duration="1500ms">
                     <div class="single-feature">
                         <div class="icon">
-                            <img src="{{ $settings['why_feature_4_icon'] ?? asset('assets/img/home3/icon/destination-feature-icon4.svg') }}" alt="">
+                            <img src="{{ $settings['why_feature_icon_4'] ? Storage::url($settings['why_feature_icon_4']) : asset('assets/img/home3/icon/destination-feature-icon4.svg') }}"
+                                alt="">
                         </div>
                         <h5>{{ $settings['why_feature_4'] ?? 'Local Experties' }}</h5>
                     </div>
@@ -548,8 +506,9 @@
     <div class="why-choose-video-area mb-100">
         <div class="container">
             <div class="why-choose-video-wrap">
-                <img src="{{ $settings['why_video_thumbnail'] ?? asset('assets/img/home4/why-choose-video-img.jpg') }}" alt="">
-                <a data-fancybox="video-player" href="{{ $settings['why_video_url'] ?? 'https://www.youtube.com/watch?v=u31qwQUeGuM' }}" class="play-btn">
+                <img src="{{ $settings['why_video_image'] ? Storage::url($settings['why_video_image']) : asset('assets/img/home4/why-choose-video-img.jpg') }}"
+                    alt="">
+                <a data-fancybox="video-player" href="https://www.youtube.com/watch?v=u31qwQUeGuM" class="play-btn">
                     <i class="bi bi-play-fill"></i>
                     <div class="waves-block">
                         <div class="waves wave-1"></div>
@@ -797,31 +756,31 @@
                             <div class="swiper-wrapper">
                                 <div class="swiper-slide">
                                     <div class="testimonial-author-img">
-                                        <img src="{{ $settings['testimonial_author_img_1'] ?? asset('assets/img/home4/testimonial-author-img1.png') }}"
+                                        <img src="{{ $settings['testimonial_author_img_1'] ? Storage::url($settings['testimonial_author_img_1']) : asset('assets/img/home4/testimonial-author-img1.png') }}"
                                             alt="">
                                     </div>
                                 </div>
                                 <div class="swiper-slide">
                                     <div class="testimonial-author-img">
-                                        <img src="{{ $settings['testimonial_author_img_2'] ?? asset('assets/img/home4/testimonial-author-img2.png') }}"
+                                        <img src="{{ $settings['testimonial_author_img_2'] ? Storage::url($settings['testimonial_author_img_2']) : asset('assets/img/home4/testimonial-author-img2.png') }}"
                                             alt="">
                                     </div>
                                 </div>
                                 <div class="swiper-slide">
                                     <div class="testimonial-author-img">
-                                        <img src="{{ $settings['testimonial_author_img_3'] ?? asset('assets/img/home4/testimonial-author-img3.png') }}"
+                                        <img src="{{ $settings['testimonial_author_img_3'] ? Storage::url($settings['testimonial_author_img_3']) : asset('assets/img/home4/testimonial-author-img3.png') }}"
                                             alt="">
                                     </div>
                                 </div>
                                 <div class="swiper-slide">
                                     <div class="testimonial-author-img">
-                                        <img src="{{ $settings['testimonial_author_img_4'] ?? asset('assets/img/home4/testimonial-author-img4.png') }}"
+                                        <img src="{{ $settings['testimonial_author_img_4'] ? Storage::url($settings['testimonial_author_img_4']) : asset('assets/img/home4/testimonial-author-img4.png') }}"
                                             alt="">
                                     </div>
                                 </div>
                                 <div class="swiper-slide">
                                     <div class="testimonial-author-img">
-                                        <img src="{{ $settings['testimonial_author_img_5'] ?? asset('assets/img/home4/testimonial-author-img5.png') }}"
+                                        <img src="{{ $settings['testimonial_author_img_5'] ? Storage::url($settings['testimonial_author_img_5']) : asset('assets/img/home4/testimonial-author-img5.png') }}"
                                             alt="">
                                     </div>
                                 </div>
@@ -831,7 +790,8 @@
                 </div>
             </div>
         </div>
-        <img src="{{ $settings['testimonial_vector'] ?? asset('assets/img/home4/vector/home4-testimonial-vector.png') }}" alt="" class="vector">
+        <img src="{{ $settings['testimonial_vector'] ? Storage::url($settings['testimonial_vector']) : asset('assets/img/home4/vector/home4-testimonial-vector.png') }}"
+            alt="" class="vector">
     </div>
     <!-- home4 Testimonial Section End-->
 
@@ -1006,7 +966,8 @@
                     <div class="blog-card2 two">
                         <div class="blog-img-wrap">
                             <a href="travel-inspiration-details.html" class="blog-img">
-                                <img src="{{ $settings['inspiration_fallback_img_1'] ?? asset('assets/img/home3/blog-img1.jpg') }}" alt="">
+                                <img src="{{ $settings['blog_img_1'] ? Storage::url($settings['blog_img_1']) : asset('assets/img/home3/blog-img1.jpg') }}"
+                                    alt="">
                             </a>
                             <a href="travel-inspiration-01.html" class="location">
                                 <svg width="14" height="14" viewBox="0 0 14 14"
@@ -1033,7 +994,8 @@
                     <div class="blog-card2 two">
                         <div class="blog-img-wrap">
                             <a href="travel-inspiration-details.html" class="blog-img">
-                                <img src="{{ $settings['inspiration_fallback_img_2'] ?? asset('assets/img/home3/blog-img2.jpg') }}" alt="">
+                                <img src="{{ $settings['blog_img_2'] ? Storage::url($settings['blog_img_2']) : asset('assets/img/home3/blog-img2.jpg') }}"
+                                    alt="">
                             </a>
                             <a href="travel-inspiration-01.html" class="location">
                                 <svg width="14" height="14" viewBox="0 0 14 14"
@@ -1059,7 +1021,8 @@
                     <div class="blog-card2 two">
                         <div class="blog-img-wrap">
                             <a href="travel-inspiration-details.html" class="blog-img">
-                                <img src="{{ asset('assets/img/home3/blog-img3.jpg') }}" alt="">
+                                <img src="{{ $settings['blog_img_3'] ? Storage::url($settings['blog_img_3']) : asset('assets/img/home3/blog-img3.jpg') }}"
+                                    alt="">
                             </a>
                             <a href="travel-inspiration-01.html" class="location">
                                 <svg width="14" height="14" viewBox="0 0 14 14"
@@ -1102,7 +1065,8 @@
                 </div>
             </div>
         </div>
-        <img src="{{ asset('assets/img/home4/vector/blog-section-vector.svg') }}" alt="" class="vector">
+        <img src="{{ $settings['blog_section_vector'] ? Storage::url($settings['blog_section_vector']) : asset('assets/img/home4/vector/blog-section-vector.svg') }}"
+            alt="" class="vector">
     </div>
     <!-- home4 blog Section End-->
 
@@ -1235,7 +1199,8 @@
                 </div>
             </div>
         </div>
-        <img src="{{ asset('assets/img/home4/vector/faq-section-vector.svg') }}" alt="" class="vector">
+        <img src="{{ $settings['faq_section_vector'] ? Storage::url($settings['faq_section_vector']) : asset('assets/img/home4/vector/faq-section-vector.svg') }}"
+            alt="" class="vector">
     </div>
     <!-- home4 faq Section End-->
 @endsection

@@ -94,7 +94,7 @@
                                 <li><a href="#"><img src="{{ asset('assets/img/home1/china-flag.png') }}" alt="">Chinese</a></li>
                             </ul>
                         </div>
-                        <a href="#"><img src="{{ asset('assets/img/home1/icon/google-play.svg') }}" alt=""></a>
+                        {{-- <a href="#"><img src="{{ asset('assets/img/home1/icon/google-play.svg') }}" alt=""></a> --}}
                     </div>
                 </div>
                 <div class="col-lg-3 col-md-4 col-sm-6 d-flex justify-content-md-end">
@@ -163,7 +163,7 @@
             <div class="container">
                 <div class="copyright-and-payment-method-area">
                     <p>Copyright {{ date('Y') }} <a href="{{ route('home') }}">TheTaxi</a> | All Rights Reserved.</p>
-                    <div class="payment-method-area">
+                    {{-- <div class="payment-method-area">
                         <span>Accepted Payment Methods :</span>
                         <ul>
                             <li><img src="{{ asset('assets/img/home1/icon/mastar-card-icon.svg') }}" alt=""></li>
@@ -171,7 +171,7 @@
                             <li><img src="{{ asset('assets/img/home1/icon/paypal-icon.svg') }}" alt=""></li>
                             <li><img src="{{ asset('assets/img/home1/icon/gpay-icon.svg') }}" alt=""></li>
                         </ul>
-                    </div>
+                    </div> --}}
                 </div>
             </div>
         </div>
