@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Passport\Passport;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\View;
+use App\Http\View\Composers\NavigationComposer;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -39,5 +41,8 @@ class AppServiceProvider extends ServiceProvider
             'vehicle_owner' => \App\Models\Vehicle\VehicleOwner::class,
             'staff' => \App\Models\Staff::class,
         ]);
+
+        // Register view composers for navigation and footer
+        View::composer(['partials.header', 'partials.footer'], NavigationComposer::class);
     }
 }

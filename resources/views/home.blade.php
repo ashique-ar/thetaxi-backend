@@ -32,11 +32,45 @@
                 <div class="partner-wrap">
                     <div class="marquee">
                         <div class="marquee__group">
-
                             @foreach ($partners as $partner)
-                                <a href="{{ $partner->link ?? '#' }}">
-                                    <img src="{{ $partner->image ? Storage::url($partner->image) : Storage::url($settings['partner_logo_1']) }}"
-                                        alt="{{ $partner->title }}">
+                                @php
+                                    $customFields = json_decode($partner->custom_fields, true) ?? [];
+                                    $partnerUrl = $partner->url ?? $customFields['partner_url'] ?? '#';
+                                    $partnerLogo = $customFields['partner_logo'] ?? $partner->featured_image ?? null;
+                                    $isExternal = $customFields['is_external'] ?? true;
+                                    $target = $isExternal ? '_blank' : '_self';
+                                @endphp
+                                <a href="{{ $partnerUrl }}" target="{{ $target }}" 
+                                   @if($isExternal) rel="noopener noreferrer" @endif>
+                                    @if($partnerLogo)
+                                        <img src="{{ Storage::url($partnerLogo) }}" alt="{{ $partner->title }}">
+                                    @elseif(isset($settings['partner_logo_1']))
+                                        <img src="{{ Storage::url($settings['partner_logo_1']) }}" alt="{{ $partner->title }}">
+                                    @else
+                                        <img src="{{ asset('assets/img/home4/partner-logo.png') }}" alt="{{ $partner->title }}">
+                                    @endif
+                                </a>
+                            @endforeach
+                        </div>
+                        <!-- Duplicate for marquee effect -->
+                        <div class="marquee__group">
+                            @foreach ($partners as $partner)
+                                @php
+                                    $customFields = json_decode($partner->custom_fields, true) ?? [];
+                                    $partnerUrl = $partner->url ?? $customFields['partner_url'] ?? '#';
+                                    $partnerLogo = $customFields['partner_logo'] ?? $partner->featured_image ?? null;
+                                    $isExternal = $customFields['is_external'] ?? true;
+                                    $target = $isExternal ? '_blank' : '_self';
+                                @endphp
+                                <a href="{{ $partnerUrl }}" target="{{ $target }}" 
+                                   @if($isExternal) rel="noopener noreferrer" @endif>
+                                    @if($partnerLogo)
+                                        <img src="{{ Storage::url($partnerLogo) }}" alt="{{ $partner->title }}">
+                                    @elseif(isset($settings['partner_logo_1']))
+                                        <img src="{{ Storage::url($settings['partner_logo_1']) }}" alt="{{ $partner->title }}">
+                                    @else
+                                        <img src="{{ asset('assets/img/home4/partner-logo.png') }}" alt="{{ $partner->title }}">
+                                    @endif
                                 </a>
                             @endforeach
                         </div>
@@ -196,7 +230,7 @@
     <!-- home4 Destination Section End-->
 
     <!-- home4 About Section Start-->
-    <div class="home4-about-section mb-100">
+    {{-- <div class="home4-about-section mb-100">
         <div class="container">
             <div class="about-wrapper">
                 <div class="row justify-content-between">
@@ -310,7 +344,7 @@
                 </div>
             </div>
         </div>
-    </div>
+    </div> --}}
     <!-- home4 About Section End-->
 
     @if ($packages->count() > 0)
@@ -559,171 +593,79 @@
                         <div class="col-lg-8">
                             <div class="swiper home4-testimonial-slider">
                                 <div class="swiper-wrapper">
-                                    <div class="swiper-slide">
-                                        <div class="testimonial-card five">
-                                            <ul class="rating-area">
-                                                <li><i class="bi bi-circle-fill"></i></li>
-                                                <li><i class="bi bi-circle-fill"></i></li>
-                                                <li><i class="bi bi-circle-fill"></i></li>
-                                                <li><i class="bi bi-circle-fill"></i></li>
-                                                <li><i class="bi bi-circle-half"></i></li>
-                                            </ul>
-                                            <h5>Average Experience</h5>
-                                            <p>This was the best trip of my life! Everything was perfectly planned, from
-                                                airport pickup to guided tours. The accommodations were fantastic, and the
-                                                itinerary was well-balanced. Highly recommended!</p>
-                                            <div class="author-area">
-                                                <div class="author-info">
-                                                    <h5>James Bonde</h5>
-                                                    <span>TheTaxi Traveler</span>
+                                    @forelse($testimonials as $testimonial)
+                                        @php
+                                            $customFields = json_decode($testimonial->custom_fields, true) ?? [];
+                                            $rating = $customFields['rating'] ?? 5;
+                                            $ratingType = $customFields['rating_type'] ?? 'default'; // default, trustpilot
+                                            $authorName = $customFields['author_name'] ?? 'Anonymous';
+                                            $authorTitle = $customFields['author_title'] ?? 'Customer';
+                                            $authorImage = $customFields['author_image'] ?? null;
+                                        @endphp
+                                        <div class="swiper-slide">
+                                            <div class="testimonial-card five">
+                                                <ul class="rating-area {{ $ratingType === 'trustpilot' ? 'trustpilot' : '' }}">
+                                                    @for($i = 1; $i <= 5; $i++)
+                                                        <li>
+                                                            @if($ratingType === 'trustpilot')
+                                                                @if($i <= $rating)
+                                                                    <svg width="11" height="10" viewBox="0 0 11 10" xmlns="http://www.w3.org/2000/svg">
+                                                                        <path d="M5.25 7.57409L7.53125 6.99627L8.48437 9.93221L5.25 7.57409ZM10.5 3.77924H6.48437L5.25 0L4.01562 3.77924H0L3.25 6.12174L2.01562 9.90097L5.26562 7.55847L7.26562 6.12174L10.5 3.77924Z" />
+                                                                    </svg>
+                                                                @else
+                                                                    <svg width="11" height="10" viewBox="0 0 11 10" xmlns="http://www.w3.org/2000/svg" style="opacity: 0.3">
+                                                                        <path d="M5.25 7.57409L7.53125 6.99627L8.48437 9.93221L5.25 7.57409ZM10.5 3.77924H6.48437L5.25 0L4.01562 3.77924H0L3.25 6.12174L2.01562 9.90097L5.26562 7.55847L7.26562 6.12174L10.5 3.77924Z" />
+                                                                    </svg>
+                                                                @endif
+                                                            @else
+                                                                @if($i <= floor($rating))
+                                                                    <i class="bi bi-circle-fill"></i>
+                                                                @elseif($i <= $rating)
+                                                                    <i class="bi bi-circle-half"></i>
+                                                                @else
+                                                                    <i class="bi bi-circle" style="opacity: 0.3"></i>
+                                                                @endif
+                                                            @endif
+                                                        </li>
+                                                    @endfor
+                                                </ul>
+                                                <h5>{{ $testimonial->title }}</h5>
+                                                <p>{{ $testimonial->excerpt ?? strip_tags($testimonial->body) }}</p>
+                                                <div class="author-area">
+                                                    @if($authorImage)
+                                                        <div class="author-img">
+                                                            <img src="{{ Storage::url($authorImage) }}" alt="{{ $authorName }}">
+                                                        </div>
+                                                    @endif
+                                                    <div class="author-info">
+                                                        <h5>{{ $authorName }}</h5>
+                                                        <span>{{ $authorTitle }}</span>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
-                                    </div>
-                                    <div class="swiper-slide">
-                                        <div class="testimonial-card five">
-                                            <ul class="rating-area trustpilot">
-                                                <li>
-                                                    <svg width="11" height="10" viewBox="0 0 11 10"
-                                                        xmlns="http://www.w3.org/2000/svg">
-                                                        <path
-                                                            d="M5.25 7.57409L7.53125 6.99627L8.48437 9.93221L5.25 7.57409ZM10.5 3.77924H6.48437L5.25 0L4.01562 3.77924H0L3.25 6.12174L2.01562 9.90097L5.26562 7.55847L7.26562 6.12174L10.5 3.77924Z" />
-                                                    </svg>
-                                                </li>
-                                                <li>
-                                                    <svg width="11" height="10" viewBox="0 0 11 10"
-                                                        xmlns="http://www.w3.org/2000/svg">
-                                                        <path
-                                                            d="M5.25 7.57409L7.53125 6.99627L8.48437 9.93221L5.25 7.57409ZM10.5 3.77924H6.48437L5.25 0L4.01562 3.77924H0L3.25 6.12174L2.01562 9.90097L5.26562 7.55847L7.26562 6.12174L10.5 3.77924Z" />
-                                                    </svg>
-                                                </li>
-                                                <li>
-                                                    <svg width="11" height="10" viewBox="0 0 11 10"
-                                                        xmlns="http://www.w3.org/2000/svg">
-                                                        <path
-                                                            d="M5.25 7.57409L7.53125 6.99627L8.48437 9.93221L5.25 7.57409ZM10.5 3.77924H6.48437L5.25 0L4.01562 3.77924H0L3.25 6.12174L2.01562 9.90097L5.26562 7.55847L7.26562 6.12174L10.5 3.77924Z" />
-                                                    </svg>
-                                                </li>
-                                                <li>
-                                                    <svg width="11" height="10" viewBox="0 0 11 10"
-                                                        xmlns="http://www.w3.org/2000/svg">
-                                                        <path
-                                                            d="M5.25 7.57409L7.53125 6.99627L8.48437 9.93221L5.25 7.57409ZM10.5 3.77924H6.48437L5.25 0L4.01562 3.77924H0L3.25 6.12174L2.01562 9.90097L5.26562 7.55847L7.26562 6.12174L10.5 3.77924Z" />
-                                                    </svg>
-                                                </li>
-                                                <li>
-                                                    <svg width="11" height="10" viewBox="0 0 11 10"
-                                                        xmlns="http://www.w3.org/2000/svg">
-                                                        <path
-                                                            d="M5.25 7.57409L7.53125 6.99627L8.48437 9.93221L5.25 7.57409ZM10.5 3.77924H6.48437L5.25 0L4.01562 3.77924H0L3.25 6.12174L2.01562 9.90097L5.26562 7.55847L7.26562 6.12174L10.5 3.77924Z" />
-                                                    </svg>
-                                                </li>
-                                            </ul>
-                                            <h5>Great Experience!</h5>
-                                            <p>My life's greatest journey was this one! Everything was meticulously
-                                                organized, including the guided tours and airport pickup. The schedule was
-                                                well-balanced, and the lodging was excellent. I heartily suggest it!</p>
-                                            <div class="author-area">
-                                                <div class="author-info">
-                                                    <h5>Selina Henry</h5>
-                                                    <span>TheTaxi Traveler</span>
+                                    @empty
+                                        <!-- Fallback testimonials if no CMS content -->
+                                        <div class="swiper-slide">
+                                            <div class="testimonial-card five">
+                                                <ul class="rating-area">
+                                                    <li><i class="bi bi-circle-fill"></i></li>
+                                                    <li><i class="bi bi-circle-fill"></i></li>
+                                                    <li><i class="bi bi-circle-fill"></i></li>
+                                                    <li><i class="bi bi-circle-fill"></i></li>
+                                                    <li><i class="bi bi-circle-half"></i></li>
+                                                </ul>
+                                                <h5>Excellent Service</h5>
+                                                <p>This was the best experience! Everything was perfectly planned, from airport pickup to guided tours. The accommodations were fantastic, and the service was excellent. Highly recommended!</p>
+                                                <div class="author-area">
+                                                    <div class="author-info">
+                                                        <h5>Sample Customer</h5>
+                                                        <span>TheTaxi Traveler</span>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
-                                    </div>
-                                    <div class="swiper-slide">
-                                        <div class="testimonial-card five">
-                                            <ul class="rating-area">
-                                                <li><i class="bi bi-circle-fill"></i></li>
-                                                <li><i class="bi bi-circle-fill"></i></li>
-                                                <li><i class="bi bi-circle-fill"></i></li>
-                                                <li><i class="bi bi-circle-fill"></i></li>
-                                                <li><i class="bi bi-circle-fill"></i></li>
-                                            </ul>
-                                            <h5>Excellent Tourist Place!</h5>
-                                            <p>I had the most amazing trip of my life! Everything, including the guided
-                                                excursions and the airport pickup, was meticulously organized. The itinerary
-                                                was well-balanced, and the accommodations were excellent.</p>
-                                            <div class="author-area">
-                                                <div class="author-info">
-                                                    <h5>Robert Kcarery </h5>
-                                                    <span>TheTaxi Traveler</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="swiper-slide">
-                                        <div class="testimonial-card five">
-                                            <ul class="rating-area">
-                                                <li><i class="bi bi-circle-fill"></i></li>
-                                                <li><i class="bi bi-circle-fill"></i></li>
-                                                <li><i class="bi bi-circle-fill"></i></li>
-                                                <li><i class="bi bi-circle-fill"></i></li>
-                                                <li><i class="bi bi-circle-half"></i></li>
-                                            </ul>
-                                            <h5>Average Experience</h5>
-                                            <p>This was the best trip of my life! Everything was perfectly planned, from
-                                                airport pickup to guided tours. The accommodations were fantastic, and the
-                                                itinerary was well-balanced. Highly recommended!</p>
-                                            <div class="author-area">
-                                                <div class="author-info">
-                                                    <h5>James Bonde</h5>
-                                                    <span>TheTaxi Traveler</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="swiper-slide">
-                                        <div class="testimonial-card five">
-                                            <ul class="rating-area trustpilot">
-                                                <li>
-                                                    <svg width="11" height="10" viewBox="0 0 11 10"
-                                                        xmlns="http://www.w3.org/2000/svg">
-                                                        <path
-                                                            d="M5.25 7.57409L7.53125 6.99627L8.48437 9.93221L5.25 7.57409ZM10.5 3.77924H6.48437L5.25 0L4.01562 3.77924H0L3.25 6.12174L2.01562 9.90097L5.26562 7.55847L7.26562 6.12174L10.5 3.77924Z" />
-                                                    </svg>
-                                                </li>
-                                                <li>
-                                                    <svg width="11" height="10" viewBox="0 0 11 10"
-                                                        xmlns="http://www.w3.org/2000/svg">
-                                                        <path
-                                                            d="M5.25 7.57409L7.53125 6.99627L8.48437 9.93221L5.25 7.57409ZM10.5 3.77924H6.48437L5.25 0L4.01562 3.77924H0L3.25 6.12174L2.01562 9.90097L5.26562 7.55847L7.26562 6.12174L10.5 3.77924Z" />
-                                                    </svg>
-                                                </li>
-                                                <li>
-                                                    <svg width="11" height="10" viewBox="0 0 11 10"
-                                                        xmlns="http://www.w3.org/2000/svg">
-                                                        <path
-                                                            d="M5.25 7.57409L7.53125 6.99627L8.48437 9.93221L5.25 7.57409ZM10.5 3.77924H6.48437L5.25 0L4.01562 3.77924H0L3.25 6.12174L2.01562 9.90097L5.26562 7.55847L7.26562 6.12174L10.5 3.77924Z" />
-                                                    </svg>
-                                                </li>
-                                                <li>
-                                                    <svg width="11" height="10" viewBox="0 0 11 10"
-                                                        xmlns="http://www.w3.org/2000/svg">
-                                                        <path
-                                                            d="M5.25 7.57409L7.53125 6.99627L8.48437 9.93221L5.25 7.57409ZM10.5 3.77924H6.48437L5.25 0L4.01562 3.77924H0L3.25 6.12174L2.01562 9.90097L5.26562 7.55847L7.26562 6.12174L10.5 3.77924Z" />
-                                                    </svg>
-                                                </li>
-                                                <li>
-                                                    <svg width="11" height="10" viewBox="0 0 11 10"
-                                                        xmlns="http://www.w3.org/2000/svg">
-                                                        <path
-                                                            d="M5.25 7.57409L7.53125 6.99627L8.48437 9.93221L5.25 7.57409ZM10.5 3.77924H6.48437L5.25 0L4.01562 3.77924H0L3.25 6.12174L2.01562 9.90097L5.26562 7.55847L7.26562 6.12174L10.5 3.77924Z" />
-                                                    </svg>
-                                                </li>
-                                            </ul>
-                                            <h5>Great Experience!</h5>
-                                            <p>My life's greatest journey was this one! Everything was meticulously
-                                                organized, including the guided tours and airport pickup. The schedule was
-                                                well-balanced, and the lodging was excellent. I heartily suggest it!</p>
-                                            <div class="author-area">
-                                                <div class="author-info">
-                                                    <h5>Selina Henry</h5>
-                                                    <span>TheTaxi Traveler</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
+                                    @endforelse
                                 </div>
                             </div>
                         </div>
@@ -753,36 +695,37 @@
                     <div class="col-lg-8">
                         <div class="swiper home4-testimonial-img-slider">
                             <div class="swiper-wrapper">
-                                <div class="swiper-slide">
-                                    <div class="testimonial-author-img">
-                                        <img src="{{ $settings['testimonial_author_img_1'] ? Storage::url($settings['testimonial_author_img_1']) : asset('assets/img/home4/testimonial-author-img1.png') }}"
-                                            alt="">
+                                @forelse($testimonials as $testimonial)
+                                    @php
+                                        $customFields = json_decode($testimonial->custom_fields, true) ?? [];
+                                        $authorImage = $customFields['author_image'] ?? null;
+                                        $authorName = $customFields['author_name'] ?? 'Anonymous';
+                                    @endphp
+                                    @if($authorImage)
+                                        <div class="swiper-slide">
+                                            <div class="testimonial-author-img">
+                                                <img src="{{ Storage::url($authorImage) }}" alt="{{ $authorName }}">
+                                            </div>
+                                        </div>
+                                    @endif
+                                @empty
+                                    <!-- Fallback images if no CMS content -->
+                                    <div class="swiper-slide">
+                                        <div class="testimonial-author-img">
+                                            <img src="{{ $settings['testimonial_author_img_1'] ? Storage::url($settings['testimonial_author_img_1']) : asset('assets/img/home4/testimonial-author-img1.png') }}" alt="">
+                                        </div>
                                     </div>
-                                </div>
-                                <div class="swiper-slide">
-                                    <div class="testimonial-author-img">
-                                        <img src="{{ $settings['testimonial_author_img_2'] ? Storage::url($settings['testimonial_author_img_2']) : asset('assets/img/home4/testimonial-author-img2.png') }}"
-                                            alt="">
+                                    <div class="swiper-slide">
+                                        <div class="testimonial-author-img">
+                                            <img src="{{ $settings['testimonial_author_img_2'] ? Storage::url($settings['testimonial_author_img_2']) : asset('assets/img/home4/testimonial-author-img2.png') }}" alt="">
+                                        </div>
                                     </div>
-                                </div>
-                                <div class="swiper-slide">
-                                    <div class="testimonial-author-img">
-                                        <img src="{{ $settings['testimonial_author_img_3'] ? Storage::url($settings['testimonial_author_img_3']) : asset('assets/img/home4/testimonial-author-img3.png') }}"
-                                            alt="">
+                                    <div class="swiper-slide">
+                                        <div class="testimonial-author-img">
+                                            <img src="{{ $settings['testimonial_author_img_3'] ? Storage::url($settings['testimonial_author_img_3']) : asset('assets/img/home4/testimonial-author-img3.png') }}" alt="">
+                                        </div>
                                     </div>
-                                </div>
-                                <div class="swiper-slide">
-                                    <div class="testimonial-author-img">
-                                        <img src="{{ $settings['testimonial_author_img_4'] ? Storage::url($settings['testimonial_author_img_4']) : asset('assets/img/home4/testimonial-author-img4.png') }}"
-                                            alt="">
-                                    </div>
-                                </div>
-                                <div class="swiper-slide">
-                                    <div class="testimonial-author-img">
-                                        <img src="{{ $settings['testimonial_author_img_5'] ? Storage::url($settings['testimonial_author_img_5']) : asset('assets/img/home4/testimonial-author-img5.png') }}"
-                                            alt="">
-                                    </div>
-                                </div>
+                                @endforelse
                             </div>
                         </div>
                     </div>
