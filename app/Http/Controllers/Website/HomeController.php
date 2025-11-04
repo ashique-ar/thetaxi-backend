@@ -48,9 +48,10 @@ class HomeController extends Controller
         if (!$contentType) {
             return collect();
         }
+         
 
-        return CmsContent::where('cms_content_type_id', $contentType->id)
-            ->where('status', 'published')
+        return $contentType->contents()
+            // ->where('status', 'published')
             ->where('is_active', true)
             ->whereNotNull('published_at')
             ->where('published_at', '<=', now())
