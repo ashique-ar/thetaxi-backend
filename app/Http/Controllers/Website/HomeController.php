@@ -51,12 +51,12 @@ class HomeController extends Controller
          
 
         return $contentType->contents()
-            // ->where('status', 'published')
+            ->where('status', 'published')
             ->where('is_active', true)
-            ->whereNotNull('published_at')
-            ->where('published_at', '<=', now())
+            // ->whereNotNull('published_at')
+            // ->where('published_at', '<=', now())
             ->orderBy('is_featured', 'desc')
-            ->orderBy('published_at', 'desc')
+            // ->orderBy('published_at', 'desc')
             ->limit($limit)
             ->get();
     }
