@@ -263,7 +263,7 @@
                                     d="M5 2.5L0 0.113249V5.88675L5 3.5V2.5ZM531 3.5L536 5.88675V0.113249L531 2.5V3.5ZM4.5 3.5H531.5V2.5H4.5V3.5Z" />
                             </svg>
                             <div class="btn-area">
-                                <a href="about.html" class="about-btn">
+                                <a href="{{ $settings['about_button_link'] ?? 'about.html' }}" class="about-btn">
                                     {{ $settings['about_button_text'] ?? 'About More TheTaxi' }}
                                     <svg width="10" height="10" viewBox="0 0 10 10"
                                         xmlns="http://www.w3.org/2000/svg">
@@ -341,7 +341,7 @@
                                     </a>
                                     @if ($package->is_featured)
                                         <div class="batch">
-                                            <span>Featured!</span>
+                                            <span>{{ $settings['package_featured_label'] ?? 'Featured!' }}</span>
                                         </div>
                                     @endif
                                 </div>
@@ -411,12 +411,12 @@
                     <div class="swiper home4-offer-slider">
                         <div class="swiper-wrapper">
                             <div class="swiper-slide">
-                                <a href="travel-package-details.html"><img
+                                <a href="{{ $settings['offer_slider_link_1'] ?? 'travel-package-details.html' }}"><img
                                         src="{{ $settings['offer_slider_img_1'] ? Storage::url($settings['offer_slider_img_1']) : asset('assets/img/home4/home4-offer-slider-img1.jpg') }}"
                                         alt=""></a>
                             </div>
                             <div class="swiper-slide">
-                                <a href="travel-package-details.html"><img
+                                <a href="{{ $settings['offer_slider_link_2'] ?? 'travel-package-details.html' }}"><img
                                         src="{{ $settings['offer_slider_img_2'] ? Storage::url($settings['offer_slider_img_2']) : asset('assets/img/home4/home4-offer-slider-img2.jpg') }}"
                                         alt=""></a>
                             </div>
@@ -441,17 +441,17 @@
                 <div class="col-xxl-5 col-xl-6 col-lg-7">
                     <div class="section-title">
                         <h2>Why We’re Best Agency</h2>
-                        <p>A curated list of the most popular travel packages based on different destinations.</p>
+                        <p>{{ $settings['why_section_description'] ?? 'A curated list of the most popular travel packages based on different destinations.' }}</p>
                     </div>
                 </div>
                 <div class="col-lg-3 d-flex justify-content-lg-end">
-                    <a href="https://www.tripadvisor.com/" class="single-rating">
+                    <a href="{{ $settings['tripadvisor_link'] ?? 'https://www.tripadvisor.com/' }}" class="single-rating">
                         <strong>4.5</strong>
                         <div class="tripadvisor-rating">
                             <img src="{{ $settings['tripadvisor_logo'] ? Storage::url($settings['tripadvisor_logo']) : asset('assets/img/home1/icon/tripadvisor-logo.svg') }}"
                                 alt="">
                             <div class="rating-area">
-                                <span>Reviews</span>
+                                <span>{{ $settings['tripadvisor_reviews_text'] ?? 'Reviews' }}</span>
                                 <img src="{{ $settings['tripadvisor_stars'] ? Storage::url($settings['tripadvisor_stars']) : asset('assets/img/home1/icon/tripadvisor-start.svg') }}"
                                     alt="">
                             </div>
@@ -508,7 +508,7 @@
             <div class="why-choose-video-wrap">
                 <img src="{{ $settings['why_video_image'] ? Storage::url($settings['why_video_image']) : asset('assets/img/home4/why-choose-video-img.jpg') }}"
                     alt="">
-                <a data-fancybox="video-player" href="https://www.youtube.com/watch?v=u31qwQUeGuM" class="play-btn">
+                <a data-fancybox="video-player" href="{{ $settings['promo_video_link'] ?? 'https://www.youtube.com/watch?v=u31qwQUeGuM' }}" class="play-btn">
                     <i class="bi bi-play-fill"></i>
                     <div class="waves-block">
                         <div class="waves wave-1"></div>
@@ -530,8 +530,8 @@
                                 </svg>
                             </div>
                             <div class="content">
-                                <span>Need Help?</span>
-                                <a href="tel:91345533865">+91 345 533 865</a>
+                                <span>{{ $settings['help_section_label'] ?? 'Need Help?' }}</span>
+                                <a href="tel:{{ $settings['help_phone_number'] ?? '91345533865' }}">{{ $settings['help_phone_display'] ?? '+91 345 533 865' }}</a>
                             </div>
                         </div>
                     </div>
@@ -549,9 +549,8 @@
                     data-wow-duration="1500ms">
                     <div class="col-xl-6 col-lg-8">
                         <div class="section-title text-center">
-                            <h2>Hear It from Travelers</h2>
-                            <p>We go beyond just booking trips—we create unforgettable travel experiences that match your
-                                dreams!</p>
+                            <h2>{{ $settings['testimonials_section_title'] ?? 'Hear It from Travelers' }}</h2>
+                            <p>{{ $settings['testimonials_section_description'] ?? 'We go beyond just booking trips—we create unforgettable travel experiences that match your dreams!' }}</p>
                         </div>
                     </div>
                 </div>
@@ -805,7 +804,7 @@
                             <path fill-rule="evenodd" clip-rule="evenodd"
                                 d="M39.5961 15.81C38.1214 17.2519 40.2368 20.3608 36.9514 22.3862C35.0583 23.5533 38.0077 25.8843 36.9514 28.6109C36.7987 29.0049 36.7675 29.4023 36.987 29.8303C34.3992 31.822 31.1578 33.0065 27.6398 33.0065C26.7047 33.0065 25.7892 32.9228 24.9003 32.7625L24.5591 33.9508C25.5749 34.1416 26.6063 34.2374 27.6398 34.237C36.7906 34.237 44.209 26.8186 44.209 17.6679C44.209 8.51713 36.7906 1.09863 27.6398 1.09863C24.0648 1.09863 20.6088 2.24297 17.7454 4.37818C19.8919 7.68524 19.849 12.0313 17.6364 15.2956C18.4686 16.7537 19.665 16.797 20.1282 16.9774C21.8931 17.6654 23.2203 21.7429 24.3251 23.0528C25.9039 22.1413 27.6183 21.8503 29.3902 22.4059C29.0978 20.9689 27.4158 19.3471 26.9044 18.8961C25.0823 17.2898 25.8475 16.5076 27.2823 16.1104C28.9332 15.6532 31.4705 15.7057 31.9733 15.5987C33.1508 15.3482 33.4901 14.5201 32.5894 13.7393C31.5322 12.823 29.6808 11.8148 29.2499 10.9945C28.6541 9.8601 29.0869 9.52163 29.8556 9.28389C31.4176 8.80084 34.3657 8.73281 32.891 3.25178C38.0294 5.12385 41.8141 9.62587 42.7515 15.026C41.0332 15.0163 40.1027 15.3148 39.5961 15.81ZM6.48202 37.3493L1.40625 33.2101L3.25916 31.9816L8.22243 33.7703L25.2854 23.919C28.1145 22.2856 33.7222 24.5118 28.3539 27.6113L24.4524 29.8638L20.8244 42.4993L18.3959 43.9014L18.5658 33.213C18.5658 33.213 8.38195 38.8263 6.48202 37.3493ZM9.44719 1.09863C14.2276 1.09863 18.1034 4.97426 18.1034 9.7548C18.1034 14.5354 14.2277 18.411 9.44719 18.411C4.66673 18.411 0.791016 14.5353 0.791016 9.7548C0.791016 4.97435 4.66673 1.09863 9.44719 1.09863ZM4.16821 14.9772C4.53076 12.3859 6.75615 10.3914 9.44728 10.3914C12.1385 10.3914 14.3635 12.3858 14.7261 14.9772C16.0532 13.6358 16.8728 11.7911 16.8728 9.7548C16.8728 5.65356 13.5483 2.3291 9.4471 2.3291C5.34595 2.3291 2.02148 5.65356 2.02148 9.7548C2.02148 11.7911 2.84115 13.6357 4.16821 14.9772ZM6.98344 6.5076C6.98344 7.86841 8.08655 8.97152 9.44736 8.97152C10.8082 8.97152 11.9113 7.86841 11.9113 6.5076C11.9113 5.14714 10.8082 4.04402 9.44736 4.04402C8.08655 4.04411 6.98344 5.14714 6.98344 6.5076ZM8.08436 26.0411L10.5127 24.6391L18.2438 26.5637L13.7191 29.176L8.08436 26.0411ZM13.7464 24.1761C13.0102 22.6071 12.547 20.924 12.3768 19.1992C11.9812 19.3217 11.5781 19.4192 11.1702 19.4911C11.3316 20.9699 11.6927 22.4201 12.2436 23.8019L13.7464 24.1761Z" />
                         </svg>
-                        <span>Tour Completed</span>
+                        <span>{{ $settings['about_tours_label'] ?? 'Tour Completed' }}</span>
                         <h2><strong class="counter">26</strong>K+</h2>
                     </div>
                 </div>
@@ -1204,3 +1203,7 @@
     </div>
     <!-- home4 faq Section End-->
 @endsection
+
+
+
+

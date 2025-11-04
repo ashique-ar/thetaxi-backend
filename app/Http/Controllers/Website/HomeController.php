@@ -28,11 +28,12 @@ class HomeController extends Controller
         $packages = $this->getCmsContentByTypeSlug('things-to-do', 6);
         $inspirations = $this->getCmsContentByTypeSlug('independent-services', 3);
         $partners = $this->getCmsContentByTypeSlug('partners', 12);
+        $testimonials = $this->getCmsContentByTypeSlug('testimonials', 5);
 
         // Get website settings for dynamic text and media
         $settings = $this->settingsService->getHomepageSettings();
 
-        return view('home', compact('destinations', 'packages', 'inspirations', 'partners', 'settings'));
+        return view('home', compact('destinations', 'packages', 'inspirations', 'partners', 'testimonials', 'settings'));
     }
 
     /**

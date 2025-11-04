@@ -94,6 +94,7 @@ class WebsiteSettingsService
             'feature_card_vector',
             'feature_section_vector1',
             'feature_section_vector2',
+            'feature_section_subtitle',
             
             // Destinations Section
             'destinations_section_title',
@@ -109,6 +110,7 @@ class WebsiteSettingsService
             'about_customers_count',
             'about_customers_label',
             'about_button_text',
+            'about_button_link',
             'about_tours_completed',
             'about_tours_label',
             'about_image_1',
@@ -137,9 +139,11 @@ class WebsiteSettingsService
             'fallback_destination_image',
             'fallback_package_image',
             
-            // Offer Slider Images
+            // Offer Slider Images & Links
             'offer_slider_img_1',
             'offer_slider_img_2',
+            'offer_slider_link_1',
+            'offer_slider_link_2',
             
             // Packages Section
             'packages_section_title',
@@ -159,6 +163,20 @@ class WebsiteSettingsService
             'why_video_image',
             'tripadvisor_logo',
             'tripadvisor_stars',
+            'tripadvisor_link',
+            'tripadvisor_reviews_text',
+            
+            // Video Section
+            'promo_video_link',
+            'video_section_title',
+            
+            // Help Section
+            'help_section_label',
+            'help_phone_number',
+            'help_phone_display',
+            
+            // Package Labels
+            'package_featured_label',
             
             // Inspirations Section
             'inspirations_section_title',
