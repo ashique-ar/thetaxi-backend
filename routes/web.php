@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\FileUploadController;
 use App\Http\Controllers\BookingController;
 use App\Http\Controllers\CartController;
+use App\Http\Controllers\FAQController;
 use App\Http\Controllers\VehicleController;
 use App\Http\Controllers\Website\CmsController;
 use App\Http\Controllers\Website\HomeController;
@@ -69,6 +70,11 @@ Route::post('/booking/enquiry', [BookingController::class, 'enquiry'])->name('bo
 Route::get('/api/services/configuration', [BookingController::class, 'getServiceConfiguration'])->name('api.services.configuration');
 Route::get('/api/services/{serviceCode}/form-config', [BookingController::class, 'getServiceFormConfig'])->name('api.services.form-config');
 Route::get('/api/services/{serviceCode}/validation-rules', [BookingController::class, 'getServiceValidationRules'])->name('api.services.validation-rules');
+
+// FAQ routes
+Route::get('/faq', [FAQController::class, 'index'])->name('faq');
+// Route::get('/faq', [FAQController::class, 'index'])->name('faq.index');  
+Route::get('/faq/category/{category}', [FAQController::class, 'category'])->name('faq.category');
 
 // Dynamic CMS content routes - these handle all content types dynamically
 Route::get('/{contentType}', [CmsController::class, 'index'])

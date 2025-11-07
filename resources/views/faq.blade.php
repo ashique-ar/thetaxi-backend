@@ -1,18 +1,21 @@
 @extends('layouts.app')
 
-@section('title', 'FAQ - Frequently Asked Questions - TheTaxi')
+@s                    <div class="section-title text-center">
+                        <h2>{{ $settings['faq_section_title'] ?? 'General Questions' }}</h2>
+                        <p>{{ $settings['faq_section_description'] ?? "We're committed to offering more than just products—we provide exceptional experiences." }}</p>
+                    </div>on('title', $settings['faq_page_title'] ?? 'FAQ - Frequently Asked Questions - TheTaxi')
 
 @section('content')
 
     <!-- Start Breadcrumb section -->
     <div class="breadcrumb-section"
-        style="background-image:linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url(assets/img/innerpages/breadcrumb-bg2.jpg);">
+        style="background-image:linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url({{ $settings['faq_breadcrumb_image'] ? Storage::url($settings['faq_breadcrumb_image']) : asset('assets/img/innerpages/breadcrumb-bg2.jpg') }});">
         <div class="container">
             <div class="banner-content">
-                <h1>Ask & Question</h1>
+                <h1>{{ $settings['faq_hero_heading'] ?? 'Ask & Question' }}</h1>
                 <ul class="breadcrumb-list">
-                    <li><a href="index.html">Home</a></li>
-                    <li>FAQ</li>
+                    <li><a href="{{ route('home') }}">Home</a></li>
+                    <li>{{ $settings['faq_hero_subheading'] ?? 'FAQ' }}</li>
                 </ul>
             </div>
         </div>
@@ -22,15 +25,55 @@
     <!-- faq Page Start-->
     <div class="faq-page pt-100 mb-100">
         <div class="container">
-            <div class="row justify-content-center mb-50 wow animate fadeInDown" data-wow-delay="200ms"
+                        <div class="row justify-content-center mb-50 wow animate fadeInDown" data-wow-delay="200ms"
                 data-wow-duration="1500ms">
                 <div class="col-xl-6 col-lg-8">
                     <div class="section-title text-center">
-                        <h2>General Questions</h2>
-                        <p>We’re committed to offering more than just products—we provide exceptional experiences.</p>
+                        <h2>{{ $settings['faq_section_title'] ?? 'General Questions' }}</h2>
+                        <p>{{ $settings['faq_section_description'] ?? "We're committed to offering more than just products—we provide exceptional experiences." }}</p>
                     </div>
                 </div>
             </div>
+            
+            @if($settings['faq_show_search'] ?? true)
+            <!-- FAQ Search and Filter Section -->
+            <div class="row justify-content-center mb-40">
+                <div class="col-xl-8 col-lg-10">
+                    <div class="faq-search-wrap">
+                        <form method="GET" action="{{ route('faq.index') }}" class="faq-search-form">
+                            <div class="row g-3 align-items-end">
+                                <div class="col-md-6">
+                                    <div class="form-inner">
+                                        <label>Search FAQs</label>
+                                        <input type="text" name="search" value="{{ $search ?? '' }}" 
+                                               placeholder="{{ $settings['faq_search_placeholder'] ?? 'Search questions and answers...' }}">
+                                    </div>
+                                </div>
+                                @if($settings['faq_show_categories'] ?? true)
+                                <div class="col-md-4">
+                                    <div class="form-inner">
+                                        <label>Category</label>
+                                        <select name="category" onchange="this.form.submit()">
+                                            <option value="">{{ $settings['faq_all_categories_text'] ?? 'All Categories' }}</option>
+                                            @foreach($categories as $cat)
+                                                <option value="{{ $cat->id }}" {{ ($categoryId ?? '') == $cat->id ? 'selected' : '' }}>
+                                                    {{ $cat->name }}
+                                                </option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                </div>
+                                @endif
+                                <div class="col-md-2">
+                                    <button type="submit" class="primary-btn1">Search</button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            @endif
+            
             <div class="row justify-content-center">
                 <div class="col-xl-8 col-lg-10">
                     <div class="faq-wrap">

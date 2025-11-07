@@ -75,6 +75,20 @@ class CmsContent extends BaseModel
         'url',
         'created_user_id',
         'updated_user_id',
+        // Travel-specific fields
+        'price',
+        'price_currency',
+        'duration',
+        'location',
+        'category',
+        'difficulty_level',
+        'rating',
+        'reviews_count',
+        'coordinates',
+        'tags',
+        'availability_status',
+        'special_offer',
+        'discount_percentage',
     ];
 
     /**
@@ -94,6 +108,14 @@ class CmsContent extends BaseModel
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
         'deleted_at' => 'datetime',
+        // Travel-specific casts
+        'price' => 'decimal:2',
+        'rating' => 'decimal:1',
+        'reviews_count' => 'integer',
+        'coordinates' => 'array',
+        'tags' => 'array',
+        'special_offer' => 'boolean',
+        'discount_percentage' => 'integer',
     ];
 
     /**
@@ -150,12 +172,76 @@ class CmsContent extends BaseModel
     }
 
     /**
-     * Get the full URL for this content.
+     * Scope to filter by category.
      */
-    public function getFullUrlAttribute()
+    public function scopeByCategory($query, $category)
     {
-        $prefix = $this->contentType->url_prefix ?? $this->contentType->slug;
-        return "/{$prefix}/{$this->slug}";
+        return $query->where('category', $category);
+    }
+
+    /**
+     * Scope to filter by location.
+     */
+    public function scopeByLocation($query, $location)
+    {
+        return $query->where('location', 'like', "%{$location}%");
+    }
+
+    /**
+     * Scope to get content with special offers.
+     */
+    public function scopeSpecialOffers($query)
+    {
+        return $query->where('special_offer', true)
+                    ->where('discount_percentage', '>', 0);
+    }
+
+    /**
+     * Scope to order by rating.
+     */
+    public function scopeByRating($query, $order = 'desc')
+    {
+        return $query->orderBy('rating', $order);
+    }
+
+    /**
+     * Scope to order by price.
+     */
+    public function scopeByPrice($query, $order = 'asc')
+    {
+        return $query->orderBy('price', $order);
+    }
+
+    /**
+     * Get the formatted price.
+     */
+    public function getFormattedPriceAttribute()
+    {
+        if (!$this->price) {
+            return null;
+        }
+        
+        return $this->price_currency . ' ' . number_format($this->price, 2);
+    }
+
+    /**
+     * Get star rating as array.
+     */
+    public function getStarRatingAttribute()
+    {
+        $stars = [];
+        for ($i = 1; $i <= 5; $i++) {
+            $stars[] = $i <= $this->rating;
+        }
+        return $stars;
+    }
+
+    /**
+     * Get tags as comma-separated string.
+     */
+    public function getTagsStringAttribute()
+    {
+        return $this->tags ? implode(', ', $this->tags) : '';
     }
 
     /**

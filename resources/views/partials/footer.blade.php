@@ -12,8 +12,8 @@
                     </g>
                 </svg>
                 <div class="content">
-                    <h6>{{ $footerData['settings']['footer_inquiry_title'] ?? 'To More Inquiry' }}</h6>
-                    <span>{{ $footerData['settings']['footer_inquiry_subtitle'] ?? "Don't hesitate Call to TheTaxi." }}</span>
+                    <h6>To More Inquiry</h6>
+                    <span>Don't hesitate Call to TheTaxi.</span>
                 </div>
             </div>
             <ul class="contact-area">
@@ -23,7 +23,7 @@
                     </div>
                     <div class="content">
                         <span>WhatsApp</span>
-                        <a href="https://wa.me/{{ str_replace(['+', ' ', '-'], '', $footerData['settings']['footer_whatsapp'] ?? '+1234567890') }}">{{ $footerData['settings']['footer_whatsapp'] ?? '+1 234 567 890' }}</a>
+                        <a href="https://wa.me/+1234567890">+1 234 567 890</a>
                     </div>
                 </li>
                 <li class="single-contact">
@@ -32,7 +32,7 @@
                     </div>
                     <div class="content">
                         <span>Mail Us</span>
-                        <a href="mailto:{{ $footerData['settings']['footer_email'] ?? 'info@thetaxi.com' }}">{{ $footerData['settings']['footer_email'] ?? 'info@thetaxi.com' }}</a>
+                        <a href="mailto:info@thetaxi.com">info@thetaxi.com</a>
                     </div>
                 </li>
                 <li class="single-contact">
@@ -41,7 +41,7 @@
                     </div>
                     <div class="content">
                         <span>Call Us</span>
-                        <a href="tel:{{ str_replace(['+', ' ', '-'], '', $footerData['settings']['footer_phone'] ?? '+1234567890') }}">{{ $footerData['settings']['footer_phone'] ?? '+1 234 567 890' }}</a>
+                        <a href="tel:+1234567890">+1 234 567 890</a>
                     </div>
                 </li>
             </ul>
@@ -55,28 +55,17 @@
                 <div class="col-lg-3 col-md-4 col-sm-6">
                     <div class="footer-logo-and-addition-info">
                         <a href="{{ route('home') }}" class="footer-logo">
-                            <img src="{{ $footerData['settings']['site_logo'] ?? asset('assets/img/header-logo.png') }}" alt="{{ $footerData['settings']['site_name'] ?? 'TheTaxi' }}">
+                            <img src="{{ asset('assets/img/header-logo.png') }}" alt="TheTaxi">
                         </a>
                         <div class="address-area">
-                            <span>{{ $footerData['settings']['company_description'] ?? 'TheTaxi Professional Services' }}</span>
-                            <a href="#">{!! $footerData['settings']['company_address'] ?? '123 Transport Avenue, Suite 100<br>Your City, State 12345, Country' !!}</a>
+                            <span>TheTaxi Professional Services</span>
+                            <a href="#">123 Transport Avenue, Suite 100<br>Your City, State 12345, Country</a>
                         </div>
                         <ul class="social-list">
-                            @if(!empty($footerData['settings']['facebook_url']))
-                                <li><a href="{{ $footerData['settings']['facebook_url'] }}" target="_blank"><i class="bx bxl-facebook"></i></a></li>
-                            @endif
-                            @if(!empty($footerData['settings']['linkedin_url']))
-                                <li><a href="{{ $footerData['settings']['linkedin_url'] }}" target="_blank"><i class="bx bxl-linkedin"></i></a></li>
-                            @endif
-                            @if(!empty($footerData['settings']['youtube_url']))
-                                <li><a href="{{ $footerData['settings']['youtube_url'] }}" target="_blank"><i class="bx bxl-youtube"></i></a></li>
-                            @endif
-                            @if(!empty($footerData['settings']['instagram_url']))
-                                <li><a href="{{ $footerData['settings']['instagram_url'] }}" target="_blank"><i class="bx bxl-instagram-alt"></i></a></li>
-                            @endif
-                            @if(!empty($footerData['settings']['twitter_url']))
-                                <li><a href="{{ $footerData['settings']['twitter_url'] }}" target="_blank"><i class="bx bxl-twitter"></i></a></li>
-                            @endif
+                            <li><a href="https://www.facebook.com/"><i class="bx bxl-facebook"></i></a></li>
+                            <li><a href="https://www.linkedin.com/"><i class="bx bxl-linkedin"></i></a></li>
+                            <li><a href="https://www.youtube.com/"><i class="bx bxl-youtube"></i></a></li>
+                            <li><a href="https://www.instagram.com/"><i class="bx bxl-instagram-alt"></i></a></li>
                         </ul>
                         <div class="language-area">
                             <div class="language-btn">
@@ -108,27 +97,72 @@
                         {{-- <a href="#"><img src="{{ asset('assets/img/home1/icon/google-play.svg') }}" alt=""></a> --}}
                     </div>
                 </div>
-                @php $linkSections = array_slice($footerData['links'], 0, 3, true); @endphp
-                @foreach($linkSections as $sectionTitle => $links)
                 <div class="col-lg-3 col-md-4 col-sm-6 d-flex justify-content-md-end">
                     <div class="footer-widget">
                         <div class="widget-title">
-                            <h5>{{ $sectionTitle }}</h5>
+                            <h5>Our Services</h5>
                         </div>
                         <ul class="widget-list">
-                            @foreach($links as $link)
-                                <li><a href="{{ $link['url'] }}" target="{{ $link['target'] ?? '_self' }}">{{ $link['title'] }}</a></li>
-                            @endforeach
+                            <li><a href="{{ route('services', ['type' => 'airport-transfer']) }}">Airport Transfer</a></li>
+                            <li><a href="{{ route('services', ['type' => 'drop-pickup']) }}">Drop & Pickup</a></li>
+                            <li><a href="{{ route('services', ['type' => 'rental-packages']) }}">Car Rental</a></li>
+                            <li><a href="{{ route('services', ['type' => 'corporate-package']) }}">Corporate Services</a></li>
+                            <li><a href="{{ route('vehicles') }}">Luxury Cars</a></li>
+                            <li><a href="{{ route('vehicles') }}">Economy Cars</a></li>
+                            <li><a href="{{ route('vehicles') }}">SUVs & Vans</a></li>
+                            <li><a href="{{ route('services') }}">24/7 Service</a></li>
+                            <li><a href="{{ route('services') }}">City Tours</a></li>
+                            <li><a href="{{ route('services') }}">Long Distance</a></li>
+                            <li><a href="{{ route('services') }}">Event Transportation</a></li>
                         </ul>
                     </div>
                 </div>
-                @endforeach
+                <div class="col-lg-3 col-md-4 col-sm-6 d-flex justify-content-md-end">
+                    <div class="footer-widget">
+                        <div class="widget-title">
+                            <h5>Popular Routes</h5>
+                        </div>
+                        <ul class="widget-list">
+                            <li><a href="{{ route('services') }}">City to Airport</a></li>
+                            <li><a href="{{ route('services') }}">Downtown Express</a></li>
+                            <li><a href="{{ route('services') }}">Business District</a></li>
+                            <li><a href="{{ route('services') }}">Hotel Transfers</a></li>
+                            <li><a href="{{ route('services') }}">Tourist Attractions</a></li>
+                            <li><a href="{{ route('services') }}">Shopping Centers</a></li>
+                            <li><a href="{{ route('services') }}">Medical Centers</a></li>
+                            <li><a href="{{ route('services') }}">Convention Centers</a></li>
+                            <li><a href="{{ route('services') }}">Sports Venues</a></li>
+                            <li><a href="{{ route('services') }}">Entertainment Districts</a></li>
+                            <li><a href="{{ route('services') }}">University Campus</a></li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="col-lg-3 col-sm-6 d-flex justify-content-lg-end">
+                    <div class="footer-widget">
+                        <div class="widget-title">
+                            <h5>Support</h5>
+                        </div>
+                        <ul class="widget-list">
+                            <li><a href="{{ route('about') }}">About TheTaxi</a></li>
+                            <li><a href="{{ route('contact') }}">Contact Support</a></li>
+                            <li><a href="{{ route('faq') }}">FAQ</a></li>
+                            <li><a href="#">Booking Help</a></li>
+                            <li><a href="#">Payment Methods</a></li>
+                            <li><a href="#">Cancellation Policy</a></li>
+                            <li><a href="#">Safety Guidelines</a></li>
+                            <li><a href="#">Driver Partnership</a></li>
+                            <li><a href="#">Privacy Policy</a></li>
+                            <li><a href="#">Terms & Conditions</a></li>
+                            <li><a href="#">Sitemap</a></li>
+                        </ul>
+                    </div>
+                </div>
             </div>
         </div>
         <div class="footer-bottom">
             <div class="container">
                 <div class="copyright-and-payment-method-area">
-                    <p>Copyright {{ date('Y') }} <a href="{{ route('home') }}">{{ $footerData['settings']['site_name'] ?? 'TheTaxi' }}</a> | {{ $footerData['settings']['copyright_text'] ?? 'All Rights Reserved.' }}</p>
+                    <p>Copyright {{ date('Y') }} <a href="{{ route('home') }}">TheTaxi</a> | All Rights Reserved.</p>
                     {{-- <div class="payment-method-area">
                         <span>Accepted Payment Methods :</span>
                         <ul>

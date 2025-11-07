@@ -61,6 +61,8 @@ use App\Http\Controllers\Api\VipTypeController;
 use App\Http\Controllers\Api\Website\CmsContentController;
 use App\Http\Controllers\Api\Website\CmsContentTypeController;
 use App\Http\Controllers\Api\Website\WebsiteSettingController;
+use App\Http\Controllers\Api\CMS\NavigationMenuController;
+use App\Http\Controllers\Api\CMS\FooterLinkController;
 use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\Auth\TwoFactorController;
 use App\Http\Controllers\Api\Auth\SocialAuthController;
@@ -1002,6 +1004,50 @@ Route::get('health', function () {
 | These routes handle any unmatched API requests
 |
 */
+
+// Admin FAQ Management Routes
+Route::middleware(['auth:api'])->group(function () {
+    Route::prefix('admin')->group(function () {
+        Route::apiResource('faq-categories', \App\Http\Controllers\Api\Admin\FAQCategoryController::class);
+        Route::post('faq-categories/bulk-sort', [\App\Http\Controllers\Api\Admin\FAQCategoryController::class, 'bulkUpdateSort']);
+        Route::get('faq-categories/{faqCategory}/faqs', [\App\Http\Controllers\Api\Admin\FAQCategoryController::class, 'faqs']);
+        
+        Route::apiResource('faqs', \App\Http\Controllers\Api\Admin\FAQController::class);
+        Route::post('faqs/bulk-update', [\App\Http\Controllers\Api\Admin\FAQController::class, 'bulkUpdate']);
+        Route::get('faqs/categories/list', [\App\Http\Controllers\Api\Admin\FAQController::class, 'getCategories']);
+    });
+});
+
+// Admin Navigation & Footer Management Routes
+Route::middleware(['auth:api'])->group(function () {
+    Route::prefix('admin')->group(function () {
+        // Navigation Menu Management
+        Route::apiResource('navigation-menus', NavigationMenuController::class);
+        Route::post('navigation-menus/sort-order', [NavigationMenuController::class, 'updateSortOrder']);
+        Route::get('navigation-menus/tree/structure', [NavigationMenuController::class, 'tree']);
+        Route::post('navigation-menus/{navigationMenu}/duplicate', [NavigationMenuController::class, 'duplicate']);
+        
+        // Footer Link Management  
+        Route::apiResource('footer-links', FooterLinkController::class);
+        Route::post('footer-links/sort-order', [FooterLinkController::class, 'updateSortOrder']);
+        Route::get('footer-links/grouped/sections', [FooterLinkController::class, 'grouped']);
+        Route::get('footer-links/sections/available', [FooterLinkController::class, 'sections']);
+        Route::post('footer-links/{footerLink}/duplicate', [FooterLinkController::class, 'duplicate']);
+        Route::get('footer-links/social/list', [FooterLinkController::class, 'social']);
+        Route::get('footer-links/legal/list', [FooterLinkController::class, 'legal']);
+        Route::get('footer-links/contact/list', [FooterLinkController::class, 'contact']);
+    });
+});
+
+// Public Navigation & Footer Routes (No Authentication Required)
+Route::prefix('public')->group(function () {
+    Route::get('navigation/header', [NavigationMenuController::class, 'tree'])->name('api.navigation.header');
+    Route::get('navigation/footer', [NavigationMenuController::class, 'tree'])->name('api.navigation.footer');
+    Route::get('footer-links/grouped', [FooterLinkController::class, 'grouped'])->name('api.footer.grouped');
+    Route::get('footer-links/social', [FooterLinkController::class, 'social'])->name('api.footer.social');
+    Route::get('footer-links/legal', [FooterLinkController::class, 'legal'])->name('api.footer.legal');
+    Route::get('footer-links/contact', [FooterLinkController::class, 'contact'])->name('api.footer.contact');
+});
 
 Route::fallback(function () {
     return response()->json([

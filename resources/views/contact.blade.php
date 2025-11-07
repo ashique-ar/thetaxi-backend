@@ -1,18 +1,18 @@
 @extends('layouts.app')
 
-@section('title', 'Contact Us - TheTaxi')
+@section('title', $settings['contact_page_title'] ?? 'Contact Us - TheTaxi')
 
 @section('content')
 
     <!-- Start Breadcrumb section -->
     <div class="breadcrumb-section"
-        style="background-image:linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url(assets/img/innerpages/breadcrumb-bg2.jpg);">
+        style="background-image:linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url({{ $settings['contact_breadcrumb_image'] ? Storage::url($settings['contact_breadcrumb_image']) : asset('assets/img/innerpages/breadcrumb-bg2.jpg') }});">
         <div class="container">
             <div class="banner-content">
-                <h1>Contact Us</h1>
+                <h1>{{ $settings['contact_hero_heading'] ?? 'Contact Us' }}</h1>
                 <ul class="breadcrumb-list">
-                    <li><a href="index.html">Home</a></li>
-                    <li>Contact Us</li>
+                    <li><a href="{{ route('home') }}">Home</a></li>
+                    <li>{{ $settings['contact_hero_subheading'] ?? 'Contact Us' }}</li>
                 </ul>
             </div>
         </div>
@@ -33,9 +33,9 @@
                                     d="M17.9966 18.1294C21.4853 18.1294 24.3134 15.3012 24.3134 11.8125C24.3134 8.3238 21.4853 5.49564 17.9966 5.49564C14.5078 5.49564 11.6797 8.3238 11.6797 11.8125C11.6797 15.3012 14.5078 18.1294 17.9966 18.1294Z" />
                             </svg>
                         </div>
-                        <h4>United State</h4>
-                        <h6><span>Contact :</span> <a href="#">+1 (212) 555-7890</a></h6>
-                        <p>Skyline Plaza, 5th Floor, 123 Main Street Los Angeles, CA 90001, USA</p>
+                        <h4>{{ $settings['contact_address_1_title'] ?? 'United State' }}</h4>
+                        <h6><span>Contact :</span> <a href="tel:{{ $settings['contact_address_1_phone'] ?? '+1 (212) 555-7890' }}">{{ $settings['contact_address_1_phone'] ?? '+1 (212) 555-7890' }}</a></h6>
+                        <p>{{ $settings['contact_address_1_address'] ?? 'Skyline Plaza, 5th Floor, 123 Main Street Los Angeles, CA 90001, USA' }}</p>
                     </div>
                 </div>
                 <div class="col-lg-4 col-md-6">
@@ -48,9 +48,9 @@
                                     d="M17.9966 18.1294C21.4853 18.1294 24.3134 15.3012 24.3134 11.8125C24.3134 8.3238 21.4853 5.49564 17.9966 5.49564C14.5078 5.49564 11.6797 8.3238 11.6797 11.8125C11.6797 15.3012 14.5078 18.1294 17.9966 18.1294Z" />
                             </svg>
                         </div>
-                        <h4>Dubai Office</h4>
-                        <h6><span>Contact :</span> <a href="#">+971 4 123 4567</a></h6>
-                        <p>Office No. 1203, 12th Floor, Bay Tower, Al Abraj Street, Business Bay, Dubai, UAE</p>
+                        <h4>{{ $settings['contact_address_2_title'] ?? 'Dubai Office' }}</h4>
+                        <h6><span>Contact :</span> <a href="tel:{{ $settings['contact_address_2_phone'] ?? '+971 4 123 4567' }}">{{ $settings['contact_address_2_phone'] ?? '+971 4 123 4567' }}</a></h6>
+                        <p>{{ $settings['contact_address_2_address'] ?? 'Office No. 1203, 12th Floor, Bay Tower, Al Abraj Street, Business Bay, Dubai, UAE' }}</p>
                     </div>
                 </div>
                 <div class="col-lg-4 col-md-6">
@@ -63,9 +63,9 @@
                                     d="M17.9966 18.1294C21.4853 18.1294 24.3134 15.3012 24.3134 11.8125C24.3134 8.3238 21.4853 5.49564 17.9966 5.49564C14.5078 5.49564 11.6797 8.3238 11.6797 11.8125C11.6797 15.3012 14.5078 18.1294 17.9966 18.1294Z" />
                             </svg>
                         </div>
-                        <h4>United Kingdom</h4>
-                        <h6><span>Contact :</span> <a href="#">+44 20 7946 1234</a></h6>
-                        <p>3rd Floor, 15 Bedford Street Covent Garden, London, WC2E 9HE, UK</p>
+                        <h4>{{ $settings['contact_address_3_title'] ?? 'United Kingdom' }}</h4>
+                        <h6><span>Contact :</span> <a href="tel:{{ $settings['contact_address_3_phone'] ?? '+44 20 7946 1234' }}">{{ $settings['contact_address_3_phone'] ?? '+44 20 7946 1234' }}</a></h6>
+                        <p>{{ $settings['contact_address_3_address'] ?? '3rd Floor, 15 Bedford Street Covent Garden, London, WC2E 9HE, UK' }}</p>
                     </div>
                 </div>
             </div>
@@ -82,37 +82,37 @@
                                 <div class="row g-4 mb-60">
                                     <div class="col-md-6">
                                         <div class="form-inner">
-                                            <label>Full Name</label>
-                                            <input type="text" placeholder="Wasington Mongla">
+                                            <label>{{ $settings['contact_form_name_label'] ?? 'Full Name' }}</label>
+                                            <input type="text" placeholder="{{ $settings['contact_form_name_placeholder'] ?? 'Wasington Mongla' }}">
                                         </div>
                                     </div>
                                     <div class="col-md-6">
                                         <div class="form-inner">
-                                            <label>Email Address</label>
-                                            <input type="email" placeholder="info@example.com">
+                                            <label>{{ $settings['contact_form_email_label'] ?? 'Email Address' }}</label>
+                                            <input type="email" placeholder="{{ $settings['contact_form_email_placeholder'] ?? 'info@example.com' }}">
                                         </div>
                                     </div>
                                     <div class="col-md-6">
                                         <div class="form-inner">
-                                            <label>Phone Number</label>
-                                            <input type="text" placeholder="+92 567 *** ***">
+                                            <label>{{ $settings['contact_form_phone_label'] ?? 'Phone Number' }}</label>
+                                            <input type="text" placeholder="{{ $settings['contact_form_phone_placeholder'] ?? '+92 567 *** ***' }}">
                                         </div>
                                     </div>
                                     <div class="col-md-6">
                                         <div class="form-inner">
-                                            <label>Where are you going?</label>
+                                            <label>{{ $settings['contact_form_destination_label'] ?? 'Where are you going?' }}</label>
                                             <select>
-                                                <option>Maldives </option>
-                                                <option>France</option>
-                                                <option>United States</option>
-                                                <option>Thailand</option>
+                                                <option>{{ $settings['contact_form_destination_option_1'] ?? 'Maldives' }}</option>
+                                                <option>{{ $settings['contact_form_destination_option_2'] ?? 'France' }}</option>
+                                                <option>{{ $settings['contact_form_destination_option_3'] ?? 'United States' }}</option>
+                                                <option>{{ $settings['contact_form_destination_option_4'] ?? 'Thailand' }}</option>
                                             </select>
                                         </div>
                                     </div>
                                     <div class="col-md-12">
                                         <div class="form-inner">
-                                            <label>Brief/Message</label>
-                                            <textarea placeholder="Write somethings about inquiry"></textarea>
+                                            <label>{{ $settings['contact_form_message_label'] ?? 'Brief/Message' }}</label>
+                                            <textarea placeholder="{{ $settings['contact_form_message_placeholder'] ?? 'Write somethings about inquiry' }}"></textarea>
                                         </div>
                                     </div>
                                     <div class="col-md-12">
@@ -121,7 +121,7 @@
                                                 <input class="form-check-input" type="checkbox" value=""
                                                     id="contactCheck22">
                                                 <label class="form-check-label" for="contactCheck22">
-                                                    I will agree with yours privacy policy & terms & conditions.
+                                                    {{ $settings['contact_form_privacy_text'] ?? 'I will agree with yours privacy policy & terms & conditions.' }}
                                                 </label>
                                             </div>
                                         </div>
@@ -129,7 +129,7 @@
                                 </div>
                                 <button type="submit" class="primary-btn1">
                                     <span>
-                                        Submit Now
+                                        {{ $settings['contact_form_submit_text'] ?? 'Submit Now' }}
                                         <svg width="10" height="10" viewBox="0 0 10 10"
                                             xmlns="http://www.w3.org/2000/svg">
                                             <path
@@ -138,7 +138,7 @@
                                         </svg>
                                     </span>
                                     <span>
-                                        Submit Now
+                                        {{ $settings['contact_form_submit_text'] ?? 'Submit Now' }}
                                         <svg width="10" height="10" viewBox="0 0 10 10"
                                             xmlns="http://www.w3.org/2000/svg">
                                             <path

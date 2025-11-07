@@ -1,18 +1,15 @@
 <?php
 
-
 namespace App\Http\Controllers\Website;
 
 use App\Http\Controllers\Controller;
 use App\Models\Website\CmsContent;
 use App\Models\Website\CmsContentType;
-use App\Models\Website\Testimonial;
-use App\Models\Website\Faq;
 use App\Services\WebsiteSettingsService;
 use Illuminate\Http\Request;
 use Illuminate\Contracts\View\View;
 
-class HomeController extends Controller
+class ContactController extends Controller
 {
     protected WebsiteSettingsService $settingsService;
 
@@ -22,35 +19,17 @@ class HomeController extends Controller
     }
 
     /**
-     * Display the homepage with dynamic content
+     * Display the contact page with dynamic content
      */
     public function index(): View
     {
-        // Get CMS content for the homepage sections
-        $destinations = $this->getCmsContentByTypeSlug('destinations', 6);
-        $packages = $this->getCmsContentByTypeSlug('things-to-do', 6);
-        $inspirations = $this->getCmsContentByTypeSlug('independent-services', 3);
-        $blogs = $this->getCmsContentByTypeSlug('blogs', 3);
-        $partners = $this->getCmsContentByTypeSlug('partners', 12);
+        // Get contact page specific content
+        $contactContent = $this->getCmsContentByTypeSlug('contact-page', 1);
+        
+        // Get website settings for dynamic content
+        $settings = $this->settingsService->getContactPageSettings();
 
-        // Get testimonials for social proof
-        $testimonials = Testimonial::active()
-            ->featured()
-            ->ordered()
-            ->limit(5)
-            ->get();
-
-        // Get FAQs for customer support
-        $faqs = Faq::active()
-            ->featured()
-            ->ordered()
-            ->limit(6)
-            ->get();
-
-        // Get website settings for dynamic text and media
-        $settings = $this->settingsService->getHomepageSettings();
-
-        return view('home', compact('destinations', 'packages', 'inspirations', 'blogs', 'partners', 'testimonials', 'faqs', 'settings'));
+        return view('contact', compact('contactContent', 'settings'));
     }
 
     /**

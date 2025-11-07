@@ -13,13 +13,13 @@
                     <div class="swiper top-offer-text-slider">
                         <div class="swiper-wrapper">
                             <div class="swiper-slide">
-                                <a href="{{ route('home') }}">{{ $headerSettings['top_offer_1'] ?? 'One-Click Booking, Upto FLAT 30% Discount on Taxi Rides' }}</a>
+                                <a href="{{ route('home') }}">One-Click Booking, Upto <strong>FLAT 30%</strong> Discount on Taxi Rides</a>
                             </div>
                             <div class="swiper-slide">
-                                <a href="{{ route('home') }}">{{ $headerSettings['top_offer_2'] ?? 'Book Your Taxi and Get Special Discounts Instantly' }}</a>
+                                <a href="{{ route('home') }}">Book Your Taxi and Get <strong>Special Discounts</strong> Instantly</a>
                             </div>
                             <div class="swiper-slide">
-                                <a href="{{ route('home') }}">{{ $headerSettings['top_offer_3'] ?? 'Enjoy Safe & Comfortable Rides with Flexible Payment Options' }}</a>
+                                <a href="{{ route('home') }}">Enjoy Safe & Comfortable Rides with <strong>Flexible Payment Options</strong></a>
                             </div>
                         </div>
                     </div>
@@ -40,36 +40,59 @@
     <div class="container-fluid d-flex flex-nowrap align-items-center justify-content-between">
         <div class="logo-and-menu-area">
             <a href="{{ route('home') }}" class="header-logo">
-                <img src="{{ $headerSettings['site_logo'] ?? asset('assets/img/header-logo.png') }}" alt="{{ $headerSettings['site_name'] ?? 'TheTaxi' }}">
+                <img src="{{ asset('assets/img/header-logo.png') }}" alt="TheTaxi">
             </a>
             <div class="main-menu">
                 <div class="mobile-logo-area d-xl-none d-flex align-items-center justify-content-between">
                     <a href="{{ route('home') }}" class="mobile-logo-wrap">
-                        <img src="{{ $headerSettings['site_logo'] ?? asset('assets/img/header-logo.png') }}" alt="{{ $headerSettings['site_name'] ?? 'TheTaxi' }}">
+                        <img src="{{ asset('assets/img/header-logo.png') }}" alt="TheTaxi">
                     </a>
                     <div class="menu-close-btn">
                         <i class="bi bi-x"></i>
                     </div>
                 </div>
                 <ul class="menu-list">
-                    @foreach($navigationMenu as $menuItem)
-                        <li class="{{ $menuItem['active'] ? 'active' : '' }} {{ !empty($menuItem['children']) ? 'menu-item-has-children' : '' }}">
-                            @if(!empty($menuItem['children']))
-                                <a href="{{ $menuItem['url'] }}" class="drop-down">
-                                    {{ $menuItem['title'] }}
-                                    <i class="bi bi-caret-down-fill"></i>
-                                </a>
-                                <i class="bi bi-plus dropdown-icon"></i>
-                                <ul class="sub-menu">
-                                    @foreach($menuItem['children'] as $child)
-                                        <li><a href="{{ $child['url'] }}">{{ $child['title'] }}</a></li>
-                                    @endforeach
-                                </ul>
-                            @else
-                                <a href="{{ $menuItem['url'] }}" target="{{ $menuItem['target'] ?? '_self' }}">{{ $menuItem['title'] }}</a>
-                            @endif
-                        </li>
-                    @endforeach
+                    <li class="{{ Request::routeIs('home') ? 'active' : '' }}"><a href="{{ route('home') }}">Home</a></li>
+                    <li class="menu-item-has-children">
+                        <a href="#" class="drop-down">
+                            Services
+                            <i class="bi bi-caret-down-fill"></i>
+                        </a>
+                        <i class="bi bi-plus dropdown-icon"></i>
+                        <ul class="sub-menu">
+                            <li><a href="{{ route('home') }}#services">Airport Transfer</a></li>
+                            <li><a href="{{ route('home') }}#services">City Rides</a></li>
+                            <li><a href="{{ route('home') }}#services">Outstation</a></li>
+                            <li><a href="{{ route('home') }}#services">Rental</a></li>
+                        </ul>
+                    </li>
+                    <li class="menu-item-has-children">
+                        <a href="#" class="drop-down">
+                            Fleet
+                            <i class="bi bi-caret-down-fill"></i>
+                        </a>
+                        <i class="bi bi-plus dropdown-icon"></i>
+                        <ul class="sub-menu">
+                            <li><a href="{{ route('home') }}#fleet">Sedan</a></li>
+                            <li><a href="{{ route('home') }}#fleet">SUV</a></li>
+                            <li><a href="{{ route('home') }}#fleet">Hatchback</a></li>
+                            <li><a href="{{ route('home') }}#fleet">Luxury</a></li>
+                        </ul>
+                    </li>
+                    <li class="menu-item-has-children">
+                        <a href="#" class="drop-down">
+                            Pages
+                            <i class="bi bi-caret-down-fill"></i>
+                        </a>
+                        <i class="bi bi-plus dropdown-icon"></i>
+                        <ul class="sub-menu">
+                            <li><a href="{{ route('about') }}">About TheTaxi</a></li>
+                            <li><a href="{{ route('faq') }}">FAQ</a></li>
+                            <li><a href="{{ route('cart') }}">Cart</a></li>
+                            <li><a href="{{ route('checkout') }}">Checkout</a></li>
+                        </ul>
+                    </li>
+                    <li><a href="{{ route('contact') }}">Contact</a></li>
                 </ul>
                 <div class="contact-area d-xl-none d-flex">
                     <div class="icon">
@@ -82,10 +105,10 @@
                     </div>
                     <div class="content">
                         <span>Need Help?</span>
-                        <a href="tel:{{ $headerSettings['header_phone'] ?? '+1234567890' }}">{{ $headerSettings['header_phone_display'] ?? '+1 234 567 890' }}</a>
+                        <a href="tel:+1234567890">+1 234 567 890</a>
                     </div>
                 </div>
-                <a href="{{ $headerSettings['book_now_url'] ?? '#' }}" class="primary-btn1 black-bg d-xl-none d-flex">
+                <a href="#" class="primary-btn1 black-bg d-xl-none d-flex">
                     <span>
                         <svg width="15" height="15" viewBox="0 0 15 15" xmlns="http://www.w3.org/2000/svg">
                             <g>
@@ -120,7 +143,7 @@
                     </div>
                     <div class="content">
                         <span>Need Help?</span>
-                        <a href="tel:{{ $headerSettings['header_phone'] ?? '+1234567890' }}">{{ $headerSettings['header_phone_display'] ?? '+1 234 567 890' }}</a>
+                        <a href="tel:+1234567890">+1 234 567 890</a>
                     </div>
                 </div>
                 <div class="search-bar">
@@ -137,7 +160,7 @@
                         <form>
                             <div class="search-group">
                                 <div class="form-inner2">
-                                    <input type="text" placeholder="{{ $headerSettings['search_placeholder'] ?? 'Find Your Perfect Taxi Service' }}">
+                                    <input type="text" placeholder="Find Your Perfect Taxi Service">
                                     <button type="submit"><i class="bi bi-search"></i></button>
                                 </div>
                             </div>
@@ -154,7 +177,7 @@
                     </div>
                 </div>
             </div>
-            <a href="{{ $headerSettings['book_now_url'] ?? '#' }}" class="primary-btn1 black-bg d-xl-flex d-none">
+            <a href="#" class="primary-btn1 black-bg d-xl-flex d-none">
                 <span>
                     <svg width="15" height="15" viewBox="0 0 15 15" xmlns="http://www.w3.org/2000/svg">
                         <g>
