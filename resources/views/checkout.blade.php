@@ -3,24 +3,98 @@
 @section('title', 'Checkout - TheTaxi')
 
 @section('content')
-    <!-- Start Breadcrumb section -->
-    <div class="breadcrumb-section"
-        style="background-image:linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url(assets/img/innerpages/breadcrumb-bg1.jpg);">
-        <div class="container">
-            <div class="banner-content">
-                <h1>Checkout Page</h1>
-                <ul class="breadcrumb-list">
-                    <li><a href="index.html">Home</a></li>
-                    <li>Checkout</li>
-                </ul>
-            </div>
+<!-- Breadcrumb section -->
+<div class="breadcrumb-section" style="background-image:linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url({{ asset('assets/img/innerpages/breadcrumb-bg1.jpg') }});">  
+    <div class="container">
+        <div class="banner-content">
+            <h1>Checkout</h1>
+            <ul class="breadcrumb-list">
+                <li><a href="{{ route('home') }}">Home</a></li>
+                <li><a href="{{ route('cart') }}">Cart</a></li>
+                <li>Checkout</li>
+            </ul>
         </div>
     </div>
-    <!-- End Breadcrumb section -->
+</div>
+<!-- End Breadcrumb section -->
 
-    <!-- Checkout Page Start-->
-    <div class="checkout-page pt-100 mb-100">
-        <div class="container">
+@php
+    // Check for both cart formats for compatibility
+    $newCart = session()->get('cart', []);
+    $oldCart = session()->get('booking_cart', []);
+    
+    // Convert old cart format to new format if needed
+    if (empty($newCart) && !empty($oldCart)) {
+        $convertedCart = [];
+        foreach ($oldCart as $index => $item) {
+            $cartKey = 'vehicle_' . ($item['group_id'] ?? 'unknown') . '_' . time() . '_' . $index;
+            $convertedCart[$cartKey] = [
+                'vehicle_group_id' => $item['group_id'] ?? null,
+                'name' => $item['group_name'] ?? 'Vehicle Rental',
+                'vehicle_type' => $item['vehicle_type'] ?? 'Sedan',
+                'image' => null,
+                'price' => $item['base_price'] ?? 0,
+                'days' => $item['duration_days'] ?? 1,
+                'pickup_date' => $item['from_date'] ?? null,
+                'return_date' => $item['to_date'] ?? null,
+                'pickup_location' => $item['pickup_location'] ?? '',
+                'return_location' => $item['dropoff_location'] ?? '',
+            ];
+        }
+        session()->put('cart', $convertedCart);
+        $cart = $convertedCart;
+    } else {
+        $cart = $newCart;
+    }
+    
+    $paymentType = request()->get('type', 'full');
+    $subtotal = collect($cart)->sum(function ($item) {
+        return ($item['price'] ?? 0) * ($item['days'] ?? 1);
+    });
+    $serviceFee = 25.00;
+    $tax = $subtotal * 0.1;
+    $discount = session()->get('cart_discount', 0);
+    $total = $subtotal + $serviceFee + $tax - $discount;
+    
+    // Payment amount based on type
+    $paymentAmount = match($paymentType) {
+        'advance' => $total * 0.5, // 50% advance
+        'quotation' => 0, // No immediate payment for quotation
+        default => $total // Full payment
+    };
+@endphp
+
+<!-- Checkout Page Start-->
+<div class="checkout-page pt-100 mb-100">
+    <div class="container">
+        @if(empty($cart))
+            <div class="alert alert-warning text-center">
+                <h4>Your cart is empty!</h4>
+                <p>Please add some vehicles to your cart before proceeding to checkout.</p>
+                <a href="{{ route('search') }}" class="primary-btn1 mt-3">Browse Vehicles</a>
+            </div>
+        @else
+        <form id="checkout-form" method="POST" action="{{ route('checkout.process') }}">
+            @csrf
+            <input type="hidden" name="payment_type" value="{{ $paymentType }}">
+            
+            <!-- Payment Type Alert -->
+            <div class="alert alert-info mb-4">
+                @switch($paymentType)
+                    @case('advance')
+                        <h5><i class="bi bi-info-circle"></i> Advance Payment (50%)</h5>
+                        <p>You are paying 50% advance. The remaining amount will be collected at the time of vehicle pickup.</p>
+                        @break
+                    @case('quotation')
+                        <h5><i class="bi bi-file-text"></i> Request Quotation</h5>
+                        <p>You are requesting a quotation. Our team will contact you with detailed pricing and booking information.</p>
+                        @break
+                    @default
+                        <h5><i class="bi bi-credit-card"></i> Full Payment</h5>
+                        <p>You are making full payment for your vehicle rental booking.</p>
+                @endswitch
+            </div>
+
             <div class="row g-lg-4 gy-5">
                 <div class="col-lg-7">
                     <div class="checkout-form-wrapper">
@@ -28,234 +102,638 @@
                             <h4>Billing Information</h4>
                         </div>
                         <div class="checkout-form">
-                            <form>
-                                <div class="row">
-                                    <div class="col-md-6">
-                                        <div class="form-inner two mb-25">
-                                            <label>Full Name*</label>
-                                            <input type="text" placeholder="Daniel Scoot">
-                                        </div>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-inner two mb-25">
+                                        <label>Full Name*</label>
+                                        <input type="text" name="full_name" placeholder="Enter your full name" required 
+                                               value="{{ old('full_name') }}">
+                                        @error('full_name')
+                                            <span class="text-danger">{{ $message }}</span>
+                                        @enderror
                                     </div>
-                                    <div class="col-md-6">
-                                        <div class="form-inner two mb-25">
-                                            <label>Phone Number*</label>
-                                            <input type="text" placeholder="(212)+ 455 645 678">
-                                        </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-inner two mb-25">
+                                        <label>Phone Number*</label>
+                                        <input type="tel" name="phone" placeholder="Enter phone number" required 
+                                               value="{{ old('phone') }}">
+                                        @error('phone')
+                                            <span class="text-danger">{{ $message }}</span>
+                                        @enderror
                                     </div>
-                                    <div class="col-md-6">
-                                        <div class="form-inner two mb-25">
-                                            <label>Email Address <span>(Optional)</span></label>
-                                            <input type="email" placeholder="info@gmail.com">
-                                        </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-inner two mb-25">
+                                        <label>Email Address*</label>
+                                        <input type="email" name="email" placeholder="Enter email address" required 
+                                               value="{{ old('email') }}">
+                                        @error('email')
+                                            <span class="text-danger">{{ $message }}</span>
+                                        @enderror
                                     </div>
-                                    <div class="col-md-6">
-                                        <div class="form-inner two mb-25">
-                                            <label>Your Location</label>
-                                            <input type="text" placeholder="Type Location">
-                                        </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-inner two mb-25">
+                                        <label>National ID / Passport*</label>
+                                        <input type="text" name="identification" placeholder="ID/Passport number" required 
+                                               value="{{ old('identification') }}">
+                                        @error('identification')
+                                            <span class="text-danger">{{ $message }}</span>
+                                        @enderror
                                     </div>
-                                    <div class="col-md-6">
-                                        <div class="form-inner two mb-25">
-                                            <label>Street Address*</label>
-                                            <input type="text" placeholder="Street address">
-                                        </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-inner two mb-25">
+                                        <label>Street Address*</label>
+                                        <input type="text" name="address" placeholder="Enter street address" required 
+                                               value="{{ old('address') }}">
+                                        @error('address')
+                                            <span class="text-danger">{{ $message }}</span>
+                                        @enderror
                                     </div>
-                                    <div class="col-md-6">
-                                        <div class="form-inner two mb-25">
-                                            <label>Postal Code*</label>
-                                            <input type="text" placeholder="Postal code">
-                                        </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-inner two mb-25">
+                                        <label>City*</label>
+                                        <input type="text" name="city" placeholder="Enter city" required 
+                                               value="{{ old('city') }}">
+                                        @error('city')
+                                            <span class="text-danger">{{ $message }}</span>
+                                        @enderror
                                     </div>
-                                    <div class="col-md-12">
-                                        <div class="form-inner two mb-25">
-                                            <label>Short Notes*</label>
-                                            <textarea placeholder="Write Something..."></textarea>
-                                        </div>
+                                </div>
+                                <div class="col-md-12">
+                                    <div class="form-inner two mb-25">
+                                        <label>Special Requirements</label>
+                                        <textarea name="special_notes" placeholder="Any special requests or requirements...">{{ old('special_notes') }}</textarea>
                                     </div>
-                                    <div class="col-md-12">
-                                        <div class="form-inner2">
-                                            <div class="form-check">
-                                                <input class="form-check-input" type="checkbox" value=""
-                                                    id="contactCheck11">
-                                                <label class="form-check-label" for="contactCheck11">
-                                                    Save my information for next time when I purchased
-                                                </label>
-                                            </div>
+                                </div>
+                                
+                                @if($paymentType === 'quotation')
+                                <!-- Additional fields for quotation request -->
+                                <div class="col-md-6">
+                                    <div class="form-inner two mb-25">
+                                        <label>Preferred Contact Time</label>
+                                        <select name="contact_time" class="form-select">
+                                            <option value="">Select preferred time</option>
+                                            <option value="morning" {{ old('contact_time') == 'morning' ? 'selected' : '' }}>Morning (9 AM - 12 PM)</option>
+                                            <option value="afternoon" {{ old('contact_time') == 'afternoon' ? 'selected' : '' }}>Afternoon (12 PM - 5 PM)</option>
+                                            <option value="evening" {{ old('contact_time') == 'evening' ? 'selected' : '' }}>Evening (5 PM - 8 PM)</option>
+                                            <option value="anytime" {{ old('contact_time') == 'anytime' ? 'selected' : '' }}>Anytime</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-inner two mb-25">
+                                        <label>Budget Range (Optional)</label>
+                                        <select name="budget_range" class="form-select">
+                                            <option value="">Select budget range</option>
+                                            <option value="under-500" {{ old('budget_range') == 'under-500' ? 'selected' : '' }}>Under $500</option>
+                                            <option value="500-1000" {{ old('budget_range') == '500-1000' ? 'selected' : '' }}>$500 - $1,000</option>
+                                            <option value="1000-2000" {{ old('budget_range') == '1000-2000' ? 'selected' : '' }}>$1,000 - $2,000</option>
+                                            <option value="over-2000" {{ old('budget_range') == 'over-2000' ? 'selected' : '' }}>Over $2,000</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                @endif
+                                
+                                <div class="col-md-12">
+                                    <div class="form-inner2">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" name="save_info" 
+                                                   value="1" id="saveInfo" {{ old('save_info') ? 'checked' : '' }}>
+                                            <label class="form-check-label" for="saveInfo">
+                                                Save my information for future bookings
+                                            </label>
                                         </div>
                                     </div>
                                 </div>
-                            </form>
+                                <div class="col-md-12">
+                                    <div class="form-inner2">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" name="terms_accepted" 
+                                                   value="1" id="termsAccepted" required {{ old('terms_accepted') ? 'checked' : '' }}>
+                                            <label class="form-check-label" for="termsAccepted">
+                                                I agree to the <a href="#" target="_blank">Terms & Conditions</a> and <a href="#" target="_blank">Privacy Policy</a>*
+                                            </label>
+                                        </div>
+                                        @error('terms_accepted')
+                                            <span class="text-danger">{{ $message }}</span>
+                                        @enderror
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
+                
                 <div class="col-lg-5">
                     <div class="checkout-form-wrapper">
                         <div class="checkout-form-title">
                             <h4>Order Summary</h4>
                         </div>
                         <div class="order-sum-area">
-                            <form>
-                                <div class="cart-menu">
-                                    <div class="cart-body">
+                            <div class="cart-menu">
+                                <div class="cart-body">
+                                    <ul>
+                                        @foreach($cart as $key => $item)
+                                        <li class="single-item">
+                                            <div class="item-area">
+                                                <div class="main-item">
+                                                    <div class="item-img">
+                                                        @if(isset($item['image']) && $item['image'])
+                                                            <img src="{{ asset('storage/' . $item['image']) }}" alt="{{ $item['name'] ?? 'Vehicle' }}">
+                                                        @else
+                                                            <img src="{{ asset('assets/img/innerpages/cart-img1.png') }}" alt="{{ $item['name'] ?? 'Vehicle' }}">
+                                                        @endif
+                                                    </div>
+                                                    <div class="content-and-quantity">
+                                                        <div class="content">
+                                                            <span>${{ number_format($item['price'] ?? 0, 2) }}/day × {{ $item['days'] ?? 1 }} days</span>
+                                                            <h6><a href="#">{{ $item['name'] ?? 'Vehicle Rental' }}</a></h6>
+                                                            <p><small>{{ date('M d', strtotime($item['pickup_date'])) }} - {{ date('M d, Y', strtotime($item['return_date'])) }}</small></p>
+                                                            <p><small><i class="bi bi-geo-alt"></i> {{ $item['pickup_location'] ?? 'Location' }}</small></p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="item-total">
+                                                    ${{ number_format(($item['price'] ?? 0) * ($item['days'] ?? 1), 2) }}
+                                                </div>
+                                            </div>
+                                        </li>
+                                        @endforeach
+                                    </ul>
+                                </div>
+                                
+                                <div class="cart-footer">
+                                    <div class="pricing-area mb-40">
                                         <ul>
-                                            <li class="single-item">
-                                                <div class="item-area">
-                                                    <div class="main-item">
-                                                        <div class="item-img">
-                                                            <img src="{{ asset('assets/img/innerpages/cart-img1.png') }}"
-                                                                alt="">
-                                                        </div>
-                                                        <div class="content-and-quantity">
-                                                            <div class="content">
-                                                                <span>2 x $190.00</span>
-                                                                <h6><a href="product-details.html">
-                                                                        Casual Outfit Set</a></h6>
-                                                            </div>
-                                                            <div class="quantity-area">
-                                                                <div class="quantity">
-                                                                    <a class="quantity__minus"><span><i
-                                                                                class="bi bi-dash"></i></span></a>
-                                                                    <input name="quantity" type="text"
-                                                                        class="quantity__input" value="01">
-                                                                    <a class="quantity__plus"><span><i
-                                                                                class="bi bi-plus"></i></span></a>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                    <button type="reset" class="close-btn"><i
-                                                            class="bi bi-x"></i></button>
+                                            <li>
+                                                <strong>Subtotal</strong>
+                                                <strong>${{ number_format($subtotal, 2) }}</strong>
+                                            </li>
+                                            <li>
+                                                Service Fee
+                                                <div class="order-info">
+                                                    <span>${{ number_format($serviceFee, 2) }}</span>
                                                 </div>
                                             </li>
-                                            <li class="single-item">
-                                                <div class="item-area">
-                                                    <div class="main-item">
-                                                        <div class="item-img">
-                                                            <img src="{{}}assets/img/innerpages/cart-img2.png')}}"
-                                                                alt="">
-                                                        </div>
-                                                        <div class="content-and-quantity">
-                                                            <div class="content">
-                                                                <span>2 x $150</span>
-                                                                <h6><a href="#">
-                                                                        Luxury Beauty Item</a></h6>
-                                                            </div>
-                                                            <div class="quantity-area">
-                                                                <div class="quantity">
-                                                                    <a class="quantity__minus"><span><i
-                                                                                class="bi bi-dash"></i></span></a>
-                                                                    <input name="quantity" type="text"
-                                                                        class="quantity__input" value="01">
-                                                                    <a class="quantity__plus"><span><i
-                                                                                class="bi bi-plus"></i></span></a>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                    <button type="reset" class="close-btn"><i
-                                                            class="bi bi-x"></i></button>
+                                            <li>
+                                                Tax (10%)
+                                                <div class="order-info">
+                                                    <span>${{ number_format($tax, 2) }}</span>
                                                 </div>
                                             </li>
+                                            @if($discount > 0)
+                                            <li>
+                                                Discount
+                                                <div class="order-info text-success">
+                                                    <span>-${{ number_format($discount, 2) }}</span>
+                                                </div>
+                                            </li>
+                                            @endif
+                                            <li class="total-row">
+                                                <strong>Total</strong>
+                                                <strong>${{ number_format($total, 2) }}</strong>
+                                            </li>
+                                            @if($paymentType !== 'full')
+                                            <li class="payment-amount-row">
+                                                <strong>
+                                                    @if($paymentType === 'advance')
+                                                        Amount to Pay (50%)
+                                                    @elseif($paymentType === 'quotation')
+                                                        Quotation Request
+                                                    @endif
+                                                </strong>
+                                                <strong class="text-primary">
+                                                    @if($paymentType === 'quotation')
+                                                        No Payment Required
+                                                    @else
+                                                        ${{ number_format($paymentAmount, 2) }}
+                                                    @endif
+                                                </strong>
+                                            </li>
+                                            @endif
                                         </ul>
                                     </div>
-                                    <div class="cart-footer">
-                                        <div class="pricing-area mb-40">
+                                    
+                                    @if($paymentType !== 'quotation')
+                                    <!-- Payment Method Selection -->
+                                    <div class="choose-payment-method">
+                                        <h6>Select Payment Method</h6>
+                                        <div class="payment-option">
                                             <ul>
-                                                <li>
-                                                    <strong>Sub Total</strong>
-                                                    <strong>$348.00</strong>
+                                                <li class="paypal">
+                                                    <input type="radio" name="payment_method" value="paypal" id="paypal" required>
+                                                    <label for="paypal">
+                                                        <img src="{{ asset('assets/img/innerpages/icon/payPal.svg') }}" alt="">
+                                                        <div class="checked">
+                                                            <i class="bi bi-check"></i>
+                                                        </div>
+                                                    </label>
                                                 </li>
-                                                <li>
-                                                    Shipping
-                                                    <div class="order-info">
-                                                        <p>Shipping Free*</p>
-                                                        <span> Pickup fee $10.00</span>
-                                                    </div>
+                                                <li class="stripe">
+                                                    <input type="radio" name="payment_method" value="stripe" id="stripe" required>
+                                                    <label for="stripe">
+                                                        <img src="{{ asset('assets/img/innerpages/icon/stripe.svg') }}" alt="">
+                                                        <div class="checked">
+                                                            <i class="bi bi-check"></i>
+                                                        </div>
+                                                    </label>
                                                 </li>
-                                                <li>
-                                                    <strong>Total</strong>
-                                                    <strong>$214.00</strong>
+                                                <li class="offline">
+                                                    <input type="radio" name="payment_method" value="bank_transfer" id="offline" required>
+                                                    <label for="offline">
+                                                        <img src="{{ asset('assets/img/innerpages/icon/offline.svg') }}" alt="">
+                                                        <span>Bank Transfer</span>
+                                                        <div class="checked">
+                                                            <i class="bi bi-check"></i>
+                                                        </div>
+                                                    </label>
                                                 </li>
                                             </ul>
                                         </div>
-                                        <div class="choose-payment-method">
-                                            <h6>Select Payment Method</h6>
-                                            <div class="payment-option">
-                                                <ul>
-                                                    <li class="paypal active">
-                                                        <img src="{{}}assets/img/innerpages/icon/payPal.svg"
-                                                            alt="">
-                                                        <div class="checked">
-                                                            <i class="bi bi-check"></i>
-                                                        </div>
-                                                    </li>
-                                                    <li class="stripe">
-                                                        <img src="{{}}assets/img/innerpages/icon/stripe.svg"
-                                                            alt="">
-                                                        <div class="checked">
-                                                            <i class="bi bi-check"></i>
-                                                        </div>
-                                                    </li>
-                                                    <li class="offline">
-                                                        <img src="{{}}assets/img/innerpages/icon/offline.svg"
-                                                            alt="">
-                                                        <div class="checked">
-                                                            <i class="bi bi-check"></i>
-                                                        </div>
-                                                    </li>
-                                                </ul>
-                                            </div>
-                                            <div class="pt-25" id="StripePayment" style="display: none;">
-                                                <div class="row g-4">
-                                                    <div class="col-md-12">
-                                                        <div class="form-inner two">
-                                                            <label>Card Number</label>
-                                                            <input type="text" placeholder="1234 1234 1234 1234">
-                                                        </div>
+                                        
+                                        <!-- Stripe Payment Fields -->
+                                        <div class="pt-25" id="StripePayment" style="display: none;">
+                                            <div class="row g-4">
+                                                <div class="col-md-12">
+                                                    <div class="form-inner two">
+                                                        <label>Card Number</label>
+                                                        <input type="text" name="card_number" placeholder="1234 1234 1234 1234">
                                                     </div>
-                                                    <div class="col-md-6">
-                                                        <div class="form-inner two">
-                                                            <label>Expiry</label>
-                                                            <input type="text" placeholder="MM/YY">
-                                                        </div>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <div class="form-inner two">
+                                                        <label>Expiry</label>
+                                                        <input type="text" name="card_expiry" placeholder="MM/YY">
                                                     </div>
-                                                    <div class="col-md-6">
-                                                        <div class="form-inner two">
-                                                            <label>CVC</label>
-                                                            <input type="text" placeholder="CVC">
-                                                        </div>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <div class="form-inner two">
+                                                        <label>CVC</label>
+                                                        <input type="text" name="card_cvc" placeholder="CVC">
                                                     </div>
                                                 </div>
                                             </div>
                                         </div>
-                                        <button type="submit" class="primary-btn1">
-                                            <span>
-                                                Place Your Order
-                                                <svg width="10" height="10" viewBox="0 0 10 10"
-                                                    xmlns="http://www.w3.org/2000/svg">
-                                                    <path
-                                                        d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z">
-                                                    </path>
-                                                </svg>
-                                            </span>
-                                            <span>
-                                                Place Your Order
-                                                <svg width="10" height="10" viewBox="0 0 10 10"
-                                                    xmlns="http://www.w3.org/2000/svg">
-                                                    <path
-                                                        d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z">
-                                                    </path>
-                                                </svg>
-                                            </span>
-                                        </button>
+                                        
+                                        <!-- Bank Transfer Instructions -->
+                                        <div class="pt-25" id="BankTransferInfo" style="display: none;">
+                                            <div class="alert alert-info">
+                                                <h6>Bank Transfer Details:</h6>
+                                                <p><strong>Account Name:</strong> Casons Rent A Car</p>
+                                                <p><strong>Bank:</strong> Commercial Bank of Ceylon</p>
+                                                <p><strong>Account No:</strong> 12345678901</p>
+                                                <p><strong>Branch Code:</strong> 001</p>
+                                                <small>Please use your booking reference as the transfer description.</small>
+                                            </div>
+                                        </div>
                                     </div>
+                                    @endif
+                                    
+                                    <button type="submit" class="primary-btn1 w-100" id="checkout-submit-btn">
+                                        <span>
+                                            @if($paymentType === 'quotation')
+                                                Submit Quotation Request
+                                            @else
+                                                Complete Booking - ${{ number_format($paymentAmount, 2) }}
+                                            @endif
+                                            <svg width="10" height="10" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg">
+                                                <path d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z"></path>
+                                            </svg>
+                                        </span>
+                                    </button>
                                 </div>
-                            </form>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
+        </form>
+        @endif
     </div>
-    <!--Checkout Page End-->
+</div>
+<!--Checkout Page End-->
 @endsection
+
+@push('styles')
+<style>
+.payment-option ul {
+    display: flex;
+    gap: 15px;
+    list-style: none;
+    padding: 0;
+    margin: 15px 0;
+}
+
+.payment-option li {
+    flex: 1;
+    position: relative;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.payment-option li:hover {
+    border-color: var(--primary-color1);
+}
+
+.payment-option li.active {
+    border-color: var(--primary-color1);
+    background-color: #f8f9fa;
+}
+
+.payment-option li input[type="radio"] {
+    display: none;
+}
+
+.payment-option li label {
+    display: block;
+    padding: 15px;
+    text-align: center;
+    cursor: pointer;
+    margin: 0;
+}
+
+.payment-option li label img {
+    max-height: 30px;
+    max-width: 100%;
+}
+
+.payment-option li .checked {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    background: var(--primary-color1);
+    color: white;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.payment-option li.active .checked {
+    opacity: 1;
+}
+
+.cart-footer .pricing-area ul li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid #eee;
+}
+
+.cart-footer .pricing-area ul li.total-row {
+    border-top: 2px solid #ddd;
+    margin-top: 10px;
+    padding-top: 15px;
+    font-size: 18px;
+}
+
+.cart-footer .pricing-area ul li.payment-amount-row {
+    background: #f8f9fa;
+    padding: 15px;
+    margin: 15px -20px 0;
+    border-radius: 8px;
+    border: none;
+}
+
+.single-item .item-area {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    padding: 15px 0;
+    border-bottom: 1px solid #eee;
+}
+
+.single-item .main-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 15px;
+    flex: 1;
+}
+
+.single-item .item-img {
+    width: 60px;
+    height: 60px;
+    border-radius: 8px;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.single-item .item-img img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.single-item .content h6 {
+    margin-bottom: 5px;
+    font-size: 14px;
+}
+
+.single-item .content span {
+    font-size: 12px;
+    color: #666;
+    font-weight: 600;
+}
+
+.single-item .content p {
+    margin: 2px 0;
+    font-size: 12px;
+    color: #888;
+}
+
+.single-item .item-total {
+    font-weight: 600;
+    color: var(--primary-color1);
+    text-align: right;
+}
+
+.form-inner.two {
+    margin-bottom: 20px;
+}
+
+.form-inner.two label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 600;
+    color: #333;
+}
+
+.form-inner.two input,
+.form-inner.two textarea,
+.form-inner.two select {
+    width: 100%;
+    padding: 12px 15px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    font-size: 14px;
+    transition: border-color 0.3s ease;
+}
+
+.form-inner.two input:focus,
+.form-inner.two textarea:focus,
+.form-inner.two select:focus {
+    outline: none;
+    border-color: var(--primary-color1);
+}
+
+.form-inner.two textarea {
+    min-height: 100px;
+    resize: vertical;
+}
+
+.form-check {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+}
+
+.form-check-input {
+    margin-top: 3px;
+}
+
+.form-check-label {
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.alert {
+    padding: 15px 20px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+.alert-info {
+    background-color: #d1ecf1;
+    border-color: #bee5eb;
+    color: #0c5460;
+}
+
+.alert-warning {
+    background-color: #fff3cd;
+    border-color: #ffeaa7;
+    color: #856404;
+}
+
+.text-danger {
+    color: #dc3545 !important;
+    font-size: 12px;
+    margin-top: 5px;
+    display: block;
+}
+
+@media (max-width: 768px) {
+    .payment-option ul {
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .payment-option li label {
+        padding: 12px;
+    }
+    
+    .single-item .main-item {
+        flex-direction: column;
+        text-align: center;
+    }
+}
+</style>
+@endpush
+
+@push('scripts')
+<script>
+$(document).ready(function() {
+    // Payment method selection
+    $('.payment-option input[type="radio"]').on('change', function() {
+        $('.payment-option li').removeClass('active');
+        $(this).closest('li').addClass('active');
+        
+        // Show/hide payment method specific fields
+        $('#StripePayment, #BankTransferInfo').hide();
+        
+        const paymentMethod = $(this).val();
+        if (paymentMethod === 'stripe') {
+            $('#StripePayment').slideDown();
+        } else if (paymentMethod === 'bank_transfer') {
+            $('#BankTransferInfo').slideDown();
+        }
+    });
+    
+    // Form validation
+    $('#checkout-form').on('submit', function(e) {
+        const paymentType = $('input[name="payment_type"]').val();
+        const paymentMethod = $('input[name="payment_method"]:checked').val();
+        
+        // Skip payment method validation for quotation requests
+        if (paymentType !== 'quotation') {
+            if (!paymentMethod) {
+                e.preventDefault();
+                alert('Please select a payment method');
+                return false;
+            }
+            
+            // Validate Stripe fields if Stripe is selected
+            if (paymentMethod === 'stripe') {
+                const cardNumber = $('input[name="card_number"]').val().trim();
+                const cardExpiry = $('input[name="card_expiry"]').val().trim();
+                const cardCvc = $('input[name="card_cvc"]').val().trim();
+                
+                if (!cardNumber || !cardExpiry || !cardCvc) {
+                    e.preventDefault();
+                    alert('Please fill in all card details');
+                    return false;
+                }
+            }
+        }
+        
+        // Disable submit button to prevent double submission
+        $('#checkout-submit-btn').prop('disabled', true).html('<span>Processing...</span>');
+    });
+    
+    // Card number formatting
+    $('input[name="card_number"]').on('input', function() {
+        let value = $(this).val().replace(/\s+/g, '').replace(/[^0-9]/gi, '');
+        let matches = value.match(/\d{4,16}/g);
+        let match = matches && matches[0] || '';
+        let parts = [];
+        
+        for (let i = 0, len = match.length; i < len; i += 4) {
+            parts.push(match.substring(i, i + 4));
+        }
+        
+        if (parts.length) {
+            $(this).val(parts.join(' '));
+        } else {
+            $(this).val(value);
+        }
+    });
+    
+    // Expiry date formatting
+    $('input[name="card_expiry"]').on('input', function() {
+        let value = $(this).val().replace(/\D/g, '');
+        if (value.length >= 2) {
+            value = value.substring(0, 2) + '/' + value.substring(2, 4);
+        }
+        $(this).val(value);
+    });
+    
+    // CVC validation
+    $('input[name="card_cvc"]').on('input', function() {
+        let value = $(this).val().replace(/\D/g, '').substring(0, 4);
+        $(this).val(value);
+    });
+});
+</script>
+@endpush

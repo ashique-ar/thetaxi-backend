@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\FileUploadController;
 use App\Http\Controllers\BookingController;
 use App\Http\Controllers\CartController;
+use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\FAQController;
 use App\Http\Controllers\VehicleController;
 use App\Http\Controllers\Website\CmsController;
@@ -14,7 +15,7 @@ use Illuminate\Support\Facades\Route;
 Route::get('/', [HomeController::class, 'index'])->name('home');
 
 // Search routes
-Route::get('/search/{id?}', [BookingController::class, 'showResults'])->name('search.results');
+Route::get('/search/{id?}', [BookingController::class, 'showResults'])->name('search');
 
 Route::get('/services/{type?}', function ($type = null) {
     return view('services', compact('type'));
@@ -45,13 +46,22 @@ Route::post('/cart/add', [CartController::class, 'add'])->name('cart.add');
 Route::post('/cart/sync', [CartController::class, 'sync'])->name('cart.sync');
 Route::get('/cart/count', [CartController::class, 'count'])->name('cart.count');
 Route::patch('/cart/update/{itemKey}', [CartController::class, 'update'])->name('cart.update');
-Route::delete('/cart/remove/{itemKey}', [CartController::class, 'remove'])->name('cart.remove');
-Route::delete('/cart/clear', [CartController::class, 'clear'])->name('cart.clear');
+Route::post('/cart/update-days', [CartController::class, 'updateDays'])->name('cart.update-days');
+Route::post('/cart/remove', [CartController::class, 'remove'])->name('cart.remove');
+Route::post('/cart/clear', [CartController::class, 'clear'])->name('cart.clear');
+Route::post('/cart/apply-coupon', [CartController::class, 'applyCoupon'])->name('cart.apply-coupon');
+Route::post('/cart/remove-coupon', [CartController::class, 'removeCoupon'])->name('cart.remove-coupon');
+Route::get('/cart/summary', [CartController::class, 'getSummary'])->name('cart.summary');
 Route::post('/cart/checkout', [CartController::class, 'checkout'])->name('cart.checkout');
 
-Route::get('/checkout', function () {
-    return view('checkout');
-})->name('checkout');
+// Checkout routes
+Route::get('/checkout', [CheckoutController::class, 'index'])->name('checkout');
+Route::post('/checkout/process', [CheckoutController::class, 'process'])->name('checkout.process');
+Route::get('/checkout/success', [CheckoutController::class, 'success'])->name('checkout.success');
+
+// PayPal callback routes
+Route::get('/checkout/paypal/success', [CheckoutController::class, 'paypalSuccess'])->name('checkout.paypal.success');
+Route::get('/checkout/paypal/cancel', [CheckoutController::class, 'paypalCancel'])->name('checkout.paypal.cancel');
 
 // Service-specific pages
 Route::get('/point-to-point', [BookingController::class, 'pointToPoint'])->name('point-to-point');

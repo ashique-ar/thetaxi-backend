@@ -11,7 +11,7 @@
                 <h1>Vehicle Details</h1>
                 <ul class="breadcrumb-list">
                     <li><a href="{{ route('home') }}">Home</a></li>
-                    <li><a href="{{ route('search.results', ['id' => $search->id]) }}">Search Results</a></li>
+                    <li><a href="{{ route('search', ['id' => $search->id]) }}">Search Results</a></li>
                     <li>Vehicle Details</li>
                 </ul>
             </div>

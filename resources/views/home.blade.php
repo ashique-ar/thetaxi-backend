@@ -47,6 +47,96 @@
     @endif
     <!-- home4 partner area Section End-->
 
+    <!-- Featured Vehicles Section Start -->
+    @if (isset($featuredVehicles) && count($featuredVehicles['data']) > 0)
+        <div class="featured-vehicles-section home4-offer-slider-section mb-100">
+            <div class="container">
+                <div class="row">
+                    <div class="col-lg-12">
+                        <div class="section-title text-center mb-60 wow animate fadeInDown" data-wow-delay="200ms" data-wow-duration="1500ms">
+                            <h2>{{ $settings['featured_vehicles_title'] ?? 'Featured Rental Vehicles' }}</h2>
+                            <p>{{ $settings['featured_vehicles_description'] ?? 'Choose from our premium selection of vehicles for your rental needs. All vehicles come with flexible rental options and competitive pricing.' }}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Vehicle Carousel -->
+                <div class="row mb-40">
+                    <div class="col-lg-12">
+                        <div class="swiper featured-vehicles-slider">
+                            <div class="swiper-wrapper">
+                                @php
+                                    $chunks = array_chunk($featuredVehicles['data'], 4); // 4 vehicles per slide
+                                @endphp
+                                
+                                @foreach($chunks as $vehicleChunk)
+                                    <div class="swiper-slide">
+                                        <div class="row g-4">
+                                            @foreach($vehicleChunk as $vehicle)
+                                                @php
+                                                    $pricing = $vehicle['pricing_info'] ?? ['base_amount' => 0, 'currency' => 'LKR'];
+                                                    $enhancedPricing = $vehicle['enhanced_pricing'] ?? [];
+                                                    $serviceFeatures = $vehicle['service_features'] ?? [];
+                                                    $availability = [
+                                                        'available' => $vehicle['available_count'] ?? 0,
+                                                        'total' => $vehicle['total_count'] ?? 0
+                                                    ];
+                                                    $isRecommended = $vehicle['recommended'] ?? false;
+                                                @endphp
+
+                                                <div class="col-lg-3 col-md-6 col-sm-6">
+                                                    <x-vehicle-card
+                                                        :vehicle="$vehicle"
+                                                        :pricing="$pricing"
+                                                        :enhancedPricing="$enhancedPricing"
+                                                        :serviceFeatures="$serviceFeatures"
+                                                        :availability="$availability"
+                                                        :searchId="$featuredVehicleSearch['id']"
+                                                        :isRecommended="$isRecommended"
+                                                        :showBookNow="true"
+                                                        :showViewDetails="false"
+                                                    />
+                                                </div>
+                                            @endforeach
+                                        </div>
+                                    </div>
+                                @endforeach
+                            </div>
+                            
+                            <!-- Navigation arrows -->
+                            <div class="featured-vehicles-prev featured-vehicles-nav">
+                                <i class="bi bi-chevron-left"></i>
+                            </div>
+                            <div class="featured-vehicles-next featured-vehicles-nav">
+                                <i class="bi bi-chevron-right"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Navigation and Pagination -->
+                <div class="row">
+                    <div class="col-lg-12 d-flex justify-content-center">
+                        <div class="featured-vehicles-pagination swiper-pagination2 paginations"></div>
+                    </div>
+                </div>
+
+                <!-- View All Button -->
+                <div class="text-center mt-40 wow animate fadeInUp" data-wow-delay="400ms" data-wow-duration="1500ms">
+                    <a href="{{ route('services', ['type' => 'rental-packages']) }}" class="btn btn-primary featured-vehicles-btn">
+                        <i class="bi bi-car-front-fill me-2"></i>
+                        View All Rental Vehicles
+                        <svg width="10" height="10" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M1 9L9 1M9 1C7.22222 1.33333 3.33333 2 1 1M9 1C8.66667 2.66667 8 6.33333 9 9"
+                                stroke-width="1.5" stroke-linecap="round"></path>
+                        </svg>
+                    </a>
+                </div>
+            </div>
+        </div>
+    @endif
+    <!-- Featured Vehicles Section End -->
+
     <!-- home4 Feature Section Start-->
     {{-- <div class="home4-feature-section mb-100">
         <div class="container">
@@ -509,7 +599,7 @@
     <!-- home4 Testimonial Section End-->
 
     <!-- home4 Counter Section Start-->
-    <div class="home4-counter-section mb-100">
+    {{-- <div class="home4-counter-section mb-100">
         <div class="container">
             <div class="counter-wrapper">
                 <div class="single-counter">
@@ -572,11 +662,11 @@
                 </div>
             </div>
         </div>
-    </div>
+    </div> --}}
     <!-- home4 Counter Section End-->
 
     <!-- home4 location search Section Start-->
-    <div class="home1-location-search-section two mb-100">
+    {{-- <div class="home1-location-search-section two mb-100">
         <div class="container">
             <div class="location-search-wrapper wow animate fadeInUp" data-wow-delay="200ms" data-wow-duration="1500ms">
                 <div class="location-search-content">
@@ -658,7 +748,7 @@
                 </div>
             </div>
         </div>
-    </div>
+    </div> --}}
     <!-- home4 location search Section End-->
 
     @if ($inspirations->count() > 0)
@@ -733,4 +823,597 @@
 
     <!-- home4 faq Section End-->
 @endsection
+
+@push('styles')
+<style>
+    /* Featured Vehicles Section Styling */
+    .featured-vehicles-section {
+        background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+        padding: 60px 0;
+        position: relative;
+    }
+
+    .featured-vehicles-section::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background: linear-gradient(90deg, transparent 0%, #BF2629 50%, transparent 100%);
+    }
+
+    /* Featured Vehicles Carousel */
+    .featured-vehicles-slider {
+        overflow: hidden;
+        position: relative;
+    }
+
+    .featured-vehicles-slider .swiper-slide {
+        height: auto;
+        display: flex;
+        align-items: stretch;
+    }
+
+    .featured-vehicles-slider .swiper-slide .row {
+        width: 100%;
+        margin: 0;
+    }
+
+    /* Pagination Styling */
+    .featured-vehicles-pagination {
+        position: static !important;
+        display: flex;
+        justify-content: center;
+        gap: 8px;
+        margin-top: 30px;
+    }
+
+    .featured-vehicles-pagination .swiper-pagination-bullet {
+        width: 12px;
+        height: 12px;
+        background: rgba(191, 38, 41, 0.3);
+        border-radius: 50%;
+        opacity: 1;
+        transition: all 0.3s ease;
+    }
+
+    .featured-vehicles-pagination .swiper-pagination-bullet-active {
+        background: #BF2629;
+        transform: scale(1.2);
+    }
+
+    /* Navigation Arrows (if needed) */
+    .featured-vehicles-nav {
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+        background: rgba(255, 255, 255, 0.9);
+        border: 1px solid rgba(191, 38, 41, 0.2);
+        border-radius: 50%;
+        width: 50px;
+        height: 50px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        z-index: 10;
+    }
+
+    .featured-vehicles-nav:hover {
+        background: #BF2629;
+        color: white;
+        transform: translateY(-50%) scale(1.1);
+    }
+
+    .featured-vehicles-prev {
+        left: -25px;
+    }
+
+    .featured-vehicles-next {
+        right: -25px;
+    }
+
+    /* Vehicle Cards in Carousel - Maintain height */
+    .featured-vehicles-slider .vehicle-card {
+        height: 100%;
+        min-height: 400px;
+    }
+
+    .featured-vehicles-btn {
+        background: linear-gradient(135deg, #BF2629 0%, #d32f33 100%);
+        border: none;
+        padding: 15px 30px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        border-radius: 50px;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(191, 38, 41, 0.3);
+    }
+
+    .featured-vehicles-btn:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 8px 25px rgba(191, 38, 41, 0.4);
+        background: linear-gradient(135deg, #a01f22 0%, #BF2629 100%);
+    }
+
+    .featured-vehicles-btn svg {
+        margin-left: 8px;
+        transition: transform 0.3s ease;
+    }
+
+    .featured-vehicles-btn:hover svg {
+        transform: translateX(3px);
+    }
+
+    /* Cart Summary Float (Reuse from search-results) */
+    .cart-summary-float {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        width: 350px;
+        background: var(--primary-color, #BF2629);
+        border-radius: 16px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        z-index: 1050;
+        animation: slideInUp 0.4s ease-out;
+    }
+
+    @keyframes slideInUp {
+        from {
+            transform: translateY(100px);
+            opacity: 0;
+        }
+        to {
+            transform: translateY(0);
+            opacity: 1;
+        }
+    }
+
+    .cart-float-header {
+        padding: 16px 20px;
+        border-bottom: 1px solid rgba(255,255,255,0.2);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        color: white;
+    }
+
+    .cart-float-header h6 {
+        margin: 0;
+        font-weight: 700;
+        color: white;
+    }
+
+    .cart-float-body {
+        padding: 16px 20px;
+        max-height: 300px;
+        overflow-y: auto;
+        color: white;
+    }
+
+    .cart-float-item {
+        padding: 12px 0;
+        border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .cart-float-item:last-child {
+        border-bottom: none;
+    }
+
+    .cart-float-footer {
+        padding: 16px 20px;
+        border-top: 1px solid rgba(255,255,255,0.2);
+    }
+
+    .cart-total {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        color: white;
+        font-size: 16px;
+    }
+
+    .cart-total strong {
+        font-size: 20px;
+        font-weight: 800;
+    }
+
+    /* Mobile responsiveness */
+    @media (max-width: 1199px) {
+        .featured-vehicles-prev {
+            left: -15px;
+        }
+        .featured-vehicles-next {
+            right: -15px;
+        }
+    }
+
+    @media (max-width: 991px) {
+        .featured-vehicles-nav {
+            display: none; /* Hide navigation arrows on mobile */
+        }
+        
+        .featured-vehicles-slider .vehicle-card {
+            min-height: 350px;
+        }
+    }
+
+    @media (max-width: 767px) {
+        .cart-summary-float {
+            width: calc(100% - 40px);
+            right: 20px;
+            left: 20px;
+        }
+
+        .featured-vehicles-section {
+            padding: 40px 0;
+        }
+
+        /* Stack 2 cards per slide on mobile */
+        .featured-vehicles-slider .swiper-slide .row .col-lg-3 {
+            flex: 0 0 50%;
+            max-width: 50%;
+        }
+    }
+
+    @media (max-width: 575px) {
+        /* Single card per slide on very small screens */
+        .featured-vehicles-slider .swiper-slide .row .col-lg-3 {
+            flex: 0 0 100%;
+            max-width: 100%;
+        }
+    }
+
+    /* Smooth slide transitions */
+    .featured-vehicles-slider .swiper-slide-active {
+        opacity: 1;
+    }
+
+    .featured-vehicles-slider .swiper-slide-next,
+    .featured-vehicles-slider .swiper-slide-prev {
+        opacity: 0.7;
+    }
+</style>
+@endpush
+
+@push('scripts')
+<script>
+    // Cart management for featured vehicles
+    let cart = [];
+
+    $(document).ready(function() {
+        // Load existing cart
+        loadCart();
+
+        // Add to cart functionality for featured vehicles
+        $('.add-to-cart-btn').on('click', function() {
+            const btn = $(this);
+            const groupId = btn.data('group-id');
+            const searchId = btn.data('search-id');
+            const groupName = btn.data('group-name');
+            const basePrice = parseFloat(btn.data('base-price'));
+            const currency = btn.data('currency');
+
+            // Default booking parameters for featured vehicles
+            const searchData = {
+                search_id: searchId,
+                from_date: '{{ date("Y-m-d") }}',
+                to_date: '{{ date("Y-m-d", strtotime("+1 day")) }}',
+                from_time: '09:00',
+                to_time: '18:00',
+                service_type: 'rental_package',
+                pickup_location: null,
+                dropoff_location: null,
+                duration_days: 1
+            };
+
+            addToCart({
+                group_id: groupId,
+                group_name: groupName,
+                base_price: basePrice,
+                currency: currency,
+                quantity: 1,
+                ...searchData
+            });
+
+            // Visual feedback
+            btn.html('<i class="bi bi-check-circle-fill"></i> Added!');
+            btn.prop('disabled', true);
+            
+            setTimeout(() => {
+                btn.html('<i class="bi bi-cart-plus"></i> Add to Cart');
+                btn.prop('disabled', false);
+            }, 2000);
+        });
+
+        // Book now functionality
+        $('.book-now-btn').on('click', function() {
+            const btn = $(this);
+            const groupId = btn.data('group-id');
+            const searchId = btn.data('search-id');
+            const groupName = btn.data('group-name');
+            const basePrice = parseFloat(btn.data('base-price'));
+            const currency = btn.data('currency');
+
+            // Add to cart first
+            const searchData = {
+                search_id: searchId,
+                from_date: '{{ date("Y-m-d") }}',
+                to_date: '{{ date("Y-m-d", strtotime("+1 day")) }}',
+                from_time: '09:00',
+                to_time: '18:00',
+                service_type: 'rental_package',
+                pickup_location: null,
+                dropoff_location: null,
+                duration_days: 1
+            };
+
+            addToCart({
+                group_id: groupId,
+                group_name: groupName,
+                base_price: basePrice,
+                currency: currency,
+                quantity: 1,
+                ...searchData
+            });
+
+            // Redirect to checkout
+            setTimeout(() => {
+                window.location.href = '{{ route("cart") }}';
+            }, 500);
+        });
+
+        // Close cart float
+        $(document).on('click', '#closeCartFloat', function() {
+            $('#cartSummaryFloat').fadeOut();
+        });
+
+        // Initialize Featured Vehicles Slider
+        if ($('.featured-vehicles-slider').length > 0) {
+            var featuredVehiclesSwiper = new Swiper(".featured-vehicles-slider", {
+                slidesPerView: 1,
+                speed: 1200,
+                spaceBetween: 24,
+                autoplay: {
+                    delay: 4000,
+                    disableOnInteraction: false,
+                },
+                pagination: {
+                    el: ".featured-vehicles-pagination",
+                    clickable: true,
+                },
+                navigation: {
+                    nextEl: ".featured-vehicles-next",
+                    prevEl: ".featured-vehicles-prev",
+                },
+                breakpoints: {
+                    320: {
+                        slidesPerView: 1,
+                        spaceBetween: 20,
+                    },
+                    768: {
+                        slidesPerView: 1,
+                        spaceBetween: 24,
+                    },
+                    1024: {
+                        slidesPerView: 1,
+                        spaceBetween: 24,
+                    }
+                },
+                on: {
+                    init: function () {
+                        // Re-bind cart events after slider initialization
+                        bindVehicleCardEvents();
+                    },
+                    slideChange: function () {
+                        // Re-bind cart events after slide change
+                        bindVehicleCardEvents();
+                    }
+                }
+            });
+        }
+
+        function bindVehicleCardEvents() {
+            // Re-bind add to cart events for vehicle cards in carousel
+            $('.featured-vehicles-slider .add-to-cart-btn').off('click').on('click', function() {
+                const btn = $(this);
+                const groupId = btn.data('group-id');
+                const searchId = btn.data('search-id');
+                const groupName = btn.data('group-name');
+                const basePrice = parseFloat(btn.data('base-price'));
+                const currency = btn.data('currency');
+
+                const searchData = {
+                    search_id: searchId,
+                    from_date: '{{ date("Y-m-d") }}',
+                    to_date: '{{ date("Y-m-d", strtotime("+1 day")) }}',
+                    from_time: '09:00',
+                    to_time: '18:00',
+                    service_type: 'rental-packages',
+                    pickup_location: null,
+                    dropoff_location: null,
+                    duration_days: 1
+                };
+
+                addToCart({
+                    group_id: groupId,
+                    group_name: groupName,
+                    base_price: basePrice,
+                    currency: currency,
+                    quantity: 1,
+                    ...searchData
+                });
+
+                btn.html('<i class="bi bi-check-circle-fill"></i> Added!');
+                btn.prop('disabled', true);
+                
+                setTimeout(() => {
+                    btn.html('<i class="bi bi-cart-plus"></i> Add to Cart');
+                    btn.prop('disabled', false);
+                }, 2000);
+            });
+
+            // Re-bind book now events
+            $('.featured-vehicles-slider .book-now-btn').off('click').on('click', function() {
+                const btn = $(this);
+                const groupId = btn.data('group-id');
+                const searchId = btn.data('search-id');
+                const groupName = btn.data('group-name');
+                const basePrice = parseFloat(btn.data('base-price'));
+                const currency = btn.data('currency');
+
+                const searchData = {
+                    search_id: searchId,
+                    from_date: '{{ date("Y-m-d") }}',
+                    to_date: '{{ date("Y-m-d", strtotime("+1 day")) }}',
+                    from_time: '09:00',
+                    to_time: '18:00',
+                    service_type: 'rental-packages',
+                    pickup_location: null,
+                    dropoff_location: null,
+                    duration_days: 1
+                };
+
+                addToCart({
+                    group_id: groupId,
+                    group_name: groupName,
+                    base_price: basePrice,
+                    currency: currency,
+                    quantity: 1,
+                    ...searchData
+                });
+
+                setTimeout(() => {
+                    window.location.href = '{{ route("cart") }}';
+                }, 500);
+            });
+        }
+    });
+
+    function addToCart(item) {
+        // Check if item already exists in cart
+        const existingIndex = cart.findIndex(cartItem => 
+            cartItem.group_id === item.group_id && cartItem.search_id === item.search_id
+        );
+
+        if (existingIndex !== -1) {
+            // Update quantity
+            cart[existingIndex].quantity += item.quantity;
+        } else {
+            // Add new item
+            cart.push(item);
+        }
+
+        // Save to session storage
+        saveCart();
+        updateCartDisplay();
+        showCartFloat();
+    }
+
+    function removeFromCart(index) {
+        cart.splice(index, 1);
+        saveCart();
+        updateCartDisplay();
+        
+        if (cart.length === 0) {
+            $('#cartSummaryFloat').fadeOut();
+        }
+    }
+
+    function saveCart() {
+        localStorage.setItem('thetaxi_cart', JSON.stringify(cart));
+        
+        // Also save to server session via AJAX
+        $.ajax({
+            url: '{{ route("cart.sync") }}',
+            method: 'POST',
+            data: {
+                _token: '{{ csrf_token() }}',
+                cart: cart
+            },
+            success: function(response) {
+                console.log('Cart synced to server');
+            }
+        });
+    }
+
+    function loadCart() {
+        const savedCart = localStorage.getItem('thetaxi_cart');
+        if (savedCart) {
+            cart = JSON.parse(savedCart);
+            if (cart.length > 0) {
+                updateCartDisplay();
+                showCartFloat();
+            }
+        }
+    }
+
+    function updateCartDisplay() {
+        const $cartItems = $('#cartFloatItems');
+        const $cartTotal = $('#cartTotalPrice');
+        
+        // Create cart float if it doesn't exist
+        if ($('#cartSummaryFloat').length === 0) {
+            $('body').append(`
+                <div id="cartSummaryFloat" class="cart-summary-float" style="display: none;">
+                    <div class="cart-float-content">
+                        <div class="cart-float-header">
+                            <h6><i class="bi bi-cart-fill"></i> Cart</h6>
+                            <button type="button" class="btn-close btn-close-white" id="closeCartFloat"></button>
+                        </div>
+                        <div class="cart-float-body" id="cartFloatItems">
+                            <!-- Cart items will be dynamically added here -->
+                        </div>
+                        <div class="cart-float-footer">
+                            <div class="cart-total mb-2">
+                                <span>Total:</span>
+                                <strong id="cartTotalPrice">LKR 0.00</strong>
+                            </div>
+                            <a href="{{ route('cart') }}" class="btn btn-light w-100">
+                                <i class="bi bi-cart-check"></i> View Cart & Checkout
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            `);
+        }
+        
+        $('#cartFloatItems').empty();
+        
+        let total = 0;
+        cart.forEach((item, index) => {
+            const itemTotal = item.base_price * item.quantity * (item.duration_days || 1);
+            total += itemTotal;
+            
+            $('#cartFloatItems').append(`
+                <div class="cart-float-item">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div class="flex-grow-1">
+                            <strong>${item.group_name}</strong>
+                            <div class="small">${item.duration_days || 1} day(s)</div>
+                            <div class="small">${item.from_date} to ${item.to_date}</div>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-link text-white p-0 ms-2" onclick="removeFromCart(${index})">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span>Qty: ${item.quantity}</span>
+                        <strong>${item.currency} ${itemTotal.toFixed(2)}</strong>
+                    </div>
+                </div>
+            `);
+        });
+        
+        $('#cartTotalPrice').text((cart[0]?.currency || 'LKR') + ' ' + total.toFixed(2));
+    }
+
+    function showCartFloat() {
+        $('#cartSummaryFloat').fadeIn();
+    }
+</script>
+@endpush
 

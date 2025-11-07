@@ -95,7 +95,7 @@ class BookingController extends Controller
             ]);
 
             // Redirect to search results page
-            return redirect()->route('search.results')
+            return redirect()->route('search')
                 ->with('success', 'Search completed! Here are the available vehicles for your journey.');
 
         } catch (\Exception $e) {
@@ -256,7 +256,7 @@ class BookingController extends Controller
                 'pagination' => $pagination,
             ];
             
-            return view('search-results', array_merge(compact('search', 'results'), $additionalData));
+            return view('search', array_merge(compact('search', 'results'), $additionalData));
 
         } catch (\Exception $e) {
             Log::error('Error displaying search results', [

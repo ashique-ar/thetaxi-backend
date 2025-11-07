@@ -62,6 +62,7 @@ class VehicleGroup extends BaseModel
         'specs',
         'images',
         'is_active',
+        'is_featured',
         'created_user_id',
         'updated_user_id',
     ];
@@ -73,6 +74,7 @@ class VehicleGroup extends BaseModel
         'specs' => 'array',
         'images' => 'array',
         'is_active' => 'boolean',
+        'is_featured' => 'boolean',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
         'deleted_at' => 'datetime',

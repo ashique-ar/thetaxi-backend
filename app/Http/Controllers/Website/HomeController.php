@@ -9,16 +9,19 @@ use App\Models\Website\CmsContentType;
 use App\Models\Website\Testimonial;
 use App\Models\Website\Faq;
 use App\Services\WebsiteSettingsService;
+use App\Services\VehicleService;
 use Illuminate\Http\Request;
 use Illuminate\Contracts\View\View;
 
 class HomeController extends Controller
 {
     protected WebsiteSettingsService $settingsService;
+    protected VehicleService $vehicleService;
 
-    public function __construct(WebsiteSettingsService $settingsService)
+    public function __construct(WebsiteSettingsService $settingsService, VehicleService $vehicleService)
     {
         $this->settingsService = $settingsService;
+        $this->vehicleService = $vehicleService;
     }
 
     /**
@@ -47,10 +50,33 @@ class HomeController extends Controller
             ->limit(6)
             ->get();
 
+        // Get featured vehicles for rental service
+        $featuredVehicles = $this->vehicleService->getFeaturedVehicles([
+            'service_type' => 'rental_package',
+            'limit' => 8,
+            'duration_days' => 1
+        ]);
+
+        // Create a search session for the featured vehicles
+        $featuredVehicleSearch = $this->vehicleService->createFeaturedVehicleSearch([
+            'service_type' => 'rental_package'
+        ]);
+
         // Get website settings for dynamic text and media
         $settings = $this->settingsService->getHomepageSettings();
 
-        return view('home', compact('destinations', 'packages', 'inspirations', 'blogs', 'partners', 'testimonials', 'faqs', 'settings'));
+        return view('home', compact(
+            'destinations', 
+            'packages', 
+            'inspirations', 
+            'blogs', 
+            'partners', 
+            'testimonials', 
+            'faqs', 
+            'featuredVehicles',
+            'featuredVehicleSearch',
+            'settings'
+        ));
     }
 
     /**
