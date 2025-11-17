@@ -19,32 +19,19 @@
 <!-- End Breadcrumb section -->
 
 @php
-    // Check for both cart formats for compatibility
-    $newCart = session()->get('cart', []);
-    $oldCart = session()->get('booking_cart', []);
-    
-    // Convert old cart format to new format if needed
-    if (empty($newCart) && !empty($oldCart)) {
-        $convertedCart = [];
-        foreach ($oldCart as $index => $item) {
-            $cartKey = 'vehicle_' . ($item['group_id'] ?? 'unknown') . '_' . time() . '_' . $index;
-            $convertedCart[$cartKey] = [
-                'vehicle_group_id' => $item['group_id'] ?? null,
-                'name' => $item['group_name'] ?? 'Vehicle Rental',
-                'vehicle_type' => $item['vehicle_type'] ?? 'Sedan',
-                'image' => null,
-                'price' => $item['base_price'] ?? 0,
-                'days' => $item['duration_days'] ?? 1,
-                'pickup_date' => $item['from_date'] ?? null,
-                'return_date' => $item['to_date'] ?? null,
-                'pickup_location' => $item['pickup_location'] ?? '',
-                'return_location' => $item['dropoff_location'] ?? '',
-            ];
+    // Get cart items from database via CartService
+    try {
+        $cartService = app(\App\Services\CartService::class);
+        $cartModel = $cartService->getOrCreateCart();
+        $cart = $cartModel->items ?? [];
+        
+        // Convert to array if needed
+        if (!empty($cart) && !is_array($cart)) {
+            $cart = (array) $cart;
         }
-        session()->put('cart', $convertedCart);
-        $cart = $convertedCart;
-    } else {
-        $cart = $newCart;
+    } catch (Exception $e) {
+        \Log::error('Error loading cart for checkout: ' . $e->getMessage());
+        $cart = [];
     }
     
     $paymentType = request()->get('type', 'full');
@@ -53,7 +40,7 @@
     });
     $serviceFee = 25.00;
     $tax = $subtotal * 0.1;
-    $discount = session()->get('cart_discount', 0);
+    $discount = $cartModel->coupon_discount ?? 0;
     $total = $subtotal + $serviceFee + $tax - $discount;
     
     // Payment amount based on type
@@ -76,23 +63,79 @@
         @else
         <form id="checkout-form" method="POST" action="{{ route('checkout.process') }}">
             @csrf
-            <input type="hidden" name="payment_type" value="{{ $paymentType }}">
+            
+            <!-- Payment Type Selection Section -->
+            <div class="payment-type-selection mb-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="bi bi-credit-card"></i> Choose Payment Option</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <div class="payment-option">
+                                    <input type="radio" name="payment_type" value="full" id="payment_full" 
+                                           {{ $paymentType === 'full' ? 'checked' : '' }} class="payment-radio">
+                                    <label for="payment_full" class="payment-label">
+                                        <div class="payment-card">
+                                            <i class="bi bi-credit-card-fill text-success"></i>
+                                            <h6>Pay Full Amount</h6>
+                                            <p class="mb-0">Complete payment now</p>
+                                            <small class="text-muted">Total: ${{ number_format($total, 2) }}</small>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="payment-option">
+                                    <input type="radio" name="payment_type" value="advance" id="payment_advance" 
+                                           {{ $paymentType === 'advance' ? 'checked' : '' }} class="payment-radio">
+                                    <label for="payment_advance" class="payment-label">
+                                        <div class="payment-card">
+                                            <i class="bi bi-credit-card text-warning"></i>
+                                            <h6>Pay 50% Advance</h6>
+                                            <p class="mb-0">Pay remaining on pickup</p>
+                                            <small class="text-muted">Now: ${{ number_format($total * 0.5, 2) }}</small>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="payment-option">
+                                    <input type="radio" name="payment_type" value="quotation" id="payment_quotation" 
+                                           {{ $paymentType === 'quotation' ? 'checked' : '' }} class="payment-radio">
+                                    <label for="payment_quotation" class="payment-label">
+                                        <div class="payment-card">
+                                            <i class="bi bi-file-text text-info"></i>
+                                            <h6>Request Quotation</h6>
+                                            <p class="mb-0">Get detailed pricing</p>
+                                            <small class="text-muted">No payment now</small>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
             
             <!-- Payment Type Alert -->
-            <div class="alert alert-info mb-4">
-                @switch($paymentType)
-                    @case('advance')
-                        <h5><i class="bi bi-info-circle"></i> Advance Payment (50%)</h5>
-                        <p>You are paying 50% advance. The remaining amount will be collected at the time of vehicle pickup.</p>
-                        @break
-                    @case('quotation')
-                        <h5><i class="bi bi-file-text"></i> Request Quotation</h5>
-                        <p>You are requesting a quotation. Our team will contact you with detailed pricing and booking information.</p>
-                        @break
-                    @default
-                        <h5><i class="bi bi-credit-card"></i> Full Payment</h5>
-                        <p>You are making full payment for your vehicle rental booking.</p>
-                @endswitch
+            <div class="alert alert-info mb-4" id="payment-type-alert">
+                <div id="alert-content">
+                    @switch($paymentType)
+                        @case('advance')
+                            <h6><i class="bi bi-info-circle"></i> Advance Payment (50%)</h6>
+                            <p class="mb-0">You are paying 50% advance. The remaining amount will be collected at the time of vehicle pickup.</p>
+                            @break
+                        @case('quotation')
+                            <h6><i class="bi bi-file-text"></i> Request Quotation</h6>
+                            <p class="mb-0">You are requesting a quotation. Our team will contact you with detailed pricing and booking information.</p>
+                            @break
+                        @default
+                            <h6><i class="bi bi-credit-card"></i> Full Payment</h6>
+                            <p class="mb-0">You are making full payment for your vehicle rental booking.</p>
+                    @endswitch
+                </div>
             </div>
 
             <div class="row g-lg-4 gy-5">
@@ -163,10 +206,62 @@
                                         @enderror
                                     </div>
                                 </div>
+                                <div class="col-md-6">
+                                    <div class="form-inner two mb-25">
+                                        <label>Country*</label>
+                                        <input type="text" name="country" placeholder="Enter country" required 
+                                               value="{{ old('country', 'Sri Lanka') }}">
+                                        @error('country')
+                                            <span class="text-danger">{{ $message }}</span>
+                                        @enderror
+                                    </div>
+                                </div>
                                 <div class="col-md-12">
                                     <div class="form-inner two mb-25">
                                         <label>Special Requirements</label>
                                         <textarea name="special_notes" placeholder="Any special requests or requirements...">{{ old('special_notes') }}</textarea>
+                                    </div>
+                                </div>
+                                
+                                <!-- Flight Details Section -->
+                                <div class="col-md-12">
+                                    <div class="form-section-divider">
+                                        <h6>Flight Details (Optional)</h6>
+                                        <p class="text-muted">If arriving by flight, provide details for airport pickup</p>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-inner two mb-25">
+                                        <label>Airline</label>
+                                        <input type="text" name="flight_airline" placeholder="e.g., Sri Lankan Airlines" 
+                                               value="{{ old('flight_airline') }}">
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-inner two mb-25">
+                                        <label>Flight Number</label>
+                                        <input type="text" name="flight_number" placeholder="e.g., UL123" 
+                                               value="{{ old('flight_number') }}">
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-inner two mb-25">
+                                        <label>Arrival Date</label>
+                                        <input type="date" name="flight_arrival_date" 
+                                               value="{{ old('flight_arrival_date') }}">
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-inner two mb-25">
+                                        <label>Arrival Time</label>
+                                        <input type="time" name="flight_arrival_time" 
+                                               value="{{ old('flight_arrival_time') }}">
+                                    </div>
+                                </div>
+                                <div class="col-md-12">
+                                    <div class="form-inner two mb-25">
+                                        <label>Additional Notes</label>
+                                        <textarea name="additional_notes" placeholder="Any other information you'd like to share...">{{ old('additional_notes') }}</textarea>
                                     </div>
                                 </div>
                                 
@@ -198,6 +293,25 @@
                                 </div>
                                 @endif
                                 
+                                <!-- Dynamic Terms and Conditions -->
+                                @if(!empty($termsAndConditions))
+                                <div class="col-md-12">
+                                    <div class="terms-conditions-section">
+                                        <h6>Terms & Conditions</h6>
+                                        <div class="terms-content">
+                                            @foreach($termsAndConditions as $tc)
+                                            <div class="term-item mb-3">
+                                                <h6 class="term-title">{{ $tc->title }}</h6>
+                                                <div class="term-body">
+                                                    {!! $tc->content !!}
+                                                </div>
+                                            </div>
+                                            @endforeach
+                                        </div>
+                                    </div>
+                                </div>
+                                @endif
+                                
                                 <div class="col-md-12">
                                     <div class="form-inner2">
                                         <div class="form-check">
@@ -215,7 +329,11 @@
                                             <input class="form-check-input" type="checkbox" name="terms_accepted" 
                                                    value="1" id="termsAccepted" required {{ old('terms_accepted') ? 'checked' : '' }}>
                                             <label class="form-check-label" for="termsAccepted">
-                                                I agree to the <a href="#" target="_blank">Terms & Conditions</a> and <a href="#" target="_blank">Privacy Policy</a>*
+                                                @if(!empty($termsAndConditions))
+                                                    I agree to the above Terms & Conditions and Privacy Policy*
+                                                @else
+                                                    I agree to the <a href="#" target="_blank">Terms & Conditions</a> and <a href="#" target="_blank">Privacy Policy</a>*
+                                                @endif
                                             </label>
                                         </div>
                                         @error('terms_accepted')
@@ -420,6 +538,64 @@
 
 @push('styles')
 <style>
+/* Payment type selection styles */
+.payment-type-selection .payment-option {
+    position: relative;
+}
+
+.payment-radio {
+    display: none;
+}
+
+.payment-label {
+    cursor: pointer;
+    display: block;
+    margin: 0;
+}
+
+.payment-card {
+    border: 2px solid #e9ecef;
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+    transition: all 0.3s ease;
+    background: white;
+}
+
+.payment-card:hover {
+    border-color: var(--primary-color1);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.payment-radio:checked + .payment-label .payment-card {
+    border-color: var(--primary-color1);
+    background: rgba(201, 28, 35, 0.05);
+}
+
+.payment-card i {
+    font-size: 2rem;
+    margin-bottom: 10px;
+    display: block;
+}
+
+.payment-card h6 {
+    margin: 10px 0 5px 0;
+    font-weight: 600;
+    color: #333;
+}
+
+.payment-card p {
+    font-size: 14px;
+    color: #666;
+    margin-bottom: 5px;
+}
+
+.payment-card small {
+    font-weight: 500;
+}
+
+/* Existing payment option styles */
 .payment-option ul {
     display: flex;
     gap: 15px;
@@ -634,6 +810,80 @@
     display: block;
 }
 
+.form-section-divider {
+    padding: 20px 0 15px 0;
+    border-top: 2px solid #eee;
+    margin-bottom: 15px;
+}
+
+.form-section-divider h6 {
+    margin-bottom: 5px;
+    color: #333;
+    font-weight: 600;
+}
+
+.form-section-divider .text-muted {
+    font-size: 13px;
+    color: #999;
+}
+
+.terms-conditions-section {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.terms-conditions-section h6 {
+    margin-bottom: 15px;
+    color: #333;
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 14px;
+}
+
+.terms-content {
+    max-height: 400px;
+    overflow-y: auto;
+    padding-right: 10px;
+}
+
+.term-item {
+    margin-bottom: 20px;
+}
+
+.term-item:last-child {
+    margin-bottom: 0;
+}
+
+.term-title {
+    color: var(--primary-color1);
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+.term-body {
+    font-size: 13px;
+    line-height: 1.6;
+    color: #555;
+}
+
+.term-body p {
+    margin-bottom: 10px;
+}
+
+.term-body ul,
+.term-body ol {
+    margin-left: 20px;
+    margin-bottom: 10px;
+}
+
+.term-body li {
+    margin-bottom: 5px;
+}
+
 @media (max-width: 768px) {
     .payment-option ul {
         flex-direction: column;
@@ -648,6 +898,10 @@
         flex-direction: column;
         text-align: center;
     }
+    
+    .terms-content {
+        max-height: 250px;
+    }
 }
 </style>
 @endpush
@@ -655,6 +909,42 @@
 @push('scripts')
 <script>
 $(document).ready(function() {
+    // Payment type selection handling
+    $('input[name="payment_type"]').on('change', function() {
+        const paymentType = $(this).val();
+        const alertContent = $('#alert-content');
+        const paymentMethodSection = $('.choose-payment-method');
+        const submitBtn = $('#checkout-submit-btn span');
+        
+        // Update the alert content based on payment type
+        switch(paymentType) {
+            case 'advance':
+                alertContent.html(`
+                    <h6><i class="bi bi-info-circle"></i> Advance Payment (50%)</h6>
+                    <p class="mb-0">You are paying 50% advance. The remaining amount will be collected at the time of vehicle pickup.</p>
+                `);
+                paymentMethodSection.show();
+                submitBtn.html('Complete Booking - Pay 50% Advance <svg width="10" height="10" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg"><path d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z"></path></svg>');
+                break;
+            case 'quotation':
+                alertContent.html(`
+                    <h6><i class="bi bi-file-text"></i> Request Quotation</h6>
+                    <p class="mb-0">You are requesting a quotation. Our team will contact you with detailed pricing and booking information.</p>
+                `);
+                paymentMethodSection.hide();
+                submitBtn.html('Submit Quotation Request <svg width="10" height="10" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg"><path d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z"></path></svg>');
+                break;
+            default:
+                alertContent.html(`
+                    <h6><i class="bi bi-credit-card"></i> Full Payment</h6>
+                    <p class="mb-0">You are making full payment for your vehicle rental booking.</p>
+                `);
+                paymentMethodSection.show();
+                submitBtn.html('Complete Booking - Pay Full Amount <svg width="10" height="10" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg"><path d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z"></path></svg>');
+                break;
+        }
+    });
+
     // Payment method selection
     $('.payment-option input[type="radio"]').on('change', function() {
         $('.payment-option li').removeClass('active');
@@ -673,7 +963,7 @@ $(document).ready(function() {
     
     // Form validation
     $('#checkout-form').on('submit', function(e) {
-        const paymentType = $('input[name="payment_type"]').val();
+        const paymentType = $('input[name="payment_type"]:checked').val();
         const paymentMethod = $('input[name="payment_method"]:checked').val();
         
         // Skip payment method validation for quotation requests

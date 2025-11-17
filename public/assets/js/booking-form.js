@@ -53,7 +53,7 @@
 
     // State management
     const state = {
-        currentService: "airport-transfer",
+        currentService: "airport_transfers",
         mapsLoaded: false,
         useLeafletFallback: false,
         customTourDestinations: [],
@@ -97,7 +97,7 @@
         const threeDaysFormatted = formatDate(threeDaysLater);
         
         // Airport Transfer - set today's date and initialize airport logic
-        const airportForm = document.getElementById('airport-transfer-form');
+        const airportForm = document.getElementById('airport_transfers-form');
         if (airportForm) {
             const airportDateInput = airportForm.querySelector('input[name="date"]');
             const airportTimeInput = airportForm.querySelector('input[name="time"]');
@@ -125,7 +125,7 @@
         }
         
         // Drop & Pickup - set today's date and default locations
-        const dropPickupForm = document.getElementById('drop-pickup-form');
+        const dropPickupForm = document.getElementById('point_to_point-form');
         if (dropPickupForm) {
             const dateInput = dropPickupForm.querySelector('input[name="date"]');
             const timeSelect = dropPickupForm.querySelector('select[name="time"]');
@@ -158,7 +158,7 @@
         }
         
         // Rental Packages - set today and 3 days later
-        const rentalForm = document.getElementById('rental-packages-form');
+        const rentalForm = document.getElementById('ride_now-form');
         if (rentalForm) {
             const pickupDateInput = rentalForm.querySelector('input[name="pickup_date"]');
             const dropoffDateInput = rentalForm.querySelector('input[name="dropoff_date"]');
@@ -545,7 +545,7 @@
      * Update Airport Transfer locations
      */
     function updateAirportTransferLocations(type) {
-        const form = document.getElementById("airport-transfer-form");
+        const form = document.getElementById("airport_transfers-form");
         if (!form) return;
 
         const fromInput = form.querySelector('input[name="from"]');

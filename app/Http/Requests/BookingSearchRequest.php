@@ -3,7 +3,6 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
-use App\Services\DynamicServiceConfigurationService;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 
@@ -62,13 +61,13 @@ class BookingSearchRequest extends FormRequest
         
         // Service-specific validation rules
         switch ($serviceType) {
-            case 'airport-transfer':
+            case 'airport_transfers':
                 return $this->airportTransferRules();
             
-            case 'drop-pickup':
+            case 'point_to_point':
                 return $this->dropPickupRules();
             
-            case 'rental-packages':
+            case 'ride_now':
                 return $this->rentalPackagesRules();
             
             case 'custom-tour':

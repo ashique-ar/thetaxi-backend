@@ -33,7 +33,8 @@ class VehicleGroupPricingSeeder extends Seeder
 
         // Define pricing structure by service type and vehicle group category
         $pricingMatrix = [
-            'chauffeur_driven' => [
+            // Point to Point (formerly chauffeur_driven) - WITH DRIVER rates
+            'point_to_point' => [
                 'economy' => [
                     '1-2 Days' => ['rate' => 8500, 'rate_type' => 'per_day'],
                     '3-4 Days' => ['rate' => 8000, 'rate_type' => 'per_day'],
@@ -85,7 +86,8 @@ class VehicleGroupPricingSeeder extends Seeder
                     '31-366 Days' => ['rate' => 12000, 'rate_type' => 'per_day']
                 ]
             ],
-            'self_driven' => [
+            // Rental Package (formerly self_driven) - SELF DRIVEN rates
+            'ride_now' => [
                 'economy' => [
                     '1-2 Days' => ['rate' => 6500, 'rate_type' => 'per_day'],
                     '3-4 Days' => ['rate' => 6000, 'rate_type' => 'per_day'],
@@ -129,99 +131,84 @@ class VehicleGroupPricingSeeder extends Seeder
             ],
             'wedding_hire' => [
                 'economy' => [
-                    '4 Hours' => ['rate' => 12000, 'rate_type' => 'flat_rate'],
-                    '8 Hours' => ['rate' => 18000, 'rate_type' => 'flat_rate'],
-                    '12 Hours' => ['rate' => 24000, 'rate_type' => 'flat_rate']
+                    '6 Hours Package' => ['rate' => 18000, 'rate_type' => 'flat_rate'],
+                    '8 Hours Package' => ['rate' => 22000, 'rate_type' => 'flat_rate'],
+                    '12 Hours Package' => ['rate' => 24000, 'rate_type' => 'flat_rate']
                 ],
                 'standard' => [
-                    '4 Hours' => ['rate' => 18000, 'rate_type' => 'flat_rate'],
-                    '8 Hours' => ['rate' => 28000, 'rate_type' => 'flat_rate'],
-                    '12 Hours' => ['rate' => 38000, 'rate_type' => 'flat_rate']
+                    '6 Hours Package' => ['rate' => 28000, 'rate_type' => 'flat_rate'],
+                    '8 Hours Package' => ['rate' => 35000, 'rate_type' => 'flat_rate'],
+                    '12 Hours Package' => ['rate' => 38000, 'rate_type' => 'flat_rate']
                 ],
                 'premium' => [
-                    '4 Hours' => ['rate' => 25000, 'rate_type' => 'flat_rate'],
-                    '8 Hours' => ['rate' => 40000, 'rate_type' => 'flat_rate'],
-                    '12 Hours' => ['rate' => 55000, 'rate_type' => 'flat_rate']
+                    '6 Hours Package' => ['rate' => 45000, 'rate_type' => 'flat_rate'],
+                    '8 Hours Package' => ['rate' => 52000, 'rate_type' => 'flat_rate'],
+                    '12 Hours Package' => ['rate' => 55000, 'rate_type' => 'flat_rate']
                 ],
                 'luxury' => [
-                    '4 Hours' => ['rate' => 35000, 'rate_type' => 'flat_rate'],
-                    '8 Hours' => ['rate' => 55000, 'rate_type' => 'flat_rate'],
-                    '12 Hours' => ['rate' => 75000, 'rate_type' => 'flat_rate']
-                ]
+                    '6 Hours Package' => ['rate' => 65000, 'rate_type' => 'flat_rate'],
+                    '8 Hours Package' => ['rate' => 75000, 'rate_type' => 'flat_rate'],
+                    '12 Hours Package' => ['rate' => 85000, 'rate_type' => 'flat_rate']
+                ],
             ],
-            'airport_drop' => [
+            // Airport Transfers (replaces airport_drop/pickup) - per KM rates
+            'airport_transfers' => [
                 'economy' => [
-                    'One Way Drop' => ['rate' => 3500, 'rate_type' => 'flat_rate']
+                    'One Way Transfer' => ['rate' => 65, 'rate_type' => 'per_km'],
+                    'Round Trip Transfer' => ['rate' => 60, 'rate_type' => 'per_km'],
                 ],
                 'standard' => [
-                    'One Way Drop' => ['rate' => 5000, 'rate_type' => 'flat_rate']
+                    'One Way Transfer' => ['rate' => 85, 'rate_type' => 'per_km'],
+                    'Round Trip Transfer' => ['rate' => 80, 'rate_type' => 'per_km'],
                 ],
                 'premium' => [
-                    'One Way Drop' => ['rate' => 7500, 'rate_type' => 'flat_rate']
+                    'One Way Transfer' => ['rate' => 120, 'rate_type' => 'per_km'],
+                    'Round Trip Transfer' => ['rate' => 115, 'rate_type' => 'per_km'],
                 ],
                 'luxury' => [
-                    'One Way Drop' => ['rate' => 12000, 'rate_type' => 'flat_rate']
+                    'One Way Transfer' => ['rate' => 150, 'rate_type' => 'per_km'],
+                    'Round Trip Transfer' => ['rate' => 145, 'rate_type' => 'per_km'],
                 ],
                 'commercial' => [
-                    'One Way Drop' => ['rate' => 8000, 'rate_type' => 'flat_rate']
-                ]
-            ],
-            'airport_pickup' => [
-                'economy' => [
-                    'One Way Pickup' => ['rate' => 3500, 'rate_type' => 'flat_rate']
-                ],
-                'standard' => [
-                    'One Way Pickup' => ['rate' => 5000, 'rate_type' => 'flat_rate']
-                ],
-                'premium' => [
-                    'One Way Pickup' => ['rate' => 7500, 'rate_type' => 'flat_rate']
-                ],
-                'luxury' => [
-                    'One Way Pickup' => ['rate' => 12000, 'rate_type' => 'flat_rate']
-                ],
-                'commercial' => [
-                    'One Way Pickup' => ['rate' => 8000, 'rate_type' => 'flat_rate']
-                ]
-            ],
-            'transfers' => [
-                'economy' => [
-                    'Point to Point' => ['rate' => 2500, 'rate_type' => 'flat_rate'],
-                    'Multi-Stop Transfer' => ['rate' => 800, 'rate_type' => 'per_hour']
-                ],
-                'standard' => [
-                    'Point to Point' => ['rate' => 3500, 'rate_type' => 'flat_rate'],
-                    'Multi-Stop Transfer' => ['rate' => 1200, 'rate_type' => 'per_hour']
-                ],
-                'premium' => [
-                    'Point to Point' => ['rate' => 5000, 'rate_type' => 'flat_rate'],
-                    'Multi-Stop Transfer' => ['rate' => 1800, 'rate_type' => 'per_hour']
-                ],
-                'commercial' => [
-                    'Point to Point' => ['rate' => 4000, 'rate_type' => 'flat_rate'],
-                    'Multi-Stop Transfer' => ['rate' => 1500, 'rate_type' => 'per_hour']
+                    'One Way Transfer' => ['rate' => 95, 'rate_type' => 'per_km'],
+                    'Round Trip Transfer' => ['rate' => 90, 'rate_type' => 'per_km'],
                 ]
             ],
             'corporate' => [
+                'economy' => [
+                    'Weekly Contract' => ['rate' => 4500, 'rate_type' => 'per_day'],
+                    'Monthly Contract' => ['rate' => 4200, 'rate_type' => 'per_day'],
+                    'Quarterly Contract' => ['rate' => 4000, 'rate_type' => 'per_day'],
+                    'Semi-Annual Contract' => ['rate' => 3800, 'rate_type' => 'per_day'],
+                    'Annual Contract' => ['rate' => 3500, 'rate_type' => 'per_day']
+                ],
                 'standard' => [
-                    'Weekly Contract' => ['rate' => 65000, 'rate_type' => 'per_day'],
-                    'Monthly Contract' => ['rate' => 8500, 'rate_type' => 'per_day'],
-                    'Quarterly Contract' => ['rate' => 8000, 'rate_type' => 'per_day'],
-                    'Semi-Annual Contract' => ['rate' => 7500, 'rate_type' => 'per_day'],
-                    'Annual Contract' => ['rate' => 7000, 'rate_type' => 'per_day']
+                    'Weekly Contract' => ['rate' => 7000, 'rate_type' => 'per_day'],
+                    'Monthly Contract' => ['rate' => 6500, 'rate_type' => 'per_day'],
+                    'Quarterly Contract' => ['rate' => 6200, 'rate_type' => 'per_day'],
+                    'Semi-Annual Contract' => ['rate' => 6000, 'rate_type' => 'per_day'],
+                    'Annual Contract' => ['rate' => 5800, 'rate_type' => 'per_day']
                 ],
                 'premium' => [
-                    'Weekly Contract' => ['rate' => 95000, 'rate_type' => 'per_day'],
-                    'Monthly Contract' => ['rate' => 12500, 'rate_type' => 'per_day'],
-                    'Quarterly Contract' => ['rate' => 12000, 'rate_type' => 'per_day'],
-                    'Semi-Annual Contract' => ['rate' => 11500, 'rate_type' => 'per_day'],
-                    'Annual Contract' => ['rate' => 11000, 'rate_type' => 'per_day']
+                    'Weekly Contract' => ['rate' => 12000, 'rate_type' => 'per_day'],
+                    'Monthly Contract' => ['rate' => 11500, 'rate_type' => 'per_day'],
+                    'Quarterly Contract' => ['rate' => 11000, 'rate_type' => 'per_day'],
+                    'Semi-Annual Contract' => ['rate' => 10500, 'rate_type' => 'per_day'],
+                    'Annual Contract' => ['rate' => 10000, 'rate_type' => 'per_day']
                 ],
                 'luxury' => [
-                    'Weekly Contract' => ['rate' => 140000, 'rate_type' => 'per_day'],
-                    'Monthly Contract' => ['rate' => 18000, 'rate_type' => 'per_day'],
-                    'Quarterly Contract' => ['rate' => 17500, 'rate_type' => 'per_day'],
-                    'Semi-Annual Contract' => ['rate' => 17000, 'rate_type' => 'per_day'],
-                    'Annual Contract' => ['rate' => 16500, 'rate_type' => 'per_day']
+                    'Weekly Contract' => ['rate' => 16000, 'rate_type' => 'per_day'],
+                    'Monthly Contract' => ['rate' => 15500, 'rate_type' => 'per_day'],
+                    'Quarterly Contract' => ['rate' => 15000, 'rate_type' => 'per_day'],
+                    'Semi-Annual Contract' => ['rate' => 14500, 'rate_type' => 'per_day'],
+                    'Annual Contract' => ['rate' => 14000, 'rate_type' => 'per_day']
+                ],
+                'commercial' => [
+                    'Weekly Contract' => ['rate' => 9500, 'rate_type' => 'per_day'],
+                    'Monthly Contract' => ['rate' => 9000, 'rate_type' => 'per_day'],
+                    'Quarterly Contract' => ['rate' => 8500, 'rate_type' => 'per_day'],
+                    'Semi-Annual Contract' => ['rate' => 8200, 'rate_type' => 'per_day'],
+                    'Annual Contract' => ['rate' => 8000, 'rate_type' => 'per_day']
                 ]
             ]
         ];
@@ -285,8 +272,8 @@ class VehicleGroupPricingSeeder extends Seeder
                     'rate' => $pricingData['rate'],
                     'rate_type' => $pricingData['rate_type'],
                     'minimum_charge' => $pricingData['rate'] * 0.5, // 50% of rate as minimum
-                    'includes_fuel' => $serviceCode === 'chauffeur_driven' || $serviceCode === 'wedding_hire',
-                    'includes_driver' => $serviceCode === 'chauffeur_driven' || $serviceCode === 'wedding_hire',
+                    'includes_fuel' => $serviceCode === 'ride_now' || $serviceCode === 'wedding_hire' || $serviceCode === 'corporate',
+                    'includes_driver' => $serviceCode === 'ride_now' || $serviceCode === 'wedding_hire' || $serviceCode === 'corporate' || $serviceCode === 'airport_transfers',
                 ]);
 
                 $createdCount++;

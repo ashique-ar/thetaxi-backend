@@ -39,10 +39,10 @@
                             @endif
 
                             <!-- Drop & Pickup Form -->
-                            <form id="drop-pickup-form" class="filter-input show" data-service="drop-pickup"
+                            <form id="point_to_point-form" class="filter-input show" data-service="point_to_point"
                                 action="{{ route('booking.search') }}" method="POST">
                                 @csrf
-                                <input type="hidden" name="service_type" value="drop-pickup">
+                                <input type="hidden" name="service_type" value="point_to_point">
 
                                 <!-- Pickup Location -->
                                 <div class="single-search-box location-search-box">
@@ -372,7 +372,7 @@
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         // Add loading states to form submission
-        const form = document.getElementById('drop-pickup-form');
+        const form = document.getElementById('point_to_point-form');
         
         form.addEventListener('submit', function(e) {
             const submitBtn = form.querySelector('button[type="submit"]');

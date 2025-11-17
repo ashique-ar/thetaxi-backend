@@ -60,7 +60,7 @@ class VehicleGroupCommonRatePricingSeeder extends Seeder
                     'driver_allowance' => 1000.00,
                 ]
             ],
-            'rental_package' => [
+            'ride_now' => [
                 'economy' => [
                     'vehicle_pickup_rate_per_km' => 35.00,
                     'vehicle_return_rate_per_km' => 25.00,
@@ -150,7 +150,7 @@ class VehicleGroupCommonRatePricingSeeder extends Seeder
         $skippedCount = 0;
 
         foreach ($commonRateDefinitions as $commonRateDefinition) {
-            $serviceCode = $commonRateDefinition->serviceType->code;
+            $serviceCode = $commonRateDefinition->serviceType?->code;
             
             if (!isset($commonRatePricingMatrix[$serviceCode])) {
                 continue;

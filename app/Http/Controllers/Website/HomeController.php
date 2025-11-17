@@ -52,18 +52,31 @@ class HomeController extends Controller
 
         // Get featured vehicles for rental service
         $featuredVehicles = $this->vehicleService->getFeaturedVehicles([
-            'service_type' => 'rental_package',
+            'service_type' => 'ride_now',
             'limit' => 8,
             'duration_days' => 1
         ]);
 
         // Create a search session for the featured vehicles
         $featuredVehicleSearch = $this->vehicleService->createFeaturedVehicleSearch([
-            'service_type' => 'rental_package'
+            'service_type' => 'ride_now'
         ]);
 
         // Get website settings for dynamic text and media
         $settings = $this->settingsService->getHomepageSettings();
+
+        // Create empty search object for booking form component
+        $search = (object) [
+            'service_type' => 'airport_transfers',
+            'from_date' => null,
+            'to_date' => null,
+            'from_time' => null,
+            'to_time' => null,
+            'pickup_location' => null,
+            'dropoff_location' => null,
+            'duration_days' => 1,
+            'passengers' => 1,
+        ];
 
         return view('home', compact(
             'destinations', 
@@ -75,7 +88,8 @@ class HomeController extends Controller
             'faqs', 
             'featuredVehicles',
             'featuredVehicleSearch',
-            'settings'
+            'settings',
+            'search'
         ));
     }
 

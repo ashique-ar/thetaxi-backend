@@ -491,7 +491,7 @@ class DynamicServiceConfigurationService
 
         // Define category mapping based on old form structure
         $categoryMapping = [
-            'airport-transfer' => [
+            'airport_transfers' => [
                 'category_info' => [
                     'name' => 'Airport Transfer',
                     'icon' => 'airplane',
@@ -500,7 +500,7 @@ class DynamicServiceConfigurationService
                 ],
                 'services' => $serviceTypes->where('category', 'airport')->values()->toArray()
             ],
-            'drop-pickup' => [
+            'point_to_point' => [
                 'category_info' => [
                     'name' => 'Drop & Pickup',
                     'icon' => 'map-pin',
@@ -509,7 +509,7 @@ class DynamicServiceConfigurationService
                 ],
                 'services' => $serviceTypes->where('code', 'transfers')->values()->toArray()
             ],
-            'rental-packages' => [
+            'ride_now' => [
                 'category_info' => [
                     'name' => 'Rental Packages',
                     'icon' => 'calendar',

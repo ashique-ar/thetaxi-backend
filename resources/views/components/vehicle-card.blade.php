@@ -111,11 +111,41 @@
         <!-- Enhanced Pricing Section -->
         <div class="vehicle-pricing mt-auto">
             <div class="price-display">
-                <span class="price-label">Starting at</span>
-                <h4 class="price-amount" data-base-price="{{ $pricing['base_amount'] ?? 0 }}" data-currency="{{ $pricing['currency'] ?? 'LKR' }}">
-                    {{ $pricing['currency'] ?? 'LKR' }} <span class="price-value">{{ number_format($pricing['base_amount'] ?? 0, 2) }}</span>
+                
+                @php
+                    // Calculate per-day rate from total_amount and duration_days
+                    $totalAmount = $pricing['base_amount'] ?? 0;
+                    $durationDays = $pricing['duration_info']['days'] ?? 1;
+                    $perDayRate = $durationDays > 0 ? $totalAmount / $durationDays : 0;
+                    
+                    // Debug: Check what we're actually getting
+                    if (app()->environment('local')) {
+                        \Log::info('Vehicle Card Pricing Debug', [
+                            'vehicle_name' => $vehicle['name'] ?? 'Unknown',
+                            'total_amount' => $totalAmount,
+                            'duration_days' => $durationDays,
+                            'per_day_rate' => $perDayRate,
+                            'pricing_structure' => $pricing
+                        ]);
+                    }
+                @endphp
+                
+                <h4 class="price-amount" 
+                    data-base-price="{{ $totalAmount }}" 
+                    data-per-day="{{ round($perDayRate, 2) }}"
+                    data-duration="{{ $durationDays }}"
+                    data-currency="{{ $pricing['currency'] ?? 'LKR' }}">
+                    {{ $pricing['currency'] ?? 'LKR' }} 
+                    <span class="price-value">{{ number_format($perDayRate, 0) }}</span>
+                    <span class="price-unit">/day</span>
                 </h4>
-                <span class="price-unit">per day</span>
+                
+                <!-- Total Price as Secondary Info -->
+                <div class="total-price-info mt-2 text-muted small">
+                    <span class="total-label">Total:</span>
+                    <strong>{{ $pricing['currency'] ?? 'LKR' }} {{ number_format($totalAmount, 0) }}</strong>
+                    <span class="duration-label">({{ $durationDays }} day{{ $durationDays > 1 ? 's' : '' }})</span>
+                </div>
                 
                 @if(isset($enhancedPricing['savings']) && !empty($enhancedPricing['savings']))
                 <div class="savings-info mt-1">
@@ -345,9 +375,30 @@
     }
 
     .price-unit {
-        display: block;
+        /* display: block; */
         font-size: 12px;
         color: var(--black-color);
+        margin-bottom: 8px;
+    }
+
+    /* Total Price Info (Secondary Display) */
+    .total-price-info {
+        padding: 8px;
+        background: #f9f9f9;
+        border-radius: 6px;
+        font-size: 13px;
+        border: 1px solid #e0e0e0;
+    }
+
+    .total-label {
+        color: var(--black-color);
+        font-weight: 600;
+    }
+
+    .duration-label {
+        color: var(--black-color);
+        font-size: 12px;
+        margin-left: 4px;
     }
 
     /* Action Buttons */

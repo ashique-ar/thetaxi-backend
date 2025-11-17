@@ -57,10 +57,6 @@ return new class extends Migration
             $table->index(['visibility', 'status', 'is_active']);
             $table->index(['parent_id', 'sort_order']);
 
-            // Foreign key constraints
-            $table->foreign('parent_id')->references('id')->on('pages')->onDelete('set null');
-            $table->foreign('created_user_id')->references('id')->on('users')->onDelete('set null');
-            $table->foreign('updated_user_id')->references('id')->on('users')->onDelete('set null');
         });
     }
 

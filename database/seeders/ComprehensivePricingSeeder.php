@@ -36,10 +36,11 @@ class ComprehensivePricingSeeder extends Seeder
     private function seedServiceTypes(): void
     {
         $types = [
-            ['code' => 'point_to_point', 'name' => 'Point To Point', 'description' => 'A service for point-to-point transportation.', 'type' => 'with_driver', 'priority' => 1],
-            ['code' => 'airport_transfers', 'name' => 'Airport Transfers', 'description' => 'A service for transferring passengers between locations.', 'type' => 'with_driver', 'priority' => 5],
-            ['code' => 'corporate', 'name' => 'Corporate Hires', 'description' => 'A service for corporate vehicle hires.', 'type' => 'with_driver', 'priority' => 7],
-            ['code' => 'rental_package', 'name' => 'Rental Package', 'description' => 'A service for rental packages.', 'type' => 'self_driven', 'priority' => 9],
+            ['code' => 'point_to_point', 'name' => 'Point to Point', 'description' => 'Chauffeur driven service for point-to-point transportation (formerly chauffeur_driven)', 'type' => 'with_driver', 'priority' => 1],
+            ['code' => 'ride_now', 'name' => 'Ride Now', 'description' => 'Self-driven rental packages (formerly self_driven)', 'type' => 'self_driven', 'priority' => 2],
+            ['code' => 'airport_transfers', 'name' => 'Airport Transfers', 'description' => 'Airport pickup and drop services (formerly airport_drop/airport_pickup)', 'type' => 'with_driver', 'priority' => 3],
+            ['code' => 'wedding_hire', 'name' => 'Wedding Hire', 'description' => 'Special wedding event transportation', 'type' => 'with_driver', 'priority' => 4],
+            ['code' => 'corporate', 'name' => 'Corporate Hires', 'description' => 'Corporate vehicle contracts and hires', 'type' => 'with_driver', 'priority' => 5],
         ];
 
         ServiceType::truncate();
@@ -66,7 +67,8 @@ class ComprehensivePricingSeeder extends Seeder
                 ['name' => '29-30 Days', 'min_days' => 29, 'min_hours' => 0, 'max_days' => 30, 'max_hours' => 0, 'type' => 'per_day', 'sort_order' => 7, 'max_km_per_day' => 100, 'max_km_per_package' => null],
                 ['name' => '31-366 Days', 'min_days' => 31, 'min_hours' => 0, 'max_days' => 366, 'max_hours' => 0, 'type' => 'per_day', 'sort_order' => 8, 'max_km_per_day' => 100, 'max_km_per_package' => null],
             ],
-            'rental_package' => [
+            // Rental Package (formerly self_driven) - based on legacy SD rates  
+            'ride_now' => [
                 ['name' => '1-2 Days', 'min_days' => 1, 'min_hours' => 0, 'max_days' => 2, 'max_hours' => 0, 'type' => 'per_day', 'sort_order' => 1, 'max_km_per_day' => 100, 'max_km_per_package' => null],
                 ['name' => '3-4 Days', 'min_days' => 3, 'min_hours' => 0, 'max_days' => 4, 'max_hours' => 0, 'type' => 'per_day', 'sort_order' => 2, 'max_km_per_day' => 100, 'max_km_per_package' => null],
                 ['name' => '5-7 Days', 'min_days' => 5, 'min_hours' => 0, 'max_days' => 7, 'max_hours' => 0, 'type' => 'per_day', 'sort_order' => 3, 'max_km_per_day' => 100, 'max_km_per_package' => null],
@@ -75,10 +77,19 @@ class ComprehensivePricingSeeder extends Seeder
                 ['name' => '22-28 Days', 'min_days' => 22, 'min_hours' => 0, 'max_days' => 28, 'max_hours' => 0, 'type' => 'per_day', 'sort_order' => 6, 'max_km_per_day' => 100, 'max_km_per_package' => null],
                 ['name' => '29-30 Days', 'min_days' => 29, 'min_hours' => 0, 'max_days' => 30, 'max_hours' => 0, 'type' => 'per_day', 'sort_order' => 7, 'max_km_per_day' => 100, 'max_km_per_package' => null],
                 ['name' => '31-366 Days', 'min_days' => 31, 'min_hours' => 0, 'max_days' => 366, 'max_hours' => 0, 'type' => 'per_day', 'sort_order' => 8, 'max_km_per_day' => 100, 'max_km_per_package' => null],
-            ],            
-            'airport_transfers' => [
-                ['name' => 'One Way Drop', 'min_hours' => 1, 'max_hours' => 4, 'type' => 'per_km', 'sort_order' => 1, 'max_km_per_package' => null],
             ],
+            // Airport Transfers (replaces airport_drop/airport_pickup) - KM based pricing            
+            'airport_transfers' => [
+                ['name' => 'One Way Transfer', 'min_hours' => 1, 'max_hours' => 6, 'min_days' => null, 'max_days' => null, 'type' => 'per_km', 'sort_order' => 1, 'max_km_per_day' => null, 'max_km_per_package' => null],
+                ['name' => 'Round Trip Transfer', 'min_hours' => 2, 'max_hours' => 12, 'min_days' => null, 'max_days' => null, 'type' => 'per_km', 'sort_order' => 2, 'max_km_per_day' => null, 'max_km_per_package' => null],
+            ],
+            // Wedding Hire - flat rate packages
+            'wedding_hire' => [
+                ['name' => '6 Hours Package', 'min_hours' => 6, 'max_hours' => 6, 'min_days' => null, 'max_days' => null, 'type' => 'flat_rate', 'sort_order' => 1, 'max_km_per_day' => null, 'max_km_per_package' => 150],
+                ['name' => '8 Hours Package', 'min_hours' => 8, 'max_hours' => 8, 'min_days' => null, 'max_days' => null, 'type' => 'flat_rate', 'sort_order' => 2, 'max_km_per_day' => null, 'max_km_per_package' => 200],
+                ['name' => '12 Hours Package', 'min_hours' => 12, 'max_hours' => 12, 'min_days' => null, 'max_days' => null, 'type' => 'flat_rate', 'sort_order' => 3, 'max_km_per_day' => null, 'max_km_per_package' => 300],
+            ],
+            // Corporate contracts - longer term packages
             'corporate' => [
                 ['name' => 'Weekly Contract', 'min_days' => 7, 'min_hours' => 0, 'max_days' => 7, 'max_hours' => 0, 'type' => 'per_day', 'sort_order' => 1, 'max_km_per_day' => 100, 'max_km_per_package' => null],
                 ['name' => 'Monthly Contract', 'min_days' => 30, 'min_hours' => 0, 'max_days' => 31, 'max_hours' => 0, 'type' => 'per_day', 'sort_order' => 2, 'max_km_per_day' => 100, 'max_km_per_package' => null],
@@ -125,27 +136,43 @@ class ComprehensivePricingSeeder extends Seeder
     {
         $serviceTypesWithRates = [
             'point_to_point' => [
-                // Vehicle delivery and pickup rates
+                // Vehicle delivery and pickup rates (based on legacy wd_delivery_rate)
                 ['name' => 'Vehicle Delivery Rate Per KM', 'code' => 'vehicle_delivery_rate_per_km', 'common_rate_type' => 'per_km', 'rate' => 50.00, 'sort_order' => 1],
                 ['name' => 'Vehicle Pickup Rate Per KM', 'code' => 'vehicle_pickup_rate_per_km', 'common_rate_type' => 'per_km', 'rate' => 50.00, 'sort_order' => 2],
-                // Extra KM charges
+                // Extra KM charges (based on legacy sdexcess/excessrate) 
                 ['name' => 'Extra KM Rate', 'code' => 'extra_km_rate', 'common_rate_type' => 'per_km', 'rate' => 60.00, 'sort_order' => 3],
-                ['name' => 'Driver Allowance', 'code' => 'driver_allowance', 'common_rate_type' => 'per_day', 'rate' => 500.00, 'sort_order' => 4],
+                // Driver allowance (based on legacy batta/daybatta)
+                ['name' => 'Driver Allowance Per Day', 'code' => 'driver_allowance', 'common_rate_type' => 'per_day', 'rate' => 500.00, 'sort_order' => 4],
+                // Insurance rate (based on legacy insurancerate)
+                ['name' => 'Insurance Rate Per Day', 'code' => 'insurance_rate', 'common_rate_type' => 'per_day', 'rate' => 300.00, 'sort_order' => 5],
             ],
-            'rental_package' => [
-                // Vehicle delivery and pickup rates  
+            'ride_now' => [
+                // Vehicle delivery and pickup rates (based on legacy sd_delivery_rate)  
                 ['name' => 'Vehicle Delivery Rate Per KM', 'code' => 'vehicle_delivery_rate_per_km', 'common_rate_type' => 'per_km', 'rate' => 35.00, 'sort_order' => 1],
                 ['name' => 'Vehicle Pickup Rate Per KM', 'code' => 'vehicle_pickup_rate_per_km', 'common_rate_type' => 'per_km', 'rate' => 35.00, 'sort_order' => 2],
-                // Extra KM charges
+                // Extra KM charges (based on legacy sdexcess)
                 ['name' => 'Extra KM Rate', 'code' => 'extra_km_rate', 'common_rate_type' => 'per_km', 'rate' => 45.00, 'sort_order' => 3],
+                // Insurance rate (based on legacy insurancerate)
+                ['name' => 'Insurance Rate Per Day', 'code' => 'insurance_rate', 'common_rate_type' => 'per_day', 'rate' => 200.00, 'sort_order' => 4],
             ],
             'airport_transfers' => [
-                // Vehicle delivery and pickup rates
+                // Vehicle delivery and pickup rates  
                 ['name' => 'Vehicle Delivery Rate Per KM', 'code' => 'vehicle_delivery_rate_per_km', 'common_rate_type' => 'per_km', 'rate' => 55.00, 'sort_order' => 1],
                 ['name' => 'Vehicle Pickup Rate Per KM', 'code' => 'vehicle_pickup_rate_per_km', 'common_rate_type' => 'per_km', 'rate' => 55.00, 'sort_order' => 2],
-                // Base rate per KM for the service
+                // Base rate per KM for the service (replaces legacy taxi rate for airport)
                 ['name' => 'Service Rate Per KM', 'code' => 'service_rate_per_km', 'common_rate_type' => 'per_km', 'rate' => 80.00, 'sort_order' => 3],
+                // Stop charge for additional stops
                 ['name' => 'Stop Charge', 'code' => 'stop_charge', 'common_rate_type' => 'per_stop', 'rate' => 500.00, 'sort_order' => 4],
+                // Waiting charges
+                ['name' => 'Waiting Charge Per Hour', 'code' => 'waiting_charge_per_hour', 'common_rate_type' => 'per_hour', 'rate' => 1000.00, 'sort_order' => 5],
+            ],
+            'wedding_hire' => [
+                // Decoration charges for wedding vehicles
+                ['name' => 'Decoration Charge', 'code' => 'decoration_charge', 'common_rate_type' => 'flat_rate', 'rate' => 5000.00, 'sort_order' => 1],
+                // Extra KM beyond package limit
+                ['name' => 'Extra KM Rate', 'code' => 'extra_km_rate', 'common_rate_type' => 'per_km', 'rate' => 100.00, 'sort_order' => 2],
+                // Extra hours beyond package
+                ['name' => 'Extra Hour Rate', 'code' => 'extra_hour_rate', 'common_rate_type' => 'per_hour', 'rate' => 2000.00, 'sort_order' => 3],
             ],
             'corporate' => [
                 // Vehicle delivery and pickup rates
@@ -153,8 +180,12 @@ class ComprehensivePricingSeeder extends Seeder
                 ['name' => 'Vehicle Pickup Rate Per KM', 'code' => 'vehicle_pickup_rate_per_km', 'common_rate_type' => 'per_km', 'rate' => 40.00, 'sort_order' => 2],
                 // Extra KM charges
                 ['name' => 'Extra KM Rate', 'code' => 'extra_km_rate', 'common_rate_type' => 'per_km', 'rate' => 50.00, 'sort_order' => 3],
+                // Overtime rate for corporate contracts
                 ['name' => 'Overtime Rate Per Hour', 'code' => 'overtime_rate_per_hour', 'common_rate_type' => 'per_hour', 'rate' => 1000.00, 'sort_order' => 4],
-                 ['name' => 'Driver Allowance', 'code' => 'driver_allowance', 'common_rate_type' => 'per_day', 'rate' => 500.00, 'sort_order' => 5],
+                // Driver allowance for corporate
+                ['name' => 'Driver Allowance Per Day', 'code' => 'driver_allowance', 'common_rate_type' => 'per_day', 'rate' => 500.00, 'sort_order' => 5],
+                // Emergency/recovery rates for corporate
+                ['name' => 'Emergency Base Rate', 'code' => 'emergency_base_rate', 'common_rate_type' => 'flat_rate', 'rate' => 5000.00, 'sort_order' => 6],
             ],
         ];
 
@@ -361,46 +392,49 @@ class ComprehensivePricingSeeder extends Seeder
     {
         $calculationDefinitions = [
             [
-                'service_code' => 'point_to_point',
-                'name' => 'Standard Point to Point Calculation',
-                'description' => 'Standard pricing calculation for point to point services with slab rate, delivery/pickup charges, and extra KM',
-                'formula' => 'slab_rate + (delivery_distance * vehicle_delivery_rate_per_km) + (pickup_distance * vehicle_pickup_rate_per_km) + (extra_km * extra_km_rate) + (driver_allowance * number_of_days)',
-                'variable_names' => ['slab_rate', 'delivery_distance', 'pickup_distance', 'extra_km', 'vehicle_delivery_rate_per_km', 'vehicle_pickup_rate_per_km', 'extra_km_rate', 'driver_allowance', 'number_of_days'],
+                'service_code' => 'potint_to_point',
+                'name' => 'Point to Point Calculation',
+                'description' => 'Point to Point pricing with slab rate, delivery/pickup charges, extra KM, driver allowance and insurance - based on legacy WITH DRIVER logic',
+                // Formula based on legacy: base rate + delivery + pickup + driver allowance + insurance + extra km charges
+                'formula' => '(slab_rate * number_of_days) + (delivery_distance * vehicle_delivery_rate_per_km) + (pickup_distance * vehicle_pickup_rate_per_km) + (driver_allowance * number_of_days) + (insurance_rate * number_of_days) + (extra_km * extra_km_rate)',
+                'variable_names' => ['slab_rate', 'number_of_days', 'delivery_distance', 'pickup_distance', 'extra_km', 'vehicle_delivery_rate_per_km', 'vehicle_pickup_rate_per_km', 'driver_allowance', 'insurance_rate', 'extra_km_rate'],
                 'conditions' => []
             ],
             [
-                'service_code' => 'rental_package',
-                'name' => 'Standard Self Driven Calculation',
-                'description' => 'Standard pricing calculation for self driven services with slab rate, delivery/pickup charges, and extra KM',
-                'formula' => 'slab_rate + (delivery_distance * vehicle_delivery_rate_per_km) + (pickup_distance * vehicle_pickup_rate_per_km) + (extra_km * extra_km_rate)',
-                'variable_names' => ['slab_rate', 'delivery_distance', 'pickup_distance', 'extra_km', 'vehicle_delivery_rate_per_km', 'vehicle_pickup_rate_per_km', 'extra_km_rate'],
+                'service_code' => 'ride_now',
+                'name' => 'Ride Now Calculation',
+                'description' => 'Ride Now pricing with slab rate, delivery/pickup charges, extra KM, driver allowance and insurance - based on legacy WITH DRIVER logic',
+                // Formula based on legacy: base rate + delivery + pickup + driver allowance + insurance + extra km charges
+                'formula' => '(slab_rate * number_of_days) + (delivery_distance * vehicle_delivery_rate_per_km) + (pickup_distance * vehicle_pickup_rate_per_km) + (driver_allowance * number_of_days) + (insurance_rate * number_of_days) + (extra_km * extra_km_rate)',
+                'variable_names' => ['slab_rate', 'number_of_days', 'delivery_distance', 'pickup_distance', 'extra_km', 'vehicle_delivery_rate_per_km', 'vehicle_pickup_rate_per_km', 'driver_allowance', 'insurance_rate', 'extra_km_rate'],
                 'conditions' => []
             ],
             [
                 'service_code' => 'airport_transfers',
-                'name' => 'Airport Drop Calculation',
-                'description' => 'KM-based calculation for airport drop service with delivery/pickup charges and additional stops',
-                'formula' => '(total_distance * service_rate_per_km) + (delivery_distance * vehicle_delivery_rate_per_km) + (pickup_distance * vehicle_pickup_rate_per_km) + (additional_stops * stop_charge)',
-                'variable_names' => ['total_distance', 'delivery_distance', 'pickup_distance', 'additional_stops', 'service_rate_per_km', 'vehicle_delivery_rate_per_km', 'vehicle_pickup_rate_per_km', 'stop_charge'],
+                'name' => 'Airport Transfer Calculation (Legacy Airport Logic)', 
+                'description' => 'KM-based calculation for airport transfers with delivery/pickup charges, service rate per KM, stops and waiting charges',
+                // Formula based on legacy airport: distance * rate + delivery + pickup + stops + waiting
+                'formula' => '(total_distance * service_rate_per_km) + (delivery_distance * vehicle_delivery_rate_per_km) + (pickup_distance * vehicle_pickup_rate_per_km) + (additional_stops * stop_charge) + (waiting_hours * waiting_charge_per_hour)',
+                'variable_names' => ['total_distance', 'delivery_distance', 'pickup_distance', 'additional_stops', 'waiting_hours', 'service_rate_per_km', 'vehicle_delivery_rate_per_km', 'vehicle_pickup_rate_per_km', 'stop_charge', 'waiting_charge_per_hour'],
                 'conditions' => []
             ],
             [
-                'service_code' => 'transfers',
-                'name' => 'Transfer Service Calculation',
-                'description' => 'KM-based calculation for transfer services with delivery/pickup charges and stop charges',
-                'formula' => '(total_distance * service_rate_per_km) + (delivery_distance * vehicle_delivery_rate_per_km) + (pickup_distance * vehicle_pickup_rate_per_km) + (stops * stop_charge)',
-                'variable_names' => ['total_distance', 'delivery_distance', 'pickup_distance', 'stops', 'service_rate_per_km', 'vehicle_delivery_rate_per_km', 'vehicle_pickup_rate_per_km', 'stop_charge'],
+                'service_code' => 'wedding_hire',
+                'name' => 'Wedding Hire Calculation',
+                'description' => 'Flat rate wedding packages with decoration charges, extra KM and extra hours',
+                // Formula: flat slab rate + decoration + extra km + extra hours
+                'formula' => 'slab_rate + decoration_charge + (extra_km * extra_km_rate) + (extra_hours * extra_hour_rate)',
+                'variable_names' => ['slab_rate', 'decoration_charge', 'extra_km', 'extra_hours', 'extra_km_rate', 'extra_hour_rate'],
                 'conditions' => []
             ],
             [
                 'service_code' => 'corporate',
                 'name' => 'Corporate Contract Calculation',
-                'description' => 'Corporate service calculation with contract rates, delivery/pickup charges, extra KM and overtime',
-                'formula' => '(slab_rate * (1 - discount_percentage)) + (delivery_distance * vehicle_delivery_rate_per_km) + (pickup_distance * vehicle_pickup_rate_per_km) + (extra_km * extra_km_rate) + (overtime_hours * overtime_rate_per_hour)',
-                'variable_names' => ['slab_rate', 'discount_percentage', 'delivery_distance', 'pickup_distance', 'extra_km', 'overtime_hours', 'vehicle_delivery_rate_per_km', 'vehicle_pickup_rate_per_km', 'extra_km_rate', 'overtime_rate_per_hour'],
-                'conditions' => [
-                    ['field' => 'customer_type', 'operator' => 'equals', 'value' => 'corporate']
-                ]
+                'description' => 'Corporate service calculation with contract rates, delivery/pickup charges, extra KM, overtime and emergency charges',
+                // Formula: slab rate + delivery + pickup + driver allowance + extra km + overtime + emergency
+                'formula' => '(slab_rate * number_of_days) + (delivery_distance * vehicle_delivery_rate_per_km) + (pickup_distance * vehicle_pickup_rate_per_km) + (driver_allowance * number_of_days) + (extra_km * extra_km_rate) + (overtime_hours * overtime_rate_per_hour) + emergency_base_rate',
+                'variable_names' => ['slab_rate', 'number_of_days', 'delivery_distance', 'pickup_distance', 'extra_km', 'overtime_hours', 'vehicle_delivery_rate_per_km', 'vehicle_pickup_rate_per_km', 'driver_allowance', 'extra_km_rate', 'overtime_rate_per_hour', 'emergency_base_rate'],
+                'conditions' => []
             ],
         ];
 

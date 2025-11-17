@@ -123,7 +123,7 @@
 
                 <!-- View All Button -->
                 <div class="text-center mt-40 wow animate fadeInUp" data-wow-delay="400ms" data-wow-duration="1500ms">
-                    <a href="{{ route('services', ['type' => 'rental-packages']) }}" class="btn btn-primary featured-vehicles-btn">
+                    <a href="{{ route('services', ['type' => 'ride_now']) }}" class="btn btn-primary featured-vehicles-btn">
                         <i class="bi bi-car-front-fill me-2"></i>
                         View All Rental Vehicles
                         <svg width="10" height="10" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg">
@@ -1104,7 +1104,7 @@
                 to_date: '{{ date("Y-m-d", strtotime("+1 day")) }}',
                 from_time: '09:00',
                 to_time: '18:00',
-                service_type: 'rental_package',
+                service_type: 'ride_now',
                 pickup_location: null,
                 dropoff_location: null,
                 duration_days: 1
@@ -1145,7 +1145,7 @@
                 to_date: '{{ date("Y-m-d", strtotime("+1 day")) }}',
                 from_time: '09:00',
                 to_time: '18:00',
-                service_type: 'rental_package',
+                service_type: 'ride_now',
                 pickup_location: null,
                 dropoff_location: null,
                 duration_days: 1
@@ -1232,7 +1232,7 @@
                     to_date: '{{ date("Y-m-d", strtotime("+1 day")) }}',
                     from_time: '09:00',
                     to_time: '18:00',
-                    service_type: 'rental-packages',
+                    service_type: 'ride_now',
                     pickup_location: null,
                     dropoff_location: null,
                     duration_days: 1
@@ -1271,7 +1271,7 @@
                     to_date: '{{ date("Y-m-d", strtotime("+1 day")) }}',
                     from_time: '09:00',
                     to_time: '18:00',
-                    service_type: 'rental-packages',
+                    service_type: 'ride_now',
                     pickup_location: null,
                     dropoff_location: null,
                     duration_days: 1
@@ -1294,61 +1294,81 @@
     });
 
     function addToCart(item) {
-        // Check if item already exists in cart
-        const existingIndex = cart.findIndex(cartItem => 
-            cartItem.group_id === item.group_id && cartItem.search_id === item.search_id
-        );
-
-        if (existingIndex !== -1) {
-            // Update quantity
-            cart[existingIndex].quantity += item.quantity;
-        } else {
-            // Add new item
-            cart.push(item);
-        }
-
-        // Save to session storage
-        saveCart();
-        updateCartDisplay();
-        showCartFloat();
-    }
-
-    function removeFromCart(index) {
-        cart.splice(index, 1);
-        saveCart();
-        updateCartDisplay();
-        
-        if (cart.length === 0) {
-            $('#cartSummaryFloat').fadeOut();
-        }
-    }
-
-    function saveCart() {
-        localStorage.setItem('thetaxi_cart', JSON.stringify(cart));
-        
-        // Also save to server session via AJAX
+        // Add to cart via AJAX to use database
         $.ajax({
-            url: '{{ route("cart.sync") }}',
+            url: '{{ route("cart.add") }}',
             method: 'POST',
             data: {
                 _token: '{{ csrf_token() }}',
-                cart: cart
+                vehicle_id: item.group_id,
+                name: item.group_name,
+                price: item.base_price,
+                days: item.duration_days || 1,
+                search_data: item
             },
             success: function(response) {
-                console.log('Cart synced to server');
+                if (response.success) {
+                    // Load updated cart from server
+                    loadCartFromServer();
+                    showCartFloat();
+                } else {
+                    alert('Error: ' + response.message);
+                }
+            },
+            error: function(xhr) {
+                console.error('Error adding to cart:', xhr);
+                alert('Error adding item to cart. Please try again.');
+            }
+        });
+    }
+
+    function removeFromCart(cartKey) {
+        $.ajax({
+            url: '{{ route("cart.remove") }}',
+            method: 'POST',
+            data: {
+                _token: '{{ csrf_token() }}',
+                cart_key: cartKey
+            },
+            success: function(response) {
+                if (response.success) {
+                    loadCartFromServer();
+                    if (cart.length === 0) {
+                        $('#cartSummaryFloat').fadeOut();
+                    }
+                } else {
+                    alert('Error: ' + response.message);
+                }
+            },
+            error: function(xhr) {
+                console.error('Error removing from cart:', xhr);
+                alert('Error removing item. Please try again.');
+            }
+        });
+    }
+
+    function loadCartFromServer() {
+        $.ajax({
+            url: '{{ route("cart.get") }}',
+            method: 'GET',
+            success: function(response) {
+                if (response.success) {
+                    cart = response.items || [];
+                    updateCartDisplay();
+                    if (cart.length > 0) {
+                        showCartFloat();
+                    }
+                }
+            },
+            error: function(xhr) {
+                console.error('Error loading cart:', xhr);
             }
         });
     }
 
     function loadCart() {
-        const savedCart = localStorage.getItem('thetaxi_cart');
-        if (savedCart) {
-            cart = JSON.parse(savedCart);
-            if (cart.length > 0) {
-                updateCartDisplay();
-                showCartFloat();
-            }
-        }
+        // Load cart from server instead of localStorage
+        loadCartFromServer();
     }
 
     function updateCartDisplay() {
@@ -1384,31 +1404,32 @@
         $('#cartFloatItems').empty();
         
         let total = 0;
-        cart.forEach((item, index) => {
-            const itemTotal = item.base_price * item.quantity * (item.duration_days || 1);
+        Object.keys(cart).forEach((key, index) => {
+            const item = cart[key];
+            const itemTotal = (item.price || item.base_price || 0) * (item.days || item.quantity || 1);
             total += itemTotal;
             
             $('#cartFloatItems').append(`
                 <div class="cart-float-item">
                     <div class="d-flex justify-content-between align-items-start mb-2">
                         <div class="flex-grow-1">
-                            <strong>${item.group_name}</strong>
-                            <div class="small">${item.duration_days || 1} day(s)</div>
-                            <div class="small">${item.from_date} to ${item.to_date}</div>
+                            <strong>${item.name || item.group_name || 'Vehicle Rental'}</strong>
+                            <div class="small">${item.days || item.duration_days || 1} day(s)</div>
+                            <div class="small">${item.pickup_date || item.from_date || ''} to ${item.return_date || item.to_date || ''}</div>
                         </div>
-                        <button type="button" class="btn btn-sm btn-link text-white p-0 ms-2" onclick="removeFromCart(${index})">
+                        <button type="button" class="btn btn-sm btn-link text-white p-0 ms-2" onclick="removeFromCart('${key}')">
                             <i class="bi bi-x-lg"></i>
                         </button>
                     </div>
                     <div class="d-flex justify-content-between">
-                        <span>Qty: ${item.quantity}</span>
-                        <strong>${item.currency} ${itemTotal.toFixed(2)}</strong>
+                        <span>Days: ${item.days || item.quantity || 1}</span>
+                        <strong>$${itemTotal.toFixed(2)}</strong>
                     </div>
                 </div>
             `);
         });
         
-        $('#cartTotalPrice').text((cart[0]?.currency || 'LKR') + ' ' + total.toFixed(2));
+        $('#cartTotalPrice').text('$' + total.toFixed(2));
     }
 
     function showCartFloat() {

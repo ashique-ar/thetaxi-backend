@@ -103,10 +103,10 @@
                             <h5>Our Services</h5>
                         </div>
                         <ul class="widget-list">
-                            <li><a href="{{ route('services', ['type' => 'airport-transfer']) }}">Airport Transfer</a></li>
-                            <li><a href="{{ route('services', ['type' => 'drop-pickup']) }}">Drop & Pickup</a></li>
-                            <li><a href="{{ route('services', ['type' => 'rental-packages']) }}">Car Rental</a></li>
-                            <li><a href="{{ route('services', ['type' => 'corporate-package']) }}">Corporate Services</a></li>
+                            <li><a href="{{ route('services', ['type' => 'airport_transfers']) }}">Airport Transfer</a></li>
+                            <li><a href="{{ route('services', ['type' => 'point_to_point']) }}">Drop & Pickup</a></li>
+                            <li><a href="{{ route('services', ['type' => 'ride_now']) }}">Car Rental</a></li>
+                            <li><a href="{{ route('services', ['type' => 'corporate_package']) }}">Corporate Services</a></li>
                             <li><a href="{{ route('vehicles') }}">Luxury Cars</a></li>
                             <li><a href="{{ route('vehicles') }}">Economy Cars</a></li>
                             <li><a href="{{ route('vehicles') }}">SUVs & Vans</a></li>

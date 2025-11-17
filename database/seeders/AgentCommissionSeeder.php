@@ -94,7 +94,7 @@ class AgentCommissionSeeder extends Seeder
         $serviceTypes = [
             'chauffeur_driven' => [5000, 25000],
             'wedding_hire' => [15000, 75000],
-            'airport_transfer' => [3000, 12000],
+            'airport_transfers' => [3000, 12000],
             'corporate' => [8000, 45000],
             'self_driven' => [4000, 20000],
         ];

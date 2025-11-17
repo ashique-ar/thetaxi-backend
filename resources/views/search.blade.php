@@ -18,16 +18,14 @@
         </div>
     </div>
 
-    <!-- Search Filter & Booking Form Section -->
-    <div class="filter-wrapper hotel mb-40">
+    {{-- <div class="filter-wrapper hotel mb-40">
         <div class="container">
-            <!-- Dynamic Booking Form for modifications -->
             @include('components.booking-form')
         </div>
-    </div>
+    </div> --}}
 
     <!-- Vehicle Results Section -->
-    <div class="package-standard-wrapper pt-60 mb-110">
+    <div class="package-standard-wrapper pt-5 mb-110">
         <div class="container">
             <!-- Results Header -->
             <div class="row mb-4">
@@ -299,12 +297,6 @@
             line-height: 1;
         }
 
-        .price-unit {
-            display: block;
-            font-size: 12px;
-            color: var(--black-color);
-        }
-
         /* Action Buttons */
         .vehicle-actions .btn {
             font-weight: 600;
@@ -563,23 +555,23 @@
         }
 
         /* Service-specific color coding */
-        .vehicle-card[data-service="airport-transfer"] .category-badge {
+        .vehicle-card[data-service="airport_transfers"] .category-badge {
             background: linear-gradient(135deg, #007bff, #0056b3);
         }
 
-        .vehicle-card[data-service="drop-pickup"] .category-badge {
+        .vehicle-card[data-service="point_to_point"] .category-badge {
             background: linear-gradient(135deg, #28a745, #1e7e34);
         }
 
-        .vehicle-card[data-service="rental_package"] .category-badge {
+        .vehicle-card[data-service="ride_now"] .category-badge {
             background: linear-gradient(135deg, #ffc107, #e0a800);
         }
 
-        .vehicle-card[data-service="custom-tour"] .category-badge {
+        .vehicle-card[data-service="custom_tour"] .category-badge {
             background: linear-gradient(135deg, #6f42c1, #5a32a3);
         }
 
-        .vehicle-card[data-service="corporate-transport"] .category-badge {
+        .vehicle-card[data-service="corporate_transport"] .category-badge {
             background: linear-gradient(135deg, #343a40, #212529);
         }
 
@@ -652,26 +644,38 @@
                 const groupId = btn.data('group-id');
                 const searchId = btn.data('search-id');
                 const groupName = btn.data('group-name');
-                const basePrice = parseFloat(btn.data('base-price'));
+                const totalPrice = parseFloat(btn.data('base-price')); // This is the TOTAL price
                 const currency = btn.data('currency');
 
                 // Get booking dates from the search
+                const fromDate = '{{ $search->from_date ?? '' }}';
+                const toDate = '{{ $search->to_date ?? '' }}';
+                
+                // Calculate duration days from dates
+                let durationDays = 1;
+                if (fromDate && toDate) {
+                    const from = new Date(fromDate);
+                    const to = new Date(toDate);
+                    const diffTime = Math.abs(to - from);
+                    durationDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) || 1;
+                }
+                
                 const searchData = {
                     search_id: searchId,
-                    from_date: '{{ $search->from_date ?? '' }}',
-                    to_date: '{{ $search->to_date ?? '' }}',
+                    from_date: fromDate,
+                    to_date: toDate,
                     from_time: '{{ $search->from_time ?? '' }}',
                     to_time: '{{ $search->to_time ?? '' }}',
                     service_type: '{{ $search->service_type ?? '' }}',
                     pickup_location: '{{ $search->pickup_location ?? '' }}',
                     dropoff_location: '{{ $search->dropoff_location ?? '' }}',
-                    duration_days: {{ $search->duration_days ?? 1 }}
+                    duration_days: durationDays
                 };
 
+                // Send to cart WITHOUT price - let backend recalculate
                 addToCart({
                     group_id: groupId,
                     group_name: groupName,
-                    base_price: basePrice,
                     currency: currency,
                     quantity: 1,
                     ...searchData
@@ -699,61 +703,87 @@
         });
 
         function addToCart(item) {
-            // Check if item already exists in cart
-            const existingIndex = cart.findIndex(cartItem =>
-                cartItem.group_id === item.group_id && cartItem.search_id === item.search_id
-            );
-
-            if (existingIndex !== -1) {
-                // Update quantity
-                cart[existingIndex].quantity += item.quantity;
-            } else {
-                // Add new item
-                cart.push(item);
-            }
-
-            // Save to session storage
-            saveCart();
-            updateCartDisplay();
-            showCartFloat();
-        }
-
-        function removeFromCart(index) {
-            cart.splice(index, 1);
-            saveCart();
-            updateCartDisplay();
-
-            if (cart.length === 0) {
-                $('#cartSummaryFloat').fadeOut();
-            }
-        }
-
-        function saveCart() {
-            localStorage.setItem('thetaxi_cart', JSON.stringify(cart));
-
-            // Also save to server session via AJAX
+            // Add to cart via AJAX - let backend recalculate pricing
             $.ajax({
-                url: '{{ route('cart.sync') }}',
+                url: '{{ route("cart.add") }}',
                 method: 'POST',
                 data: {
                     _token: '{{ csrf_token() }}',
-                    cart: cart
+                    vehicle_group_id: item.group_id,
+                    name: item.group_name,
+                    pickup_date: item.from_date,
+                    return_date: item.to_date,
+                    pickup_location: item.pickup_location,
+                    dropoff_location: item.dropoff_location,
+                    service_type: item.service_type,
+                    search_data: item
                 },
                 success: function(response) {
-                    console.log('Cart synced to server');
+                    if (response.success) {
+                        // Load updated cart from server
+                        loadCartFromServer();
+                        showCartFloat();
+                        // Show success message
+                        showSuccessNotification('Vehicle added to cart successfully!');
+                    } else {
+                        showErrorNotification('Error: ' + response.message);
+                    }
+                },
+                error: function(xhr) {
+                    console.error('Error adding to cart:', xhr);
+                    const errorMsg = xhr.responseJSON?.message || 'Error adding item to cart. Please try again.';
+                    showErrorNotification(errorMsg);
+                }
+            });
+        }
+
+        function removeFromCart(cartKey) {
+            $.ajax({
+                url: '{{ route("cart.remove") }}',
+                method: 'POST',
+                data: {
+                    _token: '{{ csrf_token() }}',
+                    cart_key: cartKey
+                },
+                success: function(response) {
+                    if (response.success) {
+                        loadCartFromServer();
+                        if (cart.length === 0) {
+                            $('#cartSummaryFloat').fadeOut();
+                        }
+                    } else {
+                        alert('Error: ' + response.message);
+                    }
+                },
+                error: function(xhr) {
+                    console.error('Error removing from cart:', xhr);
+                    alert('Error removing item. Please try again.');
+                }
+            });
+        }
+
+        function loadCartFromServer() {
+            $.ajax({
+                url: '{{ route("cart.get") }}',
+                method: 'GET',
+                success: function(response) {
+                    if (response.success) {
+                        cart = response.items || [];
+                        updateCartDisplay();
+                        if (cart.length > 0) {
+                            showCartFloat();
+                        }
+                    }
+                },
+                error: function(xhr) {
+                    console.error('Error loading cart:', xhr);
                 }
             });
         }
 
         function loadCart() {
-            const savedCart = localStorage.getItem('thetaxi_cart');
-            if (savedCart) {
-                cart = JSON.parse(savedCart);
-                if (cart.length > 0) {
-                    updateCartDisplay();
-                    showCartFloat();
-                }
-            }
+            // Load cart from server instead of localStorage
+            loadCartFromServer();
         }
 
         function updateCartDisplay() {
@@ -763,35 +793,62 @@
             $cartItems.empty();
 
             let total = 0;
-            cart.forEach((item, index) => {
-                const itemTotal = item.base_price * item.quantity * (item.duration_days || 1);
+            Object.keys(cart).forEach((key, index) => {
+                const item = cart[key];
+                const itemTotal = (item.price || item.base_price || 0) * (item.days || item.quantity || 1);
                 total += itemTotal;
 
                 $cartItems.append(`
                 <div class="cart-float-item">
                     <div class="d-flex justify-content-between align-items-start mb-2">
                         <div class="flex-grow-1">
-                            <strong>${item.group_name}</strong>
-                            <div class="small">${item.duration_days || 1} day(s)</div>
-                            <div class="small">${item.from_date} to ${item.to_date}</div>
+                            <strong>${item.name || item.group_name || 'Vehicle Rental'}</strong>
+                            <div class="small">${item.days || item.duration_days || 1} day(s)</div>
+                            <div class="small">${item.pickup_date || item.from_date || ''} to ${item.return_date || item.to_date || ''}</div>
                         </div>
-                        <button type="button" class="btn btn-sm btn-link text-white p-0 ms-2" onclick="removeFromCart(${index})">
+                        <button type="button" class="btn btn-sm btn-link text-white p-0 ms-2" onclick="removeFromCart('${key}')">
                             <i class="bi bi-x-lg"></i>
                         </button>
                     </div>
                     <div class="d-flex justify-content-between">
-                        <span>Qty: ${item.quantity}</span>
-                        <strong>${item.currency} ${itemTotal.toFixed(2)}</strong>
+                        <span>Per day: LKR ${(item.price || 0).toFixed(0)}</span>
+                        <strong>LKR ${itemTotal.toFixed(0)}</strong>
                     </div>
                 </div>
             `);
             });
 
-            $cartTotal.text(cart[0]?.currency + ' ' + total.toFixed(2));
+            $('#cartTotalPrice').text('LKR ' + total.toFixed(0));
         }
 
         function showCartFloat() {
             $('#cartSummaryFloat').fadeIn();
+        }
+
+        function showSuccessNotification(message) {
+            // Create bootstrap alert
+            const alert = $(`
+                <div class="alert alert-success alert-dismissible fade show" role="alert" style="position: fixed; top: 20px; right: 20px; z-index: 1100; min-width: 300px;">
+                    <i class="bi bi-check-circle-fill me-2"></i>
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            `);
+            $('body').append(alert);
+            setTimeout(() => alert.alert('close'), 4000);
+        }
+
+        function showErrorNotification(message) {
+            // Create bootstrap alert
+            const alert = $(`
+                <div class="alert alert-danger alert-dismissible fade show" role="alert" style="position: fixed; top: 20px; right: 20px; z-index: 1100; min-width: 300px;">
+                    <i class="bi bi-exclamation-circle-fill me-2"></i>
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            `);
+            $('body').append(alert);
+            setTimeout(() => alert.alert('close'), 5000);
         }
 
         function updateAllPrices() {

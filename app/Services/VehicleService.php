@@ -33,7 +33,7 @@ class VehicleService
      */
     public function getFeaturedVehicles(array $params = []): array
     {
-        $serviceType = $params['service_type'] ?? 'rental_package';
+        $serviceType = $params['service_type'] ?? 'ride_now';
         $limit = $params['limit'] ?? 8;
         $fromDate = isset($params['from_date']) ? Carbon::parse($params['from_date']) : Carbon::now();
         $toDate = isset($params['to_date']) ? Carbon::parse($params['to_date']) : Carbon::now()->addDay();
@@ -212,18 +212,18 @@ class VehicleService
     protected function getServiceFeatures(string $serviceType): array
     {
         $features = [
-            'rental_package' => [
+            'ride_now' => [
                 'Self Drive Available',
                 'With Driver Available',
                 'Flexible Duration',
                 'Insurance Included'
             ],
-            'airport-transfer' => [
+            'airport_transfers' => [
                 'Professional Driver',
                 'Flight Tracking',
                 'Meet & Greet'
             ],
-            'drop-pickup' => [
+            'point_to_point' => [
                 'Door to Door Service',
                 'Professional Driver',
                 'Flexible Timing'
@@ -235,7 +235,7 @@ class VehicleService
             ]
         ];
 
-        return $features[$serviceType] ?? $features['rental_package'];
+        return $features[$serviceType] ?? $features['ride_now'];
     }
 
     /**
@@ -247,7 +247,7 @@ class VehicleService
         // Could be based on popularity, ratings, etc.
         
         // For rental packages, recommend SUVs and premium vehicles
-        if ($serviceType === 'rental_package') {
+        if ($serviceType === 'ride_now') {
             $categoryName = $group->category?->name ?? '';
             return in_array(strtolower($categoryName), ['suv', 'premium', 'luxury']);
         }
@@ -261,8 +261,8 @@ class VehicleService
     protected function includesDriver(string $serviceType): bool
     {
         return in_array($serviceType, [
-            'airport-transfer',
-            'drop-pickup', 
+            'airport_transfers',
+            'point_to_point', 
             'corporate-transport',
             'custom-tour'
         ]);
@@ -274,8 +274,8 @@ class VehicleService
     protected function includesFuel(string $serviceType): bool
     {
         return in_array($serviceType, [
-            'airport-transfer',
-            'drop-pickup',
+            'airport_transfers',
+            'point_to_point',
             'corporate-transport',
             'custom-tour'
         ]);
@@ -290,7 +290,7 @@ class VehicleService
         $toDate = $params['to_date'] ?? Carbon::now()->addDay()->format('Y-m-d');
         $fromTime = $params['from_time'] ?? '09:00';
         $toTime = $params['to_time'] ?? '18:00';
-        $serviceType = $params['service_type'] ?? 'rental_package';
+        $serviceType = $params['service_type'] ?? 'ride_now';
 
         return [
             'id' => Str::uuid(),

@@ -2,12 +2,9 @@
 
 namespace App\Http\Controllers;
 
-use App\Services\BookingSearchService;
 use App\Services\BookingFlowService;
 use App\Services\CurrencyService;
 use App\Services\DiscountService;
-use App\Services\ServiceMappingService;
-use App\Services\DynamicServiceConfigurationService;
 use App\Models\BookingSearch;
 use App\Models\Vehicle\VehicleGroup;
 use App\Models\ServiceType;
@@ -25,25 +22,20 @@ class BookingController extends Controller
     protected BookingFlowService $bookingFlowService;
     protected CurrencyService $currencyService;
     protected DiscountService $discountService;
-    protected ServiceMappingService $serviceMappingService;
-    protected DynamicServiceConfigurationService $dynamicServiceConfig;
     
     public function __construct(
         BookingFlowService $bookingFlowService,
         CurrencyService $currencyService,
-        DiscountService $discountService,
-        ServiceMappingService $serviceMappingService,
-        DynamicServiceConfigurationService $dynamicServiceConfig
+        DiscountService $discountService
     ) {
         $this->bookingFlowService = $bookingFlowService;
         $this->currencyService = $currencyService;
         $this->discountService = $discountService;
-        $this->serviceMappingService = $serviceMappingService;
-        $this->dynamicServiceConfig = $dynamicServiceConfig;
     }
     
     /**
-     * Handle enhanced booking search request with advanced pricing
+     * Handle booking search request
+     * Maps frontend service type code to ServiceType and calls BookingFlowService
      */
     public function search(BookingSearchRequest $request)
     {
@@ -51,19 +43,12 @@ class BookingController extends Controller
             // Get or create session ID for this search
             $sessionId = $this->getOrCreateSessionId();
 
-            // Get service mapping information
+            // Map frontend service type code to backend ServiceType
             $frontendService = $request->input('service_type');
-            $backendServiceType = $this->serviceMappingService->getBackendServiceType($request->all());
-            $pricingContext = $this->serviceMappingService->getServicePricingContext($frontendService, $request->all());
+            $serviceType = $this->resolveServiceType($frontendService);
 
-            Log::info('Service mapping resolved', [
-                'frontend_service' => $frontendService,
-                'backend_service_type' => $backendServiceType ? $backendServiceType->code : 'not found',
-                'pricing_context' => $pricingContext,
-                'request_data' => $request->all()
-            ]);
-            if (!$backendServiceType) {
-                Log::warning('Backend service type not found for frontend service', [
+            if (!$serviceType) {
+                Log::warning('Service type not found for frontend service', [
                     'frontend_service' => $frontendService,
                     'request_data' => $request->all()
                 ]);
@@ -74,21 +59,19 @@ class BookingController extends Controller
             }
 
             // Transform frontend request data to BookingFlowService format
-            $searchParams = $this->transformSearchParams($request->all(), $backendServiceType);
+            $searchParams = $this->transformSearchParams($request->all(), $serviceType);
             
             // Store search params and context in session for results page
             session()->put('current_search_params', $searchParams);
             session()->put('search_timestamp', now());
             session()->put('session_id', $sessionId);
-            session()->put('backend_service_type', $backendServiceType->code);
-            session()->put('backend_service_type_id',  $backendServiceType->id);
+            session()->put('backend_service_type_id', $serviceType->id);
             session()->put('frontend_service', $frontendService);
-            session()->put('pricing_context', $pricingContext);
 
             // Log search activity for analytics
             Log::info('Public booking search initiated', [
                 'frontend_service' => $frontendService,
-                'backend_service' => $backendServiceType->code,
+                'service_type_id' => $serviceType->id,
                 'session_id' => $sessionId,
                 'search_params' => $searchParams,
                 'user_ip' => $request->ip()
@@ -112,25 +95,36 @@ class BookingController extends Controller
     }
     
     /**
-     * Transform frontend search parameters to BookingFlowService format
-     * Maps frontend service types and field names to backend format
+     * Resolve frontend service type code to ServiceType model
+     * Maps frontend codes: airport_transfers, point_to_point, ride_now, wedding_hire, corporate
      */
-    protected function transformSearchParams(array $requestData, $backendServiceType): array
+    protected function resolveServiceType(string $code): ?ServiceType
+    {
+        // dd(ServiceType::get()->toArray());
+        return ServiceType::where('code', $code)
+            ->where('is_active', true)
+            ->first();
+    }
+    
+    
+    /**
+     * Transform frontend search parameters to BookingFlowService format
+     * Handles field mapping for different service types
+     */
+    protected function transformSearchParams(array $requestData, ServiceType $serviceType): array
     {
         $params = [
-            // Pass UUID as service_type for BookingFlowService compatibility
-            // It will try to resolve by ID first, then fallback to code
-            'service_type' => $backendServiceType->id,
-            'service_type_id' => $backendServiceType->id,
+            'service_type' => $serviceType->id,
+            'service_type_id' => $serviceType->id,
             'page' => 1,
             'per_page' => 50,
         ];
 
-        // Handle different frontend service types
-        $frontendService = $requestData['service_type'] ?? 'airport-transfer';
+        // Handle different frontend service types by code
+        $code = $serviceType->code;
         
-        switch ($frontendService) {
-            case 'airport-transfer':
+        switch ($code) {
+            case 'airport_transfers':
                 $params['from_date'] = Carbon::parse($requestData['date'])->format('Y-m-d');
                 $params['to_date'] = Carbon::parse($requestData['date'])->format('Y-m-d');
                 $params['from_time'] = $requestData['time'] ?? '00:00';
@@ -139,19 +133,18 @@ class BookingController extends Controller
                 $params['dropoff_location'] = $this->formatLocation($requestData, 'to');
                 break;
                 
-            case 'drop-pickup':
-            case 'point-to-point':
+            case 'point_to_point':
                 $params['from_date'] = Carbon::parse($requestData['date'])->format('Y-m-d');
                 $params['to_date'] = isset($requestData['return_date']) 
                     ? Carbon::parse($requestData['return_date'])->format('Y-m-d')
                     : Carbon::parse($requestData['date'])->format('Y-m-d');
                 $params['from_time'] = $requestData['time'] ?? '00:00';
                 $params['to_time'] = $requestData['return_time'] ?? $requestData['time'] ?? '00:00';
-                $params['pickup_location'] = $this->formatLocation($requestData, 'pickup');
-                $params['dropoff_location'] = $this->formatLocation($requestData, 'dropoff');
+                $params['pickup_location'] = $this->formatLocation($requestData, 'from');
+                $params['dropoff_location'] = $this->formatLocation($requestData, 'to');
                 break;
                 
-            case 'rental-packages':
+            case 'ride_now':
                 $params['from_date'] = Carbon::parse($requestData['pickup_date'])->format('Y-m-d');
                 $params['to_date'] = Carbon::parse($requestData['dropoff_date'])->format('Y-m-d');
                 $params['from_time'] = $requestData['pickup_time'] ?? '00:00';
@@ -160,10 +153,29 @@ class BookingController extends Controller
                 $params['dropoff_location'] = $this->formatLocation($requestData, 'dropoff');
                 $params['package_type'] = $requestData['package_type'] ?? 'multi-day';
                 break;
+
+            case 'wedding_hire':
+                $params['from_date'] = Carbon::parse($requestData['date'])->format('Y-m-d');
+                $params['to_date'] = Carbon::parse($requestData['date'])->format('Y-m-d');
+                $params['from_time'] = $requestData['time'] ?? '00:00';
+                $params['to_time'] = $requestData['time'] ?? '23:59';
+                $params['pickup_location'] = $this->formatLocation($requestData, 'from');
+                $params['dropoff_location'] = $this->formatLocation($requestData, 'to');
+                $params['package_hours'] = $requestData['package_hours'] ?? 6;
+                break;
+
+            case 'corporate':
+                $params['from_date'] = Carbon::parse($requestData['date'])->format('Y-m-d');
+                $params['to_date'] = Carbon::parse($requestData['date'])->format('Y-m-d');
+                $params['from_time'] = $requestData['time'] ?? '00:00';
+                $params['to_time'] = $requestData['time'] ?? '23:59';
+                $params['pickup_location'] = $this->formatLocation($requestData, 'from');
+                $params['contract_type'] = $requestData['contract_type'] ?? 'weekly';
+                break;
         }
         
         // Add common parameters
-        $params['passengers'] = $requestData['passengers'] ?? 1;
+        $params['passengers'] = (int)($requestData['passengers'] ?? 1);
         
         return $params;
     }
@@ -241,13 +253,49 @@ class BookingController extends Controller
             ];
             
             // Prepare search object for view compatibility (include ID for blade template)
-            $search = (object) [
-                'id' => session('session_id'), // Add ID for blade compatibility
-                'search_params' => $searchParams,
-                'pricing_context' => $pricingContext,
-                'frontend_service' => $frontendService,
-                'created_at' => $searchTimestamp,
-            ];
+            // Map all search params to individual properties for form binding
+            $search = (object) array_merge(
+                [
+                    'id' => session('session_id'), // Add ID for blade compatibility
+                    'search_params' => $searchParams,
+                    'pricing_context' => $pricingContext,
+                    'frontend_service' => $frontendService,
+                    'service_type' => $frontendService, // Form needs this
+                    'created_at' => $searchTimestamp,
+                ],
+                // Flatten search_params so form fields can access properties
+                [
+                    'from_date' => $searchParams['from_date'] ?? null,
+                    'to_date' => $searchParams['to_date'] ?? null,
+                    'from_time' => $searchParams['from_time'] ?? null,
+                    'to_time' => $searchParams['to_time'] ?? null,
+                    'pickup_location' => is_array($searchParams['pickup_location'] ?? null) 
+                        ? $searchParams['pickup_location']['address'] ?? '' 
+                        : $searchParams['pickup_location'] ?? '',
+                    'pickup_latitude' => is_array($searchParams['pickup_location'] ?? null)
+                        ? $searchParams['pickup_location']['latitude'] ?? null
+                        : null,
+                    'pickup_longitude' => is_array($searchParams['pickup_location'] ?? null)
+                        ? $searchParams['pickup_location']['longitude'] ?? null
+                        : null,
+                    'dropoff_location' => is_array($searchParams['dropoff_location'] ?? null)
+                        ? $searchParams['dropoff_location']['address'] ?? ''
+                        : $searchParams['dropoff_location'] ?? '',
+                    'dropoff_latitude' => is_array($searchParams['dropoff_location'] ?? null)
+                        ? $searchParams['dropoff_location']['latitude'] ?? null
+                        : null,
+                    'dropoff_longitude' => is_array($searchParams['dropoff_location'] ?? null)
+                        ? $searchParams['dropoff_location']['longitude'] ?? null
+                        : null,
+                    'duration_days' => isset($searchParams['to_date'], $searchParams['from_date'])
+                        ? max(1, Carbon::parse($searchParams['to_date'])->diffInDays(Carbon::parse($searchParams['from_date'])))
+                        : 1,
+                    'passengers' => $searchParams['passengers'] ?? 1,
+                    'package_type' => $searchParams['package_type'] ?? null,
+                    'package_hours' => $searchParams['package_hours'] ?? null,
+                    'contract_type' => $searchParams['contract_type'] ?? null,
+                ]
+            );
             
             // Get additional data for enhanced UI
             $additionalData = [
@@ -301,6 +349,7 @@ class BookingController extends Controller
                 'total_amount' => $pricingInfo['total_amount'] ?? 0,
                 'currency' => $pricingInfo['currency'] ?? 'LKR',
                 'breakdown' => $pricingInfo['breakdown'] ?? [],
+                'duration_info' => $pricingInfo['duration_info'] ?? null,
             ] : [];
             
             // Build result using the ACTUAL structure from BookingFlowService
@@ -326,7 +375,7 @@ class BookingController extends Controller
                 'available_count' => $groupData['available_count'] ?? 0,
                 'total_count' => $groupData['total_count'] ?? 0,
                 'recommended' => false, // Can be enhanced later
-                'service_features' => $this->getServiceFeatures($searchParams['service_type'] ?? 'airport-transfer'),
+                'service_features' => $this->getServiceFeatures($searchParams['service_type'] ?? 'airport_transfers'),
                 'savings_info' => [],
                 'payment_options' => $this->getAvailablePaymentOptions($formattedPricing),
             ];
@@ -828,7 +877,8 @@ class BookingController extends Controller
     {
         try {
             // Increment view count
-            $search->increment('view_count');
+            $search->view_count = ($search->view_count ?? 0) + 1;
+            $search->save();
             
             // Log for analytics
             Log::info('Search results viewed', [
@@ -1080,21 +1130,49 @@ class BookingController extends Controller
     }
 
     /**
-     * Get service features based on frontend service type
+     * Get service features based on service type code
      */
-    private function getServiceFeatures(string $serviceType): array
+    private function getServiceFeatures(string $code): array
     {
-        $serviceDescriptions = $this->serviceMappingService->getAllFrontendServices();
+        $features = [
+            'airport_transfers' => [
+                'Professional Airport Transfers',
+                'Door-to-Door Service',
+                'Meet & Greet Available',
+                'Real-time Tracking',
+                'Affordable Rates'
+            ],
+            'point_to_point' => [
+                'Point-to-Point Transfers',
+                'Reliable Service',
+                'Professional Drivers',
+                'Real-time GPS Tracking',
+                'Competitive Pricing'
+            ],
+            'ride_now' => [
+                'Flexible Rental Packages',
+                'Self-Drive Options',
+                'Long-Term Discounts',
+                'Flexible Drop-off',
+                'Insurance Included'
+            ],
+            'wedding_hire' => [
+                'Special Occasion Service',
+                'Professional Drivers',
+                'Decorated Vehicles',
+                'Flexible Timing',
+                'Premium Service'
+            ],
+            'corporate' => [
+                'Corporate Accounts',
+                'Contract Pricing',
+                'Reliable Service',
+                'Professional Drivers',
+                'Expense Tracking'
+            ]
+        ];
         
-        // Get features from ServiceMappingService descriptions
-        $features = $serviceDescriptions[$serviceType]['features'] ?? [];
-        
-        // Add default features if none found
-        if (empty($features)) {
-            $features = ['Professional Service', 'Reliable Transport', 'Competitive Pricing'];
-        }
-        
-        return $features;
+        return $features[$code] ?? ['Professional Service', 'Reliable Transport', 'Competitive Pricing'];
     }
 
     /**
@@ -1103,14 +1181,16 @@ class BookingController extends Controller
     public function getServiceConfiguration()
     {
         try {
-            $serviceTypes = $this->dynamicServiceConfig->getServiceTypesByCategory();
-            $frontendOptions = $this->dynamicServiceConfig->getFrontendServiceOptions();
+            // Get all active service types from database
+            $serviceTypes = ServiceType::where('is_active', true)
+                ->get(['id', 'name', 'slug', 'description', 'code'])
+                ->groupBy('code')
+                ->toArray();
 
             return response()->json([
                 'success' => true,
                 'data' => [
                     'service_types' => $serviceTypes,
-                    'frontend_options' => $frontendOptions,
                     'categories' => array_keys($serviceTypes)
                 ]
             ]);
@@ -1133,14 +1213,27 @@ class BookingController extends Controller
     public function getServiceFormConfig(Request $request, string $serviceCode)
     {
         try {
-            $config = $this->dynamicServiceConfig->getServiceFormConfiguration($serviceCode);
-            
-            if (isset($config['error'])) {
+            $serviceType = ServiceType::where('code', $serviceCode)
+                ->orWhere('code', $serviceCode)
+                ->first();
+
+            if (!$serviceType) {
                 return response()->json([
                     'success' => false,
-                    'message' => $config['error']
+                    'message' => 'Service type not found'
                 ], 404);
             }
+
+            // Return service type configuration for form building
+            $config = [
+                'service_id' => $serviceType->id,
+                'service_name' => $serviceType->name,
+                'service_slug' => $serviceType->slug,
+                'service_code' => $serviceType->code,
+                'description' => $serviceType->description,
+                'form_type' => $this->getFormType($serviceType->code),
+                'fields' => $this->getFormFields($serviceType->code)
+            ];
 
             return response()->json([
                 'success' => true,
@@ -1165,7 +1258,7 @@ class BookingController extends Controller
     public function getServiceValidationRules(string $serviceCode)
     {
         try {
-            $rules = $this->dynamicServiceConfig->getServiceValidationRules($serviceCode);
+            $rules = $this->buildValidationRules($serviceCode);
 
             return response()->json([
                 'success' => true,
@@ -1185,6 +1278,110 @@ class BookingController extends Controller
                 'message' => 'Unable to load validation rules'
             ], 500);
         }
+    }
+
+    /**
+     * Get form type for service type
+     */
+    private function getFormType(string $code): string
+    {
+        return match($code) {
+            'airport_transfers', 'point_to_point' => 'transfer',
+            'ride_now' => 'rental',
+            'wedding_hire' => 'special_occasion',
+            'corporate' => 'inquiry',
+            default => 'generic'
+        };
+    }
+
+    /**
+     * Get form fields for service type
+     */
+    private function getFormFields(string $code): array
+    {
+        return match($code) {
+            'airport_transfers' => [
+                ['name' => 'from', 'label' => 'From Location', 'type' => 'text', 'required' => true],
+                ['name' => 'to', 'label' => 'To Location', 'type' => 'text', 'required' => true],
+                ['name' => 'date', 'label' => 'Date', 'type' => 'date', 'required' => true],
+                ['name' => 'time', 'label' => 'Time', 'type' => 'time', 'required' => true],
+                ['name' => 'passengers', 'label' => 'Passengers', 'type' => 'number', 'required' => true],
+            ],
+            'point_to_point' => [
+                ['name' => 'from', 'label' => 'From Location', 'type' => 'text', 'required' => true],
+                ['name' => 'to', 'label' => 'To Location', 'type' => 'text', 'required' => true],
+                ['name' => 'date', 'label' => 'Date', 'type' => 'date', 'required' => true],
+                ['name' => 'time', 'label' => 'Time', 'type' => 'time', 'required' => true],
+                ['name' => 'passengers', 'label' => 'Passengers', 'type' => 'number', 'required' => true],
+            ],
+            'ride_now' => [
+                ['name' => 'pickup_date', 'label' => 'Pickup Date', 'type' => 'date', 'required' => true],
+                ['name' => 'dropoff_date', 'label' => 'Dropoff Date', 'type' => 'date', 'required' => true],
+                ['name' => 'pickup_time', 'label' => 'Pickup Time', 'type' => 'time', 'required' => true],
+                ['name' => 'dropoff_time', 'label' => 'Dropoff Time', 'type' => 'time', 'required' => true],
+                ['name' => 'passengers', 'label' => 'Passengers', 'type' => 'number', 'required' => true],
+                ['name' => 'package_type', 'label' => 'Package Type', 'type' => 'select', 'required' => true],
+            ],
+            'wedding_hire' => [
+                ['name' => 'date', 'label' => 'Event Date', 'type' => 'date', 'required' => true],
+                ['name' => 'time', 'label' => 'Start Time', 'type' => 'time', 'required' => true],
+                ['name' => 'package_hours', 'label' => 'Package Hours', 'type' => 'number', 'required' => true],
+                ['name' => 'passengers', 'label' => 'Passengers', 'type' => 'number', 'required' => true],
+            ],
+            'corporate' => [
+                ['name' => 'company_name', 'label' => 'Company Name', 'type' => 'text', 'required' => true],
+                ['name' => 'contact_person', 'label' => 'Contact Person', 'type' => 'text', 'required' => true],
+                ['name' => 'email', 'label' => 'Email', 'type' => 'email', 'required' => true],
+                ['name' => 'phone', 'label' => 'Phone', 'type' => 'tel', 'required' => true],
+                ['name' => 'contract_type', 'label' => 'Contract Type', 'type' => 'select', 'required' => true],
+            ],
+            default => []
+        };
+    }
+
+    /**
+     * Build validation rules for service type
+     */
+    private function buildValidationRules(string $code): array
+    {
+        return match($code) {
+            'airport_transfers' => [
+                'from' => 'required|string|max:255',
+                'to' => 'required|string|max:255',
+                'date' => 'required|date_format:d/m/Y|after:today',
+                'time' => 'required|date_format:H:i',
+                'passengers' => 'required|integer|min:1|max:10',
+            ],
+            'point_to_point' => [
+                'from' => 'required|string|max:255',
+                'to' => 'required|string|max:255',
+                'date' => 'required|date_format:d/m/Y|after:today',
+                'time' => 'required|date_format:H:i',
+                'passengers' => 'required|integer|min:1|max:10',
+            ],
+            'ride_now' => [
+                'pickup_date' => 'required|date_format:d/m/Y|after:today',
+                'dropoff_date' => 'required|date_format:d/m/Y|after:pickup_date',
+                'pickup_time' => 'required|date_format:H:i',
+                'dropoff_time' => 'required|date_format:H:i',
+                'passengers' => 'required|integer|min:1|max:10',
+                'package_type' => 'required|in:hourly,daily,weekly,monthly',
+            ],
+            'wedding_hire' => [
+                'date' => 'required|date_format:d/m/Y|after:today',
+                'time' => 'required|date_format:H:i',
+                'package_hours' => 'required|integer|in:6,8,12',
+                'passengers' => 'required|integer|min:1|max:10',
+            ],
+            'corporate' => [
+                'company_name' => 'required|string|max:255',
+                'contact_person' => 'required|string|max:255',
+                'email' => 'required|email|max:255',
+                'phone' => 'required|string|max:20',
+                'contract_type' => 'required|in:weekly,monthly,quarterly,annual',
+            ],
+            default => []
+        };
     }
 
     /**

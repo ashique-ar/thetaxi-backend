@@ -1,6 +1,30 @@
+@php
+    // Helper function to safely get search property
+    $getSearchProp = function($prop, $default = null) use ($search) {
+        // First check old() helper for form resubmissions
+        $oldValue = old($prop);
+        if ($oldValue !== null) {
+            return $oldValue;
+        }
+        
+        // Then check search object
+        if (!isset($search)) return $default;
+        if (is_object($search) && property_exists($search, $prop)) {
+            return $search->$prop;
+        }
+        if (is_array($search) && isset($search[$prop])) {
+            return $search[$prop];
+        }
+        return $default;
+    };
+    
+    // Get current service type
+    $currentServiceType = $getSearchProp('service_type', 'airport_transfers');
+@endphp
+
 <div class="filter-wrapper">
     <ul class="filter-item-list">
-        <li class="single-item active" data-service="airport-transfer">
+        <li class="single-item {{ $currentServiceType === 'airport_transfers' ? 'active' : '' }}" data-service="airport_transfers">
             <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path
                     d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" />
@@ -8,21 +32,21 @@
             <span>Airport Transfer</span>
         </li>
 
-        <li class="single-item" data-service="rental-packages">
+        <li class="single-item {{ $currentServiceType === 'ride_now' ? 'active' : '' }}" data-service="ride_now">
             <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path
                     d="M17 5h-2v2h2v2h2V7h2V5h-2V3h-2v2zm-2 4V7H9.01L3 13.01V19c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-6h-6zM5 19v-4.99l4-4 4 4L9 18H5zm14 0h-6v-4l-2-2-4 4v2h12z" />
             </svg>
             <span>Rental Packages</span>
         </li>
-        <li class="single-item" data-service="drop-pickup" data-redirect="{{ route('point-to-point') }}">
+        <li class="single-item {{ $currentServiceType === 'point_to_point' ? 'active' : '' }}" data-service="point_to_point" data-redirect="{{ route('point-to-point') }}">
             <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path
                     d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z" />
             </svg>
             <span>Point to Point</span>
         </li>
-        <li class="single-item" data-service="corporate-transport" data-redirect="{{ route('corporate-transfers') }}">
+        <li class="single-item {{ $currentServiceType === 'corporate_transport' ? 'active' : '' }}" data-service="corporate_transport" data-redirect="{{ route('corporate-transfers') }}">
             <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path
                     d="M12 7V3H2v18h20V7H12zM6 19H4v-2h2v2zm0-4H4v-2h2v2zm0-4H4V9h2v2zm0-4H4V5h2v2zm4 12H8v-2h2v2zm0-4H8v-2h2v2zm0-4H8V9h2v2zm0-4H8V5h2v2zm10 12h-8v-2h2v-2h-2v-2h2v-2h-2V9h8v10zm-2-8h-2v2h2v-2zm0 4h-2v2h2v-2z" />
@@ -54,10 +78,10 @@
         @endif
 
         <!-- Airport Transfer Form -->
-        <form id="airport-transfer-form" class="filter-input show" data-service="airport-transfer"
+        <form id="airport_transfers-form" class="filter-input {{ $currentServiceType === 'airport_transfers' ? 'show' : '' }}" data-service="airport_transfers"
             action="{{ route('booking.search') }}" method="POST">
             @csrf
-            <input type="hidden" name="service_type" value="airport-transfer">
+            <input type="hidden" name="service_type" value="airport_transfers">
 
             <!-- Transfer Type Selection - Compact Toggle Style -->
             <div class="transfer-type-selector">
@@ -90,10 +114,13 @@
                 </svg>
                 <div class="custom-select-dropdown">
                     <input type="text" name="from" placeholder="From (Airport/Hotel/Address)"
-                        class="location-search @error('from') is-invalid @enderror" value="{{ old('from', 'Colombo BIA Airport') }}"
+                        class="location-search @error('from') is-invalid @enderror" 
+                        value="{{ old('from', (isset($search) && isset($search->pickup_location)) ? $search->pickup_location : 'Colombo BIA Airport') }}"
                         required>
-                    <input type="hidden" name="from_lat" class="location-lat" value="{{ old('from_lat', '7.1808') }}">
-                    <input type="hidden" name="from_lng" class="location-lng" value="{{ old('from_lng', '79.8841') }}">
+                    <input type="hidden" name="from_lat" class="location-lat" 
+                        value="{{ old('from_lat', (isset($search) && isset($search->pickup_latitude)) ? $search->pickup_latitude : '7.1808') }}">
+                    <input type="hidden" name="from_lng" class="location-lng" 
+                        value="{{ old('from_lng', (isset($search) && isset($search->pickup_longitude)) ? $search->pickup_longitude : '79.8841') }}">
                 </div>
                 @error('from')
                     <span class="text-danger small">{{ $message }}</span>
@@ -112,9 +139,12 @@
                 </svg>
                 <div class="custom-select-dropdown">
                     <input type="text" name="to" placeholder="To (Airport/Hotel/Address)"
-                        class="location-search @error('to') is-invalid @enderror" value="{{ old('to', 'Colombo, Sri Lanka') }}" required>
-                    <input type="hidden" name="to_lat" class="location-lat" value="{{ old('to_lat', '6.9271') }}">
-                    <input type="hidden" name="to_lng" class="location-lng" value="{{ old('to_lng', '79.8612') }}">
+                        class="location-search @error('to') is-invalid @enderror" 
+                        value="{{ old('to', (isset($search) && isset($search->dropoff_location)) ? $search->dropoff_location : 'Colombo, Sri Lanka') }}" required>
+                    <input type="hidden" name="to_lat" class="location-lat" 
+                        value="{{ old('to_lat', (isset($search) && isset($search->dropoff_latitude)) ? $search->dropoff_latitude : '6.9271') }}">
+                    <input type="hidden" name="to_lng" class="location-lng" 
+                        value="{{ old('to_lng', (isset($search) && isset($search->dropoff_longitude)) ? $search->dropoff_longitude : '79.8612') }}">
                 </div>
                 @error('to')
                     <span class="text-danger small">{{ $message }}</span>
@@ -128,7 +158,8 @@
                         d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z" />
                 </svg>
                 <input type="text" name="date" placeholder="DD/MM/YYYY"
-                    class="custom-datepicker @error('date') is-invalid @enderror" value="{{ old('date', date('d/m/Y')) }}"
+                    class="custom-datepicker @error('date') is-invalid @enderror" 
+                    value="{{ old('date', (isset($search) && isset($search->from_date) && $search->from_date) ? date('d/m/Y', strtotime($search->from_date)) : date('d/m/Y')) }}"
                     required autocomplete="off">
                 @error('date')
                     <span class="text-danger small">{{ $message }}</span>
@@ -142,7 +173,8 @@
                         d="M9 0C4.03 0 0 4.03 0 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm.5-12H8v5l4.25 2.52.75-1.23-3.5-2.08V4z" />
                 </svg>
                 <div class="custom-select-dropdown">
-                    <input type="time" name="time" value="{{ old('time', '12:00') }}"
+                    <input type="time" name="time" 
+                        value="{{ old('time', (isset($search) && isset($search->from_time)) ? $search->from_time : '12:00') }}"
                         class="@error('time') is-invalid @enderror" required>
                 </div>
                 @error('time')
@@ -176,10 +208,10 @@
         </form>
 
         <!-- Rental Packages Form -->
-        <form id="rental-packages-form" class="filter-input" data-service="rental-packages"
+        <form id="ride_nows-form" class="filter-input {{ $currentServiceType === 'ride_now' ? 'show' : '' }}" data-service="ride_now"
             action="{{ route('booking.search') }}" method="POST">
             @csrf
-            <input type="hidden" name="service_type" value="rental-packages">
+            <input type="hidden" name="service_type" value="ride_now">
 
             <!-- Pickup Location -->
             <div class="single-search-box location-search-box">
@@ -193,10 +225,13 @@
                 </svg>
                 <div class="custom-select-dropdown">
                     <input type="text" name="pickup" placeholder="Pick up Location"
-                        class="location-search @error('pickup') is-invalid @enderror" value="{{ old('pickup', 'Colombo, Sri Lanka') }}"
+                        class="location-search @error('pickup') is-invalid @enderror" 
+                        value="{{ old('pickup', (isset($search) && isset($search->pickup_location)) ? $search->pickup_location : 'Colombo, Sri Lanka') }}"
                         required>
-                    <input type="hidden" name="pickup_lat" class="location-lat" value="{{ old('pickup_lat', '6.9271') }}">
-                    <input type="hidden" name="pickup_lng" class="location-lng" value="{{ old('pickup_lng', '79.8612') }}">
+                    <input type="hidden" name="pickup_lat" class="location-lat" 
+                        value="{{ old('pickup_lat', (isset($search) && isset($search->pickup_latitude)) ? $search->pickup_latitude : '6.9271') }}">
+                    <input type="hidden" name="pickup_lng" class="location-lng" 
+                        value="{{ old('pickup_lng', (isset($search) && isset($search->pickup_longitude)) ? $search->pickup_longitude : '79.8612') }}">
                 </div>
                 @error('pickup')
                     <span class="text-danger small">{{ $message }}</span>
@@ -215,11 +250,13 @@
                 </svg>
                 <div class="custom-select-dropdown">
                     <input type="text" name="dropoff" placeholder="Drop Off Location"
-                        class="location-search @error('dropoff') is-invalid @enderror" value="{{ old('dropoff', 'Galle, Sri Lanka') }}"
+                        class="location-search @error('dropoff') is-invalid @enderror" 
+                        value="{{ old('dropoff', (isset($search) && isset($search->dropoff_location)) ? $search->dropoff_location : 'Galle, Sri Lanka') }}"
                         required>
-                    <input type="hidden" name="dropoff_lat" class="location-lat" value="{{ old('dropoff_lat', '6.0535') }}">
-                    <input type="hidden" name="dropoff_lng" class="location-lng" value="{{ old('dropoff_lng', '80.221') }}">
-                    <input type="hidden" name="dropoff_lng" class="location-lng" value="{{ old('dropoff_lng') }}">
+                    <input type="hidden" name="dropoff_lat" class="location-lat" 
+                        value="{{ old('dropoff_lat', (isset($search) && isset($search->dropoff_latitude)) ? $search->dropoff_latitude : '6.0535') }}">
+                    <input type="hidden" name="dropoff_lng" class="location-lng" 
+                        value="{{ old('dropoff_lng', (isset($search) && isset($search->dropoff_longitude)) ? $search->dropoff_longitude : '80.221') }}">
                 </div>
                 @error('dropoff')
                     <span class="text-danger small">{{ $message }}</span>
@@ -234,7 +271,7 @@
                 </svg>
                 <input type="text" name="pickup_date" placeholder="DD/MM/YYYY"
                     class="custom-datepicker @error('pickup_date') is-invalid @enderror"
-                    value="{{ old('pickup_date', date('d/m/Y')) }}" required autocomplete="off">
+                    value="{{ old('pickup_date', (isset($search) && isset($search->from_date) && $search->from_date) ? date('d/m/Y', strtotime($search->from_date)) : date('d/m/Y')) }}" required autocomplete="off">
                 @error('pickup_date')
                     <span class="text-danger small">{{ $message }}</span>
                 @enderror
@@ -247,7 +284,8 @@
                         d="M9 0C4.03 0 0 4.03 0 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm.5-12H8v5l4.25 2.52.75-1.23-3.5-2.08V4z" />
                 </svg>
                 <div class="custom-select-dropdown">
-                    <input type="time" name="pickup_time" value="{{ old('pickup_time', '12:00') }}"
+                    <input type="time" name="pickup_time" 
+                        value="{{ old('pickup_time', (isset($search) && isset($search->from_time)) ? $search->from_time : '12:00') }}"
                         class="@error('pickup_time') is-invalid @enderror" required>
                 </div>
                 @error('pickup_time')
@@ -263,7 +301,7 @@
                 </svg>
                 <input type="text" name="dropoff_date" placeholder="DD/MM/YYYY"
                     class="custom-datepicker @error('dropoff_date') is-invalid @enderror"
-                    value="{{ old('dropoff_date', date('d/m/Y', strtotime('+3 days'))) }}" required autocomplete="off">
+                    value="{{ old('dropoff_date', (isset($search) && isset($search->to_date) && $search->to_date) ? date('d/m/Y', strtotime($search->to_date)) : date('d/m/Y', strtotime('+3 days'))) }}" required autocomplete="off">
                 @error('dropoff_date')
                     <span class="text-danger small">{{ $message }}</span>
                 @enderror
@@ -276,7 +314,8 @@
                         d="M9 0C4.03 0 0 4.03 0 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm.5-12H8v5l4.25 2.52.75-1.23-3.5-2.08V4z" />
                 </svg>
                 <div class="custom-select-dropdown">
-                    <input type="time" name="dropoff_time" value="{{ old('dropoff_time', '12:00') }}"
+                    <input type="time" name="dropoff_time" 
+                        value="{{ old('dropoff_time', (isset($search) && isset($search->to_time)) ? $search->to_time : '12:00') }}"
                         class="@error('dropoff_time') is-invalid @enderror" required>
                 </div>
                 @error('dropoff_time')
@@ -362,7 +401,26 @@
                 if (targetForm) {
                     targetForm.classList.add('show');
                 }
+                
+                // If there's a redirect URL (for point_to_point and corporate_transport), navigate to it
+                const redirectUrl = this.getAttribute('data-redirect');
+                if (redirectUrl) {
+                    // Store current form state before redirecting
+                    window.location.href = redirectUrl;
+                }
             });
+        });
+
+        // Ensure the correct form tab is active on page load based on current service type
+        document.addEventListener('DOMContentLoaded', function() {
+            const activeService = document.querySelector('.filter-item.active');
+            if (activeService) {
+                const service = activeService.getAttribute('data-service');
+                const targetForm = document.querySelector(`[data-service="${service}"]`);
+                if (targetForm && !targetForm.classList.contains('show')) {
+                    targetForm.classList.add('show');
+                }
+            }
         });
 
         // Add loading states to all form submissions

@@ -25,8 +25,8 @@ return new class extends Migration {
             $table->dateTime('booking_date')->nullable();
             $table->dateTime('from_date')->nullable();
             $table->dateTime('to_date')->nullable();
-            $table->dateTime('from_time')->nullable();
-            $table->dateTime('to_time')->nullable();
+            $table->time('from_time')->nullable();
+            $table->time('to_time')->nullable();
 
             $table->jsonb('pickup_location')->nullable();
             $table->jsonb('dropoff_location')->nullable();

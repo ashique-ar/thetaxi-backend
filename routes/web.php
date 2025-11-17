@@ -42,6 +42,7 @@ Route::get('/faq', function () {
 
 // Cart routes
 Route::get('/cart', [CartController::class, 'index'])->name('cart');
+Route::get('/cart/get', [CartController::class, 'get'])->name('cart.get');
 Route::post('/cart/add', [CartController::class, 'add'])->name('cart.add');
 Route::post('/cart/sync', [CartController::class, 'sync'])->name('cart.sync');
 Route::get('/cart/count', [CartController::class, 'count'])->name('cart.count');
