@@ -131,15 +131,10 @@ class CartController extends Controller
                 return redirect()->back()->with('error', 'Missing required booking information.');
             }
             
-            Log::info('Adding item to cart', [
-                'vehicle_id' => $vehicleId,
-                'pickup_date' => $pickupDate,
-                'return_date' => $returnDate,
-                'service_type' => $serviceType
-            ]);
+           
             // Get vehicle details if it exists
             $vehicleGroup = null;
-            if (is_numeric($vehicleId)) {
+            if ($vehicleId) {
                 $vehicleGroup = VehicleGroup::find($vehicleId);
             }
             
@@ -153,12 +148,30 @@ class CartController extends Controller
             $totalPrice = 0;
             $perDayPrice = 0;
             
+            Log::info(
+                'Adding item to cart',
+                [
+                    'vehicle_id' => $vehicleId,
+                    'vehicle_group_id' => $vehicleId,
+                    'pickup_date' => $pickupDate,
+                    'return_date' => $returnDate,
+                    'service_type' => $serviceType,
+                    'pickup_location' => $pickupLocation,
+                    'return_location' => $returnLocation,
+                    'days' => $days
+
+                ]
+            );
             try {
                 // Get service type
                 $serviceTypeModel = ServiceType::where('code', $serviceType)
                     ->orWhere('name', $serviceType)
                     ->first();
-                
+                Log::info('Service type lookup', [
+                    'service_type' => $serviceType,
+                    'service_type_model' => $serviceTypeModel,
+                    'vehicle_group' => $vehicleGroup
+                ]);
                 if ($serviceTypeModel && $vehicleGroup) {
                     
                     // Build location arrays with coordinates
