@@ -21,20 +21,21 @@
 <div class="cart-page pt-100 mb-100">
     <div class="container">
         @php
-            // Get cart items from database via CartService
+            // Get cart items from database via CartService with currency conversion
             try {
                 $cartService = app(\App\Services\CartService::class);
                 $cartModel = $cartService->getOrCreateCart();
-                $cartItems = $cartModel->items ?? [];
-                $cart = $cartItems;
-                
-                // Convert to the format expected by the view if needed
-                if (!empty($cart) && !is_array($cart)) {
-                    $cart = (array) $cart;
-                }
+                $cartData = $cartService->toArray($cartModel); // This applies currency conversion
+                $cart = $cartData['items'] ?? [];
+                $cartTotals = $cartData['totals'] ?? [];
+                $currencySymbol = $cartData['currency_symbol'] ?? getCurrencySymbol();
+                $selectedCurrency = $cartData['currency'] ?? getSelectedCurrency();
             } catch (Exception $e) {
                 \Log::error('Error loading cart: ' . $e->getMessage());
                 $cart = [];
+                $cartTotals = [];
+                $currencySymbol = getCurrencySymbol();
+                $selectedCurrency = getSelectedCurrency();
             }
         @endphp
         
@@ -72,11 +73,22 @@
                                             <p><span>Vehicle Type: </span>{{ $item['vehicle_type'] ?? 'Sedan' }}</p>
                                             <div class="booking-details">
                                                 @if(isset($item['pickup_date']) && isset($item['return_date']))
-                                                <p><strong>Pickup:</strong> {{ date('M d, Y', strtotime($item['pickup_date'])) }}</p>
-                                                <p><strong>Return:</strong> {{ date('M d, Y', strtotime($item['return_date'])) }}</p>
+                                                <p><strong>Pickup:</strong> {{ date('M d, Y', strtotime($item['pickup_date'])) }}
+                                                    @if(isset($item['from_time']))
+                                                    <span class="text-muted">@ {{ $item['from_time'] }}</span>
+                                                    @endif
+                                                </p>
+                                                <p><strong>Return:</strong> {{ date('M d, Y', strtotime($item['return_date'])) }}
+                                                    @if(isset($item['to_time']))
+                                                    <span class="text-muted">@ {{ $item['to_time'] }}</span>
+                                                    @endif
+                                                </p>
                                                 @endif
                                                 @if(isset($item['pickup_location']))
-                                                <p><strong>Location:</strong> {{ $item['pickup_location'] }}</p>
+                                                <p><strong>From:</strong> {{ $item['pickup_location'] }}</p>
+                                                @endif
+                                                @if(isset($item['return_location']) && $item['return_location'] !== $item['pickup_location'])
+                                                <p><strong>To:</strong> {{ $item['return_location'] }}</p>
                                                 @endif
                                             </div>
                                             <ul>
@@ -105,13 +117,13 @@
                                     </div>
                                 </td>
                                 <td data-label="Price">
-                                    <span>${{ number_format($item['price'] ?? 0, 2) }}/day</span>
+                                    <span>{{ $currencySymbol }}{{ number_format($item['price'] ?? 0, 2) }}/day</span>
                                 </td>
                                 <td data-label="Days">
                                     <span class="days-display">{{ $item['days'] ?? 1 }}</span>
                                 </td>
                                 <td data-label="Total">
-                                    <span class="item-total">${{ number_format(($item['price'] ?? 0) * ($item['days'] ?? 1), 2) }}</span>
+                                    <span class="item-total">{{ $currencySymbol }}{{ number_format(($item['price'] ?? 0) * ($item['days'] ?? 1), 2) }}</span>
                                 </td>
                                 <td data-label="Action">
                                     <button class="btn btn-sm btn-danger remove-item" data-cart-key="{{ $key }}">
@@ -145,19 +157,14 @@
                             <li>
                                 <strong>Subtotal</strong>
                                 <strong class="cart-subtotal">
-                                    @php
-                                        $subtotal = array_sum(array_map(function($item) {
-                                            return ($item['price'] ?? 0) * ($item['days'] ?? 1);
-                                        }, $cart));
-                                    @endphp
-                                    ${{ number_format($subtotal, 2) }}
+                                    {{ $currencySymbol }}{{ number_format($cartTotals['subtotal'] ?? 0, 2) }}
                                 </strong>
                             </li>
                             <li>
                                 Service Charges
                                 <div class="order-info">
                                     <p>Processing Fee</p>
-                                    <span class="service-fee">$25.00</span>
+                                    <span class="service-fee">{{ $currencySymbol }}{{ number_format($cartTotals['service_fee'] ?? 0, 2) }}</span>
                                 </div>
                             </li>
                             <li>
@@ -165,7 +172,7 @@
                                 <div class="order-info">
                                     <p>Estimated Tax</p>
                                     <span class="tax-amount">
-                                        ${{ number_format($subtotal * 0.1, 2) }}
+                                        {{ $currencySymbol }}{{ number_format($cartTotals['tax'] ?? 0, 2) }}
                                     </span>
                                 </div>
                             </li>
@@ -189,12 +196,7 @@
                             <li>
                                 <strong>Total</strong>
                                 <strong class="cart-total">
-                                    @php
-                                        $tax = $subtotal * 0.1;
-                                        $serviceFee = 25.00;
-                                        $total = $subtotal + $tax + $serviceFee;
-                                    @endphp
-                                    ${{ number_format($total, 2) }}
+                                    {{ $currencySymbol }}{{ number_format($cartTotals['total'] ?? 0, 2) }}
                                 </strong>
                             </li>
                         </ul>
@@ -425,20 +427,9 @@
 $(document).ready(function() {
     // Update cart totals
     function updateCartTotals() {
-        let subtotal = 0;
-        $('.item-total').each(function() {
-            let total = parseFloat($(this).text().replace('$', '').replace(',', ''));
-            subtotal += total;
-        });
-        
-        let serviceFee = 25.00;
-        let tax = subtotal * 0.1;
-        let discount = parseFloat($('.discount-amount').text().replace('-$', '').replace(',', '')) || 0;
-        let grandTotal = subtotal + serviceFee + tax - discount;
-        
-        $('.cart-subtotal').text('$' + subtotal.toLocaleString('en-US', {minimumFractionDigits: 2}));
-        $('.tax-amount').text('$' + tax.toLocaleString('en-US', {minimumFractionDigits: 2}));
-        $('.cart-total').text('$' + grandTotal.toLocaleString('en-US', {minimumFractionDigits: 2}));
+        // The totals are already calculated server-side with proper currency conversion
+        // This function is kept for compatibility but should rely on server data
+        console.log('Cart totals are managed server-side with currency conversion');
     }
 
     // Quantity controls
@@ -474,12 +465,8 @@ $(document).ready(function() {
                 if (response.success) {
                     // Update the input value
                     $('input[data-cart-key="' + cartKey + '"]').val(days);
-                    // Update days display
-                    $('tr[data-cart-key="' + cartKey + '"] .days-display').text(days);
-                    // Update item total
-                    $('tr[data-cart-key="' + cartKey + '"] .item-total').text('$' + response.item_total);
-                    // Update cart totals
-                    updateCartTotals();
+                    // Reload page to get updated totals with proper currency conversion
+                    location.reload();
                 }
             },
             error: function() {
@@ -555,10 +542,8 @@ $(document).ready(function() {
             },
             success: function(response) {
                 if (response.success) {
-                    $('#coupon-message').html('<div class="alert alert-success">' + response.message + '</div>');
-                    $('.discount-row').show();
-                    $('.discount-amount').text('-$' + response.discount_amount);
-                    updateCartTotals();
+                    // Reload page to show updated totals with proper currency conversion
+                    location.reload();
                 } else {
                     $('#coupon-message').html('<div class="alert alert-danger">' + response.message + '</div>');
                 }

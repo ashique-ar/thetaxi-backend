@@ -102,7 +102,7 @@
             <div class="cart-float-footer">
                 <div class="cart-total mb-2">
                     <span>Total:</span>
-                    <strong id="cartTotalPrice">LKR 0.00</strong>
+                    <strong id="cartTotalPrice">{{ getCurrencySymbol() }} 0.00</strong>
                 </div>
                 <a href="{{ route('cart') }}" class="btn btn-light w-100">
                     <i class="bi bi-cart-check"></i> View Cart & Checkout
@@ -604,6 +604,9 @@
     <script>
         // Cart management (Session-based)
         let cart = [];
+        let cartTotals = {};
+        let cartCurrency = '{{ getSelectedCurrency() }}';
+        let cartCurrencySymbol = '{{ getCurrencySymbol() }}';
 
         $(document).ready(function() {
             // Load cart from session storage
@@ -668,7 +671,11 @@
                     to_time: '{{ $search->to_time ?? '' }}',
                     service_type: '{{ $search->service_type ?? '' }}',
                     pickup_location: '{{ $search->pickup_location ?? '' }}',
+                    pickup_lat: {{ $search->pickup_latitude ?? 'null' }},
+                    pickup_lng: {{ $search->pickup_longitude ?? 'null' }},
                     dropoff_location: '{{ $search->dropoff_location ?? '' }}',
+                    dropoff_lat: {{ $search->dropoff_latitude ?? 'null' }},
+                    dropoff_lng: {{ $search->dropoff_longitude ?? 'null' }},
                     duration_days: durationDays
                 };
 
@@ -713,8 +720,14 @@
                     name: item.group_name,
                     pickup_date: item.from_date,
                     return_date: item.to_date,
+                    from_time: item.from_time,
+                    to_time: item.to_time,
                     pickup_location: item.pickup_location,
+                    pickup_lat: item.pickup_lat,
+                    pickup_lng: item.pickup_lng,
                     dropoff_location: item.dropoff_location,
+                    dropoff_lat: item.dropoff_lat,
+                    dropoff_lng: item.dropoff_lng,
                     service_type: item.service_type,
                     search_data: item
                 },
@@ -748,7 +761,7 @@
                 success: function(response) {
                     if (response.success) {
                         loadCartFromServer();
-                        if (cart.length === 0) {
+                        if (Object.keys(cart).length === 0) {
                             $('#cartSummaryFloat').fadeOut();
                         }
                     } else {
@@ -769,8 +782,11 @@
                 success: function(response) {
                     if (response.success) {
                         cart = response.items || [];
+                        cartTotals = response.totals || {};
+                        cartCurrency = Object.keys(cart).length > 0 ? Object.values(cart)[0].currency : '{{ getSelectedCurrency() }}';
+                        cartCurrencySymbol = Object.keys(cart).length > 0 ? Object.values(cart)[0].currency_symbol : '{{ getCurrencySymbol() }}';
                         updateCartDisplay();
-                        if (cart.length > 0) {
+                        if (Object.keys(cart).length > 0) {
                             showCartFloat();
                         }
                     }
@@ -795,30 +811,34 @@
             let total = 0;
             Object.keys(cart).forEach((key, index) => {
                 const item = cart[key];
-                const itemTotal = (item.price || item.base_price || 0) * (item.days || item.quantity || 1);
+                const price = parseFloat(item.price || 0);
+                const days = parseInt(item.days || 1);
+                const itemTotal = price * days;
                 total += itemTotal;
 
                 $cartItems.append(`
                 <div class="cart-float-item">
                     <div class="d-flex justify-content-between align-items-start mb-2">
                         <div class="flex-grow-1">
-                            <strong>${item.name || item.group_name || 'Vehicle Rental'}</strong>
-                            <div class="small">${item.days || item.duration_days || 1} day(s)</div>
-                            <div class="small">${item.pickup_date || item.from_date || ''} to ${item.return_date || item.to_date || ''}</div>
+                            <strong>${item.vehicle_name || item.name || 'Vehicle Rental'}</strong>
+                            <div class="small">${days} day(s)</div>
+                            <div class="small">${item.pickup_date || ''} to ${item.return_date || ''}</div>
                         </div>
                         <button type="button" class="btn btn-sm btn-link text-white p-0 ms-2" onclick="removeFromCart('${key}')">
                             <i class="bi bi-x-lg"></i>
                         </button>
                     </div>
                     <div class="d-flex justify-content-between">
-                        <span>Per day: LKR ${(item.price || 0).toFixed(0)}</span>
-                        <strong>LKR ${itemTotal.toFixed(0)}</strong>
+                        <span>Per day: ${cartCurrencySymbol}${price.toFixed(2)}</span>
+                        <strong>${cartCurrencySymbol}${itemTotal.toFixed(2)}</strong>
                     </div>
                 </div>
             `);
             });
 
-            $('#cartTotalPrice').text('LKR ' + total.toFixed(0));
+            // Use server-calculated total if available, otherwise use client-calculated total
+            const displayTotal = cartTotals.total || total;
+            $('#cartTotalPrice').text(cartCurrencySymbol + ' ' + displayTotal.toFixed(2));
         }
 
         function showCartFloat() {

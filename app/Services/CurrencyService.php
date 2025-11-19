@@ -97,6 +97,98 @@ class CurrencyService
     }
 
     /**
+     * Convert amount from LKR to target currency
+     * This is the main conversion function for the public website
+     * Exchange rate format: 1 LKR = X units of foreign currency
+     */
+    public function convertFromLKR(float $lkrAmount, string $targetCurrencyCode): float
+    {
+        if ($targetCurrencyCode === 'LKR') {
+            return $lkrAmount;
+        }
+
+        $targetCurrency = Currency::where('code', $targetCurrencyCode)->first();
+        if (!$targetCurrency || !$targetCurrency->exrate || (float)$targetCurrency->exrate <= 0) {
+            Log::warning("Invalid currency or exchange rate for conversion", [
+                'target_currency' => $targetCurrencyCode,
+                'exrate' => $targetCurrency?->exrate
+            ]);
+            return $lkrAmount; // Return original amount if conversion fails
+        }
+
+        $exchangeRate = (float) $targetCurrency->exrate;
+        // Since exrate is "1 LKR = X foreign currency", multiply by the rate
+        return round($lkrAmount * $exchangeRate, 2);
+    }
+
+    /**
+     * Convert amount from target currency to LKR
+     * Exchange rate format: 1 LKR = X units of foreign currency
+     */
+    public function convertToLKR(float $amount, string $fromCurrencyCode): float
+    {
+        if ($fromCurrencyCode === 'LKR') {
+            return $amount;
+        }
+
+        $fromCurrency = Currency::where('code', $fromCurrencyCode)->first();
+        if (!$fromCurrency || !$fromCurrency->exrate || (float)$fromCurrency->exrate <= 0) {
+            Log::warning("Invalid currency or exchange rate for conversion", [
+                'from_currency' => $fromCurrencyCode,
+                'exrate' => $fromCurrency?->exrate
+            ]);
+            return $amount; // Return original amount if conversion fails
+        }
+
+        $exchangeRate = (float) $fromCurrency->exrate;
+        // Since exrate is "1 LKR = X foreign currency", divide by the rate to get LKR
+        return round($amount / $exchangeRate, 2);
+    }
+
+    /**
+     * Get current user's selected currency from session
+     */
+    public function getSelectedCurrency(): string
+    {
+        return session('selected_currency', $this->getDefaultCurrency());
+    }
+
+    /**
+     * Set user's selected currency in session
+     */
+    public function setSelectedCurrency(string $currencyCode): void
+    {
+        if ($this->isValidCurrency($currencyCode)) {
+            session(['selected_currency' => $currencyCode]);
+        }
+    }
+
+    /**
+     * Format amount with current selected currency
+     */
+    public function formatAmountInSelectedCurrency(float $lkrAmount): string
+    {
+        $selectedCurrency = $this->getSelectedCurrency();
+        $convertedAmount = $this->convertFromLKR($lkrAmount, $selectedCurrency);
+        return $this->formatAmount($convertedAmount, $selectedCurrency);
+    }
+
+    /**
+     * Get available currencies for display (only those with valid exchange rates)
+     */
+    public function getAvailableCurrenciesForDisplay(): array
+    {
+        return Cache::remember('display_currencies', 3600, function () {
+            return Currency::select('id', 'code', 'name', 'symbol', 'exrate')
+                ->whereNotNull('exrate')
+                ->where('exrate', '>', 0)
+                ->orderBy('code')
+                ->get()
+                ->toArray();
+        });
+    }
+
+    /**
      * Convert pricing structure to different currency
      */
     public function convertPricingStructure(array $pricing, string $fromCurrency, string $toCurrency): array

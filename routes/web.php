@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\FileUploadController;
 use App\Http\Controllers\BookingController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\CheckoutController;
+use App\Http\Controllers\CurrencyController;
 use App\Http\Controllers\FAQController;
 use App\Http\Controllers\VehicleController;
 use App\Http\Controllers\Website\CmsController;
@@ -72,6 +73,10 @@ Route::get('/corporate-transfers', [BookingController::class, 'corporateTransfer
 Route::post('/contact', function () {
     // Handle contact form submission
 })->name('contact.store');
+
+// Currency routes
+Route::post('/currency/switch', [CurrencyController::class, 'switch'])->name('currency.switch');
+Route::get('/currency/available', [CurrencyController::class, 'available'])->name('currency.available');
 
 // Booking routes
 Route::post('/booking/search', [BookingController::class, 'search'])->name('booking.search');

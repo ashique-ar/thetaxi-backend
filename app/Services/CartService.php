@@ -5,10 +5,17 @@ namespace App\Services;
 use App\Models\Cart;
 use App\Models\Customer;
 use App\Models\User;
+use App\Services\CurrencyService;
 use Illuminate\Support\Facades\Session;
 
 class CartService
 {
+    protected CurrencyService $currencyService;
+
+    public function __construct(CurrencyService $currencyService)
+    {
+        $this->currencyService = $currencyService;
+    }
     /**
      * Get or create cart for current user/customer/session
      */
@@ -151,19 +158,23 @@ class CartService
             return;
         }
 
-        // Calculate subtotal
+        // Calculate subtotal using LKR prices (stored in database)
         $subtotal = $items->sum(function ($item) {
-            return ($item['price'] ?? 0) * ($item['days'] ?? 1);
+            // Use LKR price if available, otherwise use regular price (should be LKR)
+            $lkrPrice = $item['price_lkr'] ?? $item['price'] ?? 0;
+            return $lkrPrice * ($item['days'] ?? 1);
         });
 
-        $serviceFee = 25.00;
-        $tax = $subtotal * 0.18; // 18% tax
+        // Store all amounts in LKR for consistency
+        $serviceFeeBase = 750.00; // Base service fee in LKR (25 USD equivalent)
+        $taxRate = 0.1; // 10% tax
+        $tax = $subtotal * $taxRate;
         $couponDiscount = $cart->coupon_discount ?? 0;
-        $total = $subtotal + $serviceFee + $tax - $couponDiscount;
+        $total = $subtotal + $serviceFeeBase + $tax - $couponDiscount;
 
         $cart->setTotals([
             'subtotal' => round($subtotal, 2),
-            'service_fee' => $serviceFee,
+            'service_fee' => round($serviceFeeBase, 2),
             'tax' => round($tax, 2),
             'coupon_discount' => $couponDiscount,
             'total' => round($total, 2)
@@ -173,18 +184,62 @@ class CartService
     }
 
     /**
-     * Get cart as array for response
+     * Get cart as array for response with currency conversion
      */
     public function toArray(Cart $cart): array
     {
+        $selectedCurrency = $this->currencyService->getSelectedCurrency();
+        $items = $cart->items ?? [];
+        
+        // Convert item prices to selected currency
+        $convertedItems = collect($items)->map(function ($item) use ($selectedCurrency) {
+            $item = is_array($item) ? $item : (array)$item;
+            
+            // Convert prices from LKR (stored) to selected currency
+            if (isset($item['price'])) {
+                $item['price'] = $this->currencyService->convertFromLKR((float)$item['price'], $selectedCurrency);
+                $item['price_lkr'] = (float)($item['price_lkr'] ?? $item['price']); // Preserve original LKR price
+            }
+            
+            if (isset($item['total_price'])) {
+                $item['total_price'] = $this->currencyService->convertFromLKR((float)$item['total_price'], $selectedCurrency);
+                $item['total_price_lkr'] = (float)($item['total_price_lkr'] ?? $item['total_price']); // Preserve original LKR price
+            }
+            
+            // Add currency information
+            $item['currency'] = $selectedCurrency;
+            $item['currency_symbol'] = getCurrencySymbol($selectedCurrency);
+            
+            return $item;
+        })->toArray();
+        
+        // Convert totals to selected currency
+        $totals = $cart->totals ?? [];
+        $convertedTotals = [];
+        
+        foreach ($totals as $key => $value) {
+            if (is_numeric($value)) {
+                $convertedTotals[$key] = $this->currencyService->convertFromLKR((float)$value, $selectedCurrency);
+                $convertedTotals[$key . '_lkr'] = (float)$value; // Preserve original LKR value
+            } else {
+                $convertedTotals[$key] = $value;
+            }
+        }
+        
+        $convertedTotals['currency'] = $selectedCurrency;
+        $convertedTotals['currency_symbol'] = getCurrencySymbol($selectedCurrency);
+        
         return [
             'id' => $cart->id,
-            'items' => $cart->items ?? [],
-            'totals' => $cart->totals ?? [],
+            'items' => $convertedItems,
+            'totals' => $convertedTotals,
             'coupon_code' => $cart->coupon_code,
-            'coupon_discount' => $cart->coupon_discount,
+            'coupon_discount' => $this->currencyService->convertFromLKR((float)($cart->coupon_discount ?? 0), $selectedCurrency),
+            'coupon_discount_lkr' => (float)($cart->coupon_discount ?? 0),
             'item_count' => $cart->itemCount(),
-            'is_empty' => !$cart->hasItems()
+            'is_empty' => !$cart->hasItems(),
+            'currency' => $selectedCurrency,
+            'currency_symbol' => getCurrencySymbol($selectedCurrency)
         ];
     }
 

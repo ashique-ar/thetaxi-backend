@@ -79,7 +79,6 @@ class CartController extends Controller
         try {
             // Allow flexible field mapping from frontend
             $validated = $request->validate([
-                'vehicle_id' => 'sometimes|string',
                 'vehicle_group_id' => 'sometimes|string',
                 'group_id' => 'sometimes|string',
                 'name' => 'sometimes|string',
@@ -88,33 +87,56 @@ class CartController extends Controller
                 'from_date' => 'sometimes|date',
                 'return_date' => 'sometimes|date',
                 'to_date' => 'sometimes|date',
+                'from_time' => 'sometimes|string',
+                'to_time' => 'sometimes|string',
                 'pickup_location' => 'sometimes|string',
+                'pickup_lat' => 'sometimes|numeric',
+                'pickup_lng' => 'sometimes|numeric',
                 'return_location' => 'sometimes|string',
                 'dropoff_location' => 'sometimes|string',
+                'dropoff_lat' => 'sometimes|numeric',
+                'dropoff_lng' => 'sometimes|numeric',
                 'search_data' => 'sometimes|array',
                 'service_type' => 'sometimes|string'
             ]);
             
             // Map frontend field names to standard names
-            $vehicleId = $validated['vehicle_id'] ?? $validated['vehicle_group_id'] ?? $validated['group_id'] ?? null;
+            $vehicleId = $validated['vehicle_group_id'] ?? $validated['group_id'] ?? null;
             $name = $validated['name'] ?? $validated['group_name'] ?? 'Vehicle Rental';
-            $pickupDate = $validated['pickup_date'] ?? $validated['from_date'] ?? now();
-            $returnDate = $validated['return_date'] ?? $validated['to_date'] ?? now();
-            $pickupLocation = $validated['pickup_location'] ?? '';
-            $returnLocation = $validated['return_location'] ?? $validated['dropoff_location'] ?? $pickupLocation;
-            $serviceType = $validated['service_type'] ?? 'airport_transfers';
+            $pickupDate = $validated['pickup_date'] ?? $validated['from_date'] ?? null;
+            $returnDate = $validated['return_date'] ?? $validated['to_date'] ?? null;
+            $fromTime = $validated['from_time'] ?? ($validated['search_data']['from_time'] ?? '10:00');
+            $toTime = $validated['to_time'] ?? ($validated['search_data']['to_time'] ?? '10:00');
+            
+            // Extract location data with coordinates
+            $pickupLocation = $validated['pickup_location'] ?? ($validated['search_data']['pickup_location'] ?? '');
+            $pickupLat = $validated['pickup_lat'] ?? ($validated['search_data']['pickup_lat'] ?? null);
+            $pickupLng = $validated['pickup_lng'] ?? ($validated['search_data']['pickup_lng'] ?? null);
+            
+            $returnLocation = $validated['return_location'] ?? $validated['dropoff_location'] ?? ($validated['search_data']['dropoff_location'] ?? $pickupLocation);
+            $returnLat = $validated['dropoff_lat'] ?? ($validated['search_data']['dropoff_lat'] ?? $pickupLat);
+            $returnLng = $validated['dropoff_lng'] ?? ($validated['search_data']['dropoff_lng'] ?? $pickupLng);
+            
+            $serviceType = $validated['service_type'] ?? ($validated['search_data']['service_type'] ?? 'airport_transfers');
             $searchData = $validated['search_data'] ?? [];
             
-            if (!$vehicleId) {
+            // Validate required fields
+            if (!$vehicleId || !$pickupDate || !$returnDate) {
                 if ($request->ajax()) {
                     return response()->json([
                         'success' => false,
-                        'message' => 'Vehicle ID is required'
+                        'message' => 'Vehicle ID, pickup date, and return date are required'
                     ], 400);
                 }
-                return redirect()->back()->with('error', 'Vehicle ID is required.');
+                return redirect()->back()->with('error', 'Missing required booking information.');
             }
             
+            Log::info('Adding item to cart', [
+                'vehicle_id' => $vehicleId,
+                'pickup_date' => $pickupDate,
+                'return_date' => $returnDate,
+                'service_type' => $serviceType
+            ]);
             // Get vehicle details if it exists
             $vehicleGroup = null;
             if (is_numeric($vehicleId)) {
@@ -138,28 +160,27 @@ class CartController extends Controller
                     ->first();
                 
                 if ($serviceTypeModel && $vehicleGroup) {
-                    // Prepare pricing parameters for BookingFlowService
-                    // Note: locations should be arrays if they come from frontend with lat/lng
-                    // For now using simple strings as fallback
+                    
+                    // Build location arrays with coordinates
                     $pickupLocationArray = is_array($pickupLocation) ? $pickupLocation : [
                         'address' => $pickupLocation,
-                        'latitude' => null,
-                        'longitude' => null
+                        'latitude' => $pickupLat,
+                        'longitude' => $pickupLng
                     ];
                     
                     $returnLocationArray = is_array($returnLocation) ? $returnLocation : [
                         'address' => $returnLocation,
-                        'latitude' => null,
-                        'longitude' => null
+                        'latitude' => $returnLat,
+                        'longitude' => $returnLng
                     ];
                     
                     $pricingParams = [
                         'service_type' => $serviceTypeModel->id,
                         'vehicle_groups' => [$vehicleId],
                         'from_date' => $pickupDate,
-                        'from_time' => '10:00', // Default time
+                        'from_time' => $fromTime,
                         'to_date' => $returnDate,
-                        'to_time' => '10:00', // Default time
+                        'to_time' => $toTime,
                         'pickup_location' => $pickupLocationArray,
                         'dropoff_location' => $returnLocationArray
                     ];
@@ -175,47 +196,100 @@ class CartController extends Controller
                     ]);
                     
                     // Find pricing for this specific vehicle group
+                    $pricingFound = false;
                     foreach ($availabilityData as $vehicleData) {
-                        if ($vehicleData['id'] === $vehicleId && isset($vehicleData['pricing_info'])) {
-                            $pricingInfo = $vehicleData['pricing_info'];
-                            $totalPrice = $pricingInfo['base_amount'] ?? 0; // This is TOTAL for all days
-                            $perDayPrice = $days > 0 ? $totalPrice / $days : 0; // Calculate per-day
+                        if ($vehicleData['id'] == $vehicleId) {
+                            // Check if pricing is configured and available
+                            if (!isset($vehicleData['pricing_configured']) || !$vehicleData['pricing_configured']) {
+                                Log::warning('Pricing not configured for vehicle group', [
+                                    'vehicle_id' => $vehicleId,
+                                    'vehicle_data' => $vehicleData
+                                ]);
+                                break;
+                            }
                             
-                            Log::info('Cart pricing calculated', [
-                                'vehicle_id' => $vehicleId,
-                                'total_price' => $totalPrice,
-                                'per_day_price' => $perDayPrice,
-                                'pricing_info' => $pricingInfo
-                            ]);
-                            break;
+                            if (isset($vehicleData['pricing_info']['base_amount'])) {
+                                $pricingInfo = $vehicleData['pricing_info'];
+                                $totalPrice = (float)$pricingInfo['base_amount']; // This is TOTAL for all days in LKR
+                                $perDayPrice = $days > 0 ? $totalPrice / $days : 0; // Calculate per-day in LKR
+                                $pricingFound = true;
+                                
+                                Log::info('Cart pricing calculated successfully', [
+                                    'vehicle_id' => $vehicleId,
+                                    'days' => $days,
+                                    'total_price_lkr' => $totalPrice,
+                                    'per_day_price_lkr' => $perDayPrice,
+                                    'pricing_info' => $pricingInfo
+                                ]);
+                                break;
+                            }
                         }
+                    }
+                    
+                    // If pricing not found or is 0, throw error
+                    if (!$pricingFound || $totalPrice <= 0) {
+                        throw new \Exception('Pricing not available for this vehicle group and service type combination');
                     }
                 }
             } catch (\Exception $e) {
-                Log::warning('Failed to recalculate pricing for cart item', [
+                Log::error('Failed to calculate pricing for cart item', [
                     'vehicle_id' => $vehicleId,
+                    'service_type' => $serviceType,
+                    'dates' => ['from' => $pickupDate, 'to' => $returnDate],
                     'error' => $e->getMessage()
                 ]);
-                // Fallback: if pricing calculation fails, we'll need some default
-                $totalPrice = 0;
-                $perDayPrice = 0;
+                
+                // Return error - do NOT add item with 0 price
+                if ($request->ajax()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Unable to calculate price for this vehicle. Please ensure pricing is configured for the selected service type and dates.'
+                    ], 400);
+                }
+                return redirect()->back()->with('error', 'Unable to calculate price. Please try a different vehicle or date range.');
             }
             
-            // Create cart item with calculated pricing
+            // Final validation - ensure we have valid pricing
+            if ($perDayPrice <= 0 || $totalPrice <= 0) {
+                Log::error('Attempted to add cart item with invalid pricing', [
+                    'vehicle_id' => $vehicleId,
+                    'per_day_price' => $perDayPrice,
+                    'total_price' => $totalPrice
+                ]);
+                
+                if ($request->ajax()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Invalid pricing. Unable to add item to cart.'
+                    ], 400);
+                }
+                return redirect()->back()->with('error', 'Invalid pricing. Please contact support.');
+            }
+            
+            // Create cart item with calculated pricing (always store in LKR as base)
             $cartItem = [
                 'vehicle_group_id' => $vehicleId,
                 'name' => $vehicleGroup?->name ?? $name,
                 'vehicle_type' => $vehicleGroup?->vehicle_type ?? 'Sedan',
                 'image' => $vehicleGroup?->image_path,
-                'price' => (float)$perDayPrice,  // Store per-day price
-                'total_price' => (float)$totalPrice, // Store total price for reference
+                'price' => (float)$perDayPrice,  // Store per-day price in LKR
+                'price_lkr' => (float)$perDayPrice, // Explicitly store LKR price
+                'total_price' => (float)$totalPrice, // Store total price in LKR
+                'total_price_lkr' => (float)$totalPrice, // Explicitly store LKR total
                 'days' => (int)$days,
                 'pickup_date' => $pickupDateObj->toDateString(),
                 'return_date' => $returnDateObj->toDateString(),
+                'from_time' => $fromTime,
+                'to_time' => $toTime,
                 'pickup_location' => $pickupLocation,
+                'pickup_latitude' => $pickupLat,
+                'pickup_longitude' => $pickupLng,
                 'return_location' => $returnLocation,
+                'return_latitude' => $returnLat,
+                'return_longitude' => $returnLng,
                 'service_type' => $serviceType,
                 'search_data' => $searchData,
+                'base_currency' => 'LKR', // Mark as LKR base pricing
                 'added_at' => now()
             ];
             

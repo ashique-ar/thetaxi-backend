@@ -113,37 +113,46 @@
             <div class="price-display">
                 
                 @php
-                    // Calculate per-day rate from total_amount and duration_days
-                    $totalAmount = $pricing['base_amount'] ?? 0;
+                    // Get base prices in LKR (coming from BookingFlowService)
+                    $totalAmountLKR = $pricing['base_amount'] ?? 0;
                     $durationDays = $pricing['duration_info']['days'] ?? 1;
-                    $perDayRate = $durationDays > 0 ? $totalAmount / $durationDays : 0;
+                    $perDayRateLKR = $durationDays > 0 ? $totalAmountLKR / $durationDays : 0;
+                    
+                    // Convert to selected currency using helper functions
+                    $selectedCurrency = getSelectedCurrency();
+                    $totalAmountConverted = convertPrice($totalAmountLKR);
+                    $perDayRateConverted = convertPrice($perDayRateLKR);
+                    $currencySymbol = getCurrencySymbol();
                     
                     // Debug: Check what we're actually getting
                     if (app()->environment('local')) {
                         \Log::info('Vehicle Card Pricing Debug', [
                             'vehicle_name' => $vehicle['name'] ?? 'Unknown',
-                            'total_amount' => $totalAmount,
+                            'total_amount_lkr' => $totalAmountLKR,
+                            'total_amount_converted' => $totalAmountConverted,
+                            'selected_currency' => $selectedCurrency,
                             'duration_days' => $durationDays,
-                            'per_day_rate' => $perDayRate,
-                            'pricing_structure' => $pricing
+                            'per_day_rate_lkr' => $perDayRateLKR,
+                            'per_day_rate_converted' => $perDayRateConverted,
+                            'currency_symbol' => $currencySymbol
                         ]);
                     }
                 @endphp
                 
                 <h4 class="price-amount" 
-                    data-base-price="{{ $totalAmount }}" 
-                    data-per-day="{{ round($perDayRate, 2) }}"
+                    data-base-price-lkr="{{ $totalAmountLKR }}" 
+                    data-per-day-lkr="{{ round($perDayRateLKR, 2) }}"
                     data-duration="{{ $durationDays }}"
-                    data-currency="{{ $pricing['currency'] ?? 'LKR' }}">
-                    {{ $pricing['currency'] ?? 'LKR' }} 
-                    <span class="price-value">{{ number_format($perDayRate, 0) }}</span>
+                    data-currency="{{ $selectedCurrency }}">
+                    {{ $currencySymbol }} 
+                    <span class="price-value">{{ number_format($perDayRateConverted, 0) }}</span>
                     <span class="price-unit">/day</span>
                 </h4>
                 
                 <!-- Total Price as Secondary Info -->
                 <div class="total-price-info mt-2 text-muted small">
                     <span class="total-label">Total:</span>
-                    <strong>{{ $pricing['currency'] ?? 'LKR' }} {{ number_format($totalAmount, 0) }}</strong>
+                    <strong>{{ $currencySymbol }} {{ number_format($totalAmountConverted, 0) }}</strong>
                     <span class="duration-label">({{ $durationDays }} day{{ $durationDays > 1 ? 's' : '' }})</span>
                 </div>
                 

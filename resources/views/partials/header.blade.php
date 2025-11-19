@@ -132,6 +132,32 @@
         </div>
         <div class="nav-right">
             <div class="contact-and-search-area">
+                <!-- Currency Selector -->
+                <div class="currency-selector d-xl-flex d-none align-items-center me-3">
+                    <div class="dropdown">
+                        <button class="btn btn-link dropdown-toggle p-0 text-decoration-none" type="button" 
+                                id="currencyDropdown" data-bs-toggle="dropdown" aria-expanded="false"
+                                style="color: #333; font-weight: 500;">
+                            <span class="currency-symbol">{{ getCurrencySymbol() }}</span>
+                            <span class="currency-code ms-1">{{ getSelectedCurrency() }}</span>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end shadow-sm" aria-labelledby="currencyDropdown">
+                            @foreach(getAvailableCurrencies() as $currency)
+                                <li>
+                                    <a class="dropdown-item currency-option {{ getSelectedCurrency() === $currency['code'] ? 'active' : '' }}" 
+                                       href="#" 
+                                       data-currency="{{ $currency['code'] }}"
+                                       style="{{ getSelectedCurrency() === $currency['code'] ? 'background-color: #f8f9fa;' : '' }}">
+                                        <span class="currency-symbol me-2">{{ $currency['symbol'] ?? $currency['code'] }}</span>
+                                        <span class="currency-name">{{ $currency['name'] }}</span>
+                                        <small class="text-muted ms-auto">({{ $currency['code'] }})</small>
+                                    </a>
+                                </li>
+                            @endforeach
+                        </ul>
+                    </div>
+                </div>
+                
                 <div class="contact-area d-xl-flex d-none">
                     <div class="icon">
                         <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">

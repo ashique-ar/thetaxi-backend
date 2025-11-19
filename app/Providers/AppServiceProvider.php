@@ -14,7 +14,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // Register currency helper functions
+        require_once app_path('Helpers/CurrencyHelpers.php');
     }
 
     /**
@@ -32,6 +33,9 @@ class AppServiceProvider extends ServiceProvider
         Gate::define('api-access', function ($user) {
             return $user->isActive();
         });
+
+        // Register currency view composer for all views
+        view()->composer('*', \App\Http\ViewComposers\CurrencyViewComposer::class);
 
         Relation::morphMap([
             'driver' => \App\Models\Driver\Driver::class,

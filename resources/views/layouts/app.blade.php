@@ -96,6 +96,52 @@
     <script src="{{ asset('assets/js/custom.js?v=1.0') }}"></script>
     <script src="{{ asset('assets/js/booking-form.js?v=1.0') }}"></script>
 
+    <!-- Currency Switching JavaScript -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Handle currency switching
+            document.querySelectorAll('.currency-option').forEach(function(link) {
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    
+                    const currencyCode = this.getAttribute('data-currency');
+                    if (!currencyCode) return;
+                    
+                    // Show loading state
+                    const originalText = this.innerHTML;
+                    this.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Loading...';
+                    
+                    // Make AJAX request to switch currency
+                    fetch('{{ route("currency.switch") }}', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                            'Accept': 'application/json'
+                        },
+                        body: 'currency=' + encodeURIComponent(currencyCode)
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            // Reload page to show new prices
+                            window.location.reload();
+                        } else {
+                            console.error('Currency switch failed:', data.message);
+                            this.innerHTML = originalText;
+                            alert('Failed to switch currency. Please try again.');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error switching currency:', error);
+                        this.innerHTML = originalText;
+                        alert('An error occurred while switching currency. Please try again.');
+                    });
+                });
+            });
+        });
+    </script>
+
     @stack('scripts')
 </body>
 
