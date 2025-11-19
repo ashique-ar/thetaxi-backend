@@ -323,24 +323,6 @@
                 @enderror
             </div>
 
-            <div class="package-type-selector">
-                <div style="display: flex; gap: 20px; justify-content: center;">
-                    <label class="package-option">
-                        <input type="radio" name="package_type" value="hourly"
-                            {{ old('package_type', 'hourly') == 'hourly' ? 'checked' : '' }}>
-                        <span>Hourly Package</span>
-                    </label>
-                    <label class="package-option">
-                        <input type="radio" name="package_type" value="daily"
-                            {{ old('package_type') == 'daily' ? 'checked' : '' }}>
-                        <span>Daily Package</span>
-                    </label>
-                </div>
-                @error('package_type')
-                    <span class="text-danger small">{{ $message }}</span>
-                @enderror
-            </div>
-
             <!-- Passengers -->
             <div class="single-search-box">
                 <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
