@@ -19,34 +19,32 @@ return [
         'online' => [
             'enabled' => env('PAYMENT_ONLINE_ENABLED', true),
             'label' => 'Online Payment',
-            'description' => 'Pay securely online using WebXPay',
-            'icon' => 'bi-credit-card',
+            'description' => 'Pay securely via payment gateway',
+            'icon' => 'bi-credit-card-fill',
         ],
-        'bank_transfer' => [
-            'enabled' => env('PAYMENT_BANK_TRANSFER_ENABLED', true),
-            'label' => 'Bank Transfer',
-            'description' => 'Pay via direct bank transfer',
-            'icon' => 'bi-bank',
-        ],
-        'online_banking' => [
-            'enabled' => env('PAYMENT_ONLINE_BANKING_ENABLED', true),
-            'label' => 'Online Banking',
-            'description' => 'Pay using your online banking',
-            'icon' => 'bi-wallet2',
+        'offline' => [
+            'enabled' => env('PAYMENT_OFFLINE_ENABLED', true),
+            'label' => 'Pay on Check-in',
+            'description' => 'Pay when you collect the vehicle',
+            'icon' => 'bi-cash-coin',
         ],
     ],
 
     /**
      * Payment Gateway Configuration (WebXPay)
+     * Uses RSA encryption for secure payment redirect
      */
     'webxpay' => [
         'enabled' => env('WEBXPAY_ENABLED', false),
-        'merchant_id' => env('WEBXPAY_MERCHANT_ID', ''),
-        'merchant_secret' => env('WEBXPAY_MERCHANT_SECRET', ''),
-        'api_url' => env('WEBXPAY_API_URL', 'https://sandbox.webxpay.com/api'),
-        'return_url' => env('WEBXPAY_RETURN_URL', ''),
-        'cancel_url' => env('WEBXPAY_CANCEL_URL', ''),
-        'notify_url' => env('WEBXPAY_NOTIFY_URL', ''),
+        'merchant_secret' => env('WEBXPAY_MERCHANT_SECRET', ''), // Secret key for verification
+        'public_key' => env('WEBXPAY_PUBLIC_KEY', ''), // RSA public key for encryption
+        'api_url' => env('WEBXPAY_API_URL', 'https://tokenize.webxpay.com/v1/api'), // For token-based methods
+        'api_username' => env('WEBXPAY_API_USERNAME', ''), // API authentication
+        'api_password' => env('WEBXPAY_API_PASSWORD', ''), // API authentication
+        'checkout_url' => env('WEBXPAY_CHECKOUT_URL', 'https://webxpay.com/index.php?route=checkout/billing'), // Form POST target
+        'return_url' => env('WEBXPAY_RETURN_URL', ''), // Success/failure callback
+        'cancel_url' => env('WEBXPAY_CANCEL_URL', ''), // User cancellation
+        'notify_url' => env('WEBXPAY_NOTIFY_URL', ''), // Async notification
         'currency' => env('WEBXPAY_CURRENCY', 'LKR'),
     ],
 

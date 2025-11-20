@@ -61,8 +61,10 @@ Route::get('/checkout', [CheckoutController::class, 'index'])->name('checkout');
 Route::post('/checkout/process', [CheckoutController::class, 'process'])->name('checkout.process');
 Route::get('/checkout/success', [CheckoutController::class, 'success'])->name('checkout.success');
 
-// WebXPay payment gateway callback routes
+// WebXPay payment gateway routes
+Route::get('/checkout/webxpay/redirect', [CheckoutController::class, 'webxpayRedirect'])->name('checkout.webxpay.redirect');
 Route::get('/checkout/webxpay/callback', [CheckoutController::class, 'webxpayCallback'])->name('checkout.webxpay.callback');
+Route::post('/checkout/webxpay/callback', [CheckoutController::class, 'webxpayCallback'])->name('checkout.webxpay.callback.post');
 Route::post('/checkout/webxpay/notify', [CheckoutController::class, 'webxpayNotify'])->name('checkout.webxpay.notify');
 Route::get('/checkout/webxpay/cancel', [CheckoutController::class, 'webxpayCancel'])->name('checkout.webxpay.cancel');
 

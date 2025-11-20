@@ -1,0 +1,13 @@
+{
+    "name": "php/client",
+    "description": "webxpay php client",
+    "require": {
+        "guzzlehttp/guzzle": "^6.4"
+    },
+    "authors": [
+        {
+            "name": "pasindu",
+            "email": "pasindu.connect@gmail.com"
+        }
+    ]
+}

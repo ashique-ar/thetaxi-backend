@@ -161,9 +161,16 @@ class CartService
 
         // Calculate subtotal using LKR prices (stored in database)
         $subtotal = $items->sum(function ($item) {
-            // Use LKR price if available, otherwise use regular price (should be LKR)
-            $lkrPrice = $item['price_lkr'] ?? $item['price'] ?? 0;
-            return $lkrPrice * ($item['days'] ?? 1);
+            // JSON-decoded items may be stdClass objects or arrays
+            // Handle both cases for accessing properties
+            $lkrPrice = 0;
+            if (is_array($item)) {
+                $lkrPrice = $item['price_lkr'] ?? $item['price'] ?? 0;
+            } else if (is_object($item)) {
+                $lkrPrice = $item->price_lkr ?? $item->price ?? 0;
+            }
+            $days = is_array($item) ? ($item['days'] ?? 1) : ($item->days ?? 1);
+            return (float)$lkrPrice * (int)$days;
         });
 
         // Calculate service fee dynamically from config
@@ -193,7 +200,7 @@ class CartService
         $couponDiscount = $cart->coupon_discount ?? 0;
         $total = $subtotal + $serviceFee + $tax + $vat - $couponDiscount;
 
-        $cart->setTotals([
+        $totalsArray = [
             'subtotal' => round($subtotal, 2),
             'service_fee' => round($serviceFee, 2),
             'tax' => round($tax, 2),
@@ -202,7 +209,20 @@ class CartService
             'vat_label' => config('booking.vat.label', 'VAT'),
             'coupon_discount' => round($couponDiscount, 2),
             'total' => round($total, 2)
+        ];
+
+        \Illuminate\Support\Facades\Log::info('CartService: Totals calculated', [
+            'cart_id' => $cart->id,
+            'items_count' => $items->count(),
+            'subtotal_raw' => $subtotal,
+            'service_fee_raw' => $serviceFee,
+            'tax_raw' => $tax,
+            'vat_raw' => $vat,
+            'total_raw' => $total,
+            'calculated_totals' => $totalsArray
         ]);
+
+        $cart->setTotals($totalsArray);
         
         $cart->save();
     }

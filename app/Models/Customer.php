@@ -150,4 +150,60 @@ class Customer extends BaseModel
     {
         return $this->hasMany(BillingAddress::class);
     }
+
+    // Accessor Methods
+
+    /**
+     * Get customer's first name from user
+     *
+     * @return string|null
+     */
+    public function getFirstNameAttribute(): ?string
+    {
+        return $this->user?->first_name;
+    }
+
+    /**
+     * Get customer's last name from user
+     *
+     * @return string|null
+     */
+    public function getLastNameAttribute(): ?string
+    {
+        return $this->user?->last_name;
+    }
+
+    /**
+     * Get customer's full name from user
+     *
+     * @return string|null
+     */
+    public function getFullNameAttribute(): ?string
+    {
+        if (!$this->user) {
+            return null;
+        }
+        
+        return trim($this->user->first_name . ' ' . ($this->user->last_name ?? ''));
+    }
+
+    /**
+     * Get customer's email from user
+     *
+     * @return string|null
+     */
+    public function getEmailAttribute(): ?string
+    {
+        return $this->user?->email;
+    }
+
+    /**
+     * Get customer's phone from user
+     *
+     * @return string|null
+     */
+    public function getPhoneAttribute(): ?string
+    {
+        return $this->user?->phone;
+    }
 }

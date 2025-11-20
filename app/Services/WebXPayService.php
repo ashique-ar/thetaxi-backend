@@ -5,22 +5,32 @@ namespace App\Services;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use App\Models\Booking\Booking;
+use phpseclib3\Crypt\RSA;
+use phpseclib3\Crypt\PublicKeyLoader;
+use phpseclib3\Crypt\Common\AsymmetricKey;
 
 class WebXPayService
 {
-    protected string $merchantId;
-    protected string $merchantSecret;
+    protected string $secretKey;
+    protected string $publicKey;
     protected string $apiUrl;
+    protected string $checkoutUrl;
     protected string $currency;
     protected bool $enabled;
+    protected ?string $apiUsername;
+    protected ?string $apiPassword;
+    protected ?string $jwtToken = null;
 
     public function __construct()
     {
-        $this->merchantId = config('booking.webxpay.merchant_id');
-        $this->merchantSecret = config('booking.webxpay.merchant_secret');
+        $this->secretKey = config('booking.webxpay.merchant_secret');
+        $this->publicKey = config('booking.webxpay.public_key');
         $this->apiUrl = config('booking.webxpay.api_url');
+        $this->checkoutUrl = config('booking.webxpay.checkout_url');
         $this->currency = config('booking.webxpay.currency', 'LKR');
         $this->enabled = config('booking.webxpay.enabled', false);
+        $this->apiUsername = config('booking.webxpay.api_username');
+        $this->apiPassword = config('booking.webxpay.api_password');
     }
 
     /**
@@ -28,11 +38,52 @@ class WebXPayService
      */
     public function isEnabled(): bool
     {
-        return $this->enabled && !empty($this->merchantId) && !empty($this->merchantSecret);
+        return $this->enabled && !empty($this->secretKey) && !empty($this->publicKey);
     }
 
     /**
-     * Create payment request
+     * Authenticate with WebXPay API and get JWT token
+     */
+    protected function authenticate(): ?string
+    {
+        if ($this->jwtToken) {
+            return $this->jwtToken;
+        }
+
+        try {
+            $response = Http::timeout(30)
+                ->withHeaders([
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json',
+                ])
+                ->post($this->apiUrl . '/auth', [
+                    'username' => $this->apiUsername,
+                    'password' => $this->apiPassword,
+                ]);
+
+            if ($response->successful()) {
+                $data = $response->json();
+                $this->jwtToken = $data['token'] ?? null;
+                return $this->jwtToken;
+            }
+
+            Log::error('WebXPay authentication failed', [
+                'status' => $response->status(),
+                'response' => $response->body()
+            ]);
+
+            return null;
+        } catch (\Exception $e) {
+            Log::error('WebXPay authentication exception', [
+                'error' => $e->getMessage()
+            ]);
+            return null;
+        }
+    }
+
+    /**
+     * Create payment request using RSA encryption (WebXPay Redirect Method)
+     * Based on official WebXPay redirect-sample-code
      */
     public function createPayment(Booking $booking, float $amount, string $paymentType = 'full'): array
     {
@@ -43,65 +94,77 @@ class WebXPayService
         try {
             $orderId = $booking->booking_number . '-' . time();
             
-            $paymentData = [
-                'merchant_id' => $this->merchantId,
+            // Step 1: Create plaintext payment data
+            // Format: unique_order_id|total_amount
+            // WebXPay expects amount as decimal with 2 decimal places (e.g., 240696.51)
+            $amountFormatted = number_format($amount, 2, '.', '');
+            $plaintext = $orderId . '|' . $amountFormatted;
+            
+            // Step 2: Encrypt with RSA public key
+            $encryptedPayment = $this->encryptWithPublicKey($plaintext);
+            
+            if (!$encryptedPayment) {
+                throw new \Exception('Failed to encrypt payment data');
+            }
+            
+            // Step 3: Prepare customer details
+            $customerData = [
+                'first_name' => $booking->customer?->user?->first_name ?? explode(' ', $booking->customer?->user?->full_name ?? 'Customer')[0],
+                'last_name' => $booking->customer?->user?->last_name ?? explode(' ', $booking->customer?->user?->full_name ?? 'Customer')[1] ?? '',
+                'email' => $booking->customer?->user?->email ?? 'customer@example.com',
+                'contact_number' => $this->formatPhoneNumber($booking->customer?->user?->phone ?? '0000000000'),
+                'address_line_one' => $booking->customer->address ?? $booking->customer?->user?->address ?? '',
+                'address_line_two' => '',
+                'city' => $booking->customer->city ?? $booking->customer?->user?->city ?? '',
+                'state' => 'Western',
+                'postal_code' => '10000',
+                'country' => 'Sri Lanka',
+                'process_currency' => $this->currency,
+                'cms' => 'Laravel',
+            ];
+            
+            // Step 4: Prepare custom fields (booking_id|payment_type|booking_number|customer_id)
+            $customFields = implode('|', [
+                $booking->id,
+                $paymentType,
+                $booking->booking_number,
+                $booking->customer->id ?? 'guest'
+            ]);
+            $encryptedCustomFields = base64_encode($customFields);
+            
+            Log::info('WebXPay payment initiated (RSA Redirect)', [
+                'booking_id' => $booking->id,
                 'order_id' => $orderId,
-                'amount' => number_format($amount, 2, '.', ''),
-                'currency' => $this->currency,
-                'customer_name' => $booking->customer->full_name ?? 'Customer',
-                'customer_email' => $booking->customer->email ?? '',
-                'customer_phone' => $booking->customer->phone ?? '',
-                'description' => "Booking #{$booking->booking_number} - {$paymentType} payment",
-                'return_url' => config('booking.webxpay.return_url') ?: route('checkout.webxpay.callback'),
-                'cancel_url' => config('booking.webxpay.cancel_url') ?: route('checkout.webxpay.cancel'),
-                'notify_url' => config('booking.webxpay.notify_url') ?: route('checkout.webxpay.notify'),
-                'custom_1' => $booking->id,
-                'custom_2' => $paymentType,
+                'amount_original' => $amount,
+                'amount_test_fixed' => $amountFormatted,
+                'plaintext' => $plaintext,
+                'note' => 'Testing with fixed amount 100 to match WebXPay samples'
+            ]);
+
+            Log::debug('WebXPay customer data', $customerData);
+            Log::debug('WebXPay custom fields', [
+                'custom_fields_plaintext' => $customFields,
+                'custom_fields_encrypted' => $encryptedCustomFields,
+                'encryptedPayment'=> $encryptedPayment
+            ]); 
+            // Step 5: Return all data for form submission
+            return [
+                'success' => true,
+                'payment_url' => $this->checkoutUrl, // e.g., https://webxpay.com/index.php?route=checkout/billing
+                'order_id' => $orderId,
+                'encrypted_payment' => $encryptedPayment,
+                'secret_key' => $this->secretKey,
+                'custom_fields' => $encryptedCustomFields,
+                'enc_method' => 'JCs3J+6oSz4V0LgE0zi/Bg==', // Encryption method indicator (from WebXPay sample)
+                'customer_data' => $customerData,
+                'method' => 'rsa_redirect' // Indicates RSA form redirect
             ];
 
-            // Generate hash for security
-            $paymentData['hash'] = $this->generateHash($paymentData);
-
-            // Make API request to WebXPay
-            $response = Http::timeout(30)
-                ->withHeaders([
-                    'Content-Type' => 'application/json',
-                    'Accept' => 'application/json',
-                ])
-                ->post($this->apiUrl . '/payment/initiate', $paymentData);
-
-            if ($response->successful()) {
-                $result = $response->json();
-                
-                Log::info('WebXPay payment created', [
-                    'booking_id' => $booking->id,
-                    'order_id' => $orderId,
-                    'amount' => $amount
-                ]);
-
-                return [
-                    'success' => true,
-                    'payment_url' => $result['payment_url'] ?? null,
-                    'order_id' => $orderId,
-                    'transaction_id' => $result['transaction_id'] ?? null,
-                ];
-            } else {
-                Log::error('WebXPay payment creation failed', [
-                    'booking_id' => $booking->id,
-                    'status' => $response->status(),
-                    'response' => $response->body()
-                ]);
-
-                return [
-                    'success' => false,
-                    'message' => 'Failed to create payment request',
-                    'error' => $response->json()['message'] ?? 'Unknown error'
-                ];
-            }
         } catch (\Exception $e) {
-            Log::error('WebXPay exception', [
+            Log::error('WebXPay payment creation exception', [
                 'booking_id' => $booking->id,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
             ]);
 
             return [
@@ -113,64 +176,123 @@ class WebXPayService
     }
 
     /**
-     * Verify payment callback
+     * Encrypt data using WebXPay public key (RSA PKCS1 padding - OpenSSL compatible)
+     */
+    protected function encryptWithPublicKey(string $plaintext): ?string
+    {
+        try {
+            // Use openssl_public_encrypt for compatibility with WebXPay sample code
+            $success = openssl_public_encrypt($plaintext, $encrypted, $this->publicKey);
+            
+            if (!$success) {
+                throw new \Exception('OpenSSL encryption failed: ' . openssl_error_string());
+            }
+            
+            // Base64 encode for transmission
+            return base64_encode($encrypted);
+            
+        } catch (\Exception $e) {
+            Log::error('RSA encryption failed', [
+                'error' => $e->getMessage(),
+                'public_key_length' => strlen($this->publicKey)
+            ]);
+            return null;
+        }
+    }
+
+    /**
+     * Verify payment callback using RSA signature
+     * Based on official WebXPay response.php sample
      */
     public function verifyPayment(array $callbackData): array
     {
         try {
-            // Verify hash
-            if (!$this->verifyHash($callbackData)) {
+            // Step 1: Get the encrypted payment response and signature
+            $encryptedPayment = $callbackData['payment'] ?? null;
+            $encryptedSignature = $callbackData['signature'] ?? null;
+            $encryptedCustomFields = $callbackData['custom_fields'] ?? null;
+
+            if (!$encryptedPayment || !$encryptedSignature) {
                 return [
                     'success' => false,
-                    'message' => 'Invalid payment hash'
+                    'message' => 'Missing payment or signature data'
                 ];
             }
 
-            $orderId = $callbackData['order_id'] ?? null;
-            $transactionId = $callbackData['transaction_id'] ?? null;
-            $status = $callbackData['status'] ?? null;
+            // Step 2: Base64 decode
+            $payment = base64_decode($encryptedPayment);
+            $signature = base64_decode($encryptedSignature);
+            $customFields = $encryptedCustomFields ? base64_decode($encryptedCustomFields) : '';
 
-            if (!$orderId || !$transactionId) {
-                return [
-                    'success' => false,
-                    'message' => 'Missing required callback data'
-                ];
-            }
+            // Step 3: Decrypt signature with public key
+            $decryptedSignature = $this->decryptWithPublicKey($signature);
 
-            // Query payment status from WebXPay
-            $response = Http::timeout(30)
-                ->withHeaders([
-                    'Content-Type' => 'application/json',
-                    'Authorization' => 'Bearer ' . $this->merchantSecret,
-                ])
-                ->get($this->apiUrl . '/payment/status', [
-                    'merchant_id' => $this->merchantId,
-                    'order_id' => $orderId,
-                    'transaction_id' => $transactionId,
+            // Step 4: Verify signature matches payment data
+            if ($decryptedSignature !== $payment) {
+                Log::warning('WebXPay signature verification failed', [
+                    'expected' => substr($payment, 0, 100),
+                    'got' => substr($decryptedSignature, 0, 100)
                 ]);
-
-            if ($response->successful()) {
-                $result = $response->json();
                 
                 return [
-                    'success' => true,
-                    'status' => $result['status'] ?? $status,
-                    'transaction_id' => $transactionId,
-                    'order_id' => $orderId,
-                    'amount' => $result['amount'] ?? $callbackData['amount'] ?? 0,
-                    'payment_method' => $result['payment_method'] ?? 'online',
-                    'paid_at' => $result['paid_at'] ?? now(),
+                    'success' => false,
+                    'message' => 'Invalid payment signature'
                 ];
             }
 
+            // Step 5: Parse payment response
+            // Format: order_id|order_reference_number|date_time_transaction|payment_gateway_used|status_code|comment
+            $responseData = explode('|', $payment);
+            
+            if (count($responseData) < 5) {
+                return [
+                    'success' => false,
+                    'message' => 'Invalid payment response format'
+                ];
+            }
+
+            // Step 6: Parse custom fields
+            // Format: booking_id|payment_type|booking_number|customer_id
+            $customData = $customFields ? explode('|', $customFields) : [];
+
+            // Step 7: Extract payment details
+            $orderId = $responseData[0] ?? null;
+            $referenceNumber = $responseData[1] ?? null;
+            $transactionDateTime = $responseData[2] ?? null;
+            $paymentGateway = $responseData[3] ?? null;
+            $statusCode = $responseData[4] ?? null;
+            $comment = $responseData[5] ?? '';
+
+            Log::info('WebXPay payment verified', [
+                'order_id' => $orderId,
+                'reference_number' => $referenceNumber,
+                'status_code' => $statusCode,
+                'payment_gateway' => $paymentGateway,
+                'custom_fields' => $customData
+            ]);
+
+            // Status code 2 = success in WebXPay
+            $isSuccessful = ($statusCode == '2');
+
             return [
-                'success' => false,
-                'message' => 'Failed to verify payment status'
+                'success' => $isSuccessful,
+                'order_id' => $orderId,
+                'transaction_id' => $referenceNumber,
+                'status' => $isSuccessful ? 'success' : 'failed',
+                'status_code' => $statusCode,
+                'payment_gateway' => $paymentGateway,
+                'transaction_date' => $transactionDateTime,
+                'comment' => $comment,
+                'booking_id' => $customData[0] ?? null,
+                'payment_type' => $customData[1] ?? null,
+                'booking_number' => $customData[2] ?? null,
+                'customer_id' => $customData[3] ?? null,
             ];
+
         } catch (\Exception $e) {
             Log::error('WebXPay verification exception', [
                 'error' => $e->getMessage(),
-                'callback_data' => $callbackData
+                'trace' => $e->getTraceAsString()
             ]);
 
             return [
@@ -182,82 +304,47 @@ class WebXPayService
     }
 
     /**
-     * Generate hash for payment data
+     * Decrypt signature using WebXPay public key (OpenSSL compatible)
      */
-    protected function generateHash(array $data): string
+    protected function decryptWithPublicKey(string $encrypted): ?string
     {
-        $hashString = $this->merchantId 
-            . $data['order_id'] 
-            . $data['amount'] 
-            . $data['currency'] 
-            . $this->merchantSecret;
-        
-        return strtoupper(md5($hashString));
-    }
-
-    /**
-     * Verify callback hash
-     */
-    protected function verifyHash(array $data): bool
-    {
-        $receivedHash = $data['hash'] ?? '';
-        
-        $hashString = $this->merchantId 
-            . ($data['order_id'] ?? '') 
-            . ($data['amount'] ?? '') 
-            . ($data['currency'] ?? $this->currency) 
-            . $this->merchantSecret;
-        
-        $calculatedHash = strtoupper(md5($hashString));
-        
-        return hash_equals($calculatedHash, $receivedHash);
-    }
-
-    /**
-     * Refund payment
-     */
-    public function refundPayment(string $transactionId, float $amount, string $reason = ''): array
-    {
-        if (!$this->isEnabled()) {
-            throw new \Exception('WebXPay is not enabled or configured properly');
-        }
-
         try {
-            $response = Http::timeout(30)
-                ->withHeaders([
-                    'Content-Type' => 'application/json',
-                    'Authorization' => 'Bearer ' . $this->merchantSecret,
-                ])
-                ->post($this->apiUrl . '/payment/refund', [
-                    'merchant_id' => $this->merchantId,
-                    'transaction_id' => $transactionId,
-                    'amount' => number_format($amount, 2, '.', ''),
-                    'reason' => $reason,
-                ]);
-
-            if ($response->successful()) {
-                return [
-                    'success' => true,
-                    'refund_id' => $response->json()['refund_id'] ?? null,
-                ];
+            // Use openssl_public_decrypt for compatibility with WebXPay sample code
+            $success = openssl_public_decrypt($encrypted, $decrypted, $this->publicKey);
+            
+            if (!$success) {
+                throw new \Exception('OpenSSL decryption failed: ' . openssl_error_string());
             }
-
-            return [
-                'success' => false,
-                'message' => 'Refund failed',
-                'error' => $response->json()['message'] ?? 'Unknown error'
-            ];
+            
+            return $decrypted;
+            
         } catch (\Exception $e) {
-            Log::error('WebXPay refund exception', [
-                'transaction_id' => $transactionId,
+            Log::error('RSA decryption failed', [
                 'error' => $e->getMessage()
             ]);
-
-            return [
-                'success' => false,
-                'message' => 'Refund processing error',
-                'error' => $e->getMessage()
-            ];
+            return null;
         }
     }
+
+    /**
+     * Format phone number for WebXPay
+     * Removes + sign and country code prefix, keeps only digits
+     * e.g., +94772090741 becomes 0772090741
+     */
+    protected function formatPhoneNumber(string $phone): string
+    {
+        // Remove + sign if present
+        $phone = str_replace('+', '', $phone);
+        
+        // If starts with country code (94 for Sri Lanka), replace with 0
+        if (str_starts_with($phone, '94')) {
+            $phone = '0' . substr($phone, 2);
+        }
+        
+        // Keep only digits
+        $phone = preg_replace('/[^0-9]/', '', $phone);
+        
+        return $phone ?: '0000000000';
+    }
 }
+

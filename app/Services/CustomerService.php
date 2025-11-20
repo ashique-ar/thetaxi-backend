@@ -31,13 +31,38 @@ class CustomerService
     public function createGuestCustomer(array $data): Customer
     {
         return DB::transaction(function () use ($data) {
+            // Check if customer with this NIC already exists (to avoid duplicate NIC constraint)
+            $existingNic = $data['customer_identification'] ?? null;
+            if ($existingNic) {
+                $existingCustomer = Customer::where('nic', $existingNic)->first();
+                if ($existingCustomer) {
+                    // Customer with this NIC already exists, update their info and return
+                    $user = $existingCustomer->user;
+                    if ($user) {
+                        $user->update([
+                            'first_name' => $data['first_name'] ?? explode(' ', $data['customer_name'])[0],
+                            'last_name' => $data['last_name'] ?? (explode(' ', $data['customer_name'])[1] ?? ''),
+                            'email' => $data['customer_email'] ?? $user->email,
+                            'phone' => $data['customer_phone'] ?? $user->phone,
+                        ]);
+                    }
+                    $existingCustomer->update([
+                        'address' => $data['customer_address'] ?? $existingCustomer->address,
+                        'city' => $data['customer_city'] ?? $existingCustomer->city,
+                        'country_id' => $data['country_id'] ?? $existingCustomer->country_id,
+                    ]);
+                    return $existingCustomer->load('user');
+                }
+            }
+            
             // Check if user with this email already exists
             $user = User::where('email', $data['customer_email'])->first();
             
             if (!$user) {
                 // Create new user account for guest
                 $user = User::create([
-                    'first_name' => $data['customer_name'],
+                    'first_name' => $data['first_name'] ?? explode(' ', $data['customer_name'])[0],
+                    'last_name' => $data['last_name'] ?? (explode(' ', $data['customer_name'])[1] ?? ''),
                     'email' => $data['customer_email'],
                     'phone' => $data['customer_phone'] ?? null,
                     'password' => bcrypt(Str::random(16)), // Random password, guest won't login
@@ -47,7 +72,8 @@ class CustomerService
             } else {
                 // Update existing user info if needed
                 $user->update([
-                    'first_name' => $data['customer_name'],
+                    'first_name' => $data['first_name'] ?? explode(' ', $data['customer_name'])[0],
+                    'last_name' => $data['last_name'] ?? (explode(' ', $data['customer_name'])[1] ?? ''),
                     'phone' => $data['customer_phone'] ?? $user->phone,
                 ]);
             }

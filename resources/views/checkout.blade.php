@@ -140,10 +140,20 @@
                             <div class="row">
                                 <div class="col-md-6">
                                     <div class="form-inner two mb-25">
-                                        <label>Full Name*</label>
-                                        <input type="text" name="full_name" placeholder="Enter your full name" required 
-                                               value="{{ old('full_name') }}">
-                                        @error('full_name')
+                                        <label>First Name*</label>
+                                        <input type="text" name="first_name" placeholder="Enter your first name" required 
+                                               value="{{ old('first_name') }}">
+                                        @error('first_name')
+                                            <span class="text-danger">{{ $message }}</span>
+                                        @enderror
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-inner two mb-25">
+                                        <label>Last Name*</label>
+                                        <input type="text" name="last_name" placeholder="Enter your last name" required 
+                                               value="{{ old('last_name') }}">
+                                        @error('last_name')
                                             <span class="text-danger">{{ $message }}</span>
                                         @enderror
                                     </div>
@@ -151,8 +161,14 @@
                                 <div class="col-md-6">
                                     <div class="form-inner two mb-25">
                                         <label>Phone Number*</label>
-                                        <input type="tel" name="phone" placeholder="Enter phone number" required 
-                                               value="{{ old('phone') }}">
+                                        <input type="tel" id="phone-input" name="phone" placeholder="+1 (201) 555-0123" required 
+                                               value="{{ old('phone') }}"
+                                               style="padding-left: 48px;">
+                                        <div id="phone-error" class="text-danger mt-2" style="display: none;"></div>
+                                        <div id="phone-valid" class="text-success small mt-1" style="display: none;"></div>
+                                        <!-- Hidden fields for additional phone data -->
+                                        <input type="hidden" id="phone-country-code" name="phone_country_code" value="{{ old('phone_country_code') }}">
+                                        <input type="hidden" id="phone-international" name="phone_international" value="{{ old('phone_international') }}">
                                         @error('phone')
                                             <span class="text-danger">{{ $message }}</span>
                                         @enderror
@@ -201,8 +217,15 @@
                                 <div class="col-md-6">
                                     <div class="form-inner two mb-25">
                                         <label>Country*</label>
-                                        <input type="text" name="country" placeholder="Enter country" required 
-                                               value="{{ old('country', 'Sri Lanka') }}">
+                                        <select id="country-select" name="country" required>
+                                            <option value="">Select Country</option>
+                                            <option value="Sri Lanka" {{ old('country', 'Sri Lanka') === 'Sri Lanka' ? 'selected' : '' }}>Sri Lanka (+94)</option>
+                                            <option value="India" {{ old('country') === 'India' ? 'selected' : '' }}>India (+91)</option>
+                                            <option value="United States" {{ old('country') === 'United States' ? 'selected' : '' }}>United States (+1)</option>
+                                            <option value="United Kingdom" {{ old('country') === 'United Kingdom' ? 'selected' : '' }}>United Kingdom (+44)</option>
+                                            <option value="Canada" {{ old('country') === 'Canada' ? 'selected' : '' }}>Canada (+1)</option>
+                                            <option value="Australia" {{ old('country') === 'Australia' ? 'selected' : '' }}>Australia (+61)</option>
+                                        </select>
                                         @error('country')
                                             <span class="text-danger">{{ $message }}</span>
                                         @enderror
@@ -468,25 +491,23 @@
                                             </ul>
                                         </div>
                                         
-                                        <!-- Bank Transfer Instructions -->
-                                        <div class="pt-25" id="BankTransferInfo" style="display: none;">
-                                            <div class="alert alert-info">
-                                                <h6><i class="bi bi-bank"></i> Bank Transfer Details:</h6>
-                                                <p><strong>Account Name:</strong> Casons Rent A Car (Pvt) Ltd</p>
-                                                <p><strong>Bank:</strong> Commercial Bank of Ceylon PLC</p>
-                                                <p><strong>Account No:</strong> 1234567890</p>
-                                                <p><strong>Branch:</strong> Colombo Main Branch</p>
-                                                <p><strong>SWIFT Code:</strong> CCEYLKLX</p>
-                                                <small class="text-muted">* Please use your booking reference as the transfer description and email the payment receipt to payments@casonsrentacar.lk</small>
+                                        <!-- Payment Method Info -->
+                                        <div class="pt-25" id="PaymentMethodInfo">
+                                            <div class="alert alert-info" id="OnlinePaymentInfo" style="display: none;">
+                                                <h6><i class="bi bi-credit-card-fill"></i> Online Payment:</h6>
+                                                <p>You will be redirected to our secure payment gateway to complete your payment.</p>
+                                                @if($paymentType === 'advance')
+                                                <small class="text-muted">* You are paying {{ config('booking.advance_payment.percentage', 50) }}% advance. Remaining amount will be collected at check-in.</small>
+                                                @endif
                                             </div>
-                                        </div>
-                                        
-                                        <!-- Online Banking Instructions -->
-                                        <div class="pt-25" id="OnlineBankingInfo" style="display: none;">
-                                            <div class="alert alert-info">
-                                                <h6><i class="bi bi-wallet2"></i> Online Banking Payment:</h6>
-                                                <p>You will be redirected to your bank's secure payment gateway after clicking "Complete Booking".</p>
-                                                <small class="text-muted">* Supported banks: Commercial Bank, HNB, Sampath Bank, Nations Trust Bank</small>
+                                            <div class="alert alert-info" id="OfflinePaymentInfo" style="display: none;">
+                                                <h6><i class="bi bi-cash-coin"></i> Pay on Check-in:</h6>
+                                                <p>Your booking will be confirmed. Payment will be collected when you check-in to collect the vehicle.</p>
+                                                @if($paymentType === 'advance')
+                                                <small class="text-muted">* You need to pay {{ config('booking.advance_payment.percentage', 50) }}% advance at check-in. Remaining after completing the rental.</small>
+                                                @else
+                                                <small class="text-muted">* Full payment will be collected at check-in.</small>
+                                                @endif
                                             </div>
                                         </div>
                                     </div>
@@ -884,7 +905,40 @@
         max-height: 250px;
     }
 }
+
+/* International Phone Input Styles */
+.iti {
+    width: 100%;
+}
+
+.iti__flag-container {
+    background-color: #f8f9fa;
+    border-right: 1px solid #dee2e6;
+}
+
+.iti__flag {
+    background-image: url('https://cdn.jsdelivr.net/npm/intl-tel-input@17/build/img/flags.png');
+}
+
+#phone-input {
+    width: 100% !important;
+    padding: 10px 10px 10px 48px !important;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+}
+
+#phone-input:focus {
+    border-color: #80bdff;
+    outline: 0;
+    box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
+}
+
+.iti__dropdown-content {
+    max-height: 200px;
+    overflow-y: auto;
+}
 </style>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/intl-tel-input@17/build/css/intlTelInput.css">
 @endpush
 
 @push('scripts')
@@ -940,18 +994,19 @@ $(document).ready(function() {
         $('.payment-option li').removeClass('active');
         $(this).closest('li').addClass('active');
         
-        // Show/hide payment method specific fields
-        $('#StripePayment, #BankTransferInfo').hide();
+        // Show/hide payment method specific info
+        $('#OnlinePaymentInfo, #OfflinePaymentInfo').hide();
         
         const paymentMethod = $(this).val();
-        if (paymentMethod === 'stripe') {
-            $('#StripePayment').slideDown();
-        } else if (paymentMethod === 'bank_transfer') {
-            $('#BankTransferInfo').slideDown();
-        } else if (paymentMethod === 'online_banking') {
-            $('#OnlineBankingInfo').slideDown();
+        if (paymentMethod === 'online') {
+            $('#OnlinePaymentInfo').slideDown();
+        } else if (paymentMethod === 'offline') {
+            $('#OfflinePaymentInfo').slideDown();
         }
     });
+    
+    // Trigger change event on page load if a payment method is already selected
+    $('input[name="payment_method"]:checked').trigger('change');
     
     // Form validation
     $('#checkout-form').on('submit', function(e) {
@@ -970,6 +1025,120 @@ $(document).ready(function() {
         // Disable submit button to prevent double submission
         $('#checkout-submit-btn').prop('disabled', true).html('<span>Processing...</span>');
     });
+});
+</script>
+
+<!-- Intl Tel Input Library -->
+<script src="https://cdn.jsdelivr.net/npm/intl-tel-input@17/build/js/intlTelInput.js"></script>
+<!-- LibPhoneNumber for validation -->
+<script src="https://cdn.jsdelivr.net/npm/libphonenumber-js@1/bundle/libphonenumber-js.min.js"></script>
+
+<script>
+$(document).ready(function() {
+    // Country to calling code mapping
+    const countryCodeMap = {
+        'Sri Lanka': 'lk',
+        'India': 'in',
+        'United States': 'us',
+        'United Kingdom': 'gb',
+        'Canada': 'ca',
+        'Australia': 'au'
+    };
+
+    // Initialize intl-tel-input
+    const phoneInput = document.querySelector('#phone-input');
+    const phoneCountrySelect = document.querySelector('#country-select');
+    const phoneCountryCodeField = document.querySelector('#phone-country-code');
+    const phoneInternationalField = document.querySelector('#phone-international');
+    const phoneErrorDiv = document.querySelector('#phone-error');
+    const phoneValidDiv = document.querySelector('#phone-valid');
+
+    const iti = window.intlTelInput(phoneInput, {
+        initialCountry: 'lk',
+        preferredCountries: ['lk', 'in', 'us', 'gb', 'ca', 'au'],
+        separateDialCode: true,
+        formatAsYouType: true,
+        utilsScript: 'https://cdn.jsdelivr.net/npm/intl-tel-input@17/build/js/utils.js'
+    });
+
+    // Function to update country and validate
+    function validatePhoneNumber() {
+        const phoneNumber = phoneInput.value.trim();
+        
+        if (!phoneNumber) {
+            phoneErrorDiv.style.display = 'none';
+            phoneValidDiv.style.display = 'none';
+            return false;
+        }
+
+        // Check if number is valid
+        if (iti.isValidNumber()) {
+            const countryData = iti.getSelectedCountryData();
+            const internationalNumber = iti.getNumber(intlTelInputUtils.numberFormat.INTERNATIONAL);
+            const e164Number = iti.getNumber(intlTelInputUtils.numberFormat.E164);
+            
+            // Store formatted numbers
+            phoneCountryCodeField.value = countryData.dialCode;
+            phoneInternationalField.value = e164Number; // Store E164 format (+94771234567)
+            
+            phoneErrorDiv.style.display = 'none';
+            phoneValidDiv.textContent = `✓ Valid ${countryData.name} number`;
+            phoneValidDiv.style.display = 'block';
+            
+            return true;
+        } else {
+            phoneCountryCodeField.value = '';
+            phoneInternationalField.value = '';
+            
+            const countryData = iti.getSelectedCountryData();
+            const errorMsg = iti.getValidationError();
+            const errorMessages = {
+                0: 'Invalid number',
+                1: 'Too short',
+                2: 'Too long',
+                3: 'Not a number'
+            };
+            
+            phoneErrorDiv.textContent = `✗ ${errorMessages[errorMsg] || 'Invalid phone number for ' + countryData.name}`;
+            phoneErrorDiv.style.display = 'block';
+            phoneValidDiv.style.display = 'none';
+            
+            return false;
+        }
+    }
+
+    // Update country selection when select dropdown changes
+    $(phoneCountrySelect).on('change', function() {
+        const selectedCountry = $(this).val();
+        const countryCode = countryCodeMap[selectedCountry];
+        
+        if (countryCode) {
+            iti.setCountry(countryCode);
+            // Focus and validate
+            setTimeout(() => {
+                validatePhoneNumber();
+            }, 100);
+        }
+    });
+
+    // Validate on input
+    $(phoneInput).on('input change blur', function() {
+        validatePhoneNumber();
+    });
+
+    // Set default country from select
+    const defaultCountry = $(phoneCountrySelect).val();
+    if (defaultCountry && countryCodeMap[defaultCountry]) {
+        const defaultCountryCode = countryCodeMap[defaultCountry];
+        iti.setCountry(defaultCountryCode);
+    }
+
+    // Restore phone value if it exists (for form re-submission)
+    if (phoneInput.value) {
+        setTimeout(() => {
+            validatePhoneNumber();
+        }, 200);
+    }
 });
 </script>
 @endpush

@@ -86,8 +86,11 @@ class CheckoutController extends Controller
         // Define validation rules
         $rules = [
             'payment_type' => 'required|in:full,advance,quotation',
-            'full_name' => 'required|string|max:255',
-            'phone' => 'required|string|max:20',
+            'first_name' => 'required|string|max:255',
+            'last_name' => 'required|string|max:255',
+            'phone' => 'required|string|min:5|max:20',
+            'phone_country_code' => 'required|string|max:5',
+            'phone_international' => 'required|string|regex:/^\+[0-9]{1,3}[0-9]{6,14}$/',
             'email' => 'required|email|max:255',
             'identification' => 'required|string|max:50',
             'address' => 'required|string|max:500',
@@ -107,13 +110,18 @@ class CheckoutController extends Controller
 
         // Add payment method validation only if not quotation
         if ($request->input('payment_type') !== 'quotation') {
-            $rules['payment_method'] = 'required|in:online,bank_transfer,online_banking';
+            $rules['payment_method'] = 'required|in:online,offline';
         }
 
         // Custom validation messages
         $messages = [
-            'full_name.required' => 'Please enter your full name.',
+            'first_name.required' => 'Please enter your first name.',
+            'last_name.required' => 'Please enter your last name.',
             'phone.required' => 'Please enter your phone number.',
+            'phone.min' => 'Phone number is too short.',
+            'phone_country_code.required' => 'Please select a valid country for your phone number.',
+            'phone_international.required' => 'Please enter a valid international phone number.',
+            'phone_international.regex' => 'Please enter a valid international phone number format (e.g., +94771234567).',
             'email.required' => 'Please enter your email address.',
             'email.email' => 'Please enter a valid email address.',
             'identification.required' => 'Please enter your identification number.',
@@ -135,12 +143,28 @@ class CheckoutController extends Controller
             return redirect()->route('cart')->with('error', 'Your cart is empty.');
         }
 
+        // Ensure cart totals are calculated
+        if (empty($cartModel->totals)) {
+            Log::warning('Cart totals are empty, recalculating', [
+                'cart_id' => $cartModel->id,
+                'items_count' => count($cart),
+                'items' => $cart
+            ]);
+            $this->cartService->updateTotals($cartModel);
+            // Refresh the model to get updated totals
+            $cartModel->refresh();
+        }
         try {
             DB::beginTransaction();
 
-            $validated['customer_name'] = $validated['full_name'];
+            // Prepare customer data
+            $validated['customer_name'] = trim($validated['first_name'] . ' ' . $validated['last_name']);
             $validated['customer_email'] = $validated['email'];
-            $validated['customer_phone'] = $validated['phone'];
+            // Use international format phone number for payment gateway
+            $validated['customer_phone'] = $validated['phone_international'] ?? $validated['phone'];
+            $validated['customer_address'] = $validated['address'];
+            $validated['customer_city'] = $validated['city'];
+            $validated['customer_identification'] = $validated['identification'];
 
             // Step 1: Create or get customer
             $customer = $this->customerService->getOrCreateCustomer($validated);
@@ -153,6 +177,18 @@ class CheckoutController extends Controller
             $vat = $totals['vat'] ?? 0;
             $discount = $totals['coupon_discount'] ?? 0;
             $total = $totals['total'] ?? 0;
+
+            // Log total amounts for debugging
+            Log::info('Cart totals retrieved', [
+                'cart_id' => $cartModel->id,
+                'cart_totals_json' => $cartModel->totals,
+                'subtotal' => $subtotal,
+                'service_fee' => $serviceFee,
+                'tax' => $tax,
+                'vat' => $vat,
+                'discount' => $discount,
+                'total' => $total,
+            ]);
 
             // All amounts are in LKR (base currency)
             // Calculate payment amount based on type
@@ -186,10 +222,12 @@ class CheckoutController extends Controller
             switch ($validated['payment_type']) {
                 case 'quotation':
                     $number = 'QT' . strtoupper(substr(md5(microtime()), 0, 8));
+                    break;
                 case 'advance':
+                case 'online':
                 case 'full':
                     $number = 'BK' . strtoupper(substr(md5(microtime()), 0, 8));
-
+                    break;
                 default:
                     $number = 'QT' . strtoupper(substr(md5(microtime()), 0, 8));
             }
@@ -250,7 +288,7 @@ class CheckoutController extends Controller
             // Store cart items for reference
             session()->put('pending_booking_id', $booking->id);
             session()->put('pending_booking_cart', $cart);
-
+            Log::info('Pending booking data', ['booking_id' => $booking->id, 'cart' => $cart, 'validated' => $validated]);
             // Handle different payment types
             switch ($validated['payment_type']) {
                 case 'quotation':
@@ -326,8 +364,7 @@ class CheckoutController extends Controller
                 case 'online':
                     return $this->processOnlinePayment($booking, $paymentAmount);
 
-                case 'bank_transfer':
-                case 'online_banking':
+                case 'offline':
                     return $this->processOfflinePayment($booking, $paymentMethod);
 
                 default:
@@ -345,6 +382,7 @@ class CheckoutController extends Controller
     {
         if (!$this->webxPayService->isEnabled()) {
             // If WebXPay is not enabled, mark as pending for manual processing
+            return redirect()->back()->with('error', 'Online payment is currently unavailable. Please try again later or choose offline payment.');
             return $this->processOfflinePayment($booking, 'online');
         }
 
@@ -358,36 +396,61 @@ class CheckoutController extends Controller
                 $booking->update([
                     'status' => config('booking.status.payment_processing'),
                     'payment_gateway_order_id' => $result['order_id'] ?? null,
-                    'payment_gateway_transaction_id' => $result['transaction_id'] ?? null,
                 ]);
 
-                // Store booking ID in session for callback
+                // Store booking ID and RSA encrypted payment data in session
                 session()->put('pending_booking_id', $booking->id);
+                session()->put('webxpay_payment_data', [
+                    'payment_url' => $result['payment_url'],
+                    'order_id' => $result['order_id'],
+                    'encrypted_payment' => $result['encrypted_payment'],
+                    'secret_key' => $result['secret_key'],
+                    'custom_fields' => $result['custom_fields'],
+                    'enc_method' => $result['enc_method'],
+                    'customer_data' => $result['customer_data'],
+                ]);
 
                 DB::commit();
 
-                // Redirect to WebXPay payment page
+                // Check if WebXPay uses RSA form redirect
+                if (isset($result['method']) && $result['method'] === 'rsa_redirect') {
+                    // Redirect to our payment redirect page that will auto-submit RSA form to WebXPay
+                    return redirect()->route('checkout.webxpay.redirect');
+                }
+
+                // Direct URL redirect (if needed for other methods)
                 return redirect($result['payment_url']);
             } else {
-                throw new \Exception($result['error'] ?? 'Payment gateway error');
+                // Payment gateway returned error - fallback to offline payment
+                $errorMessage = $result['message'] ?? $result['error'] ?? 'Payment gateway error';
+
+                Log::warning('Payment gateway error, falling back to offline payment', [
+                    'booking_id' => $booking->id,
+                    'error' => $errorMessage
+                ]);
+
+                return $this->processOfflinePayment($booking, 'online');
             }
         } catch (\Exception $e) {
-            Log::error('Online payment processing error', [
+            Log::error('Online payment processing error, falling back to offline payment', [
                 'booking_id' => $booking->id,
                 'error' => $e->getMessage()
             ]);
-            throw new \Exception('Unable to process online payment: ' . $e->getMessage());
+
+            // Fallback to offline payment on any error
+            return $this->processOfflinePayment($booking, 'online');
         }
     }
 
     /**
-     * Process offline payment (bank transfer, online banking)
+     * Process offline payment (pay on check-in)
      */
     protected function processOfflinePayment(Booking $booking, string $method)
     {
-        // For offline payments, booking is pending until payment confirmation
+        return redirect()->back()->with('error', 'Online payment is currently unavailable. Please try again later or choose offline payment.');
+        // For offline payments (pay on check-in), booking is confirmed but payment pending
         $booking->update([
-            'status' => config('booking.status.pending_payment'),
+            'status' => config('booking.status.confirmed'),
             'payment_status' => 'pending',
         ]);
 
@@ -417,7 +480,7 @@ class CheckoutController extends Controller
 
             // Send confirmation email to customer
             try {
-                Mail::to($booking->customer->email)->send(new CheckoutConfirmationMail($booking));
+                Mail::to($booking->customer?->user?->email)->send(new CheckoutConfirmationMail($booking));
             } catch (\Exception $e) {
                 Log::error('Failed to send confirmation email', [
                     'booking_id' => $booking->id,
@@ -428,10 +491,14 @@ class CheckoutController extends Controller
 
             DB::commit();
 
-            // Prepare success message based on payment status
-            $message = $paymentProcessed
-                ? 'Your booking has been confirmed and payment received successfully!'
-                : 'Your booking has been received. Please complete the payment to confirm your reservation.';
+            // Prepare success message based on payment status and method
+            if ($paymentProcessed) {
+                $message = 'Your booking has been confirmed and payment received successfully!';
+            } elseif ($paymentMethod === 'online') {
+                $message = 'Your booking has been confirmed! Payment gateway is temporarily unavailable. You can pay on check-in or contact us to arrange payment.';
+            } else {
+                $message = 'Your booking has been received. Payment will be collected when you check-in to collect the vehicle.';
+            }
 
             return redirect()->route('checkout.success', [
                 'type' => 'payment',
@@ -491,7 +558,61 @@ class CheckoutController extends Controller
                 return redirect()->route('cart')->with('error', 'Booking not found.');
             }
 
-            // Verify payment with WebXPay
+            // Check if this is from mock gateway (test mode)
+            if ($request->has('status') && !$this->webxPayService->isEnabled()) {
+                DB::beginTransaction();
+
+                if ($request->input('status') === 'success') {
+                    // Mock payment successful
+                    $booking->update([
+                        'status' => config('booking.status.confirmed'),
+                        'payment_status' => 'paid',
+                        'payment_gateway_transaction_id' => $request->input('transaction_id'),
+                        'paid_at' => now(),
+                        'confirmed_at' => now(),
+                    ]);
+
+                    // Mark cart as checked out
+                    $dbCart = $this->cartService->getOrCreateCart();
+                    $this->cartService->markAsCheckedOut($dbCart);
+
+                    // Send confirmation email
+                    try {
+                        Mail::to($booking->customer?->user?->email)->send(new CheckoutConfirmationMail($booking));
+                    } catch (\Exception $e) {
+                        Log::error('Failed to send confirmation email', [
+                            'booking_id' => $booking->id,
+                            'error' => $e->getMessage()
+                        ]);
+                    }
+
+                    DB::commit();
+
+                    // Clear session
+                    session()->forget(['pending_booking_id', 'pending_payment_amount']);
+
+                    return redirect()->route('checkout.success', [
+                        'type' => 'payment',
+                        'reference' => $booking->booking_number,
+                        'method' => 'online',
+                        'status' => 'confirmed'
+                    ])->with('success', 'Payment successful! Your booking is confirmed.');
+                } else {
+                    // Mock payment failed
+                    $booking->update([
+                        'status' => config('booking.status.pending_payment'),
+                        'payment_status' => 'failed',
+                    ]);
+
+                    DB::commit();
+
+                    session()->forget(['pending_booking_id', 'pending_payment_amount']);
+
+                    return redirect()->route('checkout')->with('error', 'Payment failed. Please try again.');
+                }
+            }
+
+            // Real WebXPay verification
             $callbackData = $request->all();
             $verificationResult = $this->webxPayService->verifyPayment($callbackData);
 
@@ -506,6 +627,20 @@ class CheckoutController extends Controller
                     'paid_at' => $verificationResult['paid_at'] ?? now(),
                     'confirmed_at' => now(),
                 ]);
+
+                // Mark cart as checked out
+                $dbCart = $this->cartService->getOrCreateCart();
+                $this->cartService->markAsCheckedOut($dbCart);
+
+                // Send confirmation email
+                try {
+                    Mail::to($booking->customer?->user?->email)->send(new CheckoutConfirmationMail($booking));
+                } catch (\Exception $e) {
+                    Log::error('Failed to send confirmation email', [
+                        'booking_id' => $booking->id,
+                        'error' => $e->getMessage()
+                    ]);
+                }
 
                 DB::commit();
 
@@ -582,6 +717,55 @@ class CheckoutController extends Controller
 
             return response()->json(['status' => 'error', 'message' => 'Processing error'], 500);
         }
+    }
+
+    /**
+     * Mock payment gateway (for testing when WebXPay is disabled)
+     */
+    public function mockGateway()
+    {
+        $bookingId = session()->get('pending_booking_id');
+        $amount = session()->get('pending_payment_amount');
+
+        if (!$bookingId) {
+            return redirect()->route('cart')->with('error', 'No pending booking found.');
+        }
+
+        $booking = Booking::find($bookingId);
+
+        if (!$booking) {
+            return redirect()->route('cart')->with('error', 'Booking not found.');
+        }
+
+        $orderId = $booking->booking_number . '-' . time();
+
+        return view('checkout.mock-gateway', compact('booking', 'amount', 'orderId'));
+    }
+
+    /**
+     * WebXPay redirect page - displays form that auto-submits to WebXPay (RSA Method)
+     */
+    public function webxpayRedirect(Request $request)
+    {
+        // Get payment data from session
+        $paymentData = session()->get('webxpay_payment_data');
+
+        if (!$paymentData) {
+            Log::error('WebXPay redirect attempted without payment data in session');
+            return redirect()->route('checkout')
+                ->with('error', 'Payment session expired. Please try again.');
+        }
+
+        // Pass RSA encrypted data to view for form submission
+        return view('checkout.webxpay-redirect', [
+            'payment_url' => $paymentData['payment_url'],
+            'order_id' => $paymentData['order_id'],
+            'encrypted_payment' => $paymentData['encrypted_payment'],
+            'secret_key' => $paymentData['secret_key'],
+            'custom_fields' => $paymentData['custom_fields'],
+            'enc_method' => $paymentData['enc_method'],
+            'customer_data' => $paymentData['customer_data'],
+        ]);
     }
 
     /**
