@@ -4,14 +4,13 @@ namespace App\Mail;
 
 use App\Models\Booking\Booking;
 use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Attachment;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
 
-class CheckoutConfirmationMail extends Mailable implements ShouldQueue
+class CheckoutConfirmationMail extends Mailable
 {
     use Queueable, SerializesModels;
 
@@ -31,7 +30,7 @@ class CheckoutConfirmationMail extends Mailable implements ShouldQueue
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'Booking Confirmation - Reference: ' . $this->booking->reference,
+            subject: 'Booking Confirmation - Reference: ' . $this->booking->booking_number,
             from: config('mail.from.address'),
             replyTo: [config('mail.from.address')]
         );

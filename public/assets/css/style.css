@@ -31583,7 +31583,6 @@ header.style-3.two .main-menu > ul > li.active > a i {
   font-size: 16px;
   font-weight: 500;
   line-height: 1;
-  margin-bottom: 35px;
 }
 .cart-page .cart-shopping-wrapper .cart-table tbody tr td .product-info-wrapper .product-info-content p span {
   color: var(--title-color);
@@ -32118,7 +32117,7 @@ header.style-3.two .main-menu > ul > li.active > a i {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  margin-bottom: 30px;
+  margin-bottom: 0;
   line-height: 1;
   color: var(--title-color);
   font-family: var(--font-roboto);

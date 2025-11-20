@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Intervention\Image\Laravel\Facades\Image;
 
@@ -83,6 +84,12 @@ class FileUploadController extends Controller
 
             // Process and store the file
             $uploadResult = $this->processAndStoreFile($file, $fullPath, $isImage, $request);
+            
+            // Update the filename and full path if file was converted (e.g., to WebP)
+            if ($uploadResult['converted_path'] !== $fullPath) {
+                $fullPath = $uploadResult['converted_path'];
+                $fileName = basename($fullPath);
+            }
 
             // Get user info
             $user = $request->user();
@@ -107,6 +114,11 @@ class FileUploadController extends Controller
                 $mediaData['height'] = $uploadResult['dimensions']['height'];
             }
 
+            // Update MIME type if file was converted to WebP
+            if ($uploadResult['converted_path'] !== $fullPath) {
+                $mediaData['mime_type'] = 'image/webp';
+            }
+
             $userMedia = UserMedia::create($mediaData);
 
             // Create thumbnail if requested and file is an image
@@ -127,7 +139,7 @@ class FileUploadController extends Controller
                     'original_name' => $originalName,
                     'path' => $fullPath,
                     'url' => $this->getFileUrl($fullPath),
-                    'mime_type' => $mimeType,
+                    'mime_type' => $userMedia->mime_type, // Use actual stored MIME type
                     'size' => $fileSize,
                     'category' => $category,
                     'is_image' => $isImage,
@@ -404,6 +416,7 @@ class FileUploadController extends Controller
     private function processAndStoreFile($file, string $path, bool $isImage, Request $request): array
     {
         $dimensions = null;
+        $convertedPath = $path; // Track if path changes due to conversion
 
         if ($isImage) {
             // Process image with Intervention Image
@@ -433,7 +446,7 @@ class FileUploadController extends Controller
             // Encode to WebP for better compression (if supported)
             if (extension_loaded('gd') && function_exists('imagewebp')) {
                 $encoded = $image->encodeByExtension('webp', quality: $quality);
-                $path = preg_replace('/\.[^.]+$/', '.webp', $path);
+                $convertedPath = preg_replace('/\.[^.]+$/', '.webp', $path);
             } else {
                 $ext = pathinfo($file->getClientOriginalName(), PATHINFO_EXTENSION);
                 $encoded = $image->encodeByExtension($ext, quality: $quality);
@@ -442,13 +455,16 @@ class FileUploadController extends Controller
             $imageData = (string) $encoded;
 
             // store those bytes
-            $this->storeFile($path, $imageData);
+            $this->storeFile($convertedPath, $imageData);
         } else {
             // Store file as-is
             $this->storeFile($path, file_get_contents($file));
         }
 
-        return ['dimensions' => $dimensions];
+        return [
+            'dimensions' => $dimensions,
+            'converted_path' => $convertedPath
+        ];
     }
 
     /**

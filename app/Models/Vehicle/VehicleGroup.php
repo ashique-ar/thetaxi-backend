@@ -61,6 +61,7 @@ class VehicleGroup extends BaseModel
         'description',
         'specs',
         'images',
+        'thumbnail',
         'is_active',
         'is_featured',
         'created_user_id',
@@ -73,6 +74,7 @@ class VehicleGroup extends BaseModel
     protected $casts = [
         'specs' => 'array',
         'images' => 'array',
+        'thumbnail' => 'array',
         'is_active' => 'boolean',
         'is_featured' => 'boolean',
         'created_at' => 'datetime',

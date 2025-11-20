@@ -15,6 +15,7 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         // Register currency helper functions
+        require_once app_path('Helpers/Helper.php');
         require_once app_path('Helpers/CurrencyHelpers.php');
     }
 

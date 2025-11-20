@@ -61,9 +61,10 @@ Route::get('/checkout', [CheckoutController::class, 'index'])->name('checkout');
 Route::post('/checkout/process', [CheckoutController::class, 'process'])->name('checkout.process');
 Route::get('/checkout/success', [CheckoutController::class, 'success'])->name('checkout.success');
 
-// PayPal callback routes
-Route::get('/checkout/paypal/success', [CheckoutController::class, 'paypalSuccess'])->name('checkout.paypal.success');
-Route::get('/checkout/paypal/cancel', [CheckoutController::class, 'paypalCancel'])->name('checkout.paypal.cancel');
+// WebXPay payment gateway callback routes
+Route::get('/checkout/webxpay/callback', [CheckoutController::class, 'webxpayCallback'])->name('checkout.webxpay.callback');
+Route::post('/checkout/webxpay/notify', [CheckoutController::class, 'webxpayNotify'])->name('checkout.webxpay.notify');
+Route::get('/checkout/webxpay/cancel', [CheckoutController::class, 'webxpayCancel'])->name('checkout.webxpay.cancel');
 
 // Service-specific pages
 Route::get('/point-to-point', [BookingController::class, 'pointToPoint'])->name('point-to-point');

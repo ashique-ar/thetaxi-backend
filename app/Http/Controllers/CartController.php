@@ -20,14 +20,14 @@ class CartController extends Controller
         $this->cartService = $cartService;
         $this->bookingFlowService = $bookingFlowService;
     }
-    
+
     /**
      * Display cart page
      */
     public function index()
     {
         $dbCart = $this->cartService->getOrCreateCart();
-        
+
         // Migrate from session if needed
         if (empty($dbCart->items) && !empty(session()->get('cart'))) {
             $this->cartService->migrateFromSession($dbCart);
@@ -35,16 +35,16 @@ class CartController extends Controller
 
         $cartItems = $dbCart->getItems();
         $totals = $dbCart->totals ?? [];
-        
+
         $subtotal = $totals['subtotal'] ?? 0;
         $serviceFee = $totals['service_fee'] ?? 0;
         $tax = $totals['tax'] ?? 0;
         $discount = $totals['coupon_discount'] ?? 0;
         $total = $totals['total'] ?? 0;
-        
+
         return view('cart', compact('cartItems', 'subtotal', 'serviceFee', 'tax', 'discount', 'total', 'dbCart'));
     }
-    
+
     /**
      * Get cart data as JSON (for AJAX requests)
      */
@@ -53,7 +53,7 @@ class CartController extends Controller
         try {
             $dbCart = $this->cartService->getOrCreateCart();
             $cartArray = $this->cartService->toArray($dbCart);
-            
+
             return response()->json([
                 'success' => true,
                 'items' => $cartArray['items'] ?? [],
@@ -70,7 +70,7 @@ class CartController extends Controller
             ], 500);
         }
     }
-    
+
     /**
      * Add item to cart
      */
@@ -99,7 +99,7 @@ class CartController extends Controller
                 'search_data' => 'sometimes|array',
                 'service_type' => 'sometimes|string'
             ]);
-            
+
             // Map frontend field names to standard names
             $vehicleId = $validated['vehicle_group_id'] ?? $validated['group_id'] ?? null;
             $name = $validated['name'] ?? $validated['group_name'] ?? 'Vehicle Rental';
@@ -107,19 +107,19 @@ class CartController extends Controller
             $returnDate = $validated['return_date'] ?? $validated['to_date'] ?? null;
             $fromTime = $validated['from_time'] ?? ($validated['search_data']['from_time'] ?? '10:00');
             $toTime = $validated['to_time'] ?? ($validated['search_data']['to_time'] ?? '10:00');
-            
+
             // Extract location data with coordinates
             $pickupLocation = $validated['pickup_location'] ?? ($validated['search_data']['pickup_location'] ?? '');
             $pickupLat = $validated['pickup_lat'] ?? ($validated['search_data']['pickup_lat'] ?? null);
             $pickupLng = $validated['pickup_lng'] ?? ($validated['search_data']['pickup_lng'] ?? null);
-            
+
             $returnLocation = $validated['return_location'] ?? $validated['dropoff_location'] ?? ($validated['search_data']['dropoff_location'] ?? $pickupLocation);
             $returnLat = $validated['dropoff_lat'] ?? ($validated['search_data']['dropoff_lat'] ?? $pickupLat);
             $returnLng = $validated['dropoff_lng'] ?? ($validated['search_data']['dropoff_lng'] ?? $pickupLng);
-            
+
             $serviceType = $validated['service_type'] ?? ($validated['search_data']['service_type'] ?? 'airport_transfers');
             $searchData = $validated['search_data'] ?? [];
-            
+
             // Validate required fields
             if (!$vehicleId || !$pickupDate || !$returnDate) {
                 if ($request->ajax()) {
@@ -130,24 +130,24 @@ class CartController extends Controller
                 }
                 return redirect()->back()->with('error', 'Missing required booking information.');
             }
-            
-           
+
+
             // Get vehicle details if it exists
             $vehicleGroup = null;
             if ($vehicleId) {
                 $vehicleGroup = VehicleGroup::find($vehicleId);
             }
-            
+
             // Calculate days from dates
             $pickupDateObj = Carbon::parse($pickupDate);
             $returnDateObj = Carbon::parse($returnDate);
             $calculatedDays = $pickupDateObj->diffInDays($returnDateObj);
             $days = max(1, $calculatedDays);
-            
+
             // Recalculate pricing using BookingFlowService instead of accepting from frontend
             $totalPrice = 0;
             $perDayPrice = 0;
-            
+
             Log::info(
                 'Adding item to cart',
                 [
@@ -158,7 +158,8 @@ class CartController extends Controller
                     'service_type' => $serviceType,
                     'pickup_location' => $pickupLocation,
                     'return_location' => $returnLocation,
-                    'days' => $days
+                    'days' => $days,
+                    'vehicleGroup' => $vehicleGroup
 
                 ]
             );
@@ -173,20 +174,20 @@ class CartController extends Controller
                     'vehicle_group' => $vehicleGroup
                 ]);
                 if ($serviceTypeModel && $vehicleGroup) {
-                    
+
                     // Build location arrays with coordinates
                     $pickupLocationArray = is_array($pickupLocation) ? $pickupLocation : [
                         'address' => $pickupLocation,
                         'latitude' => $pickupLat,
                         'longitude' => $pickupLng
                     ];
-                    
+
                     $returnLocationArray = is_array($returnLocation) ? $returnLocation : [
                         'address' => $returnLocation,
                         'latitude' => $returnLat,
                         'longitude' => $returnLng
                     ];
-                    
+
                     $pricingParams = [
                         'service_type' => $serviceTypeModel->id,
                         'vehicle_groups' => [$vehicleId],
@@ -197,17 +198,17 @@ class CartController extends Controller
                         'pickup_location' => $pickupLocationArray,
                         'dropoff_location' => $returnLocationArray
                     ];
-                    
+
                     // Get pricing from BookingFlowService
                     $availabilityData = $this->bookingFlowService->getAvailableVehicleGroups($pricingParams);
-                    
+
                     Log::info('Cart pricing recalculation', [
                         'vehicle_id' => $vehicleId,
                         'days' => $days,
                         'pricing_params' => $pricingParams,
                         'availability_data_count' => count($availabilityData)
                     ]);
-                    
+
                     // Find pricing for this specific vehicle group
                     $pricingFound = false;
                     foreach ($availabilityData as $vehicleData) {
@@ -220,13 +221,13 @@ class CartController extends Controller
                                 ]);
                                 break;
                             }
-                            
+
                             if (isset($vehicleData['pricing_info']['base_amount'])) {
                                 $pricingInfo = $vehicleData['pricing_info'];
                                 $totalPrice = (float)$pricingInfo['base_amount']; // This is TOTAL for all days in LKR
                                 $perDayPrice = $days > 0 ? $totalPrice / $days : 0; // Calculate per-day in LKR
                                 $pricingFound = true;
-                                
+
                                 Log::info('Cart pricing calculated successfully', [
                                     'vehicle_id' => $vehicleId,
                                     'days' => $days,
@@ -238,7 +239,7 @@ class CartController extends Controller
                             }
                         }
                     }
-                    
+
                     // If pricing not found or is 0, throw error
                     if (!$pricingFound || $totalPrice <= 0) {
                         throw new \Exception('Pricing not available for this vehicle group and service type combination');
@@ -251,7 +252,7 @@ class CartController extends Controller
                     'dates' => ['from' => $pickupDate, 'to' => $returnDate],
                     'error' => $e->getMessage()
                 ]);
-                
+
                 // Return error - do NOT add item with 0 price
                 if ($request->ajax()) {
                     return response()->json([
@@ -261,7 +262,7 @@ class CartController extends Controller
                 }
                 return redirect()->back()->with('error', 'Unable to calculate price. Please try a different vehicle or date range.');
             }
-            
+
             // Final validation - ensure we have valid pricing
             if ($perDayPrice <= 0 || $totalPrice <= 0) {
                 Log::error('Attempted to add cart item with invalid pricing', [
@@ -269,7 +270,7 @@ class CartController extends Controller
                     'per_day_price' => $perDayPrice,
                     'total_price' => $totalPrice
                 ]);
-                
+
                 if ($request->ajax()) {
                     return response()->json([
                         'success' => false,
@@ -278,13 +279,12 @@ class CartController extends Controller
                 }
                 return redirect()->back()->with('error', 'Invalid pricing. Please contact support.');
             }
-            
-            // Create cart item with calculated pricing (always store in LKR as base)
+
             $cartItem = [
                 'vehicle_group_id' => $vehicleId,
                 'name' => $vehicleGroup?->name ?? $name,
                 'vehicle_type' => $vehicleGroup?->vehicle_type ?? 'Sedan',
-                'image' => $vehicleGroup?->image_path,
+                'image' => $vehicleGroup?->thumbnail['path'] ?? null,
                 'price' => (float)$perDayPrice,  // Store per-day price in LKR
                 'price_lkr' => (float)$perDayPrice, // Explicitly store LKR price
                 'total_price' => (float)$totalPrice, // Store total price in LKR
@@ -305,14 +305,14 @@ class CartController extends Controller
                 'base_currency' => 'LKR', // Mark as LKR base pricing
                 'added_at' => now()
             ];
-            
+
             // Get or create cart
             $dbCart = $this->cartService->getOrCreateCart();
             $cartKey = 'vehicle_' . $vehicleId . '_' . time();
-            
+
             // Add to database cart
             $this->cartService->addItem($dbCart, $cartItem, $cartKey);
-            
+
             if ($request->ajax()) {
                 return response()->json([
                     'success' => true,
@@ -320,7 +320,7 @@ class CartController extends Controller
                     'cart' => $this->cartService->toArray($dbCart)
                 ]);
             }
-            
+
             return redirect()->route('cart')->with('success', 'Vehicle added to cart successfully!');
         } catch (\Illuminate\Validation\ValidationException $e) {
             if ($request->ajax()) {
@@ -341,7 +341,7 @@ class CartController extends Controller
             return redirect()->back()->with('error', 'Error adding item to cart. Please try again.');
         }
     }
-    
+
     /**
      * Update cart item days (for rental duration)
      */
@@ -351,20 +351,25 @@ class CartController extends Controller
             'cart_key' => 'required|string',
             'days' => 'required|integer|min:1|max:365',
         ]);
-        
+
         $dbCart = $this->cartService->getOrCreateCart();
-        
+
         if ($this->cartService->updateItem($dbCart, $validated['cart_key'], ['days' => $validated['days']])) {
             $item = $dbCart->getItem($validated['cart_key']);
             $pickupDate = \Carbon\Carbon::parse($item['pickup_date']);
-            $newReturnDate = $pickupDate->addDays($validated['days']);
-            
+           
+            return response()->json([
+                'success' => true,
+                'message' => 'Cart updated successfully',
+                'item_total' => number_format($item['price'] * $validated['days'], 2),
+            ]);
+            $newReturnDate = $pickupDate->addDays((int)$validated['days']);
             $this->cartService->updateItem($dbCart, $validated['cart_key'], [
                 'return_date' => $newReturnDate->toDateString()
             ]);
-            
+
             $itemTotal = $item['price'] * $validated['days'];
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Cart updated successfully',
@@ -372,13 +377,13 @@ class CartController extends Controller
                 'new_return_date' => $newReturnDate->format('M d, Y')
             ]);
         }
-        
+
         return response()->json([
             'success' => false,
             'message' => 'Item not found in cart'
         ], 404);
     }
-    
+
     /**
      * Update cart item quantity (legacy method)
      */
@@ -387,26 +392,26 @@ class CartController extends Controller
         $validated = $request->validate([
             'quantity' => 'required|integer|min:1|max:10',
         ]);
-        
+
         $cart = session()->get('cart', []);
-        
+
         if (isset($cart[$itemKey])) {
             // For vehicle rentals, quantity usually means days
             $cart[$itemKey]['days'] = $validated['quantity'];
             session()->put('cart', $cart);
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Cart updated successfully'
             ]);
         }
-        
+
         return response()->json([
             'success' => false,
             'message' => 'Item not found in cart'
         ], 404);
     }
-    
+
     /**
      * Remove item from cart (AJAX)
      */
@@ -415,9 +420,9 @@ class CartController extends Controller
         $validated = $request->validate([
             'cart_key' => 'required|string'
         ]);
-        
+
         $dbCart = $this->cartService->getOrCreateCart();
-        
+
         if ($this->cartService->removeItem($dbCart, $validated['cart_key'])) {
             return response()->json([
                 'success' => true,
@@ -425,13 +430,13 @@ class CartController extends Controller
                 'cart' => $this->cartService->toArray($dbCart)
             ]);
         }
-        
+
         return response()->json([
             'success' => false,
             'message' => 'Item not found in cart'
         ], 404);
     }
-    
+
     /**
      * Clear entire cart
      */
@@ -439,20 +444,20 @@ class CartController extends Controller
     {
         $dbCart = $this->cartService->getOrCreateCart();
         $this->cartService->clearCart($dbCart);
-        
+
         // Also clear session as fallback
         session()->forget(['cart', 'cart_discount', 'applied_coupon']);
-        
+
         if ($request->ajax()) {
             return response()->json([
                 'success' => true,
                 'message' => 'Cart cleared successfully'
             ]);
         }
-        
+
         return redirect()->route('cart')->with('success', 'Cart cleared successfully.');
     }
-    
+
     /**
      * Apply coupon code
      */
@@ -461,9 +466,9 @@ class CartController extends Controller
         $validated = $request->validate([
             'coupon_code' => 'required|string|max:50'
         ]);
-        
+
         $couponCode = strtoupper(trim($validated['coupon_code']));
-        
+
         // Simple coupon validation (you can expand this with a coupons table)
         $validCoupons = [
             'WELCOME10' => ['discount' => 10, 'type' => 'percentage', 'description' => '10% off your first booking'],
@@ -471,16 +476,16 @@ class CartController extends Controller
             'SUMMER20' => ['discount' => 20, 'type' => 'percentage', 'description' => '20% summer discount'],
             'FIRST25' => ['discount' => 25, 'type' => 'fixed', 'description' => '$25 off first rental']
         ];
-        
+
         if (!isset($validCoupons[$couponCode])) {
             return response()->json([
                 'success' => false,
                 'message' => 'Invalid coupon code'
             ]);
         }
-        
+
         $dbCart = $this->cartService->getOrCreateCart();
-        
+
         // Check if coupon already applied
         if ($dbCart->coupon_code === $couponCode) {
             return response()->json([
@@ -488,7 +493,7 @@ class CartController extends Controller
                 'message' => 'Coupon already applied'
             ]);
         }
-        
+
         if (!$dbCart->hasItems()) {
             return response()->json([
                 'success' => false,
@@ -497,25 +502,25 @@ class CartController extends Controller
         }
 
         $coupon = $validCoupons[$couponCode];
-        
+
         // Calculate subtotal
         $subtotal = $dbCart->getItems()->sum(function ($item) {
             return ($item['price'] ?? 0) * ($item['days'] ?? 1);
         });
-        
+
         // Calculate discount
         if ($coupon['type'] === 'percentage') {
             $discountAmount = $subtotal * ($coupon['discount'] / 100);
         } else {
             $discountAmount = $coupon['discount'];
         }
-        
+
         // Ensure discount doesn't exceed subtotal
         $discountAmount = min($discountAmount, $subtotal);
-        
+
         // Apply coupon via CartService
         $this->cartService->applyCoupon($dbCart, $couponCode, $discountAmount);
-        
+
         return response()->json([
             'success' => true,
             'message' => 'Coupon applied successfully! ' . $coupon['description'],
@@ -523,7 +528,7 @@ class CartController extends Controller
             'coupon_code' => $couponCode
         ]);
     }
-    
+
     /**
      * Remove applied coupon
      */
@@ -531,16 +536,16 @@ class CartController extends Controller
     {
         $dbCart = $this->cartService->getOrCreateCart();
         $this->cartService->removeCoupon($dbCart);
-        
+
         // Also clear session as fallback
         session()->forget(['cart_discount', 'applied_coupon']);
-        
+
         return response()->json([
             'success' => true,
             'message' => 'Coupon removed successfully'
         ]);
     }
-    
+
     /**
      * Get cart summary for AJAX requests
      */
@@ -548,16 +553,16 @@ class CartController extends Controller
     {
         $cart = session()->get('cart', []);
         $cartItems = collect($cart);
-        
+
         $subtotal = $cartItems->sum(function ($item) {
             return ($item['price'] ?? 0) * ($item['days'] ?? 1);
         });
-        
+
         $serviceFee = 25.00;
         $tax = $subtotal * 0.1;
         $discount = session()->get('cart_discount', 0);
         $total = $subtotal + $serviceFee + $tax - $discount;
-        
+
         return response()->json([
             'success' => true,
             'cart_count' => count($cart),
@@ -569,7 +574,7 @@ class CartController extends Controller
             'applied_coupon' => session()->get('applied_coupon')
         ]);
     }
-    
+
     /**
      * Sync cart data from frontend localStorage to server session
      * This method bridges the gap between the existing frontend cart and new backend cart
@@ -579,14 +584,14 @@ class CartController extends Controller
         $validated = $request->validate([
             'cart' => 'required|array'
         ]);
-        
+
         $frontendCart = $validated['cart'];
         $backendCart = [];
-        
+
         // Convert frontend cart format to backend cart format
         foreach ($frontendCart as $index => $item) {
             $cartKey = 'vehicle_' . ($item['group_id'] ?? 'unknown') . '_' . time() . '_' . $index;
-            
+
             // Map frontend cart structure to backend cart structure
             $backendCart[$cartKey] = [
                 'vehicle_group_id' => $item['group_id'] ?? null,
@@ -606,46 +611,46 @@ class CartController extends Controller
                 'added_at' => now()
             ];
         }
-        
+
         // Store in session using the new cart key
         session()->put('cart', $backendCart);
-        
+
         // Also maintain compatibility with old booking_cart key if needed
         session()->put('booking_cart', $frontendCart);
-        
+
         return response()->json([
             'success' => true,
             'message' => 'Cart synced successfully',
             'cart_count' => count($backendCart)
         ]);
     }
-    
+
     /**
      * Get cart item count
      */
     public function count(Request $request)
     {
         $cart = session()->get('cart', []);
-        
+
         return response()->json([
             'success' => true,
             'count' => count($cart)
         ]);
     }
-    
+
     /**
      * Proceed to checkout
      */
     public function checkout(Request $request)
     {
         $cart = session()->get('cart', []);
-        
+
         if (empty($cart)) {
             return redirect()->route('cart')->with('error', 'Your cart is empty.');
         }
-        
+
         $paymentType = $request->get('type', 'full'); // full, advance, quotation
-        
+
         return redirect()->route('checkout', ['type' => $paymentType]);
     }
 }

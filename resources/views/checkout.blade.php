@@ -19,35 +19,27 @@
 <!-- End Breadcrumb section -->
 
 @php
-    // Get cart items from database via CartService
-    try {
-        $cartService = app(\App\Services\CartService::class);
-        $cartModel = $cartService->getOrCreateCart();
-        $cart = $cartModel->items ?? [];
-        
-        // Convert to array if needed
-        if (!empty($cart) && !is_array($cart)) {
-            $cart = (array) $cart;
-        }
-    } catch (Exception $e) {
-        \Log::error('Error loading cart for checkout: ' . $e->getMessage());
-        $cart = [];
-    }
+    // Cart data is passed from controller
+    $cart = $cartData['items'] ?? [];
+    $totals = $cartData['totals'] ?? [];
+    $currencySymbol = $cartData['currency_symbol'] ?? getCurrencySymbol();
     
     $paymentType = request()->get('type', 'full');
-    $subtotal = collect($cart)->sum(function ($item) {
-        return ($item['price'] ?? 0) * ($item['days'] ?? 1);
-    });
-    $serviceFee = 25.00;
-    $tax = $subtotal * 0.1;
-    $discount = $cartModel->coupon_discount ?? 0;
-    $total = $subtotal + $serviceFee + $tax - $discount;
+    $subtotal = $totals['subtotal'] ?? 0;
+    $serviceFee = $totals['service_fee'] ?? 0;
+    $tax = $totals['tax'] ?? 0;
+    $taxLabel = $totals['tax_label'] ?? 'NBT';
+    $vat = $totals['vat'] ?? 0;
+    $vatLabel = $totals['vat_label'] ?? 'VAT';
+    $discount = $totals['coupon_discount'] ?? 0;
+    $total = $totals['total'] ?? 0;
     
     // Payment amount based on type
+    $advancePercentage = config('booking.advance_payment.percentage', 50);
     $paymentAmount = match($paymentType) {
-        'advance' => $total * 0.5, // 50% advance
-        'quotation' => 0, // No immediate payment for quotation
-        default => $total // Full payment
+        'advance' => $total * ($advancePercentage / 100),
+        'quotation' => 0,
+        default => $total
     };
 @endphp
 
@@ -81,7 +73,7 @@
                                             <i class="bi bi-credit-card-fill text-success"></i>
                                             <h6>Pay Full Amount</h6>
                                             <p class="mb-0">Complete payment now</p>
-                                            <small class="text-muted">Total: ${{ number_format($total, 2) }}</small>
+                                            <small class="text-muted">Total: {{ $currencySymbol }}{{ number_format($total, 2) }}</small>
                                         </div>
                                     </label>
                                 </div>
@@ -93,9 +85,9 @@
                                     <label for="payment_advance" class="payment-label">
                                         <div class="payment-card">
                                             <i class="bi bi-credit-card text-warning"></i>
-                                            <h6>Pay 50% Advance</h6>
+                                            <h6>Pay {{ config('booking.advance_payment.percentage', 50) }}% Advance</h6>
                                             <p class="mb-0">Pay remaining on pickup</p>
-                                            <small class="text-muted">Now: ${{ number_format($total * 0.5, 2) }}</small>
+                                            <small class="text-muted">Now: {{ $currencySymbol }}{{ number_format($total * (config('booking.advance_payment.percentage', 50) / 100), 2) }}</small>
                                         </div>
                                     </label>
                                 </div>
@@ -361,14 +353,14 @@
                                                 <div class="main-item">
                                                     <div class="item-img">
                                                         @if(isset($item['image']) && $item['image'])
-                                                            <img src="{{ asset('storage/' . $item['image']) }}" alt="{{ $item['name'] ?? 'Vehicle' }}">
+                                                            <img src="{{ s3_asset($item['image']) }}" alt="{{ $item['name'] ?? 'Vehicle' }}">
                                                         @else
                                                             <img src="{{ asset('assets/img/innerpages/cart-img1.png') }}" alt="{{ $item['name'] ?? 'Vehicle' }}">
                                                         @endif
                                                     </div>
                                                     <div class="content-and-quantity">
                                                         <div class="content">
-                                                            <span>${{ number_format($item['price'] ?? 0, 2) }}/day × {{ $item['days'] ?? 1 }} days</span>
+                                                            <span>{{ $currencySymbol }}{{ number_format($item['price'] ?? 0, 2) }}/day × {{ $item['days'] ?? 1 }} days</span>
                                                             <h6><a href="#">{{ $item['name'] ?? 'Vehicle Rental' }}</a></h6>
                                                             <p><small>{{ date('M d', strtotime($item['pickup_date'])) }} - {{ date('M d, Y', strtotime($item['return_date'])) }}</small></p>
                                                             <p><small><i class="bi bi-geo-alt"></i> {{ $item['pickup_location'] ?? 'Location' }}</small></p>
@@ -376,7 +368,7 @@
                                                     </div>
                                                 </div>
                                                 <div class="item-total">
-                                                    ${{ number_format(($item['price'] ?? 0) * ($item['days'] ?? 1), 2) }}
+                                                    {{ $currencySymbol }}{{ number_format(($item['price'] ?? 0) * ($item['days'] ?? 1), 2) }}
                                                 </div>
                                             </div>
                                         </li>
@@ -389,37 +381,49 @@
                                         <ul>
                                             <li>
                                                 <strong>Subtotal</strong>
-                                                <strong>${{ number_format($subtotal, 2) }}</strong>
+                                                <strong>{{ $currencySymbol }}{{ number_format($subtotal, 2) }}</strong>
                                             </li>
+                                            @if($serviceFee > 0)
                                             <li>
                                                 Service Fee
                                                 <div class="order-info">
-                                                    <span>${{ number_format($serviceFee, 2) }}</span>
+                                                    <span>{{ $currencySymbol }}{{ number_format($serviceFee, 2) }}</span>
                                                 </div>
                                             </li>
+                                            @endif
+                                            @if($tax > 0)
                                             <li>
-                                                Tax (10%)
+                                                {{ $taxLabel }} ({{ number_format(config('booking.tax.rate', 0.025) * 100, 1) }}%)
                                                 <div class="order-info">
-                                                    <span>${{ number_format($tax, 2) }}</span>
+                                                    <span>{{ $currencySymbol }}{{ number_format($tax, 2) }}</span>
                                                 </div>
                                             </li>
+                                            @endif
+                                            @if($vat > 0)
+                                            <li>
+                                                {{ $vatLabel }} ({{ number_format(config('booking.vat.rate', 0.18) * 100, 0) }}%)
+                                                <div class="order-info">
+                                                    <span>{{ $currencySymbol }}{{ number_format($vat, 2) }}</span>
+                                                </div>
+                                            </li>
+                                            @endif
                                             @if($discount > 0)
                                             <li>
                                                 Discount
                                                 <div class="order-info text-success">
-                                                    <span>-${{ number_format($discount, 2) }}</span>
+                                                    <span>-{{ $currencySymbol }}{{ number_format($discount, 2) }}</span>
                                                 </div>
                                             </li>
                                             @endif
                                             <li class="total-row">
                                                 <strong>Total</strong>
-                                                <strong>${{ number_format($total, 2) }}</strong>
+                                                <strong>{{ $currencySymbol }}{{ number_format($total, 2) }}</strong>
                                             </li>
                                             @if($paymentType !== 'full')
                                             <li class="payment-amount-row">
                                                 <strong>
                                                     @if($paymentType === 'advance')
-                                                        Amount to Pay (50%)
+                                                        Amount to Pay ({{ config('booking.advance_payment.percentage', 50) }}%)
                                                     @elseif($paymentType === 'quotation')
                                                         Quotation Request
                                                     @endif
@@ -428,7 +432,7 @@
                                                     @if($paymentType === 'quotation')
                                                         No Payment Required
                                                     @else
-                                                        ${{ number_format($paymentAmount, 2) }}
+                                                        {{ $currencySymbol }}{{ number_format($paymentAmount, 2) }}
                                                     @endif
                                                 </strong>
                                             </li>
@@ -440,72 +444,49 @@
                                     <!-- Payment Method Selection -->
                                     <div class="choose-payment-method">
                                         <h6>Select Payment Method</h6>
+                                        @error('payment_method')
+                                            <div class="alert alert-danger">{{ $message }}</div>
+                                        @enderror
                                         <div class="payment-option">
                                             <ul>
-                                                <li class="paypal">
-                                                    <input type="radio" name="payment_method" value="paypal" id="paypal" required>
-                                                    <label for="paypal">
-                                                        <img src="{{ asset('assets/img/innerpages/icon/payPal.svg') }}" alt="">
+                                                @foreach($paymentMethods as $key => $method)
+                                                <li class="{{ $key }}">
+                                                    <input type="radio" name="payment_method" value="{{ $key }}" 
+                                                           id="payment_{{ $key }}" {{ old('payment_method') === $key ? 'checked' : '' }}>
+                                                    <label for="payment_{{ $key }}">
+                                                        <i class="{{ $method['icon'] ?? 'bi-credit-card' }}" style="font-size: 24px;"></i>
+                                                        <span>{{ $method['label'] ?? ucfirst($key) }}</span>
+                                                        @if(isset($method['description']))
+                                                            <small class="d-block text-muted" style="font-size: 11px;">{{ $method['description'] }}</small>
+                                                        @endif
                                                         <div class="checked">
                                                             <i class="bi bi-check"></i>
                                                         </div>
                                                     </label>
                                                 </li>
-                                                <li class="stripe">
-                                                    <input type="radio" name="payment_method" value="stripe" id="stripe" required>
-                                                    <label for="stripe">
-                                                        <img src="{{ asset('assets/img/innerpages/icon/stripe.svg') }}" alt="">
-                                                        <div class="checked">
-                                                            <i class="bi bi-check"></i>
-                                                        </div>
-                                                    </label>
-                                                </li>
-                                                <li class="offline">
-                                                    <input type="radio" name="payment_method" value="bank_transfer" id="offline" required>
-                                                    <label for="offline">
-                                                        <img src="{{ asset('assets/img/innerpages/icon/offline.svg') }}" alt="">
-                                                        <span>Bank Transfer</span>
-                                                        <div class="checked">
-                                                            <i class="bi bi-check"></i>
-                                                        </div>
-                                                    </label>
-                                                </li>
+                                                @endforeach
                                             </ul>
-                                        </div>
-                                        
-                                        <!-- Stripe Payment Fields -->
-                                        <div class="pt-25" id="StripePayment" style="display: none;">
-                                            <div class="row g-4">
-                                                <div class="col-md-12">
-                                                    <div class="form-inner two">
-                                                        <label>Card Number</label>
-                                                        <input type="text" name="card_number" placeholder="1234 1234 1234 1234">
-                                                    </div>
-                                                </div>
-                                                <div class="col-md-6">
-                                                    <div class="form-inner two">
-                                                        <label>Expiry</label>
-                                                        <input type="text" name="card_expiry" placeholder="MM/YY">
-                                                    </div>
-                                                </div>
-                                                <div class="col-md-6">
-                                                    <div class="form-inner two">
-                                                        <label>CVC</label>
-                                                        <input type="text" name="card_cvc" placeholder="CVC">
-                                                    </div>
-                                                </div>
-                                            </div>
                                         </div>
                                         
                                         <!-- Bank Transfer Instructions -->
                                         <div class="pt-25" id="BankTransferInfo" style="display: none;">
                                             <div class="alert alert-info">
-                                                <h6>Bank Transfer Details:</h6>
-                                                <p><strong>Account Name:</strong> Casons Rent A Car</p>
-                                                <p><strong>Bank:</strong> Commercial Bank of Ceylon</p>
-                                                <p><strong>Account No:</strong> 12345678901</p>
-                                                <p><strong>Branch Code:</strong> 001</p>
-                                                <small>Please use your booking reference as the transfer description.</small>
+                                                <h6><i class="bi bi-bank"></i> Bank Transfer Details:</h6>
+                                                <p><strong>Account Name:</strong> Casons Rent A Car (Pvt) Ltd</p>
+                                                <p><strong>Bank:</strong> Commercial Bank of Ceylon PLC</p>
+                                                <p><strong>Account No:</strong> 1234567890</p>
+                                                <p><strong>Branch:</strong> Colombo Main Branch</p>
+                                                <p><strong>SWIFT Code:</strong> CCEYLKLX</p>
+                                                <small class="text-muted">* Please use your booking reference as the transfer description and email the payment receipt to payments@casonsrentacar.lk</small>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Online Banking Instructions -->
+                                        <div class="pt-25" id="OnlineBankingInfo" style="display: none;">
+                                            <div class="alert alert-info">
+                                                <h6><i class="bi bi-wallet2"></i> Online Banking Payment:</h6>
+                                                <p>You will be redirected to your bank's secure payment gateway after clicking "Complete Booking".</p>
+                                                <small class="text-muted">* Supported banks: Commercial Bank, HNB, Sampath Bank, Nations Trust Bank</small>
                                             </div>
                                         </div>
                                     </div>
@@ -516,7 +497,7 @@
                                             @if($paymentType === 'quotation')
                                                 Submit Quotation Request
                                             @else
-                                                Complete Booking - ${{ number_format($paymentAmount, 2) }}
+                                                Complete Booking - {{ $currencySymbol }}{{ number_format($paymentAmount, 2) }}
                                             @endif
                                             <svg width="10" height="10" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg">
                                                 <path d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z"></path>
@@ -909,6 +890,11 @@
 @push('scripts')
 <script>
 $(document).ready(function() {
+    // Get PHP variables from blade
+    const currencySymbol = '{{ $currencySymbol }}';
+    const total = {{ $total }};
+    const advancePercentage = {{ config('booking.advance_payment.percentage', 50) }};
+    
     // Payment type selection handling
     $('input[name="payment_type"]').on('change', function() {
         const paymentType = $(this).val();
@@ -916,15 +902,19 @@ $(document).ready(function() {
         const paymentMethodSection = $('.choose-payment-method');
         const submitBtn = $('#checkout-submit-btn span');
         
+        // Calculate payment amounts
+        const advanceAmount = total * (advancePercentage / 100);
+        const fullAmount = total;
+        
         // Update the alert content based on payment type
         switch(paymentType) {
             case 'advance':
                 alertContent.html(`
-                    <h6><i class="bi bi-info-circle"></i> Advance Payment (50%)</h6>
-                    <p class="mb-0">You are paying 50% advance. The remaining amount will be collected at the time of vehicle pickup.</p>
+                    <h6><i class="bi bi-info-circle"></i> Advance Payment (${advancePercentage}%)</h6>
+                    <p class="mb-0">You are paying ${advancePercentage}% advance. The remaining amount will be collected at the time of vehicle pickup.</p>
                 `);
                 paymentMethodSection.show();
-                submitBtn.html('Complete Booking - Pay 50% Advance <svg width="10" height="10" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg"><path d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z"></path></svg>');
+                submitBtn.html(`Complete Booking - ${currencySymbol}${advanceAmount.toFixed(2)} <svg width="10" height="10" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg"><path d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z"></path></svg>`);
                 break;
             case 'quotation':
                 alertContent.html(`
@@ -940,7 +930,7 @@ $(document).ready(function() {
                     <p class="mb-0">You are making full payment for your vehicle rental booking.</p>
                 `);
                 paymentMethodSection.show();
-                submitBtn.html('Complete Booking - Pay Full Amount <svg width="10" height="10" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg"><path d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z"></path></svg>');
+                submitBtn.html(`Complete Booking - ${currencySymbol}${fullAmount.toFixed(2)} <svg width="10" height="10" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg"><path d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z"></path></svg>`);
                 break;
         }
     });
@@ -958,6 +948,8 @@ $(document).ready(function() {
             $('#StripePayment').slideDown();
         } else if (paymentMethod === 'bank_transfer') {
             $('#BankTransferInfo').slideDown();
+        } else if (paymentMethod === 'online_banking') {
+            $('#OnlineBankingInfo').slideDown();
         }
     });
     
@@ -973,56 +965,10 @@ $(document).ready(function() {
                 alert('Please select a payment method');
                 return false;
             }
-            
-            // Validate Stripe fields if Stripe is selected
-            if (paymentMethod === 'stripe') {
-                const cardNumber = $('input[name="card_number"]').val().trim();
-                const cardExpiry = $('input[name="card_expiry"]').val().trim();
-                const cardCvc = $('input[name="card_cvc"]').val().trim();
-                
-                if (!cardNumber || !cardExpiry || !cardCvc) {
-                    e.preventDefault();
-                    alert('Please fill in all card details');
-                    return false;
-                }
-            }
         }
         
         // Disable submit button to prevent double submission
         $('#checkout-submit-btn').prop('disabled', true).html('<span>Processing...</span>');
-    });
-    
-    // Card number formatting
-    $('input[name="card_number"]').on('input', function() {
-        let value = $(this).val().replace(/\s+/g, '').replace(/[^0-9]/gi, '');
-        let matches = value.match(/\d{4,16}/g);
-        let match = matches && matches[0] || '';
-        let parts = [];
-        
-        for (let i = 0, len = match.length; i < len; i += 4) {
-            parts.push(match.substring(i, i + 4));
-        }
-        
-        if (parts.length) {
-            $(this).val(parts.join(' '));
-        } else {
-            $(this).val(value);
-        }
-    });
-    
-    // Expiry date formatting
-    $('input[name="card_expiry"]').on('input', function() {
-        let value = $(this).val().replace(/\D/g, '');
-        if (value.length >= 2) {
-            value = value.substring(0, 2) + '/' + value.substring(2, 4);
-        }
-        $(this).val(value);
-    });
-    
-    // CVC validation
-    $('input[name="card_cvc"]').on('input', function() {
-        let value = $(this).val().replace(/\D/g, '').substring(0, 4);
-        $(this).val(value);
     });
 });
 </script>

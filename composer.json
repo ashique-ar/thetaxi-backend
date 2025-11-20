@@ -17,6 +17,7 @@
         "laravel/passport": "^13.0",
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^2.10.1",
+        "league/flysystem-aws-s3-v3": "^3.30",
         "phpdocumentor/shim": "^3.8",
         "qcod/laravel-gamify": "^1.0",
         "spatie/laravel-activitylog": "^4.10",

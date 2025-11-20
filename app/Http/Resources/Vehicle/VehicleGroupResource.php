@@ -16,7 +16,7 @@ class VehicleGroupResource extends JsonResource
             'description' => $this->description,
             'specs'       => $this->specs,
             'images'      => $this->images,
-
+            'thumbnail'      => $this->thumbnail,
             'vehicle_count'=> $this->vehicles()->count() ?? 0,
             'grade'       => new VehicleGradeResource($this->whenLoaded('grade')),
             'make'        => new VehicleMakeResource($this->whenLoaded('make')),

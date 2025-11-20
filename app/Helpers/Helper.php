@@ -1,5 +1,7 @@
 <?php
 
+use Illuminate\Support\Facades\Storage;
+
 if (!function_exists('getUserfromReq')) {
     function getUserfromReq(Request $request)
     {
@@ -12,8 +14,6 @@ if (!function_exists('getUserfromReq')) {
         ];
     }
 }
-
-
 
 if (!function_exists('image_upload')) {
     function image_upload($destinationPath, $file, $sizex = null, $sizey = null, $imageName = null, $format = null)
@@ -50,5 +50,26 @@ if (!function_exists('file_upload')) {
         unlink($fullPath . '/' . $fileName);
 
         return $fileName;
+    }
+}
+
+if (!function_exists('s3_asset')) {
+    function s3_asset($path, $secure = null)
+    {
+        return Storage::disk('s3')->url($path);
+    }
+}
+
+if (!function_exists('check_s3_asset')) {
+    function check_s3_asset($path, $secure = null)
+    {
+        return Storage::disk('s3')->exists($path);
+    }
+}
+
+if (!function_exists('static_asset')) {
+    function static_asset($path, $secure = null)
+    {
+        return app('url')->asset('public/' . $path, $secure);
     }
 }

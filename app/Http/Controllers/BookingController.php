@@ -374,6 +374,7 @@ class BookingController extends Controller
                 'enhanced_pricing' => [],
                 'available_count' => $groupData['available_count'] ?? 0,
                 'total_count' => $groupData['total_count'] ?? 0,
+                'thumbnail' => $groupData['thumbnail'] ?? null,
                 'recommended' => false, // Can be enhanced later
                 'service_features' => $this->getServiceFeatures($searchParams['service_type'] ?? 'airport_transfers'),
                 'savings_info' => [],

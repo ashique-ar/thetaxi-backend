@@ -244,6 +244,7 @@ Log::info('Calculated pricing', ['vehicle_group_id' => $group->id, 'pricing' => 
                 'name' => $group->name,
                 'category' => $group->category,
                 'description' => $group->description,
+                'thumbnail' => $group->thumbnail,
                 'features' => $group->features ?? [],
                 'available_count' => $availableCount,
                 'total_count' => $totalCount,

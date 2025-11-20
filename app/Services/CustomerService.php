@@ -23,6 +23,7 @@ class CustomerService
      * Create a customer for guest checkout
      * 
      * Creates both User and Customer records atomically
+     * If user with email exists, reuses that user
      * 
      * @param array $data Customer data
      * @return Customer The created customer with user relationship
@@ -30,25 +31,50 @@ class CustomerService
     public function createGuestCustomer(array $data): Customer
     {
         return DB::transaction(function () use ($data) {
-            // Create user account for guest
-            $user = User::create([
-                'name' => $data['customer_name'],
-                'email' => $data['customer_email'],
-                'phone' => $data['customer_phone'] ?? null,
-                'password' => bcrypt(Str::random(16)), // Random password, guest won't login
-                'is_guest' => true,
-                'email_verified_at' => now(),
-            ]);
+            // Check if user with this email already exists
+            $user = User::where('email', $data['customer_email'])->first();
+            
+            if (!$user) {
+                // Create new user account for guest
+                $user = User::create([
+                    'first_name' => $data['customer_name'],
+                    'email' => $data['customer_email'],
+                    'phone' => $data['customer_phone'] ?? null,
+                    'password' => bcrypt(Str::random(16)), // Random password, guest won't login
+                    'is_guest' => true,
+                    'email_verified_at' => now(),
+                ]);
+            } else {
+                // Update existing user info if needed
+                $user->update([
+                    'first_name' => $data['customer_name'],
+                    'phone' => $data['customer_phone'] ?? $user->phone,
+                ]);
+            }
 
-            // Create customer linked to user
-            $customer = Customer::create([
-                'user_id' => $user->id,
-                'address' => $data['customer_address'] ?? null,
-                'city' => $data['customer_city'] ?? null,
-                'country_id' => $data['country_id'] ?? null,
-                'nic' => $data['customer_identification'] ?? null,
-                'created_user_id' => Auth::id() ?? $user->id,
-            ]);
+            // Check if customer record exists for this user
+            $customer = $user->customer;
+            
+            if (!$customer) {
+                // Create new customer linked to user
+                $customer = Customer::create([
+                    'user_id' => $user->id,
+                    'address' => $data['customer_address'] ?? null,
+                    'city' => $data['customer_city'] ?? null,
+                    'country_id' => $data['country_id'] ?? null,
+                    'nic' => $data['customer_identification'] ?? null,
+                    'created_user_id' => Auth::id() ?? $user->id,
+                ]);
+            } else {
+                // Update existing customer info
+                $customer->update([
+                    'address' => $data['customer_address'] ?? $customer->address,
+                    'city' => $data['customer_city'] ?? $customer->city,
+                    'country_id' => $data['country_id'] ?? $customer->country_id,
+                    'nic' => $data['customer_identification'] ?? $customer->nic,
+                    'updated_user_id' => Auth::id() ?? $user->id,
+                ]);
+            }
 
             return $customer->load('user');
         });

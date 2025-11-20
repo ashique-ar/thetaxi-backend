@@ -105,7 +105,7 @@ class VehicleGroupController extends Controller
                     'make',
                     'model',
                     'transmission',
-                    'fuel_type',
+                    'fuelType',
                     'category',
                     'class'
                 ))

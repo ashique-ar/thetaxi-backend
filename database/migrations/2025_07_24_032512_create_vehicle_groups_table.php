@@ -23,6 +23,7 @@ return new class extends Migration {
             $table->string('name');                // e.g. "Land Cruiser ZX Series"
             $table->text('description')->nullable();
             $table->json('specs')->nullable();     // store group-level specs
+            $table->string('thumbnail')->nullable();    // group images
             $table->json('images')->nullable();    // group images
             $table->boolean('is_active')->default(true);
             $table->uuid('created_user_id')->nullable()->index();

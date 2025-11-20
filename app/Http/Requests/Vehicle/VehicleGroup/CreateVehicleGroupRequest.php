@@ -21,6 +21,7 @@ class CreateVehicleGroupRequest extends FormRequest
             'name'        => ['required','string','max:255'],
             'description' => ['nullable','string'],
             'specs'       => ['nullable','array'],
+            'thumbnail'      => ['nullable','array'],
             'images'      => ['nullable','array'],
         ];
     }

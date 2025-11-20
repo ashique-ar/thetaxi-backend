@@ -1,5 +1,7 @@
 <?php
 
+use Illuminate\Container\Attributes\Storage;
+
 if (!function_exists('image_upload')) {
     /**
      * Legacy image upload function for backward compatibility
@@ -110,20 +112,5 @@ if (!function_exists('createFileIfNotExist')) {
         if (!File::isDirectory($path)) {
             File::makeDirectory($path, 0755, true, true);
         }
-    }
-}
-
-if (!function_exists('check_my_asset')) {
-    /**
-     * Check if asset belongs to current user
-     * 
-     * @param string $path
-     * @return bool
-     */
-    function check_my_asset($path)
-    {
-        // Implement your asset ownership check logic here
-        // For now, return true for authenticated users
-        return auth()->check();
     }
 }

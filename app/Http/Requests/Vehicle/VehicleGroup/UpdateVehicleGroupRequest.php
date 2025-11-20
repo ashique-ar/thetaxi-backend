@@ -24,6 +24,7 @@ class UpdateVehicleGroupRequest extends FormRequest
             'name' => ['sometimes', 'nullable', 'string', 'max:255'],
             'description' => ['sometimes', 'nullable', 'string'],
             'specs' => ['sometimes', 'nullable', 'array'],
+            'thumbnail' => ['sometimes', 'nullable', 'array'],
             'images' => ['sometimes', 'nullable', 'array'],
         ];
     }

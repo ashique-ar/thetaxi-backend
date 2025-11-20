@@ -34,7 +34,7 @@ return new class extends Migration {
             $table->decimal('total_estimated', 12, 2)->nullable();
             $table->decimal('total_actual', 12, 2)->nullable();
 
-            $table->enum('created_from', ['web', 'internal', 'api', 'agent'])->default('web');
+            $table->string('created_from')->default('web');
             $table->boolean('confirmed')->default(false);
 
             $table->string('third_party_ref')->nullable();
@@ -63,8 +63,8 @@ return new class extends Migration {
             $table->string('currency', 3)->default('LKR');
 
             // Payment details
-            $table->enum('payment_method', ['cash', 'card', 'wallet', 'corporate_account'])->nullable();
-            $table->enum('payment_status', ['pending', 'paid', 'partial', 'failed', 'refunded'])->default('pending');
+            $table->string('payment_method')->nullable();
+            $table->string('payment_status')->default('pending');
             $table->string('payment_reference')->nullable();
 
             // Corporate booking fields
@@ -84,7 +84,7 @@ return new class extends Migration {
 
             // Approval workflow
             $table->boolean('requires_approval')->default(false);
-            $table->enum('approval_status', ['not_required', 'pending', 'approved', 'rejected'])->default('not_required');
+            $table->string('approval_status')->default('not_required');
             
             // Enhanced approval fields for full workflow support
             $table->uuid('approval_requested_by')->nullable();
@@ -97,7 +97,7 @@ return new class extends Migration {
             $table->string('booking_source', 50)->default('internal');
             
             // Enhanced status tracking
-            $table->enum('status', ['draft', 'pending', 'pending_approval', 'confirmed', 'in_progress', 'completed', 'cancelled'])->default('pending');
+            $table->string('status')->default('pending')->nullable();
             
             // Override tracking for complete audit trail
             $table->jsonb('override_reasons')->nullable();
@@ -125,7 +125,7 @@ return new class extends Migration {
             $table->string('emergency_contact_relationship')->nullable();
 
             // Insurance and safety
-            $table->enum('insurance_type', ['basic', 'comprehensive', 'premium'])->nullable();
+            $table->string('insurance_type')->nullable();
             $table->json('safety_features_required')->nullable();
 
             // Notification preferences
@@ -145,7 +145,7 @@ return new class extends Migration {
             $table->timestamp('cancelled_at')->nullable();
 
             // Trip tracking
-            $table->enum('trip_status', ['not_started', 'in_progress', 'completed', 'cancelled'])->default('not_started');
+            $table->string('trip_status')->default('not_started')->nullable();
             $table->timestamp('trip_started_at')->nullable();
             $table->timestamp('trip_ended_at')->nullable();
             $table->decimal('current_latitude', 10, 7)->nullable();

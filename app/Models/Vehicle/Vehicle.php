@@ -13,8 +13,6 @@ use App\Traits\UUID;
  *
  * @property string $id Primary key (UUID)
  * @property string|null $class_id Foreign key to vehicle_classes table (optional)
- * @property string|null $fuel_type_id Foreign key to vehicle_fuel_types table (optional)
- * @property string|null $transmission_id Foreign key to vehicle_transmissions table (optional)
  * @property string|null $contract_type_id Foreign key to vehicle_contract_types table (optional)
  * @property string|null $category_id Foreign key to vehicle_categories table (optional)
  * @property string|null $model_id Foreign key to vehicle_models table (optional)

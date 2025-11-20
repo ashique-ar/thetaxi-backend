@@ -61,14 +61,6 @@ class VehicleGroupSeeder extends Seeder
                     'safety_rating' => '5 Star NCAP',
                     'features' => ['ABS', 'EBD', 'Airbags', 'Climate Control', 'Cruise Control']
                 ],
-                'images' => [
-                    'main' => '/images/vehicles/camry-main.jpg',
-                    'gallery' => [
-                        '/images/vehicles/camry-interior.jpg',
-                        '/images/vehicles/camry-exterior.jpg',
-                        '/images/vehicles/camry-engine.jpg'
-                    ]
-                ]
             ],
             [
                 'name' => 'Honda Accord Executive',
@@ -260,7 +252,8 @@ class VehicleGroupSeeder extends Seeder
                 'fuel_type_id' => $fuelType?->id,
                 'specs' => $groupData['specs'] ?? null,
                 'images' => $groupData['images'] ?? null,
-                'created_user_id' => null, // Will be set by system
+                'thumbnail' => $groupData['thumbnail'] ?? null,
+                'created_user_id' => null,
                 'updated_user_id' => null,
             ]);
 

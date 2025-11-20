@@ -151,6 +151,7 @@ class CartService
                 'subtotal' => 0,
                 'service_fee' => 0,
                 'tax' => 0,
+                'vat' => 0,
                 'coupon_discount' => 0,
                 'total' => 0
             ]);
@@ -165,22 +166,77 @@ class CartService
             return $lkrPrice * ($item['days'] ?? 1);
         });
 
-        // Store all amounts in LKR for consistency
-        $serviceFeeBase = 750.00; // Base service fee in LKR (25 USD equivalent)
-        $taxRate = 0.1; // 10% tax
-        $tax = $subtotal * $taxRate;
+        // Calculate service fee dynamically from config
+        $serviceFee = $this->calculateServiceFee($subtotal);
+        
+        // Calculate tax (NBT) dynamically from config
+        $tax = 0;
+        if (config('booking.tax.enabled', true)) {
+            $taxRate = config('booking.tax.rate', 0.025);
+            $tax = $subtotal * $taxRate;
+        }
+        
+        // Calculate VAT dynamically from config
+        $vat = 0;
+        if (config('booking.vat.enabled', true)) {
+            $vatRate = config('booking.vat.rate', 0.18);
+            $vatBase = $subtotal;
+            
+            // Add service fee to VAT base if configured
+            if (config('booking.vat.applies_to_service_fee', true)) {
+                $vatBase += $serviceFee;
+            }
+            
+            $vat = $vatBase * $vatRate;
+        }
+        
         $couponDiscount = $cart->coupon_discount ?? 0;
-        $total = $subtotal + $serviceFeeBase + $tax - $couponDiscount;
+        $total = $subtotal + $serviceFee + $tax + $vat - $couponDiscount;
 
         $cart->setTotals([
             'subtotal' => round($subtotal, 2),
-            'service_fee' => round($serviceFeeBase, 2),
+            'service_fee' => round($serviceFee, 2),
             'tax' => round($tax, 2),
-            'coupon_discount' => $couponDiscount,
+            'tax_label' => config('booking.tax.label', 'NBT'),
+            'vat' => round($vat, 2),
+            'vat_label' => config('booking.vat.label', 'VAT'),
+            'coupon_discount' => round($couponDiscount, 2),
             'total' => round($total, 2)
         ]);
         
         $cart->save();
+    }
+
+    /**
+     * Calculate service fee based on configuration
+     */
+    protected function calculateServiceFee(float $subtotal): float
+    {
+        if (!config('booking.service_fee.enabled', true)) {
+            return 0;
+        }
+
+        $type = config('booking.service_fee.type', 'fixed');
+        $amount = config('booking.service_fee.amount', 750.00);
+        $minAmount = config('booking.service_fee.min', 0);
+        $maxAmount = config('booking.service_fee.max', null);
+
+        if ($type === 'percentage') {
+            $fee = $subtotal * ($amount / 100);
+        } else {
+            $fee = $amount;
+        }
+
+        // Apply min/max constraints
+        if ($minAmount > 0 && $fee < $minAmount) {
+            $fee = $minAmount;
+        }
+
+        if ($maxAmount !== null && $fee > $maxAmount) {
+            $fee = $maxAmount;
+        }
+
+        return $fee;
     }
 
     /**
