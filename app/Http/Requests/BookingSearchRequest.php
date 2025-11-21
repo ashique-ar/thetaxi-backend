@@ -124,7 +124,7 @@ class BookingSearchRequest extends FormRequest
             'to_lng' => 'nullable|numeric|between:-180,180',
             'date' => 'required|date|after_or_equal:today',
             'time' => 'required|date_format:H:i',
-            'passengers' => 'required|integer|min:1|max:15'
+            // 'passengers' => 'required|integer|min:1|max:15'
         ];
     }
 
@@ -143,7 +143,7 @@ class BookingSearchRequest extends FormRequest
             'dropoff_lng' => 'nullable|numeric|between:-180,180',
             'date' => 'required|date|after_or_equal:today',
             'time' => 'required|date_format:H:i',
-            'passengers' => 'required|integer|min:1|max:15',
+            // 'passengers' => 'required|integer|min:1|max:15',
             'need_return' => 'nullable|boolean'
         ];
 
@@ -176,7 +176,7 @@ class BookingSearchRequest extends FormRequest
             'dropoff_date' => 'required|date|after:pickup_date',
             'dropoff_time' => 'required|date_format:H:i',
             'package_type' => 'nullable|string|in:half-day,full-day,multi-day,hourly,daily',
-            'passengers' => 'required|integer|min:1|max:15'
+            // 'passengers' => 'required|integer|min:1|max:15'
         ];
     }
 
@@ -194,7 +194,7 @@ class BookingSearchRequest extends FormRequest
             'pickup_date' => 'required|date|after_or_equal:today',
             'destinations' => 'required|array|min:1',
             'destinations.*' => 'required|string|max:255',
-            'passengers' => 'nullable|integer|min:1|max:15'
+            // 'passengers' => 'nullable|integer|min:1|max:15'
         ];
     }
 

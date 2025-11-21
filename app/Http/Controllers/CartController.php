@@ -138,11 +138,12 @@ class CartController extends Controller
                 $vehicleGroup = VehicleGroup::find($vehicleId);
             }
 
-            // Calculate days from dates
+            // Calculate days from dates - day-based calculation
+            // Same date = 1 day, different dates = diffInDays + 1 (include both start and end days)
             $pickupDateObj = Carbon::parse($pickupDate);
             $returnDateObj = Carbon::parse($returnDate);
             $calculatedDays = $pickupDateObj->diffInDays($returnDateObj);
-            $days = max(1, $calculatedDays);
+            $days = max(1, $calculatedDays + 1); // Always add 1 to include both pickup and return days
 
             // Recalculate pricing using BookingFlowService instead of accepting from frontend
             $totalPrice = 0;
@@ -301,6 +302,7 @@ class CartController extends Controller
                 'return_latitude' => $returnLat,
                 'return_longitude' => $returnLng,
                 'service_type' => $serviceType,
+                'service_type_data' => $serviceTypeModel,
                 'search_data' => $searchData,
                 'base_currency' => 'LKR', // Mark as LKR base pricing
                 'added_at' => now()

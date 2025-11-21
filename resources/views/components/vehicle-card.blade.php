@@ -116,6 +116,14 @@
                     // Get base prices in LKR (coming from BookingFlowService)
                     $totalAmountLKR = $pricing['base_amount'] ?? 0;
                     $durationDays = $pricing['duration_info']['days'] ?? 1;
+                    $packageHours = $pricing['duration_info']['package_hours'] ?? null;
+                    $serviceType = $pricing['service_type'] ?? 'point_to_point';
+                    
+                    // Determine if this is a package service (wedding, airport transfers)
+                    $isPackageService = in_array($serviceType, ['wedding_hire', 'airport_transfers']);
+                    $isWeddingPackage = $serviceType === 'wedding_hire' && $packageHours;
+                    $isOneDay = $durationDays === 1;
+                    
                     $perDayRateLKR = $durationDays > 0 ? $totalAmountLKR / $durationDays : 0;
                     
                     // Convert to selected currency using helper functions
@@ -123,38 +131,60 @@
                     $totalAmountConverted = convertPrice($totalAmountLKR);
                     $perDayRateConverted = convertPrice($perDayRateLKR);
                     $currencySymbol = getCurrencySymbol();
-                    
-                    // Debug: Check what we're actually getting
-                    if (app()->environment('local')) {
-                        \Log::info('Vehicle Card Pricing Debug', [
-                            'vehicle_name' => $vehicle['name'] ?? 'Unknown',
-                            'total_amount_lkr' => $totalAmountLKR,
-                            'total_amount_converted' => $totalAmountConverted,
-                            'selected_currency' => $selectedCurrency,
-                            'duration_days' => $durationDays,
-                            'per_day_rate_lkr' => $perDayRateLKR,
-                            'per_day_rate_converted' => $perDayRateConverted,
-                            'currency_symbol' => $currencySymbol
-                        ]);
-                    }
                 @endphp
                 
-                <h4 class="price-amount" 
-                    data-base-price-lkr="{{ $totalAmountLKR }}" 
-                    data-per-day-lkr="{{ round($perDayRateLKR, 2) }}"
-                    data-duration="{{ $durationDays }}"
-                    data-currency="{{ $selectedCurrency }}">
-                    {{ $currencySymbol }} 
-                    <span class="price-value">{{ number_format($perDayRateConverted, 0) }}</span>
-                    <span class="price-unit">/day</span>
-                </h4>
-                
-                <!-- Total Price as Secondary Info -->
-                <div class="total-price-info mt-2 text-muted small">
-                    <span class="total-label">Total:</span>
-                    <strong>{{ $currencySymbol }} {{ number_format($totalAmountConverted, 0) }}</strong>
-                    <span class="duration-label">({{ $durationDays }} day{{ $durationDays > 1 ? 's' : '' }})</span>
-                </div>
+                @if($isWeddingPackage)
+                    <!-- Wedding Package Pricing -->
+                    <h4 class="price-amount" 
+                        data-base-price-lkr="{{ $totalAmountLKR }}" 
+                        data-package-hours="{{ $packageHours }}"
+                        data-service-type="{{ $serviceType }}"
+                        data-currency="{{ $selectedCurrency }}">
+                        {{ $currencySymbol }} 
+                        <span class="price-value">{{ number_format($totalAmountConverted, 0) }}</span>
+                        <span class="price-unit">/ {{ $packageHours }}h package</span>
+                    </h4>
+                @elseif($isPackageService)
+                    <!-- Airport Transfer Package Pricing -->
+                    <h4 class="price-amount" 
+                        data-base-price-lkr="{{ $totalAmountLKR }}" 
+                        data-service-type="{{ $serviceType }}"
+                        data-currency="{{ $selectedCurrency }}">
+                        {{ $currencySymbol }} 
+                        <span class="price-value">{{ number_format($totalAmountConverted, 0) }}</span>
+                        <span class="price-unit">/ transfer</span>
+                    </h4>
+                @elseif($isOneDay)
+                    <!-- One Day Pricing - Don't show /day for single day -->
+                    <h4 class="price-amount" 
+                        data-base-price-lkr="{{ $totalAmountLKR }}" 
+                        data-duration="{{ $durationDays }}"
+                        data-currency="{{ $selectedCurrency }}">
+                        {{ $currencySymbol }} 
+                        <span class="price-value">{{ number_format($totalAmountConverted, 0) }}</span>
+                    </h4>
+                    <div class="total-price-info mt-1 text-muted small">
+                        <span class="duration-label">1 day rental</span>
+                    </div>
+                @else
+                    <!-- Multi-day Pricing - Show per day rate -->
+                    <h4 class="price-amount" 
+                        data-base-price-lkr="{{ $totalAmountLKR }}" 
+                        data-per-day-lkr="{{ round($perDayRateLKR, 2) }}"
+                        data-duration="{{ $durationDays }}"
+                        data-currency="{{ $selectedCurrency }}">
+                        {{ $currencySymbol }} 
+                        <span class="price-value">{{ number_format($perDayRateConverted, 0) }}</span>
+                        <span class="price-unit">/day</span>
+                    </h4>
+                    
+                    <!-- Total Price as Secondary Info for multi-day -->
+                    <div class="total-price-info mt-2 text-muted small">
+                        <span class="total-label">Total:</span>
+                        <strong>{{ $currencySymbol }} {{ number_format($totalAmountConverted, 0) }}</strong>
+                        <span class="duration-label">({{ $durationDays }} days)</span>
+                    </div>
+                @endif
                 
                 @if(isset($enhancedPricing['savings']) && !empty($enhancedPricing['savings']))
                 <div class="savings-info mt-1">

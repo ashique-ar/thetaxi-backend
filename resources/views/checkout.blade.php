@@ -434,10 +434,10 @@
                                             <ul>
                                                 @foreach ($cart as $key => $item)
                                                     @php
-                                                        // Calculate days from pickup and return dates
+                                                        // Calculate days from pickup and return dates - day-based calculation
                                                         $pickupDate = isset($item['pickup_date']) ? \Carbon\Carbon::parse($item['pickup_date']) : null;
                                                         $returnDate = isset($item['return_date']) ? \Carbon\Carbon::parse($item['return_date']) : null;
-                                                        $calculatedDays = ($pickupDate && $returnDate) ? max(1, $pickupDate->diffInDays($returnDate)) : 1;
+                                                        $calculatedDays = ($pickupDate && $returnDate) ? max(1, $pickupDate->diffInDays($returnDate) + 1) : 1;
                                                         
                                                         // Use total_price if available (already calculated for all days in LKR)
                                                         // Otherwise calculate from per-day price and calculated days

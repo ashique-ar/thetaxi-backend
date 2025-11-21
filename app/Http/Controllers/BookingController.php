@@ -134,10 +134,14 @@ class BookingController extends Controller
                 break;
                 
             case 'point_to_point':
-                $params['from_date'] = Carbon::parse($requestData['date'])->format('Y-m-d');
-                $params['to_date'] = isset($requestData['return_date']) 
-                    ? Carbon::parse($requestData['return_date'])->format('Y-m-d')
-                    : Carbon::parse($requestData['date'])->format('Y-m-d');
+                $fromDate = Carbon::parse($requestData['date']);
+                // Default to same date if no return date provided (1 day booking)
+                $toDate = isset($requestData['return_date']) 
+                    ? Carbon::parse($requestData['return_date'])
+                    : $fromDate->copy();
+                    
+                $params['from_date'] = $fromDate->format('Y-m-d');
+                $params['to_date'] = $toDate->format('Y-m-d');
                 $params['from_time'] = $requestData['time'] ?? '00:00';
                 $params['to_time'] = $requestData['return_time'] ?? $requestData['time'] ?? '00:00';
                 $params['pickup_location'] = $this->formatLocation($requestData, 'from');
@@ -145,8 +149,14 @@ class BookingController extends Controller
                 break;
                 
             case 'ride_now':
-                $params['from_date'] = Carbon::parse($requestData['pickup_date'])->format('Y-m-d');
-                $params['to_date'] = Carbon::parse($requestData['dropoff_date'])->format('Y-m-d');
+                $pickupDate = Carbon::parse($requestData['pickup_date'] ?? $requestData['date']);
+                // Default to same date if no dropoff date provided (1 day booking)
+                $dropoffDate = isset($requestData['dropoff_date']) 
+                    ? Carbon::parse($requestData['dropoff_date'])
+                    : $pickupDate->copy();
+                    
+                $params['from_date'] = $pickupDate->format('Y-m-d');
+                $params['to_date'] = $dropoffDate->format('Y-m-d');
                 $params['from_time'] = $requestData['pickup_time'] ?? '00:00';
                 $params['to_time'] = $requestData['dropoff_time'] ?? '00:00';
                 $params['pickup_location'] = $this->formatLocation($requestData, 'pickup');
@@ -288,7 +298,7 @@ class BookingController extends Controller
                         ? $searchParams['dropoff_location']['longitude'] ?? null
                         : null,
                     'duration_days' => isset($searchParams['to_date'], $searchParams['from_date'])
-                        ? max(1, Carbon::parse($searchParams['to_date'])->diffInDays(Carbon::parse($searchParams['from_date'])))
+                        ? max(1, Carbon::parse($searchParams['to_date'])->diffInDays(Carbon::parse($searchParams['from_date'])) + 1)
                         : 1,
                     'passengers' => $searchParams['passengers'] ?? 1,
                     'package_type' => $searchParams['package_type'] ?? null,
@@ -344,12 +354,24 @@ class BookingController extends Controller
             
             // Format pricing from the structure returned by BookingFlowService
             $pricingInfo = $groupData['pricing_info'] ?? [];
+            
+            // Get service type information
+            $serviceType = null;
+            if (isset($searchParams['service_type'])) {
+                $serviceTypeId = $searchParams['service_type'];
+                $serviceTypeModel = \App\Models\ServiceType::find($serviceTypeId);
+                $serviceType = $serviceTypeModel ? $serviceTypeModel->code : 'point_to_point';
+            }
+            
             $formattedPricing = !empty($pricingInfo) ? [
                 'base_amount' => $pricingInfo['base_amount'] ?? 0,
                 'total_amount' => $pricingInfo['total_amount'] ?? 0,
                 'currency' => $pricingInfo['currency'] ?? 'LKR',
                 'breakdown' => $pricingInfo['breakdown'] ?? [],
-                'duration_info' => $pricingInfo['duration_info'] ?? null,
+                'duration_info' => array_merge($pricingInfo['duration_info'] ?? [], [
+                    'package_hours' => $searchParams['package_hours'] ?? null
+                ]),
+                'service_type' => $serviceType,
             ] : [];
             
             // Build result using the ACTUAL structure from BookingFlowService
@@ -1306,28 +1328,28 @@ class BookingController extends Controller
                 ['name' => 'to', 'label' => 'To Location', 'type' => 'text', 'required' => true],
                 ['name' => 'date', 'label' => 'Date', 'type' => 'date', 'required' => true],
                 ['name' => 'time', 'label' => 'Time', 'type' => 'time', 'required' => true],
-                ['name' => 'passengers', 'label' => 'Passengers', 'type' => 'number', 'required' => true],
+                // ['name' => 'passengers', 'label' => 'Passengers', 'type' => 'number', 'required' => true],
             ],
             'point_to_point' => [
                 ['name' => 'from', 'label' => 'From Location', 'type' => 'text', 'required' => true],
                 ['name' => 'to', 'label' => 'To Location', 'type' => 'text', 'required' => true],
                 ['name' => 'date', 'label' => 'Date', 'type' => 'date', 'required' => true],
                 ['name' => 'time', 'label' => 'Time', 'type' => 'time', 'required' => true],
-                ['name' => 'passengers', 'label' => 'Passengers', 'type' => 'number', 'required' => true],
+                // ['name' => 'passengers', 'label' => 'Passengers', 'type' => 'number', 'required' => true],
             ],
             'ride_now' => [
                 ['name' => 'pickup_date', 'label' => 'Pickup Date', 'type' => 'date', 'required' => true],
                 ['name' => 'dropoff_date', 'label' => 'Dropoff Date', 'type' => 'date', 'required' => true],
                 ['name' => 'pickup_time', 'label' => 'Pickup Time', 'type' => 'time', 'required' => true],
                 ['name' => 'dropoff_time', 'label' => 'Dropoff Time', 'type' => 'time', 'required' => true],
-                ['name' => 'passengers', 'label' => 'Passengers', 'type' => 'number', 'required' => true],
+                // ['name' => 'passengers', 'label' => 'Passengers', 'type' => 'number', 'required' => true],
                 ['name' => 'package_type', 'label' => 'Package Type', 'type' => 'select', 'required' => true],
             ],
             'wedding_hire' => [
                 ['name' => 'date', 'label' => 'Event Date', 'type' => 'date', 'required' => true],
                 ['name' => 'time', 'label' => 'Start Time', 'type' => 'time', 'required' => true],
                 ['name' => 'package_hours', 'label' => 'Package Hours', 'type' => 'number', 'required' => true],
-                ['name' => 'passengers', 'label' => 'Passengers', 'type' => 'number', 'required' => true],
+                // ['name' => 'passengers', 'label' => 'Passengers', 'type' => 'number', 'required' => true],
             ],
             'corporate' => [
                 ['name' => 'company_name', 'label' => 'Company Name', 'type' => 'text', 'required' => true],
@@ -1351,28 +1373,27 @@ class BookingController extends Controller
                 'to' => 'required|string|max:255',
                 'date' => 'required|date_format:d/m/Y|after:today',
                 'time' => 'required|date_format:H:i',
-                'passengers' => 'required|integer|min:1|max:10',
+                'passengers' => 'nullable|integer|min:1|max:10',
             ],
             'point_to_point' => [
                 'from' => 'required|string|max:255',
                 'to' => 'required|string|max:255',
                 'date' => 'required|date_format:d/m/Y|after:today',
                 'time' => 'required|date_format:H:i',
-                'passengers' => 'required|integer|min:1|max:10',
+                'passengers' => 'nullable|integer|min:1|max:10',
             ],
             'ride_now' => [
                 'pickup_date' => 'required|date_format:d/m/Y|after:today',
                 'dropoff_date' => 'required|date_format:d/m/Y|after:pickup_date',
                 'pickup_time' => 'required|date_format:H:i',
                 'dropoff_time' => 'required|date_format:H:i',
-                'passengers' => 'required|integer|min:1|max:10',
-                'package_type' => 'required|in:hourly,daily,weekly,monthly',
+                'passengers' => 'nullable|integer|min:1|max:10',
             ],
             'wedding_hire' => [
                 'date' => 'required|date_format:d/m/Y|after:today',
                 'time' => 'required|date_format:H:i',
                 'package_hours' => 'required|integer|in:6,8,12',
-                'passengers' => 'required|integer|min:1|max:10',
+                'passengers' => 'nullable|integer|min:1|max:10',
             ],
             'corporate' => [
                 'company_name' => 'required|string|max:255',

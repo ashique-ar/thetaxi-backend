@@ -27,6 +27,56 @@
     <!-- Vehicle Results Section -->
     <div class="package-standard-wrapper pt-5 mb-110">
         <div class="container">
+            <!-- Search Summary & Duration Display -->
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="search-summary-card">
+                        @php
+                            $serviceType = $search->service_type ?? 'point_to_point';
+                            $durationDays = $search->duration_days ?? 1;
+                            $packageHours = $search->package_hours ?? null;
+                            $isPackageService = in_array($serviceType, ['wedding_hire', 'airport_transfers']);
+                            
+                            // Format duration based on service type
+                            if ($serviceType === 'wedding_hire' && $packageHours) {
+                                $durationText = $packageHours . ' Hour Package';
+                                $durationIcon = 'bi-clock';
+                            } elseif ($serviceType === 'airport_transfers') {
+                                $durationText = 'One-way Transfer';
+                                $durationIcon = 'bi-airplane';
+                            } else {
+                                $durationText = $durationDays . ' Day' . ($durationDays !== 1 ? 's' : '');
+                                $durationIcon = 'bi-calendar-event';
+                            }
+                        @endphp
+                        
+                        <div class="search-summary-header">
+                            <div class="duration-display">
+                                <i class="{{ $durationIcon }}"></i>
+                                <span class="duration-text">{{ $durationText }}</span>
+                            </div>
+                            <div class="search-details">
+                                @if($search->from_date && $search->to_date)
+                                    <span class="date-range">
+                                        {{ \Carbon\Carbon::parse($search->from_date)->format('M d') }} - 
+                                        {{ \Carbon\Carbon::parse($search->to_date)->format('M d, Y') }}
+                                    </span>
+                                @endif
+                                @if($search->pickup_location)
+                                    <span class="location-info">
+                                        <i class="bi bi-geo-alt"></i>
+                                        {{ $search->pickup_location }}
+                                        @if($search->dropoff_location && $search->dropoff_location !== $search->pickup_location)
+                                            → {{ $search->dropoff_location }}
+                                        @endif
+                                    </span>
+                                @endif
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Results Header -->
             <div class="row mb-4">
                 <div class="col-lg-8">
@@ -134,6 +184,87 @@
             font-weight: 700;
             color: #333;
             margin-bottom: 8px;
+        }
+
+        /* ==================== SEARCH SUMMARY CARD ==================== */
+        .search-summary-card {
+            background: linear-gradient(135deg, var(--primary-color) 0%, #A31E23 100%);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: var(--shadow-md);
+            color: white;
+        }
+
+        .search-summary-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+
+        .duration-display {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 24px;
+            font-weight: 700;
+        }
+
+        .duration-display i {
+            font-size: 28px;
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .duration-text {
+            color: white;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .search-details {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 8px;
+        }
+
+        .date-range {
+            font-size: 16px;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.95);
+        }
+
+        .location-info {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.9);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .location-info i {
+            font-size: 14px;
+        }
+
+        @media (max-width: 768px) {
+            .search-summary-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            
+            .search-details {
+                align-items: flex-start;
+                width: 100%;
+            }
+            
+            .duration-display {
+                font-size: 20px;
+            }
+            
+            .duration-display i {
+                font-size: 24px;
+            }
         }
 
         /* ==================== VEHICLE CARD ==================== */

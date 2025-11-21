@@ -74,7 +74,6 @@
                                     <tr>
                                         <th>Vehicle Info</th>
                                         <th>Price</th>
-                                        {{-- <th>Days</th> --}}
                                         <th>Total</th>
                                         <th>Action</th>
                                     </tr>
@@ -82,16 +81,23 @@
                                 <tbody>
                                     @foreach ($cart as $key => $item)
                                         @php
-                                            // Calculate days from pickup and return dates
-                                            $pickupDate = isset($item['pickup_date']) ? \Carbon\Carbon::parse($item['pickup_date']) : null;
-                                            $returnDate = isset($item['return_date']) ? \Carbon\Carbon::parse($item['return_date']) : null;
-                                            $calculatedDays = ($pickupDate && $returnDate) ? max(1, $pickupDate->diffInDays($returnDate)) : 1;
-                                            
+                                           // Calculate days from pickup and return dates
+                                            $pickupDate = isset($item['pickup_date'])
+                                                ? \Carbon\Carbon::parse($item['pickup_date'])
+                                                : null;
+                                            $returnDate = isset($item['return_date'])
+                                                ? \Carbon\Carbon::parse($item['return_date'])
+                                                : null;
+                                            $calculatedDays =
+                                                $pickupDate && $returnDate
+                                                    ? max(1, $pickupDate->diffInDays($returnDate))
+                                                    : 1;
+
                                             // Use total_price if available (already calculated for all days in LKR)
                                             // Otherwise calculate from per-day price and calculated days
-                                            $itemTotal = isset($item['total_price']) 
-                                                ? $item['total_price'] 
-                                                : (($item['price'] ?? 0) * $calculatedDays);
+                                            $itemTotal = isset($item['total_price'])
+                                                ? $item['total_price']
+                                                : ($item['price'] ?? 0) * $calculatedDays;
                                         @endphp
                                         <tr data-cart-key="{{ $key }}">
                                             <td data-label="Vehicle Info">
@@ -106,14 +112,16 @@
                                                         @endif
                                                     </div>
                                                     <div class="product-info-content">
-                                                        <h6>{{ $item['name'] ?? 'Vehicle Rental' }}</h6>
+                                                        <h6>{{ $item['name'] ?? 'Vehicle Rental' }} <span class="badge bg-warning rounded-pill" style="font-size: 10px; vertical-align: middle;">{{ $item['service_type_data']['name'] ?? 'Service Type' }}</span></h6>
+
                                                         <div class="booking-details">
                                                             @if (isset($item['pickup_date']) && isset($item['return_date']))
-                                                                <p colspan="2">
+                                                                <p>
                                                                     {{ $item['pickup_location'] }} -
                                                                     {{ $item['return_location'] }}
                                                                 </p>
-                                                                <p colspan="2">
+
+                                                                <p>
                                                                     {{ $pickupDate->format('M d, Y') }}
                                                                     @if (isset($item['from_time']))
                                                                         <span class="text-muted">@
@@ -126,8 +134,11 @@
                                                                             {{ $item['to_time'] }}</span>
                                                                     @endif
                                                                 </p>
-                                                                <p colspan="2" class="text-muted" style="font-size: 12px; margin-top: 8px;">
-                                                                    <i class="bi bi-calendar-event"></i> <strong>Duration: {{ $calculatedDays }} day{{ $calculatedDays !== 1 ? 's' : '' }}</strong>
+                                                                <p class="text-muted"
+                                                                    style="font-size: 12px; margin-top: 8px;">
+                                                                    <i class="bi bi-calendar-event"></i> <strong>Duration:
+                                                                        {{ $calculatedDays }}
+                                                                        day{{ $calculatedDays !== 1 ? 's' : '' }}</strong>
                                                                 </p>
                                                             @endif
                                                         </div>
@@ -159,8 +170,10 @@
                                                             <small class="text-muted">Selected: <span
                                                                     class="selected-count">0</span> service(s)</small>
                                                         </div>
-                                                        <button type="button" class="btn btn-sm btn-outline-secondary toggle-addons-section" 
-                                                            data-cart-key="{{ $key }}" title="Toggle addons section">
+                                                        <button type="button"
+                                                            class="btn btn-sm btn-outline-secondary toggle-addons-section"
+                                                            data-cart-key="{{ $key }}"
+                                                            title="Toggle addons section">
                                                             <i class="bi bi-chevron-up"></i> Hide
                                                         </button>
                                                     </div>
@@ -706,7 +719,8 @@
 
             function fetchSelectedAddonsForItem(cartKey, allAddons, serviceType) {
                 $.ajax({
-                    url: '{{ route('cart.addons.get', ['cartKey' => ':cartKey']) }}'.replace(':cartKey', cartKey),
+                    url: '{{ route('cart.addons.get', ['cartKey' => ':cartKey']) }}'.replace(':cartKey',
+                        cartKey),
                     method: 'GET',
                     success: function(response) {
                         if (response.success && response.data) {
@@ -728,7 +742,7 @@
                 if (addons.length === 0) {
                     container.html(
                         `<p class="text-center text-muted py-3">No services available for ${serviceType || 'this rental'}</p>`
-                        );
+                    );
                     return;
                 }
 
@@ -844,7 +858,7 @@
                 const addonId = $(this).data('addon-id');
                 const cartKey = $(this).data('cart-key');
                 const qty = parseInt($(this).closest('.unified-addon-card').find('.qty-input-unified')
-                .val()) || 0;
+                    .val()) || 0;
 
                 if (qty === 0) {
                     // Remove addon if quantity is 0
@@ -918,10 +932,10 @@
                 const btn = $(this);
                 const cartKey = btn.data('cart-key');
                 const addonGrid = $(`.addons-grid-unified[data-cart-key="${cartKey}"]`);
-                
+
                 btn.toggleClass('collapsed');
                 addonGrid.toggleClass('collapsed');
-                
+
                 // Update button text and icon
                 if (btn.hasClass('collapsed')) {
                     btn.html('<i class="bi bi-chevron-down"></i> Show');
