@@ -48,13 +48,19 @@ Route::post('/cart/add', [CartController::class, 'add'])->name('cart.add');
 Route::post('/cart/sync', [CartController::class, 'sync'])->name('cart.sync');
 Route::get('/cart/count', [CartController::class, 'count'])->name('cart.count');
 Route::patch('/cart/update/{itemKey}', [CartController::class, 'update'])->name('cart.update');
-Route::post('/cart/update-days', [CartController::class, 'updateDays'])->name('cart.update-days');
 Route::post('/cart/remove', [CartController::class, 'remove'])->name('cart.remove');
 Route::post('/cart/clear', [CartController::class, 'clear'])->name('cart.clear');
 Route::post('/cart/apply-coupon', [CartController::class, 'applyCoupon'])->name('cart.apply-coupon');
 Route::post('/cart/remove-coupon', [CartController::class, 'removeCoupon'])->name('cart.remove-coupon');
 Route::get('/cart/summary', [CartController::class, 'getSummary'])->name('cart.summary');
 Route::post('/cart/checkout', [CartController::class, 'checkout'])->name('cart.checkout');
+
+// Cart Addon routes
+Route::get('/cart/addons/available', [CartController::class, 'getAvailableAddons'])->name('cart.addons.available');
+Route::get('/cart/addons/{cartKey}', [CartController::class, 'getItemAddons'])->name('cart.addons.get');
+Route::post('/cart/addon/add', [CartController::class, 'addAddon'])->name('cart.addon.add');
+Route::post('/cart/addon/remove', [CartController::class, 'removeAddon'])->name('cart.addon.remove');
+Route::post('/cart/addon/update-qty', [CartController::class, 'updateAddonQty'])->name('cart.addon.update-qty');
 
 // Checkout routes
 Route::get('/checkout', [CheckoutController::class, 'index'])->name('checkout');

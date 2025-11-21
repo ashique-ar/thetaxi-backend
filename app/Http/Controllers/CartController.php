@@ -308,7 +308,8 @@ class CartController extends Controller
 
             // Get or create cart
             $dbCart = $this->cartService->getOrCreateCart();
-            $cartKey = 'vehicle_' . $vehicleId . '_' . time();
+            // Create unique cart key - includes time and random component for multiple same vehicles added quickly
+            $cartKey = 'vehicle_' . $vehicleId . '_' . time() . '_' . str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT);
 
             // Add to database cart
             $this->cartService->addItem($dbCart, $cartItem, $cartKey);
@@ -340,76 +341,6 @@ class CartController extends Controller
             }
             return redirect()->back()->with('error', 'Error adding item to cart. Please try again.');
         }
-    }
-
-    /**
-     * Update cart item days (for rental duration)
-     */
-    public function updateDays(Request $request)
-    {
-        $validated = $request->validate([
-            'cart_key' => 'required|string',
-            'days' => 'required|integer|min:1|max:365',
-        ]);
-
-        $dbCart = $this->cartService->getOrCreateCart();
-
-        if ($this->cartService->updateItem($dbCart, $validated['cart_key'], ['days' => $validated['days']])) {
-            $item = $dbCart->getItem($validated['cart_key']);
-            $pickupDate = \Carbon\Carbon::parse($item['pickup_date']);
-           
-            return response()->json([
-                'success' => true,
-                'message' => 'Cart updated successfully',
-                'item_total' => number_format($item['price'] * $validated['days'], 2),
-            ]);
-            $newReturnDate = $pickupDate->addDays((int)$validated['days']);
-            $this->cartService->updateItem($dbCart, $validated['cart_key'], [
-                'return_date' => $newReturnDate->toDateString()
-            ]);
-
-            $itemTotal = $item['price'] * $validated['days'];
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Cart updated successfully',
-                'item_total' => number_format($itemTotal, 2),
-                'new_return_date' => $newReturnDate->format('M d, Y')
-            ]);
-        }
-
-        return response()->json([
-            'success' => false,
-            'message' => 'Item not found in cart'
-        ], 404);
-    }
-
-    /**
-     * Update cart item quantity (legacy method)
-     */
-    public function update(Request $request, string $itemKey)
-    {
-        $validated = $request->validate([
-            'quantity' => 'required|integer|min:1|max:10',
-        ]);
-
-        $cart = session()->get('cart', []);
-
-        if (isset($cart[$itemKey])) {
-            // For vehicle rentals, quantity usually means days
-            $cart[$itemKey]['days'] = $validated['quantity'];
-            session()->put('cart', $cart);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Cart updated successfully'
-            ]);
-        }
-
-        return response()->json([
-            'success' => false,
-            'message' => 'Item not found in cart'
-        ], 404);
     }
 
     /**
@@ -551,28 +482,31 @@ class CartController extends Controller
      */
     public function getSummary()
     {
-        $cart = session()->get('cart', []);
-        $cartItems = collect($cart);
-
-        $subtotal = $cartItems->sum(function ($item) {
-            return ($item['price'] ?? 0) * ($item['days'] ?? 1);
-        });
-
-        $serviceFee = 25.00;
-        $tax = $subtotal * 0.1;
-        $discount = session()->get('cart_discount', 0);
-        $total = $subtotal + $serviceFee + $tax - $discount;
-
-        return response()->json([
-            'success' => true,
-            'cart_count' => count($cart),
-            'subtotal' => number_format($subtotal, 2),
-            'service_fee' => number_format($serviceFee, 2),
-            'tax' => number_format($tax, 2),
-            'discount' => number_format($discount, 2),
-            'total' => number_format($total, 2),
-            'applied_coupon' => session()->get('applied_coupon')
-        ]);
+        try {
+            $dbCart = $this->cartService->getOrCreateCart();
+            $cartTotals = $dbCart->totals ?? [];
+            
+            return response()->json([
+                'success' => true,
+                'cart_count' => count($dbCart->items ?? []),
+                'subtotal' => number_format($cartTotals['subtotal'] ?? 0, 2),
+                'service_fee' => number_format($cartTotals['service_fee'] ?? 0, 2),
+                'addon_charges' => number_format($cartTotals['addon_charges'] ?? 0, 2),
+                'tax' => number_format($cartTotals['tax'] ?? 0, 2),
+                'vat' => number_format($cartTotals['vat'] ?? 0, 2),
+                'discount' => number_format($cartTotals['coupon_discount'] ?? 0, 2),
+                'total' => number_format($cartTotals['total'] ?? 0, 2),
+                'applied_coupon' => session()->get('applied_coupon')
+            ]);
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Cart getSummary error', [
+                'error' => $e->getMessage()
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Error fetching cart summary'
+            ], 500);
+        }
     }
 
     /**
@@ -652,5 +586,208 @@ class CartController extends Controller
         $paymentType = $request->get('type', 'full'); // full, advance, quotation
 
         return redirect()->route('checkout', ['type' => $paymentType]);
+    }
+
+    /**
+     * Get available addons for a service type
+     */
+    public function getAvailableAddons(Request $request)
+    {
+        try {
+            $serviceType = $request->get('service_type');
+            $serviceTypeId = ServiceType::where('code', $serviceType)
+                ->orWhere('name', $serviceType)
+                ->value('id');
+            $addons = $this->cartService->getAvailableAddons($serviceTypeId);
+
+            return response()->json([
+                'success' => true,
+                'data' => $addons
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error fetching available addons', [
+                'error' => $e->getMessage()
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Error loading addons'
+            ], 500);
+        }
+    }
+
+    /**
+     * Get addons for a specific cart item
+     */
+    public function getItemAddons(Request $request, string $cartKey)
+    {
+        try {            
+            $dbCart = $this->cartService->getOrCreateCart();
+            $addonsMap = $this->cartService->getItemAddons($dbCart, $cartKey);
+
+            // Convert associative array to indexed array with addon_id key
+            $addonsArray = [];
+            foreach ($addonsMap as $addonId => $addonData) {
+                if (is_array($addonData)) {
+                    $addonsArray[] = array_merge([
+                        'addon_id' => $addonId
+                    ], $addonData);
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => $addonsArray,
+                'cart_key' => $cartKey
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error fetching item addons', [
+                'error' => $e->getMessage(),
+                'cart_key' => $cartKey
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Error loading item addons'
+            ], 500);
+        }
+    }
+
+    /**
+     * Add addon to cart item
+     */
+    public function addAddon(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'cart_key' => 'required|string',
+                'addon_id' => 'required|string|uuid',
+                'qty' => 'sometimes|integer|min:1'
+            ]);
+
+            $dbCart = $this->cartService->getOrCreateCart();
+            $qty = $validated['qty'] ?? 1;
+
+            $success = $this->cartService->addAddon(
+                $dbCart,
+                $validated['cart_key'],
+                $validated['addon_id'],
+                $qty
+            );
+
+            if (!$success) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to add addon to cart'
+                ], 400);
+            }
+
+            $cartArray = $this->cartService->toArray($dbCart);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Addon added to cart',
+                'cart' => $cartArray
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error adding addon to cart', [
+                'error' => $e->getMessage(),
+                'data' => $request->all()
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Error adding addon: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Remove addon from cart item
+     */
+    public function removeAddon(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'cart_key' => 'required|string',
+                'addon_id' => 'required|string|uuid'
+            ]);
+
+            $dbCart = $this->cartService->getOrCreateCart();
+
+            $success = $this->cartService->removeAddon(
+                $dbCart,
+                $validated['cart_key'],
+                $validated['addon_id']
+            );
+
+            if (!$success) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to remove addon from cart'
+                ], 400);
+            }
+
+            $cartArray = $this->cartService->toArray($dbCart);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Addon removed from cart',
+                'cart' => $cartArray
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error removing addon from cart', [
+                'error' => $e->getMessage(),
+                'data' => $request->all()
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Error removing addon'
+            ], 500);
+        }
+    }
+
+    /**
+     * Update addon quantity in cart
+     */
+    public function updateAddonQty(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'cart_key' => 'required|string',
+                'addon_id' => 'required|string|uuid',
+                'qty' => 'required|integer|min:1'
+            ]);
+
+            $dbCart = $this->cartService->getOrCreateCart();
+
+            $success = $this->cartService->updateAddonQty(
+                $dbCart,
+                $validated['cart_key'],
+                $validated['addon_id'],
+                $validated['qty']
+            );
+
+            if (!$success) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to update addon quantity'
+                ], 400);
+            }
+
+            $cartArray = $this->cartService->toArray($dbCart);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Addon quantity updated',
+                'cart' => $cartArray
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error updating addon quantity', [
+                'error' => $e->getMessage(),
+                'data' => $request->all()
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Error updating addon quantity'
+            ], 500);
+        }
     }
 }

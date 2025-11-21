@@ -152,7 +152,7 @@ class VehicleAddonSeeder extends Seeder
 
             // Self-driven specific addons
             [
-                'service_type_id' => $serviceTypes['self_driven']->id ?? null,
+                'service_type_id' => $serviceTypes['ride_now']->id ?? null,
                 'name' => 'Comprehensive Insurance',
                 'description' => 'Full coverage insurance for self-driven vehicles',
                 'amount' => 15.00,
@@ -164,7 +164,7 @@ class VehicleAddonSeeder extends Seeder
                 'valid_to' => null,
             ],
             [
-                'service_type_id' => $serviceTypes['self_driven']->id ?? null,
+                'service_type_id' => $serviceTypes['ride_now']->id ?? null,
                 'name' => 'Basic Insurance',
                 'description' => 'Basic insurance coverage for self-driven vehicles',
                 'amount' => 8.00,
@@ -176,7 +176,7 @@ class VehicleAddonSeeder extends Seeder
                 'valid_to' => null,
             ],
             [
-                'service_type_id' => $serviceTypes['self_driven']->id ?? null,
+                'service_type_id' => $serviceTypes['ride_now']->id ?? null,
                 'name' => 'Emergency Roadside Assistance',
                 'description' => '24/7 emergency roadside assistance and breakdown support',
                 'amount' => 1500.00,
@@ -188,7 +188,7 @@ class VehicleAddonSeeder extends Seeder
                 'valid_to' => null,
             ],
             [
-                'service_type_id' => $serviceTypes['self_driven']->id ?? null,
+                'service_type_id' => $serviceTypes['ride_now']->id ?? null,
                 'name' => 'Fuel Package',
                 'description' => 'Pre-paid fuel package for convenience',
                 'amount' => 5000.00,
@@ -237,7 +237,7 @@ class VehicleAddonSeeder extends Seeder
 
             // Airport service addons
             [
-                'service_type_id' => $serviceTypes['airport_pickup']->id ?? null,
+                'service_type_id' => $serviceTypes['airport_transfer']->id ?? null,
                 'name' => 'Meet & Greet Service',
                 'description' => 'Professional meet and greet service at airport arrival',
                 'amount' => 1500.00,
@@ -248,7 +248,7 @@ class VehicleAddonSeeder extends Seeder
                 'valid_to' => null,
             ],
             [
-                'service_type_id' => $serviceTypes['airport_pickup']->id ?? null,
+                'service_type_id' => $serviceTypes['airport_transfer']->id ?? null,
                 'name' => 'Flight Tracking',
                 'description' => 'Real-time flight tracking and schedule adjustment',
                 'amount' => 500.00,
@@ -259,7 +259,7 @@ class VehicleAddonSeeder extends Seeder
                 'valid_to' => null,
             ],
             [
-                'service_type_id' => $serviceTypes['airport_drop']->id ?? null,
+                'service_type_id' => $serviceTypes['airport_transfer']->id ?? null,
                 'name' => 'Luggage Assistance',
                 'description' => 'Professional luggage handling and assistance',
                 'amount' => 800.00,
@@ -272,7 +272,7 @@ class VehicleAddonSeeder extends Seeder
 
             // Transfer service addons
             [
-                'service_type_id' => $serviceTypes['transfers']->id ?? null,
+                'service_type_id' => $serviceTypes['airport_transfer']->id ?? null,
                 'name' => 'Multi-Stop Package',
                 'description' => 'Additional charge for multiple stop transfers',
                 'amount' => 500.00,
@@ -283,7 +283,7 @@ class VehicleAddonSeeder extends Seeder
                 'valid_to' => null,
             ],
             [
-                'service_type_id' => $serviceTypes['transfers']->id ?? null,
+                'service_type_id' => $serviceTypes['airport_transfer']->id ?? null,
                 'name' => 'Express Transfer',
                 'description' => 'Premium express transfer service with priority routing',
                 'amount' => 1000.00,

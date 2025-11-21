@@ -6,9 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Mail\CheckoutConfirmationMail;
 use App\Mail\QuotationRequestMail;
 use App\Models\Booking\Booking;
+use App\Models\Booking\BookingAddon;
 use App\Models\ServiceType;
 use App\Models\TermsAndCondition;
 use App\Models\Vehicle\VehicleGroup;
+use App\Models\Website\WebsiteSetting;
 use App\Services\BookingFlowService;
 use App\Services\CustomerService;
 use App\Services\WebXPayService;
@@ -192,7 +194,14 @@ class CheckoutController extends Controller
 
             // All amounts are in LKR (base currency)
             // Calculate payment amount based on type
-            $advancePercentage = config('booking.advance_payment.percentage', 50);
+            // Fetch advance percentage from database
+            try {
+                $advancePercentage = (int)WebsiteSetting::getValue('advance_payment_percentage', 50);
+            } catch (\Exception $e) {
+                Log::warning('Failed to fetch advance_payment_percentage from database', ['error' => $e->getMessage()]);
+                $advancePercentage = config('booking.advance_payment.percentage', 50);
+            }
+            
             $paymentAmount = match ($validated['payment_type']) {
                 'advance' => $total * ($advancePercentage / 100),
                 'quotation' => 0,
@@ -284,6 +293,24 @@ class CheckoutController extends Controller
 
             $booking->workflow_data = $workflowData;
             $booking->save();
+
+            // Save BookingAddons from cart items
+            foreach ($cart as $cartKey => $item) {
+                if (!empty($item['addons']) && is_array($item['addons'])) {
+                    foreach ($item['addons'] as $addonId => $addon) {
+                        if (is_array($addon)) {
+                            BookingAddon::create([
+                                'booking_id' => $booking->id,
+                                'addon_id' => $addonId,
+                                'qty' => $addon['qty'] ?? 1,
+                                'rate' => $addon['amount'] ?? 0,
+                                'amount' => $addon['calculated_amount'] ?? 0,
+                                'label' => $addon['name'] ?? 'Addon'
+                            ]);
+                        }
+                    }
+                }
+            }
 
             // Store cart items for reference
             session()->put('pending_booking_id', $booking->id);

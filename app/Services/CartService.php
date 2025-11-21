@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Cart;
 use App\Models\Customer;
 use App\Models\User;
+use App\Models\Website\WebsiteSetting;
 use App\Services\CurrencyService;
 use Illuminate\Support\Facades\Session;
 
@@ -173,20 +174,20 @@ class CartService
             return (float)$lkrPrice * (int)$days;
         });
 
-        // Calculate service fee dynamically from config
+        // Calculate service fee dynamically from database settings
         $serviceFee = $this->calculateServiceFee($subtotal);
         
-        // Calculate tax (NBT) dynamically from config
+        // Calculate tax dynamically from database settings
         $tax = 0;
         if (config('booking.tax.enabled', true)) {
-            $taxRate = config('booking.tax.rate', 0.025);
+            $taxRate = $this->getTaxPercentage();
             $tax = $subtotal * $taxRate;
         }
         
-        // Calculate VAT dynamically from config
+        // Calculate VAT dynamically from database settings
         $vat = 0;
         if (config('booking.vat.enabled', true)) {
-            $vatRate = config('booking.vat.rate', 0.18);
+            $vatRate = $this->getVatPercentage();
             $vatBase = $subtotal;
             
             // Add service fee to VAT base if configured
@@ -197,12 +198,25 @@ class CartService
             $vat = $vatBase * $vatRate;
         }
         
+        // Calculate addon charges
+        $addonCharges = 0;
+        foreach ($items as $item) {
+            if (is_array($item) && !empty($item['addons'])) {
+                foreach ($item['addons'] as $addon) {
+                    if (is_array($addon)) {
+                        $addonCharges += (float)($addon['calculated_amount'] ?? 0);
+                    }
+                }
+            }
+        }
+        
         $couponDiscount = $cart->coupon_discount ?? 0;
-        $total = $subtotal + $serviceFee + $tax + $vat - $couponDiscount;
+        $total = $subtotal + $serviceFee + $tax + $vat + $addonCharges - $couponDiscount;
 
         $totalsArray = [
             'subtotal' => round($subtotal, 2),
             'service_fee' => round($serviceFee, 2),
+            'addon_charges' => round($addonCharges, 2),
             'tax' => round($tax, 2),
             'tax_label' => config('booking.tax.label', 'NBT'),
             'vat' => round($vat, 2),
@@ -382,4 +396,341 @@ class CartService
             'checkouts_this_week' => $checkedOut
         ];
     }
+
+    /**
+     * Add addon to a cart item
+     */
+    public function addAddon(Cart $cart, string $cartKey, string $addonId, int $qty = 1): bool
+    {
+        try {
+            $items = $cart->items ?? [];
+            
+            if (!isset($items[$cartKey])) {
+                return false;
+            }
+
+            // Ensure addons array exists
+            if (!isset($items[$cartKey]['addons'])) {
+                $items[$cartKey]['addons'] = [];
+            }
+
+            // Get addon details from database
+            $addon = \App\Models\Vehicle\VehicleAddon::find($addonId);
+            if (!$addon) {
+                return false;
+            }
+
+            // Calculate addon amount based on rate type
+            $addonAmount = $this->calculateAddonAmount($addon, $qty);
+
+            // Add or update addon in item
+            $items[$cartKey]['addons'][$addonId] = [
+                'id' => $addon->id,
+                'name' => $addon->name,
+                'description' => $addon->description,
+                'thumbnail' => $addon->thumbnail,
+                'qty' => $qty,
+                'amount' => (float)$addon->amount,
+                'rate_type' => $addon->rate_type,
+                'calculated_amount' => $addonAmount,
+                'added_at' => now()->toIso8601String()
+            ];
+
+            $cart->items = $items;
+            $cart->save();
+            $this->updateTotals($cart);
+            
+            return true;
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Error adding addon to cart', [
+                'error' => $e->getMessage(),
+                'cart_key' => $cartKey,
+                'addon_id' => $addonId
+            ]);
+            return false;
+        }
+    }
+
+    /**
+     * Remove addon from cart item
+     */
+    public function removeAddon(Cart $cart, string $cartKey, string $addonId): bool
+    {
+        try {
+            $items = $cart->items ?? [];
+            
+            if (!isset($items[$cartKey]['addons'][$addonId])) {
+                return false;
+            }
+
+            unset($items[$cartKey]['addons'][$addonId]);
+            
+            // Remove empty addons array
+            if (empty($items[$cartKey]['addons'])) {
+                unset($items[$cartKey]['addons']);
+            }
+
+            $cart->items = $items;
+            $cart->save();
+            $this->updateTotals($cart);
+            
+            return true;
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Error removing addon from cart', [
+                'error' => $e->getMessage(),
+                'cart_key' => $cartKey,
+                'addon_id' => $addonId
+            ]);
+            return false;
+        }
+    }
+
+    /**
+     * Update addon quantity in cart item
+     */
+    public function updateAddonQty(Cart $cart, string $cartKey, string $addonId, int $qty): bool
+    {
+        try {
+            $items = $cart->items ?? [];
+            
+            if (!isset($items[$cartKey]['addons'][$addonId])) {
+                return false;
+            }
+
+            if ($qty <= 0) {
+                return $this->removeAddon($cart, $cartKey, $addonId);
+            }
+
+            $addon = \App\Models\Vehicle\VehicleAddon::find($addonId);
+            if (!$addon) {
+                return false;
+            }
+
+            // Check qty constraints
+            if (($addon->min_qty && $qty < $addon->min_qty) || 
+                ($addon->max_qty && $qty > $addon->max_qty)) {
+                return false;
+            }
+
+            // Recalculate addon amount
+            $addonAmount = $this->calculateAddonAmount($addon, $qty);
+
+            $items[$cartKey]['addons'][$addonId]['qty'] = $qty;
+            $items[$cartKey]['addons'][$addonId]['calculated_amount'] = $addonAmount;
+
+            $cart->items = $items;
+            $cart->save();
+            $this->updateTotals($cart);
+            
+            return true;
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Error updating addon qty in cart', [
+                'error' => $e->getMessage(),
+                'cart_key' => $cartKey,
+                'addon_id' => $addonId,
+                'qty' => $qty
+            ]);
+            return false;
+        }
+    }
+
+    /**
+     * Get addons for a specific cart item
+     */
+    public function getItemAddons(Cart $cart, string $cartKey): array
+    {
+        $items = $cart->items ?? [];
+        
+        if (!isset($items[$cartKey])) {
+            return [];
+        }
+
+        return $items[$cartKey]['addons'] ?? [];
+    }
+
+    /**
+     * Get all available addons for a service type
+     */
+    public function getAvailableAddons(?string $serviceTypeId = null): array
+    {
+        $query = \App\Models\Vehicle\VehicleAddon::query();
+        
+        if ($serviceTypeId) {
+            $query->where('service_type_id', $serviceTypeId)->orWhereNull('service_type_id');
+        }
+
+        return $query->whereNull('deleted_at') // Only active (not soft deleted)
+            ->select('id', 'name', 'description', 'thumbnail', 'amount', 'rate_type', 'min_qty', 'max_qty')
+            ->orderBy('name')
+            ->get()
+            ->toArray();
+    }
+
+    /**
+     * Calculate addon total amount based on rate type
+     */
+    protected function calculateAddonAmount(\App\Models\Vehicle\VehicleAddon $addon, int $qty): float
+    {
+        if ($addon->rate_type === 'percentage') {
+            // For percentage-based addons, calculate per day
+            // This will be adjusted during totals calculation based on item days
+            return (float)$addon->amount;
+        } else {
+            // Flat rate per unit
+            return (float)$addon->amount * $qty;
+        }
+    }
+
+    /**
+     * Update totals including addon amounts
+     * Override the existing updateTotals to include addons
+     */
+    public function updateTotalsWithAddons(Cart $cart): void
+    {
+        $items = $cart->getItems();
+        
+        if ($items->isEmpty()) {
+            $cart->setTotals([
+                'subtotal' => 0,
+                'addon_charges' => 0,
+                'service_fee' => 0,
+                'tax' => 0,
+                'vat' => 0,
+                'coupon_discount' => 0,
+                'total' => 0
+            ]);
+            $cart->save();
+            return;
+        }
+
+        // Calculate subtotal from items
+        $subtotal = $items->sum(function ($item) {
+            $lkrPrice = 0;
+            if (is_array($item)) {
+                $lkrPrice = $item['price_lkr'] ?? $item['price'] ?? 0;
+            } else if (is_object($item)) {
+                $lkrPrice = $item->price_lkr ?? $item->price ?? 0;
+            }
+            $days = is_array($item) ? ($item['days'] ?? 1) : ($item->days ?? 1);
+            return (float)$lkrPrice * (int)$days;
+        });
+
+        // Calculate addon charges
+        $addonCharges = $items->sum(function ($item) {
+            if (!isset($item['addons'])) {
+                return 0;
+            }
+            
+            $itemAddons = is_array($item['addons']) ? $item['addons'] : [];
+            return collect($itemAddons)->sum(function ($addon) use ($item) {
+                // For percentage-based addons, calculate based on item price and days
+                if ($addon['rate_type'] === 'percentage') {
+                    $itemPrice = is_array($item) ? ($item['price_lkr'] ?? 0) : ($item->price_lkr ?? 0);
+                    $days = is_array($item) ? ($item['days'] ?? 1) : ($item->days ?? 1);
+                    $percentage = $addon['amount'];
+                    return ($itemPrice * $days) * ($percentage / 100);
+                }
+                // For flat rate addons
+                return $addon['calculated_amount'] ?? 0;
+            });
+        });
+
+        $serviceFee = $this->calculateServiceFee($subtotal);
+        
+        $tax = 0;
+        if (config('booking.tax.enabled', true)) {
+            $taxRate = config('booking.tax.rate', 0.025);
+            $tax = $subtotal * $taxRate;
+        }
+        
+        $vat = 0;
+        if (config('booking.vat.enabled', true)) {
+            $vatRate = config('booking.vat.rate', 0.18);
+            $vatBase = $subtotal + $addonCharges;
+            
+            if (config('booking.vat.applies_to_service_fee', true)) {
+                $vatBase += $serviceFee;
+            }
+            
+            $vat = $vatBase * $vatRate;
+        }
+        
+        $couponDiscount = $cart->coupon_discount ?? 0;
+        $total = $subtotal + $addonCharges + $serviceFee + $tax + $vat - $couponDiscount;
+
+        $totalsArray = [
+            'subtotal' => round($subtotal, 2),
+            'addon_charges' => round($addonCharges, 2),
+            'service_fee' => round($serviceFee, 2),
+            'tax' => round($tax, 2),
+            'tax_label' => config('booking.tax.label', 'NBT'),
+            'vat' => round($vat, 2),
+            'vat_label' => config('booking.vat.label', 'VAT'),
+            'coupon_discount' => round($couponDiscount, 2),
+            'total' => round($total, 2)
+        ];
+
+        \Illuminate\Support\Facades\Log::info('CartService: Totals with addons calculated', [
+            'cart_id' => $cart->id,
+            'items_count' => $items->count(),
+            'subtotal' => $subtotal,
+            'addon_charges' => $addonCharges,
+            'service_fee' => $serviceFee,
+            'tax' => $tax,
+            'vat' => $vat,
+            'total' => $total
+        ]);
+
+        $cart->setTotals($totalsArray);
+        $cart->save();
+    }
+
+    /**
+     * Get website setting value with fallback to config
+     */
+    protected function getWebsiteSetting(string $settingKey, $default = null)
+    {
+        try {
+            // First try to get from database
+            $setting = WebsiteSetting::where('type', $settingKey)->value('value');
+            if ($setting !== null) {
+                return $setting;
+            }
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::warning("Failed to fetch website setting: $settingKey", [
+                'error' => $e->getMessage()
+            ]);
+        }
+        
+        // Fallback to default or config value
+        return $default;
+    }
+
+    /**
+     * Get tax percentage from database settings
+     */
+    protected function getTaxPercentage(): float
+    {
+        $taxRate = $this->getWebsiteSetting('tax_percentage', config('booking.tax.rate', 0.1));
+        return (float)$taxRate / 100; // Convert percentage to decimal
+    }
+
+    /**
+     * Get service fee percentage from database settings
+     */
+    protected function getServiceFeePercentage(): float
+    {
+        $feeRate = $this->getWebsiteSetting('service_fee_percentage', config('booking.service_fee.rate', 0.05));
+        return (float)$feeRate / 100; // Convert percentage to decimal
+    }
+
+    /**
+     * Get VAT percentage from database settings
+     */
+    protected function getVatPercentage(): float
+    {
+        $vatRate = $this->getWebsiteSetting('vat_percentage', config('booking.vat.rate', 0.18));
+        return (float)$vatRate / 100; // Convert percentage to decimal
+    }
 }
+
