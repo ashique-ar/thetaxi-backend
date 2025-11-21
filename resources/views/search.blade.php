@@ -94,9 +94,9 @@
                             <option value="name">Name: A to Z</option>
                         </select>
                         <!-- New Search Button -->
-                        <button type="button" class="btn btn-success text-nowrap" id="newSearchBtn">
+                        <a href="{{ route('/') }}" class="btn btn-success text-nowrap">
                             <i class="bi bi-search"></i> New Search
-                        </button>
+                        </a>
                     </div>
                 </div>
             </div>
