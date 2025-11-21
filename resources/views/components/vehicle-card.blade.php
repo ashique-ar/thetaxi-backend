@@ -198,35 +198,51 @@
 
         <!-- Action Buttons -->
         <div class="vehicle-actions mt-3">
-            @if($showViewDetails && $searchId)
-                <a href="{{ route('vehicle.details', ['id' => $vehicle['id'], 'search' => $searchId]) }}" 
-                   class="btn btn-outline-primary btn-sm w-100 mb-2">
-                    <i class="bi bi-eye"></i> View Details
-                </a>
-            @endif
-            
             @if($availability['available'] > 0)
-                @if($showBookNow)
+                @if($showBookNow && $searchId)
+                    <!-- Book Now Button (Primary in Search Results) -->
                     <button type="button" 
-                            class="btn btn-success w-100 mb-1 book-now-btn" 
+                            class="btn btn-success w-100 mb-2 book-now-btn" 
                             data-group-id="{{ $vehicle['id'] }}"
                             data-search-id="{{ $searchId }}"
                             data-group-name="{{ $vehicle['name'] ?? 'Vehicle' }}"
                             data-base-price="{{ $pricing['base_amount'] ?? 0 }}"
-                            data-currency="{{ $pricing['currency'] ?? 'LKR' }}">
+                            data-currency="{{ $pricing['currency'] ?? 'LKR' }}"
+                            data-service-type="{{ $pricing['service_type'] ?? 'point_to_point' }}">
                         <i class="bi bi-calendar-check"></i> Book Now
+                    </button>
+                    
+                    <!-- Add to Cart as Secondary Option -->
+                    <button type="button" 
+                            class="btn btn-outline-primary w-100 add-to-cart-btn" 
+                            data-group-id="{{ $vehicle['id'] }}"
+                            data-search-id="{{ $searchId }}"
+                            data-group-name="{{ $vehicle['name'] ?? 'Vehicle' }}"
+                            data-base-price="{{ $pricing['base_amount'] ?? 0 }}"
+                            data-currency="{{ $pricing['currency'] ?? 'LKR' }}"
+                            data-service-type="{{ $pricing['service_type'] ?? 'point_to_point' }}">
+                        <i class="bi bi-cart-plus"></i> Add to Cart
+                    </button>
+                @else
+                    <!-- Add to Cart Primary (for landing/featured pages) -->
+                    <button type="button" 
+                            class="btn btn-primary w-100 mb-2 add-to-cart-btn" 
+                            data-group-id="{{ $vehicle['id'] }}"
+                            data-search-id="{{ $searchId }}"
+                            data-group-name="{{ $vehicle['name'] ?? 'Vehicle' }}"
+                            data-base-price="{{ $pricing['base_amount'] ?? 0 }}"
+                            data-currency="{{ $pricing['currency'] ?? 'LKR' }}"
+                            data-service-type="{{ $pricing['service_type'] ?? 'point_to_point' }}">
+                        <i class="bi bi-cart-plus"></i> Add to Cart
                     </button>
                 @endif
                 
-                <button type="button" 
-                        class="btn btn-primary w-100 add-to-cart-btn" 
-                        data-group-id="{{ $vehicle['id'] }}"
-                        data-search-id="{{ $searchId }}"
-                        data-group-name="{{ $vehicle['name'] ?? 'Vehicle' }}"
-                        data-base-price="{{ $pricing['base_amount'] ?? 0 }}"
-                        data-currency="{{ $pricing['currency'] ?? 'LKR' }}">
-                    <i class="bi bi-cart-plus"></i> Add to Cart
-                </button>
+                @if($showViewDetails)
+                    <a href="{{ $searchId ? route('vehicle.details', ['id' => $vehicle['id'], 'search' => $searchId]) : route('vehicle.details', ['id' => $vehicle['id']]) }}" 
+                       class="btn btn-outline-secondary btn-sm w-100">
+                        <i class="bi bi-eye"></i> View Details
+                    </a>
+                @endif
             @else
                 <button type="button" class="btn btn-secondary w-100" disabled>
                     <i class="bi bi-exclamation-circle"></i> Not Available

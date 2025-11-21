@@ -43,6 +43,76 @@
             --primary-color1: #BF2629 !important;
             --black-color: #717171 !important;
         }
+        
+        /* Cart Icon Styles */
+        .cart-icon-container {
+            padding: 0 10px;
+        }
+        
+        .cart-icon-link {
+            color: #333;
+            text-decoration: none;
+            transition: color 0.3s ease;
+            display: flex;
+            align-items: center;
+            position: relative;
+        }
+        
+        .cart-icon-link:hover {
+            color: var(--primary-color1);
+        }
+        
+        .cart-badge {
+            top: -8px;
+            right: -8px;
+            background: var(--primary-color1);
+            color: white;
+            border-radius: 50%;
+            width: 18px;
+            height: 18px;
+            font-size: 11px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px solid white;
+            animation: cartPulse 0.3s ease;
+        }
+        
+        @keyframes cartPulse {
+            0% { transform: scale(0.8); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
+        
+        .cart-badge.updated {
+            animation: cartPulse 0.5s ease;
+        }
+        
+        /* Mobile Cart Styles */
+        .mobile-cart-area .cart-icon-link {
+            color: #333;
+            padding: 10px 15px;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            transition: all 0.3s ease;
+        }
+        
+        .mobile-cart-area .cart-icon-link:hover {
+            background: rgba(255, 255, 255, 0.2);
+            color: var(--primary-color1);
+        }
+        
+        .mobile-cart-area .cart-badge {
+            top: 2px;
+            right: 10px;
+        }
+        
+        @media (max-width: 767px) {
+            .cart-icon-container {
+                order: 1;
+            }
+        }
     </style>
 </head>
 
@@ -139,7 +209,85 @@
                     });
                 });
             });
+            
+            // Cart Icon Update Functionality
+            updateCartIcon();
+            
+            // Update cart icon every 5 seconds to catch any changes
+            setInterval(updateCartIcon, 5000);
         });
+        
+        function updateCartIcon() {
+            const cartBadge = document.getElementById('cartBadge');
+            if (!cartBadge) return;
+            
+            // Make AJAX request to get cart count
+            fetch('{{ route("cart.get") }}', {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const itemCount = data.count || 0;
+                    updateCartBadge(itemCount);
+                }
+            })
+            .catch(error => {
+                console.warn('Failed to update cart icon:', error);
+            });
+        }
+        
+        function updateCartBadge(count) {
+            const cartBadge = document.getElementById('cartBadge');
+            const mobileCartBadge = document.getElementById('mobileCartBadge');
+            
+            // Update desktop cart badge
+            if (cartBadge) {
+                const currentCount = parseInt(cartBadge.textContent) || 0;
+                
+                if (count > 0) {
+                    cartBadge.textContent = count;
+                    cartBadge.style.display = 'flex';
+                    
+                    // Add pulse animation if count changed
+                    if (count !== currentCount) {
+                        cartBadge.classList.add('updated');
+                        setTimeout(() => {
+                            cartBadge.classList.remove('updated');
+                        }, 500);
+                    }
+                } else {
+                    cartBadge.style.display = 'none';
+                }
+            }
+            
+            // Update mobile cart badge
+            if (mobileCartBadge) {
+                const currentMobileCount = parseInt(mobileCartBadge.textContent) || 0;
+                
+                if (count > 0) {
+                    mobileCartBadge.textContent = count;
+                    mobileCartBadge.style.display = 'flex';
+                    
+                    // Add pulse animation if count changed
+                    if (count !== currentMobileCount) {
+                        mobileCartBadge.classList.add('updated');
+                        setTimeout(() => {
+                            mobileCartBadge.classList.remove('updated');
+                        }, 500);
+                    }
+                } else {
+                    mobileCartBadge.style.display = 'none';
+                }
+            }
+        }
+        
+        // Global function to trigger cart icon update (can be called from any page)
+        window.refreshCartIcon = updateCartIcon;
     </script>
 
     @stack('scripts')

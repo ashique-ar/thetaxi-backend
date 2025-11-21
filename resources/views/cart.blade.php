@@ -171,13 +171,13 @@
                                                                     class="selected-count">0</span> service(s)</small>
                                                         </div>
                                                         <button type="button"
-                                                            class="btn btn-sm btn-outline-secondary toggle-addons-section"
+                                                            class="btn btn-sm btn-outline-secondary toggle-addons-section collapsed"
                                                             data-cart-key="{{ $key }}"
                                                             title="Toggle addons section">
-                                                            <i class="bi bi-chevron-up"></i> Hide
+                                                            <i class="bi bi-chevron-down"></i> Show
                                                         </button>
                                                     </div>
-                                                    <div class="addons-grid-unified" data-cart-key="{{ $key }}"
+                                                    <div class="addons-grid-unified collapsed" data-cart-key="{{ $key }}"
                                                         data-service-type="{{ $item['service_type'] ?? '' }}">
                                                         <div class="text-center py-3">
                                                             <div class="spinner-border spinner-border-sm" role="status">

@@ -28,6 +28,7 @@ Route::get('/vehicles', function () {
 
 // Vehicle routes
 Route::get('/vehicle/{id}', [VehicleController::class, 'show'])->name('vehicle.details');
+Route::post('/vehicle/{id}/update-pricing', [VehicleController::class, 'updatePricing'])->name('vehicle.updatePricing');
 
 Route::get('/about', function () {
     return view('about');

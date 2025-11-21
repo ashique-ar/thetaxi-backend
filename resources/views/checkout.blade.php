@@ -185,7 +185,7 @@
                                             <div class="form-inner two mb-25">
                                                 <label>Phone Number*</label>
                                                 <input type="tel" id="phone-input" name="phone"
-                                                    placeholder="+1 (201) 555-0123" required value="{{ old('phone') }}"
+                                                    placeholder="+1 (201) 555-0123" autocomplete="phhone" required value="{{ old('phone') }}"
                                                     style="padding-left: 48px;">
                                                 <div id="phone-error" class="text-danger mt-2" style="display: none;">
                                                 </div>
@@ -1039,7 +1039,6 @@
 
         #phone-input {
             width: 100% !important;
-            padding: 10px 10px 10px 48px !important;
             border: 1px solid #dee2e6;
             border-radius: 4px;
         }

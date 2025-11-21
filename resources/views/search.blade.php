@@ -79,17 +79,25 @@
 
             <!-- Results Header -->
             <div class="row mb-4">
-                <div class="col-lg-8">
+                <div class="col-lg-6">
                     <h4 class="results-title">{{ count($results['data']) }} Vehicle Groups Available</h4>
                     <p class="text-muted">Choose from our premium selection of vehicles</p>
                 </div>
-                <div class="col-lg-4">
-                    <select class="form-select" id="sortResults">
-                        <option value="default">Sort By</option>
-                        <option value="price_low">Price: Low to High</option>
-                        <option value="price_high">Price: High to Low</option>
-                        <option value="name">Name: A to Z</option>
-                    </select>
+                <div class="col-lg-6">
+                    <div class="d-flex gap-2 justify-content-end align-items-center">
+                        
+                        <!-- Sort Dropdown -->
+                        <select class="form-select" id="sortResults" style="max-width: 200px;">
+                            <option value="default">Sort By</option>
+                            <option value="price_low">Price: Low to High</option>
+                            <option value="price_high">Price: High to Low</option>
+                            <option value="name">Name: A to Z</option>
+                        </select>
+                        <!-- New Search Button -->
+                        <button type="button" class="btn btn-success text-nowrap" id="newSearchBtn">
+                            <i class="bi bi-search"></i> New Search
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -112,7 +120,7 @@
                             data-price="{{ $pricing['base_amount'] ?? 0 }}"
                             data-name="{{ $result['name'] ?? 'Unknown Vehicle' }}">
                             <x-vehicle-card :vehicle="$result" :pricing="$pricing" :enhancedPricing="$enhancedPricing" :serviceFeatures="$serviceFeatures"
-                                :availability="$availability" :searchId="$search->id" :isRecommended="$isRecommended" :showBookNow="false" :showViewDetails="true" />
+                                :availability="$availability" :searchId="$search->id" :isRecommended="$isRecommended" :showBookNow="true" :showViewDetails="false" />
                         </div>
                     @endforeach
                 </div>
@@ -867,6 +875,10 @@
                         // Load updated cart from server
                         loadCartFromServer();
                         showCartFloat();
+                        // Update cart icon in header
+                        if (typeof window.refreshCartIcon === 'function') {
+                            window.refreshCartIcon();
+                        }
                         // Show success message
                         showSuccessNotification('Vehicle added to cart successfully!');
                     } else {
@@ -892,6 +904,10 @@
                 success: function(response) {
                     if (response.success) {
                         loadCartFromServer();
+                        // Update cart icon in header
+                        if (typeof window.refreshCartIcon === 'function') {
+                            window.refreshCartIcon();
+                        }
                         if (Object.keys(cart).length === 0) {
                             $('#cartSummaryFloat').fadeOut();
                         }
@@ -1010,5 +1026,168 @@
             // You can make AJAX call here to recalculate prices
             // For now, we'll keep the base prices
         }
+
+        // New Search functionality
+        $('#newSearchBtn').on('click', function() {
+            // Create a new search modal/form
+            showNewSearchModal();
+        });
+
+        function showNewSearchModal() {
+            // Create a modal with search form
+            const modal = $(`
+                <div class="modal fade" id="newSearchModal" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog modal-lg">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">
+                                    <i class="bi bi-search"></i> Start New Search
+                                </h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <form id="newSearchForm">
+                                    <div class="row g-3">
+                                        <!-- Service Type -->
+                                        <div class="col-md-12">
+                                            <label class="form-label">Service Type</label>
+                                            <select name="service_type" class="form-select" required>
+                                                <option value="point_to_point">Point to Point</option>
+                                                <option value="ride_now">Ride Now</option>
+                                                <option value="airport_transfers">Airport Transfer</option>
+                                                <option value="wedding_hire">Wedding Hire</option>
+                                                <option value="corporate">Corporate</option>
+                                            </select>
+                                        </div>
+                                        
+                                        <!-- Pickup Location -->
+                                        <div class="col-md-6">
+                                            <label class="form-label">Pickup Location</label>
+                                            <input type="text" name="pickup_location" class="form-control" required>
+                                        </div>
+                                        
+                                        <!-- Dropoff Location -->
+                                        <div class="col-md-6">
+                                            <label class="form-label">Dropoff Location</label>
+                                            <input type="text" name="dropoff_location" class="form-control">
+                                        </div>
+                                        
+                                        <!-- Pickup Date -->
+                                        <div class="col-md-6">
+                                            <label class="form-label">Pickup Date</label>
+                                            <input type="date" name="pickup_date" class="form-control" 
+                                                   min="{{ date('Y-m-d') }}" value="{{ date('Y-m-d') }}" required>
+                                        </div>
+                                        
+                                        <!-- Return Date -->
+                                        <div class="col-md-6">
+                                            <label class="form-label">Return Date</label>
+                                            <input type="date" name="return_date" class="form-control" 
+                                                   min="{{ date('Y-m-d') }}" value="{{ date('Y-m-d', strtotime('+1 day')) }}">
+                                        </div>
+                                        
+                                        <!-- Times -->
+                                        <div class="col-md-6">
+                                            <label class="form-label">Pickup Time</label>
+                                            <input type="time" name="pickup_time" class="form-control" value="10:00">
+                                        </div>
+                                        
+                                        <div class="col-md-6">
+                                            <label class="form-label">Return Time</label>
+                                            <input type="time" name="return_time" class="form-control" value="18:00">
+                                        </div>
+                                    </div>
+                                </form>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                <button type="button" class="btn btn-primary" id="submitNewSearch">
+                                    <i class="bi bi-search"></i> Search Vehicles
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `);
+            
+            $('body').append(modal);
+            $('#newSearchModal').modal('show');
+            
+            // Handle form submission
+            $('#submitNewSearch').on('click', function() {
+                const formData = new FormData($('#newSearchForm')[0]);
+                const searchParams = new URLSearchParams();
+                
+                for (const [key, value] of formData.entries()) {
+                    if (value) {
+                        searchParams.append(key, value);
+                    }
+                }
+                
+                // Redirect to search with new parameters
+                window.location.href = '{{ route("search") }}?' + searchParams.toString();
+            });
+            
+            // Clean up modal when hidden
+            $('#newSearchModal').on('hidden.bs.modal', function() {
+                $(this).remove();
+            });
+        }
+
+        // Book Now functionality
+        $(document).on('click', '.book-now-btn', function() {
+            const $btn = $(this);
+            const groupId = $btn.data('group-id');
+            const searchId = $btn.data('search-id');
+            const groupName = $btn.data('group-name');
+            const totalPrice = parseFloat($btn.data('base-price')); 
+            const currency = $btn.data('currency');
+
+            // Get booking dates from the search
+            const fromDate = '{{ $search->from_date ?? '' }}';
+            const toDate = '{{ $search->to_date ?? '' }}';
+            
+            // Calculate duration days from dates
+            let durationDays = 1;
+            if (fromDate && toDate) {
+                const from = new Date(fromDate);
+                const to = new Date(toDate);
+                const diffTime = Math.abs(to - from);
+                durationDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) || 1;
+            }
+            
+            const searchData = {
+                search_id: searchId,
+                from_date: fromDate,
+                to_date: toDate,
+                from_time: '{{ $search->from_time ?? '' }}',
+                to_time: '{{ $search->to_time ?? '' }}',
+                service_type: '{{ $search->service_type ?? '' }}',
+                pickup_location: '{{ $search->pickup_location ?? '' }}',
+                pickup_lat: {{ $search->pickup_latitude ?? 'null' }},
+                pickup_lng: {{ $search->pickup_longitude ?? 'null' }},
+                dropoff_location: '{{ $search->dropoff_location ?? '' }}',
+                dropoff_lat: {{ $search->dropoff_latitude ?? 'null' }},
+                dropoff_lng: {{ $search->dropoff_longitude ?? 'null' }},
+                duration_days: durationDays
+            };
+
+            // Create proper item object for addToCart
+            const item = {
+                group_id: groupId,
+                group_name: groupName,
+                currency: currency,
+                quantity: 1,
+                ...searchData
+            };
+            
+            // Add to cart first
+            addToCart(item);
+            
+            // Wait for cart addition to complete, then redirect to cart
+            setTimeout(() => {
+                window.location.href = '{{ route("cart") }}';
+            }, 1000);
+        });
     </script>
 @endpush
