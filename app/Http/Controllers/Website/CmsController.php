@@ -90,8 +90,8 @@ class CmsController extends Controller
             ->when($query, function ($q) use ($query) {
                 $q->where(function ($subQuery) use ($query) {
                     $subQuery->where('title', 'like', "%{$query}%")
-                             ->orWhere('excerpt', 'like', "%{$query}%")
-                             ->orWhere('body', 'like', "%{$query}%");
+                        ->orWhere('excerpt', 'like', "%{$query}%")
+                        ->orWhere('body', 'like', "%{$query}%");
                 });
             })
             ->when($contentTypeSlug, function ($q) use ($contentTypeSlug) {
