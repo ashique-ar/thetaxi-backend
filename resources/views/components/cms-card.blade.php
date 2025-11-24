@@ -13,7 +13,7 @@
     // $imageUrl = $item->featured_image ? s3_asset($item->featured_image) : asset('assets/img/default-card.jpg');
     $title = $item->title ?? 'No title available';
     $excerpt = $item->excerpt ?? \Str::limit(strip_tags($item->body ?? ''), 100);
-    $location = $item->location ?? 'Location not specified';
+    $location = $item->location ?? '';
     $date = $item->published_at ? $item->published_at->format($dateFormat) : ($item->created_at ? $item->created_at->format($dateFormat) : 'Date not available');
     $price = $item->price ? number_format($item->price, 2) : null;
     $currency = $item->price_currency ?? 'USD';
