@@ -52,7 +52,7 @@ class CmsController extends Controller
         $content->incrementViews();
 
         // Get related content (same content type, excluding current)
-        $relatedContent = CmsContent::published()
+        $relatedContents = CmsContent::published()
             ->byType($contentTypeSlug)
             ->where('id', '!=', $content->id)
             ->orderBy('is_featured', 'desc')
@@ -60,7 +60,7 @@ class CmsController extends Controller
             ->limit(6)
             ->get();
 
-        return view('cms.show', compact('contentType', 'content', 'relatedContent'));
+        return view('cms.show', compact('contentType', 'content', 'relatedContents'));
     }
 
     /**
