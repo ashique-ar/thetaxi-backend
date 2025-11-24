@@ -9,7 +9,7 @@
 ])
 
 @php
-    $imageUrl = $item->thumbnail ? s3_asset($item->thumbnail) : asset('assets/img/default-card.jpg');
+    $imageUrl = $item->thumbnail ? s3_asset($item->thumbnail) : asset('assets/img/home3/blog-img1.jpg');
     // $imageUrl = $item->featured_image ? s3_asset($item->featured_image) : asset('assets/img/default-card.jpg');
     $title = $item->title ?? 'No title available';
     $excerpt = $item->excerpt ?? \Str::limit(strip_tags($item->body ?? ''), 100);

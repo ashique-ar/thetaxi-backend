@@ -2,13 +2,13 @@
 
 @section('title', $content->meta_title ?? $content->title . ' - TheTaxi')
 
-@if($content->meta_description)
-@section('meta')
-    <meta name="description" content="{{ $content->meta_description }}">
-    @if($content->meta_tags)
-    <meta name="keywords" content="{{ $content->meta_tags }}">
-    @endif
-@endsection
+@if ($content->meta_description)
+    @section('meta')
+        <meta name="description" content="{{ $content->meta_description }}">
+        @if ($content->meta_tags)
+            <meta name="keywords" content="{{ $content->meta_tags }}">
+        @endif
+    @endsection
 @endif
 
 @section('content')
@@ -36,37 +36,36 @@
                     <div class="inspiration-details">
                         <h2>{{ $content->title }}</h2>
                         <span class="line-break"></span>
-                        
-                        @if($content->excerpt)
+
+                        @if ($content->excerpt)
                             <p>{{ $content->excerpt }}</p>
                             <span class="line-break"></span>
                             <span class="line-break"></span>
                         @endif
 
-                        @if($content->featured_image)
-                            <div class="inspiration-image mb-50">
-                                <img src="{{ $content->featured_image }}" alt="{{ $content->title }}">
-                                <span>{{ $contentType->title }} - {{ $content->title }}</span>
-                            </div>
-                        @endif
+                        <div class="inspiration-image mb-50">
+                            <img src="{{ $content->thumbnail ? s3_asset($content->thumbnail) : 'assets/img/home3/blog-img1.jpg' }}"
+                                alt="{{ $content->title }}">
+                            <span>{{ $contentType->title }} - {{ $content->title }}</span>
+                        </div>
 
                         <!-- Main Content -->
                         <div class="content-body">
                             {!! $content->body !!}
                         </div>
 
-                        @if($content->gallery_images && count($content->gallery_images) > 0)
+                        @if ($content->gallery_images && count($content->gallery_images) > 0)
                             <span class="line-break"></span>
                             <span class="line-break"></span>
                             <div class="row g-4 mb-50">
-                                @foreach($content->gallery_images as $index => $image)
-                                    @if($index == 0)
+                                @foreach ($content->gallery_images as $index => $image)
+                                    @if ($index == 0)
                                         <div class="col-md-7">
-                                            <img src="{{ $image }}" alt="Gallery image">
+                                            <img src="{{ s3_asset($image) }}" alt="{{ $content->title }} Gallery image">
                                         </div>
                                     @elseif($index == 1)
                                         <div class="col-md-5">
-                                            <img src="{{ $image }}" alt="Gallery image">
+                                            <img src="{{ s3_asset($image) }}" alt="{{ $content->title }} Gallery image">
                                         </div>
                                     @else
                                         @break
@@ -75,7 +74,7 @@
                             </div>
                         @endif
 
-                        @if($content->custom_fields && isset($content->custom_fields['quote']))
+                        @if ($content->custom_fields && isset($content->custom_fields['quote']))
                             <blockquote>
                                 <svg width="28" height="125" viewBox="0 0 28 125" xmlns="http://www.w3.org/2000/svg">
                                     <path
@@ -91,7 +90,7 @@
                                     <p>{{ $content->custom_fields['quote'] }}</p>
                                     <div class="name-deg">
                                         <h5>{{ $content->custom_fields['quote_author'] ?? 'Anonymous' }}</h5>
-                                        @if(isset($content->custom_fields['quote_author_title']))
+                                        @if (isset($content->custom_fields['quote_author_title']))
                                             <span>{{ $content->custom_fields['quote_author_title'] }}</span>
                                         @endif
                                     </div>
@@ -99,14 +98,16 @@
                             </blockquote>
                         @endif
 
-                        @if($content->custom_fields && isset($content->custom_fields['tags']) && count($content->custom_fields['tags']) > 0)
+                        @if ($content->custom_fields && isset($content->custom_fields['tags']) && count($content->custom_fields['tags']) > 0)
                             <span class="line-break"></span>
                             <span class="line-break"></span>
                             <div class="activite-tag">
                                 <h6>Related Topics:</h6>
                                 <ul>
-                                    @foreach($content->custom_fields['tags'] as $tag)
-                                        <li><a href="{{ route('cms.search') }}?q={{ urlencode($tag) }}">{{ $tag }}</a></li>
+                                    @foreach ($content->custom_fields['tags'] as $tag)
+                                        <li><a
+                                                href="{{ route('cms.search') }}?q={{ urlencode($tag) }}">{{ $tag }}</a>
+                                        </li>
                                     @endforeach
                                 </ul>
                             </div>
@@ -122,29 +123,31 @@
                             <h4 class="sidebar-widget-title">{{ $contentType->title }} Details</h4>
                             <div class="content-info">
                                 <ul>
-                                    <li><strong>Published:</strong> {{ $content->published_at ? $content->published_at->format('F d, Y') : $content->created_at->format('F d, Y') }}</li>
-                                    @if($content->views_count > 0)
+                                    <li><strong>Published:</strong>
+                                        {{ $content->published_at ? $content->published_at->format('F d, Y') : $content->created_at->format('F d, Y') }}
+                                    </li>
+                                    @if ($content->views_count > 0)
                                         <li><strong>Views:</strong> {{ number_format($content->views_count) }}</li>
                                     @endif
-                                    @if($content->custom_fields && isset($content->custom_fields['read_time']))
+                                    @if ($content->custom_fields && isset($content->custom_fields['read_time']))
                                         <li><strong>Read Time:</strong> {{ $content->custom_fields['read_time'] }}</li>
                                     @endif
-                                    @if($content->custom_fields && isset($content->custom_fields['author_name']))
+                                    @if ($content->custom_fields && isset($content->custom_fields['author_name']))
                                         <li><strong>Author:</strong> {{ $content->custom_fields['author_name'] }}</li>
                                     @endif
                                 </ul>
                             </div>
                         </div>
 
-                        {{-- @if($relatedContents && $relatedContents->count() > 0)
+                        {{-- @if ($relatedContents && $relatedContents->count() > 0)
                             <!-- Related Content -->
                             <div class="blog-sidebar-widget mb-40">
                                 <h4 class="sidebar-widget-title">Related {{ $contentType->title }}</h4>
                                 <div class="related-content">
-                                    @foreach($relatedContents as $related)
+                                    @foreach ($relatedContents as $related)
                                         <div class="single-related-content mb-20">
                                             <div class="related-content-img">
-                                                @if($related->featured_image)
+                                                @if ($related->featured_image)
                                                     <img src="{{ $related->featured_image }}" alt="{{ $related->title }}">
                                                 @else
                                                     <img src="assets/img/default-blog.jpg" alt="{{ $related->title }}">
@@ -164,16 +167,20 @@
                         <div class="blog-sidebar-widget">
                             <h4 class="sidebar-widget-title">Share This {{ $contentType->title }}</h4>
                             <div class="social-share">
-                                <a href="https://www.facebook.com/sharer/sharer.php?u={{ urlencode(request()->fullUrl()) }}" target="_blank" class="facebook">
+                                <a href="https://www.facebook.com/sharer/sharer.php?u={{ urlencode(request()->fullUrl()) }}"
+                                    target="_blank" class="facebook">
                                     <i class="fab fa-facebook-f"></i>
                                 </a>
-                                <a href="https://twitter.com/intent/tweet?url={{ urlencode(request()->fullUrl()) }}&text={{ urlencode($content->title) }}" target="_blank" class="twitter">
+                                <a href="https://twitter.com/intent/tweet?url={{ urlencode(request()->fullUrl()) }}&text={{ urlencode($content->title) }}"
+                                    target="_blank" class="twitter">
                                     <i class="fab fa-twitter"></i>
                                 </a>
-                                <a href="https://www.linkedin.com/sharing/share-offsite/?url={{ urlencode(request()->fullUrl()) }}" target="_blank" class="linkedin">
+                                <a href="https://www.linkedin.com/sharing/share-offsite/?url={{ urlencode(request()->fullUrl()) }}"
+                                    target="_blank" class="linkedin">
                                     <i class="fab fa-linkedin-in"></i>
                                 </a>
-                                <a href="mailto:?subject={{ urlencode($content->title) }}&body={{ urlencode(request()->fullUrl()) }}" class="email">
+                                <a href="mailto:?subject={{ urlencode($content->title) }}&body={{ urlencode(request()->fullUrl()) }}"
+                                    class="email">
                                     <i class="fas fa-envelope"></i>
                                 </a>
                             </div>
@@ -182,7 +189,7 @@
                 </div>
             </div>
 
-            @if($content->allow_comments)
+            @if ($content->allow_comments)
                 <!-- Comments Section -->
                 <div class="row mt-70">
                     <div class="col-xl-7 col-lg-8">
