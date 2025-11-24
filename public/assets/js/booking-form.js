@@ -140,10 +140,10 @@
             // Set default locations: Colombo to Galle (point-to-point)
             const pickupInput = dropPickupForm.querySelector('input[name="pickup"]');
             const dropoffInput = dropPickupForm.querySelector('input[name="dropoff"]');
-            const pickupLat = dropPickupForm.querySelector('input[name="pickup_lat"]');
-            const pickupLng = dropPickupForm.querySelector('input[name="pickup_lng"]');
-            const dropoffLat = dropPickupForm.querySelector('input[name="dropoff_lat"]');
-            const dropoffLng = dropPickupForm.querySelector('input[name="dropoff_lng"]');
+            const pickupLat = dropPickupForm.querySelector('input[name="from_lat"]');
+            const pickupLng = dropPickupForm.querySelector('input[name="from_lng"]');
+            const dropoffLat = dropPickupForm.querySelector('input[name="to_lat"]');
+            const dropoffLng = dropPickupForm.querySelector('input[name="to_lng"]');
             
             if (pickupInput && !pickupInput.value) {
                 pickupInput.value = "Colombo, Sri Lanka";
@@ -181,10 +181,10 @@
             // Set default locations: Colombo to Galle (for rentals)
             const pickupInput = rentalForm.querySelector('input[name="pickup"]');
             const dropoffInput = rentalForm.querySelector('input[name="dropoff"]');
-            const pickupLat = rentalForm.querySelector('input[name="pickup_lat"]');
-            const pickupLng = rentalForm.querySelector('input[name="pickup_lng"]');
-            const dropoffLat = rentalForm.querySelector('input[name="dropoff_lat"]');
-            const dropoffLng = rentalForm.querySelector('input[name="dropoff_lng"]');
+            const pickupLat = rentalForm.querySelector('input[name="from_lat"]');
+            const pickupLng = rentalForm.querySelector('input[name="from_lng"]');
+            const dropoffLat = rentalForm.querySelector('input[name="to_lat"]');
+            const dropoffLng = rentalForm.querySelector('input[name="to_lng"]');
             
             if (pickupInput && !pickupInput.value) {
                 pickupInput.value = "Colombo, Sri Lanka";
@@ -457,8 +457,8 @@
             }
         } else if (input.name === 'pickup') {
             const form = input.closest('form');
-            const latInput = form.querySelector('input[name="pickup_lat"]');
-            const lngInput = form.querySelector('input[name="pickup_lng"]');
+            const latInput = form.querySelector('input[name="from_lat"]');
+            const lngInput = form.querySelector('input[name="from_lng"]');
             
             if (place.geometry && latInput && lngInput) {
                 latInput.value = place.geometry.location.lat();
@@ -466,8 +466,8 @@
             }
         } else if (input.name === 'dropoff') {
             const form = input.closest('form');
-            const latInput = form.querySelector('input[name="dropoff_lat"]');
-            const lngInput = form.querySelector('input[name="dropoff_lng"]');
+            const latInput = form.querySelector('input[name="to_lat"]');
+            const lngInput = form.querySelector('input[name="to_lng"]');
             
             if (place.geometry && latInput && lngInput) {
                 latInput.value = place.geometry.location.lat();
@@ -1961,10 +1961,10 @@
                     from_lng: formData.get('from_lng'),
                     to_lat: formData.get('to_lat'),
                     to_lng: formData.get('to_lng'),
-                    pickup_lat: formData.get('pickup_lat'),
-                    pickup_lng: formData.get('pickup_lng'),
-                    dropoff_lat: formData.get('dropoff_lat'),
-                    dropoff_lng: formData.get('dropoff_lng')
+                    from_lat: formData.get('from_lat'),
+                    from_lng: formData.get('from_lng'),
+                    to_lat: formData.get('to_lat'),
+                    to_lng: formData.get('to_lng')
                 });
                 
                 if (!validateForm(form)) {

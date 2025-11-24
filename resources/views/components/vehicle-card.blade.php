@@ -65,7 +65,12 @@
         
         <!-- Vehicle Specs Grid -->
         <div class="vehicle-specs">
-            @if(isset($vehicle['seating_capacity']))
+            @if(isset($vehicle['passengers_count']) && $vehicle['passengers_count'])
+            <div class="spec-item">
+                <i class="bi bi-people-fill"></i>
+                <span>{{ $vehicle['passengers_count'] }} Passengers</span>
+            </div>
+            @elseif(isset($vehicle['seating_capacity']))
             <div class="spec-item">
                 <i class="bi bi-people-fill"></i>
                 <span>{{ $vehicle['seating_capacity'] }} Seats</span>
@@ -86,10 +91,51 @@
             </div>
             @endif
             
+            @if(isset($vehicle['hand_luggages']) && $vehicle['hand_luggages'])
             <div class="spec-item">
-                <i class="bi bi-car-front-fill"></i>
-                <span>{{ $availability['available'] }} / {{ $availability['total'] }} Available</span>
+                <i class="bi bi-suitcase-fill"></i>
+                <span>{{ $vehicle['hand_luggages'] }} Luggages</span>
             </div>
+            @endif
+        </div>
+
+        <!-- Vehicle Amenities & Additional Info -->
+        <div class="vehicle-amenities">
+            @if($vehicle['air_conditioning'] ?? false)
+            <span class="amenity-badge">
+                <i class="bi bi-snow"></i> AC
+            </span>
+            @endif
+            
+            @if(isset($vehicle['refundable_deposit']) && $vehicle['refundable_deposit'] > 0)
+            <span class="amenity-badge">
+                <i class="bi bi-shield-check"></i> Deposit: {{ getCurrencySymbol() }}{{ number_format($vehicle['refundable_deposit'], 0) }}
+            </span>
+            @endif
+        </div>
+
+        <!-- Pricing Details Row -->
+        @if(isset($pricing['distance_details']['allowed_total_km']) || isset($pricing['distance_details']['extra_km_price']))
+        <div class="pricing-details">
+            @if(isset($pricing['distance_details']['allowed_total_km']))
+            <small class="pricing-detail-item">
+                <i class="bi bi-signpost-2"></i> Km: {{ $pricing['distance_details']['allowed_total_km'] }} km
+            </small>
+            @endif
+            
+            @if(isset($pricing['distance_details']['extra_km_price']))
+            <small class="pricing-detail-item">
+                <i class="bi bi-lightning-fill"></i> Extra: {{ getCurrencySymbol() }}{{ number_format($pricing['distance_details']['extra_km_price'], 0) }}/km
+            </small>
+            @endif
+        </div>
+        @endif
+        
+        <div class="availability-indicator">
+            <small class="text-muted">
+                <i class="bi bi-car-front-fill"></i>
+                {{ $availability['available'] }} / {{ $availability['total'] }} Available
+            </small>
         </div>
 
         <!-- Features/Inclusions -->
@@ -202,7 +248,7 @@
                 @if($showBookNow && $searchId)
                     <!-- Book Now Button (Primary in Search Results) -->
                     <button type="button" 
-                            class="btn btn-success w-100 mb-2 book-now-btn" 
+                            class="btn btn-primary w-100 mb-2 book-now-btn" 
                             data-group-id="{{ $vehicle['id'] }}"
                             data-search-id="{{ $searchId }}"
                             data-group-name="{{ $vehicle['name'] ?? 'Vehicle' }}"
@@ -629,6 +675,73 @@
         .vehicle-specs {
             grid-template-columns: 1fr;
         }
+    }
+
+    /* Vehicle Amenities Section */
+    .vehicle-amenities {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-bottom: 12px;
+        padding-top: 12px;
+        border-top: 1px solid #f0f0f0;
+    }
+
+    .amenity-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 8px;
+        background: #f5f5f5;
+        color: #555;
+        border-radius: 8px;
+        font-size: 11px;
+        font-weight: 600;
+    }
+
+    .amenity-badge i {
+        font-size: 12px;
+        color: var(--primary-color);
+    }
+
+    /* Pricing Details Row */
+    .pricing-details {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin: 10px 0;
+        padding: 8px;
+        background: #f9f9f9;
+        border-radius: 6px;
+    }
+
+    .pricing-detail-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        color: #666;
+        font-weight: 500;
+    }
+
+    .pricing-detail-item i {
+        color: var(--primary-color);
+        font-size: 12px;
+    }
+
+    /* Availability Indicator */
+    .availability-indicator {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 6px;
+        margin: 8px 0;
+        background: #f0f9f7;
+        border-radius: 6px;
+    }
+
+    .availability-indicator i {
+        color: var(--primary-color);
+        margin-right: 4px;
     }
 </style>
 @endpush

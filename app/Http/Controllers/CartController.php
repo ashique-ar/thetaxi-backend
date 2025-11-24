@@ -90,12 +90,12 @@ class CartController extends Controller
                 'from_time' => 'sometimes|string',
                 'to_time' => 'sometimes|string',
                 'pickup_location' => 'sometimes|string',
-                'pickup_lat' => 'sometimes|numeric',
-                'pickup_lng' => 'sometimes|numeric',
+                'from_lat' => 'sometimes|numeric',
+                'from_lng' => 'sometimes|numeric',
                 'return_location' => 'sometimes|string',
                 'dropoff_location' => 'sometimes|string',
-                'dropoff_lat' => 'sometimes|numeric',
-                'dropoff_lng' => 'sometimes|numeric',
+                'to_lat' => 'sometimes|numeric',
+                'to_lng' => 'sometimes|numeric',
                 'search_data' => 'sometimes|array',
                 'service_type' => 'sometimes|string'
             ]);
@@ -109,13 +109,13 @@ class CartController extends Controller
             $toTime = $validated['to_time'] ?? ($validated['search_data']['to_time'] ?? '10:00');
 
             // Extract location data with coordinates
-            $pickupLocation = $validated['pickup_location'] ?? ($validated['search_data']['pickup_location'] ?? '');
-            $pickupLat = $validated['pickup_lat'] ?? ($validated['search_data']['pickup_lat'] ?? null);
-            $pickupLng = $validated['pickup_lng'] ?? ($validated['search_data']['pickup_lng'] ?? null);
+            $pickupLocation = $validated['search_data']['from'] ?? '';
+            $pickupLat = $validated['from_lat'] ?? ($validated['search_data']['from_lat'] ?? null);
+            $pickupLng = $validated['from_lng'] ?? ($validated['search_data']['from_lng'] ?? null);
 
-            $returnLocation = $validated['return_location'] ?? $validated['dropoff_location'] ?? ($validated['search_data']['dropoff_location'] ?? $pickupLocation);
-            $returnLat = $validated['dropoff_lat'] ?? ($validated['search_data']['dropoff_lat'] ?? $pickupLat);
-            $returnLng = $validated['dropoff_lng'] ?? ($validated['search_data']['dropoff_lng'] ?? $pickupLng);
+            $returnLocation = $validated['search_data']['to'] ?? $pickupLocation;
+            $returnLat = $validated['to_lat'] ?? ($validated['search_data']['to_lat'] ?? $pickupLat);
+            $returnLng = $validated['to_lng'] ?? ($validated['search_data']['to_lng'] ?? $pickupLng);
 
             $serviceType = $validated['service_type'] ?? ($validated['search_data']['service_type'] ?? 'airport_transfers');
             $searchData = $validated['search_data'] ?? [];

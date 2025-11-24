@@ -37,7 +37,7 @@
                 <path
                     d="M17 5h-2v2h2v2h2V7h2V5h-2V3h-2v2zm-2 4V7H9.01L3 13.01V19c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-6h-6zM5 19v-4.99l4-4 4 4L9 18H5zm14 0h-6v-4l-2-2-4 4v2h12z" />
             </svg>
-            <span>Rental Packages</span>
+            <span>Ride Now</span>
         </li>
         <li class="single-item {{ $currentServiceType === 'point_to_point' ? 'active' : '' }}" data-service="point_to_point" data-redirect="{{ route('point-to-point') }}">
             <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -114,7 +114,7 @@
                 </svg>
                 <div class="custom-select-dropdown">
                     <input type="text" name="from" placeholder="From (Airport/Hotel/Address)"
-                        class="location-search @error('from') is-invalid @enderror" 
+                        class="location-search airport-search-field @error('from') is-invalid @enderror" 
                         value="{{ old('from', (isset($search) && isset($search->pickup_location)) ? $search->pickup_location : 'Colombo BIA Airport') }}"
                         required>
                     <input type="hidden" name="from_lat" class="location-lat" 
@@ -139,7 +139,7 @@
                 </svg>
                 <div class="custom-select-dropdown">
                     <input type="text" name="to" placeholder="To (Airport/Hotel/Address)"
-                        class="location-search @error('to') is-invalid @enderror" 
+                        class="location-search airport-search-field @error('to') is-invalid @enderror" 
                         value="{{ old('to', (isset($search) && isset($search->dropoff_location)) ? $search->dropoff_location : 'Colombo, Sri Lanka') }}" required>
                     <input type="hidden" name="to_lat" class="location-lat" 
                         value="{{ old('to_lat', (isset($search) && isset($search->dropoff_latitude)) ? $search->dropoff_latitude : '6.9271') }}">
@@ -228,10 +228,10 @@
                         class="location-search @error('pickup') is-invalid @enderror" 
                         value="{{ old('pickup', (isset($search) && isset($search->pickup_location)) ? $search->pickup_location : 'Colombo, Sri Lanka') }}"
                         required>
-                    <input type="hidden" name="pickup_lat" class="location-lat" 
-                        value="{{ old('pickup_lat', (isset($search) && isset($search->pickup_latitude)) ? $search->pickup_latitude : '6.9271') }}">
-                    <input type="hidden" name="pickup_lng" class="location-lng" 
-                        value="{{ old('pickup_lng', (isset($search) && isset($search->pickup_longitude)) ? $search->pickup_longitude : '79.8612') }}">
+                    <input type="hidden" name="from_lat" class="location-lat" 
+                        value="{{ old('from_lat', (isset($search) && isset($search->pickup_latitude)) ? $search->pickup_latitude : '6.9271') }}">
+                    <input type="hidden" name="from_lng" class="location-lng" 
+                        value="{{ old('from_lng', (isset($search) && isset($search->pickup_longitude)) ? $search->pickup_longitude : '79.8612') }}">
                 </div>
                 @error('pickup')
                     <span class="text-danger small">{{ $message }}</span>
@@ -253,10 +253,10 @@
                         class="location-search @error('dropoff') is-invalid @enderror" 
                         value="{{ old('dropoff', (isset($search) && isset($search->dropoff_location)) ? $search->dropoff_location : 'Galle, Sri Lanka') }}"
                         required>
-                    <input type="hidden" name="dropoff_lat" class="location-lat" 
-                        value="{{ old('dropoff_lat', (isset($search) && isset($search->dropoff_latitude)) ? $search->dropoff_latitude : '6.0535') }}">
-                    <input type="hidden" name="dropoff_lng" class="location-lng" 
-                        value="{{ old('dropoff_lng', (isset($search) && isset($search->dropoff_longitude)) ? $search->dropoff_longitude : '80.221') }}">
+                    <input type="hidden" name="to_lat" class="location-lat" 
+                        value="{{ old('to_lat', (isset($search) && isset($search->dropoff_latitude)) ? $search->dropoff_latitude : '6.0535') }}">
+                    <input type="hidden" name="to_lng" class="location-lng" 
+                        value="{{ old('to_lng', (isset($search) && isset($search->dropoff_longitude)) ? $search->dropoff_longitude : '80.221') }}">
                 </div>
                 @error('dropoff')
                     <span class="text-danger small">{{ $message }}</span>

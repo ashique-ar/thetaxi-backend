@@ -50,13 +50,13 @@
                                         <path d="M9 0C4.037 0 0 4.037 0 9c0 6.75 9 9 9 9s9-2.25 9-9c0-4.963-4.037-9-9-9zm0 12.75c-2.07 0-3.75-1.68-3.75-3.75S6.93 5.25 9 5.25s3.75 1.68 3.75 3.75-1.68 3.75-3.75 3.75z"/>
                                     </svg>
                                     <div class="custom-select-dropdown">
-                                        <input type="text" name="pickup" placeholder="Pick up location"
-                                            class="nice-select custom-location-search @error('pickup') is-invalid @enderror"
-                                            value="{{ old('pickup', 'Colombo, Sri Lanka') }}" required autocomplete="off">
-                                        <input type="hidden" name="pickup_lat" value="{{ old('pickup_lat', '6.9271') }}">
-                                        <input type="hidden" name="pickup_lng" value="{{ old('pickup_lng', '79.8612') }}">
+                                        <input type="text" name="from" placeholder="Pick up location"
+                                            class="nice-select custom-location-search @error('from') is-invalid @enderror"
+                                            value="{{ old('from', 'Colombo, Sri Lanka') }}" required autocomplete="off">
+                                        <input type="hidden" name="from_lat" value="{{ old('from_lat', '6.9271') }}">
+                                        <input type="hidden" name="from_lng" value="{{ old('from_lng', '79.8612') }}">
                                     </div>
-                                    @error('pickup')
+                                    @error('from')
                                         <span class="text-danger small">{{ $message }}</span>
                                     @enderror
                                 </div>
@@ -67,13 +67,13 @@
                                         <path d="M9 0C4.037 0 0 4.037 0 9c0 6.75 9 9 9 9s9-2.25 9-9c0-4.963-4.037-9-9-9zm0 12.75c-2.07 0-3.75-1.68-3.75-3.75S6.93 5.25 9 5.25s3.75 1.68 3.75 3.75-1.68 3.75-3.75 3.75z"/>
                                     </svg>
                                     <div class="custom-select-dropdown">
-                                        <input type="text" name="dropoff" placeholder="Drop off location"
-                                            class="nice-select custom-location-search @error('dropoff') is-invalid @enderror"
-                                            value="{{ old('dropoff', 'Galle, Sri Lanka') }}" required autocomplete="off">
-                                        <input type="hidden" name="dropoff_lat" value="{{ old('dropoff_lat', '6.0535') }}">
-                                        <input type="hidden" name="dropoff_lng" value="{{ old('dropoff_lng', '80.221') }}">
+                                        <input type="text" name="to" placeholder="Drop off location"
+                                            class="nice-select custom-location-search @error('to') is-invalid @enderror"
+                                            value="{{ old('to', 'Galle, Sri Lanka') }}" required autocomplete="off">
+                                        <input type="hidden" name="to_lat" value="{{ old('to_lat', '6.0535') }}">
+                                        <input type="hidden" name="to_lng" value="{{ old('to_lng', '80.221') }}">
                                     </div>
-                                    @error('dropoff')
+                                    @error('to')
                                         <span class="text-danger small">{{ $message }}</span>
                                     @enderror
                                 </div>

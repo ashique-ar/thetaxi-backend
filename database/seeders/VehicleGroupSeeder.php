@@ -253,6 +253,7 @@ class VehicleGroupSeeder extends Seeder
                 'specs' => $groupData['specs'] ?? null,
                 'images' => $groupData['images'] ?? null,
                 'thumbnail' => $groupData['thumbnail'] ?? null,
+                'is_featured' => true,
                 'created_user_id' => null,
                 'updated_user_id' => null,
             ]);

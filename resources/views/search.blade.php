@@ -71,6 +71,12 @@
                                         @endif
                                     </span>
                                 @endif
+                                @if(isset($search->total_distance_km) && $search->total_distance_km > 0)
+                                    <span class="distance-info">
+                                        <i class="bi bi-signpost-2"></i>
+                                        {{ number_format($search->total_distance_km, 2) }} km
+                                    </span>
+                                @endif
                             </div>
                         </div>
                     </div>
@@ -120,7 +126,7 @@
                             data-price="{{ $pricing['base_amount'] ?? 0 }}"
                             data-name="{{ $result['name'] ?? 'Unknown Vehicle' }}">
                             <x-vehicle-card :vehicle="$result" :pricing="$pricing" :enhancedPricing="$enhancedPricing" :serviceFeatures="$serviceFeatures"
-                                :availability="$availability" :searchId="$search->id" :isRecommended="$isRecommended" :showBookNow="true" :showViewDetails="false" />
+                                :availability="$availability" :searchId="$search->id" :isRecommended="$isRecommended" :showBookNow="true" :showViewDetails="true" />
                         </div>
                     @endforeach
                 </div>
@@ -252,6 +258,22 @@
         }
 
         .location-info i {
+            font-size: 14px;
+        }
+
+        .distance-info {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.95);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-weight: 600;
+        }
+
+        .distance-info i {
             font-size: 14px;
         }
 
@@ -810,11 +832,11 @@
                     to_time: '{{ $search->to_time ?? '' }}',
                     service_type: '{{ $search->service_type ?? '' }}',
                     pickup_location: '{{ $search->pickup_location ?? '' }}',
-                    pickup_lat: {{ $search->pickup_latitude ?? 'null' }},
-                    pickup_lng: {{ $search->pickup_longitude ?? 'null' }},
+                    from_lat: {{ $search->pickup_latitude ?? 'null' }},
+                    from_lng: {{ $search->pickup_longitude ?? 'null' }},
                     dropoff_location: '{{ $search->dropoff_location ?? '' }}',
-                    dropoff_lat: {{ $search->dropoff_latitude ?? 'null' }},
-                    dropoff_lng: {{ $search->dropoff_longitude ?? 'null' }},
+                    to_lat: {{ $search->dropoff_latitude ?? 'null' }},
+                    to_lng: {{ $search->dropoff_longitude ?? 'null' }},
                     duration_days: durationDays
                 };
 
@@ -862,11 +884,11 @@
                     from_time: item.from_time,
                     to_time: item.to_time,
                     pickup_location: item.pickup_location,
-                    pickup_lat: item.pickup_lat,
-                    pickup_lng: item.pickup_lng,
+                    from_lat: item.from_lat,
+                    from_lng: item.from_lng,
                     dropoff_location: item.dropoff_location,
-                    dropoff_lat: item.dropoff_lat,
-                    dropoff_lng: item.dropoff_lng,
+                    to_lat: item.to_lat,
+                    to_lng: item.to_lng,
                     service_type: item.service_type,
                     search_data: item
                 },
@@ -1164,11 +1186,11 @@
                 to_time: '{{ $search->to_time ?? '' }}',
                 service_type: '{{ $search->service_type ?? '' }}',
                 pickup_location: '{{ $search->pickup_location ?? '' }}',
-                pickup_lat: {{ $search->pickup_latitude ?? 'null' }},
-                pickup_lng: {{ $search->pickup_longitude ?? 'null' }},
+                from_lat: {{ $search->pickup_latitude ?? 'null' }},
+                from_lng: {{ $search->pickup_longitude ?? 'null' }},
                 dropoff_location: '{{ $search->dropoff_location ?? '' }}',
-                dropoff_lat: {{ $search->dropoff_latitude ?? 'null' }},
-                dropoff_lng: {{ $search->dropoff_longitude ?? 'null' }},
+                to_lat: {{ $search->dropoff_latitude ?? 'null' }},
+                to_lng: {{ $search->dropoff_longitude ?? 'null' }},
                 duration_days: durationDays
             };
 

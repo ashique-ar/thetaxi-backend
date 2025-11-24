@@ -1382,18 +1382,22 @@ Log::info('Calculated pricing', ['vehicle_group_id' => $group->id, 'pricing' => 
      */
     public function calculateDurationInDaysAndHours(Carbon $fromDate, Carbon $toDate): array
     {
+        // Calculate calendar days (not 24-hour blocks)
+        // This counts the number of calendar days between two dates
+        // Example: 10 PM today to 8 PM tomorrow = 2 calendar days
+        $calendarDays = $fromDate->diffInDays($toDate) + 1; // +1 because we count both start and end day
+        
+        // For total hours calculation (not used for day pricing, but kept for reference)
         $totalHours = $fromDate->diffInHours($toDate);
-        $days = intval($totalHours / 24);
-        $hours = $totalHours % 24;
 
         return [
             'total_hours' => $totalHours,
-            'days' => $days,
-            'hours' => $hours,
-            'formatted' => $this->formatDuration($days, $hours),
+            'days' => $calendarDays,
+            'hours' => 0,  // Hours not considered when calculating pricing for multi-day rentals with calendar days
+            'formatted' => $this->formatDuration($calendarDays, 0),
             'breakdown' => [
-                'days_text' => $days > 0 ? "{$days} " . ($days === 1 ? 'day' : 'days') : '',
-                'hours_text' => $hours > 0 ? "{$hours} " . ($hours === 1 ? 'hour' : 'hours') : '',
+                'days_text' => $calendarDays > 0 ? "{$calendarDays} " . ($calendarDays === 1 ? 'day' : 'days') : '',
+                'hours_text' => '',
             ]
         ];
     }
@@ -1985,7 +1989,7 @@ Log::info("Dynamic pricing calculation result", ['result' => $calculationResult]
 
     /**
      * Prepare inputs for calculation definition execution
-     * Enhanced to support company-specific distance calculations
+     * Enhanced to support company-specific distance calculations and airport pricing
      */
     private function prepareCalculationInputs(array $params): array
     {
@@ -1996,7 +2000,17 @@ Log::info("Dynamic pricing calculation result", ['result' => $calculationResult]
             'number_of_days' => $params['duration_days'] ?? 1,
         ];
 
+        // Detect airport locations (for applying airport pricing rules)
+        $pickupIsAirport = false;
+        $dropoffIsAirport = false;
+        
         if (isset($params['pickup_location']) && isset($params['dropoff_location'])) {
+            $pickupIsAirport = $this->isAirportLocation($params['pickup_location']);
+            $dropoffIsAirport = $this->isAirportLocation($params['dropoff_location']);
+            
+            $inputs['pickup_is_airport'] = $pickupIsAirport;
+            $inputs['dropoff_is_airport'] = $dropoffIsAirport;
+
             $serviceType = $params['service_type'] ?? null;
 
             $distanceCalculations = $this->calculateCompanyDistances(
@@ -2610,6 +2624,37 @@ Log::info("Dynamic pricing calculation result", ['result' => $calculationResult]
             '12-25', // Christmas
         ];
         return in_array($date->format('m-d'), $holidays, true);
+    }
+
+    /**
+     * Check if a location is an airport
+     * Used to apply airport-specific pricing rules
+     */
+    private function isAirportLocation(?array $location): bool
+    {
+        if (!$location || !isset($location['address'])) {
+            return false;
+        }
+
+        $address = strtolower($location['address']);
+        
+        // List of Sri Lankan airports (case-insensitive matching)
+        $airportKeywords = [
+            'airport',
+            'bandaranayake',
+            'mattala',
+            'colombo bia',
+            'negombo airport',
+            'katunayake'
+        ];
+
+        foreach ($airportKeywords as $keyword) {
+            if (strpos($address, $keyword) !== false) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
