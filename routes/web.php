@@ -18,9 +18,9 @@ Route::get('/', [HomeController::class, 'index'])->name('home');
 // Search routes
 Route::get('/search/{id?}', [BookingController::class, 'showResults'])->name('search');
 
-Route::get('/services/{type?}', function ($type = null) {
-    return view('services', compact('type'));
-})->name('services');
+// Route::get('/services/{type?}', function ($type = null) {
+//     return view('services', compact('type'));
+// })->name('services');
 
 Route::get('/vehicles', function () {
     return view('vehicles');
