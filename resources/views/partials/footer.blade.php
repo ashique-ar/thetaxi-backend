@@ -102,7 +102,8 @@
                         <div class="widget-title">
                             <h5>Our Services</h5>
                         </div>
-                        <ul class="widget-list">
+
+                        {{-- <ul class="widget-list">
                             <li><a href="{{ route('services', ['type' => 'airport_transfers']) }}">Airport Transfer</a></li>
                             <li><a href="{{ route('services', ['type' => 'point_to_point']) }}">Drop & Pickup</a></li>
                             <li><a href="{{ route('services', ['type' => 'ride_now']) }}">Car Rental</a></li>
@@ -114,7 +115,7 @@
                             <li><a href="{{ route('services') }}">City Tours</a></li>
                             <li><a href="{{ route('services') }}">Long Distance</a></li>
                             <li><a href="{{ route('services') }}">Event Transportation</a></li>
-                        </ul>
+                        </ul> --}}
                     </div>
                 </div>
                 <div class="col-lg-3 col-md-4 col-sm-6 d-flex justify-content-md-end">
@@ -122,7 +123,7 @@
                         <div class="widget-title">
                             <h5>Popular Routes</h5>
                         </div>
-                        <ul class="widget-list">
+                        {{-- <ul class="widget-list">
                             <li><a href="{{ route('services') }}">City to Airport</a></li>
                             <li><a href="{{ route('services') }}">Downtown Express</a></li>
                             <li><a href="{{ route('services') }}">Business District</a></li>
@@ -134,7 +135,7 @@
                             <li><a href="{{ route('services') }}">Sports Venues</a></li>
                             <li><a href="{{ route('services') }}">Entertainment Districts</a></li>
                             <li><a href="{{ route('services') }}">University Campus</a></li>
-                        </ul>
+                        </ul> --}}
                     </div>
                 </div>
                 <div class="col-lg-3 col-sm-6 d-flex justify-content-lg-end">
