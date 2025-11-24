@@ -13,8 +13,8 @@
             <div class="container">
                 <div class="banner-content">
                     <h1>{{ $settings['banner_heading'] ?? 'All-in-one Travel Booking.' }}</h1>
-                    <p>{{ $settings['banner_subheading'] ?? 'Best travel agency in world-wide & achieve' }} <span>“World
-                            Travel Award”</span></p>
+                    <p>{{ $settings['banner_subheading'] ?? 'Best travel agency in world-wide & achieve “World
+                            Travel Award”' }}</p>
                     @include('components.booking-form')
                 </div>
             </div>
