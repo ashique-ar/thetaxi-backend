@@ -92,6 +92,8 @@
                             <li><a href="{{ route('checkout') }}">Checkout</a></li>
                         </ul>
                     </li> --}}
+                    <li><a href="{{ route('corporate-transfers') }}">Corporate Transport</a></li>
+                    <li><a href="{{ route('about') }}">About</a></li>
                     <li><a href="{{ route('contact') }}">Contact</a></li>
                 </ul>
                 <div class="contact-area d-xl-none d-flex">
@@ -119,7 +121,7 @@
                         <span class="cart-badge position-absolute" id="mobileCartBadge" style="display: none;">0</span>
                     </a>
                 </div>
-                <a href="#" class="primary-btn1 black-bg d-xl-none d-flex">
+                {{-- <a href="#" class="primary-btn1 black-bg d-xl-none d-flex">
                     <span>
                         <svg width="15" height="15" viewBox="0 0 15 15" xmlns="http://www.w3.org/2000/svg">
                             <g>
@@ -138,7 +140,7 @@
                         </svg>
                         Book Now
                     </span>
-                </a>    
+                </a>     --}}
             </div>
         </div>
         <div class="nav-right">
@@ -224,7 +226,7 @@
                     </div>
                 </div>
             </div>
-            <a href="#" class="primary-btn1 black-bg d-xl-flex d-none">
+            {{-- <a href="#" class="primary-btn1 black-bg d-xl-flex d-none">
                 <span>
                     <svg width="15" height="15" viewBox="0 0 15 15" xmlns="http://www.w3.org/2000/svg">
                         <g>
@@ -243,7 +245,7 @@
                     </svg>
                     Book Now
                 </span>
-            </a>
+            </a> --}}
             <div class="sidebar-button mobile-menu-btn">
                 
                 <svg width="20" height="18" viewBox="0 0 20 18" xmlns="http://www.w3.org/2000/svg">

@@ -126,7 +126,7 @@
                             data-price="{{ $pricing['base_amount'] ?? 0 }}"
                             data-name="{{ $result['name'] ?? 'Unknown Vehicle' }}">
                             <x-vehicle-card :vehicle="$result" :pricing="$pricing" :enhancedPricing="$enhancedPricing" :serviceFeatures="$serviceFeatures"
-                                :availability="$availability" :searchId="$search->id" :isRecommended="$isRecommended" :showBookNow="true" :showViewDetails="true" />
+                                :availability="$availability" :searchId="$search->id" :isRecommended="$isRecommended" :showBookNow="true" :showViewDetails="false" />
                         </div>
                     @endforeach
                 </div>
