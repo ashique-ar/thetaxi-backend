@@ -30,9 +30,9 @@ class HomeController extends Controller
     public function index(): View
     {
         // Get CMS content for the homepage sections
-        $destinations = $this->getCmsContentByTypeSlug('destinations', 6);
+        $destinations = $this->getCmsContentByTypeSlug('taxi', 6);
         $packages = $this->getCmsContentByTypeSlug('things-to-do', 6);
-        $inspirations = $this->getCmsContentByTypeSlug('independent-services', 3);
+        $inspirations = $this->getCmsContentByTypeSlug('services', 3);
         $blogs = $this->getCmsContentByTypeSlug('blogs', 3);
         $partners = $this->getCmsContentByTypeSlug('partners', 12);
 
