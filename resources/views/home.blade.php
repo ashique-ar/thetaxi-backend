@@ -753,9 +753,9 @@
 
     @if ($inspirations->count() > 0)
         <!-- Independent Services Section - Enhanced with Unified CMS Cards -->
-        <x-cms-section :title="$settings['inspirations_section_title'] ?? 'Independent Services'" :description="$settings['inspirations_section_description'] ??
-            'Professional transportation and travel services designed to meet your unique needs'" :items="$inspirations" type="independent-services" :showPrice="true"
-            :showDuration="false" :showRating="false" viewAllText="View All Services" sectionId="independent-services-section"
+        <x-cms-section :title="$settings['inspirations_section_title'] ?? 'Our Services'" :description="$settings['inspirations_section_description'] ??
+            'Professional transportation and travel services designed to meet your unique needs'" :items="$inspirations" type="services" :showPrice="true"
+            :showDuration="false" :showRating="false" viewAllText="View All Services" sectionId="services-section"
             :limit="3" customTemplate="blog-card2" />
     @endif
 
