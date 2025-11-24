@@ -38,6 +38,9 @@ class AppServiceProvider extends ServiceProvider
         // Register currency view composer for all views
         view()->composer('*', \App\Http\ViewComposers\CurrencyViewComposer::class);
 
+        // Register settings view composer for all views
+        view()->composer('*', \App\Http\ViewComposers\SettingsViewComposer::class);
+
         Relation::morphMap([
             'driver' => \App\Models\Driver\Driver::class,
             'customer' => \App\Models\Customer::class,

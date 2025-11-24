@@ -1,20 +1,6 @@
 @extends('layouts.app')
 
-@se                            <div class="secti                        <div class="section-title">
-                            <h2>{{ $settings['services_section_title'] ?? "We're Providing Best Service Ever!" }}</h2>
-                            <svg height="6" viewBox="0 0 872 6" xmlns="http://www.w3.org/2000/svg">
-                                <path
-                                    d="M5 2.5L0 0.113249V5.88675L5 3.5V2.5ZM867 3.5L872 5.88675V0.113249L867 2.5V3.5ZM4.5 3.5H867.5V2.5H4.5V3.5Z" />
-                            </svg>
-                        </div>e">
-                                <h2>{{ $settings['about_section_title'] ?? "Why We're Best Agency" }}</h2>
-                                <h4>{{ $settings['about_page_subtitle'] ?? 'Welcome to TheTaxi Travel Agency – Your Gateway to Unforgettable Journeys!' }}</h4>
-                                <p>{{ $settings['about_page_description'] ?? 'TheTaxi Travel Agency is a trusted name in the travel industry, offering seamless travel planning, personalized itineraries, and unforgettable adventures. With years of experience and a network of global partners, we ensure a hassle-free and memorable journey for every traveler.' }}</p>
-                                <p>{{ $settings['about_section_description'] ?? "We believe that travel is more than just moving from one place to another—it's about discovering new cultures, creating unforgettable experiences, and making lifelong memories." }}</p>
-                            </div>e', $settings['about_page_title'] ?? 'About TheTaxi - Professional Taxi Services')
-
 @section('content')
-
     <!-- Start Breadcrumb section -->
     <div class="breadcrumb-section"
         style="background-image:linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url({{ $settings['about_breadcrumb_image'] ? Storage::url($settings['about_breadcrumb_image']) : asset('assets/img/innerpages/breadcrumb-bg2.jpg') }});">
@@ -61,7 +47,8 @@
                     <div class="col-lg-5 d-lg-block d-none wow animate fadeInRight" data-wow-delay="200ms"
                         data-wow-duration="1500ms">
                         <div class="about-img">
-                            <img src="{{ $settings['about_hero_image'] ? Storage::url($settings['about_hero_image']) : asset('assets/img/home3/about-img.png') }}" alt="{{ $settings['about_hero_heading'] ?? 'About Us' }}">
+                            <img src="{{ $settings['about_hero_image'] ? Storage::url($settings['about_hero_image']) : asset('assets/img/home3/about-img.png') }}"
+                                alt="{{ $settings['about_hero_heading'] ?? 'About Us' }}">
                         </div>
                     </div>
                 </div>
@@ -96,7 +83,8 @@
                         </div>
                         <div class="content">
                             <h4>{{ $settings['service_1_title'] ?? 'Local Guidance' }}</h4>
-                            <p>{{ $settings['service_1_description'] ?? 'Travel agencies have experienced professionals guidance.' }}</p>
+                            <p>{{ $settings['service_1_description'] ?? 'Travel agencies have experienced professionals guidance.' }}
+                            </p>
                         </div>
                     </li>
                     <li class="single-service">
@@ -108,7 +96,8 @@
                         </div>
                         <div class="content">
                             <h4>{{ $settings['service_2_title'] ?? 'Deals & Discounts' }}</h4>
-                            <p>{{ $settings['service_2_description'] ?? 'Agencies have special discounts on flights, hotels, & packages.' }}</p>
+                            <p>{{ $settings['service_2_description'] ?? 'Agencies have special discounts on flights, hotels, & packages.' }}
+                            </p>
                         </div>
                     </li>
                     <li class="single-service">
@@ -126,7 +115,8 @@
                         </div>
                         <div class="content">
                             <h4>{{ $settings['service_3_title'] ?? 'Saves Money' }}</h4>
-                            <p>{{ $settings['service_3_description'] ?? 'Avoids hidden fees & tourist traps, Multi-destination & budget-friendly options.' }}</p>
+                            <p>{{ $settings['service_3_description'] ?? 'Avoids hidden fees & tourist traps, Multi-destination & budget-friendly options.' }}
+                            </p>
                         </div>
                     </li>
                 </ul>

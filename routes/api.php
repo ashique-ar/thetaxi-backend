@@ -270,6 +270,21 @@ Route::middleware(['auth:api'])->group(function () {
         Route::apiResource('website-settings', WebsiteSettingController::class);
         Route::post('website-settings/update-multiple', [WebsiteSettingController::class, 'updateMultiple']);
         Route::get('website-settings/homepage/settings', [WebsiteSettingController::class, 'homepage']);
+        
+        // Category-specific settings routes
+        Route::get('website-settings/category/{category}', [WebsiteSettingController::class, 'getCategory']);
+        Route::put('website-settings/category/{category}', [WebsiteSettingController::class, 'updateCategory']);
+        Route::get('website-settings/all/categorized', [WebsiteSettingController::class, 'getAllCategorized']);
+        
+        // Individual category endpoints for better organization
+        Route::get('website-settings/general/settings', [WebsiteSettingController::class, 'general']);
+        Route::get('website-settings/seo/settings', [WebsiteSettingController::class, 'seo']);
+        Route::get('website-settings/social-media/settings', [WebsiteSettingController::class, 'socialMedia']);
+        Route::get('website-settings/payment/settings', [WebsiteSettingController::class, 'payment']);
+        Route::get('website-settings/security/settings', [WebsiteSettingController::class, 'security']);
+        Route::get('website-settings/email/settings', [WebsiteSettingController::class, 'email']);
+        Route::get('website-settings/booking/settings', [WebsiteSettingController::class, 'booking']);
+        Route::get('website-settings/appearance/settings', [WebsiteSettingController::class, 'appearance']);
         Route::apiResource('vip-types', VipTypeController::class);
         Route::apiResource('service-types', ServiceTypeController::class);
         

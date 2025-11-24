@@ -504,4 +504,192 @@ class WebsiteSettingsService
 
         return $this->getMultiple($types);
     }
+
+    /**
+     * Get all general site settings
+     */
+    public function getGeneralSettings(): array
+    {
+        $types = [
+            'site_name',
+            'site_tagline',
+            'company_name',
+            'company_phone',
+            'company_email',
+            'company_address',
+            'company_website',
+            'site_timezone',
+            'default_currency'
+        ];
+
+        return $this->getMultiple($types);
+    }
+
+    /**
+     * Get all SEO settings
+     */
+    public function getSeoSettings(): array
+    {
+        $types = [
+            'seo_title_template',
+            'seo_meta_description',
+            'seo_keywords',
+            'seo_og_image',
+            'seo_twitter_card',
+            'google_analytics_id',
+            'google_tag_manager_id',
+            'facebook_pixel_id'
+        ];
+
+        return $this->getMultiple($types);
+    }
+
+    /**
+     * Get all social media settings
+     */
+    public function getSocialMediaSettings(): array
+    {
+        $types = [
+            'social_facebook',
+            'social_twitter',
+            'social_instagram',
+            'social_linkedin',
+            'social_youtube',
+            'social_tiktok'
+        ];
+
+        return $this->getMultiple($types);
+    }
+
+    /**
+     * Get all payment settings
+     */
+    public function getPaymentSettings(): array
+    {
+        $types = [
+            'payment_methods_enabled',
+            'webxpay_enabled',
+            'advance_payment_enabled',
+            'advance_payment_percentage',
+            'service_fee_enabled',
+            'service_fee_amount',
+            'tax_enabled',
+            'tax_rate',
+            'vat_enabled',
+            'vat_rate'
+        ];
+
+        return $this->getMultiple($types);
+    }
+
+    /**
+     * Get all security settings
+     */
+    public function getSecuritySettings(): array
+    {
+        $types = [
+            'ssl_force',
+            'security_headers_enabled',
+            'content_security_policy',
+            'rate_limiting_enabled',
+            'rate_limit_per_minute',
+            'maintenance_mode',
+            'maintenance_message'
+        ];
+
+        return $this->getMultiple($types);
+    }
+
+    /**
+     * Get all email settings
+     */
+    public function getEmailSettings(): array
+    {
+        $types = [
+            'mail_from_name',
+            'mail_from_address',
+            'booking_confirmation_enabled',
+            'booking_reminder_enabled',
+            'contact_form_notification',
+            'email_footer_text'
+        ];
+
+        return $this->getMultiple($types);
+    }
+
+    /**
+     * Get all booking settings
+     */
+    public function getBookingSettings(): array
+    {
+        $types = [
+            'booking_advance_hours',
+            'booking_max_days',
+            'cancellation_allowed',
+            'cancellation_hours',
+            'auto_dispatch_enabled',
+            'guest_booking_enabled'
+        ];
+
+        return $this->getMultiple($types);
+    }
+
+    /**
+     * Get all appearance settings
+     */
+    public function getAppearanceSettings(): array
+    {
+        $types = [
+            'primary_color',
+            'secondary_color',
+            'logo_header',
+            'logo_footer',
+            'favicon'
+        ];
+
+        return $this->getMultiple($types);
+    }
+
+    /**
+     * Get all settings for a specific category
+     */
+    public function getCategorySettings(string $category): array
+    {
+        $method = 'get' . ucfirst($category) . 'Settings';
+        
+        if (method_exists($this, $method)) {
+            return $this->$method();
+        }
+        
+        throw new \InvalidArgumentException("Invalid settings category: {$category}");
+    }
+
+    /**
+     * Update settings for a specific category
+     */
+    public function updateCategorySettings(string $category, array $settings): void
+    {
+        foreach ($settings as $type => $value) {
+            $this->set($type, $value);
+        }
+    }
+
+    /**
+     * Get all settings organized by categories
+     */
+    public function getAllCategorizedSettings(): array
+    {
+        return [
+            'general' => $this->getGeneralSettings(),
+            'seo' => $this->getSeoSettings(),
+            'social_media' => $this->getSocialMediaSettings(),
+            'contact' => $this->getContactPageSettings(),
+            'payment' => $this->getPaymentSettings(),
+            'security' => $this->getSecuritySettings(),
+            'email' => $this->getEmailSettings(),
+            'homepage' => $this->getHomepageSettings(),
+            'booking' => $this->getBookingSettings(),
+            'appearance' => $this->getAppearanceSettings(),
+        ];
+    }
 }

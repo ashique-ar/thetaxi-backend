@@ -144,4 +144,188 @@ class WebsiteSettingController extends Controller
             'data' => $settings
         ]);
     }
+
+    /**
+     * Get settings by category
+     */
+    public function getCategory(string $category): JsonResponse
+    {
+        try {
+            $settings = $this->settingsService->getCategorySettings($category);
+
+            return response()->json([
+                'status' => 'success',
+                'data' => $settings
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => $e->getMessage()
+            ], 400);
+        }
+    }
+
+    /**
+     * Update settings for a specific category
+     */
+    public function updateCategory(Request $request, string $category): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'settings' => 'required|array',
+            'settings.*' => 'nullable|string',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation failed',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        try {
+            $updatedSettings = [];
+            
+            foreach ($request->settings as $type => $value) {
+                $setting = WebsiteSetting::updateOrCreate(
+                    ['type' => $type],
+                    [
+                        'value' => $value,
+                        'updated_user_id' => $request->user()->id,
+                    ]
+                );
+
+                $updatedSettings[] = new WebsiteSettingResource($setting);
+                $this->settingsService->clearCache($type);
+            }
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Settings updated successfully',
+                'data' => $updatedSettings
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => $e->getMessage()
+            ], 400);
+        }
+    }
+
+    /**
+     * Get all categorized settings
+     */
+    public function getAllCategorized(): JsonResponse
+    {
+        $settings = $this->settingsService->getAllCategorizedSettings();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $settings
+        ]);
+    }
+
+    /**
+     * Get general settings
+     */
+    public function general(): JsonResponse
+    {
+        $settings = $this->settingsService->getGeneralSettings();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $settings
+        ]);
+    }
+
+    /**
+     * Get SEO settings
+     */
+    public function seo(): JsonResponse
+    {
+        $settings = $this->settingsService->getSeoSettings();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $settings
+        ]);
+    }
+
+    /**
+     * Get social media settings
+     */
+    public function socialMedia(): JsonResponse
+    {
+        $settings = $this->settingsService->getSocialMediaSettings();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $settings
+        ]);
+    }
+
+    /**
+     * Get payment settings
+     */
+    public function payment(): JsonResponse
+    {
+        $settings = $this->settingsService->getPaymentSettings();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $settings
+        ]);
+    }
+
+    /**
+     * Get security settings
+     */
+    public function security(): JsonResponse
+    {
+        $settings = $this->settingsService->getSecuritySettings();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $settings
+        ]);
+    }
+
+    /**
+     * Get email settings
+     */
+    public function email(): JsonResponse
+    {
+        $settings = $this->settingsService->getEmailSettings();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $settings
+        ]);
+    }
+
+    /**
+     * Get booking settings
+     */
+    public function booking(): JsonResponse
+    {
+        $settings = $this->settingsService->getBookingSettings();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $settings
+        ]);
+    }
+
+    /**
+     * Get appearance settings
+     */
+    public function appearance(): JsonResponse
+    {
+        $settings = $this->settingsService->getAppearanceSettings();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $settings
+        ]);
+    }
 }
