@@ -1,5 +1,5 @@
 <!-- Top Offer Text Slider -->
-<div class="top-offer-text-slider-section">
+{{-- <div class="top-offer-text-slider-section">
     <div class="container">
         <div class="row justify-content-center">
             <div class="col-lg-8">
@@ -33,7 +33,7 @@
             </div>
         </div>
     </div>
-</div>
+</div> --}}
 
 <!-- Header Section -->
 <header class="header-area style-2 travel-agency3">
@@ -53,7 +53,7 @@
                 </div>
                 <ul class="menu-list">
                     <li class="{{ Request::routeIs('home') ? 'active' : '' }}"><a href="{{ route('home') }}">Home</a></li>
-                    <li class="menu-item-has-children">
+                    {{-- <li class="menu-item-has-children">
                         <a href="#" class="drop-down">
                             Services
                             <i class="bi bi-caret-down-fill"></i>
@@ -65,8 +65,8 @@
                             <li><a href="{{ route('home') }}#services">Outstation</a></li>
                             <li><a href="{{ route('home') }}#services">Rental</a></li>
                         </ul>
-                    </li>
-                    <li class="menu-item-has-children">
+                    </li> --}}
+                    {{-- <li class="menu-item-has-children">
                         <a href="#" class="drop-down">
                             Fleet
                             <i class="bi bi-caret-down-fill"></i>
@@ -78,8 +78,8 @@
                             <li><a href="{{ route('home') }}#fleet">Hatchback</a></li>
                             <li><a href="{{ route('home') }}#fleet">Luxury</a></li>
                         </ul>
-                    </li>
-                    <li class="menu-item-has-children">
+                    </li> --}}
+                    {{-- <li class="menu-item-has-children">
                         <a href="#" class="drop-down">
                             Pages
                             <i class="bi bi-caret-down-fill"></i>
@@ -91,7 +91,7 @@
                             <li><a href="{{ route('cart') }}">Cart</a></li>
                             <li><a href="{{ route('checkout') }}">Checkout</a></li>
                         </ul>
-                    </li>
+                    </li> --}}
                     <li><a href="{{ route('contact') }}">Contact</a></li>
                 </ul>
                 <div class="contact-area d-xl-none d-flex">

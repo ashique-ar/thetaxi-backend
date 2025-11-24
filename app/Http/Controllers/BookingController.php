@@ -247,6 +247,7 @@ class BookingController extends Controller
             // Extract data and pagination
             $vehicleGroups = $availabilityData['data'] ?? $availabilityData;
             $pagination = $availabilityData['pagination'] ?? null;
+            $totalJourneyDistance = $availabilityData['total_journey_distance_km'] ?? null;
             
             Log::info('Vehicle groups extracted', ['count' => count($vehicleGroups)]);
             
@@ -272,6 +273,7 @@ class BookingController extends Controller
                     'frontend_service' => $frontendService,
                     'service_type' => $frontendService, // Form needs this
                     'created_at' => $searchTimestamp,
+                    'total_distance_km' => $totalJourneyDistance, // Add distance information
                 ],
                 // Flatten search_params so form fields can access properties
                 [

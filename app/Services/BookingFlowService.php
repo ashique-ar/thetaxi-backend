@@ -262,9 +262,28 @@ Log::info('Calculated pricing', ['vehicle_group_id' => $group->id, 'pricing' => 
                 'availability_status' => $this->determineGroupAvailabilityStatus($availableCount, $totalCount, $conflictCount),
                 'concurrent_bookings_possible' => $vehicleAnalysis['concurrent_possible'],
                 'override_options_available' => $vehicleAnalysis['override_available'],
+                // Add new vehicle group fields
+                'passengers_count' => $group->passengers_count,
+                'hand_luggages' => $group->hand_luggages,
+                'air_conditioning' => $group->air_conditioning,
+                'refundable_deposit' => $group->refundable_deposit,
+                // Add make, model, grade for easier access
+                'make' => $group->make,
+                'model' => $group->model,
+                'grade' => $group->grade,
+                'transmission' => $group->transmission,
+                'fuel_type' => $group->fuelType,
+                'class' => $group->class,
             ];
 
             $availability[] = $availabilityEntry;
+        }
+
+        // Calculate total journey distance if locations are provided
+        $totalJourneyDistance = null;
+        if ($pickupLocation && $dropoffLocation) {
+            $distanceData = $this->calculateCompanyDistances($pickupLocation, $dropoffLocation, $serviceType);
+            $totalJourneyDistance = $distanceData['journey_distance'] ?? null;
         }
 
         // Return with pagination if requested
@@ -278,11 +297,15 @@ Log::info('Calculated pricing', ['vehicle_group_id' => $group->id, 'pricing' => 
                     'last_page' => ceil($total / $perPage),
                     'from' => ($page - 1) * $perPage + 1,
                     'to' => min($page * $perPage, $total),
-                ]
+                ],
+                'total_journey_distance_km' => $totalJourneyDistance,
             ];
         }
 
-        return $availability;
+        return [
+            'data' => $availability,
+            'total_journey_distance_km' => $totalJourneyDistance,
+        ];
     }
 
     /**
@@ -2638,19 +2661,66 @@ Log::info("Dynamic pricing calculation result", ['result' => $calculationResult]
 
         $address = strtolower($location['address']);
         
-        // List of Sri Lankan airports (case-insensitive matching)
+        // Comprehensive list of Sri Lankan airports and related keywords (case-insensitive matching)
         $airportKeywords = [
             'airport',
-            'bandaranayake',
+            'bandaranaike',
+            'bandaranayake', // Common misspelling
             'mattala',
             'colombo bia',
             'negombo airport',
-            'katunayake'
+            'katunayake',
+            'ratmalana airport',
+            'jaffna airport',
+            'jaffna international',
+            'koggala airport',
+            'sigiriya airport',
+            'ampara airport',
+            'hambantota airport',
+            'rajapaksa international',
+            'bia',
+            'cmb airport', // Airport code
+            'hri airport', // Mattala code
+            'jaf airport', // Jaffna code
+            'kct airport', // Koggala code
+            'rml airport', // Ratmalana code
+            'giu airport', // Sigiriya code
+            'international airport',
+            'air terminal',
+            'aviation',
         ];
 
         foreach ($airportKeywords as $keyword) {
             if (strpos($address, $keyword) !== false) {
                 return true;
+            }
+        }
+
+        // Also check coordinates against known airport locations
+        if (isset($location['latitude']) && isset($location['longitude'])) {
+            $knownAirports = [
+                ['lat' => 7.1808, 'lng' => 79.8841, 'name' => 'Bandaranaike International Airport'], // BIA
+                ['lat' => 6.2844, 'lng' => 81.1247, 'name' => 'Mattala Rajapaksa International Airport'], // HRI
+                ['lat' => 9.7923, 'lng' => 80.0700, 'name' => 'Jaffna Airport'], // JAF
+                ['lat' => 5.9936, 'lng' => 80.3203, 'name' => 'Koggala Airport'], // KCT
+                ['lat' => 6.8220, 'lng' => 79.8862, 'name' => 'Ratmalana Airport'], // RML
+                ['lat' => 7.9563, 'lng' => 80.7281, 'name' => 'Sigiriya Airport'], // GIU
+                ['lat' => 7.3417, 'lng' => 81.6500, 'name' => 'Ampara Airport'], // AMP
+            ];
+
+            $locationLat = (float) $location['latitude'];
+            $locationLng = (float) $location['longitude'];
+
+            foreach ($knownAirports as $airport) {
+                // Check if coordinates are within 2km radius of known airport
+                $distance = $this->calculateDistance(
+                    ['latitude' => $locationLat, 'longitude' => $locationLng],
+                    ['latitude' => $airport['lat'], 'longitude' => $airport['lng']]
+                );
+                
+                if ($distance <= 2.0) { // Within 2km radius
+                    return true;
+                }
             }
         }
 

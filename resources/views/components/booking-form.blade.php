@@ -113,10 +113,37 @@
                     </g>
                 </svg>
                 <div class="custom-select-dropdown">
-                    <input type="text" name="from" placeholder="From (Airport/Hotel/Address)"
-                        class="location-search airport-search-field @error('from') is-invalid @enderror" 
-                        value="{{ old('from', (isset($search) && isset($search->pickup_location)) ? $search->pickup_location : 'Colombo BIA Airport') }}"
-                        required>
+                    <!-- Airport Select (shown when from-airport is selected) -->
+                    <select name="from" id="from-airport-select" class="airport-select from-field hidden @error('from') is-invalid @enderror" 
+                        disabled>
+                        <option value="">Select Airport</option>
+                        <option value="Colombo BIA Airport" 
+                            data-lat="7.1808" 
+                            data-lng="79.8841"
+                            {{ old('from', (isset($search) && isset($search->pickup_location)) ? $search->pickup_location : 'Colombo BIA Airport') == 'Colombo BIA Airport' ? 'selected' : '' }}>
+                            Bandaranaike International Airport (BIA)
+                        </option>
+                        <option value="Mattala Rajapaksa Airport" 
+                            data-lat="6.2847" 
+                            data-lng="81.1242"
+                            {{ old('from', (isset($search) && isset($search->pickup_location)) ? $search->pickup_location : '') == 'Mattala Rajapaksa Airport' ? 'selected' : '' }}>
+                            Mattala Rajapaksa International Airport
+                        </option>
+                        <option value="Jaffna International Airport" 
+                            data-lat="9.7923" 
+                            data-lng="80.0701"
+                            {{ old('from', (isset($search) && isset($search->pickup_location)) ? $search->pickup_location : '') == 'Jaffna International Airport' ? 'selected' : '' }}>
+                            Jaffna International Airport
+                        </option>
+                    </select>
+                    
+                    <!-- Location Input (shown when to-airport is selected) -->
+                    <input type="text" name="from" id="from-location-input" 
+                        placeholder="Enter pickup location"
+                        class="location-search from-field hidden @error('from') is-invalid @enderror" 
+                        value="{{ old('from', (isset($search) && isset($search->pickup_location)) ? $search->pickup_location : 'Colombo, Sri Lanka') }}"
+                        disabled>
+                    
                     <input type="hidden" name="from_lat" class="location-lat" 
                         value="{{ old('from_lat', (isset($search) && isset($search->pickup_latitude)) ? $search->pickup_latitude : '7.1808') }}">
                     <input type="hidden" name="from_lng" class="location-lng" 
@@ -138,9 +165,37 @@
                     </g>
                 </svg>
                 <div class="custom-select-dropdown">
-                    <input type="text" name="to" placeholder="To (Airport/Hotel/Address)"
-                        class="location-search airport-search-field @error('to') is-invalid @enderror" 
-                        value="{{ old('to', (isset($search) && isset($search->dropoff_location)) ? $search->dropoff_location : 'Colombo, Sri Lanka') }}" required>
+                    <!-- Location Input (shown when from-airport is selected) -->
+                    <input type="text" name="to" id="to-location-input" 
+                        placeholder="Enter destination"
+                        class="location-search to-field hidden @error('to') is-invalid @enderror" 
+                        value="{{ old('to', (isset($search) && isset($search->dropoff_location)) ? $search->dropoff_location : 'Colombo, Sri Lanka') }}"
+                        disabled>
+                    
+                    <!-- Airport Select (shown when to-airport is selected) -->
+                    <select name="to" id="to-airport-select" class="airport-select to-field hidden @error('to') is-invalid @enderror" 
+                        disabled>
+                        <option value="">Select Airport</option>
+                        <option value="Colombo BIA Airport" 
+                            data-lat="7.1808" 
+                            data-lng="79.8841"
+                            {{ old('to', (isset($search) && isset($search->dropoff_location)) ? $search->dropoff_location : '') == 'Colombo BIA Airport' ? 'selected' : '' }}>
+                            Bandaranaike International Airport (BIA)
+                        </option>
+                        <option value="Mattala Rajapaksa Airport" 
+                            data-lat="6.2847" 
+                            data-lng="81.1242"
+                            {{ old('to', (isset($search) && isset($search->dropoff_location)) ? $search->dropoff_location : '') == 'Mattala Rajapaksa Airport' ? 'selected' : '' }}>
+                            Mattala Rajapaksa International Airport
+                        </option>
+                        <option value="Jaffna International Airport" 
+                            data-lat="9.7923" 
+                            data-lng="80.0701"
+                            {{ old('to', (isset($search) && isset($search->dropoff_location)) ? $search->dropoff_location : '') == 'Jaffna International Airport' ? 'selected' : '' }}>
+                            Jaffna International Airport
+                        </option>
+                    </select>
+                    
                     <input type="hidden" name="to_lat" class="location-lat" 
                         value="{{ old('to_lat', (isset($search) && isset($search->dropoff_latitude)) ? $search->dropoff_latitude : '6.9271') }}">
                     <input type="hidden" name="to_lng" class="location-lng" 
@@ -382,16 +437,206 @@
                 const targetForm = document.querySelector(`[data-service="${service}"]`);
                 if (targetForm) {
                     targetForm.classList.add('show');
-                }
-                
-                // If there's a redirect URL (for point_to_point and corporate_transport), navigate to it
-                const redirectUrl = this.getAttribute('data-redirect');
-                if (redirectUrl) {
-                    // Store current form state before redirecting
-                    window.location.href = redirectUrl;
+                    
+                    // Initialize airport transfer form if it's the airport service
+                    if (service === 'airport_transfers') {
+                        initializeAirportTransferForm();
+                    }
                 }
             });
         });
+
+        // Initialize airport transfer form on page load if it's active
+        const activeAirportForm = document.querySelector('.filter-input[data-service="airport_transfers"].show');
+        if (activeAirportForm) {
+            // Wait longer for external JS to load
+            setTimeout(() => {
+                initializeAirportTransferForm();
+            }, 500);
+        }
+
+        // Force initialization after a delay to ensure everything is loaded
+        setTimeout(() => {
+            const airportForm = document.querySelector('#airport_transfers-form');
+            if (airportForm && airportForm.classList.contains('show')) {
+                console.log('Force initializing airport form after delay');
+                initializeAirportTransferForm();
+            }
+        }, 1000);
+
+        // Also add event listeners for transfer type radio buttons
+        const transferTypeRadios = document.querySelectorAll('input[name="transfer_type"]');
+        transferTypeRadios.forEach(radio => {
+            radio.addEventListener('change', function() {
+                if (typeof window.updateAirportTransferLocations === 'function') {
+                    window.updateAirportTransferLocations(this.value);
+                } else {
+                    initializeFallbackAirportForm(this.value);
+                }
+            });
+        });
+
+        /**
+         * Initialize airport transfer form
+         */
+        function initializeAirportTransferForm() {
+            console.log('Initializing airport transfer form...');
+            
+            setTimeout(() => {
+                const transferTypeChecked = document.querySelector('input[name="transfer_type"]:checked');
+                console.log('Checked transfer type:', transferTypeChecked ? transferTypeChecked.value : 'none');
+                
+                if (transferTypeChecked) {
+                    // Call the function from booking-form.js if available
+                    if (typeof window.updateAirportTransferLocations === 'function') {
+                        console.log('Using external updateAirportTransferLocations function');
+                        window.updateAirportTransferLocations(transferTypeChecked.value);
+                    } else {
+                        console.log('Using fallback initialization');
+                        initializeFallbackAirportForm(transferTypeChecked.value);
+                    }
+                } else {
+                    // Default to from-airport if no selection
+                    const fromAirportRadio = document.querySelector('input[name="transfer_type"][value="from-airport"]');
+                    console.log('No transfer type selected, defaulting to from-airport');
+                    if (fromAirportRadio) {
+                        fromAirportRadio.checked = true;
+                        if (typeof window.updateAirportTransferLocations === 'function') {
+                            console.log('Using external updateAirportTransferLocations function for default');
+                            window.updateAirportTransferLocations('from-airport');
+                        } else {
+                            console.log('Using fallback initialization for default');
+                            initializeFallbackAirportForm('from-airport');
+                        }
+                    }
+                }
+            }, 100);
+        }
+
+        /**
+         * Fallback initialization if booking-form.js is not loaded
+         */
+        function initializeFallbackAirportForm(type) {
+            const fromAirportSelect = document.querySelector('#from-airport-select');
+            const fromLocationInput = document.querySelector('#from-location-input');
+            const toAirportSelect = document.querySelector('#to-airport-select');
+            const toLocationInput = document.querySelector('#to-location-input');
+
+            if (!fromAirportSelect || !fromLocationInput || !toAirportSelect || !toLocationInput) return;
+
+            console.log('Fallback initialization for type:', type);
+
+            // Reset all fields first - hide all
+            fromAirportSelect.classList.remove('visible');
+            fromAirportSelect.classList.add('hidden');
+            fromLocationInput.classList.remove('visible');
+            fromLocationInput.classList.add('hidden');
+            toLocationInput.classList.remove('visible');
+            toLocationInput.classList.add('hidden');
+            toAirportSelect.classList.remove('visible');
+            toAirportSelect.classList.add('hidden');
+            
+            // Reset required and disabled states
+            fromAirportSelect.required = false;
+            fromLocationInput.required = false;
+            toLocationInput.required = false;
+            toAirportSelect.required = false;
+            
+            fromAirportSelect.disabled = true;
+            fromLocationInput.disabled = true;
+            toLocationInput.disabled = true;
+            toAirportSelect.disabled = true;
+
+            if (type === 'from-airport') {
+                // FROM = Airport select, TO = Location input
+                fromAirportSelect.classList.remove('hidden');
+                fromAirportSelect.classList.add('visible');
+                toLocationInput.classList.remove('hidden');
+                toLocationInput.classList.add('visible');
+                
+                fromAirportSelect.required = true;
+                toLocationInput.required = true;
+                fromAirportSelect.disabled = false;
+                toLocationInput.disabled = false;
+
+                // Set default values
+                if (!fromAirportSelect.value) {
+                    fromAirportSelect.value = 'Colombo BIA Airport';
+                    // Trigger change event to update coordinates
+                    fromAirportSelect.dispatchEvent(new Event('change'));
+                }
+                if (!toLocationInput.value) {
+                    toLocationInput.value = 'Colombo, Sri Lanka';
+                }
+            } else {
+                // FROM = Location input, TO = Airport select
+                fromLocationInput.classList.remove('hidden');
+                fromLocationInput.classList.add('visible');
+                toAirportSelect.classList.remove('hidden');
+                toAirportSelect.classList.add('visible');
+                
+                fromLocationInput.required = true;
+                toAirportSelect.required = true;
+                fromLocationInput.disabled = false;
+                toAirportSelect.disabled = false;
+
+                // Set default values
+                if (!fromLocationInput.value) {
+                    fromLocationInput.value = 'Colombo, Sri Lanka';
+                }
+                if (!toAirportSelect.value) {
+                    toAirportSelect.value = 'Colombo BIA Airport';
+                    // Trigger change event to update coordinates
+                    toAirportSelect.dispatchEvent(new Event('change'));
+                }
+            }
+
+            console.log('Field visibility after initialization:', {
+                fromAirportSelect: fromAirportSelect.classList.contains('visible'),
+                fromLocationInput: fromLocationInput.classList.contains('visible'),
+                toAirportSelect: toAirportSelect.classList.contains('visible'),
+                toLocationInput: toLocationInput.classList.contains('visible')
+            });
+
+            // Setup airport select change handlers
+            setupAirportSelectChangeHandlers();
+        }
+
+        /**
+         * Setup airport select change handlers
+         */
+        function setupAirportSelectChangeHandlers() {
+            const fromAirportSelect = document.querySelector('#from-airport-select');
+            const toAirportSelect = document.querySelector('#to-airport-select');
+            const fromLat = document.querySelector('input[name="from_lat"]');
+            const fromLng = document.querySelector('input[name="from_lng"]');
+            const toLat = document.querySelector('input[name="to_lat"]');
+            const toLng = document.querySelector('input[name="to_lng"]');
+
+            if (fromAirportSelect && !fromAirportSelect.hasChangeHandler) {
+                fromAirportSelect.addEventListener('change', function() {
+                    const selectedOption = this.options[this.selectedIndex];
+                    if (selectedOption && selectedOption.dataset.lat && selectedOption.dataset.lng && fromLat && fromLng) {
+                        fromLat.value = selectedOption.dataset.lat;
+                        fromLng.value = selectedOption.dataset.lng;
+                        console.log('Updated FROM coordinates:', fromLat.value, fromLng.value);
+                    }
+                });
+                fromAirportSelect.hasChangeHandler = true;
+            }
+
+            if (toAirportSelect && !toAirportSelect.hasChangeHandler) {
+                toAirportSelect.addEventListener('change', function() {
+                    const selectedOption = this.options[this.selectedIndex];
+                    if (selectedOption && selectedOption.dataset.lat && selectedOption.dataset.lng && toLat && toLng) {
+                        toLat.value = selectedOption.dataset.lat;
+                        toLng.value = selectedOption.dataset.lng;
+                        console.log('Updated TO coordinates:', toLat.value, toLng.value);
+                    }
+                });
+                toAirportSelect.hasChangeHandler = true;
+            }
+        }
 
         // Ensure the correct form tab is active on page load based on current service type
         document.addEventListener('DOMContentLoaded', function() {
@@ -410,6 +655,16 @@
 
         forms.forEach(form => {
             form.addEventListener('submit', function(e) {
+                // Special handling for airport transfer form
+                if (form.getAttribute('data-service') === 'airport_transfers') {
+                    if (!validateAirportTransferForm(form)) {
+                        e.preventDefault();
+                        return;
+                    }
+                    // Ensure only visible fields are enabled for submission
+                    prepareAirportFormForSubmission(form);
+                }
+
                 const submitBtn = form.querySelector('button[type="submit"]');
                 const btnText = submitBtn.querySelector('span');
                 const originalText = btnText.textContent;
@@ -433,8 +688,150 @@
                 }, 30000); // 30 seconds timeout
             });
         });
+
+        /**
+         * Validate airport transfer form before submission
+         */
+        function validateAirportTransferForm(form) {
+            const transferType = form.querySelector('input[name="transfer_type"]:checked')?.value;
+            if (!transferType) {
+                alert('Please select transfer type (From Airport or To Airport)');
+                return false;
+            }
+
+            // Check if the visible from field has a value
+            const fromAirportSelect = form.querySelector('#from-airport-select');
+            const fromLocationInput = form.querySelector('#from-location-input');
+            
+            if (transferType === 'from-airport') {
+                if (!fromAirportSelect.value) {
+                    alert('Please select an airport');
+                    fromAirportSelect.focus();
+                    return false;
+                }
+                if (!fromLocationInput.value || fromLocationInput.style.display !== 'none') {
+                    // Make sure to location has a value
+                    const toInput = form.querySelector('#to-location-input');
+                    if (!toInput.value) {
+                        alert('Please enter destination location');
+                        toInput.focus();
+                        return false;
+                    }
+                }
+            } else {
+                if (!fromLocationInput.value) {
+                    alert('Please enter pickup location');
+                    fromLocationInput.focus();
+                    return false;
+                }
+                const toAirportSelect = form.querySelector('#to-airport-select');
+                if (!toAirportSelect.value) {
+                    alert('Please select destination airport');
+                    toAirportSelect.focus();
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        /**
+         * Prepare airport form for submission by disabling hidden fields
+         */
+        function prepareAirportFormForSubmission(form) {
+            const fromAirportSelect = form.querySelector('#from-airport-select');
+            const fromLocationInput = form.querySelector('#from-location-input');
+            const toAirportSelect = form.querySelector('#to-airport-select');
+            const toLocationInput = form.querySelector('#to-location-input');
+
+            // The fields should already be properly disabled/enabled by the initialization functions
+            // Just make sure hidden fields are disabled and visible fields are enabled
+            if (fromAirportSelect.classList.contains('hidden')) {
+                fromAirportSelect.disabled = true;
+                fromLocationInput.disabled = false; // Enable the visible one
+            } else {
+                fromAirportSelect.disabled = false; // Enable the visible one
+                fromLocationInput.disabled = true;
+            }
+
+            if (toAirportSelect.classList.contains('hidden')) {
+                toAirportSelect.disabled = true;
+                toLocationInput.disabled = false; // Enable the visible one
+            } else {
+                toAirportSelect.disabled = false; // Enable the visible one
+                toLocationInput.disabled = true;
+            }
+            
+            console.log('Form prepared for submission:', {
+                fromAirportSelectVisible: fromAirportSelect.classList.contains('visible'),
+                fromLocationInputVisible: fromLocationInput.classList.contains('visible'),
+                toAirportSelectVisible: toAirportSelect.classList.contains('visible'),
+                toLocationInputVisible: toLocationInput.classList.contains('visible')
+            });
+        }
     });
 </script>
+
+<style>
+/* Airport select dropdown styles */
+.airport-select {
+    width: 100%;
+    padding: 12px 15px;
+    border: 1px solid #e1e5e9;
+    border-radius: 6px;
+    background-color: #fff;
+    font-size: 14px;
+    font-family: inherit;
+    color: #333;
+    appearance: none;
+    background-image: url('data:image/svg+xml;charset=US-ASCII,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 5"><path fill="%23666" d="M2 0L0 2h4zm0 5L0 3h4z"/></svg>');
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    background-size: 12px;
+    transition: border-color 0.3s ease;
+}
+
+.airport-select:focus {
+    outline: none;
+    border-color: #c91c23;
+    box-shadow: 0 0 0 2px rgba(201, 28, 35, 0.1);
+}
+
+.airport-select:hover {
+    border-color: #c91c23;
+}
+
+.airport-select.is-invalid {
+    border-color: #dc3545;
+}
+
+.airport-select option {
+    padding: 8px 12px;
+    font-size: 14px;
+}
+
+/* Ensure consistent styling with other form inputs */
+.location-search, .airport-select {
+    height: auto;
+    min-height: 44px;
+}
+
+/* Hide/show transitions for smooth UX */
+.airport-select, .location-search {
+    transition: all 0.2s ease-in-out;
+}
+
+/* Field visibility classes */
+.from-field.hidden,
+.to-field.hidden {
+    display: none !important;
+}
+
+.from-field.visible,
+.to-field.visible {
+    display: block !important;
+}
+</style>
 
 @push('scripts')
     <!-- Bootstrap Datepicker CSS -->

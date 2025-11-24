@@ -9,7 +9,8 @@
 ])
 
 @php
-    $imageUrl = $item->featured_image ? Storage::url($item->featured_image) : asset('assets/img/default-card.jpg');
+    $imageUrl = $item->thumbnail ? s3_asset($item->thumbnail) : asset('assets/img/default-card.jpg');
+    // $imageUrl = $item->featured_image ? s3_asset($item->featured_image) : asset('assets/img/default-card.jpg');
     $title = $item->title ?? 'No title available';
     $excerpt = $item->excerpt ?? \Str::limit(strip_tags($item->body ?? ''), 100);
     $location = $item->location ?? 'Location not specified';

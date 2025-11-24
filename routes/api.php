@@ -787,9 +787,9 @@ Route::middleware(['auth:api'])->group(function () {
 
     Route::prefix('places')->group(function () {
         Route::get('search', [GooglePlacesController::class, 'searchPlaces']);
+        Route::get('airports', [GooglePlacesController::class, 'searchAirports']);
         Route::get('details', [GooglePlacesController::class, 'getPlaceDetails']);
         Route::get('reverse-geocode', [GooglePlacesController::class, 'reverseGeocode']);
-        Route::get('test-config', [GooglePlacesController::class, 'testConfig']);
     });
 
     Route::group([

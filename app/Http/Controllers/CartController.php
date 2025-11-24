@@ -109,11 +109,11 @@ class CartController extends Controller
             $toTime = $validated['to_time'] ?? ($validated['search_data']['to_time'] ?? '10:00');
 
             // Extract location data with coordinates
-            $pickupLocation = $validated['search_data']['from'] ?? '';
+            $pickupLocation = $validated['pickup_location'] ?? ($validated['search_data']['pickup_location'] ?? '');
             $pickupLat = $validated['from_lat'] ?? ($validated['search_data']['from_lat'] ?? null);
             $pickupLng = $validated['from_lng'] ?? ($validated['search_data']['from_lng'] ?? null);
 
-            $returnLocation = $validated['search_data']['to'] ?? $pickupLocation;
+            $returnLocation = $validated['return_location'] ?? $validated['dropoff_location'] ?? ($validated['search_data']['dropoff_location'] ?? $pickupLocation);
             $returnLat = $validated['to_lat'] ?? ($validated['search_data']['to_lat'] ?? $pickupLat);
             $returnLng = $validated['to_lng'] ?? ($validated['search_data']['to_lng'] ?? $pickupLng);
 

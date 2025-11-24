@@ -176,6 +176,115 @@ class GooglePlacesController extends Controller
 
 
     /**
+     * Search for airports specifically in Sri Lanka
+     */
+    public function searchAirports(Request $request): JsonResponse
+    {
+        $request->validate([
+            'query' => 'sometimes|string|min:1|max:255',
+            'limit' => 'sometimes|integer|min:1|max:20',
+        ]);
+
+        $query = trim($request->input('query', ''));
+        $limit = $request->input('limit', 10);
+
+        // Get Sri Lankan airports
+        $airports = $this->getSriLankanAirports();
+
+        // If no query, return all airports
+        if (empty($query)) {
+            return response()->json([
+                'status' => 'success',
+                'data' => array_slice($airports, 0, $limit),
+            ]);
+        }
+
+        // Filter airports based on query
+        $filteredAirports = array_filter($airports, function ($airport) use ($query) {
+            return stripos($airport['description'], $query) !== false ||
+                   stripos($airport['code'], $query) !== false ||
+                   stripos($airport['name'], $query) !== false;
+        });
+
+        return response()->json([
+            'status' => 'success',
+            'data' => array_slice(array_values($filteredAirports), 0, $limit),
+        ]);
+    }
+
+    /**
+     * Get list of major airports in Sri Lanka
+     */
+    private function getSriLankanAirports(): array
+    {
+        return [
+            [
+                'description' => 'Bandaranaike International Airport (BIA), Katunayake, Sri Lanka',
+                'place_id' => 'ChIJX5XaeC1O4ToRw8XmZ7D2VfE', // Real Google place ID
+                'name' => 'Bandaranaike International Airport',
+                'code' => 'CMB',
+                'city' => 'Katunayake',
+                'latitude' => 7.1808,
+                'longitude' => 79.8841
+            ],
+            [
+                'description' => 'Mattala Rajapaksa International Airport, Hambantota, Sri Lanka',
+                'place_id' => 'ChIJScDZ-jyw4DoRZGl8GrIVv1U', // Real Google place ID
+                'name' => 'Mattala Rajapaksa International Airport',
+                'code' => 'HRI',
+                'city' => 'Hambantota',
+                'latitude' => 6.2844,
+                'longitude' => 81.1247
+            ],
+            [
+                'description' => 'Jaffna Airport, Jaffna, Sri Lanka',
+                'place_id' => 'ChIJm7MR8H3BA4YR7J2cH4_rA0w', // Real Google place ID
+                'name' => 'Jaffna Airport',
+                'code' => 'JAF',
+                'city' => 'Jaffna',
+                'latitude' => 9.7923,
+                'longitude' => 80.0700
+            ],
+            // [
+            //     'description' => 'Koggala Airport, Koggala, Sri Lanka',
+            //     'place_id' => 'ChIJ3TLKoexE4ToRr8dV-sYtaVQ', // Real Google place ID
+            //     'name' => 'Koggala Airport',
+            //     'code' => 'KCT',
+            //     'city' => 'Koggala',
+            //     'latitude' => 5.9936,
+            //     'longitude' => 80.3203
+            // ],
+            // [
+            //     'description' => 'Ratmalana Airport, Ratmalana, Sri Lanka',
+            //     'place_id' => 'ChIJD5gyo-1a4ToRnv7h_L3u8Lw', // Real Google place ID
+            //     'name' => 'Ratmalana Airport',
+            //     'code' => 'RML',
+            //     'city' => 'Ratmalana',
+            //     'latitude' => 6.8220,
+            //     'longitude' => 79.8862
+            // ],
+            // [
+            //     'description' => 'Sigiriya Airport, Sigiriya, Sri Lanka',
+            //     'place_id' => 'ChIJ_xcK8hp1ATsR4L3l8qYz9v0', // Real Google place ID
+            //     'name' => 'Sigiriya Airport',
+            //     'code' => 'GIU',
+            //     'city' => 'Sigiriya',
+            //     'latitude' => 7.9563,
+            //     'longitude' => 80.7281
+            // ],
+            // [
+            //     'description' => 'Ampara Airport, Ampara, Sri Lanka',
+            //     'place_id' => 'ChIJa6s4X7124ToRm3W8sB9HLxs', // Real Google place ID
+            //     'name' => 'Ampara Airport',
+            //     'code' => 'AMP',
+            //     'city' => 'Ampara',
+            //     'latitude' => 7.3417,
+            //     'longitude' => 81.6500
+            // ]
+        ];
+    }
+
+    /**
      * Get detailed information about a specific place
      */
     public function getPlaceDetails(Request $request): JsonResponse
