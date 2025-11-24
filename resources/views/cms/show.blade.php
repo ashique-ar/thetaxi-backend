@@ -119,7 +119,7 @@
                 <div class="col-xl-4 col-lg-4">
                     <div class="blog-sidebar">
                         <!-- Content Info -->
-                        <div class="blog-sidebar-widget mb-40">
+                        {{-- <div class="blog-sidebar-widget mb-40">
                             <h4 class="sidebar-widget-title">{{ $contentType->title }} Details</h4>
                             <div class="content-info">
                                 <ul>
@@ -137,9 +137,9 @@
                                     @endif
                                 </ul>
                             </div>
-                        </div>
+                        </div> --}}
 
-                        {{-- @if ($relatedContents && $relatedContents->count() > 0)
+                        @if ($relatedContents && $relatedContents->count() > 0)
                             <!-- Related Content -->
                             <div class="blog-sidebar-widget mb-40">
                                 <h4 class="sidebar-widget-title">Related {{ $contentType->title }}</h4>
@@ -147,21 +147,21 @@
                                     @foreach ($relatedContents as $related)
                                         <div class="single-related-content mb-20">
                                             <div class="related-content-img">
-                                                @if ($related->featured_image)
-                                                    <img src="{{ $related->featured_image }}" alt="{{ $related->title }}">
-                                                @else
-                                                    <img src="assets/img/default-blog.jpg" alt="{{ $related->title }}">
-                                                @endif
+                                                <img src="{{ $related->thumbnail ? s3_asset($related->thumbnail) : 'assets/img/default-blog.jpg' }}"
+                                                    alt="{{ $related->title }}">
                                             </div>
                                             <div class="related-content-details">
-                                                <h6><a href="{{ route('cms.show', [$contentType->slug, $related->slug]) }}">{{ $related->title }}</a></h6>
-                                                <span class="date">{{ $related->published_at ? $related->published_at->format('M d, Y') : $related->created_at->format('M d, Y') }}</span>
+                                                <h6><a
+                                                        href="{{ route('cms.show', [$contentType->slug, $related->slug]) }}">{{ $related->title }}</a>
+                                                </h6>
+                                                <span
+                                                    class="date">{{ $related->published_at ? $related->published_at->format('M d, Y') : $related->created_at->format('M d, Y') }}</span>
                                             </div>
                                         </div>
                                     @endforeach
                                 </div>
                             </div>
-                        @endif --}}
+                        @endif
 
                         <!-- Share Widget -->
                         <div class="blog-sidebar-widget">
@@ -189,7 +189,7 @@
                 </div>
             </div>
 
-            @if ($content->allow_comments)
+            {{-- @if ($content->allow_comments)
                 <!-- Comments Section -->
                 <div class="row mt-70">
                     <div class="col-xl-7 col-lg-8">
@@ -200,7 +200,7 @@
                         </div>
                     </div>
                 </div>
-            @endif
+            @endif --}}
         </div>
     </div>
     <!--Inspiration Details Page End-->
