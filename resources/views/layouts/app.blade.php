@@ -27,6 +27,8 @@
     <link rel="stylesheet" href="{{ asset('assets/css/daterangepicker.css') }}">
     <!-- BoxIcon  CSS -->
     <link href="{{ asset('assets/css/boxicons.min.css') }}" rel="stylesheet">
+    <!-- AOS Animation CSS -->
+    <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
     <!--  Style CSS  -->
     <link rel="stylesheet" href="{{ asset('assets/css/style.css?v=1.0.1') }}">
     
@@ -37,6 +39,7 @@
     <title>@yield('title', 'TheTaxi - Your Reliable Taxi Service')</title>
     <link rel="icon" href="{{ asset('assets/img/favicon.ico') }}" type="image/gif" sizes="20x20">
 
+    @stack('meta')
     @stack('styles')
     <style>
         :root {
@@ -288,6 +291,17 @@
         
         // Global function to trigger cart icon update (can be called from any page)
         window.refreshCartIcon = updateCartIcon;
+    </script>
+
+    <!-- AOS Animation JS -->
+    <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
+    <script>
+        // Initialize AOS
+        AOS.init({
+            duration: 1000,
+            once: true,
+            offset: 100
+        });
     </script>
 
     @stack('scripts')

@@ -14,20 +14,53 @@ class CmsController extends Controller
     /**
      * Display a listing of content for a specific content type
      */
-    public function index(string $contentTypeSlug): View
+    public function index(string $contentTypeSlug, Request $request): View
     {
-
-        Log::info("CMS Index: type={$contentTypeSlug}");
+        Log::info("CMS Index: type={$contentTypeSlug}", $request->all());
+        
         $contentType = CmsContentType::where('slug', $contentTypeSlug)
             ->where('is_active', true)
             ->firstOrFail();
 
-        $contents = CmsContent::published()
+        $query = CmsContent::published()
             ->byType($contentTypeSlug)
-            ->with(['contentType'])
-            ->orderBy('is_featured', 'desc')
-            ->orderBy('published_at', 'desc')
-            ->paginate(12);
+            ->with(['contentType']);
+
+        // Search functionality
+        if ($request->filled('search')) {
+            $searchTerm = $request->get('search');
+            $query->where(function ($q) use ($searchTerm) {
+                $q->where('title', 'like', '%' . $searchTerm . '%')
+                  ->orWhere('excerpt', 'like', '%' . $searchTerm . '%')
+                  ->orWhere('content', 'like', '%' . $searchTerm . '%')
+                  ->orWhere('author', 'like', '%' . $searchTerm . '%');
+            });
+        }
+
+        // Featured filter
+        if ($request->filled('featured') && $request->get('featured') === '1') {
+            $query->where('is_featured', true);
+        }
+
+        // Sorting
+        $sort = $request->get('sort', 'latest');
+        switch ($sort) {
+            case 'oldest':
+                $query->orderBy('published_at', 'asc')
+                      ->orderBy('created_at', 'asc');
+                break;
+            case 'title':
+                $query->orderBy('title', 'asc');
+                break;
+            case 'latest':
+            default:
+                $query->orderBy('is_featured', 'desc')
+                      ->orderBy('published_at', 'desc')
+                      ->orderBy('created_at', 'desc');
+                break;
+        }
+
+        $contents = $query->paginate(12)->appends($request->query());
 
         return view('cms.index', compact('contentType', 'contents'));
     }
