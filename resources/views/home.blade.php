@@ -6,7 +6,7 @@
     <!-- home4 Banner Section Start-->
     <div class="home4-banner-section mb-100">
         <div class="banner-video-area">
-            <video autoplay loop muted playsinline
+            <video autoplay loop muted playsinline preload="metadata"
                 src="{{ s3_asset($settings['banner_video'] ?? 'assets/video/home4-banner-video.mp4') }}"></video>
         </div>
         <div class="banner-content-wrap">
@@ -36,7 +36,7 @@
                             @foreach ($partners as $partner)
                                 <a href="{{ $partner->link ?? '#' }}">
                                     <img src="{{ $partner->image ? s3_asset($partner->image) : s3_asset($settings['partner_logo_1']) }}"
-                                        alt="{{ $partner->title }}">
+                                        alt="{{ $partner->title }}" loading="lazy">
                                 </a>
                             @endforeach
                         </div>
@@ -443,8 +443,8 @@
     <div class="why-choose-video-area mb-100">
         <div class="container">
             <div class="why-choose-video-wrap">
-                <img src="{{ $settings['why_video_image'] ? Storage::url($settings['why_video_image']) : asset('assets/img/home4/why-choose-video-img.jpg') }}"
-                    alt="">
+                <img src="{{ $settings['why_video_image'] ? s3_asset($settings['why_video_image']) : asset('assets/img/home4/why-choose-video-img.jpg') }}"
+                    alt="" loading="lazy">
                 <a data-fancybox="video-player" href="https://www.youtube.com/watch?v=u31qwQUeGuM" class="play-btn">
                     <i class="bi bi-play-fill"></i>
                     <div class="waves-block">
@@ -593,7 +593,7 @@
                 </div>
             </div>
             <img src="{{ s3_asset($settings['testimonial_vector'] ?? 'assets/img/home4/vector/home4-testimonial-vector.png') }}"
-                alt="" class="vector">
+                alt="" class="vector" loading="lazy">
         </div>
     @endif
     <!-- home4 Testimonial Section End-->
@@ -816,7 +816,7 @@
                 </div>
             </div>
             <img src="{{ s3_asset($settings['faq_section_vector'] ?? 'assets/img/home4/vector/faq-section-vector.svg') }}"
-                alt="" class="vector">
+                alt="" class="vector" loading="lazy">
         </div>
     @endif
 

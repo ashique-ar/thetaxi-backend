@@ -33,7 +33,7 @@
     <div class="blog-card2 two">
         <div class="blog-img-wrap">
             <a href="{{ $detailLink }}" class="blog-img">
-                <img src="{{ $imageUrl }}" alt="{{ $title }}">
+                <img src="{{ $imageUrl }}" alt="{{ $title }}" loading="lazy">
                 @if($isSpecialOffer && $discount > 0)
                     <div class="discount-badge">-{{ $discount }}%</div>
                 @endif

@@ -236,19 +236,15 @@ class VehiclePricingCommonRateDefinitionController extends Controller
      */
     public function toggleStatus(Request $request, string $id): JsonResponse
     {
-        $request->validate([
-            'is_active' => 'required|boolean'
-        ]);
-
         try {
             $commonRate = VehiclePricingCommonRateDefinition::findOrFail($id);
 
             $commonRate->update([
-                'is_active' => $request->is_active,
+                'is_active' => !$commonRate->is_active,
                 'updated_user_id' => $request->user()->id
             ]);
 
-            $status = $request->is_active ? 'activated' : 'deactivated';
+            $status = $commonRate->is_active ? 'activated' : 'deactivated';
 
             return response()->json([
                 'status' => 'success',

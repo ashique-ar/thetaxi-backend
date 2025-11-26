@@ -23,7 +23,7 @@
     
     <!-- Vehicle Image -->
     <div class="vehicle-image-container">
-        <img src="{{ $mainImage }}" alt="{{ $vehicle['name'] ?? 'Unknown Vehicle' }}" class="vehicle-img">
+        <img src="{{ $mainImage }}" alt="{{ $vehicle['name'] ?? 'Unknown Vehicle' }}" class="vehicle-img" loading="lazy">
         
         @if($availability['available'] > 0)
             <span class="availability-badge available">
