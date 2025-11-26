@@ -9,7 +9,7 @@
 
     <!-- Start Breadcrumb section -->
     <div class="breadcrumb-section"
-        style="background-image:linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url({{ $settings['faq_breadcrumb_image'] ? Storage::url($settings['faq_breadcrumb_image']) : asset('assets/img/innerpages/breadcrumb-bg2.jpg') }});">
+        style="background-image:linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url({{ s3_asset($settings['faq_breadcrumb_image'] ?? 'assets/img/innerpages/breadcrumb-bg2.jpg') }});">
         <div class="container">
             <div class="banner-content">
                 <h1>{{ $settings['faq_hero_heading'] ?? 'Ask & Question' }}</h1>
@@ -173,7 +173,7 @@
     <!--faq Page End-->
 
     <!--faq Page Banner Start-->
-    <div class="faq-page-banner mb-100" style="background-image: url(assets/img/home7/home7-testimonial-bg.jpg);"></div>
+    <div class="faq-page-banner mb-100" style="background-image: url({{ s3_asset($settings['faq_page_banner_image'] ?? 'assets/img/home7/home7-testimonial-bg.jpg') }});"></div>
     <!--faq Page Banner End-->
 
     <!-- faq Page Start-->

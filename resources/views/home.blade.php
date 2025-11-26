@@ -7,7 +7,7 @@
     <div class="home4-banner-section mb-100">
         <div class="banner-video-area">
             <video autoplay loop muted playsinline
-                src="{{ $settings['banner_video'] ? Storage::url($settings['banner_video']) : asset('assets/video/home4-banner-video.mp4') }}"></video>
+                src="{{ s3_asset($settings['banner_video'] ?? 'assets/video/home4-banner-video.mp4') }}"></video>
         </div>
         <div class="banner-content-wrap">
             <div class="container">
@@ -35,7 +35,7 @@
 
                             @foreach ($partners as $partner)
                                 <a href="{{ $partner->link ?? '#' }}">
-                                    <img src="{{ $partner->image ? Storage::url($partner->image) : Storage::url($settings['partner_logo_1']) }}"
+                                    <img src="{{ $partner->image ? s3_asset($partner->image) : s3_asset($settings['partner_logo_1']) }}"
                                         alt="{{ $partner->title }}">
                                 </a>
                             @endforeach
@@ -260,13 +260,13 @@
                                 </div>
                                 <div class="counter-area">
                                     <ul class="counter-img-grp">
-                                        <li><img src="{{ $settings['counter_people_img_1'] ? Storage::url($settings['counter_people_img_1']) : asset('assets/img/home3/counter-people-img1.png') }}"
+                                        <li><img src="{{ s3_asset($settings['counter_people_img_1'] ?? 'assets/img/home3/counter-people-img1.png') }}"
                                                 alt=""></li>
-                                        <li><img src="{{ $settings['counter_people_img_2'] ? Storage::url($settings['counter_people_img_2']) : asset('assets/img/home3/counter-people-img2.png') }}"
+                                        <li><img src="{{ s3_asset($settings['counter_people_img_2'] ?? 'assets/img/home3/counter-people-img2.png') }}"
                                                 alt=""></li>
-                                        <li><img src="{{ $settings['counter_people_img_3'] ? Storage::url($settings['counter_people_img_3']) : asset('assets/img/home3/counter-people-img3.png') }}"
+                                        <li><img src="{{ s3_asset($settings['counter_people_img_3'] ?? 'assets/img/home3/counter-people-img3.png') }}"
                                                 alt=""></li>
-                                        <li><img src="{{ $settings['counter_people_img_4'] ? Storage::url($settings['counter_people_img_4']) : asset('assets/img/home3/counter-people-img4.png') }}"
+                                        <li><img src="{{ s3_asset($settings['counter_people_img_4'] ?? 'assets/img/home3/counter-people-img4.png') }}"
                                                 alt=""></li>
                                     </ul>
                                     <h6> <strong><span
@@ -309,17 +309,17 @@
                                     </svg>
                                 </div>
                                 <div class="single-img">
-                                    <img src="{{ $settings['about_image_1'] ? Storage::url($settings['about_image_1']) : asset('assets/img/home4/about-img1.jpg') }}"
+                                    <img src="{{ s3_asset($settings['about_image_1'] ?? 'assets/img/home4/about-img1.jpg') }}"
                                         alt="">
                                 </div>
                             </div>
                             <div class="single-grp">
                                 <div class="single-img two">
-                                    <img src="{{ $settings['about_image_2'] ? Storage::url($settings['about_image_2']) : asset('assets/img/home4/about-img2.jpg') }}"
+                                    <img src="{{ s3_asset($settings['about_image_2'] ?? 'assets/img/home4/about-img2.jpg') }}"
                                         alt="">
                                 </div>
                                 <div class="single-img three">
-                                    <img src="{{ $settings['about_image_3'] ? Storage::url($settings['about_image_3']) : asset('assets/img/home4/about-img3.jpg') }}"
+                                    <img src="{{ s3_asset($settings['about_image_3'] ?? 'assets/img/home4/about-img3.jpg') }}"
                                         alt="">
                                 </div>
                             </div>
@@ -348,12 +348,12 @@
                         <div class="swiper-wrapper">
                             <div class="swiper-slide">
                                 <a href="travel-package-details.html"><img
-                                        src="{{ $settings['offer_slider_img_1'] ? Storage::url($settings['offer_slider_img_1']) : asset('assets/img/home4/home4-offer-slider-img1.jpg') }}"
+                                        src="{{ s3_asset($settings['offer_slider_img_1'] ?? 'assets/img/home4/home4-offer-slider-img1.jpg') }}"
                                         alt=""></a>
                             </div>
                             <div class="swiper-slide">
                                 <a href="travel-package-details.html"><img
-                                        src="{{ $settings['offer_slider_img_2'] ? Storage::url($settings['offer_slider_img_2']) : asset('assets/img/home4/home4-offer-slider-img2.jpg') }}"
+                                        src="{{ s3_asset($settings['offer_slider_img_2'] ?? 'assets/img/home4/home4-offer-slider-img2.jpg') }}"
                                         alt=""></a>
                             </div>
                         </div>
@@ -385,11 +385,11 @@
                     <a href="https://www.tripadvisor.com/" class="single-rating">
                         <strong>4.5</strong>
                         <div class="tripadvisor-rating">
-                            <img src="{{ $settings['tripadvisor_logo'] ? Storage::url($settings['tripadvisor_logo']) : asset('assets/img/home1/icon/tripadvisor-logo.svg') }}"
+                            <img src="{{ s3_asset($settings['tripadvisor_logo'] ?? 'assets/img/home1/icon/tripadvisor-logo.svg') }}"
                                 alt="">
                             <div class="rating-area">
                                 <span>Reviews</span>
-                                <img src="{{ $settings['tripadvisor_stars'] ? Storage::url($settings['tripadvisor_stars']) : asset('assets/img/home1/icon/tripadvisor-start.svg') }}"
+                                <img src="{{ s3_asset($settings['tripadvisor_stars'] ?? 'assets/img/home1/icon/tripadvisor-start.svg') }}"
                                     alt="">
                             </div>
                         </div>
@@ -401,7 +401,7 @@
                     data-wow-duration="1500ms">
                     <div class="single-feature">
                         <div class="icon">
-                            <img src="{{ $settings['why_feature_icon_1'] ? Storage::url($settings['why_feature_icon_1']) : asset('assets/img/home3/icon/destination-feature-icon1.svg') }}"
+                            <img src="{{ s3_asset($settings['why_feature_icon_1'] ?? 'assets/img/home3/icon/destination-feature-icon1.svg') }}"
                                 alt="">
                         </div>
                         <h5>{{ $settings['why_feature_1'] ?? 'Customizable Package.' }}</h5>
@@ -411,7 +411,7 @@
                     data-wow-duration="1500ms">
                     <div class="single-feature">
                         <div class="icon">
-                            <img src="{{ $settings['why_feature_icon_2'] ? Storage::url($settings['why_feature_icon_2']) : asset('assets/img/home3/icon/destination-feature-icon2.svg') }}"
+                            <img src="{{ s3_asset($settings['why_feature_icon_2'] ?? 'assets/img/home3/icon/destination-feature-icon2.svg') }}"
                                 alt="">
                         </div>
                         <h5>{{ $settings['why_feature_2'] ?? '24/7 Support' }}</h5>
@@ -421,7 +421,7 @@
                     data-wow-duration="1500ms">
                     <div class="single-feature">
                         <div class="icon">
-                            <img src="{{ $settings['why_feature_icon_3'] ? Storage::url($settings['why_feature_icon_3']) : asset('assets/img/home3/icon/destination-feature-icon3.svg') }}"
+                            <img src="{{ s3_asset($settings['why_feature_icon_3'] ?? 'assets/img/home3/icon/destination-feature-icon3.svg') }}"
                                 alt="">
                         </div>
                         <h5>{{ $settings['why_feature_3'] ?? 'Trusted by Thousands' }}</h5>
@@ -431,7 +431,7 @@
                     data-wow-duration="1500ms">
                     <div class="single-feature">
                         <div class="icon">
-                            <img src="{{ $settings['why_feature_icon_4'] ? Storage::url($settings['why_feature_icon_4']) : asset('assets/img/home3/icon/destination-feature-icon4.svg') }}"
+                            <img src="{{ s3_asset($settings['why_feature_icon_4'] ?? 'assets/img/home3/icon/destination-feature-icon4.svg') }}"
                                 alt="">
                         </div>
                         <h5>{{ $settings['why_feature_4'] ?? 'Local Experties' }}</h5>
@@ -558,31 +558,31 @@
                                 <div class="swiper-wrapper">
                                     <div class="swiper-slide">
                                         <div class="testimonial-author-img">
-                                            <img src="{{ $settings['testimonial_author_img_1'] ? Storage::url($settings['testimonial_author_img_1']) : asset('assets/img/home4/testimonial-author-img1.png') }}"
+                                            <img src="{{ s3_asset($settings['testimonial_author_img_1'] ?? 'assets/img/home4/testimonial-author-img1.png') }}"
                                                 alt="">
                                         </div>
                                     </div>
                                     <div class="swiper-slide">
                                         <div class="testimonial-author-img">
-                                            <img src="{{ $settings['testimonial_author_img_2'] ? Storage::url($settings['testimonial_author_img_2']) : asset('assets/img/home4/testimonial-author-img2.png') }}"
+                                            <img src="{{ s3_asset($settings['testimonial_author_img_2'] ?? 'assets/img/home4/testimonial-author-img2.png') }}"
                                                 alt="">
                                         </div>
                                     </div>
                                     <div class="swiper-slide">
                                         <div class="testimonial-author-img">
-                                            <img src="{{ $settings['testimonial_author_img_3'] ? Storage::url($settings['testimonial_author_img_3']) : asset('assets/img/home4/testimonial-author-img3.png') }}"
+                                            <img src="{{ s3_asset($settings['testimonial_author_img_3'] ?? 'assets/img/home4/testimonial-author-img3.png') }}"
                                                 alt="">
                                         </div>
                                     </div>
                                     <div class="swiper-slide">
                                         <div class="testimonial-author-img">
-                                            <img src="{{ $settings['testimonial_author_img_4'] ? Storage::url($settings['testimonial_author_img_4']) : asset('assets/img/home4/testimonial-author-img4.png') }}"
+                                            <img src="{{ s3_asset($settings['testimonial_author_img_4'] ?? 'assets/img/home4/testimonial-author-img4.png') }}"
                                                 alt="">
                                         </div>
                                     </div>
                                     <div class="swiper-slide">
                                         <div class="testimonial-author-img">
-                                            <img src="{{ $settings['testimonial_author_img_5'] ? Storage::url($settings['testimonial_author_img_5']) : asset('assets/img/home4/testimonial-author-img5.png') }}"
+                                            <img src="{{ s3_asset($settings['testimonial_author_img_5'] ?? 'assets/img/home4/testimonial-author-img5.png') }}"
                                                 alt="">
                                         </div>
                                     </div>
@@ -592,7 +592,7 @@
                     </div>
                 </div>
             </div>
-            <img src="{{ $settings['testimonial_vector'] ? Storage::url($settings['testimonial_vector']) : asset('assets/img/home4/vector/home4-testimonial-vector.png') }}"
+            <img src="{{ s3_asset($settings['testimonial_vector'] ?? 'assets/img/home4/vector/home4-testimonial-vector.png') }}"
                 alt="" class="vector">
         </div>
     @endif
@@ -815,7 +815,7 @@
                     </div>
                 </div>
             </div>
-            <img src="{{ $settings['faq_section_vector'] ? Storage::url($settings['faq_section_vector']) : asset('assets/img/home4/vector/faq-section-vector.svg') }}"
+            <img src="{{ s3_asset($settings['faq_section_vector'] ?? 'assets/img/home4/vector/faq-section-vector.svg') }}"
                 alt="" class="vector">
         </div>
     @endif

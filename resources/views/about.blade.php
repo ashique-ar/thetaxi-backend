@@ -42,7 +42,7 @@
                     <div class="col-lg-5 d-lg-block d-none wow animate fadeInRight" data-wow-delay="200ms"
                         data-wow-duration="1500ms">
                         <div class="about-img">
-                            <img src="{{ $settings['about_hero_image'] ? Storage::url($settings['about_hero_image']) : asset('assets/img/home3/about-img.png') }}"
+                            <img src="{{ s3_asset($settings['about_hero_image'] ?? 'assets/img/home3/about-img.png') }}"
                                 alt="{{ $settings['about_hero_heading'] ?? 'About Us' }}">
                         </div>
                     </div>
@@ -449,7 +449,7 @@
                                 <div class="testimonial-card">
                                     <div class="author-area">
                                         <div class="author-img">
-                                            <img src="{{ asset('assets/img/home1/testimonial-author-img1.png') }}"
+                                            <img src="{{ s3_asset($settings['about_testimonial_img_1'] ?? 'assets/img/home1/testimonial-author-img1.png') }}"
                                                 alt="">
                                             <a data-fancybox="video-player"
                                                 href="https://www.youtube.com/watch?v=MLpWrANjFbI" class="play-btn">
@@ -487,7 +487,7 @@
                                 <div class="testimonial-card two">
                                     <div class="author-area">
                                         <div class="author-img">
-                                            <img src="{{ asset('assets/img/home1/testimonial-author-img2.png') }}"
+                                            <img src="{{ s3_asset($settings['about_testimonial_img_2'] ?? 'assets/img/home1/testimonial-author-img2.png') }}"
                                                 alt="">
                                         </div>
                                         <div class="author-info">
@@ -544,7 +544,7 @@
                                 <div class="testimonial-card">
                                     <div class="author-area">
                                         <div class="author-img">
-                                            <img src="{{ asset('assets/img/home1/testimonial-author-img3.png') }}"
+                                            <img src="{{ s3_asset($settings['about_testimonial_img_3'] ?? 'assets/img/home1/testimonial-author-img3.png') }}"
                                                 alt="">
                                             <a data-fancybox="video-player"
                                                 href="https://www.youtube.com/watch?v=MLpWrANjFbI" class="play-btn">
@@ -582,7 +582,7 @@
                                 <div class="testimonial-card">
                                     <div class="author-area">
                                         <div class="author-img">
-                                            <img src="{{ asset('assets/img/home1/testimonial-author-img4.png') }}"
+                                            <img src="{{ s3_asset($settings['about_testimonial_img_4'] ?? 'assets/img/home1/testimonial-author-img4.png') }}"
                                                 alt="">
                                             <a data-fancybox="video-player"
                                                 href="https://www.youtube.com/watch?v=MLpWrANjFbI" class="play-btn">
@@ -620,7 +620,7 @@
                                 <div class="testimonial-card two">
                                     <div class="author-area">
                                         <div class="author-img">
-                                            <img src="{{ asset('assets/img/home1/testimonial-author-img5.png') }}"
+                                            <img src="{{ s3_asset($settings['about_testimonial_img_5'] ?? 'assets/img/home1/testimonial-author-img5.png') }}"
                                                 alt="">
                                         </div>
                                         <div class="author-info">
@@ -679,7 +679,7 @@
             <div class="review-wrap wow animate fadeInUp" data-wow-delay="200ms" data-wow-duration="1500ms">
                 <div class="tripadvisor-rating-area">
                     <a href="https://www.tripadvisor.com/" class="tripadvisor-rating">
-                        <img src="{{ asset('assets/img/home1/icon/tripadvisor-logo.svg') }}" alt="">
+                        <img src="{{ s3_asset($settings['about_tripadvisor_logo'] ?? 'assets/img/home1/icon/tripadvisor-logo.svg') }}" alt="">
                         <div class="rating-area">
                             <span>Reviews</span>
                             <img src="{{ asset('assets/img/home1/icon/tripadvisor-start.svg') }}" alt="">
@@ -694,7 +694,7 @@
                 <a href="http://trustpilot.com/" class="trustpilot-rating-area">
                     <strong>4.5</strong>
                     <div class="trustpilot-rating">
-                        <img src="{{ asset('assets/img/home1/icon/trustpilot-logo.svg') }}" alt="">
+                        <img src="{{ s3_asset($settings['about_trustpilot_logo'] ?? 'assets/img/home1/icon/trustpilot-logo.svg') }}" alt="">
                         <div class="rating-area">
                             <img src="{{ asset('assets/img/home1/icon/trustpilot-star.svg') }}" alt="">
                             <span>(2K reviews)</span>
