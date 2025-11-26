@@ -356,7 +356,5 @@
         </div>
     </div>
 @endif
-</div>
-</div>
 <!--Search Results Page End-->
 @endsection
