@@ -32,7 +32,7 @@ class CmsController extends Controller
             $query->where(function ($q) use ($searchTerm) {
                 $q->where('title', 'like', '%' . $searchTerm . '%')
                   ->orWhere('excerpt', 'like', '%' . $searchTerm . '%')
-                  ->orWhere('content', 'like', '%' . $searchTerm . '%')
+                  ->orWhere('body', 'like', '%' . $searchTerm . '%')
                   ->orWhere('author', 'like', '%' . $searchTerm . '%');
             });
         }
