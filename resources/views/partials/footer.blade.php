@@ -203,7 +203,7 @@
         <div class="footer-bottom">
             <div class="container">
                 <div class="copyright-and-payment-method-area">
-                    <p>{{ $settings['footer_copyright_text'] ?? 'Copyright ' . date('Y') . ' <a href="' . route('home') . '">' . ($settings['site_name'] ?? 'TheTaxi') . '</a> | All Rights Reserved.' }}</p>
+                    <p>{{ $settings['footer_copyright_text'] ?? 'Copyright ' . date('Y')  }} <a href="{{ route('home') }}">{{ $settings['site_name'] ?? 'TheTaxi' }}</a> | All Rights Reserved.</p>
                     {{-- <div class="payment-method-area">
                         <span>Accepted Payment Methods :</span>
                         <ul>
