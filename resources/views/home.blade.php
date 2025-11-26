@@ -206,7 +206,7 @@
     <!-- Destinations Section - Enhanced with Unified CMS Cards -->
     @if ($destinations->count() > 0)
         <x-cms-section :title="$settings['destinations_section_title'] ?? 'Top Destinations'" :description="$settings['destinations_section_description'] ??
-            'Discover the most spectacular destinations Sri Lanka has to offer'" :items="$destinations" type="destinations" :showPrice="false"
+            'Discover the most spectacular destinations Sri Lanka has to offer'" :items="$destinations" type="taxi" :showPrice="false"
             :showDuration="false" :showRating="true" viewAllText="View All Destinations" sectionId="destinations-section"
             :limit="6" />
     @endif
