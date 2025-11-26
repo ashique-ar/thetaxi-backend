@@ -168,7 +168,7 @@ class VehiclePricingCalculationDefinitionController extends Controller
             'formula' => 'required|string',
             'variables' => 'nullable|array',
             'variables.*.name' => 'required|string|max:255',
-            'variables.*.type' => 'required|in:number,string,boolean,date',
+            'variables.*.type' => 'required',
             'variables.*.default_value' => 'nullable',
             'variables.*.description' => 'nullable|string',
             'conditions' => 'nullable|array',
