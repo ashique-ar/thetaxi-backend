@@ -37,7 +37,7 @@
 
     <!-- Title -->
     <title>@yield('title', $settings['site_name'] ?? 'TheTaxi - Your Reliable Taxi Service')</title>
-    <link rel="icon" href="{{ $settings['favicon_url'] ?? asset('assets/img/favicon.ico') }}" type="image/gif" sizes="20x20">
+    <link rel="icon" href="{{ s3_asset($settings['favicon'] ?? 'assets/img/favicon.ico') }}" type="image/gif" sizes="20x20">
 
     @stack('meta')
     @stack('styles')
@@ -45,6 +45,7 @@
         :root {
             --primary-color1: {{ $settings['primary_color'] ?? '#BF2629' }} !important;
             --black-color: {{ $settings['secondary_color'] ?? '#717171' }} !important;
+            --tertiary-color: {{ $settings['tertiary_color'] ?? '#FFFFFF' }} !important;
         }
         
         /* Cart Icon Styles */

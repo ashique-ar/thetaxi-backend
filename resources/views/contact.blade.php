@@ -6,7 +6,7 @@
 
     <!-- Start Breadcrumb section -->
     <div class="breadcrumb-section"
-        style="background-image:linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url({{ $settings['contact_breadcrumb_image'] ? Storage::url($settings['contact_breadcrumb_image']) : asset('assets/img/innerpages/breadcrumb-bg2.jpg') }});">
+        style="background-image:linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url({{ s3_asset($settings['contact_breadcrumb_image'] ?? 'assets/img/innerpages/breadcrumb-bg2.jpg') }});">
         <div class="container">
             <div class="banner-content">
                 <h1>{{ $settings['contact_hero_heading'] ?? 'Contact Us' }}</h1>

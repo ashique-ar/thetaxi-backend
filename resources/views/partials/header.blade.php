@@ -40,12 +40,12 @@
     <div class="container-fluid d-flex flex-nowrap align-items-center justify-content-between">
         <div class="logo-and-menu-area">
             <a href="{{ route('home') }}" class="header-logo">
-                <img src="{{ isset($settings['logo_header']) && $settings['logo_header'] ? Storage::url($settings['logo_header']) : asset('assets/img/header-logo.png') }}" alt="{{ $settings['site_name'] ?? 'TheTaxi' }}">
+                <img src="{{ s3_asset($settings['logo_header'] ?? 'assets/img/header-logo.png') }}" alt="{{ $settings['logo_header_alt'] ?? $settings['site_name'] ?? 'TheTaxi' }}">
             </a>
             <div class="main-menu">
                 <div class="mobile-logo-area d-xl-none d-flex align-items-center justify-content-between">
                     <a href="{{ route('home') }}" class="mobile-logo-wrap">
-                        <img src="{{ isset($settings['logo_header']) && $settings['logo_header'] ? Storage::url($settings['logo_header']) : asset('assets/img/header-logo.png') }}" alt="{{ $settings['site_name'] ?? 'TheTaxi' }}">
+                        <img src="{{ s3_asset($settings['logo_mobile'] ?? $settings['logo_header'] ?? 'assets/img/header-logo.png') }}" alt="{{ $settings['logo_mobile_alt'] ?? $settings['site_name'] ?? 'TheTaxi' }}">
                     </a>
                     <div class="menu-close-btn">
                         <i class="bi bi-x"></i>

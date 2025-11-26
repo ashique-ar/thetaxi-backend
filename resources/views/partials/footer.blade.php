@@ -55,7 +55,7 @@
                 <div class="col-lg-3 col-md-4 col-sm-6">
                     <div class="footer-logo-and-addition-info">
                         <a href="{{ route('home') }}" class="footer-logo">
-                            <img src="{{ isset($settings['logo_footer']) && $settings['logo_footer'] ? Storage::url($settings['logo_footer']) : (isset($settings['logo_header']) && $settings['logo_header'] ? Storage::url($settings['logo_header']) : asset('assets/img/header-logo.png')) }}" alt="{{ $settings['site_name'] ?? 'TheTaxi' }}">
+                            <img src="{{ s3_asset($settings['logo_footer'] ?? $settings['logo_header'] ?? 'assets/img/header-logo.png') }}" alt="{{ $settings['logo_footer_alt'] ?? $settings['site_name'] ?? 'TheTaxi' }}">
                         </a>
                         <div class="address-area">
                             <span>{{ $settings['footer_company_tagline'] ?? ($settings['site_tagline'] ?? 'TheTaxi Professional Services') }}</span>

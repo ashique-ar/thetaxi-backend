@@ -3,7 +3,7 @@
 @section('content')
     <!-- Start Breadcrumb section -->
     <div class="breadcrumb-section"
-        style="background-image:linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url({{ $settings['about_breadcrumb_image'] ? Storage::url($settings['about_breadcrumb_image']) : asset('assets/img/innerpages/breadcrumb-bg2.jpg') }});">
+        style="background-image:linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url({{ s3_asset($settings['about_breadcrumb_image'] ?? 'assets/img/innerpages/breadcrumb-bg2.jpg') }});">
         <div class="container">
             <div class="banner-content">
                 <h1>{{ $settings['about_hero_heading'] ?? 'About TheTaxi' }}</h1>
