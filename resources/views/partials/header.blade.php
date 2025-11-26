@@ -39,7 +39,6 @@
 <header class="header-area style-2 travel-agency3">
     <div class="container-fluid d-flex flex-nowrap align-items-center justify-content-between">
         <div class="logo-and-menu-area">
-            @dump($settings['logo_header'])
             <a href="{{ route('home') }}" class="header-logo">
                 <img src="{{ s3_asset($settings['logo_header'] ?? 'assets/img/header-logo.png') }}" alt="{{ $settings['logo_header_alt'] ?? $settings['site_name'] ?? 'TheTaxi' }}">
             </a>
