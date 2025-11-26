@@ -24,15 +24,10 @@
                     <div class="col-xl-6 col-lg-7 wow animate fadeInLeft" data-wow-delay="200ms" data-wow-duration="1500ms">
                         <div class="about-content">
                             <div class="section-title">
-                                <h2>Why We’re Best Agency</h2>
-                                <h4>Welcome to TheTaxi Travel Agency – Your Gateway to Unforgettable Journeys!</h4>
-                                <p>TheTaxi Travel Agency is a trusted name in the travel industry, offering seamless travel
-                                    planning, personalized itineraries, and unforgettable adventures. With years of
-                                    experience and a network of global partners, we ensure a hassle-free and memorable
-                                    journey for every traveler.</p>
-                                <p>We believe that travel is more than just moving from one place to another—it’s about
-                                    discovering new cultures, creating unforgettable experiences, and making lifelong
-                                    memories.</p>
+                                <h2>{{ $settings['about_section_title'] ?? "Why We're Best Agency" }}</h2>
+                                <h4>{{ $settings['about_section_subtitle'] ?? 'Welcome to TheTaxi Travel Agency – Your Gateway to Unforgettable Journeys!' }}</h4>
+                                <p>{{ $settings['about_paragraph_1'] ?? 'TheTaxi Travel Agency is a trusted name in the travel industry, offering seamless travel planning, personalized itineraries, and unforgettable adventures. With years of experience and a network of global partners, we ensure a hassle-free and memorable journey for every traveler.' }}</p>
+                                <p>{{ $settings['about_paragraph_2'] ?? "We believe that travel is more than just moving from one place to another—it's about discovering new cultures, creating unforgettable experiences, and making lifelong memories." }}</p>
                             </div>
                             <div class="founder-area">
                                 <img src="{{ $settings['founder_signature'] ? Storage::url($settings['founder_signature']) : asset('assets/img/innerpages/about-page-founder-signature.png') }}"
@@ -65,7 +60,7 @@
                     data-wow-duration="1500ms">
                     <div class="col-lg-9">
                         <div class="section-title">
-                            <h2>We’re Providing Best Service Ever!</h2>
+                            <h2>{{ $settings['about_services_title'] ?? "We're Providing Best Service Ever!" }}</h2>
                             <svg height="6" viewBox="0 0 872 6" xmlns="http://www.w3.org/2000/svg">
                                 <path
                                     d="M5 2.5L0 0.113249V5.88675L5 3.5V2.5ZM867 3.5L872 5.88675V0.113249L867 2.5V3.5ZM4.5 3.5H867.5V2.5H4.5V3.5Z" />
@@ -144,9 +139,8 @@
                 data-wow-duration="1500ms">
                 <div class="col-lg-8">
                     <div class="section-title text-center">
-                        <h2>Behind The Journey</h2>
-                        <p>With years of experience in the travel industry, we specialize in crafting personalized journeys.
-                        </p>
+                        <h2>{{ $settings['about_journey_title'] ?? 'Behind The Journey' }}</h2>
+                        <p>{{ $settings['about_journey_description'] ?? 'With years of experience in the travel industry, we specialize in crafting personalized journeys.' }}</p>
                     </div>
                 </div>
             </div>
@@ -331,8 +325,8 @@
                 data-wow-duration="1500ms">
                 <div class="col-lg-8">
                     <div class="section-title text-center">
-                        <h2>Why Travel with Us?</h2>
-                        <p>We specialize in crafting personalized journeys that suit every traveler’s dream.</p>
+                        <h2>{{ $settings['about_why_travel_title'] ?? 'Why Travel with Us?' }}</h2>
+                        <p>{{ $settings['about_why_travel_description'] ?? "We specialize in crafting personalized journeys that suit every traveler's dream." }}</p>
                     </div>
                 </div>
             </div>
@@ -390,7 +384,7 @@
     <div class="partner-section mb-100">
         <div class="container">
             <div class="partner-title wow animate fadeInDown" data-wow-delay="200ms" data-wow-duration="1500ms">
-                <h5>Those Company You Can Easily Trust!</h5>
+                <h5>{{ $settings['partners_section_title'] ?? 'Those Company You Can Easily Trust!' }}</h5>
             </div>
             <div class="partner-wrap">
                 <div class="marquee">

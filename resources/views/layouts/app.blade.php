@@ -36,15 +36,15 @@
     <link rel="stylesheet" href="{{ asset('assets/css/booking-form.css?v=1.0.1') }}">
 
     <!-- Title -->
-    <title>@yield('title', 'TheTaxi - Your Reliable Taxi Service')</title>
-    <link rel="icon" href="{{ asset('assets/img/favicon.ico') }}" type="image/gif" sizes="20x20">
+    <title>@yield('title', $settings['site_name'] ?? 'TheTaxi - Your Reliable Taxi Service')</title>
+    <link rel="icon" href="{{ $settings['favicon_url'] ?? asset('assets/img/favicon.ico') }}" type="image/gif" sizes="20x20">
 
     @stack('meta')
     @stack('styles')
     <style>
         :root {
-            --primary-color1: #BF2629 !important;
-            --black-color: #717171 !important;
+            --primary-color1: {{ $settings['primary_color'] ?? '#BF2629' }} !important;
+            --black-color: {{ $settings['secondary_color'] ?? '#717171' }} !important;
         }
         
         /* Cart Icon Styles */

@@ -12,8 +12,8 @@
                     </g>
                 </svg>
                 <div class="content">
-                    <h6>To More Inquiry</h6>
-                    <span>Don't hesitate Call to TheTaxi.</span>
+                    <h6>{{ $settings['footer_inquiry_heading'] ?? 'To More Inquiry' }}</h6>
+                    <span>{{ $settings['footer_inquiry_subheading'] ?? "Don't hesitate Call to TheTaxi." }}</span>
                 </div>
             </div>
             <ul class="contact-area">
@@ -22,8 +22,8 @@
                         <img src="{{ asset('assets/img/home1/icon/whatsapp-icon2.svg') }}" alt="">
                     </div>
                     <div class="content">
-                        <span>WhatsApp</span>
-                        <a href="https://wa.me/+1234567890">+1 234 567 890</a>
+                        <span>{{ $settings['footer_whatsapp_label'] ?? 'WhatsApp' }}</span>
+                        <a href="https://wa.me/{{ preg_replace('/[^0-9+]/', '', $settings['company_whatsapp'] ?? $settings['company_phone'] ?? '+1234567890') }}">{{ $settings['company_whatsapp'] ?? $settings['company_phone'] ?? '+1 234 567 890' }}</a>
                     </div>
                 </li>
                 <li class="single-contact">
@@ -31,8 +31,8 @@
                         <img src="{{ asset('assets/img/home1/icon/mail-icon2.svg') }}" alt="">
                     </div>
                     <div class="content">
-                        <span>Mail Us</span>
-                        <a href="mailto:info@thetaxi.com">info@thetaxi.com</a>
+                        <span>{{ $settings['footer_email_label'] ?? 'Mail Us' }}</span>
+                        <a href="mailto:{{ $settings['company_email'] ?? 'info@thetaxi.com' }}">{{ $settings['company_email'] ?? 'info@thetaxi.com' }}</a>
                     </div>
                 </li>
                 <li class="single-contact">
@@ -40,8 +40,8 @@
                         <img src="{{ asset('assets/img/home1/icon/call-icon.svg') }}" alt="">
                     </div>
                     <div class="content">
-                        <span>Call Us</span>
-                        <a href="tel:+1234567890">+1 234 567 890</a>
+                        <span>{{ $settings['footer_phone_label'] ?? 'Call Us' }}</span>
+                        <a href="tel:{{ preg_replace('/[^0-9+]/', '', $settings['company_phone'] ?? '+1234567890') }}">{{ $settings['company_phone'] ?? '+1 234 567 890' }}</a>
                     </div>
                 </li>
             </ul>
@@ -55,17 +55,37 @@
                 <div class="col-lg-3 col-md-4 col-sm-6">
                     <div class="footer-logo-and-addition-info">
                         <a href="{{ route('home') }}" class="footer-logo">
-                            <img src="{{ asset('assets/img/header-logo.png') }}" alt="TheTaxi">
+                            <img src="{{ isset($settings['logo_footer']) && $settings['logo_footer'] ? Storage::url($settings['logo_footer']) : (isset($settings['logo_header']) && $settings['logo_header'] ? Storage::url($settings['logo_header']) : asset('assets/img/header-logo.png')) }}" alt="{{ $settings['site_name'] ?? 'TheTaxi' }}">
                         </a>
                         <div class="address-area">
-                            <span>TheTaxi Professional Services</span>
-                            <a href="#">123 Transport Avenue, Suite 100<br>Your City, State 12345, Country</a>
+                            <span>{{ $settings['footer_company_tagline'] ?? ($settings['site_tagline'] ?? 'TheTaxi Professional Services') }}</span>
+                            <a href="#">{{ $settings['company_address'] ?? '123 Transport Avenue, Suite 100, Your City, State 12345, Country' }}</a>
                         </div>
                         <ul class="social-list">
+                            @if($settings['social_facebook'] ?? null)
+                            <li><a href="{{ $settings['social_facebook'] }}"><i class="bx bxl-facebook"></i></a></li>
+                            @endif
+                            @if($settings['social_linkedin'] ?? null)
+                            <li><a href="{{ $settings['social_linkedin'] }}"><i class="bx bxl-linkedin"></i></a></li>
+                            @endif
+                            @if($settings['social_youtube'] ?? null)
+                            <li><a href="{{ $settings['social_youtube'] }}"><i class="bx bxl-youtube"></i></a></li>
+                            @endif
+                            @if($settings['social_instagram'] ?? null)
+                            <li><a href="{{ $settings['social_instagram'] }}"><i class="bx bxl-instagram-alt"></i></a></li>
+                            @endif
+                            @if($settings['social_twitter'] ?? null)
+                            <li><a href="{{ $settings['social_twitter'] }}"><i class="bx bxl-twitter"></i></a></li>
+                            @endif
+                            @if($settings['social_tiktok'] ?? null)
+                            <li><a href="{{ $settings['social_tiktok'] }}"><i class="bx bxl-tiktok"></i></a></li>
+                            @endif
+                            @if(!($settings['social_facebook'] ?? null) && !($settings['social_linkedin'] ?? null) && !($settings['social_youtube'] ?? null) && !($settings['social_instagram'] ?? null))
                             <li><a href="https://www.facebook.com/"><i class="bx bxl-facebook"></i></a></li>
                             <li><a href="https://www.linkedin.com/"><i class="bx bxl-linkedin"></i></a></li>
                             <li><a href="https://www.youtube.com/"><i class="bx bxl-youtube"></i></a></li>
                             <li><a href="https://www.instagram.com/"><i class="bx bxl-instagram-alt"></i></a></li>
+                            @endif
                         </ul>
                         <div class="language-area">
                             <div class="language-btn">
@@ -100,62 +120,82 @@
                 <div class="col-lg-3 col-md-4 col-sm-6 d-flex justify-content-md-end">
                     <div class="footer-widget">
                         <div class="widget-title">
-                            <h5>Our Services</h5>
+                            <h5>{{ $settings['footer_services_title'] ?? 'Our Services' }}</h5>
                         </div>
 
-                        {{-- <ul class="widget-list">
-                            <li><a href="{{ route('services', ['type' => 'airport_transfers']) }}">Airport Transfer</a></li>
-                            <li><a href="{{ route('services', ['type' => 'point_to_point']) }}">Drop & Pickup</a></li>
-                            <li><a href="{{ route('services', ['type' => 'ride_now']) }}">Car Rental</a></li>
-                            <li><a href="{{ route('services', ['type' => 'corporate_package']) }}">Corporate Services</a></li>
-                            <li><a href="{{ route('vehicles') }}">Luxury Cars</a></li>
-                            <li><a href="{{ route('vehicles') }}">Economy Cars</a></li>
-                            <li><a href="{{ route('vehicles') }}">SUVs & Vans</a></li>
-                            <li><a href="{{ route('services') }}">24/7 Service</a></li>
-                            <li><a href="{{ route('services') }}">City Tours</a></li>
-                            <li><a href="{{ route('services') }}">Long Distance</a></li>
-                            <li><a href="{{ route('services') }}">Event Transportation</a></li>
-                        </ul> --}}
+                        @php
+                            $servicesLinks = [];
+                            $i = 1;
+                            while(isset($settings["footer_services_link_{$i}_text"]) && $settings["footer_services_link_{$i}_text"]) {
+                                $servicesLinks[] = [
+                                    'text' => $settings["footer_services_link_{$i}_text"],
+                                    'url' => $settings["footer_services_link_{$i}_url"] ?? '#'
+                                ];
+                                $i++;
+                            }
+                        @endphp
+
+                        @if(!empty($servicesLinks))
+                            <ul class="widget-list">
+                                @foreach($servicesLinks as $link)
+                                    <li><a href="{{ $link['url'] }}">{{ $link['text'] }}</a></li>
+                                @endforeach
+                            </ul>
+                        @endif
                     </div>
                 </div>
                 <div class="col-lg-3 col-md-4 col-sm-6 d-flex justify-content-md-end">
                     <div class="footer-widget">
                         <div class="widget-title">
-                            <h5>Popular Routes</h5>
+                            <h5>{{ $settings['footer_routes_title'] ?? 'Popular Routes' }}</h5>
                         </div>
-                        {{-- <ul class="widget-list">
-                            <li><a href="{{ route('services') }}">City to Airport</a></li>
-                            <li><a href="{{ route('services') }}">Downtown Express</a></li>
-                            <li><a href="{{ route('services') }}">Business District</a></li>
-                            <li><a href="{{ route('services') }}">Hotel Transfers</a></li>
-                            <li><a href="{{ route('services') }}">Tourist Attractions</a></li>
-                            <li><a href="{{ route('services') }}">Shopping Centers</a></li>
-                            <li><a href="{{ route('services') }}">Medical Centers</a></li>
-                            <li><a href="{{ route('services') }}">Convention Centers</a></li>
-                            <li><a href="{{ route('services') }}">Sports Venues</a></li>
-                            <li><a href="{{ route('services') }}">Entertainment Districts</a></li>
-                            <li><a href="{{ route('services') }}">University Campus</a></li>
-                        </ul> --}}
+
+                        @php
+                            $routesLinks = [];
+                            $i = 1;
+                            while(isset($settings["footer_routes_link_{$i}_text"]) && $settings["footer_routes_link_{$i}_text"]) {
+                                $routesLinks[] = [
+                                    'text' => $settings["footer_routes_link_{$i}_text"],
+                                    'url' => $settings["footer_routes_link_{$i}_url"] ?? '#'
+                                ];
+                                $i++;
+                            }
+                        @endphp
+
+                        @if(!empty($routesLinks))
+                            <ul class="widget-list">
+                                @foreach($routesLinks as $link)
+                                    <li><a href="{{ $link['url'] }}">{{ $link['text'] }}</a></li>
+                                @endforeach
+                            </ul>
+                        @endif
                     </div>
                 </div>
                 <div class="col-lg-3 col-sm-6 d-flex justify-content-lg-end">
                     <div class="footer-widget">
                         <div class="widget-title">
-                            <h5>Support</h5>
+                            <h5>{{ $settings['footer_support_title'] ?? 'Support' }}</h5>
                         </div>
-                        <ul class="widget-list">
-                            <li><a href="{{ route('about') }}">About TheTaxi</a></li>
-                            <li><a href="{{ route('contact') }}">Contact Support</a></li>
-                            <li><a href="{{ route('faq') }}">FAQ</a></li>
-                            <li><a href="#">Booking Help</a></li>
-                            <li><a href="#">Payment Methods</a></li>
-                            <li><a href="#">Cancellation Policy</a></li>
-                            <li><a href="#">Safety Guidelines</a></li>
-                            <li><a href="#">Driver Partnership</a></li>
-                            <li><a href="#">Privacy Policy</a></li>
-                            <li><a href="#">Terms & Conditions</a></li>
-                            <li><a href="#">Sitemap</a></li>
-                        </ul>
+
+                        @php
+                            $supportLinks = [];
+                            $i = 1;
+                            while(isset($settings["footer_support_link_{$i}_text"]) && $settings["footer_support_link_{$i}_text"]) {
+                                $supportLinks[] = [
+                                    'text' => $settings["footer_support_link_{$i}_text"],
+                                    'url' => $settings["footer_support_link_{$i}_url"] ?? '#'
+                                ];
+                                $i++;
+                            }
+                        @endphp
+
+                        @if(!empty($supportLinks))
+                            <ul class="widget-list">
+                                @foreach($supportLinks as $link)
+                                    <li><a href="{{ $link['url'] }}">{{ $link['text'] }}</a></li>
+                                @endforeach
+                            </ul>
+                        @endif
                     </div>
                 </div>
             </div>
@@ -163,7 +203,7 @@
         <div class="footer-bottom">
             <div class="container">
                 <div class="copyright-and-payment-method-area">
-                    <p>Copyright {{ date('Y') }} <a href="{{ route('home') }}">TheTaxi</a> | All Rights Reserved.</p>
+                    <p>{{ $settings['footer_copyright_text'] ?? 'Copyright ' . date('Y') . ' <a href="' . route('home') . '">' . ($settings['site_name'] ?? 'TheTaxi') . '</a> | All Rights Reserved.' }}</p>
                     {{-- <div class="payment-method-area">
                         <span>Accepted Payment Methods :</span>
                         <ul>

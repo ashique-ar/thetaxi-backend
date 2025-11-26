@@ -40,12 +40,12 @@
     <div class="container-fluid d-flex flex-nowrap align-items-center justify-content-between">
         <div class="logo-and-menu-area">
             <a href="{{ route('home') }}" class="header-logo">
-                <img src="{{ asset('assets/img/header-logo.png') }}" alt="TheTaxi">
+                <img src="{{ isset($settings['logo_header']) && $settings['logo_header'] ? Storage::url($settings['logo_header']) : asset('assets/img/header-logo.png') }}" alt="{{ $settings['site_name'] ?? 'TheTaxi' }}">
             </a>
             <div class="main-menu">
                 <div class="mobile-logo-area d-xl-none d-flex align-items-center justify-content-between">
                     <a href="{{ route('home') }}" class="mobile-logo-wrap">
-                        <img src="{{ asset('assets/img/header-logo.png') }}" alt="TheTaxi">
+                        <img src="{{ isset($settings['logo_header']) && $settings['logo_header'] ? Storage::url($settings['logo_header']) : asset('assets/img/header-logo.png') }}" alt="{{ $settings['site_name'] ?? 'TheTaxi' }}">
                     </a>
                     <div class="menu-close-btn">
                         <i class="bi bi-x"></i>
@@ -106,8 +106,8 @@
                         </svg>
                     </div>
                     <div class="content">
-                        <span>Need Help?</span>
-                        <a href="tel:+1234567890">+1 234 567 890</a>
+                        <span>{{ $settings['header_help_label'] ?? 'Need Help?' }}</span>
+                        <a href="tel:{{ preg_replace('/[^0-9+]/', '', $settings['company_phone'] ?? '+1234567890') }}">{{ $settings['company_phone'] ?? '+1 234 567 890' }}</a>
                     </div>
                 </div>
                 
@@ -117,7 +117,7 @@
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                             <path d="M7 18C5.9 18 5.01 18.9 5.01 20C5.01 21.1 5.9 22 7 22C8.1 22 9 21.1 9 20C9 18.9 8.1 18 7 18ZM1 2V4H3L6.6 11.59L5.25 14.04C5.09 14.32 5 14.65 5 15C5 16.1 5.9 17 7 17H19V15H7.42C7.28 15 7.17 14.89 7.17 14.75L7.2 14.63L8.1 13H15.55C16.3 13 16.96 12.59 17.3 11.97L20.88 5H5.21L4.27 3H1ZM17 18C15.9 18 15.01 18.9 15.01 20C15.01 21.1 15.9 22 17 22C18.1 22 19 21.1 19 20C19 18.9 18.1 18 17 18Z" fill="currentColor"/>
                         </svg>
-                        <span class="ms-2">My Cart</span>
+                        <span class="ms-2">{{ $settings['header_cart_label'] ?? 'My Cart' }}</span>
                         <span class="cart-badge position-absolute" id="mobileCartBadge" style="display: none;">0</span>
                     </a>
                 </div>
@@ -191,8 +191,8 @@
                         </svg>
                     </div>
                     <div class="content">
-                        <span>Need Help?</span>
-                        <a href="tel:+1234567890">+1 234 567 890</a>
+                        <span>{{ $settings['header_help_label'] ?? 'Need Help?' }}</span>
+                        <a href="tel:{{ preg_replace('/[^0-9+]/', '', $settings['company_phone'] ?? '+1234567890') }}">{{ $settings['company_phone'] ?? '+1 234 567 890' }}</a>
                     </div>
                 </div>
                 <div class="search-bar">
@@ -209,17 +209,17 @@
                         <form>
                             <div class="search-group">
                                 <div class="form-inner2">
-                                    <input type="text" placeholder="Find Your Perfect Taxi Service">
+                                    <input type="text" placeholder="{{ $settings['header_search_placeholder'] ?? 'Find Your Perfect Taxi Service' }}">
                                     <button type="submit"><i class="bi bi-search"></i></button>
                                 </div>
                             </div>
                             <div class="quick-search">
                                 <ul>
-                                    <li>Quick Search :</li>
-                                    <li><a href="{{ route('home') }}">Airport Transfer,</a></li>
-                                    <li><a href="{{ route('home') }}">City Rides,</a></li>
-                                    <li><a href="{{ route('home') }}">Outstation,</a></li>
-                                    <li><a href="{{ route('home') }}">Rental,</a></li>
+                                    <li>{{ $settings['header_quick_search_label'] ?? 'Quick Search :' }}</li>
+                                    <li><a href="{{ route('home') }}">{{ $settings['header_quick_search_1'] ?? 'Airport Transfer' }},</a></li>
+                                    <li><a href="{{ route('home') }}">{{ $settings['header_quick_search_2'] ?? 'City Rides' }},</a></li>
+                                    <li><a href="{{ route('home') }}">{{ $settings['header_quick_search_3'] ?? 'Outstation' }},</a></li>
+                                    <li><a href="{{ route('home') }}">{{ $settings['header_quick_search_4'] ?? 'Rental' }},</a></li>
                                 </ul>
                             </div>
                         </form>

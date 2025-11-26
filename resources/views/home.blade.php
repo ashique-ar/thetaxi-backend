@@ -125,7 +125,7 @@
                 <div class="text-center mt-40 wow animate fadeInUp" data-wow-delay="400ms" data-wow-duration="1500ms">
                     <a href="{{ route('services', ['type' => 'ride_now']) }}" class="btn btn-primary featured-vehicles-btn">
                         <i class="bi bi-car-front-fill me-2"></i>
-                        View All Rental Vehicles
+                        {{ $settings['vehicles_view_all_text'] ?? 'View All Rental Vehicles' }}
                         <svg width="10" height="10" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg">
                             <path d="M1 9L9 1M9 1C7.22222 1.33333 3.33333 2 1 1M9 1C8.66667 2.66667 8 6.33333 9 9"
                                 stroke-width="1.5" stroke-linecap="round"></path>
@@ -467,8 +467,8 @@
                                 </svg>
                             </div>
                             <div class="content">
-                                <span>Need Help?</span>
-                                <a href="tel:91345533865">+91 345 533 865</a>
+                                <span>{{ $settings['header_help_label'] ?? 'Need Help?' }}</span>
+                                <a href="tel:{{ preg_replace('/[^0-9+]/', '', $settings['company_phone'] ?? '+1234567890') }}">{{ $settings['company_phone'] ?? '+1 234 567 890' }}</a>
                             </div>
                         </div>
                     </div>
