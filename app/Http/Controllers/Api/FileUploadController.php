@@ -41,7 +41,7 @@ class FileUploadController extends Controller
         // Validate basic requirements
         $validator = Validator::make($request->all(), [
             'file' => 'required|file|max:51200', // 50MB max
-            'category' => 'string|in:general,vehicles,gallery,documents,avatars,thumbnails',
+            'category' => 'string',
             'path' => 'string|max:255',
             'thumbnail' => 'boolean',
             'width' => 'integer|min:1|max:4096',
