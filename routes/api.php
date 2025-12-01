@@ -56,6 +56,8 @@ use App\Http\Controllers\Api\Vehicle\VehiclePricing\VehiclePricingSlabDefinition
 use App\Http\Controllers\Api\Vehicle\VehiclePricing\VehicleGroupPricingController;
 use App\Http\Controllers\Api\Vehicle\VehiclePricing\VehiclePricingCommonRateDefinitionController;
 use App\Http\Controllers\Api\Vehicle\VehiclePricing\VehiclePricingCalculationDefinitionController;
+use App\Http\Controllers\Api\Vehicle\VehiclePricing\KmRangePricingController;
+use App\Http\Controllers\Api\Vehicle\VehiclePricing\PriceAdjustmentController;
 
 use App\Http\Controllers\Api\VipTypeController;
 use App\Http\Controllers\Api\Website\CmsContentController;
@@ -330,11 +332,6 @@ Route::middleware(['auth:api'])->group(function () {
             Route::apiResource('vehicle-transmissions', VehicleTransmissionController::class);
             // Route::apiResource('vehicle-discounts', VehicleDiscountController::class);
 
-            Route::prefix('service-types')->group(function () {
-                Route::post('/{id}/toggle-status', [ServiceTypeController::class, 'toggleStatus']);
-            });
-            Route::apiResource('service-types', ServiceTypeController::class);
-
 
             Route::prefix('pricing-slab-definitions')->group(function () {
                 Route::get('/', [VehiclePricingSlabDefinitionController::class, 'index']);
@@ -397,6 +394,37 @@ Route::middleware(['auth:api'])->group(function () {
                 Route::get('/{id}', [VehiclePricingCalculationDefinitionController::class, 'show']);
                 Route::put('/{id}', [VehiclePricingCalculationDefinitionController::class, 'update']);
                 Route::delete('/{id}', [VehiclePricingCalculationDefinitionController::class, 'destroy']);
+            });
+
+            // KM-Range Pricing Management
+            Route::prefix('km-range-pricing')->group(function () {
+                Route::get('/', [KmRangePricingController::class, 'index']);
+                Route::post('/', [KmRangePricingController::class, 'store']);
+                Route::get('/service-types', [KmRangePricingController::class, 'getServiceTypes']);
+                Route::get('/vehicle-groups', [KmRangePricingController::class, 'getVehicleGroups']);
+                Route::post('/applicable-rules', [KmRangePricingController::class, 'getApplicableRules']);
+                Route::post('/calculate-pricing', [KmRangePricingController::class, 'calculatePricing']);
+                Route::post('/bulk-update-status', [KmRangePricingController::class, 'bulkUpdateStatus']);
+                Route::get('/{id}', [KmRangePricingController::class, 'show']);
+                Route::put('/{id}', [KmRangePricingController::class, 'update']);
+                Route::delete('/{id}', [KmRangePricingController::class, 'destroy']);
+                Route::patch('/{id}/toggle-status', [KmRangePricingController::class, 'toggleStatus']);
+            });
+
+            // Price Adjustments Management
+            Route::prefix('price-adjustments')->group(function () {
+                Route::get('/', [PriceAdjustmentController::class, 'index']);
+                Route::post('/', [PriceAdjustmentController::class, 'store']);
+                Route::get('/service-types', [PriceAdjustmentController::class, 'getServiceTypes']);
+                Route::get('/vehicle-groups', [PriceAdjustmentController::class, 'getVehicleGroups']);
+                Route::post('/applicable-adjustments', [PriceAdjustmentController::class, 'getApplicableAdjustments']);
+                Route::post('/apply-adjustments', [PriceAdjustmentController::class, 'applyAdjustments']);
+                Route::post('/bulk-update-status', [PriceAdjustmentController::class, 'bulkUpdateStatus']);
+                Route::get('/{id}', [PriceAdjustmentController::class, 'show']);
+                Route::put('/{id}', [PriceAdjustmentController::class, 'update']);
+                Route::delete('/{id}', [PriceAdjustmentController::class, 'destroy']);
+                Route::patch('/{id}/toggle-status', [PriceAdjustmentController::class, 'toggleStatus']);
+                Route::get('/{id}/usage-statistics', [PriceAdjustmentController::class, 'getUsageStatistics']);
             });
 
 

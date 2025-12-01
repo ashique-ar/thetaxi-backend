@@ -131,15 +131,15 @@
         </div>
         @endif
         
-        <div class="availability-indicator">
+        {{-- <div class="availability-indicator">
             <small class="text-muted">
                 <i class="bi bi-car-front-fill"></i>
                 {{ $availability['available'] }} / {{ $availability['total'] }} Available
             </small>
-        </div>
+        </div> --}}
 
         <!-- Features/Inclusions -->
-        @if(isset($pricing['includes_driver']) || isset($pricing['includes_fuel']))
+        {{-- @if(isset($pricing['includes_driver']) || isset($pricing['includes_fuel']))
         <div class="vehicle-inclusions">
             @if($pricing['includes_driver'] ?? false)
             <span class="inclusion-badge">
@@ -152,7 +152,7 @@
             </span>
             @endif
         </div>
-        @endif
+        @endif --}}
 
         <!-- Enhanced Pricing Section -->
         <div class="vehicle-pricing mt-auto">

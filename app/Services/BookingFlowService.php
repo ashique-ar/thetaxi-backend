@@ -17,6 +17,9 @@ use App\Models\Customer;
 use App\Models\ServiceType;
 use App\Models\Company;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCalculationDefinition;
+use App\Models\Vehicle\VehiclePricing\KmRangePricingRule;
+use App\Models\Vehicle\VehiclePricing\PriceAdjustment;
+use App\Models\Vehicle\VehiclePricing\BookingPriceAdjustmentHistory;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -2467,6 +2470,29 @@ Log::info("Dynamic pricing calculation result", ['result' => $calculationResult]
             'requires_approval' => $result['requires_approval'] ?? false,
         ];
 
+        // Apply KM-range pricing rules and price adjustments
+        $kmRangePricingResult = $this->applyKmRangePricing($params, $result['summary']['total']);
+        $priceAdjustmentResult = $this->applyPriceAdjustments($params, $kmRangePricingResult['final_amount']);
+
+        // Update final totals with KM-range pricing and adjustments
+        $finalAmountAfterKmRangeAndAdjustments = $priceAdjustmentResult['final_amount'];
+        $totalKmRangeAdjustment = $kmRangePricingResult['total_adjustment'];
+        $totalPriceAdjustment = $priceAdjustmentResult['total_adjustment'];
+
+        $result['km_range_pricing'] = $kmRangePricingResult;
+        $result['price_adjustments'] = $priceAdjustmentResult;
+        
+        // Update final breakdown to include all adjustments
+        $result['final_breakdown'] = [
+            'subtotal_before_discount' => ($result['summary']['total'] ?? $result['summary']['subtotal'] ?? 0),
+            'total_discount' => $discountSummary['total_discount_amount'] ?? 0,
+            'amount_after_discount' => ($result['summary']['total'] ?? 0) - ($discountSummary['total_discount_amount'] ?? 0),
+            'km_range_adjustment' => $totalKmRangeAdjustment,
+            'price_adjustment' => $totalPriceAdjustment,
+            'final_amount' => $finalAmountAfterKmRangeAndAdjustments,
+            'requires_approval' => $result['requires_approval'] ?? false,
+        ];
+
         // Enhanced pricing breakdown with before/after customizations
         $result['detailed_breakdown'] = [
             'price_before_customizations' => [
@@ -2478,6 +2504,8 @@ Log::info("Dynamic pricing calculation result", ['result' => $calculationResult]
                 'base_overrides' => $result['summary']['subtotal_without_customizations'] != $result['summary']['subtotal'] ? true : false,
                 'addon_overrides' => $result['summary']['addons_total_without_customizations'] != $result['summary']['addons_total'] ? true : false,
                 'discount_overrides' => $result['discount_summary']['total_discount_amount'] > 0 ? true : false,
+                'km_range_pricing_applied' => $totalKmRangeAdjustment != 0,
+                'price_adjustments_applied' => $totalPriceAdjustment != 0,
                 'variable_customizations' => !empty($params['variable_customizations']),
             ],
             'price_after_customizations' => [
@@ -2486,6 +2514,8 @@ Log::info("Dynamic pricing calculation result", ['result' => $calculationResult]
                 'subtotal' => $result['summary']['total'] ?? 0
             ],
             'discounts_applied' =>  $result['discount_summary'],
+            'km_range_pricing_applied' => $result['km_range_pricing'],
+            'price_adjustments_applied' => $result['price_adjustments'],
             'final_totals' =>  $result['final_breakdown'],
         ];
 
@@ -6124,5 +6154,278 @@ Log::info("Dynamic pricing calculation result", ['result' => $calculationResult]
         }
 
         return $history;
+    }
+
+    /**
+     * Apply KM-range pricing rules
+     * Integrates with the existing pricing calculation to apply distance-based pricing
+     */
+    private function applyKmRangePricing(array $params, float $baseAmount): array
+    {
+        try {
+            // Extract distance information from params
+            $totalDistance = $this->calculateTotalDistance($params);
+            
+            if ($totalDistance === 0) {
+                return [
+                    'rules_applied' => [],
+                    'total_adjustment' => 0,
+                    'final_amount' => $baseAmount,
+                    'calculation_summary' => 'No distance available for KM-range pricing',
+                ];
+            }
+
+            $serviceTypeId = $params['service_type_id'] ?? null;
+            $vehicleGroupId = $params['vehicle_group_id'] ?? null;
+            $calculationDate = isset($params['from_date']) ? Carbon::parse($params['from_date']) : now();
+
+            Log::info("Applying KM-range pricing", [
+                'distance' => $totalDistance,
+                'service_type_id' => $serviceTypeId,
+                'vehicle_group_id' => $vehicleGroupId,
+                'base_amount' => $baseAmount,
+            ]);
+
+            $result = KmRangePricingRule::calculateBestPricing(
+                $totalDistance,
+                $baseAmount,
+                $serviceTypeId,
+                $vehicleGroupId,
+                $calculationDate
+            );
+
+            Log::info("KM-range pricing result", ['result' => $result]);
+
+            return $result;
+
+        } catch (\Exception $e) {
+            Log::error("KM-range pricing calculation failed: " . $e->getMessage(), [
+                'params' => $params,
+                'base_amount' => $baseAmount,
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return [
+                'rules_applied' => [],
+                'total_adjustment' => 0,
+                'final_amount' => $baseAmount,
+                'calculation_summary' => 'KM-range pricing calculation failed',
+                'error' => $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * Apply seasonal and promotional price adjustments
+     */
+    private function applyPriceAdjustments(array $params, float $amount): array
+    {
+        try {
+            $serviceTypeId = $params['service_type_id'] ?? null;
+            $vehicleGroupId = $params['vehicle_group_id'] ?? null;
+            $calculationDate = isset($params['from_date']) ? Carbon::parse($params['from_date']) : now();
+            $priceComponent = 'total_price'; // Can be customized based on business rules
+
+            Log::info("Applying price adjustments", [
+                'amount' => $amount,
+                'service_type_id' => $serviceTypeId,
+                'vehicle_group_id' => $vehicleGroupId,
+                'price_component' => $priceComponent,
+            ]);
+
+            $result = PriceAdjustment::applyAdjustments(
+                $amount,
+                $serviceTypeId,
+                $vehicleGroupId,
+                $priceComponent,
+                $calculationDate
+            );
+
+            // Increment usage count for applied adjustments
+            if (!empty($result['adjustments_applied'])) {
+                foreach ($result['adjustments_applied'] as $appliedAdjustment) {
+                    if (isset($appliedAdjustment['adjustment_info']['id'])) {
+                        $adjustment = PriceAdjustment::find($appliedAdjustment['adjustment_info']['id']);
+                        if ($adjustment && $adjustment->usage_limit !== null) {
+                            $adjustment->incrementUsage();
+                        }
+                    }
+                }
+            }
+
+            Log::info("Price adjustments result", ['result' => $result]);
+
+            return $result;
+
+        } catch (\Exception $e) {
+            Log::error("Price adjustments calculation failed: " . $e->getMessage(), [
+                'params' => $params,
+                'amount' => $amount,
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return [
+                'adjustments_applied' => [],
+                'total_adjustment' => 0,
+                'final_amount' => $amount,
+                'calculation_summary' => 'Price adjustments calculation failed',
+                'error' => $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * Calculate total distance from pickup and dropoff locations
+     * Integrates with existing distance calculation methods
+     */
+    private function calculateTotalDistance(array $params): float
+    {
+        $totalDistance = 0;
+
+        // Check for existing distance calculations in the params
+        if (isset($params['total_distance']) && $params['total_distance'] > 0) {
+            return (float) $params['total_distance'];
+        }
+
+        // Use existing distance calculation methods
+        if (isset($params['pickup_location']) && isset($params['dropoff_location'])) {
+            $pickupLocation = $params['pickup_location'];
+            $dropoffLocation = $params['dropoff_location'];
+            
+            // Use the existing company distances calculation
+            $serviceType = $params['service_type'] ?? null;
+            $vehicleId = $params['vehicle_id'] ?? null;
+            
+            $distanceCalculations = $this->calculateCompanyDistances(
+                $pickupLocation,
+                $dropoffLocation,
+                $serviceType,
+                $vehicleId
+            );
+
+            // Sum all relevant distances
+            $totalDistance += $distanceCalculations['pickup_distance'] ?? 0;
+            $totalDistance += $distanceCalculations['return_distance'] ?? 0;
+            $totalDistance += $distanceCalculations['main_distance'] ?? 0;
+        }
+
+        // Check for individual distance components in params
+        $totalDistance += $params['pickup_distance'] ?? 0;
+        $totalDistance += $params['dropoff_distance'] ?? 0;
+        $totalDistance += $params['return_distance'] ?? 0;
+        $totalDistance += $params['main_journey_distance'] ?? 0;
+
+        return $totalDistance;
+    }
+
+    /**
+     * Record price adjustment history for a booking
+     * Called when a booking is confirmed to track applied adjustments
+     */
+    public function recordPricingAdjustmentHistory(
+        string $bookingId,
+        array $kmRangePricingResult,
+        array $priceAdjustmentResult,
+        float $originalAmount,
+        float $finalAmount
+    ): void {
+        try {
+            DB::transaction(function () use ($bookingId, $kmRangePricingResult, $priceAdjustmentResult, $originalAmount, $finalAmount) {
+                // Record KM-range pricing rules applied
+                if (!empty($kmRangePricingResult['rules_applied'])) {
+                    foreach ($kmRangePricingResult['rules_applied'] as $appliedRule) {
+                        if (isset($appliedRule['rule_info']['id'])) {
+                            BookingPriceAdjustmentHistory::recordAdjustment(
+                                $bookingId,
+                                null, // No price adjustment ID for KM-range rules
+                                $appliedRule['rule_info']['id'],
+                                $appliedRule['adjustment_amount'],
+                                $originalAmount,
+                                $appliedRule['final_amount'],
+                                $appliedRule['calculation_details'],
+                                'KM-range pricing rule applied: ' . $appliedRule['rule_info']['name']
+                            );
+                        }
+                    }
+                }
+
+                // Record price adjustments applied
+                if (!empty($priceAdjustmentResult['adjustments_applied'])) {
+                    foreach ($priceAdjustmentResult['adjustments_applied'] as $appliedAdjustment) {
+                        if (isset($appliedAdjustment['adjustment_info']['id'])) {
+                            BookingPriceAdjustmentHistory::recordAdjustment(
+                                $bookingId,
+                                $appliedAdjustment['adjustment_info']['id'],
+                                null, // No KM-range rule ID for price adjustments
+                                $appliedAdjustment['adjustment_amount'],
+                                $originalAmount,
+                                $appliedAdjustment['final_amount'],
+                                $appliedAdjustment['calculation_details'],
+                                'Price adjustment applied: ' . $appliedAdjustment['adjustment_info']['name']
+                            );
+                        }
+                    }
+                }
+            });
+
+            Log::info("Recorded pricing adjustment history for booking", [
+                'booking_id' => $bookingId,
+                'km_range_rules_count' => count($kmRangePricingResult['rules_applied'] ?? []),
+                'price_adjustments_count' => count($priceAdjustmentResult['adjustments_applied'] ?? []),
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error("Failed to record pricing adjustment history", [
+                'booking_id' => $bookingId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+        }
+    }
+
+    /**
+     * Get pricing adjustment history for a booking
+     * Used for displaying adjustment details to users
+     */
+    public function getPricingAdjustmentHistory(string $bookingId): array
+    {
+        try {
+            $history = BookingPriceAdjustmentHistory::getBookingAdjustmentHistory($bookingId);
+            
+            $formattedHistory = [];
+            foreach ($history as $record) {
+                $formattedHistory[] = [
+                    'id' => $record->id,
+                    'type' => $record->price_adjustment_id ? 'price_adjustment' : 'km_range_pricing',
+                    'name' => $record->priceAdjustment?->name ?? $record->kmRangePricingRule?->name ?? 'Unknown',
+                    'adjustment_amount' => $record->adjustment_amount,
+                    'original_amount' => $record->original_amount,
+                    'final_amount' => $record->final_amount,
+                    'breakdown' => $record->adjustment_breakdown,
+                    'reason' => $record->adjustment_reason,
+                    'applied_by' => $record->appliedByUser?->name ?? 'System',
+                    'applied_at' => $record->applied_at->toISOString(),
+                ];
+            }
+
+            return [
+                'success' => true,
+                'history' => $formattedHistory,
+                'total_records' => count($formattedHistory),
+            ];
+
+        } catch (\Exception $e) {
+            Log::error("Failed to get pricing adjustment history", [
+                'booking_id' => $bookingId,
+                'error' => $e->getMessage()
+            ]);
+
+            return [
+                'success' => false,
+                'history' => [],
+                'total_records' => 0,
+                'error' => $e->getMessage(),
+            ];
+        }
     }
 }
