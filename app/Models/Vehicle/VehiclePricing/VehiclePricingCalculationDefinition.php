@@ -444,7 +444,7 @@ class VehiclePricingCalculationDefinition extends Model
     {
         $result = [
             'journey_distance' => $inputs['journey_distance'] ?? $inputs['total_distance'] ?? 0,
-            'allowed_km' => 0,
+            'allowed_km' => 100,
             'extra_km' => 0,
             'daily_overage' => 0,
             'package_overage' => 0,
