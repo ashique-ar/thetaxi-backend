@@ -111,7 +111,7 @@ class KmRangePricingController extends Controller
         }
 
         try {
-            $rule = KmRangePricingRule::create($request->validated());
+            $rule = KmRangePricingRule::create($validator->validated());
             $rule->load(['serviceType', 'vehicleGroup']);
 
             Log::info("KM-range pricing rule created", [
@@ -175,7 +175,7 @@ class KmRangePricingController extends Controller
 
         try {
             $rule = KmRangePricingRule::findOrFail($id);
-            $rule->update($request->validated());
+            $rule->update($validator->validated());
             $rule->load(['serviceType', 'vehicleGroup']);
 
             Log::info("KM-range pricing rule updated", [

@@ -126,7 +126,7 @@ class PriceAdjustmentController extends Controller
         }
 
         try {
-            $adjustment = PriceAdjustment::create($request->validated());
+            $adjustment = PriceAdjustment::create($validator->validated());
             $adjustment->load(['serviceType', 'vehicleGroup']);
 
             Log::info("Price adjustment created", [
@@ -190,7 +190,7 @@ class PriceAdjustmentController extends Controller
 
         try {
             $adjustment = PriceAdjustment::findOrFail($id);
-            $adjustment->update($request->validated());
+            $adjustment->update($validator->validated());
             $adjustment->load(['serviceType', 'vehicleGroup']);
 
             Log::info("Price adjustment updated", [
