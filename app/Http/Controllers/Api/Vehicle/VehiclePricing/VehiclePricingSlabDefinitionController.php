@@ -129,11 +129,14 @@ class VehiclePricingSlabDefinitionController extends Controller
             'slab_definitions' => 'required|array|min:1',
             'slab_definitions.*.service_type_id' => 'required|uuid|exists:service_types,id',
             'slab_definitions.*.name' => 'required|string|max:255',
-            'slab_definitions.*.min_days' => 'required|integer|min:1',
-            'slab_definitions.*.max_days' => 'nullable|integer|gt:slab_definitions.*.min_days',
-            'slab_definitions.*.description' => 'nullable|string|max:500',
+            'slab_definitions.*.type' => 'required|in:hours,days',
+            'slab_definitions.*.min_hours' => 'nullable|integer|min:0',
+            'slab_definitions.*.max_hours' => 'nullable|integer|gte:slab_definitions.*.min_hours',
+            'slab_definitions.*.min_days' => 'nullable|integer|min:0',
+            'slab_definitions.*.max_days' => 'nullable|integer|gte:slab_definitions.*.min_days',
+            'slab_definitions.*.max_km_per_day' => 'nullable|integer|min:0',
+            'slab_definitions.*.max_km_per_package' => 'nullable|integer|min:0',
             'slab_definitions.*.sort_order' => 'nullable|integer|min:0',
-            'slab_definitions.*.is_active' => 'boolean',
         ]);
 
         if ($validator->fails()) {
@@ -152,16 +155,33 @@ class VehiclePricingSlabDefinitionController extends Controller
 
         try {
             foreach ($slabDefinitions as $index => $definitionData) {
-                // Check for overlapping ranges
+                // Check for overlapping ranges based on type
                 $existingOverlap = VehiclePricingSlabDefinition::forServiceType($definitionData['service_type_id'])
+                    ->where('type', $definitionData['type'])
                     ->where(function ($query) use ($definitionData) {
-                        $maxDays = $definitionData['max_days'] ?? 999;
-                        $query->whereBetween('min_days', [$definitionData['min_days'], $maxDays])
-                            ->orWhereBetween('max_days', [$definitionData['min_days'], $maxDays])
-                            ->orWhere(function ($subQuery) use ($definitionData, $maxDays) {
-                                $subQuery->where('min_days', '<=', $definitionData['min_days'])
-                                    ->where('max_days', '>=', $maxDays);
+                        if ($definitionData['type'] === 'hours') {
+                            $minHours = $definitionData['min_hours'] ?? 0;
+                            $maxHours = $definitionData['max_hours'] ?? 999999;
+                            $query->where(function ($q) use ($minHours, $maxHours) {
+                                $q->whereBetween('min_hours', [$minHours, $maxHours])
+                                  ->orWhereBetween('max_hours', [$minHours, $maxHours])
+                                  ->orWhere(function ($subQ) use ($minHours, $maxHours) {
+                                      $subQ->where('min_hours', '<=', $minHours)
+                                           ->where('max_hours', '>=', $maxHours);
+                                  });
                             });
+                        } else {
+                            $minDays = $definitionData['min_days'] ?? 0;
+                            $maxDays = $definitionData['max_days'] ?? 999;
+                            $query->where(function ($q) use ($minDays, $maxDays) {
+                                $q->whereBetween('min_days', [$minDays, $maxDays])
+                                  ->orWhereBetween('max_days', [$minDays, $maxDays])
+                                  ->orWhere(function ($subQ) use ($minDays, $maxDays) {
+                                      $subQ->where('min_days', '<=', $minDays)
+                                           ->where('max_days', '>=', $maxDays);
+                                  });
+                            });
+                        }
                     })
                     ->first();
 
@@ -209,7 +229,7 @@ class VehiclePricingSlabDefinitionController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'slab_definitions' => 'required|array|min:1',
-            'slab_definitions.*.id' => 'required|uuid|exists:pricing_slab_definitions,id',
+            'slab_definitions.*.id' => 'required|uuid|exists:vehicle_pricing_slab_definitions,id',
             'slab_definitions.*.sort_order' => 'required|integer|min:0',
         ]);
 
