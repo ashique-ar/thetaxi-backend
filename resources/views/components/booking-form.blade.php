@@ -283,10 +283,10 @@
                         class="location-search @error('pickup') is-invalid @enderror" 
                         value="{{ old('pickup', (isset($search) && isset($search->pickup_location)) ? $search->pickup_location : 'Colombo, Sri Lanka') }}"
                         required>
-                    <input type="hidden" name="from_lat" class="location-lat" 
-                        value="{{ old('from_lat', (isset($search) && isset($search->pickup_latitude)) ? $search->pickup_latitude : '6.9271') }}">
-                    <input type="hidden" name="from_lng" class="location-lng" 
-                        value="{{ old('from_lng', (isset($search) && isset($search->pickup_longitude)) ? $search->pickup_longitude : '79.8612') }}">
+                    <input type="hidden" name="pickup_lat" class="location-lat" 
+                        value="{{ old('pickup_lat', (isset($search) && isset($search->pickup_latitude)) ? $search->pickup_latitude : '6.9271') }}">
+                    <input type="hidden" name="pickup_lng" class="location-lng" 
+                        value="{{ old('pickup_lng', (isset($search) && isset($search->pickup_longitude)) ? $search->pickup_longitude : '79.8612') }}">
                 </div>
                 @error('pickup')
                     <span class="text-danger small">{{ $message }}</span>
@@ -308,10 +308,10 @@
                         class="location-search @error('dropoff') is-invalid @enderror" 
                         value="{{ old('dropoff', (isset($search) && isset($search->dropoff_location)) ? $search->dropoff_location : 'Galle, Sri Lanka') }}"
                         required>
-                    <input type="hidden" name="to_lat" class="location-lat" 
-                        value="{{ old('to_lat', (isset($search) && isset($search->dropoff_latitude)) ? $search->dropoff_latitude : '6.0535') }}">
-                    <input type="hidden" name="to_lng" class="location-lng" 
-                        value="{{ old('to_lng', (isset($search) && isset($search->dropoff_longitude)) ? $search->dropoff_longitude : '80.221') }}">
+                    <input type="hidden" name="dropoff_lat" class="location-lat" 
+                        value="{{ old('dropoff_lat', (isset($search) && isset($search->dropoff_latitude)) ? $search->dropoff_latitude : '6.0535') }}">
+                    <input type="hidden" name="dropoff_lng" class="location-lng" 
+                        value="{{ old('dropoff_lng', (isset($search) && isset($search->dropoff_longitude)) ? $search->dropoff_longitude : '80.221') }}">
                 </div>
                 @error('dropoff')
                     <span class="text-danger small">{{ $message }}</span>
@@ -1027,21 +1027,44 @@
             console.log('=== FORM SUBMISSION COORDINATE CHECK ===');
             debugCoordinates();
             
-            // Validate coordinates before submission
             const form = this;
-            const fromLat = form.querySelector('input[name="from_lat"]');
-            const fromLng = form.querySelector('input[name="from_lng"]');
-            const toLat = form.querySelector('input[name="to_lat"]');
-            const toLng = form.querySelector('input[name="to_lng"]');
+            const formId = form.id;
+            let hasValidCoordinates = false;
             
-            const hasValidCoordinates = (fromLat && fromLat.value && fromLng && fromLng.value && 
-                                       toLat && toLat.value && toLng && toLng.value);
+            // Check coordinates based on form type
+            if (formId === 'airport_transfers-form') {
+                const fromLat = form.querySelector('input[name="from_lat"]');
+                const fromLng = form.querySelector('input[name="from_lng"]');
+                const toLat = form.querySelector('input[name="to_lat"]');
+                const toLng = form.querySelector('input[name="to_lng"]');
+                
+                hasValidCoordinates = (fromLat && fromLat.value && fromLng && fromLng.value && 
+                                     toLat && toLat.value && toLng && toLng.value);
+                                     
+                console.log('Airport Transfer coordinates check:', {
+                    fromLat: fromLat?.value, fromLng: fromLng?.value,
+                    toLat: toLat?.value, toLng: toLng?.value
+                });
+            } else if (formId === 'ride_now-form') {
+                const pickupLat = form.querySelector('input[name="pickup_lat"]');
+                const pickupLng = form.querySelector('input[name="pickup_lng"]');
+                const dropoffLat = form.querySelector('input[name="dropoff_lat"]');
+                const dropoffLng = form.querySelector('input[name="dropoff_lng"]');
+                
+                hasValidCoordinates = (pickupLat && pickupLat.value && pickupLng && pickupLng.value && 
+                                     dropoffLat && dropoffLat.value && dropoffLng && dropoffLng.value);
+                                     
+                console.log('Ride Now coordinates check:', {
+                    pickupLat: pickupLat?.value, pickupLng: pickupLng?.value,
+                    dropoffLat: dropoffLat?.value, dropoffLng: dropoffLng?.value
+                });
+            }
             
             if (!hasValidCoordinates) {
-                console.warn('WARNING: Some coordinates are missing!');
+                console.warn('WARNING: Some coordinates are missing for form:', formId);
                 // Still allow submission but log the warning
             } else {
-                console.log('✓ All coordinates present for submission');
+                console.log('✓ All coordinates present for submission of form:', formId);
             }
         });
         });

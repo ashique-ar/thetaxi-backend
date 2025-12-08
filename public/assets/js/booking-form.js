@@ -223,13 +223,13 @@
                 'input[name="dropoff"]'
             );
             const pickupLat = rentalForm.querySelector(
-                'input[name="from_lat"]'
+                'input[name="pickup_lat"]'
             );
             const pickupLng = rentalForm.querySelector(
-                'input[name="from_lng"]'
+                'input[name="pickup_lng"]'
             );
-            const dropoffLat = rentalForm.querySelector('input[name="to_lat"]');
-            const dropoffLng = rentalForm.querySelector('input[name="to_lng"]');
+            const dropoffLat = rentalForm.querySelector('input[name="dropoff_lat"]');
+            const dropoffLng = rentalForm.querySelector('input[name="dropoff_lng"]');
 
             if (pickupInput && !pickupInput.value) {
                 pickupInput.value = "Colombo, Sri Lanka";
@@ -638,21 +638,27 @@
             }
         } else if (input.name === "pickup") {
             const form = input.closest("form");
-            const latInput = form.querySelector('input[name="from_lat"]');
-            const lngInput = form.querySelector('input[name="from_lng"]');
+            const latInput = form.querySelector('input[name="pickup_lat"]');
+            const lngInput = form.querySelector('input[name="pickup_lng"]');
 
             if (place.geometry && latInput && lngInput) {
                 latInput.value = place.geometry.location.lat();
                 lngInput.value = place.geometry.location.lng();
+                console.log('Updated pickup coordinates via Google Places:', latInput.value, lngInput.value);
+            } else {
+                console.error('Could not find pickup coordinate fields or place geometry');
             }
         } else if (input.name === "dropoff") {
             const form = input.closest("form");
-            const latInput = form.querySelector('input[name="to_lat"]');
-            const lngInput = form.querySelector('input[name="to_lng"]');
+            const latInput = form.querySelector('input[name="dropoff_lat"]');
+            const lngInput = form.querySelector('input[name="dropoff_lng"]');
 
             if (place.geometry && latInput && lngInput) {
                 latInput.value = place.geometry.location.lat();
                 lngInput.value = place.geometry.location.lng();
+                console.log('Updated dropoff coordinates via Google Places:', latInput.value, lngInput.value);
+            } else {
+                console.error('Could not find dropoff coordinate fields or place geometry');
             }
         }
     }
@@ -2681,24 +2687,41 @@
      * Debug function to log current coordinate values
      */
     function logCoordinateValues() {
-        const forms = ['airport_transfers-form', 'ride_now-form'];
+        console.log('=== COORDINATE VALUES DEBUG ===');
         
-        forms.forEach(formId => {
-            const form = document.getElementById(formId);
-            if (form) {
-                const fromLat = form.querySelector('input[name="from_lat"]');
-                const fromLng = form.querySelector('input[name="from_lng"]');
-                const toLat = form.querySelector('input[name="to_lat"]');
-                const toLng = form.querySelector('input[name="to_lng"]');
-                
-                console.log(`${formId} coordinates:`, {
-                    fromLat: fromLat?.value || 'not found',
-                    fromLng: fromLng?.value || 'not found',
-                    toLat: toLat?.value || 'not found',  
-                    toLng: toLng?.value || 'not found'
-                });
-            }
-        });
+        // Airport Transfers Form (uses from_lat/from_lng and to_lat/to_lng)
+        const airportForm = document.getElementById('airport_transfers-form');
+        if (airportForm) {
+            const fromLat = airportForm.querySelector('input[name="from_lat"]');
+            const fromLng = airportForm.querySelector('input[name="from_lng"]');
+            const toLat = airportForm.querySelector('input[name="to_lat"]');
+            const toLng = airportForm.querySelector('input[name="to_lng"]');
+            
+            console.log('Airport Transfers coordinates:', {
+                fromLat: fromLat?.value || 'not found',
+                fromLng: fromLng?.value || 'not found',
+                toLat: toLat?.value || 'not found',  
+                toLng: toLng?.value || 'not found',
+                formVisible: !airportForm.classList.contains('hidden')
+            });
+        }
+
+        // Ride Now Form (uses pickup_lat/pickup_lng and dropoff_lat/dropoff_lng)
+        const rideForm = document.getElementById('ride_now-form');
+        if (rideForm) {
+            const pickupLat = rideForm.querySelector('input[name="pickup_lat"]');
+            const pickupLng = rideForm.querySelector('input[name="pickup_lng"]');
+            const dropoffLat = rideForm.querySelector('input[name="dropoff_lat"]');
+            const dropoffLng = rideForm.querySelector('input[name="dropoff_lng"]');
+            
+            console.log('Ride Now coordinates:', {
+                pickupLat: pickupLat?.value || 'not found',
+                pickupLng: pickupLng?.value || 'not found',
+                dropoffLat: dropoffLat?.value || 'not found',  
+                dropoffLng: dropoffLng?.value || 'not found',
+                formVisible: !rideForm.classList.contains('hidden')
+            });
+        }
     }
 
     /**
@@ -2721,6 +2744,67 @@
         }
     }
 
+    /**
+     * Ensure all coordinate fields have valid values
+     */
+    function ensureCoordinateValues() {
+        console.log('Ensuring coordinate values are set...');
+        
+        // Check Airport Transfers form
+        const airportForm = document.getElementById('airport_transfers-form');
+        if (airportForm) {
+            const fromLat = airportForm.querySelector('input[name="from_lat"]');
+            const fromLng = airportForm.querySelector('input[name="from_lng"]');
+            const toLat = airportForm.querySelector('input[name="to_lat"]');
+            const toLng = airportForm.querySelector('input[name="to_lng"]');
+            
+            // Set default airport coordinates if missing
+            if (fromLat && (!fromLat.value || fromLat.value === '')) {
+                fromLat.value = '7.1808'; // BIA Airport
+                console.log('Set default airport FROM lat:', fromLat.value);
+            }
+            if (fromLng && (!fromLng.value || fromLng.value === '')) {
+                fromLng.value = '79.8841'; // BIA Airport
+                console.log('Set default airport FROM lng:', fromLng.value);
+            }
+            if (toLat && (!toLat.value || toLat.value === '')) {
+                toLat.value = '6.9271'; // Colombo
+                console.log('Set default airport TO lat:', toLat.value);
+            }
+            if (toLng && (!toLng.value || toLng.value === '')) {
+                toLng.value = '79.8612'; // Colombo  
+                console.log('Set default airport TO lng:', toLng.value);
+            }
+        }
+
+        // Check Ride Now form
+        const rideForm = document.getElementById('ride_now-form');
+        if (rideForm) {
+            const pickupLat = rideForm.querySelector('input[name="pickup_lat"]');
+            const pickupLng = rideForm.querySelector('input[name="pickup_lng"]');
+            const dropoffLat = rideForm.querySelector('input[name="dropoff_lat"]');
+            const dropoffLng = rideForm.querySelector('input[name="dropoff_lng"]');
+            
+            // Set default coordinates if missing
+            if (pickupLat && (!pickupLat.value || pickupLat.value === '')) {
+                pickupLat.value = '6.9271'; // Colombo
+                console.log('Set default ride pickup lat:', pickupLat.value);
+            }
+            if (pickupLng && (!pickupLng.value || pickupLng.value === '')) {
+                pickupLng.value = '79.8612'; // Colombo
+                console.log('Set default ride pickup lng:', pickupLng.value);
+            }
+            if (dropoffLat && (!dropoffLat.value || dropoffLat.value === '')) {
+                dropoffLat.value = '6.0535'; // Galle
+                console.log('Set default ride dropoff lat:', dropoffLat.value);
+            }
+            if (dropoffLng && (!dropoffLng.value || dropoffLng.value === '')) {
+                dropoffLng.value = '80.221'; // Galle
+                console.log('Set default ride dropoff lng:', dropoffLng.value);
+            }
+        }
+    }
+
     // Initialize when DOM is ready
     if (document.readyState === "loading") {
         document.addEventListener("DOMContentLoaded", init);
@@ -2730,13 +2814,16 @@
 
     // Add debugging capabilities and force coordinate updates
     setTimeout(() => {
-        console.log('=== COORDINATE DEBUGGING ===');
+        console.log('=== INITIAL COORDINATE CHECK ===');
         logCoordinateValues();
+        
+        // Ensure coordinates are set with fallback values
+        ensureCoordinateValues();
         forceAirportCoordinateUpdate();
         
         // Log again after forced updates
         setTimeout(() => {
-            console.log('=== AFTER FORCED UPDATES ===');
+            console.log('=== AFTER COORDINATE INITIALIZATION ===');
             logCoordinateValues();
         }, 1000);
     }, 1500);
