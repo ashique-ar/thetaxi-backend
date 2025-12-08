@@ -453,6 +453,11 @@ class VehiclePricingCalculationDefinition extends Model
             'effective_days' => 0
         ];
 
+        Log::info("Calculating KM overages", [
+            'inputs' => $inputs,
+            'slab_info' => $slabInfo
+        ]);
+
         if (!$slabInfo || !$result['journey_distance']) {
             return $result;
         }
