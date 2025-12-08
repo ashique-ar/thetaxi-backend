@@ -26,8 +26,17 @@ trait HasIsActive
 
     protected function hasIsActiveColumn(): bool
     {
-        return Schema::hasColumn($this->getTable(), 'is_active');
+        static $cache = [];
+        
+        $table = $this->getTable();
+        
+        if (!isset($cache[$table])) {
+            $cache[$table] = Schema::hasColumn($table, 'is_active');
+        }
+        
+        return $cache[$table];
     }
+
 
     public function scopeWithInactive(Builder $q)
     {
