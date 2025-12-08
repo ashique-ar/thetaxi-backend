@@ -720,6 +720,11 @@
         if (defaultRadio) {
             updateAirportTransferLocations(defaultRadio.value);
         }
+        
+        // Ensure airport select handlers are setup after a delay
+        setTimeout(() => {
+            setupAirportSelectHandlers();
+        }, 500);
     }
 
     /**
@@ -844,7 +849,10 @@
      */
     function setupAirportSelectHandlers() {
         const form = document.getElementById("airport_transfers-form");
-        if (!form) return;
+        if (!form) {
+            console.warn('Airport transfers form not found');
+            return;
+        }
 
         const fromAirportSelect = form.querySelector('#from-airport-select');
         const toAirportSelect = form.querySelector('#to-airport-select');
@@ -853,28 +861,71 @@
         const toLat = form.querySelector('input[name="to_lat"]');
         const toLng = form.querySelector('input[name="to_lng"]');
 
+        console.log('Setting up airport select handlers:', {
+            fromAirportSelect: !!fromAirportSelect,
+            toAirportSelect: !!toAirportSelect,
+            fromLat: !!fromLat,
+            fromLng: !!fromLng,
+            toLat: !!toLat,
+            toLng: !!toLng
+        });
+
         // FROM airport select handler
         if (fromAirportSelect && !fromAirportSelect.hasAirportHandler) {
             fromAirportSelect.addEventListener('change', function() {
                 const selectedOption = this.options[this.selectedIndex];
+                console.log('FROM airport changed:', selectedOption.value);
+                
                 if (selectedOption && selectedOption.dataset.lat && selectedOption.dataset.lng) {
-                    fromLat.value = selectedOption.dataset.lat;
-                    fromLng.value = selectedOption.dataset.lng;
+                    if (fromLat && fromLng) {
+                        fromLat.value = selectedOption.dataset.lat;
+                        fromLng.value = selectedOption.dataset.lng;
+                        console.log('FROM airport coordinates set:', {
+                            lat: fromLat.value,
+                            lng: fromLng.value
+                        });
+                    } else {
+                        console.error('FROM coordinate inputs not found');
+                    }
+                } else {
+                    console.warn('FROM airport option missing coordinate data');
                 }
             });
             fromAirportSelect.hasAirportHandler = true;
+            
+            // Trigger change event if there's already a selected value
+            if (fromAirportSelect.value) {
+                fromAirportSelect.dispatchEvent(new Event('change'));
+            }
         }
 
         // TO airport select handler  
         if (toAirportSelect && !toAirportSelect.hasAirportHandler) {
             toAirportSelect.addEventListener('change', function() {
                 const selectedOption = this.options[this.selectedIndex];
+                console.log('TO airport changed:', selectedOption.value);
+                
                 if (selectedOption && selectedOption.dataset.lat && selectedOption.dataset.lng) {
-                    toLat.value = selectedOption.dataset.lat;
-                    toLng.value = selectedOption.dataset.lng;
+                    if (toLat && toLng) {
+                        toLat.value = selectedOption.dataset.lat;
+                        toLng.value = selectedOption.dataset.lng;
+                        console.log('TO airport coordinates set:', {
+                            lat: toLat.value,
+                            lng: toLng.value
+                        });
+                    } else {
+                        console.error('TO coordinate inputs not found');
+                    }
+                } else {
+                    console.warn('TO airport option missing coordinate data');
                 }
             });
             toAirportSelect.hasAirportHandler = true;
+            
+            // Trigger change event if there's already a selected value
+            if (toAirportSelect.value) {
+                toAirportSelect.dispatchEvent(new Event('change'));
+            }
         }
     }
 
@@ -927,24 +978,8 @@
      * Update location data for a specific input
      */
     function updateLocationDataForInput(input, place) {
-        const form = input.closest("form");
-        if (!form || !place.geometry) return;
-
-        if (input.name === "from") {
-            const latInput = form.querySelector('input[name="from_lat"]');
-            const lngInput = form.querySelector('input[name="from_lng"]');
-            if (latInput && lngInput) {
-                latInput.value = place.geometry.location.lat();
-                lngInput.value = place.geometry.location.lng();
-            }
-        } else if (input.name === "to") {
-            const latInput = form.querySelector('input[name="to_lat"]');
-            const lngInput = form.querySelector('input[name="to_lng"]');
-            if (latInput && lngInput) {
-                latInput.value = place.geometry.location.lat();
-                lngInput.value = place.geometry.location.lng();
-            }
-        }
+        // Use the main updateLocationData function for consistency
+        updateLocationData(input, place);
     }
 
     /**
@@ -2642,6 +2677,50 @@
     `;
     document.head.appendChild(style);
 
+    /**
+     * Debug function to log current coordinate values
+     */
+    function logCoordinateValues() {
+        const forms = ['airport_transfers-form', 'ride_now-form'];
+        
+        forms.forEach(formId => {
+            const form = document.getElementById(formId);
+            if (form) {
+                const fromLat = form.querySelector('input[name="from_lat"]');
+                const fromLng = form.querySelector('input[name="from_lng"]');
+                const toLat = form.querySelector('input[name="to_lat"]');
+                const toLng = form.querySelector('input[name="to_lng"]');
+                
+                console.log(`${formId} coordinates:`, {
+                    fromLat: fromLat?.value || 'not found',
+                    fromLng: fromLng?.value || 'not found',
+                    toLat: toLat?.value || 'not found',  
+                    toLng: toLng?.value || 'not found'
+                });
+            }
+        });
+    }
+
+    /**
+     * Force coordinate update from airport selects on page load
+     */
+    function forceAirportCoordinateUpdate() {
+        const airportForm = document.getElementById("airport_transfers-form");
+        if (!airportForm) return;
+
+        const fromAirportSelect = airportForm.querySelector('#from-airport-select');
+        const toAirportSelect = airportForm.querySelector('#to-airport-select');
+
+        // Trigger coordinate updates for any pre-selected airports
+        if (fromAirportSelect && fromAirportSelect.value && !fromAirportSelect.classList.contains('hidden')) {
+            fromAirportSelect.dispatchEvent(new Event('change'));
+        }
+        
+        if (toAirportSelect && toAirportSelect.value && !toAirportSelect.classList.contains('hidden')) {
+            toAirportSelect.dispatchEvent(new Event('change'));
+        }
+    }
+
     // Initialize when DOM is ready
     if (document.readyState === "loading") {
         document.addEventListener("DOMContentLoaded", init);
@@ -2649,6 +2728,20 @@
         init();
     }
 
+    // Add debugging capabilities and force coordinate updates
+    setTimeout(() => {
+        console.log('=== COORDINATE DEBUGGING ===');
+        logCoordinateValues();
+        forceAirportCoordinateUpdate();
+        
+        // Log again after forced updates
+        setTimeout(() => {
+            console.log('=== AFTER FORCED UPDATES ===');
+            logCoordinateValues();
+        }, 1000);
+    }, 1500);
+
     // Expose functions globally for use in Blade templates
     window.updateAirportTransferLocations = updateAirportTransferLocations;
+    window.logCoordinateValues = logCoordinateValues;
 })();

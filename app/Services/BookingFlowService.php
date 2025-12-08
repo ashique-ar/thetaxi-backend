@@ -2581,11 +2581,44 @@ Log::info("Dynamic pricing calculation result", ['result' => $calculationResult]
 
     private function calculateDistance(array $from, array $to): float
     {
+        // Log the input coordinates for debugging
+        Log::info('Calculating distance between coordinates', [
+            'from' => $from,
+            'to' => $to,
+            'from_valid' => $this->isValidLocationArray($from),
+            'to_valid' => $this->isValidLocationArray($to)
+        ]);
+
         // Validate input and handle different location formats
         if (!$this->isValidLocationArray($from) || !$this->isValidLocationArray($to)) {
+            Log::warning('Invalid location coordinates provided for distance calculation', [
+                'from' => $from,
+                'to' => $to,
+                'from_extracted_lat' => $this->extractLatitude($from),
+                'from_extracted_lng' => $this->extractLongitude($from),
+                'to_extracted_lat' => $this->extractLatitude($to),
+                'to_extracted_lng' => $this->extractLongitude($to)
+            ]);
             return 0.0; // Return 0 if invalid coordinates
         }
-        return app(GoogleMapsService::class)->distanceKm($from, $to);
+
+        try {
+            $distance = app(GoogleMapsService::class)->distanceKm($from, $to);
+            Log::info('Distance calculated successfully', [
+                'from' => $from,
+                'to' => $to,
+                'distance_km' => $distance
+            ]);
+            return $distance;
+        } catch (\Exception $e) {
+            Log::error('Error calculating distance', [
+                'from' => $from,
+                'to' => $to,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return 0.0;
+        }
     }
 
     private function calculateCompanyDistances(array $pickupLocation, array $dropoffLocation, ?string $serviceType = null, ?string $specificVehicleId = null): array

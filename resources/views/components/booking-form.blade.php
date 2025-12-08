@@ -476,6 +476,29 @@
             });
         });
 
+        // Ensure coordinates are properly set when forms are initialized
+        setTimeout(function() {
+            console.log('=== BLADE TEMPLATE COORDINATE INITIALIZATION ===');
+            
+            // Trigger coordinate updates for airport transfer form if visible
+            const airportForm = document.getElementById('airport_transfers-form');
+            if (airportForm && airportForm.classList.contains('show')) {
+                const checkedRadio = airportForm.querySelector('input[name=\"transfer_type\"]:checked');
+                if (checkedRadio) {
+                    if (typeof window.updateAirportTransferLocations === 'function') {
+                        window.updateAirportTransferLocations(checkedRadio.value);
+                    } else {
+                        initializeFallbackAirportForm(checkedRadio.value);
+                    }
+                }
+            }
+            
+            // Force coordinate debug after initialization
+            if (typeof window.logCoordinateValues === 'function') {
+                window.logCoordinateValues();
+            }
+        }, 2000);
+
         /**
          * Initialize airport transfer form
          */
@@ -935,6 +958,92 @@
                 const parts = dateString.split('/');
                 return new Date(parts[2], parts[1] - 1, parts[0]);
             }
+        });
+
+        // Debug coordinate values on page load and form interactions
+        function debugCoordinates() {
+            console.log('=== COORDINATE DEBUG INFO ===');
+            const forms = ['airport_transfers-form', 'ride_now-form'];
+            
+            forms.forEach(formId => {
+                const form = document.getElementById(formId);
+                if (form) {
+                    const fromLat = form.querySelector('input[name="from_lat"]');
+                    const fromLng = form.querySelector('input[name="from_lng"]');
+                    const toLat = form.querySelector('input[name="to_lat"]');
+                    const toLng = form.querySelector('input[name="to_lng"]');
+                    
+                    console.log(`${formId}:`, {
+                        fromLat: fromLat ? fromLat.value : 'NOT FOUND',
+                        fromLng: fromLng ? fromLng.value : 'NOT FOUND',
+                        toLat: toLat ? toLat.value : 'NOT FOUND',
+                        toLng: toLng ? toLng.value : 'NOT FOUND',
+                        formVisible: !form.classList.contains('hidden') && form.offsetHeight > 0
+                    });
+
+                    // Check airport selects for airport transfer form
+                    if (formId === 'airport_transfers-form') {
+                        const fromAirport = form.querySelector('#from-airport-select');
+                        const toAirport = form.querySelector('#to-airport-select');
+                        
+                        if (fromAirport) {
+                            const selectedFromOption = fromAirport.options[fromAirport.selectedIndex];
+                            console.log('From Airport Select:', {
+                                value: fromAirport.value,
+                                visible: !fromAirport.classList.contains('hidden'),
+                                selectedOption: selectedFromOption ? {
+                                    value: selectedFromOption.value,
+                                    lat: selectedFromOption.dataset.lat,
+                                    lng: selectedFromOption.dataset.lng
+                                } : 'none'
+                            });
+                        }
+                        
+                        if (toAirport) {
+                            const selectedToOption = toAirport.options[toAirport.selectedIndex];
+                            console.log('To Airport Select:', {
+                                value: toAirport.value,
+                                visible: !toAirport.classList.contains('hidden'),
+                                selectedOption: selectedToOption ? {
+                                    value: selectedToOption.value,
+                                    lat: selectedToOption.dataset.lat,
+                                    lng: selectedToOption.dataset.lng
+                                } : 'none'
+                            });
+                        }
+                    }
+                }
+            });
+        }
+
+        // Run debug on page load
+        $(document).ready(function() {
+            setTimeout(debugCoordinates, 1000);
+            setTimeout(debugCoordinates, 3000); // Run again after everything loads
+        });
+
+        // Add coordinate debugging to form submissions
+        $('form').on('submit', function(e) {
+            console.log('=== FORM SUBMISSION COORDINATE CHECK ===');
+            debugCoordinates();
+            
+            // Validate coordinates before submission
+            const form = this;
+            const fromLat = form.querySelector('input[name="from_lat"]');
+            const fromLng = form.querySelector('input[name="from_lng"]');
+            const toLat = form.querySelector('input[name="to_lat"]');
+            const toLng = form.querySelector('input[name="to_lng"]');
+            
+            const hasValidCoordinates = (fromLat && fromLat.value && fromLng && fromLng.value && 
+                                       toLat && toLat.value && toLng && toLng.value);
+            
+            if (!hasValidCoordinates) {
+                console.warn('WARNING: Some coordinates are missing!');
+                // Still allow submission but log the warning
+            } else {
+                console.log('✓ All coordinates present for submission');
+            }
+        });
         });
     </script>
 @endpush

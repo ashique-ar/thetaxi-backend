@@ -201,13 +201,42 @@ class BookingController extends Controller
             'longitude' => $data["{$prefix}_lng"] ?? null,
         ];
         
-        // Ensure numeric values
+        // Log raw coordinate data for debugging
+        Log::info("Formatting location data", [
+            'prefix' => $prefix,
+            'raw_lat' => $data["{$prefix}_lat"] ?? 'missing',
+            'raw_lng' => $data["{$prefix}_lng"] ?? 'missing',
+            'address' => $location['address']
+        ]);
+        
+        // Ensure numeric values and validate coordinates
         if ($location['latitude']) {
-            $location['latitude'] = (float) $location['latitude'];
+            $latitude = (float) $location['latitude'];
+            // Validate latitude range (-90 to 90)
+            if ($latitude >= -90 && $latitude <= 90) {
+                $location['latitude'] = $latitude;
+            } else {
+                Log::warning("Invalid latitude value", ['latitude' => $latitude, 'prefix' => $prefix]);
+                $location['latitude'] = null;
+            }
         }
+        
         if ($location['longitude']) {
-            $location['longitude'] = (float) $location['longitude'];
+            $longitude = (float) $location['longitude'];
+            // Validate longitude range (-180 to 180)
+            if ($longitude >= -180 && $longitude <= 180) {
+                $location['longitude'] = $longitude;
+            } else {
+                Log::warning("Invalid longitude value", ['longitude' => $longitude, 'prefix' => $prefix]);
+                $location['longitude'] = null;
+            }
         }
+        
+        // Log final location data
+        Log::info("Final formatted location", [
+            'prefix' => $prefix,
+            'location' => $location
+        ]);
         
         return $location;
     }
