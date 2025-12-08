@@ -1464,9 +1464,8 @@
                 success: function(response) {
                     if (response.success) {
                         // Update cart icon
-                        if (typeof window.refreshCartIcon === 'function') {
-                            window.refreshCartIcon();
-                        }
+                        // Dispatch cart updated event
+                        window.dispatchEvent(new CustomEvent('cartUpdated'));
 
                         if (bookNow) {
                             // Redirect to cart for booking

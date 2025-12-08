@@ -897,10 +897,8 @@
                         // Load updated cart from server
                         loadCartFromServer();
                         showCartFloat();
-                        // Update cart icon in header
-                        if (typeof window.refreshCartIcon === 'function') {
-                            window.refreshCartIcon();
-                        }
+                        // Dispatch cart updated event
+                        window.dispatchEvent(new CustomEvent('cartUpdated'));
                         // Show success message
                         showSuccessNotification('Vehicle added to cart successfully!');
                     } else {
@@ -926,10 +924,8 @@
                 success: function(response) {
                     if (response.success) {
                         loadCartFromServer();
-                        // Update cart icon in header
-                        if (typeof window.refreshCartIcon === 'function') {
-                            window.refreshCartIcon();
-                        }
+                        // Dispatch cart updated event
+                        window.dispatchEvent(new CustomEvent('cartUpdated'));
                         if (Object.keys(cart).length === 0) {
                             $('#cartSummaryFloat').fadeOut();
                         }

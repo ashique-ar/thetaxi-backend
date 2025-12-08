@@ -22,6 +22,15 @@ class CartController extends Controller
     }
 
     /**
+     * Invalidate cart cache when cart is modified
+     */
+    private function invalidateCartCache(): void
+    {
+        $cartCacheKey = 'cart_data_' . session()->getId();
+        cache()->forget($cartCacheKey);
+    }
+
+    /**
      * Display cart page
      */
     public function index()
@@ -47,12 +56,42 @@ class CartController extends Controller
 
     /**
      * Get cart data as JSON (for AJAX requests)
+     * Rate limited to prevent excessive API calls
      */
     public function get()
     {
         try {
-            $dbCart = $this->cartService->getOrCreateCart();
-            $cartArray = $this->cartService->toArray($dbCart);
+            // Rate limiting - max 1 request per second per session
+            $cacheKey = 'cart_get_rate_limit_' . session()->getId();
+            if (cache()->has($cacheKey)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Too many requests. Please wait a moment.',
+                    'items' => [],
+                    'totals' => [],
+                    'count' => 0
+                ], 429);
+            }
+            
+            // Set rate limit cache for 1 second
+            cache()->put($cacheKey, true, 1);
+
+            // Cache cart data for 30 seconds to reduce database queries
+            $cartCacheKey = 'cart_data_' . session()->getId();
+            $fromCache = cache()->has($cartCacheKey);
+            
+            $cartArray = cache()->remember($cartCacheKey, 30, function() {
+                $dbCart = $this->cartService->getOrCreateCart();
+                return $this->cartService->toArray($dbCart);
+            });
+            
+            // Log cart access for monitoring
+            Log::info('Cart API accessed', [
+                'session_id' => session()->getId(),
+                'from_cache' => $fromCache,
+                'cart_items_count' => count($cartArray['items'] ?? []),
+                'user_agent' => request()->userAgent()
+            ]);
 
             return response()->json([
                 'success' => true,
@@ -61,6 +100,11 @@ class CartController extends Controller
                 'count' => count($cartArray['items'] ?? [])
             ]);
         } catch (\Exception $e) {
+            Log::error('Cart get error', [
+                'error' => $e->getMessage(),
+                'session_id' => session()->getId()
+            ]);
+            
             return response()->json([
                 'success' => false,
                 'message' => 'Error loading cart',
@@ -315,6 +359,9 @@ class CartController extends Controller
 
             // Add to database cart
             $this->cartService->addItem($dbCart, $cartItem, $cartKey);
+            
+            // Invalidate cart cache
+            $this->invalidateCartCache();
 
             if ($request->ajax()) {
                 return response()->json([
@@ -357,6 +404,9 @@ class CartController extends Controller
         $dbCart = $this->cartService->getOrCreateCart();
 
         if ($this->cartService->removeItem($dbCart, $validated['cart_key'])) {
+            // Invalidate cart cache
+            $this->invalidateCartCache();
+            
             return response()->json([
                 'success' => true,
                 'message' => 'Item removed from cart successfully',
@@ -377,6 +427,9 @@ class CartController extends Controller
     {
         $dbCart = $this->cartService->getOrCreateCart();
         $this->cartService->clearCart($dbCart);
+        
+        // Invalidate cart cache
+        $this->invalidateCartCache();
 
         // Also clear session as fallback
         session()->forget(['cart', 'cart_discount', 'applied_coupon']);

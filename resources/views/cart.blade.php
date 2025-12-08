@@ -612,8 +612,17 @@
                         },
                         success: function(response) {
                             if (response.success) {
-                                // Reload the entire page to reflect server-side changes
-                                location.reload();
+                                // Remove the row and dispatch cart updated event
+                                $('#cartRow_' + cartKey).remove();
+                                window.dispatchEvent(new CustomEvent('cartUpdated'));
+                                showSuccessNotification('Item removed from cart successfully!', 3000);
+                                
+                                // Check if cart is empty
+                                if ($('.cart-table tbody tr').length === 0) {
+                                    $('.cart-table tbody').append(
+                                        '<tr><td colspan="5" class="text-center py-5"><em>Your cart is empty</em></td></tr>'
+                                    );
+                                }
                             } else {
                                 alert('Error: ' + response.message);
                             }
@@ -637,7 +646,12 @@
                         },
                         success: function(response) {
                             if (response.success) {
-                                location.reload();
+                                // Clear cart display and dispatch event
+                                $('.cart-table tbody').empty().append(
+                                    '<tr><td colspan="5" class="text-center py-5"><em>Your cart is empty</em></td></tr>'
+                                );
+                                window.dispatchEvent(new CustomEvent('cartUpdated'));
+                                showSuccessNotification('Cart cleared successfully!', 3000);
                             }
                         },
                         error: function() {

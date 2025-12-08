@@ -217,8 +217,15 @@
             // Cart Icon Update Functionality
             updateCartIcon();
             
-            // Update cart icon every 5 seconds to catch any changes
-            setInterval(updateCartIcon, 5000);
+            // Listen for cart update events instead of polling
+            window.addEventListener('cartUpdated', function() {
+                updateCartIcon();
+            });
+            
+            // Update cart on page focus (in case cart was updated in another tab)
+            window.addEventListener('focus', function() {
+                updateCartIcon();
+            });
         });
         
         function updateCartIcon() {
@@ -290,8 +297,39 @@
             }
         }
         
-        // Global function to trigger cart icon update (can be called from any page)
+        // Global function to trigger cart icon update (kept for backward compatibility)
         window.refreshCartIcon = updateCartIcon;
+        
+        // Global notification function
+        window.showSuccessNotification = function(message, duration = 3000) {
+            // Create notification if it doesn't exist
+            let notification = document.getElementById('cart-notification');
+            if (!notification) {
+                notification = document.createElement('div');
+                notification.id = 'cart-notification';
+                notification.style.cssText = `
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    background: #28a745;
+                    color: white;
+                    padding: 15px 20px;
+                    border-radius: 5px;
+                    z-index: 9999;
+                    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+                    transform: translateX(400px);
+                    transition: transform 0.3s ease;
+                `;
+                document.body.appendChild(notification);
+            }
+            
+            notification.textContent = message;
+            notification.style.transform = 'translateX(0)';
+            
+            setTimeout(() => {
+                notification.style.transform = 'translateX(400px)';
+            }, duration);
+        };
     </script>
 
     <!-- AOS Animation JS -->

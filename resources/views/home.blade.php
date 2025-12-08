@@ -1311,6 +1311,8 @@
                     // Load updated cart from server
                     loadCartFromServer();
                     showCartFloat();
+                    // Dispatch cart updated event
+                    window.dispatchEvent(new CustomEvent('cartUpdated'));
                 } else {
                     alert('Error: ' + response.message);
                 }
@@ -1336,6 +1338,8 @@
                     if (cart.length === 0) {
                         $('#cartSummaryFloat').fadeOut();
                     }
+                    // Dispatch cart updated event
+                    window.dispatchEvent(new CustomEvent('cartUpdated'));
                 } else {
                     alert('Error: ' + response.message);
                 }
