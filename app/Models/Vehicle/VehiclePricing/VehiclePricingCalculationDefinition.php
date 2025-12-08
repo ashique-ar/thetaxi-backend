@@ -483,7 +483,11 @@ class VehiclePricingCalculationDefinition extends Model
             $result['calculation_type'] = 'unlimited';
             $result['allowed_km'] = $actualKm; // All KM is billable
         }
-
+        Log::info("KM overage calculation", [
+            'inputs' => $inputs,
+            'slab_info' => $slabInfo,
+            'calculation_result' => $result
+        ]);
         return $result;
     }
 

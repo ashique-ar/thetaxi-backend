@@ -25,7 +25,12 @@ class VehicleGroupResource extends JsonResource
             'fuelType'   => new VehicleFuelTypeResource($this->whenLoaded('fuelType')),
             'category'    => new VehicleCategoryResource($this->whenLoaded('category')),
             'class'       => new VehicleClassResource($this->whenLoaded('class')),
-
+            'is_active' => $this->is_active,
+            'is_featured' => $this->is_featured,
+            'passengers_count' => $this->passengers_count,
+            'hand_luggages' => $this->hand_luggages,
+            'air_conditioning' => $this->air_conditioning,
+            'refundable_deposit' => $this->refundable_deposit
         ];
     }
 }
