@@ -53,8 +53,8 @@
                                         <input type="text" name="from" placeholder="Pick up location"
                                             class="nice-select custom-location-search @error('from') is-invalid @enderror"
                                             value="{{ old('from', 'Colombo, Sri Lanka') }}" required autocomplete="off">
-                                        <input type="hidden" name="from_lat" value="{{ old('from_lat', '6.9271') }}">
-                                        <input type="hidden" name="from_lng" value="{{ old('from_lng', '79.8612') }}">
+                                        <input type="hidden" name="pickup_lat" value="{{ old('pickup_lat', '6.9271') }}">
+                                        <input type="hidden" name="pickup_lng" value="{{ old('pickup_lng', '79.8612') }}">
                                     </div>
                                     @error('from')
                                         <span class="text-danger small">{{ $message }}</span>
@@ -70,8 +70,8 @@
                                         <input type="text" name="to" placeholder="Drop off location"
                                             class="nice-select custom-location-search @error('to') is-invalid @enderror"
                                             value="{{ old('to', 'Galle, Sri Lanka') }}" required autocomplete="off">
-                                        <input type="hidden" name="to_lat" value="{{ old('to_lat', '6.0535') }}">
-                                        <input type="hidden" name="to_lng" value="{{ old('to_lng', '80.221') }}">
+                                        <input type="hidden" name="dropoff_lat" value="{{ old('dropoff_lat', '6.0535') }}">
+                                        <input type="hidden" name="dropoff_lng" value="{{ old('dropoff_lng', '80.221') }}">
                                     </div>
                                     @error('to')
                                         <span class="text-danger small">{{ $message }}</span>

@@ -832,11 +832,11 @@
                     to_time: '{{ $search->to_time ?? '' }}',
                     service_type: '{{ $search->service_type ?? '' }}',
                     pickup_location: '{{ $search->pickup_location ?? '' }}',
-                    from_lat: {{ $search->pickup_latitude ?? 'null' }},
-                    from_lng: {{ $search->pickup_longitude ?? 'null' }},
+                    pickup_lat: {{ $search->pickup_latitude ?? 'null' }},
+                    pickup_lng: {{ $search->pickup_longitude ?? 'null' }},
                     dropoff_location: '{{ $search->dropoff_location ?? '' }}',
-                    to_lat: {{ $search->dropoff_latitude ?? 'null' }},
-                    to_lng: {{ $search->dropoff_longitude ?? 'null' }},
+                    dropoff_lat: {{ $search->dropoff_latitude ?? 'null' }},
+                    dropoff_lng: {{ $search->dropoff_longitude ?? 'null' }},
                     duration_days: durationDays
                 };
 
@@ -884,11 +884,11 @@
                     from_time: item.from_time,
                     to_time: item.to_time,
                     pickup_location: item.pickup_location,
-                    from_lat: item.from_lat,
-                    from_lng: item.from_lng,
+                    pickup_lat: item.pickup_lat,
+                    pickup_lng: item.pickup_lng,
                     dropoff_location: item.dropoff_location,
-                    to_lat: item.to_lat,
-                    to_lng: item.to_lng,
+                    dropoff_lat: item.dropoff_lat,
+                    dropoff_lng: item.dropoff_lng,
                     service_type: item.service_type,
                     search_data: item
                 },
@@ -1182,11 +1182,11 @@
                 to_time: '{{ $search->to_time ?? '' }}',
                 service_type: '{{ $search->service_type ?? '' }}',
                 pickup_location: '{{ $search->pickup_location ?? '' }}',
-                from_lat: {{ $search->pickup_latitude ?? 'null' }},
-                from_lng: {{ $search->pickup_longitude ?? 'null' }},
+                pickup_lat: {{ $search->pickup_latitude ?? 'null' }},
+                pickup_lng: {{ $search->pickup_longitude ?? 'null' }},
                 dropoff_location: '{{ $search->dropoff_location ?? '' }}',
-                to_lat: {{ $search->dropoff_latitude ?? 'null' }},
-                to_lng: {{ $search->dropoff_longitude ?? 'null' }},
+                dropoff_lat: {{ $search->dropoff_latitude ?? 'null' }},
+                dropoff_lng: {{ $search->dropoff_longitude ?? 'null' }},
                 duration_days: durationDays
             };
 

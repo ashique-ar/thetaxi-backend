@@ -134,12 +134,12 @@ class CartController extends Controller
                 'from_time' => 'sometimes|string',
                 'to_time' => 'sometimes|string',
                 'pickup_location' => 'sometimes|string',
-                'from_lat' => 'sometimes|numeric',
-                'from_lng' => 'sometimes|numeric',
-                'return_location' => 'sometimes|string',
+                'pickup_lat' => 'sometimes|numeric',
+                'pickup_lng' => 'sometimes|numeric',
                 'dropoff_location' => 'sometimes|string',
-                'to_lat' => 'sometimes|numeric',
-                'to_lng' => 'sometimes|numeric',
+                'dropoff_location' => 'sometimes|string',
+                'dropoff_lat' => 'sometimes|numeric',
+                'dropoff_lng' => 'sometimes|numeric',
                 'search_data' => 'sometimes|array',
                 'service_type' => 'sometimes|string'
             ]);
@@ -154,12 +154,12 @@ class CartController extends Controller
 
             // Extract location data with coordinates
             $pickupLocation = $validated['pickup_location'] ?? ($validated['search_data']['pickup_location'] ?? '');
-            $pickupLat = $validated['from_lat'] ?? ($validated['search_data']['from_lat'] ?? null);
-            $pickupLng = $validated['from_lng'] ?? ($validated['search_data']['from_lng'] ?? null);
+            $pickupLat = $validated['pickup_lat'] ?? ($validated['search_data']['pickup_lat'] ?? null);
+            $pickupLng = $validated['pickup_lng'] ?? ($validated['search_data']['pickup_lng'] ?? null);
 
-            $returnLocation = $validated['return_location'] ?? $validated['dropoff_location'] ?? ($validated['search_data']['dropoff_location'] ?? $pickupLocation);
-            $returnLat = $validated['to_lat'] ?? ($validated['search_data']['to_lat'] ?? $pickupLat);
-            $returnLng = $validated['to_lng'] ?? ($validated['search_data']['to_lng'] ?? $pickupLng);
+            $returnLocation = $validated['dropoff_location'] ?? $validated['dropoff_location'] ?? ($validated['search_data']['dropoff_location'] ?? $pickupLocation);
+            $returnLat = $validated['dropoff_lat'] ?? ($validated['search_data']['dropoff_lat'] ?? $pickupLat);
+            $returnLng = $validated['dropoff_lng'] ?? ($validated['search_data']['dropoff_lng'] ?? $pickupLng);
 
             $serviceType = $validated['service_type'] ?? ($validated['search_data']['service_type'] ?? 'airport_transfers');
             $searchData = $validated['search_data'] ?? [];
@@ -202,7 +202,7 @@ class CartController extends Controller
                     'return_date' => $returnDate,
                     'service_type' => $serviceType,
                     'pickup_location' => $pickupLocation,
-                    'return_location' => $returnLocation,
+                    'dropoff_location' => $returnLocation,
                     'days' => $days,
                     'vehicleGroup' => $vehicleGroup
 
@@ -342,8 +342,8 @@ class CartController extends Controller
                 'pickup_location' => $pickupLocation,
                 'pickup_latitude' => $pickupLat,
                 'pickup_longitude' => $pickupLng,
-                'return_location' => $returnLocation,
-                'return_latitude' => $returnLat,
+                'dropoff_location' => $returnLocation,
+                'dropoff_latitude' => $returnLat,
                 'return_longitude' => $returnLng,
                 'service_type' => $serviceType,
                 'service_type_data' => $serviceTypeModel,
@@ -593,7 +593,7 @@ class CartController extends Controller
                 'pickup_date' => $item['from_date'] ?? null,
                 'return_date' => $item['to_date'] ?? null,
                 'pickup_location' => $item['pickup_location'] ?? '',
-                'return_location' => $item['dropoff_location'] ?? '',
+                'dropoff_location' => $item['dropoff_location'] ?? '',
                 'service_type' => $item['service_type'] ?? '',
                 'search_id' => $item['search_id'] ?? null,
                 'currency' => $item['currency'] ?? 'LKR',

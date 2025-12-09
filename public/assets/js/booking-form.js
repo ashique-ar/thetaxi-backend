@@ -154,16 +154,16 @@
                 'input[name="dropoff"]'
             );
             const pickupLat = dropPickupForm.querySelector(
-                'input[name="from_lat"]'
+                'input[name="pickup_lat"]'
             );
             const pickupLng = dropPickupForm.querySelector(
-                'input[name="from_lng"]'
+                'input[name="pickup_lng"]'
             );
             const dropoffLat = dropPickupForm.querySelector(
-                'input[name="to_lat"]'
+                'input[name="dropoff_lat"]'
             );
             const dropoffLng = dropPickupForm.querySelector(
-                'input[name="to_lng"]'
+                'input[name="dropoff_lng"]'
             );
 
             if (pickupInput && !pickupInput.value) {
@@ -620,8 +620,8 @@
         // For airport transfer form
         if (input.name === "from") {
             const form = input.closest("form");
-            const latInput = form.querySelector('input[name="from_lat"]');
-            const lngInput = form.querySelector('input[name="from_lng"]');
+            const latInput = form.querySelector('input[name="pickup_lat"]');
+            const lngInput = form.querySelector('input[name="pickup_lng"]');
 
             if (place.geometry && latInput && lngInput) {
                 latInput.value = place.geometry.location.lat();
@@ -629,8 +629,8 @@
             }
         } else if (input.name === "to") {
             const form = input.closest("form");
-            const latInput = form.querySelector('input[name="to_lat"]');
-            const lngInput = form.querySelector('input[name="to_lng"]');
+            const latInput = form.querySelector('input[name="dropoff_lat"]');
+            const lngInput = form.querySelector('input[name="dropoff_lng"]');
 
             if (place.geometry && latInput && lngInput) {
                 latInput.value = place.geometry.location.lat();
@@ -745,10 +745,10 @@
         const fromLocationInput = form.querySelector('#from-location-input');
         const toAirportSelect = form.querySelector('#to-airport-select');
         const toLocationInput = form.querySelector('#to-location-input');
-        const fromLat = form.querySelector('input[name="from_lat"]');
-        const fromLng = form.querySelector('input[name="from_lng"]');
-        const toLat = form.querySelector('input[name="to_lat"]');
-        const toLng = form.querySelector('input[name="to_lng"]');
+        const fromLat = form.querySelector('input[name="pickup_lat"]');
+        const fromLng = form.querySelector('input[name="pickup_lng"]');
+        const toLat = form.querySelector('input[name="dropoff_lat"]');
+        const toLng = form.querySelector('input[name="dropoff_lng"]');
 
         if (!fromAirportSelect || !fromLocationInput || !toAirportSelect || !toLocationInput || 
             !fromLat || !fromLng || !toLat || !toLng) return;
@@ -862,10 +862,10 @@
 
         const fromAirportSelect = form.querySelector('#from-airport-select');
         const toAirportSelect = form.querySelector('#to-airport-select');
-        const fromLat = form.querySelector('input[name="from_lat"]');
-        const fromLng = form.querySelector('input[name="from_lng"]');
-        const toLat = form.querySelector('input[name="to_lat"]');
-        const toLng = form.querySelector('input[name="to_lng"]');
+        const fromLat = form.querySelector('input[name="pickup_lat"]');
+        const fromLng = form.querySelector('input[name="pickup_lng"]');
+        const toLat = form.querySelector('input[name="dropoff_lat"]');
+        const toLng = form.querySelector('input[name="dropoff_lng"]');
 
         console.log('Setting up airport select handlers:', {
             fromAirportSelect: !!fromAirportSelect,
@@ -2451,14 +2451,14 @@
 
                 console.log("Form submission - All form data:", formDataObj);
                 console.log("Form submission - Coordinates check:", {
-                    from_lat: formData.get("from_lat"),
-                    from_lng: formData.get("from_lng"),
-                    to_lat: formData.get("to_lat"),
-                    to_lng: formData.get("to_lng"),
-                    from_lat: formData.get("from_lat"),
-                    from_lng: formData.get("from_lng"),
-                    to_lat: formData.get("to_lat"),
-                    to_lng: formData.get("to_lng"),
+                    pickup_lat: formData.get("pickup_lat"),
+                    pickup_lng: formData.get("pickup_lng"),
+                    dropoff_lat: formData.get("dropoff_lat"),
+                    dropoff_lng: formData.get("dropoff_lng"),
+                    pickup_lat: formData.get("pickup_lat"),
+                    pickup_lng: formData.get("pickup_lng"),
+                    dropoff_lat: formData.get("dropoff_lat"),
+                    dropoff_lng: formData.get("dropoff_lng"),
                 });
 
                 if (!validateForm(form)) {
@@ -2689,13 +2689,13 @@
     function logCoordinateValues() {
         console.log('=== COORDINATE VALUES DEBUG ===');
         
-        // Airport Transfers Form (uses from_lat/from_lng and to_lat/to_lng)
+        // Airport Transfers Form (uses pickup_lat/pickup_lng and dropoff_lat/dropoff_lng)
         const airportForm = document.getElementById('airport_transfers-form');
         if (airportForm) {
-            const fromLat = airportForm.querySelector('input[name="from_lat"]');
-            const fromLng = airportForm.querySelector('input[name="from_lng"]');
-            const toLat = airportForm.querySelector('input[name="to_lat"]');
-            const toLng = airportForm.querySelector('input[name="to_lng"]');
+            const fromLat = airportForm.querySelector('input[name="pickup_lat"]');
+            const fromLng = airportForm.querySelector('input[name="pickup_lng"]');
+            const toLat = airportForm.querySelector('input[name="dropoff_lat"]');
+            const toLng = airportForm.querySelector('input[name="dropoff_lng"]');
             
             console.log('Airport Transfers coordinates:', {
                 fromLat: fromLat?.value || 'not found',
@@ -2753,10 +2753,10 @@
         // Check Airport Transfers form
         const airportForm = document.getElementById('airport_transfers-form');
         if (airportForm) {
-            const fromLat = airportForm.querySelector('input[name="from_lat"]');
-            const fromLng = airportForm.querySelector('input[name="from_lng"]');
-            const toLat = airportForm.querySelector('input[name="to_lat"]');
-            const toLng = airportForm.querySelector('input[name="to_lng"]');
+            const fromLat = airportForm.querySelector('input[name="pickup_lat"]');
+            const fromLng = airportForm.querySelector('input[name="pickup_lng"]');
+            const toLat = airportForm.querySelector('input[name="dropoff_lat"]');
+            const toLng = airportForm.querySelector('input[name="dropoff_lng"]');
             
             // Set default airport coordinates if missing
             if (fromLat && (!fromLat.value || fromLat.value === '')) {

@@ -144,10 +144,10 @@
                         value="{{ old('from', (isset($search) && isset($search->pickup_location)) ? $search->pickup_location : 'Colombo, Sri Lanka') }}"
                         disabled>
                     
-                    <input type="hidden" name="from_lat" class="location-lat" 
-                        value="{{ old('from_lat', (isset($search) && isset($search->pickup_latitude)) ? $search->pickup_latitude : '7.1808') }}">
-                    <input type="hidden" name="from_lng" class="location-lng" 
-                        value="{{ old('from_lng', (isset($search) && isset($search->pickup_longitude)) ? $search->pickup_longitude : '79.8841') }}">
+                    <input type="hidden" name="pickup_lat" class="location-lat" 
+                        value="{{ old('pickup_lat', (isset($search) && isset($search->pickup_latitude)) ? $search->pickup_latitude : '7.1808') }}">
+                    <input type="hidden" name="pickup_lng" class="location-lng" 
+                        value="{{ old('pickup_lng', (isset($search) && isset($search->pickup_longitude)) ? $search->pickup_longitude : '79.8841') }}">
                 </div>
                 @error('from')
                     <span class="text-danger small">{{ $message }}</span>
@@ -196,10 +196,10 @@
                         </option>
                     </select>
                     
-                    <input type="hidden" name="to_lat" class="location-lat" 
-                        value="{{ old('to_lat', (isset($search) && isset($search->dropoff_latitude)) ? $search->dropoff_latitude : '6.9271') }}">
-                    <input type="hidden" name="to_lng" class="location-lng" 
-                        value="{{ old('to_lng', (isset($search) && isset($search->dropoff_longitude)) ? $search->dropoff_longitude : '79.8612') }}">
+                    <input type="hidden" name="dropoff_lat" class="location-lat" 
+                        value="{{ old('dropoff_lat', (isset($search) && isset($search->dropoff_latitude)) ? $search->dropoff_latitude : '6.9271') }}">
+                    <input type="hidden" name="dropoff_lng" class="location-lng" 
+                        value="{{ old('dropoff_lng', (isset($search) && isset($search->dropoff_longitude)) ? $search->dropoff_longitude : '79.8612') }}">
                 </div>
                 @error('to')
                     <span class="text-danger small">{{ $message }}</span>
@@ -631,10 +631,10 @@
         function setupAirportSelectChangeHandlers() {
             const fromAirportSelect = document.querySelector('#from-airport-select');
             const toAirportSelect = document.querySelector('#to-airport-select');
-            const fromLat = document.querySelector('input[name="from_lat"]');
-            const fromLng = document.querySelector('input[name="from_lng"]');
-            const toLat = document.querySelector('input[name="to_lat"]');
-            const toLng = document.querySelector('input[name="to_lng"]');
+            const fromLat = document.querySelector('input[name="pickup_lat"]');
+            const fromLng = document.querySelector('input[name="pickup_lng"]');
+            const toLat = document.querySelector('input[name="dropoff_lat"]');
+            const toLng = document.querySelector('input[name="dropoff_lng"]');
 
             if (fromAirportSelect && !fromAirportSelect.hasChangeHandler) {
                 fromAirportSelect.addEventListener('change', function() {
@@ -968,10 +968,10 @@
             forms.forEach(formId => {
                 const form = document.getElementById(formId);
                 if (form) {
-                    const fromLat = form.querySelector('input[name="from_lat"]');
-                    const fromLng = form.querySelector('input[name="from_lng"]');
-                    const toLat = form.querySelector('input[name="to_lat"]');
-                    const toLng = form.querySelector('input[name="to_lng"]');
+                    const fromLat = form.querySelector('input[name="pickup_lat"]');
+                    const fromLng = form.querySelector('input[name="pickup_lng"]');
+                    const toLat = form.querySelector('input[name="dropoff_lat"]');
+                    const toLng = form.querySelector('input[name="dropoff_lng"]');
                     
                     console.log(`${formId}:`, {
                         fromLat: fromLat ? fromLat.value : 'NOT FOUND',
@@ -1033,10 +1033,10 @@
             
             // Check coordinates based on form type
             if (formId === 'airport_transfers-form') {
-                const fromLat = form.querySelector('input[name="from_lat"]');
-                const fromLng = form.querySelector('input[name="from_lng"]');
-                const toLat = form.querySelector('input[name="to_lat"]');
-                const toLng = form.querySelector('input[name="to_lng"]');
+                const fromLat = form.querySelector('input[name="pickup_lat"]');
+                const fromLng = form.querySelector('input[name="pickup_lng"]');
+                const toLat = form.querySelector('input[name="dropoff_lat"]');
+                const toLng = form.querySelector('input[name="dropoff_lng"]');
                 
                 hasValidCoordinates = (fromLat && fromLat.value && fromLng && fromLng.value && 
                                      toLat && toLat.value && toLng && toLng.value);

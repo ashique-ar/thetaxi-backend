@@ -118,7 +118,7 @@
                                                             @if (isset($item['pickup_date']) && isset($item['return_date']))
                                                                 <p>
                                                                     {{ $item['pickup_location'] }} -
-                                                                    {{ $item['return_location'] }}
+                                                                    {{ $item['dropoff_location'] }}
                                                                 </p>
 
                                                                 <p>

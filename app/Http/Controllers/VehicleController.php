@@ -49,10 +49,10 @@ class VehicleController extends Controller
                     'return_time' => $search->to_time ?? '18:00',
                     'pickup_location' => $search->pickup_location ?? '',
                     'dropoff_location' => $search->dropoff_location ?? '',
-                    'from_lat' => $search->from_lat,
-                    'from_lng' => $search->from_lng,
-                    'to_lat' => $search->to_lat,
-                    'to_lng' => $search->to_lng,
+                    'pickup_lat' => $search->pickup_lat,
+                    'pickup_lng' => $search->pickup_lng,
+                    'dropoff_lat' => $search->dropoff_lat,
+                    'dropoff_lng' => $search->dropoff_lng,
                 ];
             }
         }
@@ -68,10 +68,10 @@ class VehicleController extends Controller
                 'return_time' => '18:00',
                 'pickup_location' => 'Colombo BIA Airport',
                 'dropoff_location' => 'Colombo, Sri Lanka',
-                'from_lat' => 7.1808,
-                'from_lng' => 79.8841,
-                'to_lat' => 6.9271,
-                'to_lng' => 79.8612,
+                'pickup_lat' => 7.1808,
+                'pickup_lng' => 79.8841,
+                'dropoff_lat' => 6.9271,
+                'dropoff_lng' => 79.8612,
             ];
         }
 
@@ -114,13 +114,13 @@ class VehicleController extends Controller
                 'to_time' => $searchData['return_time'],
                 'pickup_location' => [
                     'address' => $searchData['pickup_location'],
-                    'latitude' => $searchData['from_lat'],
-                    'longitude' => $searchData['from_lng']
+                    'latitude' => $searchData['pickup_lat'],
+                    'longitude' => $searchData['pickup_lng']
                 ],
                 'dropoff_location' => [
                     'address' => $searchData['dropoff_location'],
-                    'latitude' => $searchData['to_lat'],
-                    'longitude' => $searchData['to_lng']
+                    'latitude' => $searchData['dropoff_lat'],
+                    'longitude' => $searchData['dropoff_lng']
                 ]
             ];
 
@@ -160,10 +160,10 @@ class VehicleController extends Controller
             'return_time' => $request->input('return_time', '18:00'),
             'pickup_location' => $request->input('pickup_location', ''),
             'dropoff_location' => $request->input('dropoff_location', ''),
-            'from_lat' => $request->input('from_lat'),
-            'from_lng' => $request->input('from_lng'),
-            'to_lat' => $request->input('to_lat'),
-            'to_lng' => $request->input('to_lng'),
+            'pickup_lat' => $request->input('pickup_lat'),
+            'pickup_lng' => $request->input('pickup_lng'),
+            'dropoff_lat' => $request->input('dropoff_lat'),
+            'dropoff_lng' => $request->input('dropoff_lng'),
         ];
 
         $pricing = $this->calculatePricing($vehicleGroup, $searchData);

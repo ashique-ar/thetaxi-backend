@@ -227,10 +227,10 @@
                                             <input type="text" name="pickup_location" id="airportFromLocation"
                                                 class="location-search airport-search-field" placeholder="Pickup Location"
                                                 value="{{ $searchData['pickup_location'] }}" required>
-                                            <input type="hidden" name="from_lat" id="airportFromLat"
-                                                value="{{ $searchData['from_lat'] }}">
-                                            <input type="hidden" name="from_lng" id="airportFromLng"
-                                                value="{{ $searchData['from_lng'] }}">
+                                            <input type="hidden" name="pickup_lat" id="airportFromLat"
+                                                value="{{ $searchData['pickup_lat'] }}">
+                                            <input type="hidden" name="pickup_lng" id="airportFromLng"
+                                                value="{{ $searchData['pickup_lng'] }}">
                                         </div>
 
                                         <!-- To Location -->
@@ -245,10 +245,10 @@
                                             <input type="text" name="dropoff_location" id="airportToLocation"
                                                 class="location-search airport-search-field" placeholder="Dropoff Location"
                                                 value="{{ $searchData['dropoff_location'] }}" required>
-                                            <input type="hidden" name="to_lat" id="airportToLat"
-                                                value="{{ $searchData['to_lat'] }}">
-                                            <input type="hidden" name="to_lng" id="airportToLng"
-                                                value="{{ $searchData['to_lng'] }}">
+                                            <input type="hidden" name="dropoff_lat" id="airportToLat"
+                                                value="{{ $searchData['dropoff_lat'] }}">
+                                            <input type="hidden" name="dropoff_lng" id="airportToLng"
+                                                value="{{ $searchData['dropoff_lng'] }}">
                                         </div>
                                     </div>
 
@@ -357,10 +357,10 @@
                                             <input type="text" name="pickup_location" id="rentalPickupLocation"
                                                 class="location-search" placeholder="Pickup Location"
                                                 value="{{ $searchData['pickup_location'] }}" required>
-                                            <input type="hidden" name="from_lat" id="rentalPickupLat"
-                                                value="{{ $searchData['from_lat'] }}">
-                                            <input type="hidden" name="from_lng" id="rentalPickupLng"
-                                                value="{{ $searchData['from_lng'] }}">
+                                            <input type="hidden" name="pickup_lat" id="rentalPickupLat"
+                                                value="{{ $searchData['pickup_lat'] }}">
+                                            <input type="hidden" name="pickup_lng" id="rentalPickupLng"
+                                                value="{{ $searchData['pickup_lng'] }}">
                                         </div>
 
                                         <!-- Dropoff Location -->
@@ -373,10 +373,10 @@
                                             <input type="text" name="dropoff_location" id="rentalDropoffLocation"
                                                 class="location-search" placeholder="Dropoff Location"
                                                 value="{{ $searchData['dropoff_location'] }}">
-                                            <input type="hidden" name="to_lat" id="rentalDropoffLat"
-                                                value="{{ $searchData['to_lat'] }}">
-                                            <input type="hidden" name="to_lng" id="rentalDropoffLng"
-                                                value="{{ $searchData['to_lng'] }}">
+                                            <input type="hidden" name="dropoff_lat" id="rentalDropoffLat"
+                                                value="{{ $searchData['dropoff_lat'] }}">
+                                            <input type="hidden" name="dropoff_lng" id="rentalDropoffLng"
+                                                value="{{ $searchData['dropoff_lng'] }}">
                                         </div>
                                     </div>
 
@@ -1351,10 +1351,10 @@
                 transfer_type: $('input[name="transfer_type"]:checked').val(),
                 pickup_location: $('#airportFromLocation').val(),
                 dropoff_location: $('#airportToLocation').val(),
-                from_lat: $('#airportFromLat').val(),
-                from_lng: $('#airportFromLng').val(),
-                to_lat: $('#airportToLat').val(),
-                to_lng: $('#airportToLng').val(),
+                pickup_lat: $('#airportFromLat').val(),
+                pickup_lng: $('#airportFromLng').val(),
+                dropoff_lat: $('#airportToLat').val(),
+                dropoff_lng: $('#airportToLng').val(),
                 pickup_date: $('#airportPickupDate').val(),
                 pickup_time: $('#airportPickupTime').val()
             };
@@ -1367,10 +1367,10 @@
                 service_type: 'ride_now',
                 pickup_location: $('#rentalPickupLocation').val(),
                 dropoff_location: $('#rentalDropoffLocation').val(),
-                from_lat: $('#rentalPickupLat').val(),
-                from_lng: $('#rentalPickupLng').val(),
-                to_lat: $('#rentalDropoffLat').val(),
-                to_lng: $('#rentalDropoffLng').val(),
+                pickup_lat: $('#rentalPickupLat').val(),
+                pickup_lng: $('#rentalPickupLng').val(),
+                dropoff_lat: $('#rentalDropoffLat').val(),
+                dropoff_lng: $('#rentalDropoffLng').val(),
                 pickup_date: $('#rentalPickupDate').val(),
                 pickup_time: $('#rentalPickupTime').val(),
                 return_date: $('#rentalReturnDate').val(),
