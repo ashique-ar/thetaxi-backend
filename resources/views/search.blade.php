@@ -33,7 +33,17 @@
                     <div class="search-summary-card">
                         @php
                             $serviceType = $search->service_type ?? 'point_to_point';
-                            $durationDays = $search->duration_days ?? 1;
+                            
+                            // Calculate duration correctly from dates if available
+                            $durationDays = 1; // Default
+                            if ($search->from_date && $search->to_date) {
+                                $fromDate = \Carbon\Carbon::parse($search->from_date);
+                                $toDate = \Carbon\Carbon::parse($search->to_date);
+                                $durationDays = max(1, $fromDate->diffInDays($toDate) + 1); // +1 for calendar days
+                            } else {
+                                $durationDays = $search->duration_days ?? 1;
+                            }
+                            
                             $packageHours = $search->package_hours ?? null;
                             $isPackageService = in_array($serviceType, ['wedding_hire', 'airport_transfers']);
                             
@@ -77,6 +87,31 @@
                                         {{ number_format($search->total_distance_km, 2) }} km
                                     </span>
                                 @endif
+                            </div>
+                        </div>
+                        
+                        <!-- Vehicle Groups Available Section -->
+                        <div class="search-summary-footer mt-3 pt-3" style="border-top: 1px solid rgba(255,255,255,0.2);">
+                            <div class="vehicle-groups-info d-flex justify-content-between align-items-center">
+                                <div class="vehicle-count-info">
+                                    <span class="vehicle-groups-label text-white-50">Vehicle Groups Available:</span>
+                                    <strong class="vehicle-groups-count text-white ms-2" id="vehicleGroupsCount">{{ count($results['data']) }}</strong>
+                                </div>
+                                <div class="vehicle-search-box">
+                                    <div class="input-group input-group-sm" style="max-width: 300px;">
+                                        <span class="input-group-text bg-white border-0">
+                                            <i class="bi bi-search text-muted"></i>
+                                        </span>
+                                        <input type="text" 
+                                               class="form-control border-0" 
+                                               id="vehicleGroupSearch" 
+                                               placeholder="Search vehicles..." 
+                                               style="box-shadow: none;">
+                                        <button class="btn btn-outline-light btn-sm" type="button" id="clearSearch" style="display: none;">
+                                            <i class="bi bi-x"></i>
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -757,6 +792,57 @@
                 font-size: 10px;
                 padding: 6px 12px;
             }
+            
+            .search-summary-footer .vehicle-groups-info {
+                flex-direction: column !important;
+                gap: 10px;
+            }
+            
+            .vehicle-search-box .input-group {
+                max-width: 100% !important;
+            }
+        }
+        
+        /* ==================== VEHICLE GROUPS SEARCH STYLES ==================== */
+        .search-summary-footer {
+            border-top: 1px solid rgba(255,255,255,0.2);
+        }
+        
+        .vehicle-groups-label {
+            font-size: 14px;
+            color: rgba(255,255,255,0.7);
+        }
+        
+        .vehicle-groups-count {
+            font-size: 18px;
+            font-weight: 600;
+            color: #ffffff;
+        }
+        
+        .vehicle-search-box .input-group-text {
+            background: rgba(255,255,255,0.9);
+            border: none;
+        }
+        
+        .vehicle-search-box .form-control {
+            background: rgba(255,255,255,0.95);
+            border: none;
+            color: #333;
+        }
+        
+        .vehicle-search-box .form-control::placeholder {
+            color: #999;
+        }
+        
+        .vehicle-search-box .form-control:focus {
+            background: #ffffff;
+            box-shadow: 0 0 0 2px rgba(255,255,255,0.3);
+        }
+        
+        .no-search-results {
+            background: rgba(255,255,255,0.05);
+            border-radius: 8px;
+            margin-top: 20px;
         }
     </style>
 @endpush
@@ -1044,6 +1130,74 @@
             // You can make AJAX call here to recalculate prices
             // For now, we'll keep the base prices
         }
+
+        // Vehicle Groups Search Functionality
+        $(document).ready(function() {
+            const $searchInput = $('#vehicleGroupSearch');
+            const $clearButton = $('#clearSearch');
+            const $vehicleCards = $('.vehicle-results-grid .col-lg-3, .vehicle-results-grid .col-md-4, .vehicle-results-grid .col-sm-12');
+            const $vehicleCountDisplay = $('#vehicleGroupsCount');
+            let totalVehicles = $vehicleCards.length;
+            
+            // Search functionality
+            $searchInput.on('input', function() {
+                const searchTerm = $(this).val().toLowerCase().trim();
+                let visibleCount = 0;
+                
+                if (searchTerm === '') {
+                    // Show all vehicles
+                    $vehicleCards.show();
+                    visibleCount = totalVehicles;
+                    $clearButton.hide();
+                } else {
+                    // Filter vehicles
+                    $vehicleCards.each(function() {
+                        const vehicleName = $(this).data('name') ? $(this).data('name').toLowerCase() : '';
+                        const vehicleCard = $(this).find('.vehicle-card');
+                        const cardText = vehicleCard.text().toLowerCase();
+                        
+                        if (vehicleName.includes(searchTerm) || cardText.includes(searchTerm)) {
+                            $(this).show();
+                            visibleCount++;
+                        } else {
+                            $(this).hide();
+                        }
+                    });
+                    $clearButton.show();
+                }
+                
+                // Update count display
+                $vehicleCountDisplay.text(visibleCount);
+                
+                // Show no results message if needed
+                if (visibleCount === 0 && searchTerm !== '') {
+                    if ($('.no-search-results').length === 0) {
+                        $('.vehicle-results-grid').after(`
+                            <div class="no-search-results text-center py-5">
+                                <i class="bi bi-search text-muted" style="font-size: 3rem;"></i>
+                                <h5 class="mt-3 text-muted">No vehicles found</h5>
+                                <p class="text-muted">Try adjusting your search term or clear the search to see all vehicles.</p>
+                            </div>
+                        `);
+                    }
+                } else {
+                    $('.no-search-results').remove();
+                }
+            });
+            
+            // Clear search
+            $clearButton.on('click', function() {
+                $searchInput.val('').trigger('input');
+                $searchInput.focus();
+            });
+            
+            // Clear search on escape key
+            $searchInput.on('keydown', function(e) {
+                if (e.key === 'Escape') {
+                    $(this).val('').trigger('input');
+                }
+            });
+        });
 
         // New Search functionality
         $('#newSearchBtn').on('click', function() {

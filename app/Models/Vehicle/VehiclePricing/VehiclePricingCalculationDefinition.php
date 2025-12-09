@@ -453,11 +453,6 @@ class VehiclePricingCalculationDefinition extends Model
             'effective_days' => 0
         ];
 
-        Log::info("Calculating KM overages", [
-            'inputs' => $inputs,
-            'slab_info' => $slabInfo
-        ]);
-
         if (!$slabInfo || !$result['journey_distance']) {
             return $result;
         }
@@ -488,11 +483,6 @@ class VehiclePricingCalculationDefinition extends Model
             $result['calculation_type'] = 'unlimited';
             $result['allowed_km'] = $actualKm; // All KM is billable
         }
-        Log::info("KM overage calculation", [
-            'inputs' => $inputs,
-            'slab_info' => $slabInfo,
-            'calculation_result' => $result
-        ]);
         return $result;
     }
 

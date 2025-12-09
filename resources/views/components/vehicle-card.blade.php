@@ -159,8 +159,8 @@
             <div class="price-display">
                 
                 @php
-                    // Get base prices in LKR (coming from BookingFlowService)
-                    $totalAmountLKR = $pricing['base_amount'] ?? 0;
+                    // Get pricing data from BookingFlowService (already calculated final amounts)
+                    $totalAmountLKR = $pricing['base_amount'] ?? 0; // This is the FINAL package amount, not per-day
                     $durationDays = $pricing['duration_info']['days'] ?? 1;
                     $packageHours = $pricing['duration_info']['package_hours'] ?? null;
                     $serviceType = $pricing['service_type'] ?? 'point_to_point';
@@ -170,42 +170,47 @@
                     $isWeddingPackage = $serviceType === 'wedding_hire' && $packageHours;
                     $isOneDay = $durationDays === 1;
                     
-                    $perDayRateLKR = $durationDays > 0 ? $totalAmountLKR / $durationDays : 0;
+                    // IMPORTANT: BookingFlowService returns TOTAL PACKAGE AMOUNT, not per-day rate
+                    // Only calculate per-day rate for display purposes in multi-day non-package services
+                    $perDayRateLKR = (!$isPackageService && $durationDays > 1) ? $totalAmountLKR / $durationDays : $totalAmountLKR;
                     
                     // Convert to selected currency using helper functions
                     $selectedCurrency = getSelectedCurrency();
-                    $totalAmountConverted = convertPrice($totalAmountLKR);
-                    $perDayRateConverted = convertPrice($perDayRateLKR);
+                    $totalAmountConverted = convertPrice($totalAmountLKR); // Final package amount
+                    $perDayRateConverted = convertPrice($perDayRateLKR);   // Per-day rate for display only
                     $currencySymbol = getCurrencySymbol();
                 @endphp
                 
                 @if($isWeddingPackage)
-                    <!-- Wedding Package Pricing -->
+                    <!-- Wedding Package Pricing - Use total amount directly -->
                     <h4 class="price-amount" 
                         data-base-price-lkr="{{ $totalAmountLKR }}" 
                         data-package-hours="{{ $packageHours }}"
                         data-service-type="{{ $serviceType }}"
-                        data-currency="{{ $selectedCurrency }}">
+                        data-currency="{{ $selectedCurrency }}"
+                        data-is-package="true">
                         {{ $currencySymbol }} 
                         <span class="price-value">{{ number_format($totalAmountConverted, 0) }}</span>
                         <span class="price-unit">/ {{ $packageHours }}h package</span>
                     </h4>
                 @elseif($isPackageService)
-                    <!-- Airport Transfer Package Pricing -->
+                    <!-- Airport Transfer Package Pricing - Use total amount directly -->
                     <h4 class="price-amount" 
                         data-base-price-lkr="{{ $totalAmountLKR }}" 
                         data-service-type="{{ $serviceType }}"
-                        data-currency="{{ $selectedCurrency }}">
+                        data-currency="{{ $selectedCurrency }}"
+                        data-is-package="true">
                         {{ $currencySymbol }} 
                         <span class="price-value">{{ number_format($totalAmountConverted, 0) }}</span>
                         <span class="price-unit">/ transfer</span>
                     </h4>
                 @elseif($isOneDay)
-                    <!-- One Day Pricing - Don't show /day for single day -->
+                    <!-- One Day Pricing - Use total amount directly -->
                     <h4 class="price-amount" 
                         data-base-price-lkr="{{ $totalAmountLKR }}" 
                         data-duration="{{ $durationDays }}"
-                        data-currency="{{ $selectedCurrency }}">
+                        data-currency="{{ $selectedCurrency }}"
+                        data-is-package="false">
                         {{ $currencySymbol }} 
                         <span class="price-value">{{ number_format($totalAmountConverted, 0) }}</span>
                     </h4>
@@ -213,12 +218,13 @@
                         <span class="duration-label">1 day rental</span>
                     </div>
                 @else
-                    <!-- Multi-day Pricing - Show per day rate -->
+                    <!-- Multi-day Pricing - Show calculated per-day rate for display -->
                     <h4 class="price-amount" 
                         data-base-price-lkr="{{ $totalAmountLKR }}" 
                         data-per-day-lkr="{{ round($perDayRateLKR, 2) }}"
                         data-duration="{{ $durationDays }}"
-                        data-currency="{{ $selectedCurrency }}">
+                        data-currency="{{ $selectedCurrency }}"
+                        data-is-package="false">
                         {{ $currencySymbol }} 
                         <span class="price-value">{{ number_format($perDayRateConverted, 0) }}</span>
                         <span class="price-unit">/day</span>

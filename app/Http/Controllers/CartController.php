@@ -325,13 +325,16 @@ class CartController extends Controller
                 return redirect()->back()->with('error', 'Invalid pricing. Please contact support.');
             }
 
+            // Determine if this is a package service for proper cart calculation
+            $isPackageService = in_array($serviceType, ['wedding_hire', 'airport_transfers']);
+            
             $cartItem = [
                 'vehicle_group_id' => $vehicleId,
                 'name' => $vehicleGroup?->name ?? $name,
                 'vehicle_type' => $vehicleGroup?->vehicle_type ?? 'Sedan',
                 'image' => $vehicleGroup?->thumbnail['path'] ?? null,
-                'price' => (float)$perDayPrice,  // Store per-day price in LKR
-                'price_lkr' => (float)$perDayPrice, // Explicitly store LKR price
+                'price' => $isPackageService ? (float)$totalPrice : (float)$perDayPrice, // Use total for packages, per-day for others
+                'price_lkr' => $isPackageService ? (float)$totalPrice : (float)$perDayPrice, // Explicitly store LKR price
                 'total_price' => (float)$totalPrice, // Store total price in LKR
                 'total_price_lkr' => (float)$totalPrice, // Explicitly store LKR total
                 'days' => (int)$days,
@@ -349,6 +352,7 @@ class CartController extends Controller
                 'service_type_data' => $serviceTypeModel,
                 'search_data' => $searchData,
                 'base_currency' => 'LKR', // Mark as LKR base pricing
+                'is_package' => $isPackageService, // Critical: Mark package services to prevent double multiplication
                 'added_at' => now()
             ];
 

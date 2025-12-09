@@ -160,18 +160,35 @@ class CartService
             return;
         }
 
-        // Calculate subtotal using LKR prices (stored in database)
+        // Calculate subtotal using LKR prices from BookingFlowService (already calculated package amounts)
         $subtotal = $items->sum(function ($item) {
             // JSON-decoded items may be stdClass objects or arrays
             // Handle both cases for accessing properties
             $lkrPrice = 0;
+            $isPackageService = false;
+            $serviceType = '';
+            
             if (is_array($item)) {
                 $lkrPrice = $item['price_lkr'] ?? $item['price'] ?? 0;
+                $serviceType = $item['service_type'] ?? '';
+                $isPackageService = $item['is_package'] ?? false;
             } else if (is_object($item)) {
                 $lkrPrice = $item->price_lkr ?? $item->price ?? 0;
+                $serviceType = $item->service_type ?? '';
+                $isPackageService = $item->is_package ?? false;
             }
-            $days = is_array($item) ? ($item['days'] ?? 1) : ($item->days ?? 1);
-            return (float)$lkrPrice * (int)$days;
+            
+            // Determine if this is a package service (already calculated as total, not per-day)
+            $isPackage = $isPackageService || in_array($serviceType, ['wedding_hire', 'airport_transfers']);
+            
+            if ($isPackage) {
+                // Package services: price is already the total amount, don't multiply by days
+                return (float)$lkrPrice;
+            } else {
+                // Per-day services: multiply by number of days
+                $days = is_array($item) ? ($item['days'] ?? 1) : ($item->days ?? 1);
+                return (float)$lkrPrice * (int)$days;
+            }
         });
 
         // Calculate service fee dynamically from database settings
@@ -285,6 +302,10 @@ class CartService
         $convertedItems = collect($items)->map(function ($item) use ($selectedCurrency) {
             $item = is_array($item) ? $item : (array)$item;
             
+            // Preserve package service indicators
+            $serviceType = $item['service_type'] ?? '';
+            $isPackage = ($item['is_package'] ?? false) || in_array($serviceType, ['wedding_hire', 'airport_transfers']);
+            
             // Convert prices from LKR (stored) to selected currency
             if (isset($item['price'])) {
                 $item['price'] = $this->currencyService->convertFromLKR((float)$item['price'], $selectedCurrency);
@@ -296,8 +317,10 @@ class CartService
                 $item['total_price_lkr'] = (float)($item['total_price_lkr'] ?? $item['total_price']); // Preserve original LKR price
             }
             
-            // Add currency information
+            // Add currency and package information
             $item['currency'] = $selectedCurrency;
+            $item['is_package'] = $isPackage;
+            $item['service_type'] = $serviceType;
             $item['currency_symbol'] = getCurrencySymbol($selectedCurrency);
             
             return $item;
