@@ -12,7 +12,7 @@
 
 @php
     $pricing = $pricing ?: ['base_amount' => 0, 'currency' => 'LKR'];
-    $mainImage =  $vehicle['thumbnail'] ? s3_asset($vehicle['thumbnail']['path'] ?? '') : asset('assets/img/default-vehicle.jpg');
+    $mainImage =  isset($vehicle['thumbnail']) ? s3_asset($vehicle['thumbnail']['path'] ?? '') : asset('assets/img/default-vehicle.jpg');
 @endphp
 
 <!-- Vehicle Card -->
