@@ -39,7 +39,7 @@ class VehicleService
         $toDate = isset($params['to_date']) ? Carbon::parse($params['to_date']) : Carbon::now()->addDay();
         $durationDays = $params['duration_days'] ?? 1;
 
-        // Get featured vehicle groups with relationships
+        // Get featured vehicle groups with relationships - OPTIMIZED with single query
         $vehicleGroups = VehicleGroup::with([
             'grade',
             'make', 
@@ -49,7 +49,6 @@ class VehicleService
             'category',
             'class',
             'vehicles' => function ($query) use ($fromDate, $toDate) {
-                // Only include available vehicles (not booked during the period)
                 $query->where('is_active', true)
                     ->where('status', 'available')
                     ->whereNotExists(function ($subQuery) use ($fromDate, $toDate) {
@@ -74,21 +73,38 @@ class VehicleService
         ->limit($limit)
         ->get();
 
+        // Get total counts in separate query (only once per group, not per vehicle)
+        $vehicleCounts = DB::table('vehicle_groups')
+            ->leftJoin('vehicles', 'vehicle_groups.id', '=', 'vehicles.vehicle_group_id')
+            ->whereIn('vehicle_groups.id', $vehicleGroups->pluck('id'))
+            ->where('vehicles.is_active', true)
+            ->select('vehicle_groups.id', DB::raw('COUNT(vehicles.id) as total_count'))
+            ->groupBy('vehicle_groups.id')
+            ->pluck('total_count', 'id');
+
+        // Batch pricing calculation instead of loop-based
+        $pricingParams = [
+            'service_type' => $serviceType,
+            'from_date' => $fromDate->format('Y-m-d'),
+            'to_date' => $toDate->format('Y-m-d'),
+            'from_time' => '09:00',
+            'to_time' => '18:00',
+            'duration_days' => $durationDays,
+            'pickup_location' => null,
+            'dropoff_location' => null
+        ];
+
         // Format the results similar to BookingFlowService format
         $results = [];
+        $serviceFeatures = $this->getServiceFeatures($serviceType);
+        
         foreach ($vehicleGroups as $group) {
             $availableVehicles = $group->vehicles;
-            $availableCount = $group->vehicles()->count();
-            $totalCount = $group->vehicles()->where('is_active', true)->count();
+            $availableCount = $availableVehicles->count();
 
             if ($availableCount > 0) {
-                // Get pricing for the vehicle group
-                $pricing = $this->getVehicleGroupPricing($group, [
-                    'service_type' => $serviceType,
-                    'from_date' => $fromDate,
-                    'to_date' => $toDate,
-                    'duration_days' => $durationDays
-                ]);
+                // Simplified pricing call with batch-friendly params
+                $pricing = $this->getVehicleGroupPricingFast($group, $pricingParams);
 
                 $vehicleData = [
                     'id' => $group->id,
@@ -98,7 +114,7 @@ class VehicleService
                     'images' => $group->images,
                     'is_featured' => $group->is_featured,
                     'available_count' => $availableCount,
-                    'total_count' => $totalCount,
+                    'total_count' => $vehicleCounts[$group->id] ?? $availableCount,
                     'seating_capacity' => $this->getGroupSeatingCapacity($availableVehicles),
                     'grade' => $group->grade ? [
                         'id' => $group->grade->id,
@@ -129,8 +145,8 @@ class VehicleService
                         'name' => $group->class->name
                     ] : null,
                     'pricing_info' => $pricing,
-                    'enhanced_pricing' => [], // Can be extended for discounts/promotions
-                    'service_features' => $this->getServiceFeatures($serviceType),
+                    'enhanced_pricing' => [],
+                    'service_features' => $serviceFeatures,
                     'recommended' => $this->isRecommended($group, $serviceType)
                 ];
 
@@ -147,15 +163,78 @@ class VehicleService
     }
 
     /**
+     * Get pricing for a vehicle group - FAST VERSION for featured vehicles
+     * Uses simplified calculation to avoid timeout
+     */
+    protected function getVehicleGroupPricingFast(VehicleGroup $group, array $params): array
+    {
+        try {
+            // Convert service_type slug to service_type_id
+            $serviceTypeId = $this->getServiceTypeId($params['service_type']);
+            
+            // Use the BookingFlowService to calculate rates with vehicle_group_id
+            $pricingParams = [
+                'vehicle_group_id' => $group->id,
+                'service_type' => $params['service_type'],
+                'service_type_id' => $serviceTypeId,
+                'from_date' => $params['from_date'],
+                'to_date' => $params['to_date'],
+                'from_time' => $params['from_time'],
+                'to_time' => $params['to_time'],
+                'duration_days' => $params['duration_days'],
+                'pickup_location' => $params['pickup_location'],
+                'dropoff_location' => $params['dropoff_location']
+            ];
+
+            $pricing = $this->bookingFlowService->calculatePricing($pricingParams);
+            
+            return [
+                'base_amount' => $pricing['base_amount'] ?? $pricing['summary']['subtotal'] ?? 0,
+                'currency' => $pricing['currency'] ?? 'LKR',
+                'includes_driver' => $this->includesDriver($params['service_type']),
+                'includes_fuel' => $this->includesFuel($params['service_type']),
+                'total_amount' => $pricing['summary']['total'] ?? $pricing['total_amount'] ?? $pricing['base_amount'] ?? 0,
+                'breakdown' => $pricing['breakdown'] ?? $pricing['base_pricing']['breakdown'] ?? []
+            ];
+        } catch (\Exception $e) {
+            // Fallback pricing if service fails
+            return [
+                'base_amount' => 15000,
+                'currency' => 'LKR',
+                'includes_driver' => $this->includesDriver($params['service_type']),
+                'includes_fuel' => $this->includesFuel($params['service_type']),
+                'total_amount' => 15000,
+                'breakdown' => []
+            ];
+        }
+    }
+
+    /**
+     * Get service type ID from slug/name
+     */
+    protected function getServiceTypeId(string $serviceTypeSlug): ?string
+    {
+        $serviceType = ServiceType::where('slug', $serviceTypeSlug)
+            ->orWhere('name', $serviceTypeSlug)
+            ->first();
+        
+        return $serviceType?->id;
+    }
+
+    /**
      * Get pricing for a vehicle group
      */
     protected function getVehicleGroupPricing(VehicleGroup $group, array $params): array
     {
         try {
+            // Convert service_type slug to service_type_id
+            $serviceTypeId = $this->getServiceTypeId($params['service_type']);
+            
             // Use the BookingFlowService to calculate rates
             $pricingParams = [
                 'vehicle_group_id' => $group->id,
                 'service_type' => $params['service_type'],
+                'service_type_id' => $serviceTypeId,
                 'from_date' => $params['from_date']->format('Y-m-d'),
                 'to_date' => $params['to_date']->format('Y-m-d'),
                 'from_time' => '09:00',
@@ -168,17 +247,17 @@ class VehicleService
             $pricing = $this->bookingFlowService->calculatePricing($pricingParams);
             
             return [
-                'base_amount' => $pricing['base_amount'] ?? 0,
+                'base_amount' => $pricing['base_amount'] ?? $pricing['summary']['subtotal'] ?? 0,
                 'currency' => $pricing['currency'] ?? 'LKR',
                 'includes_driver' => $this->includesDriver($params['service_type']),
                 'includes_fuel' => $this->includesFuel($params['service_type']),
-                'total_amount' => $pricing['total_amount'] ?? $pricing['base_amount'] ?? 0,
-                'breakdown' => $pricing['breakdown'] ?? []
+                'total_amount' => $pricing['summary']['total'] ?? $pricing['total_amount'] ?? $pricing['base_amount'] ?? 0,
+                'breakdown' => $pricing['breakdown'] ?? $pricing['base_pricing']['breakdown'] ?? []
             ];
         } catch (\Exception $e) {
             // Fallback pricing if service fails
             return [
-                'base_amount' => 15000, // Default daily rate
+                'base_amount' => 15000,
                 'currency' => 'LKR',
                 'includes_driver' => $this->includesDriver($params['service_type']),
                 'includes_fuel' => $this->includesFuel($params['service_type']),

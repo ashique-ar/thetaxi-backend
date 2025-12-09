@@ -204,7 +204,7 @@ class BookingFlowService
                     ];
 
                     $basePricing = $this->calculateDynamicPricing($pricingParams);
-Log::info('Calculated pricing', ['vehicle_group_id' => $group->id, 'pricing' => $basePricing]);
+                    Log::info('Calculated pricing', ['vehicle_group_id' => $group->id, 'pricing' => $basePricing]);
                     if ($basePricing && isset($basePricing['total_amount']) && $basePricing['total_amount'] > 0) {
                         $isPricingConfigured = true;
                         $pricingInfo = [
