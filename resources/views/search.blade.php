@@ -33,7 +33,7 @@
                     <div class="search-summary-card">
                         @php
                             $serviceType = $search->service_type ?? 'point_to_point';
-                            
+
                             // Calculate duration correctly from dates if available
                             $durationDays = 1; // Default
                             if ($search->from_date && $search->to_date) {
@@ -43,10 +43,10 @@
                             } else {
                                 $durationDays = $search->duration_days ?? 1;
                             }
-                            
+
                             $packageHours = $search->package_hours ?? null;
                             $isPackageService = in_array($serviceType, ['wedding_hire', 'airport_transfers']);
-                            
+
                             // Format duration based on service type
                             if ($serviceType === 'wedding_hire' && $packageHours) {
                                 $durationText = $packageHours . ' Hour Package';
@@ -59,19 +59,21 @@
                                 $durationIcon = 'bi-calendar-event';
                             }
                         @endphp
-                        
+
                         <div class="search-summary-header">
                             <div class="duration-display">
                                 <i class="{{ $durationIcon }}"></i>
-                                <span class="duration-text">{{ $durationText }}</span>
+                                <div class="duration-info"></div>
+                                    <span class="duration-text">{{ $durationText }}</span>
+                                    @if($search->from_date && $search->to_date)
+                                        <span class="date-range" style="display: block; font-size: 14px; font-weight: 400; margin-top: 4px;">
+                                            {{ \Carbon\Carbon::parse($search->from_date)->format('M d') }} -
+                                            {{ \Carbon\Carbon::parse($search->to_date)->format('M d, Y') }}
+                                        </span>
+                                    @endif
+                                </div>
                             </div>
                             <div class="search-details">
-                                @if($search->from_date && $search->to_date)
-                                    <span class="date-range">
-                                        {{ \Carbon\Carbon::parse($search->from_date)->format('M d') }} - 
-                                        {{ \Carbon\Carbon::parse($search->to_date)->format('M d, Y') }}
-                                    </span>
-                                @endif
                                 @if($search->pickup_location)
                                     <span class="location-info">
                                         <i class="bi bi-geo-alt"></i>
@@ -89,55 +91,39 @@
                                 @endif
                             </div>
                         </div>
-                        
+
                         <!-- Vehicle Groups Available Section -->
                         <div class="search-summary-footer mt-3 pt-3" style="border-top: 1px solid rgba(255,255,255,0.2);">
                             <div class="vehicle-groups-info d-flex justify-content-between align-items-center">
                                 <div class="vehicle-count-info">
                                     <span class="vehicle-groups-label text-white-50">Vehicle Groups Available:</span>
-                                    <strong class="vehicle-groups-count text-white ms-2" id="vehicleGroupsCount">{{ count($results['data']) }}</strong>
+                                    <strong class="vehicle-groups-count text-white ms-2"
+                                        id="vehicleGroupsCount">{{ count($results['data']) }}</strong>
                                 </div>
                                 <div class="vehicle-search-box">
+                                    <select class="form-select" id="sortResults" style="max-width: 200px;">
+                                        <option value="default">Sort By</option>
+                                        <option value="price_low">Price: Low to High</option>
+                                        <option value="price_high">Price: High to Low</option>
+                                        <option value="name">Name: A to Z</option>
+                                    </select>
                                     <div class="input-group input-group-sm" style="max-width: 300px;">
                                         <span class="input-group-text bg-white border-0">
                                             <i class="bi bi-search text-muted"></i>
                                         </span>
-                                        <input type="text" 
-                                               class="form-control border-0" 
-                                               id="vehicleGroupSearch" 
-                                               placeholder="Search vehicles..." 
-                                               style="box-shadow: none;">
-                                        <button class="btn btn-outline-light btn-sm" type="button" id="clearSearch" style="display: none;">
+                                        <input type="text" class="form-control border-0" id="vehicleGroupSearch"
+                                            placeholder="Search vehicles..." style="box-shadow: none;">
+                                        <button class="btn btn-outline-light btn-sm" type="button" id="clearSearch"
+                                            style="display: none;">
                                             <i class="bi bi-x"></i>
                                         </button>
                                     </div>
+                                    <a href="{{ route('home') }}" class="btn btn-success text-nowrap">
+                                        <i class="bi bi-search"></i> New Search
+                                    </a>
                                 </div>
                             </div>
                         </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Results Header -->
-            <div class="row mb-4">
-                <div class="col-lg-6">
-                    <h4 class="results-title">{{ count($results['data']) }} Vehicle Groups Available</h4>
-                    <p class="text-muted">Choose from our premium selection of vehicles</p>
-                </div>
-                <div class="col-lg-6">
-                    <div class="d-flex gap-2 justify-content-end align-items-center">
-                        
-                        <!-- Sort Dropdown -->
-                        <select class="form-select" id="sortResults" style="max-width: 200px;">
-                            <option value="default">Sort By</option>
-                            <option value="price_low">Price: Low to High</option>
-                            <option value="price_high">Price: High to Low</option>
-                            <option value="name">Name: A to Z</option>
-                        </select>
-                        <!-- New Search Button -->
-                        <a href="{{ route('home') }}" class="btn btn-success text-nowrap">
-                            <i class="bi bi-search"></i> New Search
-                        </a>
                     </div>
                 </div>
             </div>
@@ -158,10 +144,10 @@
                         @endphp
 
                         <div class="col-lg-3 col-md-4 col-sm-12" data-vehicle-group="{{ $result['id'] }}"
-                            data-price="{{ $pricing['base_amount'] ?? 0 }}"
-                            data-name="{{ $result['name'] ?? 'Unknown Vehicle' }}">
-                            <x-vehicle-card :vehicle="$result" :pricing="$pricing" :enhancedPricing="$enhancedPricing" :serviceFeatures="$serviceFeatures"
-                                :availability="$availability" :searchId="$search->id" :isRecommended="$isRecommended" :showBookNow="true" :showViewDetails="false" />
+                            data-price="{{ $pricing['base_amount'] ?? 0 }}" data-name="{{ $result['name'] ?? 'Unknown Vehicle' }}">
+                            <x-vehicle-card :vehicle="$result" :pricing="$pricing" :enhancedPricing="$enhancedPricing"
+                                :serviceFeatures="$serviceFeatures" :availability="$availability" :searchId="$search->id"
+                                :isRecommended="$isRecommended" :showBookNow="true" :showViewDetails="false" />
                         </div>
                     @endforeach
                 </div>
@@ -169,8 +155,7 @@
                 <!-- No Results Found -->
                 <div class="no-results-card">
                     <div class="text-center py-5">
-                        <svg width="100" height="100" viewBox="0 0 100 100" fill="none"
-                            xmlns="http://www.w3.org/2000/svg">
+                        <svg width="100" height="100" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
                             <path
                                 d="M50 10C27.9 10 10 27.9 10 50C10 72.1 27.9 90 50 90C72.1 90 90 72.1 90 50C90 27.9 72.1 10 50 10ZM50 80C33.4 80 20 66.6 20 50C20 33.4 33.4 20 50 20C66.6 20 80 33.4 80 50C80 66.6 66.6 80 50 80Z"
                                 fill="#ddd" />
@@ -317,16 +302,16 @@
                 flex-direction: column;
                 align-items: flex-start;
             }
-            
+
             .search-details {
                 align-items: flex-start;
                 width: 100%;
             }
-            
+
             .duration-display {
                 font-size: 20px;
             }
-            
+
             .duration-display i {
                 font-size: 24px;
             }
@@ -792,55 +777,55 @@
                 font-size: 10px;
                 padding: 6px 12px;
             }
-            
+
             .search-summary-footer .vehicle-groups-info {
                 flex-direction: column !important;
                 gap: 10px;
             }
-            
+
             .vehicle-search-box .input-group {
                 max-width: 100% !important;
             }
         }
-        
+
         /* ==================== VEHICLE GROUPS SEARCH STYLES ==================== */
         .search-summary-footer {
-            border-top: 1px solid rgba(255,255,255,0.2);
+            border-top: 1px solid rgba(255, 255, 255, 0.2);
         }
-        
+
         .vehicle-groups-label {
             font-size: 14px;
-            color: rgba(255,255,255,0.7);
+            color: rgba(255, 255, 255, 0.7);
         }
-        
+
         .vehicle-groups-count {
             font-size: 18px;
             font-weight: 600;
             color: #ffffff;
         }
-        
+
         .vehicle-search-box .input-group-text {
-            background: rgba(255,255,255,0.9);
+            background: rgba(255, 255, 255, 0.9);
             border: none;
         }
-        
+
         .vehicle-search-box .form-control {
-            background: rgba(255,255,255,0.95);
+            background: rgba(255, 255, 255, 0.95);
             border: none;
             color: #333;
         }
-        
+
         .vehicle-search-box .form-control::placeholder {
             color: #999;
         }
-        
+
         .vehicle-search-box .form-control:focus {
             background: #ffffff;
-            box-shadow: 0 0 0 2px rgba(255,255,255,0.3);
+            box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.3);
         }
-        
+
         .no-search-results {
-            background: rgba(255,255,255,0.05);
+            background: rgba(255, 255, 255, 0.05);
             border-radius: 8px;
             margin-top: 20px;
         }
@@ -855,12 +840,12 @@
         let cartCurrency = '{{ getSelectedCurrency() }}';
         let cartCurrencySymbol = '{{ getCurrencySymbol() }}';
 
-        $(document).ready(function() {
+        $(document).ready(function () {
             // Load cart from session storage
             loadCart();
 
             // Sort functionality
-            $('#sortResults').on('change', function() {
+            $('#sortResults').on('change', function () {
                 const sortBy = $(this).val();
                 const $grid = $('.vehicle-results-grid');
                 const $cards = $grid.find('.col-lg-3').toArray();
@@ -869,7 +854,7 @@
                     return;
                 }
 
-                $cards.sort(function(a, b) {
+                $cards.sort(function (a, b) {
                     const priceA = parseFloat($(a).data('price')) || 0;
                     const priceB = parseFloat($(b).data('price')) || 0;
                     const nameA = $(a).data('name') || '';
@@ -889,7 +874,7 @@
             });
 
             // Add to cart functionality
-            $('.add-to-cart-btn').on('click', function() {
+            $('.add-to-cart-btn').on('click', function () {
                 const btn = $(this);
                 const groupId = btn.data('group-id');
                 const searchId = btn.data('search-id');
@@ -900,7 +885,7 @@
                 // Get booking dates from the search
                 const fromDate = '{{ $search->from_date ?? '' }}';
                 const toDate = '{{ $search->to_date ?? '' }}';
-                
+
                 // Calculate duration days from dates
                 let durationDays = 1;
                 if (fromDate && toDate) {
@@ -909,7 +894,7 @@
                     const diffTime = Math.abs(to - from);
                     durationDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) || 1;
                 }
-                
+
                 const searchData = {
                     search_id: searchId,
                     from_date: fromDate,
@@ -946,12 +931,12 @@
             });
 
             // Close cart float
-            $('#closeCartFloat').on('click', function() {
+            $('#closeCartFloat').on('click', function () {
                 $('#cartSummaryFloat').fadeOut();
             });
 
             // Booking form date change - update prices
-            $(document).on('change', 'input[name="from_date"], input[name="to_date"]', function() {
+            $(document).on('change', 'input[name="from_date"], input[name="to_date"]', function () {
                 updateAllPrices();
             });
         });
@@ -978,7 +963,7 @@
                     service_type: item.service_type,
                     search_data: item
                 },
-                success: function(response) {
+                success: function (response) {
                     if (response.success) {
                         // Load updated cart from server
                         loadCartFromServer();
@@ -991,7 +976,7 @@
                         showErrorNotification('Error: ' + response.message);
                     }
                 },
-                error: function(xhr) {
+                error: function (xhr) {
                     console.error('Error adding to cart:', xhr);
                     const errorMsg = xhr.responseJSON?.message || 'Error adding item to cart. Please try again.';
                     showErrorNotification(errorMsg);
@@ -1007,7 +992,7 @@
                     _token: '{{ csrf_token() }}',
                     cart_key: cartKey
                 },
-                success: function(response) {
+                success: function (response) {
                     if (response.success) {
                         loadCartFromServer();
                         // Dispatch cart updated event
@@ -1019,7 +1004,7 @@
                         alert('Error: ' + response.message);
                     }
                 },
-                error: function(xhr) {
+                error: function (xhr) {
                     console.error('Error removing from cart:', xhr);
                     alert('Error removing item. Please try again.');
                 }
@@ -1030,7 +1015,7 @@
             $.ajax({
                 url: '{{ route("cart.get") }}',
                 method: 'GET',
-                success: function(response) {
+                success: function (response) {
                     if (response.success) {
                         cart = response.items || [];
                         cartTotals = response.totals || {};
@@ -1042,7 +1027,7 @@
                         }
                     }
                 },
-                error: function(xhr) {
+                error: function (xhr) {
                     console.error('Error loading cart:', xhr);
                 }
             });
@@ -1068,23 +1053,23 @@
                 total += itemTotal;
 
                 $cartItems.append(`
-                <div class="cart-float-item">
-                    <div class="d-flex justify-content-between align-items-start mb-2">
-                        <div class="flex-grow-1">
-                            <strong>${item.vehicle_name || item.name || 'Vehicle Rental'}</strong>
-                            <div class="small">${days} day(s)</div>
-                            <div class="small">${item.pickup_date || ''} to ${item.return_date || ''}</div>
+                        <div class="cart-float-item">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <div class="flex-grow-1">
+                                    <strong>${item.vehicle_name || item.name || 'Vehicle Rental'}</strong>
+                                    <div class="small">${days} day(s)</div>
+                                    <div class="small">${item.pickup_date || ''} to ${item.return_date || ''}</div>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-link text-white p-0 ms-2" onclick="removeFromCart('${key}')">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <span>Per day: ${cartCurrencySymbol}${price.toFixed(2)}</span>
+                                <strong>${cartCurrencySymbol}${itemTotal.toFixed(2)}</strong>
+                            </div>
                         </div>
-                        <button type="button" class="btn btn-sm btn-link text-white p-0 ms-2" onclick="removeFromCart('${key}')">
-                            <i class="bi bi-x-lg"></i>
-                        </button>
-                    </div>
-                    <div class="d-flex justify-content-between">
-                        <span>Per day: ${cartCurrencySymbol}${price.toFixed(2)}</span>
-                        <strong>${cartCurrencySymbol}${itemTotal.toFixed(2)}</strong>
-                    </div>
-                </div>
-            `);
+                    `);
             });
 
             // Use server-calculated total if available, otherwise use client-calculated total
@@ -1099,12 +1084,12 @@
         function showSuccessNotification(message) {
             // Create bootstrap alert
             const alert = $(`
-                <div class="alert alert-success alert-dismissible fade show" role="alert" style="position: fixed; top: 20px; right: 20px; z-index: 1100; min-width: 300px;">
-                    <i class="bi bi-check-circle-fill me-2"></i>
-                    ${message}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                </div>
-            `);
+                        <div class="alert alert-success alert-dismissible fade show" role="alert" style="position: fixed; top: 20px; right: 20px; z-index: 1100; min-width: 300px;">
+                            <i class="bi bi-check-circle-fill me-2"></i>
+                            ${message}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    `);
             $('body').append(alert);
             setTimeout(() => alert.alert('close'), 4000);
         }
@@ -1112,12 +1097,12 @@
         function showErrorNotification(message) {
             // Create bootstrap alert
             const alert = $(`
-                <div class="alert alert-danger alert-dismissible fade show" role="alert" style="position: fixed; top: 20px; right: 20px; z-index: 1100; min-width: 300px;">
-                    <i class="bi bi-exclamation-circle-fill me-2"></i>
-                    ${message}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                </div>
-            `);
+                        <div class="alert alert-danger alert-dismissible fade show" role="alert" style="position: fixed; top: 20px; right: 20px; z-index: 1100; min-width: 300px;">
+                            <i class="bi bi-exclamation-circle-fill me-2"></i>
+                            ${message}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    `);
             $('body').append(alert);
             setTimeout(() => alert.alert('close'), 5000);
         }
@@ -1132,18 +1117,18 @@
         }
 
         // Vehicle Groups Search Functionality
-        $(document).ready(function() {
+        $(document).ready(function () {
             const $searchInput = $('#vehicleGroupSearch');
             const $clearButton = $('#clearSearch');
             const $vehicleCards = $('.vehicle-results-grid .col-lg-3, .vehicle-results-grid .col-md-4, .vehicle-results-grid .col-sm-12');
             const $vehicleCountDisplay = $('#vehicleGroupsCount');
             let totalVehicles = $vehicleCards.length;
-            
+
             // Search functionality
-            $searchInput.on('input', function() {
+            $searchInput.on('input', function () {
                 const searchTerm = $(this).val().toLowerCase().trim();
                 let visibleCount = 0;
-                
+
                 if (searchTerm === '') {
                     // Show all vehicles
                     $vehicleCards.show();
@@ -1151,11 +1136,11 @@
                     $clearButton.hide();
                 } else {
                     // Filter vehicles
-                    $vehicleCards.each(function() {
+                    $vehicleCards.each(function () {
                         const vehicleName = $(this).data('name') ? $(this).data('name').toLowerCase() : '';
                         const vehicleCard = $(this).find('.vehicle-card');
                         const cardText = vehicleCard.text().toLowerCase();
-                        
+
                         if (vehicleName.includes(searchTerm) || cardText.includes(searchTerm)) {
                             $(this).show();
                             visibleCount++;
@@ -1165,34 +1150,34 @@
                     });
                     $clearButton.show();
                 }
-                
+
                 // Update count display
                 $vehicleCountDisplay.text(visibleCount);
-                
+
                 // Show no results message if needed
                 if (visibleCount === 0 && searchTerm !== '') {
                     if ($('.no-search-results').length === 0) {
                         $('.vehicle-results-grid').after(`
-                            <div class="no-search-results text-center py-5">
-                                <i class="bi bi-search text-muted" style="font-size: 3rem;"></i>
-                                <h5 class="mt-3 text-muted">No vehicles found</h5>
-                                <p class="text-muted">Try adjusting your search term or clear the search to see all vehicles.</p>
-                            </div>
-                        `);
+                                    <div class="no-search-results text-center py-5">
+                                        <i class="bi bi-search text-muted" style="font-size: 3rem;"></i>
+                                        <h5 class="mt-3 text-muted">No vehicles found</h5>
+                                        <p class="text-muted">Try adjusting your search term or clear the search to see all vehicles.</p>
+                                    </div>
+                                `);
                     }
                 } else {
                     $('.no-search-results').remove();
                 }
             });
-            
+
             // Clear search
-            $clearButton.on('click', function() {
+            $clearButton.on('click', function () {
                 $searchInput.val('').trigger('input');
                 $searchInput.focus();
             });
-            
+
             // Clear search on escape key
-            $searchInput.on('keydown', function(e) {
+            $searchInput.on('keydown', function (e) {
                 if (e.key === 'Escape') {
                     $(this).val('').trigger('input');
                 }
@@ -1200,7 +1185,7 @@
         });
 
         // New Search functionality
-        $('#newSearchBtn').on('click', function() {
+        $('#newSearchBtn').on('click', function () {
             // Create a new search modal/form
             showNewSearchModal();
         });
@@ -1208,117 +1193,117 @@
         function showNewSearchModal() {
             // Create a modal with search form
             const modal = $(`
-                <div class="modal fade" id="newSearchModal" tabindex="-1" aria-hidden="true">
-                    <div class="modal-dialog modal-lg">
-                        <div class="modal-content">
-                            <div class="modal-header">
-                                <h5 class="modal-title">
-                                    <i class="bi bi-search"></i> Start New Search
-                                </h5>
-                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                            </div>
-                            <div class="modal-body">
-                                <form id="newSearchForm">
-                                    <div class="row g-3">
-                                        <!-- Service Type -->
-                                        <div class="col-md-12">
-                                            <label class="form-label">Service Type</label>
-                                            <select name="service_type" class="form-select" required>
-                                                <option value="point_to_point">Point to Point</option>
-                                                <option value="ride_now">Ride Now</option>
-                                                <option value="airport_transfers">Airport Transfer</option>
-                                                <option value="wedding_hire">Wedding Hire</option>
-                                                <option value="corporate">Corporate</option>
-                                            </select>
-                                        </div>
-                                        
-                                        <!-- Pickup Location -->
-                                        <div class="col-md-6">
-                                            <label class="form-label">Pickup Location</label>
-                                            <input type="text" name="pickup_location" class="form-control" required>
-                                        </div>
-                                        
-                                        <!-- Dropoff Location -->
-                                        <div class="col-md-6">
-                                            <label class="form-label">Dropoff Location</label>
-                                            <input type="text" name="dropoff_location" class="form-control">
-                                        </div>
-                                        
-                                        <!-- Pickup Date -->
-                                        <div class="col-md-6">
-                                            <label class="form-label">Pickup Date</label>
-                                            <input type="date" name="pickup_date" class="form-control" 
-                                                   min="{{ date('Y-m-d') }}" value="{{ date('Y-m-d') }}" required>
-                                        </div>
-                                        
-                                        <!-- Return Date -->
-                                        <div class="col-md-6">
-                                            <label class="form-label">Return Date</label>
-                                            <input type="date" name="return_date" class="form-control" 
-                                                   min="{{ date('Y-m-d') }}" value="{{ date('Y-m-d', strtotime('+1 day')) }}">
-                                        </div>
-                                        
-                                        <!-- Times -->
-                                        <div class="col-md-6">
-                                            <label class="form-label">Pickup Time</label>
-                                            <input type="time" name="pickup_time" class="form-control" value="10:00">
-                                        </div>
-                                        
-                                        <div class="col-md-6">
-                                            <label class="form-label">Return Time</label>
-                                            <input type="time" name="return_time" class="form-control" value="18:00">
-                                        </div>
+                        <div class="modal fade" id="newSearchModal" tabindex="-1" aria-hidden="true">
+                            <div class="modal-dialog modal-lg">
+                                <div class="modal-content">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title">
+                                            <i class="bi bi-search"></i> Start New Search
+                                        </h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                                     </div>
-                                </form>
-                            </div>
-                            <div class="modal-footer">
-                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                                <button type="button" class="btn btn-primary" id="submitNewSearch">
-                                    <i class="bi bi-search"></i> Search Vehicles
-                                </button>
+                                    <div class="modal-body">
+                                        <form id="newSearchForm">
+                                            <div class="row g-3">
+                                                <!-- Service Type -->
+                                                <div class="col-md-12">
+                                                    <label class="form-label">Service Type</label>
+                                                    <select name="service_type" class="form-select" required>
+                                                        <option value="point_to_point">Point to Point</option>
+                                                        <option value="ride_now">Ride Now</option>
+                                                        <option value="airport_transfers">Airport Transfer</option>
+                                                        <option value="wedding_hire">Wedding Hire</option>
+                                                        <option value="corporate">Corporate</option>
+                                                    </select>
+                                                </div>
+
+                                                <!-- Pickup Location -->
+                                                <div class="col-md-6">
+                                                    <label class="form-label">Pickup Location</label>
+                                                    <input type="text" name="pickup_location" class="form-control" required>
+                                                </div>
+
+                                                <!-- Dropoff Location -->
+                                                <div class="col-md-6">
+                                                    <label class="form-label">Dropoff Location</label>
+                                                    <input type="text" name="dropoff_location" class="form-control">
+                                                </div>
+
+                                                <!-- Pickup Date -->
+                                                <div class="col-md-6">
+                                                    <label class="form-label">Pickup Date</label>
+                                                    <input type="date" name="pickup_date" class="form-control" 
+                                                           min="{{ date('Y-m-d') }}" value="{{ date('Y-m-d') }}" required>
+                                                </div>
+
+                                                <!-- Return Date -->
+                                                <div class="col-md-6">
+                                                    <label class="form-label">Return Date</label>
+                                                    <input type="date" name="return_date" class="form-control" 
+                                                           min="{{ date('Y-m-d') }}" value="{{ date('Y-m-d', strtotime('+1 day')) }}">
+                                                </div>
+
+                                                <!-- Times -->
+                                                <div class="col-md-6">
+                                                    <label class="form-label">Pickup Time</label>
+                                                    <input type="time" name="pickup_time" class="form-control" value="10:00">
+                                                </div>
+
+                                                <div class="col-md-6">
+                                                    <label class="form-label">Return Time</label>
+                                                    <input type="time" name="return_time" class="form-control" value="18:00">
+                                                </div>
+                                            </div>
+                                        </form>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                        <button type="button" class="btn btn-primary" id="submitNewSearch">
+                                            <i class="bi bi-search"></i> Search Vehicles
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                </div>
-            `);
-            
+                    `);
+
             $('body').append(modal);
             $('#newSearchModal').modal('show');
-            
+
             // Handle form submission
-            $('#submitNewSearch').on('click', function() {
+            $('#submitNewSearch').on('click', function () {
                 const formData = new FormData($('#newSearchForm')[0]);
                 const searchParams = new URLSearchParams();
-                
+
                 for (const [key, value] of formData.entries()) {
                     if (value) {
                         searchParams.append(key, value);
                     }
                 }
-                
+
                 // Redirect to search with new parameters
                 window.location.href = '{{ route("search") }}?' + searchParams.toString();
             });
-            
+
             // Clean up modal when hidden
-            $('#newSearchModal').on('hidden.bs.modal', function() {
+            $('#newSearchModal').on('hidden.bs.modal', function () {
                 $(this).remove();
             });
         }
 
         // Book Now functionality
-        $(document).on('click', '.book-now-btn', function() {
+        $(document).on('click', '.book-now-btn', function () {
             const $btn = $(this);
             const groupId = $btn.data('group-id');
             const searchId = $btn.data('search-id');
             const groupName = $btn.data('group-name');
-            const totalPrice = parseFloat($btn.data('base-price')); 
+            const totalPrice = parseFloat($btn.data('base-price'));
             const currency = $btn.data('currency');
 
             // Get booking dates from the search
             const fromDate = '{{ $search->from_date ?? '' }}';
             const toDate = '{{ $search->to_date ?? '' }}';
-            
+
             // Calculate duration days from dates
             let durationDays = 1;
             if (fromDate && toDate) {
@@ -1327,7 +1312,7 @@
                 const diffTime = Math.abs(to - from);
                 durationDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) || 1;
             }
-            
+
             const searchData = {
                 search_id: searchId,
                 from_date: fromDate,
@@ -1352,10 +1337,10 @@
                 quantity: 1,
                 ...searchData
             };
-            
+
             // Add to cart first
             addToCart(item);
-            
+
             // Wait for cart addition to complete, then redirect to cart
             setTimeout(() => {
                 window.location.href = '{{ route("cart") }}';
