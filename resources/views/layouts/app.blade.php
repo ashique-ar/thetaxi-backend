@@ -33,7 +33,7 @@
     <link rel="stylesheet" href="{{ asset('assets/css/style.css?v=1.0.1') }}">
     
     <!-- Booking Form CSS -->
-    <link rel="stylesheet" href="{{ asset('assets/css/booking-form.css?v=1.0.1') }}">
+    <link rel="stylesheet" href="{{ asset('assets/css/booking-form.css?v=1.0.02') }}">
 
     <!-- Title -->
     <title>@yield('title', $settings['site_name'] ?? 'TheTaxi - Your Reliable Taxi Service')</title>
@@ -168,7 +168,7 @@
 
     <script src="{{ asset('assets/js/select-dropdown.js') }}"></script>
     <script src="{{ asset('assets/js/custom.js?v=1.0') }}"></script>
-    <script src="{{ asset('assets/js/booking-form.js?v=1.0.03') }}"></script>
+    <script src="{{ asset('assets/js/booking-form.js?v=1.0.04') }}"></script>
 
     <!-- Currency Switching JavaScript -->
     <script>

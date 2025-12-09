@@ -1044,9 +1044,6 @@
     <link rel="stylesheet" href="https://code.jquery.com/ui/1.13.2/themes/ui-lightness/jquery-ui.css">
     <script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>
 
-    <!-- Include booking form JS -->
-    <script src="{{ asset('assets/js/booking-form.js') }}"></script>
-
     <script>
         $(document).ready(function() {
             // Initialize service switcher
