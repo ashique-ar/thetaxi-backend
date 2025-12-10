@@ -227,7 +227,6 @@ class BookingFlowService
                     ];
 
                     $basePricing = $this->calculateDynamicPricing($pricingParams);
-                    Log::info('Calculated pricing', ['vehicle_group_id' => $group->id, 'pricing' => $basePricing]);
                     if ($basePricing && isset($basePricing['total_amount']) && $basePricing['total_amount'] > 0) {
                         $isPricingConfigured = true;
                         $pricingInfo = [
@@ -1589,8 +1588,7 @@ class BookingFlowService
         if (!$includeUnavailable) {
             $query->where('availability_status', '!=', 'maintenance');
         }
-        Log::info('Vehicle search query executed', ['get' => $query->get()?->toArray()]);
-
+        
         $vehicles = $query->get()->map(function ($vehicle) use ($fromDate, $toDate, $fromTime, $toTime) {
             $conflicts = $this->checkVehicleTimeConflicts($vehicle, $fromDate, $toDate, $fromTime, $toTime);
 
@@ -2014,16 +2012,13 @@ class BookingFlowService
                 ->first();
 
             if (!$calculationDefinition) {
-                Log::info("No active calculation definition found for service type: {$serviceTypeId}, using fallback pricing");
                 return $this->calculateFallbackPricing($params);
             }
 
             // Prepare calculation inputs
             $calculationInputs = $this->prepareCalculationInputs($params);
-            Log::info("Dynamic pricing calculation inputs", ['inputs' => $calculationInputs]);
             // Execute the calculation
             $calculationResult = $calculationDefinition->calculatePrice($calculationInputs, $appliedCustomizations);
-Log::info("Dynamic pricing calculation result", ['result' => $calculationResult]);
             // Transform result to standard pricing structure
             return $this->transformCalculationResult($calculationResult, $params, $mode);
         } catch (\Exception $e) {
@@ -2604,14 +2599,7 @@ Log::info("Dynamic pricing calculation result", ['result' => $calculationResult]
 
     private function calculateDistance(array $from, array $to): float
     {
-        // Log the input coordinates for debugging
-        Log::info('Calculating distance between coordinates', [
-            'from' => $from,
-            'to' => $to,
-            'from_valid' => $this->isValidLocationArray($from),
-            'to_valid' => $this->isValidLocationArray($to)
-        ]);
-
+        
         // Validate input and handle different location formats
         if (!$this->isValidLocationArray($from) || !$this->isValidLocationArray($to)) {
             Log::warning('Invalid location coordinates provided for distance calculation', [
@@ -2627,11 +2615,6 @@ Log::info("Dynamic pricing calculation result", ['result' => $calculationResult]
 
         try {
             $distance = app(GoogleMapsService::class)->distanceKm($from, $to);
-            Log::info('Distance calculated successfully', [
-                'from' => $from,
-                'to' => $to,
-                'distance_km' => $distance
-            ]);
             return $distance;
         } catch (\Exception $e) {
             Log::error('Error calculating distance', [
@@ -5841,9 +5824,7 @@ Log::info("Dynamic pricing calculation result", ['result' => $calculationResult]
                     }
                 }
 
-                Log::info("Creating vehicle assignment for booking {$booking->id}", $vehicleAssignmentParams);
                 $vehicleAssignment = $this->assignmentService->createVehicleAssignment($vehicleAssignmentParams);
-                Log::info("Vehicle assignment created successfully: " . $vehicleAssignment->id);
 
                 // Track assignment activity
                 $this->logAssignmentActivity($booking, 'vehicle_assigned', [
@@ -5882,9 +5863,7 @@ Log::info("Dynamic pricing calculation result", ['result' => $calculationResult]
                     }
                 }
 
-                Log::info("Creating driver assignment for booking {$booking->id}", $driverAssignmentParams);
                 $driverAssignment = $this->assignmentService->createDriverAssignment($driverAssignmentParams);
-                Log::info("Driver assignment created successfully: " . $driverAssignment->id);
 
                 // Track assignment activity
                 $this->logAssignmentActivity($booking, 'driver_assigned', [
@@ -6235,12 +6214,6 @@ Log::info("Dynamic pricing calculation result", ['result' => $calculationResult]
             $vehicleGroupId = $params['vehicle_group_id'] ?? null;
             $calculationDate = isset($params['from_date']) ? Carbon::parse($params['from_date']) : now();
 
-            Log::info("Applying KM-range pricing", [
-                'distance' => $totalDistance,
-                'service_type_id' => $serviceTypeId,
-                'vehicle_group_id' => $vehicleGroupId,
-                'base_amount' => $baseAmount,
-            ]);
 
             $result = KmRangePricingRule::calculateBestPricing(
                 $totalDistance,
@@ -6249,8 +6222,6 @@ Log::info("Dynamic pricing calculation result", ['result' => $calculationResult]
                 $vehicleGroupId,
                 $calculationDate
             );
-
-            Log::info("KM-range pricing result", ['result' => $result]);
 
             return $result;
 
@@ -6282,13 +6253,6 @@ Log::info("Dynamic pricing calculation result", ['result' => $calculationResult]
             $calculationDate = isset($params['from_date']) ? Carbon::parse($params['from_date']) : now();
             $priceComponent = 'total_price'; // Can be customized based on business rules
 
-            Log::info("Applying price adjustments", [
-                'amount' => $amount,
-                'service_type_id' => $serviceTypeId,
-                'vehicle_group_id' => $vehicleGroupId,
-                'price_component' => $priceComponent,
-            ]);
-
             $result = PriceAdjustment::applyAdjustments(
                 $amount,
                 $serviceTypeId,
@@ -6308,8 +6272,6 @@ Log::info("Dynamic pricing calculation result", ['result' => $calculationResult]
                     }
                 }
             }
-
-            Log::info("Price adjustments result", ['result' => $result]);
 
             return $result;
 
@@ -6423,12 +6385,6 @@ Log::info("Dynamic pricing calculation result", ['result' => $calculationResult]
                     }
                 }
             });
-
-            Log::info("Recorded pricing adjustment history for booking", [
-                'booking_id' => $bookingId,
-                'km_range_rules_count' => count($kmRangePricingResult['rules_applied'] ?? []),
-                'price_adjustments_count' => count($priceAdjustmentResult['adjustments_applied'] ?? []),
-            ]);
 
         } catch (\Exception $e) {
             Log::error("Failed to record pricing adjustment history", [

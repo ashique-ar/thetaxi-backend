@@ -68,15 +68,6 @@ class BookingController extends Controller
             session()->put('backend_service_type_id', $serviceType->id);
             session()->put('frontend_service', $frontendService);
 
-            // Log search activity for analytics
-            Log::info('Public booking search initiated', [
-                'frontend_service' => $frontendService,
-                'service_type_id' => $serviceType->id,
-                'session_id' => $sessionId,
-                'search_params' => $searchParams,
-                'user_ip' => $request->ip()
-            ]);
-
             // Redirect to search results page
             return redirect()->route('search')
                 ->with('success', 'Search completed! Here are the available vehicles for your journey.');
@@ -201,14 +192,6 @@ class BookingController extends Controller
             'longitude' => $data["{$prefix}_lng"] ?? null,
         ];
         
-        // Log raw coordinate data for debugging
-        Log::info("Formatting location data", [
-            'prefix' => $prefix,
-            'raw_lat' => $data["{$prefix}_lat"] ?? 'missing',
-            'raw_lng' => $data["{$prefix}_lng"] ?? 'missing',
-            'address' => $location['address']
-        ]);
-        
         // Ensure numeric values and validate coordinates
         if ($location['latitude']) {
             $latitude = (float) $location['latitude'];
@@ -231,13 +214,7 @@ class BookingController extends Controller
                 $location['longitude'] = null;
             }
         }
-        
-        // Log final location data
-        Log::info("Final formatted location", [
-            'prefix' => $prefix,
-            'location' => $location
-        ]);
-        
+                
         return $location;
     }
     
@@ -265,26 +242,16 @@ class BookingController extends Controller
                     ->with('warning', 'Your search has expired. Please start a new search for updated prices.');
             }
             
-            // Call BookingFlowService to get available vehicle groups (same as API)
-            Log::info('Calling BookingFlowService with params', ['params' => $searchParams]);
             $availabilityData = $this->bookingFlowService->getAvailableVehicleGroups($searchParams,true);
-            Log::info('BookingFlowService returned', [
-                'data_count' => isset($availabilityData['data']) ? count($availabilityData['data']) : count($availabilityData),
-                'has_pagination' => isset($availabilityData['pagination'])
-            ]);
-            
+
             // Extract data and pagination
             $vehicleGroups = $availabilityData['data'] ?? $availabilityData;
             $pagination = $availabilityData['pagination'] ?? null;
             $totalJourneyDistance = $availabilityData['total_journey_distance_km'] ?? null;
             
-            Log::info('Vehicle groups extracted', ['count' => count($vehicleGroups)]);
-            
             // Transform results for view (add public-specific enhancements)
             $transformedData = $this->transformResultsForPublicView($vehicleGroups, $searchParams, $pricingContext);
-            
-            Log::info('Transformed data', ['count' => count($transformedData)]);
-            
+          
             // Wrap results in expected structure for blade template
             $results = [
                 'data' => $transformedData,
@@ -367,17 +334,7 @@ class BookingController extends Controller
         $results = [];
         
         foreach ($vehicleGroups as $index => $groupData) {
-            // BookingFlowService returns data FLAT, not nested under 'group' key
-            // The structure has: id, name, category, pricing_info, available_count, etc. directly
-            
-            Log::info("Processing vehicle group {$index}", [
-                'id' => $groupData['id'] ?? 'no id',
-                'name' => $groupData['name'] ?? 'no name',
-                'has_pricing' => isset($groupData['pricing_info']),
-                'available_count' => $groupData['available_count'] ?? 0
-            ]);
-            
-            // Check if we have minimum required data
+             // Check if we have minimum required data
             if (!isset($groupData['id']) || !isset($groupData['name'])) {
                 Log::warning("Skipping vehicle group {$index} - missing required data");
                 continue;
@@ -434,8 +391,6 @@ class BookingController extends Controller
                 'payment_options' => $this->getAvailablePaymentOptions($formattedPricing),
             ];
         }
-        
-        Log::info("Transformation complete", ['result_count' => count($results)]);
         
         return $results;
     }
@@ -494,12 +449,6 @@ class BookingController extends Controller
             // TODO: Store in database and send notifications
             // CorporateEnquiry::create($enquiryData);
             // Mail::to(config('mail.corporate_enquiries'))->send(new CorporateEnquiryNotification($enquiryData));
-
-            Log::info('Corporate enquiry submitted', [
-                'company' => $request->company_name,
-                'contact' => $request->contact_person,
-                'email' => $request->email
-            ]);
 
             return redirect()->route('contact')
                 ->with('success', 'Thank you for your enquiry! Our corporate team will contact you within 24 hours.');
@@ -809,32 +758,6 @@ class BookingController extends Controller
     }
 
     /**
-     * Track search result view for analytics
-     */
-    private function trackSearchResultView(BookingSearch $search, Request $request)
-    {
-        try {
-            // Increment view count
-            $search->view_count = ($search->view_count ?? 0) + 1;
-            $search->save();
-            
-            // Log for analytics
-            Log::info('Search results viewed', [
-                'search_id' => $search->id,
-                'service_type' => $search->service_type,
-                'session_id' => $search->session_id,
-                'view_count' => $search->fresh()->view_count ?? 1
-            ]);
-        } catch (\Exception $e) {
-            // If view count tracking fails, log the error but don't break the search
-            Log::warning('Failed to track search result view', [
-                'search_id' => $search->id,
-                'error' => $e->getMessage()
-            ]);
-        }
-    }
-
-    /**
      * Get popular destinations
      */
     private function getPopularDestinations(): array
@@ -851,32 +774,6 @@ class BookingController extends Controller
         });
     }
 
-    /**
-     * Get search summary for display
-     */
-    private function getSearchSummary(BookingSearch $search): array
-    {
-        Log::info('Generating search summary', ['search_id' => $search->id]);
-        Log::info('Generating search summary', ['search' => $search]);
-        return [
-            'service_type' => ucwords(str_replace('-', ' ', $search->service_type)),
-            'route' => $search->pickup_location . ' → ' . $search->dropoff_location,
-            'date_time' => $search->from_date?->format('M d, Y') . ' at ' . $search->from_time,
-            'duration' => $search->calculateDuration(),
-            'passengers' => $search->passengers ?? 1
-        ];
-    }
-
-    /**
-     * Get similar searches for recommendations
-     */
-    private function getSimilarSearches(BookingSearch $search): array
-    {
-        return Cache::remember("similar_searches_{$search->id}", 1800, function() use ($search) {
-            // TODO: Implement similarity algorithm
-            return [];
-        });
-    }
 
     /**
      * Get active promotional offers

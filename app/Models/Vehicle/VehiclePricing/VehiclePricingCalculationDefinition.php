@@ -133,13 +133,6 @@ class VehiclePricingCalculationDefinition extends Model
             $totalAmount = $this->evaluateFormulaWithVariables($this->formula, $resolvedVariables) ?? 0.0;
             $totalAmountWithoutCustomizations = $this->evaluateFormulaWithVariables($this->formula, $resolvedVariablesWithoutCustomizations) ?? 0.0;
 
-            Log::info("Price calculated successfully for definition {$this->id}", [
-                'inputs' => $inputs,
-                'variables' => $resolvedVariables,
-                'formula' => $this->formula,
-                'total_amount' => $totalAmount
-            ]);
-
             $built = $this->buildCalculationBreakdown($resolvedVariables, $totalAmount, $totalAmountWithoutCustomizations, $slabInfo, $kmCalculations);
             $built['definition_id'] = $this->id;
             $built['variables_used'] = $metadata['variables_used'];
@@ -459,10 +452,7 @@ class VehiclePricingCalculationDefinition extends Model
             'effective_days' => 0
         ];
 
-        Log::info("Calculating KM overages", [
-            'inputs' => $inputs,
-            'slab_info' => $slabInfo
-        ]);
+        
         if (!$slabInfo || !$result['journey_distance']) {
             return $result;
         }
@@ -493,18 +483,6 @@ class VehiclePricingCalculationDefinition extends Model
             $result['calculation_type'] = 'unlimited';
             $result['allowed_km'] = $actualKm; // All KM is billable
         }
-        
-        Log::info("KM Overage Calculation", [
-            'journey_distance' => $result['journey_distance'],
-            'allowed_km' => $result['allowed_km'],
-            'extra_km' => $result['extra_km'],
-            'calculation_type' => $result['calculation_type'],
-            'calendar_days' => $result['calendar_days'],
-            'effective_days' => $result['effective_days'],
-            'slab_info' => $slabInfo
-        ]);
-
-
 
         return $result;
     }
@@ -589,7 +567,7 @@ class VehiclePricingCalculationDefinition extends Model
             $isRequired = $variable['is_required'] ?? true;
             $defaultValue = $variable['default_value'] ?? null;
             // Definition-driven variables only
-            Log::info("Resolving variable: {$varName} of type {$varType}");
+            
             if ($varName === 'extra_km') {
                 $value = $kmCalculations['extra_km'] ?? 0;
             } elseif ($varName === 'allowed_km') {
@@ -599,7 +577,7 @@ class VehiclePricingCalculationDefinition extends Model
             } else {
                 $value = $this->resolveVariable($varName, $varType, $inputs, $defaultValue, $slabInfo, $appliedCustomizations);
             }
-Log::info("Resolved variable {$varName}: " . var_export($value, true));
+
             if ($value === null && $isRequired) {
                 $missingVariables[] = $varName;
                 continue;
@@ -642,8 +620,6 @@ Log::info("Resolved variable {$varName}: " . var_export($value, true));
 
         switch ($varType) {
             case 'slab_rate':
-                Log::info("Resolving slab rate for variable: {$varName}");
-                Log::info($this->getSlabRateValue($inputs, $slabInfo, $appliedCustomizations));
                 return $this->getSlabRateValue($inputs, $slabInfo, $appliedCustomizations);
 
             case 'common_rate':
@@ -785,7 +761,6 @@ Log::info("Resolved variable {$varName}: " . var_export($value, true));
             if (!$vehicleGroupPricing) {
                 // If no pricing row but we *do* have a custom base rate, treat it as a flat amount
                 if ($customSlabBase !== null) {
-                    Log::info("No VehicleGroupPricing row; using custom slab_rate as flat amount", ['custom_slab_base' => $customSlabBase]);
                     return $customSlabBase;
                 }
                 return 0;
