@@ -1,5 +1,5 @@
 @props([
-    'item',
+    'item' => null,
     'delayMs' => 200,
     'type' => 'blog',
     'showPrice' => false,
@@ -8,22 +8,51 @@
 ])
 
 @php
-    // Simple direct access - no pre-computation
-    $title = $item->title ?? 'No title';
-    $location = $item->location ?? '';
-    $category = $item->category ?? '';
-    $excerpt = $item->excerpt ?? substr(strip_tags($item->body ?? ''), 0, 100);
-    $price = $item->price ? number_format($item->price, 2) : null;
-    $currency = $item->price_currency ?? 'USD';
-    $duration = $item->duration ?? null;
-    $rating = (int)($item->rating ?? 0);
-    $reviewsCount = (int)($item->reviews_count ?? 0);
-    $isSpecialOffer = (bool)($item->special_offer ?? false);
-    $discount = (int)($item->discount_percentage ?? 0);
+    // Extract data from item (handles both object and array)
+    if (is_object($item)) {
+        $title = $item->title ?? 'No title';
+        $location = $item->location ?? '';
+        $category = $item->category ?? '';
+        $excerpt = $item->excerpt ?? substr(strip_tags($item->body ?? ''), 0, 100);
+        $itemPrice = $item->price ?? null;
+        $currency = $item->price_currency ?? 'USD';
+        $duration = $item->duration ?? null;
+        $rating = (int)($item->rating ?? 0);
+        $reviewsCount = (int)($item->reviews_count ?? 0);
+        $isSpecialOffer = (bool)($item->special_offer ?? false);
+        $discount = (int)($item->discount_percentage ?? 0);
+        $publishedDate = $item->published_at ?? $item->created_at ?? null;
+        $thumbnail = $item->thumbnail ?? null;
+        $slug = $item->slug ?? '#';
+    } else {
+        // Array fallback
+        $title = $item['title'] ?? 'No title';
+        $location = $item['location'] ?? '';
+        $category = $item['category'] ?? '';
+        $excerpt = $item['excerpt'] ?? substr(strip_tags($item['body'] ?? ''), 0, 100);
+        $itemPrice = $item['price'] ?? null;
+        $currency = $item['price_currency'] ?? 'USD';
+        $duration = $item['duration'] ?? null;
+        $rating = (int)($item['rating'] ?? 0);
+        $reviewsCount = (int)($item['reviews_count'] ?? 0);
+        $isSpecialOffer = (bool)($item['special_offer'] ?? false);
+        $discount = (int)($item['discount_percentage'] ?? 0);
+        $publishedDate = $item['published_at'] ?? $item['created_at'] ?? null;
+        $thumbnail = $item['thumbnail'] ?? null;
+        $slug = $item['slug'] ?? '#';
+    }
     
-    // Generate URLs directly
-    $imageUrl = $item->thumbnail ? s3_asset($item->thumbnail) : asset('assets/img/home3/blog-img1.jpg');
-    $detailLink = route('cms.show', ['contentType' => $type, 'content' => $item->slug ?? '#']);
+    // Format price
+    $price = $itemPrice ? number_format($itemPrice, 2) : null;
+    
+    // Format date
+    $date = $publishedDate ? 
+        (is_object($publishedDate) ? $publishedDate->format('d F, Y') : \Carbon\Carbon::parse($publishedDate)->format('d F, Y')) : 
+        'N/A';
+    
+    // Generate URLs
+    $imageUrl = $thumbnail ? s3_asset($thumbnail) : asset('assets/img/home3/blog-img1.jpg');
+    $detailLink = route('cms.show', ['contentType' => $type, 'content' => $slug]);
     $categoryLink = $category ? route('cms.index', ['contentType' => $type]) . '?category=' . urlencode($category) : '#';
 @endphp
 
@@ -51,9 +80,9 @@
         </div>
 
         <div class="blog-content">
-            @if ($showPrice && $formattedPrice)
+            @if ($showPrice && $price)
                 <div class="price-info">
-                    <span class="price">{{ $currency }} {{ $formattedPrice }}</span>
+                    <span class="price">{{ $currency }} {{ $price }}</span>
                     @if ($duration)
                         <span class="duration">/ {{ $duration }}</span>
                     @endif
