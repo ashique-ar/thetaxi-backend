@@ -45,7 +45,74 @@ class BookingFlowService
         $this->assignmentService = $assignmentService;
     }
 
-    public function getAvailableVehicleGroups(array $params): array
+    public function buildVehicleSearchQuery(
+        Carbon $fromDate,
+        Carbon $toDate,
+        ?int $excludeBookingId = null,
+        bool $isPublic = false
+    ) {
+
+        $vehicleAvailabilityConstraint = function ($query) use ($fromDate, $toDate, $excludeBookingId) {
+            $query->when($excludeBookingId, function ($q) use ($fromDate, $toDate, $excludeBookingId) {
+                // Edit mode: ignore current booking
+                $q->whereNotExists(function ($subQuery) use ($fromDate, $toDate, $excludeBookingId) {
+                    $subQuery->select(DB::raw(1))
+                        ->from('bookings')
+                        ->whereRaw('bookings.vehicle_id = vehicles.id')
+                        ->where('status', '!=', 'cancelled')
+                        ->where('id', '!=', $excludeBookingId)
+                        ->where(function ($q) use ($fromDate, $toDate) {
+                            $q->whereBetween('from_date', [$fromDate, $toDate])
+                            ->orWhereBetween('to_date', [$fromDate, $toDate])
+                            ->orWhere(function ($inner) use ($fromDate, $toDate) {
+                                $inner->where('from_date', '<=', $fromDate)
+                                        ->where('to_date', '>=', $toDate);
+                            });
+                        });
+                });
+            }, function ($q) use ($fromDate, $toDate) {
+                // Normal mode
+                $q->whereNotExists(function ($subQuery) use ($fromDate, $toDate) {
+                    $subQuery->select(DB::raw(1))
+                        ->from('bookings')
+                        ->whereRaw('bookings.vehicle_id = vehicles.id')
+                        ->where('status', '!=', 'cancelled')
+                        ->where(function ($q) use ($fromDate, $toDate) {
+                            $q->whereBetween('from_date', [$fromDate, $toDate])
+                            ->orWhereBetween('to_date', [$fromDate, $toDate])
+                            ->orWhere(function ($inner) use ($fromDate, $toDate) {
+                                $inner->where('from_date', '<=', $fromDate)
+                                        ->where('to_date', '>=', $toDate);
+                            });
+                        });
+                });
+            });
+        };
+
+        $query = VehicleGroup::query();
+            
+
+        if ($isPublic) {
+            // public: hide groups without available vehicles
+            $query->with([
+                'vehicles' => $vehicleAvailabilityConstraint,
+            ])->whereHas('vehicles', $vehicleAvailabilityConstraint);
+        }else{
+            $query->with([
+                'grade',
+                'make',
+                'model',
+                'transmission',
+                'fuelType',
+                'category',
+                'class',
+                'vehicles' => $vehicleAvailabilityConstraint,
+            ]);
+        }
+
+        return $query;
+    }
+    public function getAvailableVehicleGroups(array $params, bool $isPublic = false): array
     {
         $serviceType = $params['service_type'];
         $fromDate = Carbon::parse($params['from_date']);
@@ -73,52 +140,8 @@ class BookingFlowService
         $perPage = (int)($params['per_page'] ?? 20);
         $forceRefresh = $params['force_refresh'] ?? false;
 
-        // Build query with filters
-        $baseQuery = VehicleGroup::with([
-            'grade',
-            'make',
-            'model',
-            'transmission',
-            'fuelType',
-            'category',
-            'class',
-            'vehicles' => function ($query) use ($fromDate, $toDate, $excludeBookingId) {
-                $query->when($excludeBookingId, function ($q) use ($fromDate, $toDate, $excludeBookingId) {
-                    // In edit mode, exclude the current booking from conflict check
-                    $q->whereNotExists(function ($subQuery) use ($fromDate, $toDate, $excludeBookingId) {
-                        $subQuery->select(DB::raw(1))
-                            ->from('bookings')
-                            ->whereRaw('bookings.vehicle_id = vehicles.id')
-                            ->where('status', '!=', 'cancelled')
-                            ->where('id', '!=', $excludeBookingId)
-                            ->where(function ($q) use ($fromDate, $toDate) {
-                                $q->whereBetween('from_date', [$fromDate, $toDate])
-                                    ->orWhereBetween('to_date', [$fromDate, $toDate])
-                                    ->orWhere(function ($inner) use ($fromDate, $toDate) {
-                                        $inner->where('from_date', '<=', $fromDate)
-                                            ->where('to_date', '>=', $toDate);
-                                    });
-                            });
-                    });
-                }, function ($q) use ($fromDate, $toDate) {
-                    // Normal mode - check all conflicts
-                    $q->whereNotExists(function ($subQuery) use ($fromDate, $toDate) {
-                        $subQuery->select(DB::raw(1))
-                            ->from('bookings')
-                            ->whereRaw('bookings.vehicle_id = vehicles.id')
-                            ->where('status', '!=', 'cancelled')
-                            ->where(function ($q) use ($fromDate, $toDate) {
-                                $q->whereBetween('from_date', [$fromDate, $toDate])
-                                    ->orWhereBetween('to_date', [$fromDate, $toDate])
-                                    ->orWhere(function ($inner) use ($fromDate, $toDate) {
-                                        $inner->where('from_date', '<=', $fromDate)
-                                            ->where('to_date', '>=', $toDate);
-                                    });
-                            });
-                    });
-                });
-            }
-        ]);
+                
+        $baseQuery = $this->buildVehicleSearchQuery($fromDate, $toDate, $excludeBookingId, $isPublic);
 
         // Apply search filter
         if ($search !== '') {

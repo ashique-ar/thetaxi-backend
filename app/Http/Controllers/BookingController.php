@@ -267,7 +267,7 @@ class BookingController extends Controller
             
             // Call BookingFlowService to get available vehicle groups (same as API)
             Log::info('Calling BookingFlowService with params', ['params' => $searchParams]);
-            $availabilityData = $this->bookingFlowService->getAvailableVehicleGroups($searchParams);
+            $availabilityData = $this->bookingFlowService->getAvailableVehicleGroups($searchParams,true);
             Log::info('BookingFlowService returned', [
                 'data_count' => isset($availabilityData['data']) ? count($availabilityData['data']) : count($availabilityData),
                 'has_pagination' => isset($availabilityData['pagination'])

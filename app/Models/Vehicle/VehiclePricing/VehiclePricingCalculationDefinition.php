@@ -128,11 +128,17 @@ class VehiclePricingCalculationDefinition extends Model
                     }))
                 ];
             }
-
             $metadata['variables_used'] = array_keys($resolvedVariables);
 
             $totalAmount = $this->evaluateFormulaWithVariables($this->formula, $resolvedVariables) ?? 0.0;
             $totalAmountWithoutCustomizations = $this->evaluateFormulaWithVariables($this->formula, $resolvedVariablesWithoutCustomizations) ?? 0.0;
+
+            Log::info("Price calculated successfully for definition {$this->id}", [
+                'inputs' => $inputs,
+                'variables' => $resolvedVariables,
+                'formula' => $this->formula,
+                'total_amount' => $totalAmount
+            ]);
 
             $built = $this->buildCalculationBreakdown($resolvedVariables, $totalAmount, $totalAmountWithoutCustomizations, $slabInfo, $kmCalculations);
             $built['definition_id'] = $this->id;
@@ -453,6 +459,10 @@ class VehiclePricingCalculationDefinition extends Model
             'effective_days' => 0
         ];
 
+        Log::info("Calculating KM overages", [
+            'inputs' => $inputs,
+            'slab_info' => $slabInfo
+        ]);
         if (!$slabInfo || !$result['journey_distance']) {
             return $result;
         }
@@ -483,6 +493,19 @@ class VehiclePricingCalculationDefinition extends Model
             $result['calculation_type'] = 'unlimited';
             $result['allowed_km'] = $actualKm; // All KM is billable
         }
+        
+        Log::info("KM Overage Calculation", [
+            'journey_distance' => $result['journey_distance'],
+            'allowed_km' => $result['allowed_km'],
+            'extra_km' => $result['extra_km'],
+            'calculation_type' => $result['calculation_type'],
+            'calendar_days' => $result['calendar_days'],
+            'effective_days' => $result['effective_days'],
+            'slab_info' => $slabInfo
+        ]);
+
+
+
         return $result;
     }
 
@@ -566,6 +589,7 @@ class VehiclePricingCalculationDefinition extends Model
             $isRequired = $variable['is_required'] ?? true;
             $defaultValue = $variable['default_value'] ?? null;
             // Definition-driven variables only
+            Log::info("Resolving variable: {$varName} of type {$varType}");
             if ($varName === 'extra_km') {
                 $value = $kmCalculations['extra_km'] ?? 0;
             } elseif ($varName === 'allowed_km') {
@@ -575,7 +599,7 @@ class VehiclePricingCalculationDefinition extends Model
             } else {
                 $value = $this->resolveVariable($varName, $varType, $inputs, $defaultValue, $slabInfo, $appliedCustomizations);
             }
-
+Log::info("Resolved variable {$varName}: " . var_export($value, true));
             if ($value === null && $isRequired) {
                 $missingVariables[] = $varName;
                 continue;
@@ -618,6 +642,8 @@ class VehiclePricingCalculationDefinition extends Model
 
         switch ($varType) {
             case 'slab_rate':
+                Log::info("Resolving slab rate for variable: {$varName}");
+                Log::info($this->getSlabRateValue($inputs, $slabInfo, $appliedCustomizations));
                 return $this->getSlabRateValue($inputs, $slabInfo, $appliedCustomizations);
 
             case 'common_rate':
@@ -770,14 +796,14 @@ class VehiclePricingCalculationDefinition extends Model
                 ? $customSlabBase
                 : (float) $vehicleGroupPricing->rate;
 
-            $calculatedRate = $this->calculateSlabRateWithType(
-                $baseRate,
-                $vehicleGroupPricing->rate_type,
-                $durationHours,
-                $vehicleGroupPricing->minimum_charge ? (float) $vehicleGroupPricing->minimum_charge : null
-            );
+            // $calculatedRate = $this->calculateSlabRateWithType(
+            //     $baseRate,
+            //     $vehicleGroupPricing->rate_type,
+            //     $durationHours,
+            //     $vehicleGroupPricing->minimum_charge ? (float) $vehicleGroupPricing->minimum_charge : null
+            // );
 
-            return $calculatedRate;
+            return $baseRate;
         } catch (\Exception $e) {
             Log::error("Error getting slab rate value: " . $e->getMessage(), [
                 'service_type_id' => $this->service_type_id,
@@ -1249,12 +1275,13 @@ class VehiclePricingCalculationDefinition extends Model
                         'includes_driver' => $vehicleGroupPricing->includes_driver
                     ];
 
-                    $breakdown['calculated_rate'] = $this->calculateSlabRateWithType(
-                        (float) $vehicleGroupPricing->rate,
-                        $vehicleGroupPricing->rate_type,
-                        $durationHours,
-                        $vehicleGroupPricing->minimum_charge ? (float) $vehicleGroupPricing->minimum_charge : null
-                    );
+                    $breakdown['calculated_rate'] = $vehicleGroupPricing->rate;
+                    // $breakdown['calculated_rate'] = $this->calculateSlabRateWithType(
+                    //     (float) $vehicleGroupPricing->rate,
+                    //     $vehicleGroupPricing->rate_type,
+                    //     $durationHours,
+                    //     $vehicleGroupPricing->minimum_charge ? (float) $vehicleGroupPricing->minimum_charge : null
+                    // );
                 }
             }
         } catch (\Exception $e) {
