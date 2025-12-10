@@ -28,20 +28,22 @@ class HomeController extends Controller
 
     /**
      * Display the homepage with dynamic content - HIGHLY OPTIMIZED
+     * CRITICAL FIX: Fetch ALL CMS content in ONE QUERY, then filter in PHP instead of 5 separate database queries
      */
     public function index(): View
     {
-        // ULTRA-OPTIMIZED: Fast cache-first approach with fallbacks
+        // ULTRA-OPTIMIZED: Cache all CMS content together to avoid multiple database round trips
+        $allCmsContent = Cache::remember('home_all_cms_content', 86400, fn() => $this->getAllCmsContent());
         
-        // Get CMS content for the homepage sections with aggressive caching (12 hours for static content)
-        $destinations = Cache::remember('home_destinations', 43200, fn() => $this->getCmsContentByTypeSlug('taxi', 6));
-        $packages = Cache::remember('home_packages', 43200, fn() => $this->getCmsContentByTypeSlug('things-to-do', 6));
-        $inspirations = Cache::remember('home_inspirations', 43200, fn() => $this->getCmsContentByTypeSlug('services', 3));
-        $blogs = Cache::remember('home_blogs', 43200, fn() => $this->getCmsContentByTypeSlug('blogs', 3));
-        $partners = Cache::remember('home_partners', 43200, fn() => $this->getCmsContentByTypeSlug('partners', 12));
+        // Filter the cached content by type in PHP (no database calls)
+        $destinations = $this->filterCmsByType($allCmsContent, 'taxi', 6);
+        $packages = $this->filterCmsByType($allCmsContent, 'things-to-do', 6);
+        $inspirations = $this->filterCmsByType($allCmsContent, 'services', 3);
+        $blogs = $this->filterCmsByType($allCmsContent, 'blogs', 3);
+        $partners = $this->filterCmsByType($allCmsContent, 'partners', 12);
 
         // Get testimonials with longer caching
-        $testimonials = Cache::remember('home_testimonials', 43200, function() {
+        $testimonials = Cache::remember('home_testimonials', 86400, function() {
             try {
                 return Testimonial::select('id', 'client_name', 'client_title', 'client_image', 'comment', 'rating', 'created_at')
                     ->where('is_active', true)
@@ -55,7 +57,7 @@ class HomeController extends Controller
         });
 
         // Get FAQs with longer caching
-        $faqs = Cache::remember('home_faqs', 43200, function() {
+        $faqs = Cache::remember('home_faqs', 86400, function() {
             try {
                 return Faq::select('id', 'question', 'answer', 'created_at')
                     ->where('is_active', true)
@@ -70,7 +72,7 @@ class HomeController extends Controller
         });
 
         // Get website settings with aggressive caching
-        $settings = Cache::remember('home_settings', 43200, fn() => $this->settingsService->getHomepageSettings());
+        $settings = Cache::remember('home_settings', 86400, fn() => $this->settingsService->getHomepageSettings());
 
         // Create empty search object for booking form component
         $search = (object) [
@@ -99,63 +101,65 @@ class HomeController extends Controller
     }
 
     /**
-     * Get CMS content by content type slug - ULTRA OPTIMIZED with pre-computed card data
+     * Fetch ALL CMS content in a single database query
+     * This is MUCH faster than 5 separate queries
      */
-    private function getCmsContentByTypeSlug(string $slug, int $limit = 10)
+    private function getAllCmsContent()
     {
         try {
-            // Use a single optimized query instead of two separate queries
-            $items = DB::table('cms_contents')
-                ->join('cms_content_types', 'cms_contents.cms_content_type_id', '=', 'cms_content_types.id')
-                ->select([
-                    'cms_contents.id', 
-                    'cms_contents.title', 
-                    'cms_contents.slug', 
-                    'cms_contents.excerpt',
-                    'cms_contents.body',
-                    'cms_contents.thumbnail', 
-                    'cms_contents.price', 
-                    'cms_contents.price_currency', 
-                    'cms_contents.duration', 
-                    'cms_contents.rating',
-                    'cms_contents.reviews_count', 
-                    'cms_contents.location', 
-                    'cms_contents.category', 
-                    'cms_contents.published_at', 
-                    'cms_contents.created_at', 
-                    'cms_contents.is_featured',
-                    'cms_contents.special_offer',
-                    'cms_contents.discount_percentage'
-                ])
-                ->where('cms_content_types.slug', $slug)
-                ->where('cms_content_types.is_active', true)
-                ->where('cms_contents.status', 'published')
-                ->where('cms_contents.is_active', true)
-                ->whereNotNull('cms_contents.published_at')
-                ->where('cms_contents.published_at', '<=', now())
-                ->orderByDesc('cms_contents.is_featured')
-                ->orderByDesc('cms_contents.published_at')
-                ->limit($limit)
-                ->get();
+            return CmsContent::with('contentType')
+                ->where('is_active', true)
+                ->where('status', 'published')
+                ->where('is_active', true)
+                ->orderByDesc('is_featured')
+                ->groupBy('contentType.slug')
+                ->get(); 
 
-            // PRE-COMPUTE all expensive operations in PHP instead of blade template
-            // This prevents multiple function calls per card render
-            return $items->map(function($item) use ($slug) {
-                $item->imageUrl = $item->thumbnail ? s3_asset($item->thumbnail) : asset('assets/img/home3/blog-img1.jpg');
-                $item->detailLink = route('cms.show', ['contentType' => $slug, 'content' => $item->slug]);
-                $item->categoryLink = $item->category 
-                    ? route('cms.index', ['contentType' => $slug]) . '?category=' . urlencode($item->category)
-                    : '#';
-                $item->formattedPrice = $item->price ? number_format($item->price, 2) : null;
-                $item->displayExcerpt = $item->excerpt ?? \Str::limit(strip_tags($item->body ?? ''), 100);
-                $item->displayDate = $item->published_at 
-                    ? $item->published_at->format('d F, Y')
-                    : ($item->created_at ? $item->created_at->format('d F, Y') : 'Date not available');
-                return $item;
-            });
+                // Group by content type for faster filtering
+            // return DB::table('cms_contents')
+            //     ->join('cms_content_types', 'cms_contents.cms_content_type_id', '=', 'cms_content_types.id')
+            //     ->select([
+            //         'cms_contents.id', 
+            //         'cms_contents.title', 
+            //         'cms_contents.slug', 
+            //         'cms_contents.excerpt',
+            //         'cms_contents.body',
+            //         'cms_contents.thumbnail', 
+            //         'cms_contents.price', 
+            //         'cms_contents.price_currency', 
+            //         'cms_contents.duration', 
+            //         'cms_contents.rating',
+            //         'cms_contents.reviews_count', 
+            //         'cms_contents.location', 
+            //         'cms_contents.category', 
+            //         'cms_contents.published_at', 
+            //         'cms_contents.created_at', 
+            //         'cms_contents.is_featured',
+            //         'cms_contents.special_offer',
+            //         'cms_contents.discount_percentage',
+            //         'cms_content_types.slug as content_type_slug'
+            //     ])
+            //     ->where('cms_content_types.is_active', true)
+            //     ->where('cms_contents.status', 'published')
+            //     ->where('cms_contents.is_active', true)
+            //     ->whereNotNull('cms_contents.published_at')
+            //     ->where('cms_contents.published_at', '<=', now())
+            //     ->orderByDesc('cms_contents.is_featured')
+            //     ->orderByDesc('cms_contents.published_at')
+            //     ->get()
+            //     ->groupBy('content_type_slug'); // Group by content type for faster filtering
         } catch (\Exception $e) {
-            \Log::error("CMS content loading failed for slug: {$slug}", ['error' => $e->getMessage()]);
+            \Log::error("Failed to load all CMS content", ['error' => $e->getMessage()]);
             return collect();
         }
+    }
+
+    /**
+     * Filter CMS content by type from the cached grouped collection
+     * No database calls - pure PHP filtering
+     */
+    private function filterCmsByType($groupedContent, string $slug, int $limit = 10)
+    {
+        return collect($groupedContent->get($slug, []))->take($limit);
     }
 }

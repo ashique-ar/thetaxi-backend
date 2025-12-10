@@ -8,25 +8,23 @@
 ])
 
 @php
-    // Use pre-computed values from controller to avoid expensive operations in template
-    // Handle both stdClass objects and arrays
-    $title = (is_object($item) ? $item->title : $item['title']) ?? 'No title available';
-    $currency = (is_object($item) ? $item->price_currency : $item['price_currency']) ?? 'USD';
-    $rating = (int)((is_object($item) ? $item->rating : $item['rating']) ?? 0);
-    $reviewsCount = (int)((is_object($item) ? $item->reviews_count : $item['reviews_count']) ?? 0);
-    $isSpecialOffer = (bool)((is_object($item) ? $item->special_offer : $item['special_offer']) ?? false);
-    $discount = (int)((is_object($item) ? $item->discount_percentage : $item['discount_percentage']) ?? 0);
+    // Simple direct access - no pre-computation
+    $title = $item->title ?? 'No title';
+    $location = $item->location ?? '';
+    $category = $item->category ?? '';
+    $excerpt = $item->excerpt ?? substr(strip_tags($item->body ?? ''), 0, 100);
+    $price = $item->price ? number_format($item->price, 2) : null;
+    $currency = $item->price_currency ?? 'USD';
+    $duration = $item->duration ?? null;
+    $rating = (int)($item->rating ?? 0);
+    $reviewsCount = (int)($item->reviews_count ?? 0);
+    $isSpecialOffer = (bool)($item->special_offer ?? false);
+    $discount = (int)($item->discount_percentage ?? 0);
     
-    // These are now pre-computed in HomeController::getCmsContentByTypeSlug()
-    $imageUrl = is_object($item) ? $item->imageUrl : $item['imageUrl'];
-    $detailLink = is_object($item) ? $item->detailLink : $item['detailLink'];
-    $categoryLink = is_object($item) ? $item->categoryLink : $item['categoryLink'];
-    $formattedPrice = is_object($item) ? $item->formattedPrice : $item['formattedPrice'];
-    $excerpt = is_object($item) ? $item->displayExcerpt : $item['displayExcerpt'];
-    $date = is_object($item) ? $item->displayDate : $item['displayDate'];
-    $location = (is_object($item) ? $item->location : $item['location']) ?? '';
-    $category = (is_object($item) ? $item->category : $item['category']) ?? '';
-    $duration = is_object($item) ? $item->duration : $item['duration'];
+    // Generate URLs directly
+    $imageUrl = $item->thumbnail ? s3_asset($item->thumbnail) : asset('assets/img/home3/blog-img1.jpg');
+    $detailLink = route('cms.show', ['contentType' => $type, 'content' => $item->slug ?? '#']);
+    $categoryLink = $category ? route('cms.index', ['contentType' => $type]) . '?category=' . urlencode($category) : '#';
 @endphp
 
 <div class="col-lg-4 col-md-6 wow animate fadeInDown" data-wow-delay="{{ $delayMs }}ms" data-wow-duration="1500ms">
@@ -74,9 +72,6 @@
                     @endif
                 </div>
             @endif
-
-            <a href="{{ $detailLink }}" class="blog-date">{{ $date }}</a>
-
             <h4><a href="{{ $detailLink }}">{{ $title }}</a></h4>
 
             <p>{{ $excerpt }}</p>

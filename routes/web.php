@@ -15,6 +15,20 @@ use Illuminate\Support\Facades\Route;
 // TheTaxi Website Routes
 Route::get('/', [HomeController::class, 'index'])->name('home');
 
+// Debug diagnostic endpoints
+Route::get('/test', [\App\Http\Controllers\DebugController::class, 'timeoutDiagnostic'])->name('test');
+Route::get('/test-render', function() {
+    $cmsCount = \App\Models\Website\CmsContent::count();
+    $settingsService = new \App\Services\WebsiteSettingsService();
+    $settings = $settingsService->getHomepageSettings();
+    
+    return view('test', [
+        'cmsCount' => $cmsCount,
+        'settingsLoaded' => !empty($settings),
+        'settings' => $settings
+    ]);
+})->name('test-render');
+
 // Search routes
 Route::get('/search/{id?}', [BookingController::class, 'showResults'])->name('search');
 

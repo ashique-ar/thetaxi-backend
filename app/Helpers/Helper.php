@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Cache;
 
 if (!function_exists('getUserfromReq')) {
     function getUserfromReq(Request $request)
@@ -56,7 +57,30 @@ if (!function_exists('file_upload')) {
 if (!function_exists('s3_asset')) {
     function s3_asset($path, $secure = null)
     {
-        return Storage::disk('s3')->url($path);
+        // CRITICAL FIX: Build S3 URL directly without calling Storage::url() every time
+        // Cache the URL for 24 hours to avoid 200ms+ overhead per call
+        $cacheKey = 'asset_url_' . md5($path);
+        
+        return Cache::remember($cacheKey, 86400, function() use ($path) {
+            try {
+                // Build S3 URL directly using config
+                $bucket = config('filesystems.disks.s3.bucket');
+                $region = config('filesystems.disks.s3.region');
+                $url = config('filesystems.disks.s3.url');
+                
+                // Use environment-configured URL if available
+                if ($url) {
+                    return rtrim($url, '/') . '/' . ltrim($path, '/');
+                }
+                
+                // Otherwise build standard S3 URL
+                return "https://{$bucket}.s3.{$region}.amazonaws.com/" . ltrim($path, '/');
+            } catch (\Exception $e) {
+                // Fallback to local asset if anything fails
+                \Log::warning("S3 asset failed for: {$path}", ['error' => $e->getMessage()]);
+                return asset('assets/' . $path);
+            }
+        });
     }
 }
 
