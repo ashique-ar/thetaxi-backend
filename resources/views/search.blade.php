@@ -30,7 +30,7 @@
             <!-- Search Summary & Duration Display -->
             <div class="row mb-4">
                 <div class="col-12">
-                    <div class="search-summary-card">
+                    <div class="search-summary-card d-flex justify-content-between align-items-center flex-wrap">
                         @php
                             $serviceType = $search->service_type ?? 'point_to_point';
 
@@ -61,71 +61,77 @@
                         @endphp
 
                         <div class="search-summary-header">
-                            <div class="duration-display">
-                                <i class="{{ $durationIcon }}"></i>
-                                <div class="duration-info"></div>
+                            <div class="d-flex flex-column">
+                                <div class="duration-display">
+                                    <i class="{{ $durationIcon }}"></i>
+                                    <div class="duration-info"></div>
                                     <span class="duration-text">{{ $durationText }}</span>
-                                    @if($search->from_date && $search->to_date)
-                                        <span class="date-range" style="display: block; font-size: 14px; font-weight: 400; margin-top: 4px;">
-                                            {{ \Carbon\Carbon::parse($search->from_date)->format('M d') }} -
-                                            {{ \Carbon\Carbon::parse($search->to_date)->format('M d, Y') }}
-                                        </span>
-                                    @endif
                                 </div>
-                            </div>
-                            <div class="search-details">
-                                @if($search->pickup_location)
-                                    <span class="location-info">
-                                        <i class="bi bi-geo-alt"></i>
-                                        {{ $search->pickup_location }}
-                                        @if($search->dropoff_location && $search->dropoff_location !== $search->pickup_location)
-                                            → {{ $search->dropoff_location }}
-                                        @endif
+                                @if ($search->from_date && $search->to_date)
+                                    <span class="date-range"
+                                        style="display: block; font-size: 14px; font-weight: 400; margin-top: 4px;">
+                                        {{ \Carbon\Carbon::parse($search->from_date)->format('M d') }} -
+                                        {{ \Carbon\Carbon::parse($search->to_date)->format('M d, Y') }}
                                     </span>
                                 @endif
-                                @if(isset($search->total_distance_km) && $search->total_distance_km > 0)
-                                    <span class="distance-info">
-                                        <i class="bi bi-signpost-2"></i>
-                                        {{ number_format($search->total_distance_km, 2) }} km
-                                    </span>
-                                @endif
-                            </div>
-                        </div>
-
-                        <!-- Vehicle Groups Available Section -->
-                        <div class="search-summary-footer mt-3 pt-3" style="border-top: 1px solid rgba(255,255,255,0.2);">
-                            <div class="vehicle-groups-info d-flex justify-content-between align-items-center">
                                 <div class="vehicle-count-info">
                                     <span class="vehicle-groups-label text-white-50">Vehicle Groups Available:</span>
                                     <strong class="vehicle-groups-count text-white ms-2"
                                         id="vehicleGroupsCount">{{ count($results['data']) }}</strong>
                                 </div>
-                                <div class="vehicle-search-box">
-                                    <select class="form-select" id="sortResults" style="max-width: 200px;">
-                                        <option value="default">Sort By</option>
-                                        <option value="price_low">Price: Low to High</option>
-                                        <option value="price_high">Price: High to Low</option>
-                                        <option value="name">Name: A to Z</option>
-                                    </select>
-                                    <div class="input-group input-group-sm" style="max-width: 300px;">
-                                        <span class="input-group-text bg-white border-0">
-                                            <i class="bi bi-search text-muted"></i>
-                                        </span>
-                                        <input type="text" class="form-control border-0" id="vehicleGroupSearch"
-                                            placeholder="Search vehicles..." style="box-shadow: none;">
-                                        <button class="btn btn-outline-light btn-sm" type="button" id="clearSearch"
-                                            style="display: none;">
-                                            <i class="bi bi-x"></i>
-                                        </button>
-                                    </div>
-                                    <a href="{{ route('home') }}" class="btn btn-success text-nowrap">
-                                        <i class="bi bi-search"></i> New Search
-                                    </a>
-                                </div>
+                            </div>
+                        </div>
+                        <div class="search-details">
+
+                            @if ($search->pickup_location)
+                                <span class="location-info">
+                                    <i class="bi bi-geo-alt"></i>
+                                    {{ $search->pickup_location }}
+                                    @if ($search->dropoff_location && $search->dropoff_location !== $search->pickup_location)
+                                        → {{ $search->dropoff_location }}
+                                    @endif
+                                </span>
+                            @endif
+                            @if (isset($search->total_distance_km) && $search->total_distance_km > 0)
+                                <span class="distance-info">
+                                    <i class="bi bi-signpost-2"></i>
+                                    {{ number_format($search->total_distance_km, 2) }} km
+                                </span>
+                            @endif
+                        </div>
+
+
+                    </div>
+
+                    <div class="search-summary-footer mt-3 pt-3" style="border-top: 1px solid rgba(255,255,255,0.2);">
+                        <div class="vehicle-groups-info d-flex justify-content-end align-items-center">
+
+                            <div class="vehicle-search-box">
+                                {{-- <select class="form-select" id="sortResults" style="max-width: 200px;">
+                                    <option value="default">Sort By</option>
+                                    <option value="price_low">Price: Low to High</option>
+                                    <option value="price_high">Price: High to Low</option>
+                                    <option value="name">Name: A to Z</option>
+                                </select>
+                                <div class="input-group input-group-sm" style="max-width: 300px;">
+                                    <span class="input-group-text bg-white border-0">
+                                        <i class="bi bi-search text-muted"></i>
+                                    </span>
+                                    <input type="text" class="form-control border-0" id="vehicleGroupSearch"
+                                        placeholder="Search vehicles..." style="box-shadow: none;">
+                                    <button class="btn btn-outline-light btn-sm" type="button" id="clearSearch"
+                                        style="display: none;">
+                                        <i class="bi bi-x"></i>
+                                    </button>
+                                </div> --}}
+                                <a href="{{ route('home') }}" class="btn btn-success text-nowrap">
+                                    <i class="bi bi-search"></i> New Search
+                                </a>
                             </div>
                         </div>
                     </div>
                 </div>
+                <!-- Vehicle Groups Available Section -->
             </div>
 
             @if (isset($results['data']) && count($results['data']) > 0)
@@ -144,10 +150,10 @@
                         @endphp
 
                         <div class="col-lg-3 col-md-4 col-sm-12" data-vehicle-group="{{ $result['id'] }}"
-                            data-price="{{ $pricing['base_amount'] ?? 0 }}" data-name="{{ $result['name'] ?? 'Unknown Vehicle' }}">
-                            <x-vehicle-card :vehicle="$result" :pricing="$pricing" :enhancedPricing="$enhancedPricing"
-                                :serviceFeatures="$serviceFeatures" :availability="$availability" :searchId="$search->id"
-                                :isRecommended="$isRecommended" :showBookNow="true" :showViewDetails="false" />
+                            data-price="{{ $pricing['base_amount'] ?? 0 }}"
+                            data-name="{{ $result['name'] ?? 'Unknown Vehicle' }}">
+                            <x-vehicle-card :vehicle="$result" :pricing="$pricing" :enhancedPricing="$enhancedPricing" :serviceFeatures="$serviceFeatures"
+                                :availability="$availability" :searchId="$search->id" :isRecommended="$isRecommended" :showBookNow="true" :showViewDetails="false" />
                         </div>
                     @endforeach
                 </div>
@@ -155,7 +161,8 @@
                 <!-- No Results Found -->
                 <div class="no-results-card">
                     <div class="text-center py-5">
-                        <svg width="100" height="100" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <svg width="100" height="100" viewBox="0 0 100 100" fill="none"
+                            xmlns="http://www.w3.org/2000/svg">
                             <path
                                 d="M50 10C27.9 10 10 27.9 10 50C10 72.1 27.9 90 50 90C72.1 90 90 72.1 90 50C90 27.9 72.1 10 50 10ZM50 80C33.4 80 20 66.6 20 50C20 33.4 33.4 20 50 20C66.6 20 80 33.4 80 50C80 66.6 66.6 80 50 80Z"
                                 fill="#ddd" />
@@ -840,12 +847,12 @@
         let cartCurrency = '{{ getSelectedCurrency() }}';
         let cartCurrencySymbol = '{{ getCurrencySymbol() }}';
 
-        $(document).ready(function () {
+        $(document).ready(function() {
             // Load cart from session storage
             loadCart();
 
             // Sort functionality
-            $('#sortResults').on('change', function () {
+            $('#sortResults').on('change', function() {
                 const sortBy = $(this).val();
                 const $grid = $('.vehicle-results-grid');
                 const $cards = $grid.find('.col-lg-3').toArray();
@@ -854,7 +861,7 @@
                     return;
                 }
 
-                $cards.sort(function (a, b) {
+                $cards.sort(function(a, b) {
                     const priceA = parseFloat($(a).data('price')) || 0;
                     const priceB = parseFloat($(b).data('price')) || 0;
                     const nameA = $(a).data('name') || '';
@@ -874,7 +881,7 @@
             });
 
             // Add to cart functionality
-            $('.add-to-cart-btn').on('click', function () {
+            $('.add-to-cart-btn').on('click', function() {
                 const btn = $(this);
                 const groupId = btn.data('group-id');
                 const searchId = btn.data('search-id');
@@ -931,12 +938,12 @@
             });
 
             // Close cart float
-            $('#closeCartFloat').on('click', function () {
+            $('#closeCartFloat').on('click', function() {
                 $('#cartSummaryFloat').fadeOut();
             });
 
             // Booking form date change - update prices
-            $(document).on('change', 'input[name="from_date"], input[name="to_date"]', function () {
+            $(document).on('change', 'input[name="from_date"], input[name="to_date"]', function() {
                 updateAllPrices();
             });
         });
@@ -944,7 +951,7 @@
         function addToCart(item) {
             // Add to cart via AJAX - let backend recalculate pricing
             $.ajax({
-                url: '{{ route("cart.add") }}',
+                url: '{{ route('cart.add') }}',
                 method: 'POST',
                 data: {
                     _token: '{{ csrf_token() }}',
@@ -963,7 +970,7 @@
                     service_type: item.service_type,
                     search_data: item
                 },
-                success: function (response) {
+                success: function(response) {
                     if (response.success) {
                         // Load updated cart from server
                         loadCartFromServer();
@@ -976,9 +983,10 @@
                         showErrorNotification('Error: ' + response.message);
                     }
                 },
-                error: function (xhr) {
+                error: function(xhr) {
                     console.error('Error adding to cart:', xhr);
-                    const errorMsg = xhr.responseJSON?.message || 'Error adding item to cart. Please try again.';
+                    const errorMsg = xhr.responseJSON?.message ||
+                        'Error adding item to cart. Please try again.';
                     showErrorNotification(errorMsg);
                 }
             });
@@ -986,13 +994,13 @@
 
         function removeFromCart(cartKey) {
             $.ajax({
-                url: '{{ route("cart.remove") }}',
+                url: '{{ route('cart.remove') }}',
                 method: 'POST',
                 data: {
                     _token: '{{ csrf_token() }}',
                     cart_key: cartKey
                 },
-                success: function (response) {
+                success: function(response) {
                     if (response.success) {
                         loadCartFromServer();
                         // Dispatch cart updated event
@@ -1004,7 +1012,7 @@
                         alert('Error: ' + response.message);
                     }
                 },
-                error: function (xhr) {
+                error: function(xhr) {
                     console.error('Error removing from cart:', xhr);
                     alert('Error removing item. Please try again.');
                 }
@@ -1013,21 +1021,23 @@
 
         function loadCartFromServer() {
             $.ajax({
-                url: '{{ route("cart.get") }}',
+                url: '{{ route('cart.get') }}',
                 method: 'GET',
-                success: function (response) {
+                success: function(response) {
                     if (response.success) {
                         cart = response.items || [];
                         cartTotals = response.totals || {};
-                        cartCurrency = Object.keys(cart).length > 0 ? Object.values(cart)[0].currency : '{{ getSelectedCurrency() }}';
-                        cartCurrencySymbol = Object.keys(cart).length > 0 ? Object.values(cart)[0].currency_symbol : '{{ getCurrencySymbol() }}';
+                        cartCurrency = Object.keys(cart).length > 0 ? Object.values(cart)[0].currency :
+                            '{{ getSelectedCurrency() }}';
+                        cartCurrencySymbol = Object.keys(cart).length > 0 ? Object.values(cart)[0]
+                            .currency_symbol : '{{ getCurrencySymbol() }}';
                         updateCartDisplay();
                         if (Object.keys(cart).length > 0) {
                             showCartFloat();
                         }
                     }
                 },
-                error: function (xhr) {
+                error: function(xhr) {
                     console.error('Error loading cart:', xhr);
                 }
             });
@@ -1117,15 +1127,17 @@
         }
 
         // Vehicle Groups Search Functionality
-        $(document).ready(function () {
+        $(document).ready(function() {
             const $searchInput = $('#vehicleGroupSearch');
             const $clearButton = $('#clearSearch');
-            const $vehicleCards = $('.vehicle-results-grid .col-lg-3, .vehicle-results-grid .col-md-4, .vehicle-results-grid .col-sm-12');
+            const $vehicleCards = $(
+                '.vehicle-results-grid .col-lg-3, .vehicle-results-grid .col-md-4, .vehicle-results-grid .col-sm-12'
+            );
             const $vehicleCountDisplay = $('#vehicleGroupsCount');
             let totalVehicles = $vehicleCards.length;
 
             // Search functionality
-            $searchInput.on('input', function () {
+            $searchInput.on('input', function() {
                 const searchTerm = $(this).val().toLowerCase().trim();
                 let visibleCount = 0;
 
@@ -1136,8 +1148,9 @@
                     $clearButton.hide();
                 } else {
                     // Filter vehicles
-                    $vehicleCards.each(function () {
-                        const vehicleName = $(this).data('name') ? $(this).data('name').toLowerCase() : '';
+                    $vehicleCards.each(function() {
+                        const vehicleName = $(this).data('name') ? $(this).data('name')
+                            .toLowerCase() : '';
                         const vehicleCard = $(this).find('.vehicle-card');
                         const cardText = vehicleCard.text().toLowerCase();
 
@@ -1171,13 +1184,13 @@
             });
 
             // Clear search
-            $clearButton.on('click', function () {
+            $clearButton.on('click', function() {
                 $searchInput.val('').trigger('input');
                 $searchInput.focus();
             });
 
             // Clear search on escape key
-            $searchInput.on('keydown', function (e) {
+            $searchInput.on('keydown', function(e) {
                 if (e.key === 'Escape') {
                     $(this).val('').trigger('input');
                 }
@@ -1185,7 +1198,7 @@
         });
 
         // New Search functionality
-        $('#newSearchBtn').on('click', function () {
+        $('#newSearchBtn').on('click', function() {
             // Create a new search modal/form
             showNewSearchModal();
         });
@@ -1271,7 +1284,7 @@
             $('#newSearchModal').modal('show');
 
             // Handle form submission
-            $('#submitNewSearch').on('click', function () {
+            $('#submitNewSearch').on('click', function() {
                 const formData = new FormData($('#newSearchForm')[0]);
                 const searchParams = new URLSearchParams();
 
@@ -1282,17 +1295,17 @@
                 }
 
                 // Redirect to search with new parameters
-                window.location.href = '{{ route("search") }}?' + searchParams.toString();
+                window.location.href = '{{ route('search') }}?' + searchParams.toString();
             });
 
             // Clean up modal when hidden
-            $('#newSearchModal').on('hidden.bs.modal', function () {
+            $('#newSearchModal').on('hidden.bs.modal', function() {
                 $(this).remove();
             });
         }
 
         // Book Now functionality
-        $(document).on('click', '.book-now-btn', function () {
+        $(document).on('click', '.book-now-btn', function() {
             const $btn = $(this);
             const groupId = $btn.data('group-id');
             const searchId = $btn.data('search-id');
@@ -1343,7 +1356,7 @@
 
             // Wait for cart addition to complete, then redirect to cart
             setTimeout(() => {
-                window.location.href = '{{ route("cart") }}';
+                window.location.href = '{{ route('cart') }}';
             }, 1000);
         });
     </script>
