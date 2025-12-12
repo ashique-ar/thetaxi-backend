@@ -223,16 +223,16 @@
                             <div class="share-btns d-flex">
                                 <a class="facebook"
                                     href="https://www.facebook.com/sharer/sharer.php?u={{ urlencode(request()->fullUrl()) }}"
-                                    target="_blank" aria-label="Share on Facebook"><i class="fab fa-facebook-f"></i></a>
+                                    target="_blank" aria-label="Share on Facebook"><i class="bi bi-facebook"></i></a>
                                 <a class="twitter"
                                     href="https://twitter.com/intent/tweet?url={{ urlencode(request()->fullUrl()) }}&text={{ urlencode($content->title) }}"
-                                    target="_blank" aria-label="Share on Twitter"><i class="fab fa-twitter"></i></a>
+                                    target="_blank" aria-label="Share on Twitter"><i class="bi bi-twitter"></i></a>
                                 <a class="linkedin"
                                     href="https://www.linkedin.com/sharing/share-offsite/?url={{ urlencode(request()->fullUrl()) }}"
-                                    target="_blank" aria-label="Share on LinkedIn"><i class="fab fa-linkedin-in"></i></a>
+                                    target="_blank" aria-label="Share on LinkedIn"><i class="bi bi-linkedin"></i></a>
                                 <a class="email"
                                     href="mailto:?subject={{ urlencode($content->title) }}&body={{ urlencode(request()->fullUrl()) }}"
-                                    aria-label="Share by email"><i class="fas fa-envelope"></i></a>
+                                    aria-label="Share by email"><i class="bi bi-envelope"></i></a>
                             </div>
                         </div>
 

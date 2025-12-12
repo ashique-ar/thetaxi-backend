@@ -154,6 +154,7 @@ class SettingsViewComposer
                     'tertiary_color' => '#FFFFFF'
                 ];
             }
-        });        $view->with('settings', $settings);
+        });        
+        $view->with('settings', $settings);
     }
 }
