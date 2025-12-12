@@ -64,6 +64,8 @@ class WebsiteSettingController extends Controller
         $data['updated_user_id'] = $request->user()->id;
         $websiteSetting->update($data);
 
+        $this->settingsService->clearCache($websiteSetting->type);
+
         return response()->json([
             'status' => 'success',
             'message' => 'Website setting updated',

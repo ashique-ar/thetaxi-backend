@@ -374,6 +374,7 @@ class WebsiteSettingsService
             'contact_map_longitude',
             'contact_map_zoom',
             'contact_map_title',
+            'contact_map_embed_url',
             
             // Breadcrumb
             'contact_breadcrumb_image',
