@@ -482,10 +482,10 @@
             // Use airports API if it's an airport field, otherwise use all cities
             let sourceList = isAirportField
                 ? [
-                      "Colombo BIA Airport",
-                      "Mattala Rajapaksa Airport",
-                      "Jaffna International Airport",
-                  ] // Fallback
+                    "Colombo BIA Airport",
+                    "Mattala Rajapaksa Airport",
+                    "Jaffna International Airport",
+                ] // Fallback
                 : CONFIG.sriLankaCities;
 
             // Setup autocomplete source based on field type
@@ -571,11 +571,11 @@
                                 formatted_address: ui.item.value,
                                 geometry: coordinates
                                     ? {
-                                          location: {
-                                              lat: () => coordinates.lat,
-                                              lng: () => coordinates.lng,
-                                          },
-                                      }
+                                        location: {
+                                            lat: () => coordinates.lat,
+                                            lng: () => coordinates.lng,
+                                        },
+                                    }
                                     : null,
                             });
                         }
@@ -593,11 +593,11 @@
                             formatted_address: ui.item.value,
                             geometry: coordinates
                                 ? {
-                                      location: {
-                                          lat: () => coordinates.lat,
-                                          lng: () => coordinates.lng,
-                                      },
-                                  }
+                                    location: {
+                                        lat: () => coordinates.lat,
+                                        lng: () => coordinates.lng,
+                                    },
+                                }
                                 : null,
                         });
                     },
@@ -719,17 +719,28 @@
             });
         });
 
-        // Initialize defaults
+        // Initialize defaults - ensure coordinates are set immediately
         const defaultRadio = document.querySelector(
             'input[name="transfer_type"]:checked'
         );
         if (defaultRadio) {
+            console.log('Initializing airport transfer with type:', defaultRadio.value);
             updateAirportTransferLocations(defaultRadio.value);
+        } else {
+            // Default to from-airport if no radio is checked
+            console.log('No transfer type selected, defaulting to from-airport');
+            const fromAirportRadio = document.querySelector('input[name="transfer_type"][value="from-airport"]');
+            if (fromAirportRadio) {
+                fromAirportRadio.checked = true;
+                updateAirportTransferLocations('from-airport');
+            }
         }
-        
+
         // Ensure airport select handlers are setup after a delay
         setTimeout(() => {
             setupAirportSelectHandlers();
+            // Force another coordinate update after handlers are ready
+            ensureAirportCoordinatesAreSet();
         }, 500);
     }
 
@@ -738,7 +749,10 @@
      */
     function updateAirportTransferLocations(type) {
         const form = document.getElementById("airport_transfers-form");
-        if (!form) return;
+        if (!form) {
+            console.error('Airport transfers form not found');
+            return;
+        }
 
         // Get all form elements
         const fromAirportSelect = form.querySelector('#from-airport-select');
@@ -750,12 +764,33 @@
         const toLat = form.querySelector('input[name="dropoff_lat"]');
         const toLng = form.querySelector('input[name="dropoff_lng"]');
 
-        if (!fromAirportSelect || !fromLocationInput || !toAirportSelect || !toLocationInput || 
-            !fromLat || !fromLng || !toLat || !toLng) return;
+        if (!fromAirportSelect || !fromLocationInput || !toAirportSelect || !toLocationInput ||
+            !fromLat || !fromLng || !toLat || !toLng) {
+            console.error('Missing airport transfer form elements:', {
+                fromAirportSelect: !!fromAirportSelect,
+                fromLocationInput: !!fromLocationInput,
+                toAirportSelect: !!toAirportSelect,
+                toLocationInput: !!toLocationInput,
+                fromLat: !!fromLat,
+                fromLng: !!fromLng,
+                toLat: !!toLat,
+                toLng: !!toLng
+            });
+            return;
+        }
 
         const colomboCoords = CONFIG.cityCoordinates["Colombo, Sri Lanka"];
         const defaultAirport = "Colombo BIA Airport";
         const defaultAirportCoords = CONFIG.cityCoordinates[defaultAirport];
+
+        // Debug: Log coordinate values
+        console.log('Airport coordinate setup:', {
+            type,
+            colomboCoords,
+            defaultAirport,
+            defaultAirportCoords,
+            configKeys: Object.keys(CONFIG.cityCoordinates)
+        });
 
         // Clear any existing Google Places autocomplete instances
         [fromLocationInput, toLocationInput].forEach(input => {
@@ -766,7 +801,7 @@
                 input.googleAutocomplete = null;
             }
             input.removeAttribute("data-autocomplete-initialized");
-            
+
             // Destroy any existing jQuery autocomplete
             if (typeof $ !== "undefined" && $.fn.autocomplete && $(input).data("ui-autocomplete")) {
                 $(input).autocomplete("destroy");
@@ -783,7 +818,7 @@
             fromLocationInput.required = false;
             fromAirportSelect.disabled = false;
             fromLocationInput.disabled = true;
-            
+
             // Show TO location input, hide TO airport select  
             toLocationInput.classList.remove('hidden');
             toLocationInput.classList.add('visible');
@@ -798,11 +833,38 @@
             fromAirportSelect.value = defaultAirport;
             toLocationInput.value = "Colombo, Sri Lanka";
 
-            // Set coordinates
-            fromLat.value = defaultAirportCoords.lat;
-            fromLng.value = defaultAirportCoords.lng;
-            toLat.value = colomboCoords.lat;
-            toLng.value = colomboCoords.lng;
+            // Set coordinates with validation (only if not already set)
+            if (defaultAirportCoords && defaultAirportCoords.lat && defaultAirportCoords.lng) {
+                if (!fromLat.value || fromLat.value === '' || fromLat.value === '0') {
+                    fromLat.value = defaultAirportCoords.lat;
+                }
+                if (!fromLng.value || fromLng.value === '' || fromLng.value === '0') {
+                    fromLng.value = defaultAirportCoords.lng;
+                }
+                console.log('FROM coordinates set (from-airport):', {
+                    lat: fromLat.value,
+                    lng: fromLng.value,
+                    source: 'defaultAirportCoords'
+                });
+            } else {
+                console.error('Default airport coordinates not found for:', defaultAirport);
+            }
+
+            if (colomboCoords && colomboCoords.lat && colomboCoords.lng) {
+                if (!toLat.value || toLat.value === '' || toLat.value === '0') {
+                    toLat.value = colomboCoords.lat;
+                }
+                if (!toLng.value || toLng.value === '' || toLng.value === '0') {
+                    toLng.value = colomboCoords.lng;
+                }
+                console.log('TO coordinates set (from-airport):', {
+                    lat: toLat.value,
+                    lng: toLng.value,
+                    source: 'colomboCoords'
+                });
+            } else {
+                console.error('Colombo coordinates not found');
+            }
 
             // Initialize autocomplete for TO location input
             setTimeout(() => {
@@ -819,7 +881,7 @@
             fromAirportSelect.required = false;
             fromLocationInput.disabled = false;
             fromAirportSelect.disabled = true;
-            
+
             // Show TO airport select, hide TO location input
             toAirportSelect.classList.remove('hidden');
             toAirportSelect.classList.add('visible');
@@ -834,11 +896,38 @@
             fromLocationInput.value = "Colombo, Sri Lanka";
             toAirportSelect.value = defaultAirport;
 
-            // Set coordinates  
-            fromLat.value = colomboCoords.lat;
-            fromLng.value = colomboCoords.lng;
-            toLat.value = defaultAirportCoords.lat;
-            toLng.value = defaultAirportCoords.lng;
+            // Set coordinates with validation (only if not already set)
+            if (colomboCoords && colomboCoords.lat && colomboCoords.lng) {
+                if (!fromLat.value || fromLat.value === '' || fromLat.value === '0') {
+                    fromLat.value = colomboCoords.lat;
+                }
+                if (!fromLng.value || fromLng.value === '' || fromLng.value === '0') {
+                    fromLng.value = colomboCoords.lng;
+                }
+                console.log('FROM coordinates set (to-airport):', {
+                    lat: fromLat.value,
+                    lng: fromLng.value,
+                    source: 'colomboCoords'
+                });
+            } else {
+                console.error('Colombo coordinates not found');
+            }
+
+            if (defaultAirportCoords && defaultAirportCoords.lat && defaultAirportCoords.lng) {
+                if (!toLat.value || toLat.value === '' || toLat.value === '0') {
+                    toLat.value = defaultAirportCoords.lat;
+                }
+                if (!toLng.value || toLng.value === '' || toLng.value === '0') {
+                    toLng.value = defaultAirportCoords.lng;
+                }
+                console.log('TO coordinates set (to-airport):', {
+                    lat: toLat.value,
+                    lng: toLng.value,
+                    source: 'defaultAirportCoords'
+                });
+            } else {
+                console.error('Default airport coordinates not found for:', defaultAirport);
+            }
 
             // Initialize autocomplete for FROM location input
             setTimeout(() => {
@@ -848,6 +937,18 @@
 
         // Setup airport select change handlers
         setupAirportSelectHandlers();
+
+        // Force coordinate update for any pre-selected airports
+        setTimeout(() => {
+            if (fromAirportSelect && fromAirportSelect.value && !fromAirportSelect.classList.contains('hidden')) {
+                fromAirportSelect.dispatchEvent(new Event('change'));
+                console.log('Forced FROM airport coordinate update');
+            }
+            if (toAirportSelect && toAirportSelect.value && !toAirportSelect.classList.contains('hidden')) {
+                toAirportSelect.dispatchEvent(new Event('change'));
+                console.log('Forced TO airport coordinate update');
+            }
+        }, 200);
     }
 
     /**
@@ -878,10 +979,10 @@
 
         // FROM airport select handler
         if (fromAirportSelect && !fromAirportSelect.hasAirportHandler) {
-            fromAirportSelect.addEventListener('change', function() {
+            fromAirportSelect.addEventListener('change', function () {
                 const selectedOption = this.options[this.selectedIndex];
                 console.log('FROM airport changed:', selectedOption.value);
-                
+
                 if (selectedOption && selectedOption.dataset.lat && selectedOption.dataset.lng) {
                     if (fromLat && fromLng) {
                         fromLat.value = selectedOption.dataset.lat;
@@ -898,7 +999,7 @@
                 }
             });
             fromAirportSelect.hasAirportHandler = true;
-            
+
             // Trigger change event if there's already a selected value
             if (fromAirportSelect.value) {
                 fromAirportSelect.dispatchEvent(new Event('change'));
@@ -907,10 +1008,10 @@
 
         // TO airport select handler  
         if (toAirportSelect && !toAirportSelect.hasAirportHandler) {
-            toAirportSelect.addEventListener('change', function() {
+            toAirportSelect.addEventListener('change', function () {
                 const selectedOption = this.options[this.selectedIndex];
                 console.log('TO airport changed:', selectedOption.value);
-                
+
                 if (selectedOption && selectedOption.dataset.lat && selectedOption.dataset.lng) {
                     if (toLat && toLng) {
                         toLat.value = selectedOption.dataset.lat;
@@ -927,7 +1028,7 @@
                 }
             });
             toAirportSelect.hasAirportHandler = true;
-            
+
             // Trigger change event if there's already a selected value
             if (toAirportSelect.value) {
                 toAirportSelect.dispatchEvent(new Event('change'));
@@ -1131,9 +1232,8 @@
                             <path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                         </svg>
                     </div>
-                    <h6 class="destination-title mb-0">Destination ${
-                        index + 1
-                    }</h6>
+                    <h6 class="destination-title mb-0">Destination ${index + 1
+            }</h6>
                 </div>
                 <button type="button" class="destination-remove">
                     <svg width="12" height="12" viewBox="0 0 12 12" xmlns="http://www.w3.org/2000/svg">
@@ -1451,19 +1551,17 @@
             // Create popup content
             const popupContent = `
                 <div class="route-marker-popup">
-                    <h6>${
-                        isStart
-                            ? "Starting Point"
-                            : isEnd
-                            ? "Final Destination"
-                            : `Stop ${index}`
-                    }</h6>
+                    <h6>${isStart
+                    ? "Starting Point"
+                    : isEnd
+                        ? "Final Destination"
+                        : `Stop ${index}`
+                }</h6>
                     <p><strong>${dest.name}</strong></p>
-                    ${
-                        dest.date
-                            ? `<p>📅 ${dest.date} ${dest.time || ""}</p>`
-                            : ""
-                    }
+                    ${dest.date
+                    ? `<p>📅 ${dest.date} ${dest.time || ""}</p>`
+                    : ""
+                }
                     ${dest.notes ? `<p class="notes">📝 ${dest.notes}</p>` : ""}
                 </div>
             `;
@@ -1543,9 +1641,8 @@
 
             const arrowIcon = L.divIcon({
                 className: "route-arrow",
-                html: `<div style="transform: rotate(${
-                    angle + 90
-                }deg);">→</div>`,
+                html: `<div style="transform: rotate(${angle + 90
+                    }deg);">→</div>`,
                 iconSize: [20, 20],
                 iconAnchor: [10, 10],
             });
@@ -1622,9 +1719,9 @@
         const a =
             Math.sin(dLat / 2) * Math.sin(dLat / 2) +
             Math.cos((lat1 * Math.PI) / 180) *
-                Math.cos((lat2 * Math.PI) / 180) *
-                Math.sin(dLng / 2) *
-                Math.sin(dLng / 2);
+            Math.cos((lat2 * Math.PI) / 180) *
+            Math.sin(dLng / 2) *
+            Math.sin(dLng / 2);
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         return R * c;
     }
@@ -1658,77 +1755,68 @@
                 <div class="modal-destination-card">
                     <div class="modal-destination-header">
                         <div class="d-flex align-items-center">
-                            <div class="${
-                                isStart
-                                    ? "drag-handle-locked"
-                                    : "drag-handle-modal"
-                            } me-2">${isStart ? "🔒" : "☰"}</div>
-                            <strong>${
-                                isStart
-                                    ? "🚀 Starting Point"
-                                    : isEnd
-                                    ? "🏁 Final Destination"
-                                    : `📍 Stop ${index}`
-                            }</strong>
+                            <div class="${isStart
+                    ? "drag-handle-locked"
+                    : "drag-handle-modal"
+                } me-2">${isStart ? "🔒" : "☰"}</div>
+                            <strong>${isStart
+                    ? "🚀 Starting Point"
+                    : isEnd
+                        ? "🏁 Final Destination"
+                        : `📍 Stop ${index}`
+                }</strong>
                         </div>
-                        <span class="badge ${
-                            isStart
-                                ? "bg-success"
-                                : isEnd
-                                ? "bg-danger"
-                                : "bg-primary"
-                        }">${index + 1}</span>
+                        <span class="badge ${isStart
+                    ? "bg-success"
+                    : isEnd
+                        ? "bg-danger"
+                        : "bg-primary"
+                }">${index + 1}</span>
                     </div>
                     
                     <div class="modal-destination-form mt-2">
                         <div class="mb-2">
                             <label class="form-label">Location</label>
                             <input type="text" class="form-control form-control-sm location-input-modal" 
-                                   data-index="${index}" value="${
-                dest.name
-            }" placeholder="Enter location">
+                                   data-index="${index}" value="${dest.name
+                }" placeholder="Enter location">
                         </div>
                         
-                        ${
-                            !isStart
-                                ? `
+                        ${!isStart
+                    ? `
                         <div class="row mb-2">
                             <div class="col-md-6">
                                 <label class="form-label">Visit Date</label>
                                 <input type="text" class="form-control form-control-sm date-input-modal" 
-                                       data-index="${index}" value="${
-                                      dest.date || ""
-                                  }" placeholder="Select date">
+                                       data-index="${index}" value="${dest.date || ""
+                    }" placeholder="Select date">
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">Visit Time</label>
                                 <input type="time" class="form-control form-control-sm time-input-modal" 
-                                       data-index="${index}" value="${
-                                      dest.time || "09:00"
-                                  }">
+                                       data-index="${index}" value="${dest.time || "09:00"
+                    }">
                             </div>
                         </div>
                         
                         <div class="mb-2">
                             <label class="form-label">Notes (Optional)</label>
                             <textarea class="form-control form-control-sm notes-input-modal" 
-                                      data-index="${index}" rows="2" placeholder="Add notes...">${
-                                      dest.notes || ""
-                                  }</textarea>
+                                      data-index="${index}" rows="2" placeholder="Add notes...">${dest.notes || ""
+                    }</textarea>
                         </div>
                         `
-                                : ""
-                        }
+                    : ""
+                }
                         
-                        ${
-                            index > 0
-                                ? `
+                        ${index > 0
+                    ? `
                         <button type="button" class="btn btn-sm btn-danger remove-dest-modal" data-index="${index}">
                             <i class="bi bi-trash"></i> Remove
                         </button>
                         `
-                                : ""
-                        }
+                    : ""
+                }
                     </div>
                 </div>
             `;
@@ -2152,9 +2240,8 @@
                             <path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                         </svg>
                     </div>
-                    <h6 class="destination-title mb-0">Destination ${
-                        index + 1
-                    }</h6>
+                    <h6 class="destination-title mb-0">Destination ${index + 1
+            }</h6>
                 </div>
                 <button type="button" class="destination-remove">
                     <svg width="12" height="12" viewBox="0 0 12 12" xmlns="http://www.w3.org/2000/svg">
@@ -2174,15 +2261,12 @@
                             </g>
                         </svg>
                         <div class="custom-select-dropdown">
-                            <input type="text" name="destinations[${index}][location]" placeholder="Destination Location" class="location-search" value="${
-            destData.name
-        }" required>
-                            <input type="hidden" name="destinations[${index}][lat]" class="location-lat" value="${
-            destData.lat
-        }">
-                            <input type="hidden" name="destinations[${index}][lng]" class="location-lng" value="${
-            destData.lng
-        }">
+                            <input type="text" name="destinations[${index}][location]" placeholder="Destination Location" class="location-search" value="${destData.name
+            }" required>
+                            <input type="hidden" name="destinations[${index}][lat]" class="location-lat" value="${destData.lat
+            }">
+                            <input type="hidden" name="destinations[${index}][lng]" class="location-lng" value="${destData.lng
+            }">
                         </div>
                     </div>
                 </div>
@@ -2192,9 +2276,8 @@
                             <path d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z"/>
                         </svg>
                         <div class="custom-select-dropdown">
-                            <input type="text" name="destinations[${index}][visit_date]" placeholder="Visit Date" class="custom-datepicker" value="${
-            destData.date || ""
-        }" required>
+                            <input type="text" name="destinations[${index}][visit_date]" placeholder="Visit Date" class="custom-datepicker" value="${destData.date || ""
+            }" required>
                         </div>
                     </div>
                     <div class="single-search-box">
@@ -2202,18 +2285,16 @@
                             <path d="M9 0C4.03 0 0 4.03 0 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm.5-12H8v5l4.25 2.52.75-1.23-3.5-2.08V4z"/>
                         </svg>
                         <div class="custom-select-dropdown">
-                            <input type="time" name="destinations[${index}][visit_time]" value="${
-            destData.time || "09:00"
-        }" required>
+                            <input type="time" name="destinations[${index}][visit_time]" value="${destData.time || "09:00"
+            }" required>
                         </div>
                     </div>
                 </div>
             </div>
             
             <div class="destination-notes">
-                <textarea name="destinations[${index}][notes]" placeholder="Special notes for this destination (optional)" rows="2">${
-            destData.notes || ""
-        }</textarea>
+                <textarea name="destinations[${index}][notes]" placeholder="Special notes for this destination (optional)" rows="2">${destData.notes || ""
+            }</textarea>
             </div>
         `;
 
@@ -2251,9 +2332,8 @@
         let summary = "Custom Tour Route Summary:\n\n";
 
         state.customTourDestinations.forEach((dest, index) => {
-            summary += `${index === 0 ? "Start" : `Stop ${index}`}: ${
-                dest.name
-            }\n`;
+            summary += `${index === 0 ? "Start" : `Stop ${index}`}: ${dest.name
+                }\n`;
             if (dest.date) summary += `Date: ${dest.date} ${dest.time || ""}\n`;
             if (dest.notes) summary += `Notes: ${dest.notes}\n`;
             summary += "\n";
@@ -2488,6 +2568,41 @@
             }
         });
 
+        // Special validation for airport transfer coordinates
+        if (form.id === 'airport_transfers-form') {
+            const pickupLat = form.querySelector('input[name="pickup_lat"]');
+            const pickupLng = form.querySelector('input[name="pickup_lng"]');
+            const dropoffLat = form.querySelector('input[name="dropoff_lat"]');
+            const dropoffLng = form.querySelector('input[name="dropoff_lng"]');
+
+            if (!pickupLat?.value || pickupLat.value === '' || pickupLat.value === '0') {
+                console.error('Airport transfer missing pickup latitude');
+                isValid = false;
+            }
+            if (!pickupLng?.value || pickupLng.value === '' || pickupLng.value === '0') {
+                console.error('Airport transfer missing pickup longitude');
+                isValid = false;
+            }
+            if (!dropoffLat?.value || dropoffLat.value === '' || dropoffLat.value === '0') {
+                console.error('Airport transfer missing dropoff latitude');
+                isValid = false;
+            }
+            if (!dropoffLng?.value || dropoffLng.value === '' || dropoffLng.value === '0') {
+                console.error('Airport transfer missing dropoff longitude');
+                isValid = false;
+            }
+
+            if (isValid) {
+                console.log('Airport transfer coordinates validated successfully:', {
+                    pickup: { lat: pickupLat.value, lng: pickupLng.value },
+                    dropoff: { lat: dropoffLat.value, lng: dropoffLng.value }
+                });
+            } else {
+                alert("Airport transfer coordinates are missing. Please check your location selections.");
+                return false;
+            }
+        }
+
         if (!isValid) {
             alert("Please fill in all required fields");
         }
@@ -2688,7 +2803,7 @@
      */
     function logCoordinateValues() {
         console.log('=== COORDINATE VALUES DEBUG ===');
-        
+
         // Airport Transfers Form (uses pickup_lat/pickup_lng and dropoff_lat/dropoff_lng)
         const airportForm = document.getElementById('airport_transfers-form');
         if (airportForm) {
@@ -2696,11 +2811,11 @@
             const fromLng = airportForm.querySelector('input[name="pickup_lng"]');
             const toLat = airportForm.querySelector('input[name="dropoff_lat"]');
             const toLng = airportForm.querySelector('input[name="dropoff_lng"]');
-            
+
             console.log('Airport Transfers coordinates:', {
                 fromLat: fromLat?.value || 'not found',
                 fromLng: fromLng?.value || 'not found',
-                toLat: toLat?.value || 'not found',  
+                toLat: toLat?.value || 'not found',
                 toLng: toLng?.value || 'not found',
                 formVisible: !airportForm.classList.contains('hidden')
             });
@@ -2713,11 +2828,11 @@
             const pickupLng = rideForm.querySelector('input[name="pickup_lng"]');
             const dropoffLat = rideForm.querySelector('input[name="dropoff_lat"]');
             const dropoffLng = rideForm.querySelector('input[name="dropoff_lng"]');
-            
+
             console.log('Ride Now coordinates:', {
                 pickupLat: pickupLat?.value || 'not found',
                 pickupLng: pickupLng?.value || 'not found',
-                dropoffLat: dropoffLat?.value || 'not found',  
+                dropoffLat: dropoffLat?.value || 'not found',
                 dropoffLng: dropoffLng?.value || 'not found',
                 formVisible: !rideForm.classList.contains('hidden')
             });
@@ -2738,9 +2853,55 @@
         if (fromAirportSelect && fromAirportSelect.value && !fromAirportSelect.classList.contains('hidden')) {
             fromAirportSelect.dispatchEvent(new Event('change'));
         }
-        
+
         if (toAirportSelect && toAirportSelect.value && !toAirportSelect.classList.contains('hidden')) {
             toAirportSelect.dispatchEvent(new Event('change'));
+        }
+    }
+
+    /**
+     * Ensure airport transfer coordinates are set from selected airports
+     */
+    function ensureAirportCoordinatesAreSet() {
+        const form = document.getElementById('airport_transfers-form');
+        if (!form) return;
+
+        const fromAirportSelect = form.querySelector('#from-airport-select');
+        const toAirportSelect = form.querySelector('#to-airport-select');
+        const fromLat = form.querySelector('input[name="pickup_lat"]');
+        const fromLng = form.querySelector('input[name="pickup_lng"]');
+        const toLat = form.querySelector('input[name="dropoff_lat"]');
+        const toLng = form.querySelector('input[name="dropoff_lng"]');
+
+        // Force coordinate update from selected airport options
+        if (fromAirportSelect && !fromAirportSelect.classList.contains('hidden') && fromAirportSelect.value) {
+            const selectedOption = fromAirportSelect.options[fromAirportSelect.selectedIndex];
+            if (selectedOption && selectedOption.dataset.lat && selectedOption.dataset.lng) {
+                if (fromLat && fromLng) {
+                    fromLat.value = selectedOption.dataset.lat;
+                    fromLng.value = selectedOption.dataset.lng;
+                    console.log('Forced FROM airport coordinates:', {
+                        airport: fromAirportSelect.value,
+                        lat: fromLat.value,
+                        lng: fromLng.value
+                    });
+                }
+            }
+        }
+
+        if (toAirportSelect && !toAirportSelect.classList.contains('hidden') && toAirportSelect.value) {
+            const selectedOption = toAirportSelect.options[toAirportSelect.selectedIndex];
+            if (selectedOption && selectedOption.dataset.lat && selectedOption.dataset.lng) {
+                if (toLat && toLng) {
+                    toLat.value = selectedOption.dataset.lat;
+                    toLng.value = selectedOption.dataset.lng;
+                    console.log('Forced TO airport coordinates:', {
+                        airport: toAirportSelect.value,
+                        lat: toLat.value,
+                        lng: toLng.value
+                    });
+                }
+            }
         }
     }
 
@@ -2749,7 +2910,7 @@
      */
     function ensureCoordinateValues() {
         console.log('Ensuring coordinate values are set...');
-        
+
         // Check Airport Transfers form
         const airportForm = document.getElementById('airport_transfers-form');
         if (airportForm) {
@@ -2757,7 +2918,7 @@
             const fromLng = airportForm.querySelector('input[name="pickup_lng"]');
             const toLat = airportForm.querySelector('input[name="dropoff_lat"]');
             const toLng = airportForm.querySelector('input[name="dropoff_lng"]');
-            
+
             // Set default airport coordinates if missing
             if (fromLat && (!fromLat.value || fromLat.value === '')) {
                 fromLat.value = '7.1808'; // BIA Airport
@@ -2784,7 +2945,7 @@
             const pickupLng = rideForm.querySelector('input[name="pickup_lng"]');
             const dropoffLat = rideForm.querySelector('input[name="dropoff_lat"]');
             const dropoffLng = rideForm.querySelector('input[name="dropoff_lng"]');
-            
+
             // Set default coordinates if missing
             if (pickupLat && (!pickupLat.value || pickupLat.value === '')) {
                 pickupLat.value = '6.9271'; // Colombo
@@ -2816,11 +2977,11 @@
     setTimeout(() => {
         console.log('=== INITIAL COORDINATE CHECK ===');
         logCoordinateValues();
-        
+
         // Ensure coordinates are set with fallback values
         ensureCoordinateValues();
         forceAirportCoordinateUpdate();
-        
+
         // Log again after forced updates
         setTimeout(() => {
             console.log('=== AFTER COORDINATE INITIALIZATION ===');

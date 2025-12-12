@@ -1,14 +1,16 @@
 @php
     // Helper function to safely get search property
-    $getSearchProp = function($prop, $default = null) use ($search) {
+    $getSearchProp = function ($prop, $default = null) use ($search) {
         // First check old() helper for form resubmissions
         $oldValue = old($prop);
         if ($oldValue !== null) {
             return $oldValue;
         }
-        
+
         // Then check search object
-        if (!isset($search)) return $default;
+        if (!isset($search)) {
+            return $default;
+        }
         if (is_object($search) && property_exists($search, $prop)) {
             return $search->$prop;
         }
@@ -17,14 +19,15 @@
         }
         return $default;
     };
-    
+
     // Get current service type
     $currentServiceType = $getSearchProp('service_type', 'airport_transfers');
 @endphp
 
 <div class="filter-wrapper">
     <ul class="filter-item-list">
-        <li class="single-item {{ $currentServiceType === 'airport_transfers' ? 'active' : '' }}" data-service="airport_transfers">
+        <li class="single-item {{ $currentServiceType === 'airport_transfers' ? 'active' : '' }}"
+            data-service="airport_transfers">
             <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path
                     d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" />
@@ -46,7 +49,8 @@
             </svg>
             <span>Point to Point</span>
         </li> --}}
-        <li class="single-item {{ $currentServiceType === 'corporate_transport' ? 'active' : '' }}" data-service="corporate_transport" data-redirect="{{ route('corporate-transfers') }}">
+        <li class="single-item {{ $currentServiceType === 'corporate_transport' ? 'active' : '' }}"
+            data-service="corporate_transport" data-redirect="{{ route('corporate-transfers') }}">
             <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path
                     d="M12 7V3H2v18h20V7H12zM6 19H4v-2h2v2zm0-4H4v-2h2v2zm0-4H4V9h2v2zm0-4H4V5h2v2zm4 12H8v-2h2v2zm0-4H8v-2h2v2zm0-4H8V9h2v2zm0-4H8V5h2v2zm10 12h-8v-2h2v-2h-2v-2h2v-2h-2V9h8v10zm-2-8h-2v2h2v-2zm0 4h-2v2h2v-2z" />
@@ -78,8 +82,9 @@
         @endif
 
         <!-- Airport Transfer Form -->
-        <form id="airport_transfers-form" class="filter-input {{ $currentServiceType === 'airport_transfers' ? 'show' : '' }}" data-service="airport_transfers"
-            action="{{ route('booking.search') }}" method="POST">
+        <form id="airport_transfers-form"
+            class="filter-input {{ $currentServiceType === 'airport_transfers' ? 'show' : '' }}"
+            data-service="airport_transfers" action="{{ route('booking.search') }}" method="POST">
             @csrf
             <input type="hidden" name="service_type" value="airport_transfers">
 
@@ -114,40 +119,33 @@
                 </svg>
                 <div class="custom-select-dropdown">
                     <!-- Airport Select (shown when from-airport is selected) -->
-                    <select name="from" id="from-airport-select" class="airport-select from-field hidden @error('from') is-invalid @enderror" 
-                        disabled>
+                    <select name="from" id="from-airport-select"
+                        class="airport-select from-field hidden @error('from') is-invalid @enderror" disabled>
                         <option value="">Select Airport</option>
-                        <option value="Colombo BIA Airport" 
-                            data-lat="7.1808" 
-                            data-lng="79.8841"
-                            {{ old('from', (isset($search) && isset($search->pickup_location)) ? $search->pickup_location : 'Colombo BIA Airport') == 'Colombo BIA Airport' ? 'selected' : '' }}>
+                        <option value="Colombo BIA Airport" data-lat="7.1808" data-lng="79.8841"
+                            {{ old('from', isset($search) && isset($search->pickup_location) ? $search->pickup_location : 'Colombo BIA Airport') == 'Colombo BIA Airport' ? 'selected' : '' }}>
                             Bandaranaike International Airport (BIA)
                         </option>
-                        <option value="Mattala Rajapaksa Airport" 
-                            data-lat="6.2847" 
-                            data-lng="81.1242"
-                            {{ old('from', (isset($search) && isset($search->pickup_location)) ? $search->pickup_location : '') == 'Mattala Rajapaksa Airport' ? 'selected' : '' }}>
+                        <option value="Mattala Rajapaksa Airport" data-lat="6.2847" data-lng="81.1242"
+                            {{ old('from', isset($search) && isset($search->pickup_location) ? $search->pickup_location : '') == 'Mattala Rajapaksa Airport' ? 'selected' : '' }}>
                             Mattala Rajapaksa International Airport
                         </option>
-                        <option value="Jaffna International Airport" 
-                            data-lat="9.7923" 
-                            data-lng="80.0701"
-                            {{ old('from', (isset($search) && isset($search->pickup_location)) ? $search->pickup_location : '') == 'Jaffna International Airport' ? 'selected' : '' }}>
+                        <option value="Jaffna International Airport" data-lat="9.7923" data-lng="80.0701"
+                            {{ old('from', isset($search) && isset($search->pickup_location) ? $search->pickup_location : '') == 'Jaffna International Airport' ? 'selected' : '' }}>
                             Jaffna International Airport
                         </option>
                     </select>
-                    
+
                     <!-- Location Input (shown when to-airport is selected) -->
-                    <input type="text" name="from" id="from-location-input" 
-                        placeholder="Enter pickup location"
-                        class="location-search from-field hidden @error('from') is-invalid @enderror" 
-                        value="{{ old('from', (isset($search) && isset($search->pickup_location)) ? $search->pickup_location : 'Colombo, Sri Lanka') }}"
+                    <input type="text" name="from" id="from-location-input" placeholder="Enter pickup location"
+                        class="location-search from-field hidden @error('from') is-invalid @enderror"
+                        value="{{ old('from', isset($search) && isset($search->pickup_location) ? $search->pickup_location : 'Colombo, Sri Lanka') }}"
                         disabled>
-                    
-                    <input type="hidden" name="pickup_lat" class="location-lat" 
-                        value="{{ old('pickup_lat', (isset($search) && isset($search->pickup_latitude)) ? $search->pickup_latitude : '7.1808') }}">
-                    <input type="hidden" name="pickup_lng" class="location-lng" 
-                        value="{{ old('pickup_lng', (isset($search) && isset($search->pickup_longitude)) ? $search->pickup_longitude : '79.8841') }}">
+
+                    <input type="hidden" name="pickup_lat" class="location-lat"
+                        value="{{ old('pickup_lat', isset($search) && isset($search->pickup_latitude) ? $search->pickup_latitude : '7.1808') }}">
+                    <input type="hidden" name="pickup_lng" class="location-lng"
+                        value="{{ old('pickup_lng', isset($search) && isset($search->pickup_longitude) ? $search->pickup_longitude : '79.8841') }}">
                 </div>
                 @error('from')
                     <span class="text-danger small">{{ $message }}</span>
@@ -166,40 +164,33 @@
                 </svg>
                 <div class="custom-select-dropdown">
                     <!-- Location Input (shown when from-airport is selected) -->
-                    <input type="text" name="to" id="to-location-input" 
-                        placeholder="Enter destination"
-                        class="location-search to-field hidden @error('to') is-invalid @enderror" 
-                        value="{{ old('to', (isset($search) && isset($search->dropoff_location)) ? $search->dropoff_location : 'Colombo, Sri Lanka') }}"
+                    <input type="text" name="to" id="to-location-input" placeholder="Enter destination"
+                        class="location-search to-field hidden @error('to') is-invalid @enderror"
+                        value="{{ old('to', isset($search) && isset($search->dropoff_location) ? $search->dropoff_location : 'Colombo, Sri Lanka') }}"
                         disabled>
-                    
+
                     <!-- Airport Select (shown when to-airport is selected) -->
-                    <select name="to" id="to-airport-select" class="airport-select to-field hidden @error('to') is-invalid @enderror" 
-                        disabled>
+                    <select name="to" id="to-airport-select"
+                        class="airport-select to-field hidden @error('to') is-invalid @enderror" disabled>
                         <option value="">Select Airport</option>
-                        <option value="Colombo BIA Airport" 
-                            data-lat="7.1808" 
-                            data-lng="79.8841"
-                            {{ old('to', (isset($search) && isset($search->dropoff_location)) ? $search->dropoff_location : '') == 'Colombo BIA Airport' ? 'selected' : '' }}>
+                        <option value="Colombo BIA Airport" data-lat="7.1808" data-lng="79.8841"
+                            {{ old('to', isset($search) && isset($search->dropoff_location) ? $search->dropoff_location : '') == 'Colombo BIA Airport' ? 'selected' : '' }}>
                             Bandaranaike International Airport (BIA)
                         </option>
-                        <option value="Mattala Rajapaksa Airport" 
-                            data-lat="6.2847" 
-                            data-lng="81.1242"
-                            {{ old('to', (isset($search) && isset($search->dropoff_location)) ? $search->dropoff_location : '') == 'Mattala Rajapaksa Airport' ? 'selected' : '' }}>
+                        <option value="Mattala Rajapaksa Airport" data-lat="6.2847" data-lng="81.1242"
+                            {{ old('to', isset($search) && isset($search->dropoff_location) ? $search->dropoff_location : '') == 'Mattala Rajapaksa Airport' ? 'selected' : '' }}>
                             Mattala Rajapaksa International Airport
                         </option>
-                        <option value="Jaffna International Airport" 
-                            data-lat="9.7923" 
-                            data-lng="80.0701"
-                            {{ old('to', (isset($search) && isset($search->dropoff_location)) ? $search->dropoff_location : '') == 'Jaffna International Airport' ? 'selected' : '' }}>
+                        <option value="Jaffna International Airport" data-lat="9.7923" data-lng="80.0701"
+                            {{ old('to', isset($search) && isset($search->dropoff_location) ? $search->dropoff_location : '') == 'Jaffna International Airport' ? 'selected' : '' }}>
                             Jaffna International Airport
                         </option>
                     </select>
-                    
-                    <input type="hidden" name="dropoff_lat" class="location-lat" 
-                        value="{{ old('dropoff_lat', (isset($search) && isset($search->dropoff_latitude)) ? $search->dropoff_latitude : '6.9271') }}">
-                    <input type="hidden" name="dropoff_lng" class="location-lng" 
-                        value="{{ old('dropoff_lng', (isset($search) && isset($search->dropoff_longitude)) ? $search->dropoff_longitude : '79.8612') }}">
+
+                    <input type="hidden" name="dropoff_lat" class="location-lat"
+                        value="{{ old('dropoff_lat', isset($search) && isset($search->dropoff_latitude) ? $search->dropoff_latitude : '6.9271') }}">
+                    <input type="hidden" name="dropoff_lng" class="location-lng"
+                        value="{{ old('dropoff_lng', isset($search) && isset($search->dropoff_longitude) ? $search->dropoff_longitude : '79.8612') }}">
                 </div>
                 @error('to')
                     <span class="text-danger small">{{ $message }}</span>
@@ -213,8 +204,8 @@
                         d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z" />
                 </svg>
                 <input type="text" name="date" placeholder="DD/MM/YYYY"
-                    class="custom-datepicker @error('date') is-invalid @enderror" 
-                    value="{{ old('date', (isset($search) && isset($search->from_date) && $search->from_date) ? date('d/m/Y', strtotime($search->from_date)) : date('d/m/Y')) }}"
+                    class="custom-datepicker @error('date') is-invalid @enderror"
+                    value="{{ old('date', isset($search) && isset($search->from_date) && $search->from_date ? date('d/m/Y', strtotime($search->from_date)) : date('d/m/Y')) }}"
                     required autocomplete="off">
                 @error('date')
                     <span class="text-danger small">{{ $message }}</span>
@@ -228,8 +219,8 @@
                         d="M9 0C4.03 0 0 4.03 0 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm.5-12H8v5l4.25 2.52.75-1.23-3.5-2.08V4z" />
                 </svg>
                 <div class="custom-select-dropdown">
-                    <input type="time" name="time" 
-                        value="{{ old('time', (isset($search) && isset($search->from_time)) ? $search->from_time : '12:00') }}"
+                    <input type="time" name="time"
+                        value="{{ old('time', isset($search) && isset($search->from_time) ? $search->from_time : '12:00') }}"
                         class="@error('time') is-invalid @enderror" required>
                 </div>
                 @error('time')
@@ -263,8 +254,8 @@
         </form>
 
         <!-- Rental Packages Form -->
-        <form id="ride_nows-form" class="filter-input {{ $currentServiceType === 'ride_now' ? 'show' : '' }}" data-service="ride_now"
-            action="{{ route('booking.search') }}" method="POST">
+        <form id="ride_nows-form" class="filter-input {{ $currentServiceType === 'ride_now' ? 'show' : '' }}"
+            data-service="ride_now" action="{{ route('booking.search') }}" method="POST">
             @csrf
             <input type="hidden" name="service_type" value="ride_now">
 
@@ -280,13 +271,13 @@
                 </svg>
                 <div class="custom-select-dropdown">
                     <input type="text" name="pickup" placeholder="Pick up Location"
-                        class="location-search @error('pickup') is-invalid @enderror" 
-                        value="{{ old('pickup', (isset($search) && isset($search->pickup_location)) ? $search->pickup_location : 'Colombo, Sri Lanka') }}"
+                        class="location-search @error('pickup') is-invalid @enderror"
+                        value="{{ old('pickup', isset($search) && isset($search->pickup_location) ? $search->pickup_location : 'Colombo, Sri Lanka') }}"
                         required>
-                    <input type="hidden" name="pickup_lat" class="location-lat" 
-                        value="{{ old('pickup_lat', (isset($search) && isset($search->pickup_latitude)) ? $search->pickup_latitude : '6.9271') }}">
-                    <input type="hidden" name="pickup_lng" class="location-lng" 
-                        value="{{ old('pickup_lng', (isset($search) && isset($search->pickup_longitude)) ? $search->pickup_longitude : '79.8612') }}">
+                    <input type="hidden" name="pickup_lat" class="location-lat"
+                        value="{{ old('pickup_lat', isset($search) && isset($search->pickup_latitude) ? $search->pickup_latitude : '6.9271') }}">
+                    <input type="hidden" name="pickup_lng" class="location-lng"
+                        value="{{ old('pickup_lng', isset($search) && isset($search->pickup_longitude) ? $search->pickup_longitude : '79.8612') }}">
                 </div>
                 @error('pickup')
                     <span class="text-danger small">{{ $message }}</span>
@@ -305,13 +296,13 @@
                 </svg>
                 <div class="custom-select-dropdown">
                     <input type="text" name="dropoff" placeholder="Drop Off Location"
-                        class="location-search @error('dropoff') is-invalid @enderror" 
-                        value="{{ old('dropoff', (isset($search) && isset($search->dropoff_location)) ? $search->dropoff_location : 'Galle, Sri Lanka') }}"
+                        class="location-search @error('dropoff') is-invalid @enderror"
+                        value="{{ old('dropoff', isset($search) && isset($search->dropoff_location) ? $search->dropoff_location : 'Galle, Sri Lanka') }}"
                         required>
-                    <input type="hidden" name="dropoff_lat" class="location-lat" 
-                        value="{{ old('dropoff_lat', (isset($search) && isset($search->dropoff_latitude)) ? $search->dropoff_latitude : '6.0535') }}">
-                    <input type="hidden" name="dropoff_lng" class="location-lng" 
-                        value="{{ old('dropoff_lng', (isset($search) && isset($search->dropoff_longitude)) ? $search->dropoff_longitude : '80.221') }}">
+                    <input type="hidden" name="dropoff_lat" class="location-lat"
+                        value="{{ old('dropoff_lat', isset($search) && isset($search->dropoff_latitude) ? $search->dropoff_latitude : '6.0535') }}">
+                    <input type="hidden" name="dropoff_lng" class="location-lng"
+                        value="{{ old('dropoff_lng', isset($search) && isset($search->dropoff_longitude) ? $search->dropoff_longitude : '80.221') }}">
                 </div>
                 @error('dropoff')
                     <span class="text-danger small">{{ $message }}</span>
@@ -326,7 +317,8 @@
                 </svg>
                 <input type="text" name="pickup_date" placeholder="DD/MM/YYYY"
                     class="custom-datepicker @error('pickup_date') is-invalid @enderror"
-                    value="{{ old('pickup_date', (isset($search) && isset($search->from_date) && $search->from_date) ? date('d/m/Y', strtotime($search->from_date)) : date('d/m/Y')) }}" required autocomplete="off">
+                    value="{{ old('pickup_date', isset($search) && isset($search->from_date) && $search->from_date ? date('d/m/Y', strtotime($search->from_date)) : date('d/m/Y')) }}"
+                    required autocomplete="off">
                 @error('pickup_date')
                     <span class="text-danger small">{{ $message }}</span>
                 @enderror
@@ -339,8 +331,8 @@
                         d="M9 0C4.03 0 0 4.03 0 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm.5-12H8v5l4.25 2.52.75-1.23-3.5-2.08V4z" />
                 </svg>
                 <div class="custom-select-dropdown">
-                    <input type="time" name="pickup_time" 
-                        value="{{ old('pickup_time', (isset($search) && isset($search->from_time)) ? $search->from_time : '12:00') }}"
+                    <input type="time" name="pickup_time"
+                        value="{{ old('pickup_time', isset($search) && isset($search->from_time) ? $search->from_time : '12:00') }}"
                         class="@error('pickup_time') is-invalid @enderror" required>
                 </div>
                 @error('pickup_time')
@@ -356,7 +348,8 @@
                 </svg>
                 <input type="text" name="dropoff_date" placeholder="DD/MM/YYYY"
                     class="custom-datepicker @error('dropoff_date') is-invalid @enderror"
-                    value="{{ old('dropoff_date', (isset($search) && isset($search->to_date) && $search->to_date) ? date('d/m/Y', strtotime($search->to_date)) : date('d/m/Y', strtotime('+3 days'))) }}" required autocomplete="off">
+                    value="{{ old('dropoff_date', isset($search) && isset($search->to_date) && $search->to_date ? date('d/m/Y', strtotime($search->to_date)) : date('d/m/Y', strtotime('+3 days'))) }}"
+                    required autocomplete="off">
                 @error('dropoff_date')
                     <span class="text-danger small">{{ $message }}</span>
                 @enderror
@@ -369,8 +362,8 @@
                         d="M9 0C4.03 0 0 4.03 0 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm.5-12H8v5l4.25 2.52.75-1.23-3.5-2.08V4z" />
                 </svg>
                 <div class="custom-select-dropdown">
-                    <input type="time" name="dropoff_time" 
-                        value="{{ old('dropoff_time', (isset($search) && isset($search->to_time)) ? $search->to_time : '12:00') }}"
+                    <input type="time" name="dropoff_time"
+                        value="{{ old('dropoff_time', isset($search) && isset($search->to_time) ? $search->to_time : '12:00') }}"
                         class="@error('dropoff_time') is-invalid @enderror" required>
                 </div>
                 @error('dropoff_time')
@@ -437,7 +430,7 @@
                 const targetForm = document.querySelector(`[data-service="${service}"]`);
                 if (targetForm) {
                     targetForm.classList.add('show');
-                    
+
                     // Initialize airport transfer form if it's the airport service
                     if (service === 'airport_transfers') {
                         initializeAirportTransferForm();
@@ -447,7 +440,8 @@
         });
 
         // Initialize airport transfer form on page load if it's active
-        const activeAirportForm = document.querySelector('.filter-input[data-service="airport_transfers"].show');
+        const activeAirportForm = document.querySelector(
+        '.filter-input[data-service="airport_transfers"].show');
         if (activeAirportForm) {
             // Wait longer for external JS to load
             setTimeout(() => {
@@ -479,7 +473,7 @@
         // Ensure coordinates are properly set when forms are initialized
         setTimeout(function() {
             console.log('=== BLADE TEMPLATE COORDINATE INITIALIZATION ===');
-            
+
             // Trigger coordinate updates for airport transfer form if visible
             const airportForm = document.getElementById('airport_transfers-form');
             if (airportForm && airportForm.classList.contains('show')) {
@@ -492,7 +486,7 @@
                     }
                 }
             }
-            
+
             // Force coordinate debug after initialization
             if (typeof window.logCoordinateValues === 'function') {
                 window.logCoordinateValues();
@@ -504,11 +498,13 @@
          */
         function initializeAirportTransferForm() {
             console.log('Initializing airport transfer form...');
-            
+
             setTimeout(() => {
-                const transferTypeChecked = document.querySelector('input[name="transfer_type"]:checked');
-                console.log('Checked transfer type:', transferTypeChecked ? transferTypeChecked.value : 'none');
-                
+                const transferTypeChecked = document.querySelector(
+                    'input[name="transfer_type"]:checked');
+                console.log('Checked transfer type:', transferTypeChecked ? transferTypeChecked.value :
+                    'none');
+
                 if (transferTypeChecked) {
                     // Call the function from booking-form.js if available
                     if (typeof window.updateAirportTransferLocations === 'function') {
@@ -520,12 +516,15 @@
                     }
                 } else {
                     // Default to from-airport if no selection
-                    const fromAirportRadio = document.querySelector('input[name="transfer_type"][value="from-airport"]');
+                    const fromAirportRadio = document.querySelector(
+                        'input[name="transfer_type"][value="from-airport"]');
                     console.log('No transfer type selected, defaulting to from-airport');
                     if (fromAirportRadio) {
                         fromAirportRadio.checked = true;
                         if (typeof window.updateAirportTransferLocations === 'function') {
-                            console.log('Using external updateAirportTransferLocations function for default');
+                            console.log(
+                                'Using external updateAirportTransferLocations function for default'
+                                );
                             window.updateAirportTransferLocations('from-airport');
                         } else {
                             console.log('Using fallback initialization for default');
@@ -558,13 +557,13 @@
             toLocationInput.classList.add('hidden');
             toAirportSelect.classList.remove('visible');
             toAirportSelect.classList.add('hidden');
-            
+
             // Reset required and disabled states
             fromAirportSelect.required = false;
             fromLocationInput.required = false;
             toLocationInput.required = false;
             toAirportSelect.required = false;
-            
+
             fromAirportSelect.disabled = true;
             fromLocationInput.disabled = true;
             toLocationInput.disabled = true;
@@ -576,7 +575,7 @@
                 fromAirportSelect.classList.add('visible');
                 toLocationInput.classList.remove('hidden');
                 toLocationInput.classList.add('visible');
-                
+
                 fromAirportSelect.required = true;
                 toLocationInput.required = true;
                 fromAirportSelect.disabled = false;
@@ -597,7 +596,7 @@
                 fromLocationInput.classList.add('visible');
                 toAirportSelect.classList.remove('hidden');
                 toAirportSelect.classList.add('visible');
-                
+
                 fromLocationInput.required = true;
                 toAirportSelect.required = true;
                 fromLocationInput.disabled = false;
@@ -639,7 +638,8 @@
             if (fromAirportSelect && !fromAirportSelect.hasChangeHandler) {
                 fromAirportSelect.addEventListener('change', function() {
                     const selectedOption = this.options[this.selectedIndex];
-                    if (selectedOption && selectedOption.dataset.lat && selectedOption.dataset.lng && fromLat && fromLng) {
+                    if (selectedOption && selectedOption.dataset.lat && selectedOption.dataset.lng &&
+                        fromLat && fromLng) {
                         fromLat.value = selectedOption.dataset.lat;
                         fromLng.value = selectedOption.dataset.lng;
                         console.log('Updated FROM coordinates:', fromLat.value, fromLng.value);
@@ -651,7 +651,8 @@
             if (toAirportSelect && !toAirportSelect.hasChangeHandler) {
                 toAirportSelect.addEventListener('change', function() {
                     const selectedOption = this.options[this.selectedIndex];
-                    if (selectedOption && selectedOption.dataset.lat && selectedOption.dataset.lng && toLat && toLng) {
+                    if (selectedOption && selectedOption.dataset.lat && selectedOption.dataset.lng &&
+                        toLat && toLng) {
                         toLat.value = selectedOption.dataset.lat;
                         toLng.value = selectedOption.dataset.lng;
                         console.log('Updated TO coordinates:', toLat.value, toLng.value);
@@ -725,7 +726,7 @@
             // Check if the visible from field has a value
             const fromAirportSelect = form.querySelector('#from-airport-select');
             const fromLocationInput = form.querySelector('#from-location-input');
-            
+
             if (transferType === 'from-airport') {
                 if (!fromAirportSelect.value) {
                     alert('Please select an airport');
@@ -784,7 +785,7 @@
                 toAirportSelect.disabled = false; // Enable the visible one
                 toLocationInput.disabled = true;
             }
-            
+
             console.log('Form prepared for submission:', {
                 fromAirportSelectVisible: fromAirportSelect.classList.contains('visible'),
                 fromLocationInputVisible: fromLocationInput.classList.contains('visible'),
@@ -796,64 +797,66 @@
 </script>
 
 <style>
-/* Airport select dropdown styles */
-.airport-select {
-    width: 100%;
-    padding: 12px 15px;
-    border: 1px solid #e1e5e9;
-    border-radius: 6px;
-    background-color: #fff;
-    font-size: 14px;
-    font-family: inherit;
-    color: #333;
-    appearance: none;
-    background-image: url('data:image/svg+xml;charset=US-ASCII,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 5"><path fill="%23666" d="M2 0L0 2h4zm0 5L0 3h4z"/></svg>');
-    background-repeat: no-repeat;
-    background-position: right 12px center;
-    background-size: 12px;
-    transition: border-color 0.3s ease;
-}
+    /* Airport select dropdown styles */
+    .airport-select {
+        width: 100%;
+        padding: 12px 15px;
+        border: 1px solid #e1e5e9;
+        border-radius: 6px;
+        background-color: #fff;
+        font-size: 14px;
+        font-family: inherit;
+        color: #333;
+        appearance: none;
+        background-image: url('data:image/svg+xml;charset=US-ASCII,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 5"><path fill="%23666" d="M2 0L0 2h4zm0 5L0 3h4z"/></svg>');
+        background-repeat: no-repeat;
+        background-position: right 12px center;
+        background-size: 12px;
+        transition: border-color 0.3s ease;
+    }
 
-.airport-select:focus {
-    outline: none;
-    border-color: #c91c23;
-    box-shadow: 0 0 0 2px rgba(201, 28, 35, 0.1);
-}
+    .airport-select:focus {
+        outline: none;
+        border-color: #c91c23;
+        box-shadow: 0 0 0 2px rgba(201, 28, 35, 0.1);
+    }
 
-.airport-select:hover {
-    border-color: #c91c23;
-}
+    .airport-select:hover {
+        border-color: #c91c23;
+    }
 
-.airport-select.is-invalid {
-    border-color: #dc3545;
-}
+    .airport-select.is-invalid {
+        border-color: #dc3545;
+    }
 
-.airport-select option {
-    padding: 8px 12px;
-    font-size: 14px;
-}
+    .airport-select option {
+        padding: 8px 12px;
+        font-size: 14px;
+    }
 
-/* Ensure consistent styling with other form inputs */
-.location-search, .airport-select {
-    height: auto;
-    min-height: 44px;
-}
+    /* Ensure consistent styling with other form inputs */
+    .location-search,
+    .airport-select {
+        height: auto;
+        min-height: 44px;
+    }
 
-/* Hide/show transitions for smooth UX */
-.airport-select, .location-search {
-    transition: all 0.2s ease-in-out;
-}
+    /* Hide/show transitions for smooth UX */
+    .airport-select,
+    .location-search {
+        transition: all 0.2s ease-in-out;
+    }
 
-/* Field visibility classes */
-.from-field.hidden,
-.to-field.hidden {
-    display: none !important;
-}
+    /* Field visibility classes */
+    .from-field.hidden,
+    .to-field.hidden {
+        display: none !important;
+    }
 
-.from-field.visible,
-.to-field.visible {
-    display: block !important;
-}
+    .from-field.visible,
+    .to-field.visible {
+        display: block !important;
+    }
 </style>
 
 @push('scripts')
@@ -936,7 +939,7 @@
                 const dropoffDate = $(this).val();
 
                 if (pickupDate && dropoffDate && isValidDDMMYYYY(pickupDate) && isValidDDMMYYYY(
-                    dropoffDate)) {
+                        dropoffDate)) {
                     const pickup = parseDate(pickupDate);
                     const dropoff = parseDate(dropoffDate);
 
@@ -945,7 +948,7 @@
                         $(this).siblings('.invalid-feedback').remove();
                         $(this).after(
                             '<div class="invalid-feedback">Drop-off date must be on or after pickup date</div>'
-                            );
+                        );
                     } else {
                         $(this).removeClass('is-invalid');
                         $(this).siblings('.invalid-feedback').remove();
@@ -964,7 +967,7 @@
         function debugCoordinates() {
             console.log('=== COORDINATE DEBUG INFO ===');
             const forms = ['airport_transfers-form', 'ride_now-form'];
-            
+
             forms.forEach(formId => {
                 const form = document.getElementById(formId);
                 if (form) {
@@ -972,7 +975,7 @@
                     const fromLng = form.querySelector('input[name="pickup_lng"]');
                     const toLat = form.querySelector('input[name="dropoff_lat"]');
                     const toLng = form.querySelector('input[name="dropoff_lng"]');
-                    
+
                     console.log(`${formId}:`, {
                         fromLat: fromLat ? fromLat.value : 'NOT FOUND',
                         fromLng: fromLng ? fromLng.value : 'NOT FOUND',
@@ -985,7 +988,7 @@
                     if (formId === 'airport_transfers-form') {
                         const fromAirport = form.querySelector('#from-airport-select');
                         const toAirport = form.querySelector('#to-airport-select');
-                        
+
                         if (fromAirport) {
                             const selectedFromOption = fromAirport.options[fromAirport.selectedIndex];
                             console.log('From Airport Select:', {
@@ -998,7 +1001,7 @@
                                 } : 'none'
                             });
                         }
-                        
+
                         if (toAirport) {
                             const selectedToOption = toAirport.options[toAirport.selectedIndex];
                             console.log('To Airport Select:', {
@@ -1024,48 +1027,52 @@
 
         // Add coordinate debugging to form submissions
         $('form').on('submit', function(e) {
-            console.log('=== FORM SUBMISSION COORDINATE CHECK ===');
-            debugCoordinates();
-            
-            const form = this;
-            const formId = form.id;
-            let hasValidCoordinates = false;
-            
-            // Check coordinates based on form type
-            if (formId === 'airport_transfers-form') {
-                const fromLat = form.querySelector('input[name="pickup_lat"]');
-                const fromLng = form.querySelector('input[name="pickup_lng"]');
-                const toLat = form.querySelector('input[name="dropoff_lat"]');
-                const toLng = form.querySelector('input[name="dropoff_lng"]');
-                
-                hasValidCoordinates = (fromLat && fromLat.value && fromLng && fromLng.value && 
-                                     toLat && toLat.value && toLng && toLng.value);
-                                     
-                console.log('Airport Transfer coordinates check:', {
-                    fromLat: fromLat?.value, fromLng: fromLng?.value,
-                    toLat: toLat?.value, toLng: toLng?.value
-                });
-            } else if (formId === 'ride_now-form') {
-                const pickupLat = form.querySelector('input[name="pickup_lat"]');
-                const pickupLng = form.querySelector('input[name="pickup_lng"]');
-                const dropoffLat = form.querySelector('input[name="dropoff_lat"]');
-                const dropoffLng = form.querySelector('input[name="dropoff_lng"]');
-                
-                hasValidCoordinates = (pickupLat && pickupLat.value && pickupLng && pickupLng.value && 
-                                     dropoffLat && dropoffLat.value && dropoffLng && dropoffLng.value);
-                                     
-                console.log('Ride Now coordinates check:', {
-                    pickupLat: pickupLat?.value, pickupLng: pickupLng?.value,
-                    dropoffLat: dropoffLat?.value, dropoffLng: dropoffLng?.value
-                });
-            }
-            
-            if (!hasValidCoordinates) {
-                console.warn('WARNING: Some coordinates are missing for form:', formId);
-                // Still allow submission but log the warning
-            } else {
-                console.log('✓ All coordinates present for submission of form:', formId);
-            }
+        console.log('=== FORM SUBMISSION COORDINATE CHECK ===');
+        debugCoordinates();
+
+        const form = this;
+        const formId = form.id;
+        let hasValidCoordinates = false;
+
+        // Check coordinates based on form type
+        if (formId === 'airport_transfers-form') {
+            const fromLat = form.querySelector('input[name="pickup_lat"]');
+            const fromLng = form.querySelector('input[name="pickup_lng"]');
+            const toLat = form.querySelector('input[name="dropoff_lat"]');
+            const toLng = form.querySelector('input[name="dropoff_lng"]');
+
+            hasValidCoordinates = (fromLat && fromLat.value && fromLng && fromLng.value &&
+                toLat && toLat.value && toLng && toLng.value);
+
+            console.log('Airport Transfer coordinates check:', {
+                fromLat: fromLat?.value,
+                fromLng: fromLng?.value,
+                toLat: toLat?.value,
+                toLng: toLng?.value
+            });
+        } else if (formId === 'ride_now-form') {
+            const pickupLat = form.querySelector('input[name="pickup_lat"]');
+            const pickupLng = form.querySelector('input[name="pickup_lng"]');
+            const dropoffLat = form.querySelector('input[name="dropoff_lat"]');
+            const dropoffLng = form.querySelector('input[name="dropoff_lng"]');
+
+            hasValidCoordinates = (pickupLat && pickupLat.value && pickupLng && pickupLng.value &&
+                dropoffLat && dropoffLat.value && dropoffLng && dropoffLng.value);
+
+            console.log('Ride Now coordinates check:', {
+                pickupLat: pickupLat?.value,
+                pickupLng: pickupLng?.value,
+                dropoffLat: dropoffLat?.value,
+                dropoffLng: dropoffLng?.value
+            });
+        }
+
+        if (!hasValidCoordinates) {
+            console.warn('WARNING: Some coordinates are missing for form:', formId);
+            // Still allow submission but log the warning
+        } else {
+            console.log('✓ All coordinates present for submission of form:', formId);
+        }
         });
         });
     </script>

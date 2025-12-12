@@ -31,6 +31,8 @@ class CmsContentResource extends JsonResource
             'is_active' => $this->is_active,
             'display_order' => $this->display_order,
             'url' => $this->url,
+            'availability_status' => $this->availability_status,
+            'read_time' => $this->custom_fields['read_time'] ?? null,
             'full_url' => $this->full_url,
             'content_type' => $this->whenLoaded('contentType', function () {
                 return new CmsContentTypeResource($this->contentType);

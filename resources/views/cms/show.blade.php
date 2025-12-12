@@ -115,7 +115,7 @@
                             </blockquote>
                         @endif
 
-                        @if ($content->custom_fields && isset($content->custom_fields['tags']) && count($content->custom_fields['tags']) > 0)
+                        {{-- @if ($content->custom_fields && isset($content->custom_fields['tags']) && count($content->custom_fields['tags']) > 0)
                             <div class="mt-4">
                                 <h6>Tags</h6>
                                 <div class="d-flex flex-wrap gap-2">
@@ -124,7 +124,7 @@
                                     @endforeach
                                 </div>
                             </div>
-                        @endif
+                        @endif --}}
 
                     </article>
                 </main>

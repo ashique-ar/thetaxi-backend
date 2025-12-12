@@ -18,9 +18,7 @@ class CmsContentTypeResource extends JsonResource
             'is_active' => $this->is_active,
             'display_order' => $this->display_order,
             'url_prefix' => $this->url_prefix,
-            'contents_count' => $this->whenLoaded('contents', function () {
-                return $this->contents->count();
-            }),
+            'contents_count' => $this->contents_count,
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
             'created_by' => $this->whenLoaded('createdBy', function () {

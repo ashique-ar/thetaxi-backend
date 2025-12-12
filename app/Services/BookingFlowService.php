@@ -19,6 +19,9 @@ use App\Models\Company;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCalculationDefinition;
 use App\Models\Vehicle\VehiclePricing\KmRangePricingRule;
 use App\Models\Vehicle\VehiclePricing\PriceAdjustment;
+use App\Models\Vehicle\VehiclePricing\ServicePackage;
+use App\Models\Vehicle\VehiclePricing\ServicePackageRate;
+use App\Models\Vehicle\VehiclePricing\DistrictPricingAdjustment;
 use App\Models\Vehicle\VehiclePricing\BookingPriceAdjustmentHistory;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -263,6 +266,12 @@ class BookingFlowService
                 })->count() > 0;
             }
 
+            // Determine if this vehicle group should allow Request Quotation
+            $allowRequestQuotation = !$isPricingConfigured || 
+                                   $pricingError || 
+                                   $group->force_quotation_request ?? false ||
+                                   ($group->is_active && $availableCount === 0 && $totalCount > 0);
+
             // Build availability entry (include all groups, even those without pricing)
             $availabilityEntry = [
                 'id' => $group->id,
@@ -282,8 +291,10 @@ class BookingFlowService
                 'pricing_error' => $pricingError,
                 'supports_self_driven' => $group->supports_self_driven ?? false,
                 'requires_driver' => $group->requires_driver ?? true,
-                'disabled' => !$isPricingConfigured,
-                'disabled_reason' => !$isPricingConfigured ? 'No pricing configured for this service type' : null,
+                'disabled' => false, // Don't disable - show Request Quotation instead
+                'disabled_reason' => null,
+                'allow_request_quotation' => $allowRequestQuotation,
+                'show_request_quotation' => $allowRequestQuotation,
                 'availability_status' => $this->determineGroupAvailabilityStatus($availableCount, $totalCount, $conflictCount),
                 'concurrent_bookings_possible' => $vehicleAnalysis['concurrent_possible'],
                 'override_options_available' => $vehicleAnalysis['override_available'],
@@ -2015,10 +2026,15 @@ class BookingFlowService
                 return $this->calculateFallbackPricing($params);
             }
 
+            // Package/district context hooks
+            $packageContext = $this->resolvePackagePricingContext($params);
+            $appliedCustomizations = array_merge($appliedCustomizations, $packageContext['customizations']);
+
             // Prepare calculation inputs
-            $calculationInputs = $this->prepareCalculationInputs($params);
+            $calculationInputs = $this->prepareCalculationInputs(array_merge($params, $packageContext['inputs']));
             // Execute the calculation
             $calculationResult = $calculationDefinition->calculatePrice($calculationInputs, $appliedCustomizations);
+            $calculationResult['package_context'] = $packageContext;
             // Transform result to standard pricing structure
             return $this->transformCalculationResult($calculationResult, $params, $mode);
         } catch (\Exception $e) {
@@ -2029,6 +2045,106 @@ class BookingFlowService
 
             return $this->calculateFallbackPricing($params);
         }
+    }
+
+    /**
+     * Resolve package-level pricing and district adjustments in one place.
+     */
+    private function resolvePackagePricingContext(array $params): array
+    {
+        $packageId = $params['package_id'] ?? null;
+        $vehicleGroupId = $params['vehicle_group_id'] ?? null;
+        $serviceTypeId = $params['service_type_id'] ?? null;
+
+        $context = [
+            'inputs' => [],
+            'customizations' => [],
+            'adjustments' => [
+                'package_percentage' => 0,
+                'district_percentage' => 0,
+                'district_rule_id' => null,
+            ],
+            'availability' => [
+                'is_available' => true,
+                'request_quote' => false,
+            ],
+        ];
+
+        if (!$packageId || !$vehicleGroupId || !$serviceTypeId) {
+            return $context;
+        }
+
+        $package = ServicePackage::active()->find($packageId);
+        if (!$package) {
+            return $context;
+        }
+
+        $rateRow = ServicePackageRate::active()
+            ->where('service_package_id', $packageId)
+            ->where('vehicle_group_id', $vehicleGroupId)
+            ->first();
+
+        if (!$rateRow) {
+            $context['availability'] = [
+                'is_available' => false,
+                'request_quote' => true,
+                'reason' => 'No package rate configured for this vehicle group',
+            ];
+            $context['inputs'] = [
+                'package_id' => $packageId,
+                'package_included_km' => $package->included_km,
+                'package_default_duration_hours' => $package->default_duration_hours,
+            ];
+            $context['customizations'][] = [
+                'variable_name' => 'slab_rate',
+                'variable_type' => 'number',
+                'custom_value' => 0,
+                'context' => 'base_pricing',
+            ];
+            return $context;
+        }
+
+        $baseRate = (float) ($rateRow->base_rate ?? 0);
+        $packageMultiplier = $package->price_multiplier ?? 1;
+        $packageAdjustedRate = $baseRate * $packageMultiplier;
+
+        $districtAdjustment = DistrictPricingAdjustment::resolveAdjustment(
+            $params['district_id'] ?? null,
+            $serviceTypeId,
+            $packageId,
+            $vehicleGroupId
+        );
+
+        $districtPercent = $districtAdjustment['percentage'] ?? 0;
+        $finalRate = $packageAdjustedRate * (1 + $districtPercent);
+
+        $context['inputs'] = [
+            'package_id' => $packageId,
+            'package_included_km' => $package->included_km,
+            'package_default_duration_hours' => $package->default_duration_hours,
+            'package_base_rate' => $baseRate,
+            'package_final_rate' => $finalRate,
+        ];
+
+        $context['customizations'][] = [
+            'variable_name' => 'slab_rate',
+            'variable_type' => 'number',
+            'custom_value' => $finalRate,
+            'context' => 'base_pricing',
+        ];
+
+        $context['adjustments'] = [
+            'package_percentage' => $packageMultiplier - 1,
+            'district_percentage' => $districtPercent,
+            'district_rule_id' => $districtAdjustment['id'] ?? null,
+        ];
+
+        $context['availability'] = [
+            'is_available' => $districtAdjustment['is_available'] ?? true,
+            'request_quote' => ($districtAdjustment['request_quote'] ?? false) || ($districtAdjustment['is_available'] === false),
+        ];
+
+        return $context;
     }
 
     /**
@@ -2043,6 +2159,18 @@ class BookingFlowService
             'duration_days' => $params['duration_days'] ?? 1,
             'number_of_days' => $params['duration_days'] ?? 1,
         ];
+
+        if (isset($params['district_id'])) {
+            $inputs['district_id'] = $params['district_id'];
+        }
+
+        if (isset($params['package_id'])) {
+            $inputs['package_id'] = $params['package_id'];
+        }
+
+        if (isset($params['package_included_km'])) {
+            $inputs['package_included_km'] = $params['package_included_km'];
+        }
 
         // Detect airport locations (for applying airport pricing rules)
         $pickupIsAirport = false;
@@ -2109,6 +2237,18 @@ class BookingFlowService
                 'calculation_mode' => $mode
             ]
         ];
+
+        // Surface package/district context so the booking form can toggle request-quotation state
+        if (!empty($calculationResult['package_context']['inputs'])) {
+            $result['package_pricing'] = [
+                'package_id' => $calculationResult['package_context']['inputs']['package_id'] ?? null,
+                'included_km' => $calculationResult['package_context']['inputs']['package_included_km'] ?? null,
+                'base_rate' => $calculationResult['package_context']['inputs']['package_base_rate'] ?? null,
+                'final_rate' => $calculationResult['package_context']['inputs']['package_final_rate'] ?? null,
+                'adjustments' => $calculationResult['package_context']['adjustments'] ?? [],
+                'availability' => $calculationResult['package_context']['availability'] ?? [],
+            ];
+        }
 
         // Add detailed breakdown if full calculation mode
         if ($mode === 'full_calculation') {
@@ -2597,20 +2737,28 @@ class BookingFlowService
         return $hasCustomBasePricing || $hasCustomAddonPricing || $isHighValue || $hasLargeDiscount;
     }
 
-    private function calculateDistance(array $from, array $to): float
+    private function calculateDistance(array $from, array $to): ?float
     {
         
         // Validate input and handle different location formats
         if (!$this->isValidLocationArray($from) || !$this->isValidLocationArray($to)) {
-            Log::warning('Invalid location coordinates provided for distance calculation', [
-                'from' => $from,
-                'to' => $to,
-                'from_extracted_lat' => $this->extractLatitude($from),
-                'from_extracted_lng' => $this->extractLongitude($from),
-                'to_extracted_lat' => $this->extractLatitude($to),
-                'to_extracted_lng' => $this->extractLongitude($to)
+            Log::info('Calculating distance between coordinates', [
+                'from' => [
+                    'latitude' => $this->extractLatitude($from),
+                    'longitude' => $this->extractLongitude($from),
+                ],
+                'to' => [
+                    'address' => $to['address'] ?? 'Unknown',
+                    'latitude' => $this->extractLatitude($to),
+                    'longitude' => $this->extractLongitude($to),
+                ],
+                'from_valid' => $this->isValidLocationArray($from),
+                'to_valid' => $this->isValidLocationArray($to)
             ]);
-            return 0.0; // Return 0 if invalid coordinates
+            
+            // For missing coordinates, return null to indicate calculation not possible
+            // This allows the system to show "Request Quotation" instead of "Not Available"
+            return null;
         }
 
         try {
@@ -2623,7 +2771,8 @@ class BookingFlowService
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
-            return 0.0;
+            // Return null instead of 0.0 to indicate calculation failure
+            return null;
         }
     }
 
@@ -2635,12 +2784,33 @@ class BookingFlowService
 
         $journeyDistance = $this->calculateDistance($pickupLocation, $dropoffLocation);
 
+        // Handle case when journey distance cannot be calculated
+        if ($journeyDistance === null) {
+            return [
+                'pickup_distance' => null,
+                'delivery_distance' => null,
+                'journey_distance' => null,
+                'calculation_possible' => false,
+                'service_type_used' => $serviceType,
+                'company_used' => [
+                    'id' => $company ? $company->id : null,
+                    'name' => $company ? $company->name : null,
+                    'coordinates' => $company ? [$company->latitude, $company->longitude] : null
+                ],
+                'company_location' => $company ? [
+                    'latitude' => $company->latitude,
+                    'longitude' => $company->longitude
+                ] : null,
+                'company_id' => $company ? $company->id : null
+            ];
+        }
 
         if (!$company || !$company->latitude || !$company->longitude) {
             return [
                 'pickup_distance' => 10.0,
                 'delivery_distance' => 10.0,
                 'journey_distance' => round($journeyDistance, 2),
+                'calculation_possible' => true,
                 'service_type_used' => $serviceType,
                 'company_used' => [
                     'id' => null,
@@ -2676,12 +2846,31 @@ class BookingFlowService
             $distances['delivery_distance'] = $this->calculateDistance($companyLocation, $pickupLocation);
         }
 
+        // Check if any distance calculation failed
+        if ($distances['pickup_distance'] === null || $distances['delivery_distance'] === null) {
+            return [
+                'pickup_distance' => $distances['pickup_distance'],
+                'delivery_distance' => $distances['delivery_distance'],
+                'journey_distance' => $journeyDistance,
+                'calculation_possible' => false,
+                'service_type_used' => $serviceType,
+                'company_used' => [
+                    'id' => $company->id,
+                    'name' => $company->name,
+                    'coordinates' => $companyLocation
+                ],
+                'company_location' => $companyLocation,
+                'company_id' => $company->id
+            ];
+        }
+
         // Enhanced return structure with all required fields for pricing calculations (no costs here)
         return [
             'journey_distance' => round($journeyDistance, 2),
             'pickup_distance' => round($distances['pickup_distance'], 2),
             'delivery_distance' => round($distances['delivery_distance'], 2),
             'total_distance' => round($journeyDistance + $distances['pickup_distance'] + $distances['delivery_distance'], 2), // Main billable distance (excludes company legs)
+            'calculation_possible' => true,
             'service_type_used' => $serviceType,
             'company_used' => [
                 'id' => $company->id,

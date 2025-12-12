@@ -120,8 +120,8 @@ class BookingController extends Controller
                 $params['to_date'] = Carbon::parse($requestData['date'])->format('Y-m-d');
                 $params['from_time'] = $requestData['time'] ?? '00:00';
                 $params['to_time'] = $requestData['time'] ?? '00:00';
-                $params['pickup_location'] = $this->formatLocation($requestData, 'from');
-                $params['dropoff_location'] = $this->formatLocation($requestData, 'to');
+                $params['pickup_location'] = $this->formatLocation($requestData, 'pickup');
+                $params['dropoff_location'] = $this->formatLocation($requestData, 'dropoff');
                 break;
                 
             case 'point_to_point':
@@ -135,8 +135,8 @@ class BookingController extends Controller
                 $params['to_date'] = $toDate->format('Y-m-d');
                 $params['from_time'] = $requestData['time'] ?? '00:00';
                 $params['to_time'] = $requestData['return_time'] ?? $requestData['time'] ?? '00:00';
-                $params['pickup_location'] = $this->formatLocation($requestData, 'from');
-                $params['dropoff_location'] = $this->formatLocation($requestData, 'to');
+                $params['pickup_location'] = $this->formatLocation($requestData, 'pickup');
+                $params['dropoff_location'] = $this->formatLocation($requestData, 'dropoff');
                 break;
                 
             case 'ride_now':
@@ -160,8 +160,8 @@ class BookingController extends Controller
                 $params['to_date'] = Carbon::parse($requestData['date'])->format('Y-m-d');
                 $params['from_time'] = $requestData['time'] ?? '00:00';
                 $params['to_time'] = $requestData['time'] ?? '23:59';
-                $params['pickup_location'] = $this->formatLocation($requestData, 'from');
-                $params['dropoff_location'] = $this->formatLocation($requestData, 'to');
+                $params['pickup_location'] = $this->formatLocation($requestData, 'pickup');
+                $params['dropoff_location'] = $this->formatLocation($requestData, 'dropoff');
                 $params['package_hours'] = $requestData['package_hours'] ?? 6;
                 break;
 
@@ -170,7 +170,7 @@ class BookingController extends Controller
                 $params['to_date'] = Carbon::parse($requestData['date'])->format('Y-m-d');
                 $params['from_time'] = $requestData['time'] ?? '00:00';
                 $params['to_time'] = $requestData['time'] ?? '23:59';
-                $params['pickup_location'] = $this->formatLocation($requestData, 'from');
+                $params['pickup_location'] = $this->formatLocation($requestData, 'pickup');
                 $params['contract_type'] = $requestData['contract_type'] ?? 'weekly';
                 break;
         }
@@ -1230,6 +1230,174 @@ class BookingController extends Controller
                 'error' => $e->getMessage()
             ]);
             return redirect()->route('home')->with('error', 'Unable to load the Point-to-Point service page.');
+        }
+    }
+
+    /**
+     * Create an inquiry for Request Quotation
+     */
+    public function requestQuotation(Request $request)
+    {
+        try {
+            $validator = Validator::make($request->all(), [
+                'vehicle_group_id' => 'required|string|exists:vehicle_groups,id',
+                'customer_name' => 'required|string|max:255',
+                'customer_email' => 'required|email|max:255',
+                'customer_phone' => 'required|string|max:20',
+                'service_type' => 'required|string',
+                'pickup_location' => 'nullable|string|max:500',
+                'dropoff_location' => 'nullable|string|max:500',
+                'travel_date' => 'nullable|date',
+                'travel_time' => 'nullable|string',
+                'passengers' => 'nullable|integer|min:1|max:50',
+                'special_requirements' => 'nullable|string|max:1000',
+                'company_name' => 'nullable|string|max:255',
+            ]);
+
+            if ($validator->fails()) {
+                return back()->withErrors($validator)->withInput()
+                    ->with('error', 'Please check your information and try again.');
+            }
+
+            // Get search parameters from session for context
+            $searchParams = session()->get('current_search_params', []);
+            $vehicleGroup = VehicleGroup::findOrFail($request->vehicle_group_id);
+
+            // Create inquiry with enhanced context
+            $inquiryData = [
+                'subject' => "Request Quotation - {$vehicleGroup->name}",
+                'message' => $this->buildQuotationMessage($request->all(), $searchParams, $vehicleGroup),
+                'status' => 'pending',
+                'priority' => 'high',
+                'customer_id' => null, // Will be created if needed
+                'inquiry_type' => 'quotation_request',
+                'vehicle_group_id' => $request->vehicle_group_id,
+                'service_type' => $request->service_type,
+                'contact_name' => $request->customer_name,
+                'contact_email' => $request->customer_email,
+                'contact_phone' => $request->customer_phone,
+                'company_name' => $request->company_name,
+                'search_context' => json_encode($searchParams),
+                'form_data' => json_encode($request->except(['_token'])),
+                'ip_address' => $request->ip(),
+                'user_agent' => $request->userAgent(),
+                'created_at' => now(),
+            ];
+
+            // Create the inquiry
+            $inquiry = \App\Models\Inquiry::create($inquiryData);
+
+            // Trigger email notifications
+            $this->sendQuotationRequestEmails($inquiry, $request->all(), $vehicleGroup);
+
+            return redirect()->back()
+                ->with('success', 'Your quotation request has been submitted successfully! Our team will contact you within 2 business hours with a detailed quote.');
+
+        } catch (\Exception $e) {
+            Log::error('Error processing quotation request', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'request_data' => $request->all()
+            ]);
+
+            return back()->withInput()
+                ->with('error', 'An error occurred while submitting your request. Please try again or contact us directly.');
+        }
+    }
+
+    /**
+     * Build the inquiry message with all relevant details
+     */
+    private function buildQuotationMessage(array $requestData, array $searchParams, VehicleGroup $vehicleGroup): string
+    {
+        $message = "QUOTATION REQUEST\n\n";
+        $message .= "Vehicle Group: {$vehicleGroup->name}\n";
+        $message .= "Customer: {$requestData['customer_name']}\n";
+        $message .= "Email: {$requestData['customer_email']}\n";
+        $message .= "Phone: {$requestData['customer_phone']}\n";
+
+        if (!empty($requestData['company_name'])) {
+            $message .= "Company: {$requestData['company_name']}\n";
+        }
+
+        $message .= "\nSERVICE DETAILS:\n";
+        $message .= "Service Type: {$requestData['service_type']}\n";
+
+        if (!empty($requestData['pickup_location'])) {
+            $message .= "Pickup: {$requestData['pickup_location']}\n";
+        }
+        if (!empty($requestData['dropoff_location'])) {
+            $message .= "Dropoff: {$requestData['dropoff_location']}\n";
+        }
+        if (!empty($requestData['travel_date'])) {
+            $message .= "Date: {$requestData['travel_date']}\n";
+        }
+        if (!empty($requestData['travel_time'])) {
+            $message .= "Time: {$requestData['travel_time']}\n";
+        }
+        if (!empty($requestData['passengers'])) {
+            $message .= "Passengers: {$requestData['passengers']}\n";
+        }
+
+        if (!empty($searchParams)) {
+            $message .= "\nORIGINAL SEARCH CONTEXT:\n";
+            if (isset($searchParams['pickup_location']['address'])) {
+                $message .= "From: {$searchParams['pickup_location']['address']}\n";
+            }
+            if (isset($searchParams['dropoff_location']['address'])) {
+                $message .= "To: {$searchParams['dropoff_location']['address']}\n";
+            }
+            if (isset($searchParams['from_date'])) {
+                $message .= "Travel Date: {$searchParams['from_date']}\n";
+            }
+            if (isset($searchParams['from_time'])) {
+                $message .= "Travel Time: {$searchParams['from_time']}\n";
+            }
+        }
+
+        if (!empty($requestData['special_requirements'])) {
+            $message .= "\nSPECIAL REQUIREMENTS:\n";
+            $message .= $requestData['special_requirements'] . "\n";
+        }
+
+        $message .= "\nREASON FOR QUOTATION REQUEST:\n";
+        $message .= "- Coordinates missing or pricing not available in automated system\n";
+        $message .= "- Requires manual calculation and custom pricing\n";
+
+        $message .= "\nSubmitted: " . now()->format('Y-m-d H:i:s') . "\n";
+
+        return $message;
+    }
+
+    /**
+     * Send email notifications for quotation requests
+     */
+    private function sendQuotationRequestEmails(\App\Models\Inquiry $inquiry, array $requestData, VehicleGroup $vehicleGroup): void
+    {
+        try {
+            // Send notification to corporate transport admin
+            $adminEmail = config('mail.corporate_transport_admin', 'admin@thetaxi.lk');
+            \Illuminate\Support\Facades\Mail::to($adminEmail)
+                ->send(new \App\Mail\QuotationRequestNotification($inquiry, $requestData, $vehicleGroup));
+            
+            // Send confirmation to customer
+            \Illuminate\Support\Facades\Mail::to($requestData['customer_email'])
+                ->send(new \App\Mail\QuotationRequestConfirmation($inquiry, $requestData, $vehicleGroup));
+
+            Log::info('Quotation request emails sent successfully', [
+                'inquiry_id' => $inquiry->id,
+                'customer_email' => $requestData['customer_email'],
+                'admin_email' => $adminEmail,
+                'vehicle_group' => $vehicleGroup->name,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error sending quotation request emails', [
+                'inquiry_id' => $inquiry->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            // Don't throw exception - inquiry was still created successfully
         }
     }
 

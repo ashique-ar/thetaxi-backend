@@ -65,7 +65,7 @@ class CmsContentController extends Controller
 
     public function store(CreateCmsContentRequest $request): JsonResponse
     {
-        $data = $request->validated();
+        $data = $this->prepareContentData($request->validated());
         $data['created_user_id'] = $request->user()->id;
         $content = CmsContent::create($data);
 
@@ -88,7 +88,7 @@ class CmsContentController extends Controller
 
     public function update(UpdateCmsContentRequest $request, CmsContent $cms_content): JsonResponse
     {
-        $data = $request->validated();
+        $data = $this->prepareContentData($request->validated(), $cms_content);
         $data['updated_user_id'] = $request->user()->id;
         $cms_content->update($data);
 
@@ -151,5 +151,53 @@ class CmsContentController extends Controller
             'status' => 'success',
             'data' => ['content' => new CmsContentResource($content)]
         ]);
+    }
+
+    /**
+     * Normalize meta, publishing, availability and ETA data.
+     */
+    private function prepareContentData(array $data, ?CmsContent $existing = null): array
+    {
+        // Auto timestamp for published items
+        if (($data['status'] ?? null) === 'published' && empty($data['published_at'])) {
+            $data['published_at'] = now();
+        }
+
+        // Merge custom_fields read_time into existing array
+        $customFields = $existing?->custom_fields ?? [];
+        if (isset($data['custom_fields']) && is_array($data['custom_fields'])) {
+            $customFields = array_merge($customFields, $data['custom_fields']);
+        }
+
+        // Allow manual read_time override; otherwise calculate from body
+        if (!empty($data['read_time'])) {
+            $customFields['read_time'] = $data['read_time'];
+        } elseif (!empty($data['body'])) {
+            $customFields['read_time'] = $this->calculateReadTime($data['body']);
+        }
+
+        if (!empty($customFields)) {
+            $data['custom_fields'] = $customFields;
+        }
+
+        // Default availability
+        if (!isset($data['availability_status']) && $existing?->availability_status) {
+            $data['availability_status'] = $existing->availability_status;
+        } elseif (!isset($data['availability_status'])) {
+            $data['availability_status'] = 'available';
+        }
+
+        // Clean up helper-only fields
+        unset($data['read_time']);
+
+        return $data;
+    }
+
+    private function calculateReadTime(string $body): string
+    {
+        $text = strip_tags($body);
+        $wordCount = str_word_count($text);
+        $minutes = max(1, (int) ceil($wordCount / 200));
+        return "{$minutes} min read";
     }
 }

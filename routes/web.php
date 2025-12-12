@@ -102,6 +102,7 @@ Route::get('/currency/available', [CurrencyController::class, 'available'])->nam
 // Booking routes
 Route::post('/booking/search', [BookingController::class, 'search'])->name('booking.search');
 Route::post('/booking/enquiry', [BookingController::class, 'enquiry'])->name('booking.enquiry');
+Route::post('/booking/request-quotation', [BookingController::class, 'requestQuotation'])->name('booking.request-quotation');
 
 // Dynamic service configuration API routes
 Route::get('/api/services/configuration', [BookingController::class, 'getServiceConfiguration'])->name('api.services.configuration');

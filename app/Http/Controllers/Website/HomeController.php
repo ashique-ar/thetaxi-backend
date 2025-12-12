@@ -15,9 +15,10 @@ class HomeController extends Controller
     public function index(): View
     {
         // CRITICAL: Cache everything with LONG expiry to avoid repeated database hits
-        $homeData = Cache::remember('homepage_complete_data', 86400, function() {
-            return $this->getCompleteHomeData();
-        });
+        $homeData = $this->getCompleteHomeData();
+        // $homeData = Cache::remember('homepage_complete_data', 86400, function() {
+        //     return $this->getCompleteHomeData();
+        // });
 
 
         return view('home', $homeData);

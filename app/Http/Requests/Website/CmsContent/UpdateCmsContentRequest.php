@@ -38,6 +38,8 @@ class UpdateCmsContentRequest extends FormRequest
             'is_active' => ['sometimes', 'boolean'],
             'display_order' => ['sometimes', 'nullable', 'integer'],
             'url' => ['sometimes', 'nullable', 'url'],
+            'availability_status' => ['sometimes', 'nullable', 'in:available,scheduled,unavailable'],
+            'read_time' => ['sometimes', 'nullable', 'string', 'max:50'],
         ];
     }
 }

@@ -400,6 +400,19 @@ class VehiclePricingCalculationDefinition extends Model
             $durationHours = $durationDays * 24;
         }
 
+        // Package-based selection (explicit package overrides slab selection)
+        if (isset($inputs['package_id'])) {
+            return [
+                'slab_definition' => $inputs['slab_definition'] ?? null,
+                'duration_hours' => $durationHours,
+                'duration_days' => $durationDays,
+                'max_km_per_day' => null,
+                'max_km_per_package' => $inputs['package_included_km'] ?? $inputs['max_km_per_package'] ?? null,
+                'type' => 'package',
+                'package_id' => $inputs['package_id'],
+            ];
+        }
+
         // Find the appropriate slab definition
         $slabDefinition = VehiclePricingSlabDefinition::where('service_type_id', $this->service_type_id)
             ->where('is_active', true)
@@ -707,20 +720,34 @@ class VehiclePricingCalculationDefinition extends Model
         try {
             $vehicleGroupId = $inputs['vehicle_group_id'] ?? null;
 
+            // Booking-time override for slab_rate (package/district adjustments)
+            $customSlabBase = null;
+            if (is_array($appliedCustomizations) && !empty($appliedCustomizations)) {
+                foreach (array_reverse($appliedCustomizations) as $c) {
+                    if (($c['variable_name'] ?? null) === 'slab_rate' && isset($c['custom_value']) && is_numeric($c['custom_value'])) {
+                        $customSlabBase = (float) $c['custom_value'];
+                        break;
+                    }
+                }
+            }
+
             if (!$vehicleGroupId) {
                 Log::warning("No vehicle group ID provided for slab rate calculation");
-                return 0;
+                return $customSlabBase ?? 0;
+            }
+
+            $durationHours = $slabInfo['duration_hours'] ?? $inputs['duration_hours'] ?? $inputs['hours'] ?? 0;
+            if (!$durationHours && isset($inputs['package_default_duration_hours'])) {
+                $durationHours = $inputs['package_default_duration_hours'];
             }
 
             // Use pre-calculated slab info if available
             if ($slabInfo && isset($slabInfo['slab_definition'])) {
                 $slabDefinition = $slabInfo['slab_definition'];
-                $durationHours = $slabInfo['duration_hours'];
             } else {
-                $durationHours = $inputs['duration_hours'] ?? $inputs['hours'] ?? 0;
-                if (!$durationHours) {
-                    Log::warning("No duration provided for slab rate calculation");
-                    return 0;
+                if (!$durationHours && $customSlabBase !== null) {
+                    // Explicit override without duration
+                    return $customSlabBase;
                 }
 
                 $slabDefinition = VehiclePricingSlabDefinition::where('service_type_id', $this->service_type_id)
@@ -737,26 +764,21 @@ class VehiclePricingCalculationDefinition extends Model
 
                 if (!$slabDefinition) {
                     Log::warning("No slab definition found for service type {$this->service_type_id} and duration {$durationHours}h");
-                    return 0;
+                    return $customSlabBase ?? 0;
                 }
             }
 
-            $vehicleGroupPricing = VehicleGroupPricing::where('vehicle_group_id', $vehicleGroupId)
-                ->where('slab_definition_id', $slabDefinition->id)
-                ->where('is_active', true)
-                ->first();
-
-            // --- ADDED: pull absolute booking-time override for slab_rate, if any ---
-            $customSlabBase = null;
-            if (is_array($appliedCustomizations) && !empty($appliedCustomizations)) {
-                foreach (array_reverse($appliedCustomizations) as $c) {
-                    if (($c['variable_name'] ?? null) === 'slab_rate' && isset($c['custom_value']) && is_numeric($c['custom_value'])) {
-                        $customSlabBase = (float) $c['custom_value'];
-                        break;
-                    }
-                }
+            // If we only have a custom override (e.g. package) return it directly
+            if (!$slabDefinition && $customSlabBase !== null) {
+                return $customSlabBase;
             }
-            // -----------------------------------------------------------------------
+
+            $vehicleGroupPricing = $slabDefinition
+                ? VehicleGroupPricing::where('vehicle_group_id', $vehicleGroupId)
+                    ->where('slab_definition_id', $slabDefinition->id)
+                    ->where('is_active', true)
+                    ->first()
+                : null;
 
             if (!$vehicleGroupPricing) {
                 // If no pricing row but we *do* have a custom base rate, treat it as a flat amount

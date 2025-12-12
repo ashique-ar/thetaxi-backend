@@ -36,6 +36,8 @@ class CreateCmsContentRequest extends FormRequest
             'is_active' => ['sometimes', 'boolean'],
             'display_order' => ['nullable', 'integer'],
             'url' => ['nullable', 'url'],
+            'availability_status' => ['nullable', 'in:available,scheduled,unavailable'],
+            'read_time' => ['nullable', 'string', 'max:50'],
         ];
     }
 }

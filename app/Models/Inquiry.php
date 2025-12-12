@@ -44,7 +44,19 @@ class Inquiry extends BaseModel
         'response',
         'responded_at',
         'created_user_id',
-        'updated_user_id'
+        'updated_user_id',
+        // Additional fields for quotation requests
+        'inquiry_type',
+        'vehicle_group_id',
+        'service_type',
+        'contact_name',
+        'contact_email',
+        'contact_phone',
+        'company_name',
+        'search_context',
+        'form_data',
+        'ip_address',
+        'user_agent'
     ];
 
     /**
