@@ -251,12 +251,19 @@ class CartController extends Controller
                         'vehicle_id' => $vehicleId,
                         'days' => $days,
                         'pricing_params' => $pricingParams,
+                        'availabilityData' => $availabilityData,
                         'availability_data_count' => count($availabilityData)
                     ]);
 
                     // Find pricing for this specific vehicle group
                     $pricingFound = false;
                     foreach ($availabilityData as $vehicleData) {
+                        Log::info('Checking vehicle data for pricing', [
+                            'vehicle_data_id' => $vehicleData,
+                            'vehicle_id' => $vehicleId,
+                            'pricing_configured' => $vehicleData['pricing_configured'] ?? false,
+                            'pricing_info' => $vehicleData['pricing_info'] ?? null
+                        ]);
                         if ($vehicleData['id'] == $vehicleId) {
                             // Check if pricing is configured and available
                             if (!isset($vehicleData['pricing_configured']) || !$vehicleData['pricing_configured']) {
