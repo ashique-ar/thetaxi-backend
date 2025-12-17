@@ -12,7 +12,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('vehicle_makes', function (Blueprint $table) {
-            $table->string('name')->nullable()->change();          
+            $table->string('name')->nullable()->change(); 
+            $table->dropUnique(['name']);         
         });
     }
 
