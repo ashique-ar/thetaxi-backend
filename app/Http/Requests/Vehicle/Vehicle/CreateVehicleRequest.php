@@ -30,7 +30,7 @@ class CreateVehicleRequest extends FormRequest
             'model_year'       => ['nullable','integer'],
             'color'            => ['nullable','string','max:100'],
             'no_od_doors'      => ['nullable','integer'],
-            'ac'               => ['nullable','boolean'],
+            'ac'               => ['nullable','nullable','boolean'],
             'thumbnail'        => ['nullable','array'],
             'slug'             => ['nullable','string','max:255','unique:vehicles,slug'],
             'bags'             => ['nullable','integer'],
