@@ -40,6 +40,7 @@ class UpdateCmsBranding extends Command
             'meta_tags',
             'url',
             'custom_fields',
+            'author',
         ];
 
         $dryRun = $this->option('dry-run');
