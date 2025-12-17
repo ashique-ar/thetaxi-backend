@@ -25,7 +25,9 @@ class VehicleMakeController extends Controller
     {
         $q = VehicleMake::query();
         if ($request->filled('search')) {
-            $q->where('name','like','%'.$request->search.'%');
+            // Case-insensitive search for name
+            $search = mb_strtolower($request->search);
+            $q->whereRaw('LOWER(name) LIKE ?', ['%' . $search . '%']);
         }
         return VehicleMakeResource::collection($q->paginate($request->per_page ?? 15));
     }

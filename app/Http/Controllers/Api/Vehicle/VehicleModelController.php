@@ -25,7 +25,9 @@ class VehicleModelController extends Controller
     {
         $q = VehicleModel::query();
         if ($request->filled('search')) {
-            $q->where('name', 'like', '%' . $request->search . '%');
+            // Case-insensitive search across DBs
+            $search = mb_strtolower($request->search);
+            $q->whereRaw('LOWER(name) LIKE ?', ['%' . $search . '%']);
         }
 
         if ($request->filled('make_id')) {
