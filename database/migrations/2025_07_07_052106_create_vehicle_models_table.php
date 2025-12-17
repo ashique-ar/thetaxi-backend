@@ -14,8 +14,8 @@ return new class extends Migration
         Schema::dropIfExists('vehicle_models');
         Schema::create('vehicle_models', function (Blueprint $table) {
             $table->uuid('id')->primary();
-            $table->uuid('make_id')->unique();
-            $table->string('name')->nullable();
+            $table->uuid('make_id')->nullable()->index();
+            $table->string('name')->nullable()->index();
             $table->text('description')->nullable();
             $table->string('thumbnail')->nullable();
             $table->uuid('created_user_id')->nullable()->index();
