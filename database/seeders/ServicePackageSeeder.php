@@ -18,8 +18,14 @@ class ServicePackageSeeder extends Seeder
         $this->command->info('🚀 Starting ServicePackage seeder...');
 
         // Get service types
+        $airportTransfersServiceType = ServiceType::where('code', 'airport_transfers')->first();
         $rideNowServiceType = ServiceType::where('code', 'ride_now')->first();
         $pointToPointServiceType = ServiceType::where('code', 'point_to_point')->first();
+
+        if (!$airportTransfersServiceType) {
+            $this->command->error('⚠️  airport_transfers service type not found. Run ComprehensivePricingSeeder first.');
+            return;
+        }
 
         if (!$rideNowServiceType) {
             $this->command->error('⚠️  ride_now service type not found. Run ComprehensivePricingSeeder first.');
@@ -42,13 +48,62 @@ class ServicePackageSeeder extends Seeder
 
         ServicePackage::truncate();
 
+        // Airport Transfer Service Packages
+        // $this->seedAirportTransferPackages($airportTransfersServiceType, $vehicleGroups);
+
         // Ride Now Service Packages
         $this->seedRideNowPackages($rideNowServiceType, $vehicleGroups);
 
         // Point to Point Service Packages  
-        $this->seedPointToPointPackages($pointToPointServiceType, $vehicleGroups);
+        // $this->seedPointToPointPackages($pointToPointServiceType, $vehicleGroups);
 
         $this->command->info('✅ ServicePackage seeder completed successfully!');
+    }
+
+    /**
+     * Seed Airport Transfer service packages
+     */
+    private function seedAirportTransferPackages(ServiceType $serviceType, $vehicleGroups): void
+    {
+        $this->command->info('📦 Creating Airport Transfer packages...');
+
+        $packages = [
+            [
+                'code' => 'airport_standard',
+                'name' => 'Standard Transfer',
+                'description' => 'Direct airport transfer with professional chauffeur',
+                'max_km_per_package' => null,
+                'max_km_per_day' => 50.00,
+                'price_multiplier' => 1.0,
+                'rate_type' => 'flat',
+                'default_duration_hours' => 2,
+                'sort_order' => 1,
+            ],
+            [
+                'code' => 'airport_premium',
+                'name' => 'Premium Transfer',
+                'description' => 'Premium airport transfer with luxury vehicles and premium service',
+                'max_km_per_package' => null,
+                'max_km_per_day' => 60.00,
+                'price_multiplier' => 1.3,
+                'rate_type' => 'flat',
+                'default_duration_hours' => 2,
+                'sort_order' => 2,
+            ],
+            [
+                'code' => 'airport_vip',
+                'name' => 'VIP Transfer',
+                'description' => 'VIP airport transfer with meet & greet, waiting time included',
+                'max_km_per_package' => null,
+                'max_km_per_day' => 80.00,
+                'price_multiplier' => 1.5,
+                'rate_type' => 'flat',
+                'default_duration_hours' => 3,
+                'sort_order' => 3,
+            ],
+        ];
+
+        $this->createPackages($serviceType, $packages);
     }
 
     /**
@@ -60,9 +115,9 @@ class ServicePackageSeeder extends Seeder
 
         $packages = [
             [
-                'code' => 'ride_now_4h',
-                'name' => '4 Hours Package',
-                'description' => 'Self-driven rental for 4 hours with fuel included',
+                'code' => 'ride_now_100',
+                'name' => '100 km Package',
+                'description' => '100 km',
                 'max_km_per_package' => null,
                 'max_km_per_day' => 100.00,
                 'price_multiplier' => 1.0,
@@ -71,50 +126,74 @@ class ServicePackageSeeder extends Seeder
                 'sort_order' => 1,
             ],
             [
-                'code' => 'ride_now_8h',
-                'name' => '8 Hours Package',
-                'description' => 'Self-driven rental for 8 hours with fuel included',
+                'code' => 'ride_now_200',
+                'name' => '200 km Package',
+                'description' => '200 km',
                 'max_km_per_package' => null,
-                'max_km_per_day' => 180.00,
-                'price_multiplier' => 1.0,
+                'max_km_per_day' => 200.00,
+                'price_multiplier' => 1.5,
                 'rate_type' => 'flat',
-                'default_duration_hours' => 8,
+                'default_duration_hours' => null,
                 'sort_order' => 2,
             ],
-            [
-                'code' => 'ride_now_12h',
-                'name' => '12 Hours Package',
-                'description' => 'Self-driven rental for 12 hours with fuel included',
-                'max_km_per_package' => null,
-                'max_km_per_day' => 250.00,
-                'price_multiplier' => 1.0,
-                'rate_type' => 'flat',
-                'default_duration_hours' => 12,
-                'sort_order' => 3,
-            ],
-            [
-                'code' => 'ride_now_1d',
-                'name' => '1 Day Package',
-                'description' => 'Self-driven rental for 24 hours with fuel included',
-                'max_km_per_package' => null,
-                'max_km_per_day' => 350.00,
-                'price_multiplier' => 1.0,
-                'rate_type' => 'flat',
-                'default_duration_hours' => 24,
-                'sort_order' => 4,
-            ],
-            [
-                'code' => 'ride_now_3d',
-                'name' => '3 Days Package',
-                'description' => 'Self-driven rental for 3 days with fuel included',
-                'max_km_per_package' => null,
-                'max_km_per_day' => 900.00,
-                'price_multiplier' => 0.85, // Discount for longer rentals
-                'rate_type' => 'flat',
-                'default_duration_hours' => 72,
-                'sort_order' => 5,
-            ],
         ];
+        // $packages = [
+        //     [
+        //         'code' => 'ride_now_4h',
+        //         'name' => '4 Hours Package',
+        //         'description' => 'Self-driven rental for 4 hours with fuel included',
+        //         'max_km_per_package' => null,
+        //         'max_km_per_day' => 100.00,
+        //         'price_multiplier' => 1.0,
+        //         'rate_type' => 'flat',
+        //         'default_duration_hours' => 4,
+        //         'sort_order' => 1,
+        //     ],
+        //     [
+        //         'code' => 'ride_now_8h',
+        //         'name' => '8 Hours Package',
+        //         'description' => 'Self-driven rental for 8 hours with fuel included',
+        //         'max_km_per_package' => null,
+        //         'max_km_per_day' => 180.00,
+        //         'price_multiplier' => 1.0,
+        //         'rate_type' => 'flat',
+        //         'default_duration_hours' => 8,
+        //         'sort_order' => 2,
+        //     ],
+        //     [
+        //         'code' => 'ride_now_12h',
+        //         'name' => '12 Hours Package',
+        //         'description' => 'Self-driven rental for 12 hours with fuel included',
+        //         'max_km_per_package' => null,
+        //         'max_km_per_day' => 250.00,
+        //         'price_multiplier' => 1.0,
+        //         'rate_type' => 'flat',
+        //         'default_duration_hours' => 12,
+        //         'sort_order' => 3,
+        //     ],
+        //     [
+        //         'code' => 'ride_now_1d',
+        //         'name' => '1 Day Package',
+        //         'description' => 'Self-driven rental for 24 hours with fuel included',
+        //         'max_km_per_package' => null,
+        //         'max_km_per_day' => 350.00,
+        //         'price_multiplier' => 1.0,
+        //         'rate_type' => 'flat',
+        //         'default_duration_hours' => 24,
+        //         'sort_order' => 4,
+        //     ],
+        //     [
+        //         'code' => 'ride_now_3d',
+        //         'name' => '3 Days Package',
+        //         'description' => 'Self-driven rental for 3 days with fuel included',
+        //         'max_km_per_package' => null,
+        //         'max_km_per_day' => 900.00,
+        //         'price_multiplier' => 0.85, // Discount for longer rentals
+        //         'rate_type' => 'flat',
+        //         'default_duration_hours' => 72,
+        //         'sort_order' => 5,
+        //     ],
+        // ];
 
         $this->createPackages($serviceType, $packages);
     }

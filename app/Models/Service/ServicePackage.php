@@ -28,7 +28,8 @@ class ServicePackage extends BaseModel
     ];
 
     protected $casts = [
-        'included_km' => 'decimal:2',
+        'max_km_per_day' => 'decimal:2',
+        'max_km_per_package' => 'decimal:2',
         'price_multiplier' => 'decimal:4',
         'default_duration_hours' => 'integer',
         'is_active' => 'boolean',

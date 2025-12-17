@@ -178,6 +178,16 @@ class BookingController extends Controller
         // Add common parameters
         $params['passengers'] = (int)($requestData['passengers'] ?? 1);
         
+        // Add ServicePackage support if provided
+        if (!empty($requestData['package_id'])) {
+            $params['package_id'] = $requestData['package_id'];
+            
+            Log::info('ServicePackage selected in booking search', [
+                'service_type' => $serviceType->code,
+                'package_id' => $requestData['package_id'],
+            ]);
+        }
+        
         return $params;
     }
     

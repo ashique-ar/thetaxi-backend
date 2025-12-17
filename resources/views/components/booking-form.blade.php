@@ -107,6 +107,17 @@
                 @enderror
             </div>
 
+            <!-- Package Selection (uses same toggle design as transfer-type) -->
+            {{-- <div class="package-selector" id="airport_transfers-packages" style="display: none;"
+                data-selected="{{ old('package_id', isset($search) && isset($search->package_id) ? $search->package_id : '') }}">
+                <div class="transfer-type-toggle package-selector-toggle">
+                    <!-- Packages will be dynamically loaded here as transfer-type-option labels -->
+                </div>
+                <div class="loading-packages" style="display: none;">
+                    <span>Loading packages...</span>
+                </div>
+            </div> --}}
+
             <!-- From Location -->
             <div class="single-search-box from-location location-search-box">
                 <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
@@ -371,25 +382,15 @@
                 @enderror
             </div>
 
-            <!-- Passengers -->
-            {{-- <div class="single-search-box">
-                <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M9 9c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-                </svg>
-                <div class="custom-select-dropdown">
-                    <select name="passengers" class="@error('passengers') is-invalid @enderror" required>
-                        <option value="">Passengers</option>
-                        @for ($i = 1; $i <= 15; $i++)
-                            <option value="{{ $i }}" {{ old('passengers', '2') == $i ? 'selected' : '' }}>
-                                {{ $i }} {{ $i == 1 ? 'Passenger' : 'Passengers' }}
-                            </option>
-                        @endfor
-                    </select>
+            <div class="package-selector" id="ride_now-packages" style="display: none;"
+                data-selected="{{ old('package_id', isset($search) && isset($search->package_id) ? $search->package_id : '') }}">
+                <div class="transfer-type-toggle package-selector-toggle">
+                    <!-- Packages will be dynamically loaded here as transfer-type-option labels -->
                 </div>
-                @error('passengers')
-                    <span class="text-danger small">{{ $message }}</span>
-                @enderror
-            </div> --}}
+                <div class="loading-packages" style="display: none;">
+                    <span>Loading packages...</span>
+                </div>
+            </div>
 
             <button type="submit" class="primary-btn1">
                 <span>Search For Vehicles</span>
@@ -400,6 +401,9 @@
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
+        // Initialize package loading for all service types
+        initializeServicePackages();
+
         // Tab functionality with redirection for specific services
         const filterItems = document.querySelectorAll('.filter-item-list .single-item');
         const filterInputs = document.querySelectorAll('.filter-input');
@@ -793,6 +797,143 @@
                 toLocationInputVisible: toLocationInput.classList.contains('visible')
             });
         }
+
+        /**
+         * Initialize service package loading for all services
+         */
+        function initializeServicePackages() {
+            const serviceTypes = ['airport_transfers', 'ride_now', 'point_to_point'];
+
+            serviceTypes.forEach(serviceType => {
+                loadServicePackages(serviceType);
+            });
+        }
+
+        /**
+         * Load packages for a specific service type
+         */
+        function loadServicePackages(serviceType) {
+            const packageSelector = document.getElementById(`${serviceType}-packages`);
+            if (!packageSelector) return;
+
+            const loadingIndicator = packageSelector.querySelector('.loading-packages');
+            const packageOptions = packageSelector.querySelector('.package-options');
+
+            // Show loading and reveal selector
+            if (loadingIndicator) loadingIndicator.style.display = 'block';
+            packageSelector.style.display = 'block';
+
+            // Make API call to get packages
+            fetch(`/api/services/${serviceType}/packages`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success' && data.data.packages && data.data.packages.length > 0) {
+                        renderPackageOptions(packageSelector, data.data.packages, serviceType);
+                    } else {
+                        console.warn(`No packages found for service: ${serviceType}`);
+                        // Hide selector if no packages available
+                        packageSelector.style.display = 'none';
+                    }
+                })
+                .catch(error => {
+                    console.error(`Error loading packages for ${serviceType}:`, error);
+                    // Hide selector on error
+                    packageSelector.style.display = 'none';
+                })
+                .finally(() => {
+                    // Hide loading
+                    if (loadingIndicator) loadingIndicator.style.display = 'none';
+                });
+        }
+
+        /**
+         * Render package options in the UI with the same toggle styling and markup as the transfer-type toggle
+         */
+        function renderPackageOptions(packageSelector, packages, serviceType) {
+            const packageToggle = packageSelector.querySelector('.package-selector-toggle');
+            const selected = packageSelector.dataset.selected || '';
+
+            if (!packageToggle || !packages || packages.length === 0) {
+                console.warn(`No valid packages to render for ${serviceType}`);
+                packageSelector.style.display = 'none';
+                return;
+            }
+
+            // Clear existing package options
+            packageToggle.innerHTML = '';
+
+            // Add new packages using the transfer-type-option markup (hidden radio + span)
+            packages.forEach((pkg, index) => {
+                const label = document.createElement('label');
+                label.className = 'transfer-type-option package-option';
+
+                const input = document.createElement('input');
+                input.type = 'radio';
+                // Backend expects package_id
+                input.name = 'package_id';
+                input.value = pkg.id !== undefined ? pkg.id : (pkg.slug || pkg.code || pkg.name);
+                input.id = `${serviceType}-package-${index}`;
+
+                // If server or old input specified a selected package, mark it checked
+                if (String(input.value) === String(selected)) {
+                    input.checked = true;
+                }
+
+                // Default the first package if nothing selected
+                if (!selected && index === 0) {
+                    input.checked = true;
+                }
+
+                const span = document.createElement('span');
+                span.title = pkg.description || '';
+                span.textContent = pkg.name || pkg.title || pkg.label || (`Package ${index + 1}`);
+
+                // Append nodes and attach change handler for debug and included-km update
+                label.appendChild(input);
+                label.appendChild(span);
+
+                // Ensure there's a hidden input to carry package_included_km to backend
+                let includedInput = document.getElementById(`${serviceType}-package-included-km`);
+                if (!includedInput) {
+                    includedInput = document.createElement('input');
+                    includedInput.type = 'hidden';
+                    includedInput.name = 'package_included_km';
+                    includedInput.id = `${serviceType}-package-included-km`;
+                    packageSelector.appendChild(includedInput);
+                }
+
+                // If this package is pre-checked, set included km now
+                if (input.checked) {
+                    includedInput.value = pkg.included_km !== undefined ? pkg.included_km : '';
+                }
+
+                input.addEventListener('change', function() {
+                    console.log(`Package selected for ${serviceType}:`, this.value);
+                    // Update included km hidden input if available on pkg
+                    includedInput.value = pkg.included_km !== undefined ? pkg.included_km : '';
+                });
+
+                packageToggle.appendChild(label);
+            });
+
+            // Ensure selector is visible if packages were successfully rendered
+            packageSelector.style.display = 'block';
+
+            console.log(`Successfully rendered ${packages.length} packages for ${serviceType}`);
+        }
+
+        function formatDuration(hours) {
+            if (hours < 24) {
+                return `${hours}h`;
+            } else if (hours % 24 === 0) {
+                const days = hours / 24;
+                return days === 1 ? '1 day' : `${days} days`;
+            } else {
+                const days = Math.floor(hours / 24);
+                const remainingHours = hours % 24;
+                return `${days}d ${remainingHours}h`;
+            }
+        }
     });
 </script>
 
@@ -857,6 +998,90 @@
     .to-field.visible {
         display: block !important;
     }
+
+    .package-selector-toggle {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    .package-option {
+        display: flex;
+        align-items: center;
+        cursor: pointer;
+    }
+
+    .package-option input[type="radio"] {
+        display: none;
+    }
+
+    .package-option span {
+        display: inline-block;
+        /* padding: 10px 20px; */
+        width: 100%;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        background-color: #fff;
+        color: #333;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        white-space: nowrap;
+    }
+
+    .package-option input[type="radio"]:checked+span {
+        background-color: #c91c23;
+        border-color: #c91c23;
+        color: #fff;
+        font-weight: 600;
+    }
+
+    /* Reuse transfer-type markup styling to make packages look exactly like the transfer-type toggle */
+    .transfer-type-toggle {
+        display: flex;
+        display: grid;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: center;
+    }
+
+    .transfer-type-option input[type="radio"] {
+        display: none;
+    }
+
+    .transfer-type-option span {
+        display: inline-block;
+        width: 100%;
+        /* padding: 10px 20px; */
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        background-color: #fff;
+        color: #333;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        white-space: nowrap;
+    }
+
+    .transfer-type-option input[type="radio"]:checked+span {
+        background-color: #c91c23;
+        border-color: #c91c23;
+        color: #fff;
+        font-weight: 600;
+    }
+
+    .package-option:hover span {
+        border-color: #c91c23;
+    }
+
+    .loading-packages {
+        text-align: center;
+        padding: 10px;
+        color: #666;
+        font-style: italic;
+    }
 </style>
 
 @push('scripts')
@@ -868,32 +1093,26 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datepicker/1.9.0/js/bootstrap-datepicker.min.js"></script>
 
     <script>
-        // Enhanced date picker initialization
         $(document).ready(function() {
-            // Initialize all date pickers with DD/MM/YYYY format
             $('.custom-datepicker').datepicker({
                 format: 'dd/mm/yyyy',
                 autoclose: true,
                 todayHighlight: true,
-                startDate: '0d', // Today or later
+                startDate: '0d',
                 orientation: 'bottom auto'
             });
 
-            // Handle date input manually to ensure DD/MM/YYYY format
             $('.custom-datepicker').on('input', function() {
                 let value = $(this).val();
 
-                // Remove any non-numeric characters except /
                 value = value.replace(/[^\d\/]/g, '');
 
-                // Auto-add slashes
                 if (value.length === 2 && !value.includes('/')) {
                     value += '/';
                 } else if (value.length === 5 && value.split('/').length === 2) {
                     value += '/';
                 }
 
-                // Limit to DD/MM/YYYY format
                 if (value.length > 10) {
                     value = value.substring(0, 10);
                 }
@@ -901,7 +1120,6 @@
                 $(this).val(value);
             });
 
-            // Validate date format on blur
             $('.custom-datepicker').on('blur', function() {
                 let value = $(this).val();
                 if (value && !isValidDDMMYYYY(value)) {
@@ -915,7 +1133,6 @@
                 }
             });
 
-            // Date validation function
             function isValidDDMMYYYY(dateString) {
                 const regex = /^\d{2}\/\d{2}\/\d{4}$/;
                 if (!regex.test(dateString)) return false;
@@ -925,15 +1142,13 @@
                 const month = parseInt(parts[1], 10);
                 const year = parseInt(parts[2], 10);
 
-                // Check if date is valid
                 const date = new Date(year, month - 1, day);
                 return date.getFullYear() === year &&
                     date.getMonth() === (month - 1) &&
                     date.getDate() === day &&
-                    date >= new Date().setHours(0, 0, 0, 0); // Not in the past
+                    date >= new Date().setHours(0, 0, 0, 0);
             }
 
-            // Ensure dropoff date is after pickup date for rental packages
             $('.custom-datepicker[name="dropoff_date"]').on('change', function() {
                 const pickupDate = $('.custom-datepicker[name="pickup_date"]').val();
                 const dropoffDate = $(this).val();

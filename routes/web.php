@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\FileUploadController;
+use App\Http\Controllers\Api\Service\ServicePackageController;
 use App\Http\Controllers\BookingController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\CheckoutController;
@@ -108,7 +109,7 @@ Route::post('/booking/request-quotation', [BookingController::class, 'requestQuo
 Route::get('/api/services/configuration', [BookingController::class, 'getServiceConfiguration'])->name('api.services.configuration');
 Route::get('/api/services/{serviceCode}/form-config', [BookingController::class, 'getServiceFormConfig'])->name('api.services.form-config');
 Route::get('/api/services/{serviceCode}/validation-rules', [BookingController::class, 'getServiceValidationRules'])->name('api.services.validation-rules');
-
+Route::get('/api/services/{serviceCode}/packages', [ServicePackageController::class, 'getPackagesByService'])->name('api.services.packages');
 // FAQ routes
 Route::get('/faq', [FAQController::class, 'index'])->name('faq');
 // Route::get('/faq', [FAQController::class, 'index'])->name('faq.index');  

@@ -30,7 +30,6 @@ return new class extends Migration
             $table->timestamps();
             $table->softDeletes();
 
-            $table->foreign('service_type_id')->references('id')->on('service_types')->onDelete('cascade');
             $table->index(['service_type_id', 'is_active']);
             $table->index('code');
         });

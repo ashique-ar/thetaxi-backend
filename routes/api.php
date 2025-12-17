@@ -29,6 +29,7 @@ use App\Http\Controllers\Api\NotificationLogController;
 use App\Http\Controllers\Api\NotificationTemplateController;
 use App\Http\Controllers\Api\PhoneCallController;
 use App\Http\Controllers\Api\ServiceTypeController;
+use App\Http\Controllers\Api\Service\ServicePackageController;
 use App\Http\Controllers\Api\StateController;
 use App\Http\Controllers\Api\Vehicle\VehicleAddonController;
 use App\Http\Controllers\Api\Vehicle\VehicleCategoryController;
@@ -289,7 +290,8 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('website-settings/appearance/settings', [WebsiteSettingController::class, 'appearance']);
         Route::apiResource('vip-types', VipTypeController::class);
         Route::apiResource('service-types', ServiceTypeController::class);
-        
+        Route::apiResource('service-packages', ServicePackageController::class);        
+
         // Service Configuration API routes for dynamic forms
         Route::get('services/configuration', [BookingController::class, 'getServiceConfiguration'])->name('api.services.configuration');
         Route::get('services/{serviceCode}/form-config', [BookingController::class, 'getServiceFormConfig']);

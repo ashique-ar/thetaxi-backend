@@ -14,9 +14,13 @@ return new class extends Migration {
             $table->uuid('id')->primary();
             $table->string('title')->nullable();
             $table->string('slug')->unique();
-            $table->text('description')->unique();
+            $table->text('description')->nullable();
+            $table->string('icon')->nullable()->after('description');
+            $table->json('template_config')->nullable()->after('icon');
+            $table->integer('display_order')->nullable()->after('is_active');
+            $table->string('url_prefix')->nullable()->after('display_order');  
             $table->uuid('created_user_id')->nullable()->index();
-            $table->uuid('updated_user_id')->nullable()->index();
+            $table->uuid('updated_user_id')->nullable()->index();            
             $table->timestamps();
             $table->softDeletes();
         });

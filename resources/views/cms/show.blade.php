@@ -131,24 +131,6 @@
 
     <div class="reading-progress" id="readingProgress" aria-hidden="true"></div>
 
-    {{-- <section class="article-hero">
-        <div class="container">
-            <div class="row">
-                <div class="col-12">
-                    <nav aria-label="breadcrumb">
-                        <ol class="breadcrumb mb-2">
-                            <li class="breadcrumb-item"><a href="{{ url('/') }}" class="text-white-50">Home</a></li>
-                            <li class="breadcrumb-item"><a href="{{ route('cms.index', $contentType->slug) }}"
-                                    class="text-white-50">{{ $contentType->title }}</a></li>
-                            <li class="breadcrumb-item active text-white" aria-current="page">{{ $content->title }}</li>
-                        </ol>
-                    </nav>
-
-                </div>
-            </div>
-        </div>
-    </section> --}}
-
     <section class="article-page">
         <div class="container">
             <div class="row">
