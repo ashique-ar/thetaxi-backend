@@ -106,6 +106,13 @@ class Vehicle extends BaseModel
         'self_driven_compatible',
     ];
 
+    protected $casts = [
+        'thumbnail' => 'array',
+        'is_active' => 'boolean',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
+        'deleted_at' => 'datetime',
+    ];
     /**
      * Get the vehicle's contract type.
      *

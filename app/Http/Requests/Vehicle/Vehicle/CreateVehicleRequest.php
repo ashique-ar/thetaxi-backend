@@ -31,7 +31,7 @@ class CreateVehicleRequest extends FormRequest
             'color'            => ['nullable','string','max:100'],
             'no_od_doors'      => ['nullable','integer'],
             'ac'               => ['nullable','boolean'],
-            'thumbnail'        => ['nullable','string'],
+            'thumbnail'        => ['nullable','array'],
             'slug'             => ['nullable','string','max:255','unique:vehicles,slug'],
             'bags'             => ['nullable','integer'],
             'seats'            => ['nullable','integer'],

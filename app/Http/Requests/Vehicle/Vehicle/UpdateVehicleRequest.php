@@ -33,7 +33,7 @@ class UpdateVehicleRequest extends FormRequest
             'color'            => ['sometimes','nullable','string','max:100'],
             'no_od_doors'      => ['sometimes','nullable','integer'],
             'ac'               => ['sometimes','boolean'],
-            'thumbnail'        => ['sometimes','nullable','string'],
+            'thumbnail'        => ['sometimes','nullable','array'],
             'slug'             => ["sometimes","nullable","string","max:255","unique:vehicles,slug,{$id}"],
             'bags'             => ['sometimes','nullable','integer'],
             'seats'            => ['sometimes','nullable','integer'],
