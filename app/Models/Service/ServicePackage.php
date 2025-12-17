@@ -1,9 +1,8 @@
 <?php
 
-namespace App\Models\Vehicle\VehiclePricing;
+namespace App\Models\Service;
 
 use App\Models\BaseModel;
-use App\Models\Service\ServiceType;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Builder;
@@ -17,7 +16,8 @@ class ServicePackage extends BaseModel
         'name',
         'code',
         'description',
-        'included_km',
+        'max_km_per_day',
+        'max_km_per_package',
         'price_multiplier',
         'rate_type',
         'default_duration_hours',
@@ -38,11 +38,6 @@ class ServicePackage extends BaseModel
     public function serviceType(): BelongsTo
     {
         return $this->belongsTo(ServiceType::class);
-    }
-
-    public function rates(): HasMany
-    {
-        return $this->hasMany(ServicePackageRate::class, 'service_package_id');
     }
 
     public function districtAdjustments(): HasMany

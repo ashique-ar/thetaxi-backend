@@ -441,7 +441,7 @@
 
         // Initialize airport transfer form on page load if it's active
         const activeAirportForm = document.querySelector(
-        '.filter-input[data-service="airport_transfers"].show');
+            '.filter-input[data-service="airport_transfers"].show');
         if (activeAirportForm) {
             // Wait longer for external JS to load
             setTimeout(() => {
@@ -524,7 +524,7 @@
                         if (typeof window.updateAirportTransferLocations === 'function') {
                             console.log(
                                 'Using external updateAirportTransferLocations function for default'
-                                );
+                            );
                             window.updateAirportTransferLocations('from-airport');
                         } else {
                             console.log('Using fallback initialization for default');

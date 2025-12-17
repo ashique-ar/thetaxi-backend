@@ -12,6 +12,7 @@ use App\Models\Vehicle\VehiclePricing\VehiclePricingSlabDefinition;
 use App\Models\Vehicle\VehiclePricing\VehicleGroupPricing;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCommonRateDefinition;
 use App\Models\Vehicle\VehiclePricing\VehicleGroupCommonRatePricing;
+use App\Models\Service\ServicePackage;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
@@ -323,50 +324,6 @@ class VehiclePricingCalculationDefinition extends Model
         ];
     }
 
-    /**
-     * Calculate total delivery and pickup charges
-     */
-    private function getDeliveryPickupTotal(array $resolvedVariables): float
-    {
-        $total = 0;
-
-        foreach (['delivery_distance', 'pickup_distance'] as $distanceType) {
-            $distance = $resolvedVariables[$distanceType] ?? 0;
-            $rateVar = str_replace('_distance', '_rate_per_km', $distanceType);
-            $rate = $resolvedVariables[$rateVar] ?? 0;
-
-            if ($distance > 0 && $rate > 0) {
-                $total += $distance * $rate;
-            }
-        }
-
-        return $total;
-    }
-
-    /**
-     * Get detailed breakdown of delivery and pickup charges
-     */
-    private function getDeliveryPickupDetails(array $resolvedVariables): array
-    {
-        $details = [];
-
-        foreach (['delivery_distance', 'pickup_distance'] as $distanceType) {
-            $distance = $resolvedVariables[$distanceType] ?? 0;
-            $rateVar = str_replace('_distance', '_rate_per_km', $distanceType);
-            $rate = $resolvedVariables[$rateVar] ?? 0;
-
-            $serviceType = str_replace('_distance', '', $distanceType);
-
-            $details[$serviceType] = [
-                'distance_km' => $distance,
-                'rate_per_km' => $rate,
-                'total_amount' => $distance * $rate,
-                'included' => $distance > 0 && $rate > 0
-            ];
-        }
-
-        return $details;
-    }
 
     /**
      * Get empty calculation result structure
@@ -400,20 +357,6 @@ class VehiclePricingCalculationDefinition extends Model
             $durationHours = $durationDays * 24;
         }
 
-        // Package-based selection (explicit package overrides slab selection)
-        if (isset($inputs['package_id'])) {
-            return [
-                'slab_definition' => $inputs['slab_definition'] ?? null,
-                'duration_hours' => $durationHours,
-                'duration_days' => $durationDays,
-                'max_km_per_day' => null,
-                'max_km_per_package' => $inputs['package_included_km'] ?? $inputs['max_km_per_package'] ?? null,
-                'type' => 'package',
-                'package_id' => $inputs['package_id'],
-            ];
-        }
-
-        // Find the appropriate slab definition
         $slabDefinition = VehiclePricingSlabDefinition::where('service_type_id', $this->service_type_id)
             ->where('is_active', true)
             ->where(function ($query) use ($durationHours, $durationDays) {
@@ -438,6 +381,46 @@ class VehiclePricingCalculationDefinition extends Model
         if (!$slabDefinition) {
             return null;
         }
+
+        // ServicePackage-based selection (HIGHEST PRIORITY - explicit package overrides all other methods)
+        if (isset($inputs['package_id'])) {
+            $servicePackage = ServicePackage::with(['rates' => function($query) use ($vehicleGroupId) {
+                if ($vehicleGroupId) {
+                    $query->where('vehicle_group_id', $vehicleGroupId);
+                }
+            }])->active()->find($inputs['package_id']);
+            
+            if ($servicePackage) {
+                Log::info("ServicePackage found for pricing calculation", [
+                    'package_id' => $inputs['package_id'],
+                    'package_name' => $servicePackage->name,
+                    'included_km' => $servicePackage->included_km,
+                    'default_duration_hours' => $servicePackage->default_duration_hours
+                ]);
+                
+                // Use package duration if not explicitly provided
+                $packageDurationHours = $servicePackage->default_duration_hours ?: $durationHours;
+                $packageDurationDays = $servicePackage->default_duration_hours ? 
+                    ceil($servicePackage->default_duration_hours / 24) : $durationDays;
+                
+                return [
+                    'slab_definition' => $slabDefinition,// Not using slab for package-based pricing
+                    'service_package' => $servicePackage,
+                    'duration_hours' => $packageDurationHours,
+                    'duration_days' => $packageDurationDays,
+                    'max_km_per_day' => $servicePackage->included_km, // Packages use total KM not daily limits
+                    'max_km_per_package' => $servicePackage->included_km,
+                    'type' => 'service_package',
+                    'package_id' => $inputs['package_id'],
+                    'price_multiplier' => $servicePackage->price_multiplier,
+                ];
+            } else {
+                Log::warning("ServicePackage not found", ['package_id' => $inputs['package_id']]);
+            }
+        }
+
+        // Find the appropriate slab definition
+        
 
         return [
             'slab_definition' => $slabDefinition,
@@ -476,8 +459,18 @@ class VehiclePricingCalculationDefinition extends Model
         $calendarDays = $this->calculateCalendarDays($inputs);
         $result['calendar_days'] = $calendarDays;
         $result['effective_days'] = max(1, $calendarDays); // Minimum 1 day
+        
+        Log::info("Calculated calendar days for KM overage: {$calendarDays}", [
+            'inputs' => $inputs,
+            'from_date' => $inputs['from_date'] ?? null,
+            'to_date' => $inputs['to_date'] ?? null,
+            'from_time' => $inputs['from_time'] ?? null,
+            'to_time' => $inputs['to_time'] ?? null,
+        ]);
 
-        // Determine calculation method based on service type and limits
+        // ServicePackage-based calculation has HIGHEST PRIORITY
+   
+        // Determine calculation method based on service type and limits (fallback methods)
         if ($slabInfo['max_km_per_package'] && in_array($slabInfo['type'], ['flat_rate', 'package'])) {
             // Package-based limit (e.g., wedding packages, airport transfers)
             $result['calculation_type'] = 'package';
@@ -485,7 +478,7 @@ class VehiclePricingCalculationDefinition extends Model
             $result['extra_km'] = max(0, $actualKm - $result['allowed_km']);
             $result['package_overage'] = $result['extra_km'];
         } elseif ($slabInfo['max_km_per_day'] && $result['effective_days'] > 0) {
-            // Daily-based limit (e.g., rental services)
+            // Daily-based limit (e.g., rental services, point to point, ride now)
             // For multi-day bookings: total allowance = max km × number of calendar days
             $result['calculation_type'] = 'daily';
             $result['allowed_km'] = $slabInfo['max_km_per_day'] * $result['effective_days'];
@@ -810,7 +803,6 @@ class VehiclePricingCalculationDefinition extends Model
         }
     }
 
-
     /**
      * Get common rate value from database with fallback defaults.
      * Enhanced to provide default rates for delivery and pickup if not configured.
@@ -848,32 +840,6 @@ class VehiclePricingCalculationDefinition extends Model
             Log::error("Error getting common rate value for {$rateKey}: " . $e->getMessage());
             return 0;
         }
-    }
-
-    /**
-     * Calculate slab rate considering the rate type and duration.
-     * 
-     * @param float $baseRate Base rate from slab definition
-     * @param string $rateType Rate type (per_hour, per_day, flat_rate)
-     * @param float $durationHours Duration in hours
-     * @param float|null $minimumCharge Minimum charge to apply
-     * @return float Calculated rate
-     */
-    private function calculateSlabRateWithType(float $baseRate, string $rateType, float $durationHours, ?float $minimumCharge = null): float
-    {
-        $calculatedAmount = match ($rateType) {
-            'per_hour' => $baseRate * $durationHours,
-            'per_day' => $baseRate * ceil($durationHours / 24), // Round up to full days
-            'flat_rate' => $baseRate, // Fixed rate regardless of duration
-            default => $baseRate
-        };
-
-        // Apply minimum charge if set
-        if ($minimumCharge && $calculatedAmount < $minimumCharge) {
-            return $minimumCharge;
-        }
-
-        return $calculatedAmount;
     }
 
     /**

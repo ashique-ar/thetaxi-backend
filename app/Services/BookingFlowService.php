@@ -19,8 +19,7 @@ use App\Models\Company;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCalculationDefinition;
 use App\Models\Vehicle\VehiclePricing\KmRangePricingRule;
 use App\Models\Vehicle\VehiclePricing\PriceAdjustment;
-use App\Models\Vehicle\VehiclePricing\ServicePackage;
-use App\Models\Vehicle\VehiclePricing\ServicePackageRate;
+use App\Models\Service\ServicePackage;
 use App\Models\Vehicle\VehiclePricing\DistrictPricingAdjustment;
 use App\Models\Vehicle\VehiclePricing\BookingPriceAdjustmentHistory;
 use Carbon\Carbon;
@@ -228,6 +227,29 @@ class BookingFlowService
                         'dropoff_location' => $dropoffLocation,
                         'mode' => 'preview'
                     ];
+                    
+                    // PRIORITY: Pass ServicePackage information for highest priority pricing
+                    if (!empty($params['package_id'])) {
+                        $pricingParams['package_id'] = $params['package_id'];
+                        
+                        // Also pass related package parameters
+                        if (!empty($params['package_included_km'])) {
+                            $pricingParams['package_included_km'] = $params['package_included_km'];
+                        }
+                        if (!empty($params['package_default_duration_hours'])) {
+                            $pricingParams['package_default_duration_hours'] = $params['package_default_duration_hours'];
+                        }
+                        if (!empty($params['package_price_multiplier'])) {
+                            $pricingParams['package_price_multiplier'] = $params['package_price_multiplier'];
+                        }
+                        
+                        Log::info('ServicePackage parameters passed to pricing calculation', [
+                            'vehicle_group_id' => $group->id,
+                            'package_id' => $params['package_id'],
+                            'package_included_km' => $params['package_included_km'] ?? 'not_set',
+                            'package_default_duration_hours' => $params['package_default_duration_hours'] ?? 'not_set'
+                        ]);
+                    }
 
                     $basePricing = $this->calculateDynamicPricing($pricingParams);
                     if ($basePricing && isset($basePricing['total_amount']) && $basePricing['total_amount'] > 0) {
@@ -2076,31 +2098,6 @@ class BookingFlowService
 
         $package = ServicePackage::active()->find($packageId);
         if (!$package) {
-            return $context;
-        }
-
-        $rateRow = ServicePackageRate::active()
-            ->where('service_package_id', $packageId)
-            ->where('vehicle_group_id', $vehicleGroupId)
-            ->first();
-
-        if (!$rateRow) {
-            $context['availability'] = [
-                'is_available' => false,
-                'request_quote' => true,
-                'reason' => 'No package rate configured for this vehicle group',
-            ];
-            $context['inputs'] = [
-                'package_id' => $packageId,
-                'package_included_km' => $package->included_km,
-                'package_default_duration_hours' => $package->default_duration_hours,
-            ];
-            $context['customizations'][] = [
-                'variable_name' => 'slab_rate',
-                'variable_type' => 'number',
-                'custom_value' => 0,
-                'context' => 'base_pricing',
-            ];
             return $context;
         }
 

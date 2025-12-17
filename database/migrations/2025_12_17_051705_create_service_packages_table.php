@@ -8,22 +8,21 @@ return new class extends Migration
 {
     /**
      * Run the migrations.
-     *
-     * Stores reusable packages (e.g., 100km, 200km) per service type.
-     * Packages stay separate from vehicle pricing slabs so they can be reused across districts.
      */
     public function up(): void
     {
+        Schema::dropIfExists('service_packages');
         Schema::create('service_packages', function (Blueprint $table) {
             $table->uuid('id')->primary();
-            $table->uuid('service_type_id')->index()->comment('Service type the package belongs to');
+            $table->uuid('service_type_id');
             $table->string('name');
-            $table->string('code')->nullable()->comment('Optional unique code for API/front-end use');
+            $table->string('code')->unique();
             $table->text('description')->nullable();
-            $table->decimal('included_km', 10, 2)->nullable()->comment('KM allowance included in the package');
-            $table->decimal('price_multiplier', 8, 4)->default(1)->comment('Package-level percentage markup/discount (1 = no change)');
-            $table->enum('rate_type', ['per_package', 'per_day', 'per_hour'])->default('per_package');
-            $table->integer('default_duration_hours')->nullable()->comment('Optional default duration used for duration-based formulas');
+            $table->decimal('max_km_per_day', 10, 2)->nullable();
+            $table->decimal('max_km_per_package', 10, 2)->nullable();
+            $table->decimal('price_multiplier', 8, 4)->default(1.0000);
+            $table->enum('rate_type', ['flat', 'hourly', 'daily'])->default('flat');
+            $table->integer('default_duration_hours')->nullable();
             $table->boolean('is_active')->default(true);
             $table->integer('sort_order')->default(0);
             $table->uuid('created_user_id')->nullable();
@@ -31,9 +30,9 @@ return new class extends Migration
             $table->timestamps();
             $table->softDeletes();
 
-            $table->unique(['service_type_id', 'code']);
+            $table->foreign('service_type_id')->references('id')->on('service_types')->onDelete('cascade');
             $table->index(['service_type_id', 'is_active']);
-            $table->index('sort_order');
+            $table->index('code');
         });
     }
 
