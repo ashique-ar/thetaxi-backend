@@ -1,12 +1,12 @@
 <?php
-namespace App\Models;
+namespace App\Models\Service;
 
 use App\Models\BaseModel;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingSlabDefinition;
 use App\Traits\UUID;
 
 /**
- * App\Models\ServiceType
+ * App\Models\Service\ServiceType
  *
  * @property string $id Primary key (UUID)
  * @property string $code Service type unique code

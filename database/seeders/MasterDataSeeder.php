@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Models\Service\ServiceType;
 use Illuminate\Database\Seeder;
 
 class MasterDataSeeder extends Seeder
@@ -58,7 +59,7 @@ class MasterDataSeeder extends Seeder
         $this->command->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         
         // Service Types and Pricing
-        $serviceTypesCount = \App\Models\ServiceType::count();
+        $serviceTypesCount = ServiceType::count();
         $this->command->info("🔹 Service Types: {$serviceTypesCount}");
         
         $slabDefinitionsCount = \App\Models\Vehicle\VehiclePricing\VehiclePricingSlabDefinition::count();

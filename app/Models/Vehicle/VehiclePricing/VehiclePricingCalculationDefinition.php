@@ -2,7 +2,7 @@
 
 namespace App\Models\Vehicle\VehiclePricing;
 
-use App\Models\ServiceType;
+use App\Models\Service\ServiceType;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;

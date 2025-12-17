@@ -7,7 +7,7 @@ use App\Mail\CheckoutConfirmationMail;
 use App\Mail\QuotationRequestMail;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingAddon;
-use App\Models\ServiceType;
+use App\Models\Service\ServiceType;
 use App\Models\TermsAndCondition;
 use App\Models\Vehicle\VehicleGroup;
 use App\Models\Website\WebsiteSetting;

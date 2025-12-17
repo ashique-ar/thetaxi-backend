@@ -3,7 +3,7 @@
 namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
-use App\Models\ServiceType;
+use App\Models\Service\ServiceType;
 use App\Models\Vehicle\VehicleGroup;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingSlabDefinition;
 use App\Models\Vehicle\VehiclePricing\VehicleGroupPricing;

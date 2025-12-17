@@ -3,7 +3,7 @@
 namespace App\Models\Booking;
 
 use App\Models\BaseModel;
-use App\Models\ServiceType;
+use App\Models\Service\ServiceType;
 use App\Models\Vehicle\VehicleAssignment;
 use App\Enums\BookingLifecycleStatus;
 use App\Enums\DispatchStatus;
@@ -132,7 +132,7 @@ use App\Enums\QCStatus;
  * @property \Illuminate\Support\Carbon|null $updated_at
  * 
  * @property-read \App\Models\Customer|null $customer   
- * @property-read \App\Models\ServiceType $serviceType
+ * @property-read \App\Models\Service\ServiceType $serviceType
  * @property-read \App\Models\VipType|null $vipType
  * @property-read \App\Models\Vehicle\Vehicle|null $vehicle
  * @property-read \App\Models\Vehicle\VehicleGroup|null $vehicleGroup

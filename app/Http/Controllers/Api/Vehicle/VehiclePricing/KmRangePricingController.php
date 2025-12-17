@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Api\Vehicle\VehiclePricing;
 
 use App\Http\Controllers\Controller;
 use App\Models\Vehicle\VehiclePricing\KmRangePricingRule;
-use App\Models\ServiceType;
+use App\Models\Service\ServiceType;
 use App\Models\Vehicle\VehicleGroup;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;

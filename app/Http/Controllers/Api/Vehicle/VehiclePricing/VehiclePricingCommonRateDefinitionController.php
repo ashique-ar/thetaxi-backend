@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Api\Vehicle\VehiclePricing;
 
 use App\Http\Controllers\Controller;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCommonRateDefinition;
-use App\Models\ServiceType\ServiceType;
+use App\Models\Service\ServiceType\ServiceType;
 use App\Http\Requests\Vehicle\VehiclePricingCommonRateDefinition\CreateVehiclePricingCommonRateDefinitionRequest;
 use App\Http\Requests\Vehicle\VehiclePricingCommonRateDefinition\UpdateVehiclePricingCommonRateDefinitionRequest;
 use App\Http\Resources\Vehicle\VehiclePricing\VehiclePricingCommonRateDefinitionResource;

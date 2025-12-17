@@ -7,7 +7,7 @@ use App\Services\CurrencyService;
 use App\Services\DiscountService;
 use App\Models\BookingSearch;
 use App\Models\Vehicle\VehicleGroup;
-use App\Models\ServiceType;
+use App\Models\Service\ServiceType;
 use App\Http\Requests\BookingSearchRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -347,7 +347,7 @@ class BookingController extends Controller
             $serviceType = null;
             if (isset($searchParams['service_type'])) {
                 $serviceTypeId = $searchParams['service_type'];
-                $serviceTypeModel = \App\Models\ServiceType::find($serviceTypeId);
+                $serviceTypeModel = ServiceType::find($serviceTypeId);
                 $serviceType = $serviceTypeModel ? $serviceTypeModel->code : 'point_to_point';
             }
             

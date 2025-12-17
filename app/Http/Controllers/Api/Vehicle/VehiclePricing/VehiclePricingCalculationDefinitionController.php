@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api\Vehicle\VehiclePricing;
 
 use App\Http\Controllers\Controller;
-use App\Models\ServiceType;
+use App\Models\Service\ServiceType;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCalculationDefinition;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingSlabDefinition;
 use App\Models\Vehicle\VehiclePricing\VehicleGroupPricing;

@@ -14,7 +14,7 @@ use App\Models\Vehicle\VehicleAssignment;
 use App\Models\Driver\Driver;
 use App\Models\DriverAssignment;
 use App\Models\Customer;
-use App\Models\ServiceType;
+use App\Models\Service\ServiceType;
 use App\Models\Company;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCalculationDefinition;
 use App\Models\Vehicle\VehiclePricing\KmRangePricingRule;

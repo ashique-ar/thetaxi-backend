@@ -2,7 +2,7 @@
 
 namespace App\Services;
 
-use App\Models\ServiceType;
+use App\Models\Service\ServiceType;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingSlabDefinition;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCommonRateDefinition;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCalculationDefinition;

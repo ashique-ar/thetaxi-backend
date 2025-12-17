@@ -4,7 +4,7 @@ namespace App\Models\Vehicle;
 
 use App\Models\BaseModel;
 use App\Traits\UUID;
-use App\Models\ServiceType;
+use App\Models\Service\ServiceType;
 use App\Models\User;
 use App\Models\Booking\BookingAddon;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;

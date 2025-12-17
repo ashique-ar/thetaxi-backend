@@ -3,7 +3,7 @@
 namespace App\Models\Vehicle;
 
 use App\Models\BaseModel;
-use App\Models\ServiceType;
+use App\Models\Service\ServiceType;
 use App\Models\User;
 use App\Traits\UUID;
 use Illuminate\Database\Eloquent\SoftDeletes;

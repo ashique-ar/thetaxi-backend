@@ -3,7 +3,7 @@
 namespace App\Models\Vehicle\VehiclePricing;
 
 use App\Models\BaseModel;
-use App\Models\ServiceType;
+use App\Models\Service\ServiceType;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Builder;

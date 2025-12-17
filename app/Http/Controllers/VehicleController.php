@@ -4,7 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Vehicle\VehicleGroup;
 use App\Models\BookingSearch;
-use App\Models\ServiceType;
+use App\Models\Service\ServiceType;
 use App\Services\BookingFlowService;
 use App\Services\CartService;
 use Illuminate\Http\Request;

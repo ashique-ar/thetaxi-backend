@@ -3,7 +3,7 @@
 namespace App\Services;
 
 use App\Models\Vehicle\VehicleGroup;
-use App\Models\ServiceType;
+use App\Models\Service\ServiceType;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;

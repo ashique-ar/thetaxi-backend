@@ -4,7 +4,7 @@ namespace App\Models\Analytics;
 
 use App\Models\BaseModel;
 use App\Traits\UUID;
-use App\Models\ServiceType;
+use App\Models\Service\ServiceType;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 

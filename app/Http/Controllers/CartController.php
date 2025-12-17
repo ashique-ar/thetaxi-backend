@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Vehicle\VehicleGroup;
-use App\Models\ServiceType;
+use App\Models\Service\ServiceType;
 use App\Services\CartService;
 use App\Services\BookingFlowService;
 use Illuminate\Http\Request;

@@ -3,7 +3,7 @@
 namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
-use App\Models\ServiceType;
+use App\Models\Service\ServiceType;
 
 class CustomTourServiceSeeder extends Seeder
 {

@@ -3,7 +3,7 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
-use App\Models\ServiceType;
+use App\Models\Service\ServiceType;
 
 return new class extends Migration
 {

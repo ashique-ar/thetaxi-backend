@@ -4,7 +4,7 @@ namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
 use App\Models\Vehicle\VehicleAddon;
-use App\Models\ServiceType;
+use App\Models\Service\ServiceType;
 use Carbon\Carbon;
 
 class VehicleAddonSeeder extends Seeder
