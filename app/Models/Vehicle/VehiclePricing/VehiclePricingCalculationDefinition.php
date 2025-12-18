@@ -12,37 +12,14 @@ use App\Models\Vehicle\VehiclePricing\VehiclePricingSlabDefinition;
 use App\Models\Vehicle\VehiclePricing\VehicleGroupPricing;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCommonRateDefinition;
 use App\Models\Vehicle\VehiclePricing\VehicleGroupCommonRatePricing;
-use App\Models\Service\ServicePackage;
+use App\Models\Vehicle\VehiclePricing\PriceAdjustment;
+use App\Models\Vehicle\VehiclePricing\KmRangePricingRule;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
 
 /**
  * Vehicle Pricing Calculation Definition Model
- * 
- * This model handles complex pricing calculations with full integration of:
- * 1. Service Package context (multipliers, KM limits, rate types)
- * 2. KM Range Pricing Rules (distance-based adjustments)
- * 3. Price Adjustments (percentage/fixed amount modifications)
- * 
- * Service Package Priority:
- * - Service packages have the highest priority in the calculation pipeline
- * - They are applied first via multipliers, then KM range rules, then general adjustments
- * - Service package KM limits override general slab KM limits
- * 
- * Calculation Flow:
- * 1. Resolve variables (including service package context)
- * 2. Calculate base amount using formula
- * 3. Apply service package multiplier
- * 4. Apply KM range pricing rules (with service package context)
- * 5. Apply general price adjustments (with service package context)
- * 
- * @property string $name
- * @property string $description
- * @property string $service_type_id
- * @property string $formula
- * @property array $variables
- * @property array $conditions
  */
 class VehiclePricingCalculationDefinition extends Model
 {
@@ -106,11 +83,7 @@ class VehiclePricingCalculationDefinition extends Model
         return $this->belongsTo(User::class, 'updated_by');
     }
 
-    /**
-     * Calculate price based on the formula and provided inputs.
-     * Enforces definition-only variable usage and returns calculation metadata.
-     */
-    public function calculatePrice(array $inputs, $appliedCustomizations = []): array
+    public function calculatePrice(array $inputs, $appliedCustomizations = [], $servicePackageInfo = null, $districtInfo = null): array
     {
         try {
             $metadata = [
@@ -120,6 +93,8 @@ class VehiclePricingCalculationDefinition extends Model
                 'variables_used' => [],
                 'conditions_evaluated' => $this->conditions ?? [],
                 'mode' => $inputs['mode'] ?? null,
+                'service_package_info' => $servicePackageInfo,
+                'district_info' => $districtInfo,
             ];
 
             if (!$this->evaluateConditions($inputs)) {
@@ -133,12 +108,12 @@ class VehiclePricingCalculationDefinition extends Model
             }
 
             $slabInfo = $this->getSlabInformation($inputs);
-            $servicePackageInfo = $this->getServicePackageInformation($inputs);
-            $kmCalculations = $this->calculateKmOverages($inputs, $slabInfo,$servicePackageInfo);
-            try {
-                $resolvedVariables = $this->resolveAllVariables($inputs, $slabInfo, $kmCalculations, $appliedCustomizations);
 
-                $resolvedVariablesWithoutCustomizations = $this->resolveAllVariables($inputs, $slabInfo, $kmCalculations, []);
+            $kmCalculations = $this->calculateKmOverages($inputs, $slabInfo, $servicePackageInfo);
+            try {
+                $resolvedVariables = $this->resolveAllVariables($inputs, $slabInfo, $kmCalculations, $appliedCustomizations, $servicePackageInfo, $districtInfo);
+
+                $resolvedVariablesWithoutCustomizations = $this->resolveAllVariables($inputs, $slabInfo, $kmCalculations, [], $servicePackageInfo, $districtInfo);
             } catch (\InvalidArgumentException $ex) {
                 // Structured error response for missing variables
                 Log::warning("Missing variables for calculation {$this->id}: " . $ex->getMessage());
@@ -156,45 +131,44 @@ class VehiclePricingCalculationDefinition extends Model
                     }))
                 ];
             }
+
             $metadata['variables_used'] = array_keys($resolvedVariables);
 
-            // Calculate base amount using formula
-            $baseAmount = $this->evaluateFormulaWithVariables($this->formula, $resolvedVariables) ?? 0.0;
-            $baseAmountWithoutCustomizations = $this->evaluateFormulaWithVariables($this->formula, $resolvedVariablesWithoutCustomizations) ?? 0.0;
-            
-            // Apply service package multiplier if available
-            $packageMultipliedAmount = $this->applyServicePackageMultiplier($baseAmount, $servicePackageInfo);
-            
-            // Apply KM range pricing rules with service package context
-            $kmRangePricingResult = $this->applyKmRangePricingRules(
-                $packageMultipliedAmount,
-                $kmCalculations,
-                $inputs,
-                $servicePackageInfo
-            );
-            
-            // Apply general price adjustments with service package context
-            $priceAdjustmentResult = $this->applyPriceAdjustments(
-                $kmRangePricingResult['final_amount'],
-                $inputs,
-                $servicePackageInfo
-            );
-            
-            $totalAmount = $priceAdjustmentResult['final_amount'];
-            $totalAmountWithoutCustomizations = $baseAmountWithoutCustomizations;
+            $totalAmount = $this->evaluateFormulaWithVariables($this->formula, $resolvedVariables) ?? 0.0;
+            $totalAmountWithoutCustomizations = $this->evaluateFormulaWithVariables($this->formula, $resolvedVariablesWithoutCustomizations) ?? 0.0;
 
-            $built = $this->buildCalculationBreakdown($resolvedVariables, $totalAmount, $totalAmountWithoutCustomizations, $slabInfo, $kmCalculations);
-            
-            // Add service package and adjustment details to breakdown
-            $built['service_package'] = $this->buildServicePackageBreakdown($servicePackageInfo, $baseAmount, $packageMultipliedAmount);
-            $built['km_range_pricing'] = $kmRangePricingResult;
-            $built['price_adjustments'] = $priceAdjustmentResult;
-            $built['base_amount'] = $baseAmount;
-            $built['package_multiplied_amount'] = $packageMultipliedAmount;
-            
+            // Apply price adjustments and KM range pricing rules after base calculation
+            $adjustmentResults = $this->applyPricingAdjustments(
+                $totalAmount,
+                $inputs,
+                $servicePackageInfo,
+                $districtInfo,
+                $kmCalculations
+            );
+
+            $finalAmount = $adjustmentResults['final_amount'];
+            $finalAmountWithoutCustomizations = $this->applyPricingAdjustments(
+                $totalAmountWithoutCustomizations,
+                $inputs,
+                $servicePackageInfo,
+                $districtInfo,
+                $kmCalculations
+            )['final_amount'];
+
+            $built = $this->buildCalculationBreakdown(
+                $resolvedVariables,
+                $finalAmount,
+                $finalAmountWithoutCustomizations,
+                $slabInfo,
+                $kmCalculations,
+                $adjustmentResults
+            );
             $built['definition_id'] = $this->id;
             $built['variables_used'] = $metadata['variables_used'];
             $built['conditions_evaluated'] = $metadata['conditions_evaluated'];
+            $built['pricing_adjustments'] = $adjustmentResults['adjustments'];
+            $built['service_package_info'] = $servicePackageInfo;
+            $built['district_info'] = $districtInfo;
 
             return $built;
         } catch (\Exception $e) {          
@@ -210,7 +184,7 @@ class VehiclePricingCalculationDefinition extends Model
     /**
      * Build detailed calculation breakdown
      */
-    private function buildCalculationBreakdown(array $resolvedVariables, float $totalAmount, float $totalAmountWithoutCustomizations, ?array $slabInfo, array $kmCalculations): array
+    private function buildCalculationBreakdown(array $resolvedVariables, float $totalAmount, float $totalAmountWithoutCustomizations, ?array $slabInfo, array $kmCalculations, array $adjustmentResults = []): array
     {
         $breakdown = [];
 
@@ -381,225 +355,6 @@ class VehiclePricingCalculationDefinition extends Model
         ];
     }
 
-
-    /**
-     * Apply service package multiplier to base amount
-     */
-    private function applyServicePackageMultiplier(float $baseAmount, ?array $servicePackageInfo): float
-    {
-        if (!$servicePackageInfo || !isset($servicePackageInfo['price_multiplier'])) {
-            return $baseAmount;
-        }
-        
-        $multiplier = (float) $servicePackageInfo['price_multiplier'];
-        
-        // Only apply multiplier if it's valid and different from 1.0
-        if ($multiplier > 0 && $multiplier != 1.0) {
-            Log::info('Applying service package multiplier', [
-                'base_amount' => $baseAmount,
-                'multiplier' => $multiplier,
-                'package_id' => $servicePackageInfo['id'] ?? null,
-                'package_name' => $servicePackageInfo['name'] ?? null
-            ]);
-            
-            return $baseAmount * $multiplier;
-        }
-        
-        return $baseAmount;
-    }
-    
-    /**
-     * Apply KM range pricing rules with service package context
-     */
-    private function applyKmRangePricingRules(float $baseAmount, array $kmCalculations, array $inputs, ?array $servicePackageInfo): array
-    {
-        $totalDistance = $kmCalculations['journey_distance'] ?? 0;
-        
-        if ($totalDistance <= 0) {
-            return [
-                'rules_applied' => [],
-                'total_adjustment' => 0,
-                'final_amount' => $baseAmount,
-                'calculation_summary' => 'No distance to apply KM-range pricing rules'
-            ];
-        }
-        
-        $serviceTypeId = $inputs['service_type_id'] ?? $this->service_type_id ?? null;
-        $vehicleGroupId = $inputs['vehicle_group_id'] ?? null;
-        
-        try {
-            // Import and use the KmRangePricingRule class
-            $kmRangePricingRuleClass = '\App\Models\Vehicle\VehiclePricing\KmRangePricingRule';
-            
-            if (!class_exists($kmRangePricingRuleClass)) {
-                Log::warning('KmRangePricingRule class not found');
-                return [
-                    'rules_applied' => [],
-                    'total_adjustment' => 0,
-                    'final_amount' => $baseAmount,
-                    'calculation_summary' => 'KM-range pricing not available'
-                ];
-            }
-            
-            // Get applicable KM range pricing rules
-            $result = $kmRangePricingRuleClass::calculateBestPricing(
-                $totalDistance,
-                $baseAmount,
-                $serviceTypeId,
-                $vehicleGroupId
-            );
-            
-            // Log service package context for KM range pricing
-            if ($servicePackageInfo) {
-                Log::info('KM range pricing with service package context', [
-                    'service_package_id' => $servicePackageInfo['id'] ?? null,
-                    'package_name' => $servicePackageInfo['name'] ?? null,
-                    'total_distance' => $totalDistance,
-                    'km_range_adjustment' => $result['total_adjustment'] ?? 0
-                ]);
-            }
-            
-            return $result;
-        } catch (\Exception $e) {
-            Log::error('Failed to apply KM range pricing rules', [
-                'error' => $e->getMessage(),
-                'total_distance' => $totalDistance,
-                'service_type_id' => $serviceTypeId,
-                'vehicle_group_id' => $vehicleGroupId
-            ]);
-            
-            return [
-                'rules_applied' => [],
-                'total_adjustment' => 0,
-                'final_amount' => $baseAmount,
-                'calculation_summary' => 'KM-range pricing failed: ' . $e->getMessage()
-            ];
-        }
-    }
-    
-    /**
-     * Apply general price adjustments with service package context
-     */
-    private function applyPriceAdjustments(float $amount, array $inputs, ?array $servicePackageInfo): array
-    {
-        $serviceTypeId = $inputs['service_type_id'] ?? $this->service_type_id ?? null;
-        $vehicleGroupId = $inputs['vehicle_group_id'] ?? null;
-        
-        try {
-            // Import and use the PriceAdjustment class
-            $priceAdjustmentClass = '\App\Models\Vehicle\VehiclePricing\PriceAdjustment';
-            
-            if (!class_exists($priceAdjustmentClass)) {
-                Log::warning('PriceAdjustment class not found');
-                return [
-                    'adjustments_applied' => [],
-                    'total_adjustment' => 0,
-                    'final_amount' => $amount,
-                    'calculation_summary' => 'Price adjustments not available'
-                ];
-            }
-            
-            // Apply price adjustments to total price
-            $result = $priceAdjustmentClass::applyAdjustments(
-                $amount,
-                $serviceTypeId,
-                $vehicleGroupId,
-                'total_price'
-            );
-            
-            // Log service package context for price adjustments
-            if ($servicePackageInfo) {
-                Log::info('Price adjustments with service package context', [
-                    'service_package_id' => $servicePackageInfo['id'] ?? null,
-                    'package_name' => $servicePackageInfo['name'] ?? null,
-                    'base_amount' => $amount,
-                    'price_adjustment' => $result['total_adjustment'] ?? 0
-                ]);
-            }
-            
-            return $result;
-        } catch (\Exception $e) {
-            Log::error('Failed to apply price adjustments', [
-                'error' => $e->getMessage(),
-                'amount' => $amount,
-                'service_type_id' => $serviceTypeId,
-                'vehicle_group_id' => $vehicleGroupId
-            ]);
-            
-            return [
-                'adjustments_applied' => [],
-                'total_adjustment' => 0,
-                'final_amount' => $amount,
-                'calculation_summary' => 'Price adjustments failed: ' . $e->getMessage()
-            ];
-        }
-    }
-    
-    /**
-     * Build service package breakdown for transparency
-     */
-    /**
-     * Determine if service package should override other pricing rules
-     */
-    private function shouldServicePackageOverride(?array $servicePackageInfo): bool
-    {
-        if (!$servicePackageInfo) {
-            return false;
-        }
-        
-        // Service packages have highest priority when:
-        // 1. They have a rate_type that defines specific pricing behavior
-        // 2. They have KM limits that should override general rules
-        // 3. They have multipliers that should be applied consistently
-        
-        $hasRateType = !empty($servicePackageInfo['rate_type']);
-        $hasKmLimits = !empty($servicePackageInfo['max_km_per_day']) || !empty($servicePackageInfo['max_km_per_package']);
-        $hasMultiplier = !empty($servicePackageInfo['price_multiplier']) && $servicePackageInfo['price_multiplier'] != 1.0;
-        
-        return $hasRateType || $hasKmLimits || $hasMultiplier;
-    }
-    
-    private function buildServicePackageBreakdown(?array $servicePackageInfo, float $baseAmount, float $multipliedAmount): array
-    {
-        if (!$servicePackageInfo) {
-            return [
-                'applied' => false,
-                'package_info' => null,
-                'multiplier_applied' => false,
-                'has_priority' => false
-            ];
-        }
-        
-        $multiplier = (float) ($servicePackageInfo['price_multiplier'] ?? 1.0);
-        $multiplierApplied = $multiplier > 0 && $multiplier != 1.0;
-        $hasPriority = $this->shouldServicePackageOverride($servicePackageInfo);
-        
-        return [
-            'applied' => true,
-            'package_info' => [
-                'id' => $servicePackageInfo['id'] ?? null,
-                'name' => $servicePackageInfo['name'] ?? null,
-                'code' => $servicePackageInfo['code'] ?? null,
-                'max_km_per_day' => $servicePackageInfo['max_km_per_day'] ?? null,
-                'max_km_per_package' => $servicePackageInfo['max_km_per_package'] ?? null,
-                'price_multiplier' => $multiplier,
-                'rate_type' => $servicePackageInfo['rate_type'] ?? null,
-                'default_duration_hours' => $servicePackageInfo['default_duration_hours'] ?? null
-            ],
-            'multiplier_applied' => $multiplierApplied,
-            'has_priority' => $hasPriority,
-            'base_amount' => $baseAmount,
-            'multiplied_amount' => $multipliedAmount,
-            'multiplier_adjustment' => $multipliedAmount - $baseAmount,
-            'calculation' => $multiplierApplied ? 
-                "Base amount {$baseAmount} × {$multiplier} = {$multipliedAmount}" : 
-                'No multiplier applied',
-            'priority_reason' => $hasPriority ? 
-                'Service package has priority due to rate type, KM limits, or multipliers' : 
-                'Service package has no special priority'
-        ];
-    }
-
     /**
      * Get empty calculation result structure
      */
@@ -615,7 +370,6 @@ class VehiclePricingCalculationDefinition extends Model
             'km_range_pricing' => null,
             'price_adjustments' => null,
             'base_amount' => 0,
-            'package_multiplied_amount' => 0
         ];
     }
 
@@ -669,30 +423,6 @@ class VehiclePricingCalculationDefinition extends Model
             'max_km_per_day' => $slabDefinition->max_km_per_day,
             'max_km_per_package' => $slabDefinition->max_km_per_package,
             'type' => $slabDefinition->type
-        ];
-    }
-
-    /**
-     * Get slab information including KM limits
-     */
-    private function getServicePackageInformation(array $inputs): ?array
-    {
-        $packageId = $inputs['package_id'] ?? null;
-
-        if (!$packageId) {
-            return null;
-        }
-
-        $servicePackage = ServicePackage::find($packageId);
-
-        if (!$servicePackage) {
-            return null;
-        }
-
-        return [
-            'service_package' => $servicePackage,
-            'max_km_per_day' => $servicePackage->max_km_per_day,
-            'max_km_per_package' => $servicePackage->max_km_per_package,
         ];
     }
 
@@ -823,9 +553,9 @@ class VehiclePricingCalculationDefinition extends Model
     }
 
     /**
-     * Resolve all variables for calculation strictly as per definition; do not add extras.
+     * Resolve all variables for calculation strictly as per definition with Service Package support.
      */
-    private function resolveAllVariables(array $inputs, ?array $slabInfo, array $kmCalculations, ?array $appliedCustomizations): array
+    private function resolveAllVariables(array $inputs, ?array $slabInfo, array $kmCalculations, ?array $appliedCustomizations, ?array $servicePackageInfo = null, ?array $districtInfo = null): array
     {
         $resolvedVariables = [];
         $missingVariables = [];
@@ -845,7 +575,7 @@ class VehiclePricingCalculationDefinition extends Model
             } elseif ($varName === 'journey_distance' || $varName === 'total_distance') {
                 $value = $kmCalculations['journey_distance'] ?? ($inputs[$varName] ?? $defaultValue);
             } else {
-                $value = $this->resolveVariable($varName, $varType, $inputs, $defaultValue, $slabInfo, $appliedCustomizations);
+                $value = $this->resolveVariable($varName, $varType, $inputs, $defaultValue, $slabInfo, $appliedCustomizations, $servicePackageInfo, $districtInfo);
             }
 
             if ($value === null && $isRequired) {
@@ -866,16 +596,19 @@ class VehiclePricingCalculationDefinition extends Model
 
     /**
      * Resolve a single variable value based on its type.
-     * Enhanced to support slab information for KM-based calculations.
+     * Enhanced to support Service Package pricing and district adjustments.
      *
      * @param string $varName Variable name
      * @param string $varType Variable type (slab_rate, common_rate, duration, distance, fixed_value)
      * @param array $inputs Input values
      * @param mixed $defaultValue Default value if not found in inputs
      * @param array|null $slabInfo Slab information for enhanced calculations
+     * @param array|null $appliedCustomizations Custom value overrides
+     * @param array|null $servicePackageInfo Service package context
+     * @param array|null $districtInfo District pricing context
      * @return float|null Resolved value
      */
-    private function resolveVariable(string $varName, string $varType, array $inputs, $defaultValue = null, ?array $slabInfo = null, ?array $appliedCustomizations = null): ?float
+    private function resolveVariable(string $varName, string $varType, array $inputs, $defaultValue = null, ?array $slabInfo = null, ?array $appliedCustomizations = null, ?array $servicePackageInfo = null, ?array $districtInfo = null): ?float
     {
 
         $override = null;
@@ -890,7 +623,7 @@ class VehiclePricingCalculationDefinition extends Model
 
         switch ($varType) {
             case 'slab_rate':
-                return $this->getSlabRateValue($inputs, $slabInfo, $appliedCustomizations);
+                return $this->getSlabRateValue($inputs, $slabInfo, $appliedCustomizations, $servicePackageInfo, $districtInfo);
 
             case 'common_rate':
                 // Extract rate key from variable name (e.g., 'pickup_rate_per_km' from 'common_rate_pickup_rate_per_km')
@@ -963,21 +696,11 @@ class VehiclePricingCalculationDefinition extends Model
     }
 
 
-    /**
-     * Get slab rate value from database based on inputs.
-     * Enhanced to work with pre-calculated slab information.
-     * 
-     * @param array $inputs Input values containing vehicle_group_id and duration_hours
-     * @param array|null $slabInfo Pre-calculated slab information
-     * @return float The calculated slab rate
-     */
-    // CHANGED: add optional $appliedCustomizations param
-    private function getSlabRateValue(array $inputs, ?array $slabInfo = null, ?array $appliedCustomizations = null): float
+    private function getSlabRateValue(array $inputs, ?array $slabInfo = null, ?array $appliedCustomizations = null, ?array $servicePackageInfo = null, ?array $districtInfo = null): float
     {
         try {
             $vehicleGroupId = $inputs['vehicle_group_id'] ?? null;
 
-            // Booking-time override for slab_rate (package/district adjustments)
             $customSlabBase = null;
             if (is_array($appliedCustomizations) && !empty($appliedCustomizations)) {
                 foreach (array_reverse($appliedCustomizations) as $c) {
@@ -1050,25 +773,28 @@ class VehiclePricingCalculationDefinition extends Model
                 ? $customSlabBase
                 : (float) $vehicleGroupPricing->rate;
 
-            // Get service package information for additional context logging
-            $servicePackageInfo = $this->getServicePackageInformation($inputs);
-            if ($servicePackageInfo) {
-                Log::info('Slab rate calculated with service package context', [
-                    'base_rate' => $baseRate,
-                    'service_package_id' => $servicePackageInfo['id'] ?? null,
-                    'package_name' => $servicePackageInfo['name'] ?? null,
-                    'package_multiplier' => $servicePackageInfo['price_multiplier'] ?? null,
-                    'custom_slab_base' => $customSlabBase,
-                    'original_db_rate' => $vehicleGroupPricing->rate ?? null
+            // Apply Service Package multiplier to base rate ONLY
+            if ($servicePackageInfo && isset($servicePackageInfo['price_multiplier']) && $servicePackageInfo['price_multiplier'] > 0) {
+                $multiplier = (float) $servicePackageInfo['price_multiplier'];
+                $baseRate = $baseRate * $multiplier;
+                Log::info("Applied Service Package multiplier to base rate", [
+                    'original_rate' => $customSlabBase ?? $vehicleGroupPricing->rate,
+                    'multiplier' => $multiplier,
+                    'adjusted_rate' => $baseRate,
+                    'package' => $servicePackageInfo['name'] ?? 'Unknown'
                 ]);
             }
 
-            // $calculatedRate = $this->calculateSlabRateWithType(
-            //     $baseRate,
-            //     $vehicleGroupPricing->rate_type,
-            //     $durationHours,
-            //     $vehicleGroupPricing->minimum_charge ? (float) $vehicleGroupPricing->minimum_charge : null
-            // );
+            // Apply district pricing adjustment to base rate
+            if ($districtInfo && isset($districtInfo['percentage_change']) && $districtInfo['percentage_change'] != 0) {
+                $districtAdjustment = 1 + ($districtInfo['percentage_change'] / 100);
+                $baseRate = $baseRate * $districtAdjustment;
+                Log::info("Applied district pricing adjustment to base rate", [
+                    'district_id' => $districtInfo['district_id'] ?? 'Unknown',
+                    'percentage_change' => $districtInfo['percentage_change'],
+                    'adjusted_rate' => $baseRate
+                ]);
+            }
 
             return $baseRate;
         } catch (\Exception $e) {
@@ -1241,17 +967,75 @@ class VehiclePricingCalculationDefinition extends Model
     }
 
     /**
+     * Apply KM range pricing rules and price adjustments.
+     */
+    private function applyPricingAdjustments(
+        float $baseAmount,
+        array $inputs,
+        ?array $servicePackageInfo,
+        ?array $districtInfo,
+        array $kmCalculations
+    ): array {
+        $adjustments = [];
+        $currentAmount = $baseAmount;
+        
+        $vehicleGroupId = $inputs['vehicle_group_id'] ?? null;
+        $totalDistance = $kmCalculations['journey_distance'] ?? 0;
+        
+        if ($vehicleGroupId && $totalDistance > 0) {
+            $kmRangeResult = KmRangePricingRule::calculateBestPricing(
+                $totalDistance,
+                0,
+                $this->service_type_id,
+                $vehicleGroupId
+            );
+            
+            if (!empty($kmRangeResult['rules_applied'])) {
+                foreach ($kmRangeResult['rules_applied'] as $rule) {
+                    $adjustments[] = [
+                        'type' => 'km_range_pricing',
+                        'name' => $rule['rule_info']['name'] ?? 'KM Range Pricing',
+                        'amount' => $rule['adjustment_amount'] ?? 0,
+                        'calculation' => $rule['calculation_details'] ?? null,
+                    ];
+                }
+            }
+        }
+        
+        $priceAdjustmentResult = PriceAdjustment::applyAdjustments(
+            $currentAmount,
+            $this->service_type_id,
+            $vehicleGroupId,
+            'total_price'
+        );
+        
+        if (!empty($priceAdjustmentResult['adjustments_applied'])) {
+            foreach ($priceAdjustmentResult['adjustments_applied'] as $adjustment) {
+                $adjustments[] = [
+                    'type' => 'price_adjustment',
+                    'name' => $adjustment['adjustment_info']['name'] ?? 'Price Adjustment',
+                    'amount' => $adjustment['adjustment_amount'] ?? 0,
+                    'calculation' => $adjustment['calculation_details'] ?? null,
+                    'is_cumulative' => $adjustment['adjustment_info']['is_cumulative'] ?? false,
+                ];
+            }
+            $currentAmount = $priceAdjustmentResult['final_amount'];
+        }
+        
+        return [
+            'final_amount' => $currentAmount,
+            'adjustments' => $adjustments,
+            'total_adjustment' => $currentAmount - $baseAmount,
+        ];
+    }
+
+    /**
      * Validate that the formula is syntactically correct.
-     * 
-     * @return bool True if formula is valid
      */
     public function validateFormula(): bool
     {
         try {
-            // Create sample inputs for all variables
             $sampleInputs = $this->generateSampleInputs();
-
-            // Try to calculate with sample inputs
             $result = $this->calculatePrice($sampleInputs);
 
             return isset($result['total_amount']) &&
@@ -1265,8 +1049,6 @@ class VehiclePricingCalculationDefinition extends Model
 
     /**
      * Generate sample inputs for formula validation.
-     *
-     * @return array Sample input values
      */
     private function generateSampleInputs(): array
     {
@@ -1456,9 +1238,6 @@ class VehiclePricingCalculationDefinition extends Model
 
     /**
      * Get detailed slab rate breakdown.
-     * 
-     * @param array $inputs Input values
-     * @return array Slab rate calculation details
      */
     private function getSlabRateBreakdown(array $inputs): array
     {
@@ -1478,7 +1257,6 @@ class VehiclePricingCalculationDefinition extends Model
                 return $breakdown;
             }
 
-            // Find the appropriate slab definition
             $slabDefinition = VehiclePricingSlabDefinition::where('service_type_id', $this->service_type_id)
                 ->where('is_active', true)
                 ->where(function ($query) use ($durationHours) {

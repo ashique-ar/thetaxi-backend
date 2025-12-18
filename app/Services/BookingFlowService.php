@@ -15,13 +15,10 @@ use App\Models\Driver\Driver;
 use App\Models\DriverAssignment;
 use App\Models\Customer;
 use App\Models\Service\ServiceType;
+use App\Models\Service\ServicePackage;
 use App\Models\Company;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCalculationDefinition;
-use App\Models\Vehicle\VehiclePricing\KmRangePricingRule;
-use App\Models\Vehicle\VehiclePricing\PriceAdjustment;
-use App\Models\Service\ServicePackage;
 use App\Models\Vehicle\VehiclePricing\DistrictPricingAdjustment;
-use App\Models\Vehicle\VehiclePricing\BookingPriceAdjustmentHistory;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -225,31 +222,10 @@ class BookingFlowService
                         'duration_days' => $durationInfo['days'],
                         'pickup_location' => $pickupLocation,
                         'dropoff_location' => $dropoffLocation,
+                        'package_id' => $params['package_id'] ?? null,
                         'mode' => 'preview'
                     ];
                     
-                    // PRIORITY: Pass ServicePackage information for highest priority pricing
-                    if (!empty($params['package_id'])) {
-                        $pricingParams['package_id'] = $params['package_id'];
-                        
-                        // Also pass related package parameters
-                        if (!empty($params['package_included_km'])) {
-                            $pricingParams['package_included_km'] = $params['package_included_km'];
-                        }
-                        if (!empty($params['package_default_duration_hours'])) {
-                            $pricingParams['package_default_duration_hours'] = $params['package_default_duration_hours'];
-                        }
-                        if (!empty($params['package_price_multiplier'])) {
-                            $pricingParams['package_price_multiplier'] = $params['package_price_multiplier'];
-                        }
-                        
-                        Log::info('ServicePackage parameters passed to pricing calculation', [
-                            'vehicle_group_id' => $group->id,
-                            'package_id' => $params['package_id'],
-                            'package_included_km' => $params['package_included_km'] ?? 'not_set',
-                            'package_default_duration_hours' => $params['package_default_duration_hours'] ?? 'not_set'
-                        ]);
-                    }
 
                     $basePricing = $this->calculateDynamicPricing($pricingParams);
                     if ($basePricing && isset($basePricing['total_amount']) && $basePricing['total_amount'] > 0) {
@@ -883,6 +859,109 @@ class BookingFlowService
 
             return $booking->load(['customer', 'vehicle', 'driver', 'serviceType', 'vehicleGroup', 'approvals']);
         });
+    }
+
+    /**
+     * Get Service Package information.
+     */
+    private function getServicePackageInformation(array $inputs): ?array
+    {
+        $packageId = $inputs['package_id'] ?? null;
+
+        if (!$packageId) {
+            return null;
+        }
+
+        $servicePackage = ServicePackage::find($packageId);
+
+        if (!$servicePackage) {
+            return null;
+        }
+
+        return [
+            'id' => $servicePackage->id,
+            'name' => $servicePackage->name,
+            'code' => $servicePackage->code,
+            'service_package' => $servicePackage,
+            'max_km_per_day' => $servicePackage->max_km_per_day,
+            'max_km_per_package' => $servicePackage->max_km_per_package,
+            'price_multiplier' => $servicePackage->price_multiplier,
+            'rate_type' => $servicePackage->rate_type,
+            'default_duration_hours' => $servicePackage->default_duration_hours,
+        ];
+    }
+
+    /**
+     * Resolve district pricing adjustment based on start location.
+     * Falls back to Colombo if no district pricing exists for the selected location.
+     */
+    private function resolveDistrictPricing(array $params, string $serviceTypeId, ?string $packageId = null, ?string $vehicleGroupId = null): ?array
+    {
+        // Extract district from pickup/start location
+        $districtId = null;
+        
+        if (isset($params['pickup_location'])) {
+            $location = $params['pickup_location'];
+            
+            // Location could be an array with district_id or a JSON-encoded string
+            if (is_array($location)) {
+                $districtId = $location['district_id'] ?? null;
+            } elseif (is_string($location)) {
+                $decoded = json_decode($location, true);
+                if (is_array($decoded)) {
+                    $districtId = $decoded['district_id'] ?? null;
+                }
+            }
+        }
+        
+        if ($districtId) {
+            $adjustment = DistrictPricingAdjustment::resolveAdjustment(
+                $districtId,
+                $serviceTypeId,
+                $packageId,
+                $vehicleGroupId
+            );
+            
+            if ($adjustment && $adjustment['percentage'] != 0) {
+                return [
+                    'district_id' => $districtId,
+                    'percentage_change' => $adjustment['percentage'],
+                    'is_available' => $adjustment['is_available'],
+                    'request_quote' => $adjustment['request_quote'],
+                    'adjustment_id' => $adjustment['id'],
+                ];
+            }
+        }
+        
+        $colomboDistrictId = \DB::table('districts')->where('name', 'Colombo')->value('id');
+        
+        if ($colomboDistrictId && $colomboDistrictId !== $districtId) {
+            $colomboAdjustment = DistrictPricingAdjustment::resolveAdjustment(
+                $colomboDistrictId,
+                $serviceTypeId,
+                $packageId,
+                $vehicleGroupId
+            );
+            
+            if ($colomboAdjustment && $colomboAdjustment['percentage'] != 0) {
+                Log::info("Falling back to Colombo district pricing", [
+                    'original_district' => $districtId,
+                    'fallback_district' => $colomboDistrictId,
+                    'percentage_change' => $colomboAdjustment['percentage']
+                ]);
+                
+                return [
+                    'district_id' => $colomboDistrictId,
+                    'percentage_change' => $colomboAdjustment['percentage'],
+                    'is_available' => $colomboAdjustment['is_available'],
+                    'request_quote' => $colomboAdjustment['request_quote'],
+                    'adjustment_id' => $colomboAdjustment['id'],
+                    'is_fallback' => true,
+                ];
+            }
+        }
+        
+        return null;
     }
 
     public function confirmBooking(array $params): Booking
@@ -1873,45 +1952,6 @@ class BookingFlowService
     }
 
     /**
-     * Calculate available time windows
-     */
-    private function calculateAvailableTimeWindows(array $conflicts, $fromDate, $toDate): array
-    {
-        $windows = [];
-        $current = $fromDate->copy();
-
-        // Sort conflicts by start time
-        usort($conflicts, function ($a, $b) {
-            return Carbon::parse($a['from'])->compare(Carbon::parse($b['from']));
-        });
-
-        foreach ($conflicts as $conflict) {
-            $conflictStart = Carbon::parse($conflict['from']);
-
-            if ($current < $conflictStart) {
-                $windows[] = [
-                    'from' => $current->toISOString(),
-                    'to' => $conflictStart->toISOString(),
-                    'duration_minutes' => $current->diffInMinutes($conflictStart),
-                ];
-            }
-
-            $current = max($current, Carbon::parse($conflict['to']));
-        }
-
-        // Add final window if there's time remaining
-        if ($current < $toDate) {
-            $windows[] = [
-                'from' => $current->toISOString(),
-                'to' => $toDate->toISOString(),
-                'duration_minutes' => $current->diffInMinutes($toDate),
-            ];
-        }
-
-        return $windows;
-    }
-
-    /**
      * Determine overlap type
      */
     private function determineOverlapType($requestStart, $requestEnd, $assignmentStart, $assignmentEnd): string
@@ -1928,29 +1968,6 @@ class BookingFlowService
     }
 
     /**
-     * Get maintenance windows for vehicle
-     */
-    private function getMaintenanceWindows($vehicle, $fromDate, $toDate): array
-    {
-        // This would typically come from a maintenance schedule table
-        // For now, return empty array
-        return [];
-    }
-
-    /**
-     * Get vehicle conflicts for availability checking
-     */
-    private function getVehicleConflicts($vehicle, $fromDate, $toDate): array
-    {
-        $conflicts = [];
-
-        // Check for existing bookings - simplified for now
-        // In a real implementation, you'd query the bookings table
-
-        return $conflicts;
-    }
-
-    /**
      * Determine vehicle availability status
      */
     private function determineVehicleAvailabilityStatus($vehicle, $conflicts, $fromDate, $toDate): string
@@ -1961,14 +1978,6 @@ class BookingFlowService
 
         // Simplified logic - in reality you'd check conflict types
         return 'booked';
-    }
-
-    /**
-     * Check if vehicle requires confirmation
-     */
-    private function vehicleRequiresConfirmation($vehicle, $conflicts, $availabilityStatus): bool
-    {
-        return !empty($conflicts) || $availabilityStatus !== 'available';
     }
 
     /**
@@ -2048,15 +2057,26 @@ class BookingFlowService
                 return $this->calculateFallbackPricing($params);
             }
 
-            // Package/district context hooks
-            $packageContext = $this->resolvePackagePricingContext($params);
-            $appliedCustomizations = array_merge($appliedCustomizations, $packageContext['customizations']);
-
             // Prepare calculation inputs
-            $calculationInputs = $this->prepareCalculationInputs(array_merge($params, $packageContext['inputs']));
+            $calculationInputs = $this->prepareCalculationInputs($params);
+            
+            // Resolve Service Package information
+            $servicePackageInfo = $this->getServicePackageInformation($calculationInputs);
+            
+            // Resolve district pricing adjustment
+            $districtInfo = null;
+            // $districtInfo = $this->resolveDistrictPricing($params, $serviceTypeId, $params['package_id'] ?? null, $params['vehicle_group_id'] ?? null);
+            
             // Execute the calculation
-            $calculationResult = $calculationDefinition->calculatePrice($calculationInputs, $appliedCustomizations);
-            $calculationResult['package_context'] = $packageContext;
+            $calculationResult = $calculationDefinition->calculatePrice($calculationInputs, $appliedCustomizations, $servicePackageInfo, $districtInfo);
+
+            Log::info("Dynamic pricing calculation executed", [
+                'params' => $params,
+                'definition_id' => $calculationDefinition->id,
+                'inputs' => $calculationInputs,
+                'service_package_info' => $servicePackageInfo,
+                'result' => $calculationResult
+            ]);
             // Transform result to standard pricing structure
             return $this->transformCalculationResult($calculationResult, $params, $mode);
         } catch (\Exception $e) {
@@ -2069,80 +2089,6 @@ class BookingFlowService
         }
     }
 
-    /**
-     * Resolve package-level pricing and district adjustments in one place.
-     */
-    private function resolvePackagePricingContext(array $params): array
-    {
-        $packageId = $params['package_id'] ?? null;
-        $vehicleGroupId = $params['vehicle_group_id'] ?? null;
-        $serviceTypeId = $params['service_type_id'] ?? null;
-
-        $context = [
-            'inputs' => [],
-            'customizations' => [],
-            'adjustments' => [
-                'package_percentage' => 0,
-                'district_percentage' => 0,
-                'district_rule_id' => null,
-            ],
-            'availability' => [
-                'is_available' => true,
-                'request_quote' => false,
-            ],
-        ];
-
-        if (!$packageId || !$vehicleGroupId || !$serviceTypeId) {
-            return $context;
-        }
-
-        $package = ServicePackage::active()->find($packageId);
-        if (!$package) {
-            return $context;
-        }
-
-        $baseRate = (float) ($rateRow->base_rate ?? 0);
-        $packageMultiplier = $package->price_multiplier ?? 1;
-        $packageAdjustedRate = $baseRate * $packageMultiplier;
-
-        $districtAdjustment = DistrictPricingAdjustment::resolveAdjustment(
-            $params['district_id'] ?? null,
-            $serviceTypeId,
-            $packageId,
-            $vehicleGroupId
-        );
-
-        $districtPercent = $districtAdjustment['percentage'] ?? 0;
-        $finalRate = $packageAdjustedRate * (1 + $districtPercent);
-
-        $context['inputs'] = [
-            'package_id' => $packageId,
-            'package_included_km' => $package->included_km,
-            'package_default_duration_hours' => $package->default_duration_hours,
-            'package_base_rate' => $baseRate,
-            'package_final_rate' => $finalRate,
-        ];
-
-        $context['customizations'][] = [
-            'variable_name' => 'slab_rate',
-            'variable_type' => 'number',
-            'custom_value' => $finalRate,
-            'context' => 'base_pricing',
-        ];
-
-        $context['adjustments'] = [
-            'package_percentage' => $packageMultiplier - 1,
-            'district_percentage' => $districtPercent,
-            'district_rule_id' => $districtAdjustment['id'] ?? null,
-        ];
-
-        $context['availability'] = [
-            'is_available' => $districtAdjustment['is_available'] ?? true,
-            'request_quote' => ($districtAdjustment['request_quote'] ?? false) || ($districtAdjustment['is_available'] === false),
-        ];
-
-        return $context;
-    }
 
     /**
      * Prepare inputs for calculation definition execution
@@ -2157,6 +2103,11 @@ class BookingFlowService
             'number_of_days' => $params['duration_days'] ?? 1,
         ];
 
+        // Detect airport locations (for applying airport pricing rules)
+        $pickupIsAirport = false;
+        $dropoffIsAirport = false;
+        
+        
         if (isset($params['district_id'])) {
             $inputs['district_id'] = $params['district_id'];
         }
@@ -2168,10 +2119,6 @@ class BookingFlowService
         if (isset($params['package_included_km'])) {
             $inputs['package_included_km'] = $params['package_included_km'];
         }
-
-        // Detect airport locations (for applying airport pricing rules)
-        $pickupIsAirport = false;
-        $dropoffIsAirport = false;
         
         if (isset($params['pickup_location']) && isset($params['dropoff_location'])) {
             $pickupIsAirport = $this->isAirportLocation($params['pickup_location']);
@@ -2234,18 +2181,6 @@ class BookingFlowService
                 'calculation_mode' => $mode
             ]
         ];
-
-        // Surface package/district context so the booking form can toggle request-quotation state
-        if (!empty($calculationResult['package_context']['inputs'])) {
-            $result['package_pricing'] = [
-                'package_id' => $calculationResult['package_context']['inputs']['package_id'] ?? null,
-                'included_km' => $calculationResult['package_context']['inputs']['package_included_km'] ?? null,
-                'base_rate' => $calculationResult['package_context']['inputs']['package_base_rate'] ?? null,
-                'final_rate' => $calculationResult['package_context']['inputs']['package_final_rate'] ?? null,
-                'adjustments' => $calculationResult['package_context']['adjustments'] ?? [],
-                'availability' => $calculationResult['package_context']['availability'] ?? [],
-            ];
-        }
 
         // Add detailed breakdown if full calculation mode
         if ($mode === 'full_calculation') {
@@ -2625,26 +2560,12 @@ class BookingFlowService
             'requires_approval' => $result['requires_approval'] ?? false,
         ];
 
-        // Apply KM-range pricing rules and price adjustments
-        $kmRangePricingResult = $this->applyKmRangePricing($params, $result['summary']['total']);
-        $priceAdjustmentResult = $this->applyPriceAdjustments($params, $kmRangePricingResult['final_amount']);
-
-        // Update final totals with KM-range pricing and adjustments
-        $finalAmountAfterKmRangeAndAdjustments = $priceAdjustmentResult['final_amount'];
-        $totalKmRangeAdjustment = $kmRangePricingResult['total_adjustment'];
-        $totalPriceAdjustment = $priceAdjustmentResult['total_adjustment'];
-
-        $result['km_range_pricing'] = $kmRangePricingResult;
-        $result['price_adjustments'] = $priceAdjustmentResult;
         
         // Update final breakdown to include all adjustments
         $result['final_breakdown'] = [
             'subtotal_before_discount' => ($result['summary']['total'] ?? $result['summary']['subtotal'] ?? 0),
             'total_discount' => $discountSummary['total_discount_amount'] ?? 0,
             'amount_after_discount' => ($result['summary']['total'] ?? 0) - ($discountSummary['total_discount_amount'] ?? 0),
-            'km_range_adjustment' => $totalKmRangeAdjustment,
-            'price_adjustment' => $totalPriceAdjustment,
-            'final_amount' => $finalAmountAfterKmRangeAndAdjustments,
             'requires_approval' => $result['requires_approval'] ?? false,
         ];
 
@@ -2659,8 +2580,6 @@ class BookingFlowService
                 'base_overrides' => $result['summary']['subtotal_without_customizations'] != $result['summary']['subtotal'] ? true : false,
                 'addon_overrides' => $result['summary']['addons_total_without_customizations'] != $result['summary']['addons_total'] ? true : false,
                 'discount_overrides' => $result['discount_summary']['total_discount_amount'] > 0 ? true : false,
-                'km_range_pricing_applied' => $totalKmRangeAdjustment != 0,
-                'price_adjustments_applied' => $totalPriceAdjustment != 0,
                 'variable_customizations' => !empty($params['variable_customizations']),
             ],
             'price_after_customizations' => [
@@ -3415,7 +3334,6 @@ class BookingFlowService
             'discount_amount'  => $discountAmount,
             'total_estimated'  => $finalAmount,
             'duration_metrics' => $pricing['duration'] ?? null,
-            // If you ever add km in calculateDynamicPricing… capture here:
             'distance_metrics' => $pricing['km_calculations']
                 ?? ($pricing['base_pricing']['km_calculations'] ?? null),
         ];
@@ -6375,255 +6293,5 @@ class BookingFlowService
         }
 
         return $history;
-    }
-
-    /**
-     * Apply KM-range pricing rules
-     * Integrates with the existing pricing calculation to apply distance-based pricing
-     */
-    private function applyKmRangePricing(array $params, float $baseAmount): array
-    {
-        try {
-            // Extract distance information from params
-            $totalDistance = $this->calculateTotalDistance($params);
-            
-            if ($totalDistance === 0) {
-                return [
-                    'rules_applied' => [],
-                    'total_adjustment' => 0,
-                    'final_amount' => $baseAmount,
-                    'calculation_summary' => 'No distance available for KM-range pricing',
-                ];
-            }
-
-            $serviceTypeId = $params['service_type_id'] ?? null;
-            $vehicleGroupId = $params['vehicle_group_id'] ?? null;
-            $calculationDate = isset($params['from_date']) ? Carbon::parse($params['from_date']) : now();
-
-
-            $result = KmRangePricingRule::calculateBestPricing(
-                $totalDistance,
-                $baseAmount,
-                $serviceTypeId,
-                $vehicleGroupId,
-                $calculationDate
-            );
-
-            return $result;
-
-        } catch (\Exception $e) {
-            Log::error("KM-range pricing calculation failed: " . $e->getMessage(), [
-                'params' => $params,
-                'base_amount' => $baseAmount,
-                'trace' => $e->getTraceAsString()
-            ]);
-
-            return [
-                'rules_applied' => [],
-                'total_adjustment' => 0,
-                'final_amount' => $baseAmount,
-                'calculation_summary' => 'KM-range pricing calculation failed',
-                'error' => $e->getMessage(),
-            ];
-        }
-    }
-
-    /**
-     * Apply seasonal and promotional price adjustments
-     */
-    private function applyPriceAdjustments(array $params, float $amount): array
-    {
-        try {
-            $serviceTypeId = $params['service_type_id'] ?? null;
-            $vehicleGroupId = $params['vehicle_group_id'] ?? null;
-            $calculationDate = isset($params['from_date']) ? Carbon::parse($params['from_date']) : now();
-            $priceComponent = 'total_price'; // Can be customized based on business rules
-
-            $result = PriceAdjustment::applyAdjustments(
-                $amount,
-                $serviceTypeId,
-                $vehicleGroupId,
-                $priceComponent,
-                $calculationDate
-            );
-
-            // Increment usage count for applied adjustments
-            if (!empty($result['adjustments_applied'])) {
-                foreach ($result['adjustments_applied'] as $appliedAdjustment) {
-                    if (isset($appliedAdjustment['adjustment_info']['id'])) {
-                        $adjustment = PriceAdjustment::find($appliedAdjustment['adjustment_info']['id']);
-                        if ($adjustment && $adjustment->usage_limit !== null) {
-                            $adjustment->incrementUsage();
-                        }
-                    }
-                }
-            }
-
-            return $result;
-
-        } catch (\Exception $e) {
-            Log::error("Price adjustments calculation failed: " . $e->getMessage(), [
-                'params' => $params,
-                'amount' => $amount,
-                'trace' => $e->getTraceAsString()
-            ]);
-
-            return [
-                'adjustments_applied' => [],
-                'total_adjustment' => 0,
-                'final_amount' => $amount,
-                'calculation_summary' => 'Price adjustments calculation failed',
-                'error' => $e->getMessage(),
-            ];
-        }
-    }
-
-    /**
-     * Calculate total distance from pickup and dropoff locations
-     * Integrates with existing distance calculation methods
-     */
-    private function calculateTotalDistance(array $params): float
-    {
-        $totalDistance = 0;
-
-        // Check for existing distance calculations in the params
-        if (isset($params['total_distance']) && $params['total_distance'] > 0) {
-            return (float) $params['total_distance'];
-        }
-
-        // Use existing distance calculation methods
-        if (isset($params['pickup_location']) && isset($params['dropoff_location'])) {
-            $pickupLocation = $params['pickup_location'];
-            $dropoffLocation = $params['dropoff_location'];
-            
-            // Use the existing company distances calculation
-            $serviceType = $params['service_type'] ?? null;
-            $vehicleId = $params['vehicle_id'] ?? null;
-            
-            $distanceCalculations = $this->calculateCompanyDistances(
-                $pickupLocation,
-                $dropoffLocation,
-                $serviceType,
-                $vehicleId
-            );
-
-            // Sum all relevant distances
-            $totalDistance += $distanceCalculations['pickup_distance'] ?? 0;
-            $totalDistance += $distanceCalculations['return_distance'] ?? 0;
-            $totalDistance += $distanceCalculations['main_distance'] ?? 0;
-        }
-
-        // Check for individual distance components in params
-        $totalDistance += $params['pickup_distance'] ?? 0;
-        $totalDistance += $params['dropoff_distance'] ?? 0;
-        $totalDistance += $params['return_distance'] ?? 0;
-        $totalDistance += $params['main_journey_distance'] ?? 0;
-
-        return $totalDistance;
-    }
-
-    /**
-     * Record price adjustment history for a booking
-     * Called when a booking is confirmed to track applied adjustments
-     */
-    public function recordPricingAdjustmentHistory(
-        string $bookingId,
-        array $kmRangePricingResult,
-        array $priceAdjustmentResult,
-        float $originalAmount,
-        float $finalAmount
-    ): void {
-        try {
-            DB::transaction(function () use ($bookingId, $kmRangePricingResult, $priceAdjustmentResult, $originalAmount, $finalAmount) {
-                // Record KM-range pricing rules applied
-                if (!empty($kmRangePricingResult['rules_applied'])) {
-                    foreach ($kmRangePricingResult['rules_applied'] as $appliedRule) {
-                        if (isset($appliedRule['rule_info']['id'])) {
-                            BookingPriceAdjustmentHistory::recordAdjustment(
-                                $bookingId,
-                                null, // No price adjustment ID for KM-range rules
-                                $appliedRule['rule_info']['id'],
-                                $appliedRule['adjustment_amount'],
-                                $originalAmount,
-                                $appliedRule['final_amount'],
-                                $appliedRule['calculation_details'],
-                                'KM-range pricing rule applied: ' . $appliedRule['rule_info']['name']
-                            );
-                        }
-                    }
-                }
-
-                // Record price adjustments applied
-                if (!empty($priceAdjustmentResult['adjustments_applied'])) {
-                    foreach ($priceAdjustmentResult['adjustments_applied'] as $appliedAdjustment) {
-                        if (isset($appliedAdjustment['adjustment_info']['id'])) {
-                            BookingPriceAdjustmentHistory::recordAdjustment(
-                                $bookingId,
-                                $appliedAdjustment['adjustment_info']['id'],
-                                null, // No KM-range rule ID for price adjustments
-                                $appliedAdjustment['adjustment_amount'],
-                                $originalAmount,
-                                $appliedAdjustment['final_amount'],
-                                $appliedAdjustment['calculation_details'],
-                                'Price adjustment applied: ' . $appliedAdjustment['adjustment_info']['name']
-                            );
-                        }
-                    }
-                }
-            });
-
-        } catch (\Exception $e) {
-            Log::error("Failed to record pricing adjustment history", [
-                'booking_id' => $bookingId,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-        }
-    }
-
-    /**
-     * Get pricing adjustment history for a booking
-     * Used for displaying adjustment details to users
-     */
-    public function getPricingAdjustmentHistory(string $bookingId): array
-    {
-        try {
-            $history = BookingPriceAdjustmentHistory::getBookingAdjustmentHistory($bookingId);
-            
-            $formattedHistory = [];
-            foreach ($history as $record) {
-                $formattedHistory[] = [
-                    'id' => $record->id,
-                    'type' => $record->price_adjustment_id ? 'price_adjustment' : 'km_range_pricing',
-                    'name' => $record->priceAdjustment?->name ?? $record->kmRangePricingRule?->name ?? 'Unknown',
-                    'adjustment_amount' => $record->adjustment_amount,
-                    'original_amount' => $record->original_amount,
-                    'final_amount' => $record->final_amount,
-                    'breakdown' => $record->adjustment_breakdown,
-                    'reason' => $record->adjustment_reason,
-                    'applied_by' => $record->appliedByUser?->name ?? 'System',
-                    'applied_at' => $record->applied_at->toISOString(),
-                ];
-            }
-
-            return [
-                'success' => true,
-                'history' => $formattedHistory,
-                'total_records' => count($formattedHistory),
-            ];
-
-        } catch (\Exception $e) {
-            Log::error("Failed to get pricing adjustment history", [
-                'booking_id' => $bookingId,
-                'error' => $e->getMessage()
-            ]);
-
-            return [
-                'success' => false,
-                'history' => [],
-                'total_records' => 0,
-                'error' => $e->getMessage(),
-            ];
-        }
     }
 }
