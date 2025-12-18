@@ -119,8 +119,8 @@ class SocialAuthController extends Controller
                 }
             }
 
-            // Generate token
-            $token = $this->authService->createToken($user, 'Social Login');
+            // Generate token (pass request so session metadata is logged)
+            $token = $this->authService->createToken($user, 'Social Login', $request);
             $user->updateLastLogin();
 
             return response()->json([

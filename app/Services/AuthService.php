@@ -119,6 +119,9 @@ class AuthService
                 $ua = $request->header('User-Agent');
                 $parsed = $this->parseUserAgent($ua);
 
+                // Log what we're receiving for diagnostics
+                \Log::info('AuthService::createToken - request ip: ' . $request->ip() . ' ua: ' . substr(($ua ?? 'NULL'), 0, 200));
+
                 \App\Models\ApiSession::create([
                     'token_id' => $token->token->id,
                     'user_id' => $user->id,
@@ -131,6 +134,8 @@ class AuthService
                     'last_active' => now(),
                     'current' => true
                 ]);
+            } else {
+                \Log::info('AuthService::createToken - no request provided when creating token for user ' . $user->id);
             }
         } catch (\Throwable $e) {
             // don't block token creation on logging errors
@@ -152,7 +157,7 @@ class AuthService
      * @return array
      * @throws \Exception
      */
-    public function authenticateWithRefresh(array $credentials): array
+    public function authenticateWithRefresh(array $credentials, $request = null): array
     {
         // First authenticate the user normally
         $user = $this->authenticate($credentials);
@@ -163,7 +168,32 @@ class AuthService
 
         // Create a Personal Access Token (simpler approach)
         $token = $user->createToken('API Token with Refresh');
-        
+
+        // If request available, log session metadata (mirror createToken behavior)
+        try {
+            if ($request) {
+                $ua = $request->header('User-Agent');
+                $parsed = $this->parseUserAgent($ua);
+
+                \Log::info('AuthService::authenticateWithRefresh - request ip: ' . $request->ip() . ' ua: ' . substr(($ua ?? 'NULL'), 0, 200));
+
+                \App\Models\ApiSession::create([
+                    'token_id' => $token->token->id,
+                    'user_id' => $user->id,
+                    'name' => 'API Token with Refresh',
+                    'ip_address' => $request->ip(),
+                    'user_agent' => $ua,
+                    'device' => $parsed['device'] ?? null,
+                    'browser' => $parsed['browser'] ?? null,
+                    'os' => $parsed['os'] ?? null,
+                    'last_active' => now(),
+                    'current' => true
+                ]);
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('Failed to create api_session record (refresh flow): ' . $e->getMessage());
+        }
+
         // Update user's last login
         $user->updateLastLogin();
 
@@ -422,6 +452,14 @@ class AuthService
                 // Attach any api_session metadata if available
                 $meta = \App\Models\ApiSession::where('token_id', $token->id)->latest()->first();
 
+                // Compute lastActive as ISO8601 string or null
+                $lastActive = null;
+                if ($meta?->last_active) {
+                    $lastActive = $meta->last_active->toIso8601String();
+                } elseif ($token->last_used_at) {
+                    $lastActive = $token->last_used_at->toIso8601String();
+                }
+
                 return [
                     'id' => $token->id,
                     'name' => $token->name,
@@ -430,13 +468,13 @@ class AuthService
                     'expires_at' => $token->expires_at,
                     'last_used_at' => $token->last_used_at,
                     // Metadata
-                    'ip' => $meta->ip_address ?? null,
-                    'user_agent' => $meta->user_agent ?? null,
-                    'device' => $meta->device ?? null,
-                    'browser' => $meta->browser ?? null,
-                    'os' => $meta->os ?? null,
-                    'location' => $meta->location ?? null,
-                    'lastActive' => $meta->last_active?->toISOString() ?? $token->last_used_at?->toISOString(),
+                    'ip' => $meta?->ip_address ?? null,
+                    'user_agent' => $meta?->user_agent ?? null,
+                    'device' => $meta?->device ?? null,
+                    'browser' => $meta?->browser ?? null,
+                    'os' => $meta?->os ?? null,
+                    'location' => $meta?->location ?? null,
+                    'lastActive' => $lastActive,
                     'current' => (bool) ($meta?->current ?? false),
                 ];
             })

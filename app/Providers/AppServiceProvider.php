@@ -47,5 +47,16 @@ class AppServiceProvider extends ServiceProvider
             'vehicle_owner' => \App\Models\Vehicle\VehicleOwner::class,
             'staff' => \App\Models\Staff::class,
         ]);
+
+        // Register custom route middleware aliases (fix for missing Kernel routeMiddleware registration)
+        try {
+            if ($this->app->bound(\Illuminate\Routing\Router::class)) {
+                $router = $this->app->make(\Illuminate\Routing\Router::class);
+                $router->aliasMiddleware('update.api.session', \App\Http\Middleware\UpdateApiSessionOnRequest::class);
+            }
+        } catch (\Throwable $e) {
+            // Non-fatal: ensure app still boots even if alias can't be registered
+            \Log::warning('Failed to register middleware alias update.api.session: ' . $e->getMessage());
+        }
     }
 }

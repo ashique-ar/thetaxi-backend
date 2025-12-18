@@ -116,7 +116,7 @@ class AuthController extends Controller
     {
         try {
             $credentials = $request->only('email', 'password');
-            $result = $this->authService->authenticateWithRefresh($credentials);
+            $result = $this->authService->authenticateWithRefresh($credentials, $request);
 
             return response()->json([
                 'status' => 'success',
