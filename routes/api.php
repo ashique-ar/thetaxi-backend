@@ -114,7 +114,7 @@ Route::prefix('auth')->group(function () {
         ->name('verification.verify');
 
     // Protected authentication routes
-    Route::middleware('auth:api')->group(function () {
+    Route::middleware(['auth:api', 'update.api.session'])->group(function () {
         Route::get('profile', [AuthController::class, 'profile']);
         Route::post('logout', [AuthController::class, 'logout']);
         Route::post('logout-all', [AuthController::class, 'logoutAll']);

@@ -490,6 +490,7 @@ return [
         'verify.user.active' => \App\Http\Middleware\EnsureUserIsActive::class,
         'verify.email.verified' => \App\Http\Middleware\EnsureEmailIsVerified::class,
         'log.api.activity' => \App\Http\Middleware\LogApiActivity::class,
+        'update.api.session' => \App\Http\Middleware\UpdateApiSessionOnRequest::class,
         'validate.api.version' => \App\Http\Middleware\ValidateApiVersion::class,
     ]
 ];

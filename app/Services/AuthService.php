@@ -109,10 +109,34 @@ class AuthService
      * @param string $tokenName
      * @return array
      */
-    public function createToken(User $user, string $tokenName = 'API Token'): array
+    public function createToken(User $user, string $tokenName = 'API Token', $request = null): array
     {
         $token = $user->createToken($tokenName);
-        
+
+        // Log session metadata if request available
+        try {
+            if ($request) {
+                $ua = $request->header('User-Agent');
+                $parsed = $this->parseUserAgent($ua);
+
+                \App\Models\ApiSession::create([
+                    'token_id' => $token->token->id,
+                    'user_id' => $user->id,
+                    'name' => $tokenName,
+                    'ip_address' => $request->ip(),
+                    'user_agent' => $ua,
+                    'device' => $parsed['device'] ?? null,
+                    'browser' => $parsed['browser'] ?? null,
+                    'os' => $parsed['os'] ?? null,
+                    'last_active' => now(),
+                    'current' => true
+                ]);
+            }
+        } catch (\Throwable $e) {
+            // don't block token creation on logging errors
+            \Log::warning('Failed to create api_session record: ' . $e->getMessage());
+        }
+
         return [
             'access_token' => $token->accessToken,
             'token_type' => 'Bearer',
@@ -164,7 +188,7 @@ class AuthService
      * @return array
      * @throws \Exception
      */
-    public function refreshToken(string $tokenId): array
+    public function refreshToken(string $tokenId, $request = null): array
     {
         // Find the existing token
         $token = Token::find($tokenId);
@@ -185,9 +209,34 @@ class AuthService
 
         // Revoke old token
         $token->revoke();
-        
+
         // Create new token
         $newToken = $user->createToken('API Token Refreshed');
+
+        // Log session metadata if possible
+        try {
+            $meta = [
+                'token_id' => $newToken->token->id,
+                'user_id' => $user->id,
+                'name' => 'API Token Refreshed',
+                'last_active' => now(),
+                'current' => true
+            ];
+
+            if ($request) {
+                $ua = $request->header('User-Agent');
+                $parsed = $this->parseUserAgent($ua);
+                $meta['ip_address'] = $request->ip();
+                $meta['user_agent'] = $ua;
+                $meta['device'] = $parsed['device'] ?? null;
+                $meta['browser'] = $parsed['browser'] ?? null;
+                $meta['os'] = $parsed['os'] ?? null;
+            }
+
+            \App\Models\ApiSession::create($meta);
+        } catch (\Throwable $e) {
+            \Log::warning('Failed to create api_session for refreshed token: ' . $e->getMessage());
+        }
 
         return [
             'access_token' => $newToken->accessToken,
@@ -370,6 +419,9 @@ class AuthService
             ->orderBy('created_at', 'desc')
             ->get()
             ->map(function ($token) {
+                // Attach any api_session metadata if available
+                $meta = \App\Models\ApiSession::where('token_id', $token->id)->latest()->first();
+
                 return [
                     'id' => $token->id,
                     'name' => $token->name,
@@ -377,6 +429,15 @@ class AuthService
                     'created_at' => $token->created_at,
                     'expires_at' => $token->expires_at,
                     'last_used_at' => $token->last_used_at,
+                    // Metadata
+                    'ip' => $meta->ip_address ?? null,
+                    'user_agent' => $meta->user_agent ?? null,
+                    'device' => $meta->device ?? null,
+                    'browser' => $meta->browser ?? null,
+                    'os' => $meta->os ?? null,
+                    'location' => $meta->location ?? null,
+                    'lastActive' => $meta->last_active?->toISOString() ?? $token->last_used_at?->toISOString(),
+                    'current' => (bool) ($meta?->current ?? false),
                 ];
             })
             ->toArray();
@@ -488,6 +549,68 @@ class AuthService
         }
 
         return false;
+    }
+
+    /**
+     * Parse a user agent string to extract a simple device/browser/os summary.
+     *
+     * @param string|null $ua
+     * @return array
+     */
+    private function parseUserAgent(?string $ua): array
+    {
+        $result = [
+            'device' => null,
+            'browser' => null,
+            'os' => null,
+        ];
+
+        if (!$ua) {
+            return $result;
+        }
+
+        $uaLower = strtolower($ua);
+
+        // Device
+        if (stripos($ua, 'mobile') !== false || stripos($ua, 'iphone') !== false || stripos($ua, 'android') !== false) {
+            $result['device'] = 'Mobile';
+        } elseif (stripos($ua, 'ipad') !== false || stripos($ua, 'tablet') !== false) {
+            $result['device'] = 'Tablet';
+        } else {
+            $result['device'] = 'Desktop';
+        }
+
+        // Browser (basic detection)
+        if (preg_match('/(edge|edg)\//i', $ua)) {
+            $result['browser'] = 'Edge';
+        } elseif (preg_match('/opr\//i', $ua) || preg_match('/opera/i', $ua)) {
+            $result['browser'] = 'Opera';
+        } elseif (preg_match('/chrome\//i', $ua) && !preg_match('/(chromium)/i', $ua)) {
+            $result['browser'] = 'Chrome';
+        } elseif (preg_match('/safari/i', $ua) && !preg_match('/chrome/i', $ua)) {
+            $result['browser'] = 'Safari';
+        } elseif (preg_match('/firefox/i', $ua)) {
+            $result['browser'] = 'Firefox';
+        } else {
+            $result['browser'] = 'Unknown';
+        }
+
+        // OS
+        if (stripos($ua, 'windows') !== false) {
+            $result['os'] = 'Windows';
+        } elseif (stripos($ua, 'mac os x') !== false || stripos($ua, 'macintosh') !== false) {
+            $result['os'] = 'macOS';
+        } elseif (stripos($ua, 'android') !== false) {
+            $result['os'] = 'Android';
+        } elseif (stripos($ua, 'iphone') !== false || stripos($ua, 'ipad') !== false || stripos($ua, 'ios') !== false) {
+            $result['os'] = 'iOS';
+        } elseif (stripos($ua, 'linux') !== false) {
+            $result['os'] = 'Linux';
+        } else {
+            $result['os'] = 'Unknown';
+        }
+
+        return $result;
     }
 
     /**

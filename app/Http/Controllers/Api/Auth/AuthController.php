@@ -42,7 +42,7 @@ class AuthController extends Controller
     {
         try {
             $user = $this->authService->register($request->validated());
-            $token = $this->authService->createToken($user);
+            $token = $this->authService->createToken($user, 'API Token', $request);
 
             return response()->json([
                 'status' => 'success',
@@ -80,7 +80,7 @@ class AuthController extends Controller
                 ], 401);
             }
 
-            $token = $this->authService->createToken($user);
+            $token = $this->authService->createToken($user, 'API Token with Refresh', $request);
             $user->updateLastLogin();
 
             return response()->json([
@@ -154,7 +154,7 @@ class AuthController extends Controller
         ]);
 
         try {
-            $tokens = $this->authService->refreshToken($request->refresh_token);
+            $tokens = $this->authService->refreshToken($request->refresh_token, $request);
 
             return response()->json([
                 'status' => 'success',
