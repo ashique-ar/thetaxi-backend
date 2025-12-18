@@ -123,7 +123,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'gallery',
         ];
 
-        $ops = ['view', 'create', 'edit', 'delete', 'manage'];
+        $ops = ['view', 'create', 'edit', 'update', 'delete', 'manage'];
         $permissions = [];
 
         foreach ($resources as $res) {

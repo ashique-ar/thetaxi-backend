@@ -91,6 +91,7 @@ class User extends Authenticatable
         'device_token',
         'timezone',
         'language',
+        'status',
         'login_attempts',
         'locked_until'
     ];

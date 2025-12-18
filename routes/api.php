@@ -184,6 +184,18 @@ Route::middleware(['auth:api'])->group(function () {
 
     /*
     |--------------------------------------------------------------------------
+    | User Profile Management Routes
+    |--------------------------------------------------------------------------
+    */
+    Route::prefix('profile')->group(function () {
+            Route::get('', [UserController::class, 'profile']);
+            Route::put('', [UserController::class, 'updateProfile']);
+            Route::post('/change-password', [UserController::class, 'changePassword']);
+            Route::put('/status', [UserController::class, 'updateStatus']);
+    });
+
+    /*
+    |--------------------------------------------------------------------------
     | Role Management Routes
     |--------------------------------------------------------------------------
     */

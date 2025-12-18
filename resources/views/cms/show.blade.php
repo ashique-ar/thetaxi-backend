@@ -34,12 +34,6 @@
             padding: 60px 0;
         }
 
-        .article-body {
-            font-size: 18px;
-            line-height: 1.8;
-            color: #333;
-        }
-
         .article-image img {
             width: 100%;
             height: auto;
@@ -158,7 +152,7 @@
                             <p class="lead text-muted">{{ $content->excerpt }}</p>
                         @endif
 
-                        <div class="article-body content-body" id="articleBody">
+                        <div class="content-body" id="articleBody">
                             {!! $content->body !!}
                         </div>
 

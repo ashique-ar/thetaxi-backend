@@ -11,6 +11,7 @@ use App\Services\UserService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\Hash;
 
 class UserController extends Controller
 {
@@ -379,6 +380,141 @@ class UserController extends Controller
             return response()->json([
                 'status' => 'error',
                 'message' => 'Failed to revoke roles',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get current user profile
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function profile(Request $request): JsonResponse
+    {
+        $user = $request->user()->load(['role', 'agent', 'permissions', 'roles']);
+        
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'user' => new UserResource($user)
+            ]
+        ]);
+    }
+
+    /**
+     * Update current user profile
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function updateProfile(Request $request): JsonResponse
+    {
+        $request->validate([
+            'first_name' => ['required', 'string', 'max:255'],
+            'last_name' => ['required', 'string', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:20'],
+            'timezone' => ['nullable', 'string'],
+            'language' => ['nullable', 'string', 'max:5'],
+        ]);
+
+        try {
+            $user = $request->user();
+            $user->update($request->only(['first_name', 'last_name', 'phone', 'timezone', 'language']));
+            
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Profile updated successfully',
+                'data' => [
+                    'user' => new UserResource($user->load(['role', 'agent', 'permissions', 'roles']))
+                ]
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to update profile',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Change current user password
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function changePassword(Request $request): JsonResponse
+    {
+        $request->validate([
+            'current_password' => ['required', 'string'],
+            'password' => ['required', 'string', 'min:8', 'confirmed'],
+        ]);
+
+        try {
+            $user = $request->user();
+            
+            // Check current password
+            if (!Hash::check($request->current_password, $user->password)) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Current password is incorrect'
+                ], 400);
+            }
+
+            $user->update([
+                'password' => Hash::make($request->password),
+                'password_changed_at' => now(),
+            ]);
+
+            // Revoke all tokens to force re-login
+            $user->revokeAllTokens();
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Password changed successfully'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to change password',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Update user status
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function updateStatus(Request $request): JsonResponse
+    {
+        $request->validate([
+            'status' => ['required', 'string', 'in:online,away,busy,not-visible'],
+        ]);
+
+        try {
+            $user = $request->user();
+            
+            // Map status to is_active
+            $status = $request->status;
+            
+            $user->update(['status' => $status]);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Status updated successfully',
+                'data' => [
+                    'status' => $status,
+                ]
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to update status',
                 'error' => $e->getMessage()
             ], 500);
         }

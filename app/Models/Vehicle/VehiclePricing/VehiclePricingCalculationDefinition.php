@@ -777,23 +777,12 @@ class VehiclePricingCalculationDefinition extends Model
             if ($servicePackageInfo && isset($servicePackageInfo['price_multiplier']) && $servicePackageInfo['price_multiplier'] > 0) {
                 $multiplier = (float) $servicePackageInfo['price_multiplier'];
                 $baseRate = $baseRate * $multiplier;
-                Log::info("Applied Service Package multiplier to base rate", [
-                    'original_rate' => $customSlabBase ?? $vehicleGroupPricing->rate,
-                    'multiplier' => $multiplier,
-                    'adjusted_rate' => $baseRate,
-                    'package' => $servicePackageInfo['name'] ?? 'Unknown'
-                ]);
             }
 
             // Apply district pricing adjustment to base rate
             if ($districtInfo && isset($districtInfo['percentage_change']) && $districtInfo['percentage_change'] != 0) {
                 $districtAdjustment = 1 + ($districtInfo['percentage_change'] / 100);
                 $baseRate = $baseRate * $districtAdjustment;
-                Log::info("Applied district pricing adjustment to base rate", [
-                    'district_id' => $districtInfo['district_id'] ?? 'Unknown',
-                    'percentage_change' => $districtInfo['percentage_change'],
-                    'adjusted_rate' => $baseRate
-                ]);
             }
 
             return $baseRate;

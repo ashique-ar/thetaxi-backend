@@ -34,6 +34,7 @@ class UserResource extends JsonResource
             'permissions' => $this->getPermissionsArray(),
             'roles' => $this->getRolesArray(),
             'is_active' => $this->is_active,
+            'status' => $this->status,
             'email_verified' => $this->hasVerifiedEmail(),
             'phone_verified' => $this->hasVerifiedPhone(),
             'two_factor_enabled' => $this->hasTwoFactorEnabled(),
