@@ -104,27 +104,18 @@
                     </div>
 
                     <div class="search-summary-footer mt-3 pt-3" style="border-top: 1px solid rgba(255,255,255,0.2);">
-                        <div class="vehicle-groups-info d-flex justify-content-end align-items-center">
+                        <div class="vehicle-groups-info d-flex justify-content-end align-items-center gap-3 flex-wrap">
 
-                            <div class="vehicle-search-box">
-                                {{-- <select class="form-select" id="sortResults" style="max-width: 200px;">
-                                    <option value="default">Sort By</option>
-                                    <option value="price_low">Price: Low to High</option>
-                                    <option value="price_high">Price: High to Low</option>
-                                    <option value="name">Name: A to Z</option>
-                                </select>
-                                <div class="input-group input-group-sm" style="max-width: 300px;">
-                                    <span class="input-group-text bg-white border-0">
-                                        <i class="bi bi-search text-muted"></i>
-                                    </span>
-                                    <input type="text" class="form-control border-0" id="vehicleGroupSearch"
-                                        placeholder="Search vehicles..." style="box-shadow: none;">
-                                    <button class="btn btn-outline-light btn-sm" type="button" id="clearSearch"
-                                        style="display: none;">
-                                        <i class="bi bi-x"></i>
-                                    </button>
-                                </div> --}}
-                                <a href="{{ route('home') }}" class="btn btn-success text-nowrap">
+                            <div class="vehicle-search-box d-flex align-items-center gap-2 flex-wrap">
+                                <div class="sort-dropdown">
+                                    <select class="form-select form-select-sm" id="sortResults" style="min-width: 180px;">
+                                        <option value="price_low" selected>Price: Low to High</option>
+                                        <option value="price_high">Price: High to Low</option>
+                                        <option value="name_asc">Name: A to Z</option>
+                                        <option value="name_desc">Name: Z to A</option>
+                                    </select>
+                                </div>
+                                <a href="{{ route('home') }}" class="btn btn-success btn-sm text-nowrap">
                                     <i class="bi bi-search"></i> New Search
                                 </a>
                             </div>
@@ -135,9 +126,18 @@
             </div>
 
             @if (isset($results['data']) && count($results['data']) > 0)
+                @php
+                    // Sort results by price ascending by default
+                    $sortedResults = collect($results['data'])
+                        ->sortBy(function ($item) {
+                            return $item['pricing_info']['base_amount'] ?? 0;
+                        })
+                        ->values()
+                        ->all();
+                @endphp
                 <!-- Vehicle Grid - 4 cols (lg), 3 cols (md), 1 col (sm) -->
                 <div class="row g-4 vehicle-results-grid">
-                    @foreach ($results['data'] as $result)
+                    @foreach ($sortedResults as $result)
                         @php
                             $pricing = $result['pricing_info'] ?? ['base_amount' => 0, 'currency' => 'LKR'];
                             $enhancedPricing = $result['enhanced_pricing'] ?? [];
@@ -811,6 +811,29 @@
             color: #ffffff;
         }
 
+        /* Sort Dropdown Styling */
+        .sort-dropdown .form-select {
+            background-color: rgba(255, 255, 255, 0.95);
+            border: none;
+            border-radius: 8px;
+            color: #333;
+            font-weight: 500;
+            padding: 8px 32px 8px 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .sort-dropdown .form-select:hover {
+            background-color: #ffffff;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        }
+
+        .sort-dropdown .form-select:focus {
+            background-color: #ffffff;
+            box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.3);
+            outline: none;
+        }
+
         .vehicle-search-box .input-group-text {
             background: rgba(255, 255, 255, 0.9);
             border: none;
@@ -836,6 +859,22 @@
             border-radius: 8px;
             margin-top: 20px;
         }
+
+        /* Sort dropdown mobile responsive */
+        @media (max-width: 576px) {
+            .vehicle-search-box {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .sort-dropdown {
+                width: 100%;
+            }
+
+            .sort-dropdown .form-select {
+                width: 100%;
+            }
+        }
     </style>
 @endpush
 
@@ -853,32 +892,36 @@
 
             // Sort functionality
             $('#sortResults').on('change', function() {
-                const sortBy = $(this).val();
-                const $grid = $('.vehicle-results-grid');
-                const $cards = $grid.find('.col-lg-3').toArray();
+                sortVehicleResults($(this).val());
+            });
 
-                if (sortBy === 'default') {
-                    return;
-                }
+            // Function to sort vehicle results
+            function sortVehicleResults(sortBy) {
+                const $grid = $('.vehicle-results-grid');
+                const $cards = $grid.find('[data-vehicle-group]').toArray();
 
                 $cards.sort(function(a, b) {
                     const priceA = parseFloat($(a).data('price')) || 0;
                     const priceB = parseFloat($(b).data('price')) || 0;
-                    const nameA = $(a).data('name') || '';
-                    const nameB = $(b).data('name') || '';
+                    const nameA = ($(a).data('name') || '').toString().toLowerCase();
+                    const nameB = ($(b).data('name') || '').toString().toLowerCase();
 
-                    if (sortBy === 'price_low') {
-                        return priceA - priceB;
-                    } else if (sortBy === 'price_high') {
-                        return priceB - priceA;
-                    } else if (sortBy === 'name') {
-                        return nameA.localeCompare(nameB);
+                    switch (sortBy) {
+                        case 'price_low':
+                            return priceA - priceB;
+                        case 'price_high':
+                            return priceB - priceA;
+                        case 'name_asc':
+                            return nameA.localeCompare(nameB);
+                        case 'name_desc':
+                            return nameB.localeCompare(nameA);
+                        default:
+                            return priceA - priceB; // Default to price low
                     }
-                    return 0;
                 });
 
                 $grid.html($cards);
-            });
+            }
 
             // Add to cart functionality
             $('.add-to-cart-btn').on('click', function() {

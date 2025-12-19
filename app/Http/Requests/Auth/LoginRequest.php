@@ -32,6 +32,9 @@ class LoginRequest extends FormRequest
             'two_factor_code' => ['nullable', 'string', 'size:6'],
             'recovery_code' => ['nullable', 'string'],
             'device_name' => ['nullable', 'string', 'max:255'],
+            // Client-provided IP and location (optional) - frontend may provide public IP and geolocation
+            'client_ip' => ['nullable', 'ip'],
+            'client_location' => ['nullable', 'string', 'max:255'],
         ];
     }
 

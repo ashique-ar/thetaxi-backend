@@ -119,18 +119,23 @@ class AuthService
                 $ua = $request->header('User-Agent');
                 $parsed = $this->parseUserAgent($ua);
 
+                // Prefer client provided IP/location when available, otherwise fallback to server-detected IP
+                $clientIp = $request->input('client_ip', $request->ip());
+                $clientLocation = $request->input('client_location');
+
                 // Log what we're receiving for diagnostics
-                \Log::info('AuthService::createToken - request ip: ' . $request->ip() . ' ua: ' . substr(($ua ?? 'NULL'), 0, 200));
+                \Log::info('AuthService::createToken - request ip: ' . $request->ip() . ' client_ip: ' . ($clientIp ?? 'NULL') . ' client_location: ' . ($clientLocation ?? 'NULL') . ' ua: ' . substr(($ua ?? 'NULL'), 0, 200));
 
                 \App\Models\ApiSession::create([
                     'token_id' => $token->token->id,
                     'user_id' => $user->id,
                     'name' => $tokenName,
-                    'ip_address' => $request->ip(),
+                    'ip_address' => $clientIp,
                     'user_agent' => $ua,
                     'device' => $parsed['device'] ?? null,
                     'browser' => $parsed['browser'] ?? null,
                     'os' => $parsed['os'] ?? null,
+                    'location' => $clientLocation,
                     'last_active' => now(),
                     'current' => true
                 ]);
@@ -175,17 +180,21 @@ class AuthService
                 $ua = $request->header('User-Agent');
                 $parsed = $this->parseUserAgent($ua);
 
-                \Log::info('AuthService::authenticateWithRefresh - request ip: ' . $request->ip() . ' ua: ' . substr(($ua ?? 'NULL'), 0, 200));
+                $clientIp = $request->input('client_ip', $request->ip());
+                $clientLocation = $request->input('client_location');
+
+                \Log::info('AuthService::authenticateWithRefresh - request ip: ' . $request->ip() . ' client_ip: ' . ($clientIp ?? 'NULL') . ' client_location: ' . ($clientLocation ?? 'NULL') . ' ua: ' . substr(($ua ?? 'NULL'), 0, 200));
 
                 \App\Models\ApiSession::create([
                     'token_id' => $token->token->id,
                     'user_id' => $user->id,
                     'name' => 'API Token with Refresh',
-                    'ip_address' => $request->ip(),
+                    'ip_address' => $clientIp,
                     'user_agent' => $ua,
                     'device' => $parsed['device'] ?? null,
                     'browser' => $parsed['browser'] ?? null,
                     'os' => $parsed['os'] ?? null,
+                    'location' => $clientLocation,
                     'last_active' => now(),
                     'current' => true
                 ]);
@@ -256,11 +265,16 @@ class AuthService
             if ($request) {
                 $ua = $request->header('User-Agent');
                 $parsed = $this->parseUserAgent($ua);
-                $meta['ip_address'] = $request->ip();
+
+                $clientIp = $request->input('client_ip', $request->ip());
+                $clientLocation = $request->input('client_location');
+
+                $meta['ip_address'] = $clientIp;
                 $meta['user_agent'] = $ua;
                 $meta['device'] = $parsed['device'] ?? null;
                 $meta['browser'] = $parsed['browser'] ?? null;
                 $meta['os'] = $parsed['os'] ?? null;
+                $meta['location'] = $clientLocation;
             }
 
             \App\Models\ApiSession::create($meta);

@@ -34,7 +34,11 @@ class UpdateApiSessionOnRequest
                     $apiSession = \App\Models\ApiSession::where('token_id', $tokenModel->id)->latest()->first();
                     if ($apiSession) {
                         $apiSession->last_active = now();
-                        $apiSession->ip_address = $request->ip();
+                        // Prefer client provided IP and location if present
+                        $apiSession->ip_address = $request->input('client_ip', $request->ip());
+                        if ($request->filled('client_location')) {
+                            $apiSession->location = $request->input('client_location');
+                        }
                         $apiSession->save();
 
                         // Mark this as current session and clear other 'current' flags for same user/token
