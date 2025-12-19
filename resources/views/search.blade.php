@@ -1173,9 +1173,8 @@
         $(document).ready(function() {
             const $searchInput = $('#vehicleGroupSearch');
             const $clearButton = $('#clearSearch');
-            const $vehicleCards = $(
-                '.vehicle-results-grid .col-lg-3, .vehicle-results-grid .col-md-4, .vehicle-results-grid .col-sm-12'
-            );
+            // Always target the column wrappers so the grid classes (e.g., col-lg-3) are preserved
+            const $vehicleCards = $('.vehicle-results-grid').find('[data-vehicle-group]');
             const $vehicleCountDisplay = $('#vehicleGroupsCount');
             let totalVehicles = $vehicleCards.length;
 
