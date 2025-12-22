@@ -1410,13 +1410,33 @@
                 ...searchData
             };
 
+            // UX: show loading state on button and prevent double clicks
+            const spinner = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>';
+            if (!$btn.data('original-html')) {
+                $btn.data('original-html', $btn.html());
+            }
+            $btn.prop('disabled', true).addClass('loading');
+            $btn.html(spinner + 'Adding...');
+
+            // Safety timeout in case callback never fires
+            const safetyTimer = setTimeout(() => {
+                console.error('Add to cart safety timeout');
+                $btn.prop('disabled', false).removeClass('loading');
+                $btn.html($btn.data('original-html'));
+                showErrorNotification('Timed out adding to cart. Please check your network and try again.');
+            }, 15000); // 15s
+
             // Add to cart first and redirect only after successful addition
             addToCart(item, function(response) {
+                clearTimeout(safetyTimer);
                 if (response && response.success !== false) {
+                    // Redirect after short delay to ensure cart UI updates on server
                     window.location.href = '{{ route('cart') }}';
                 } else {
-                    // If adding to cart failed, keep user on page and show error (already handled)
+                    // If adding to cart failed, restore button state and show error
                     console.error('Add to cart failed, not redirecting to cart.', response);
+                    $btn.prop('disabled', false).removeClass('loading');
+                    $btn.html($btn.data('original-html'));
                 }
             });
         });
