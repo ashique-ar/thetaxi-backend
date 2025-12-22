@@ -133,13 +133,13 @@ class CartController extends Controller
                 'to_date' => 'sometimes|date',
                 'from_time' => 'sometimes|string',
                 'to_time' => 'sometimes|string',
-                'pickup_location' => 'sometimes|string',
-                'pickup_lat' => 'sometimes|numeric',
-                'pickup_lng' => 'sometimes|numeric',
-                'dropoff_location' => 'sometimes|string',
-                'dropoff_location' => 'sometimes|string',
-                'dropoff_lat' => 'sometimes|numeric',
-                'dropoff_lng' => 'sometimes|numeric',
+                // Allow pickup/dropoff to be nullable or any shape (frontend may send empty string or array with address/lat/lng)
+                'pickup_location' => 'sometimes|nullable',
+                'pickup_lat' => 'sometimes|nullable|numeric',
+                'pickup_lng' => 'sometimes|nullable|numeric',
+                'dropoff_location' => 'sometimes|nullable',
+                'dropoff_lat' => 'sometimes|nullable|numeric',
+                'dropoff_lng' => 'sometimes|nullable|numeric',
                 'search_data' => 'sometimes|array',
                 'service_type' => 'sometimes|string'
             ]);
@@ -157,9 +157,21 @@ class CartController extends Controller
             $pickupLat = $validated['pickup_lat'] ?? ($validated['search_data']['pickup_lat'] ?? null);
             $pickupLng = $validated['pickup_lng'] ?? ($validated['search_data']['pickup_lng'] ?? null);
 
-            $returnLocation = $validated['dropoff_location'] ?? $validated['dropoff_location'] ?? ($validated['search_data']['dropoff_location'] ?? $pickupLocation);
+            $returnLocation = $validated['dropoff_location'] ?? ($validated['search_data']['dropoff_location'] ?? $pickupLocation);
             $returnLat = $validated['dropoff_lat'] ?? ($validated['search_data']['dropoff_lat'] ?? $pickupLat);
             $returnLng = $validated['dropoff_lng'] ?? ($validated['search_data']['dropoff_lng'] ?? $pickupLng);
+
+            // Coerce pickup/return locations to string addresses when frontend may send objects/arrays (e.g. { address, latitude, longitude })
+            if (is_array($pickupLocation)) {
+                $pickupLocation = $pickupLocation['address'] ?? json_encode($pickupLocation);
+            }
+            if (is_array($returnLocation)) {
+                $returnLocation = $returnLocation['address'] ?? json_encode($returnLocation);
+            }
+
+            // Ensure we have string values (avoid validation errors when empty)
+            $pickupLocation = is_null($pickupLocation) ? '' : (string)$pickupLocation;
+            $returnLocation = is_null($returnLocation) ? '' : (string)$returnLocation;
 
             $serviceType = $validated['service_type'] ?? ($validated['search_data']['service_type'] ?? 'airport_transfers');
             $searchData = $validated['search_data'] ?? [];
