@@ -247,23 +247,10 @@ class CartController extends Controller
                     // Get pricing from BookingFlowService
                     $availabilityData = $this->bookingFlowService->getAvailableVehicleGroups($pricingParams);
 
-                    Log::info('Cart pricing recalculation', [
-                        'vehicle_id' => $vehicleId,
-                        'days' => $days,
-                        'pricing_params' => $pricingParams,
-                        'availabilityData' => $availabilityData,
-                        'availability_data_count' => count($availabilityData)
-                    ]);
-
+                    $availabilityData = isset($availabilityData) && isset($availabilityData['data']) ? $availabilityData['data'] : [];
                     // Find pricing for this specific vehicle group
                     $pricingFound = false;
                     foreach ($availabilityData as $vehicleData) {
-                        Log::info('Checking vehicle data for pricing', [
-                            'vehicle_data_id' => $vehicleData,
-                            'vehicle_id' => $vehicleId,
-                            'pricing_configured' => $vehicleData['pricing_configured'] ?? false,
-                            'pricing_info' => $vehicleData['pricing_info'] ?? null
-                        ]);
                         if ($vehicleData['id'] == $vehicleId) {
                             // Check if pricing is configured and available
                             if (!isset($vehicleData['pricing_configured']) || !$vehicleData['pricing_configured']) {
@@ -279,14 +266,6 @@ class CartController extends Controller
                                 $totalPrice = (float)$pricingInfo['base_amount']; // This is TOTAL for all days in LKR
                                 $perDayPrice = $days > 0 ? $totalPrice / $days : 0; // Calculate per-day in LKR
                                 $pricingFound = true;
-
-                                Log::info('Cart pricing calculated successfully', [
-                                    'vehicle_id' => $vehicleId,
-                                    'days' => $days,
-                                    'total_price_lkr' => $totalPrice,
-                                    'per_day_price_lkr' => $perDayPrice,
-                                    'pricing_info' => $pricingInfo
-                                ]);
                                 break;
                             }
                         }
@@ -302,7 +281,8 @@ class CartController extends Controller
                     'vehicle_id' => $vehicleId,
                     'service_type' => $serviceType,
                     'dates' => ['from' => $pickupDate, 'to' => $returnDate],
-                    'error' => $e->getMessage()
+                    'error' => $e->getMessage(),
+                    'stack_trace'=> $e->getTraceAsString()
                 ]);
 
                 // Return error - do NOT add item with 0 price

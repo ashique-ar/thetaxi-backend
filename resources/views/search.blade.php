@@ -991,9 +991,9 @@
             });
         });
 
-        function addToCart(item) {
+        function addToCart(item, callback) {
             // Add to cart via AJAX - let backend recalculate pricing
-            $.ajax({
+            return $.ajax({
                 url: '{{ route('cart.add') }}',
                 method: 'POST',
                 data: {
@@ -1022,8 +1022,19 @@
                         window.dispatchEvent(new CustomEvent('cartUpdated'));
                         // Show success message
                         showSuccessNotification('Vehicle added to cart successfully!');
+
+                        // Invoke callback if provided
+                        if (typeof callback === 'function') {
+                            callback(response);
+                        }
                     } else {
                         showErrorNotification('Error: ' + response.message);
+                        if (typeof callback === 'function') {
+                            callback({
+                                success: false,
+                                error: response
+                            });
+                        }
                     }
                 },
                 error: function(xhr) {
@@ -1031,6 +1042,12 @@
                     const errorMsg = xhr.responseJSON?.message ||
                         'Error adding item to cart. Please try again.';
                     showErrorNotification(errorMsg);
+                    if (typeof callback === 'function') {
+                        callback({
+                            success: false,
+                            error: xhr
+                        });
+                    }
                 }
             });
         }
@@ -1393,13 +1410,15 @@
                 ...searchData
             };
 
-            // Add to cart first
-            addToCart(item);
-
-            // Wait for cart addition to complete, then redirect to cart
-            setTimeout(() => {
-                window.location.href = '{{ route('cart') }}';
-            }, 1000);
+            // Add to cart first and redirect only after successful addition
+            addToCart(item, function(response) {
+                if (response && response.success !== false) {
+                    window.location.href = '{{ route('cart') }}';
+                } else {
+                    // If adding to cart failed, keep user on page and show error (already handled)
+                    console.error('Add to cart failed, not redirecting to cart.', response);
+                }
+            });
         });
     </script>
 @endpush

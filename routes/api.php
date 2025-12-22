@@ -174,9 +174,9 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('users/{user}/activate', [UserController::class, 'activate'])->middleware('permission:users.activate');
         Route::post('users/{user}/deactivate', [UserController::class, 'deactivate'])->middleware('permission:users.deactivate');
         Route::post('users/{user}/reset-password', [UserController::class, 'resetPassword'])->middleware('permission:users.reset-password');
-        Route::get('users/{user}/permissions', [UserController::class, 'permissions'])->middleware('permission:users.permissions');
-        Route::post('users/{user}/permissions', [UserController::class, 'assignPermissions'])->middleware('permission:users.permissions');
-        Route::delete('users/{user}/permissions', [UserController::class, 'revokePermissions'])->middleware('permission:users.permissions');
+        Route::get('users/{user}/permissions', [UserController::class, 'permissions'])->middleware('permission:permissions.manage');
+        Route::post('users/{user}/permissions', [UserController::class, 'assignPermissions'])->middleware('permission:permissions.manage');
+        Route::delete('users/{user}/permissions', [UserController::class, 'revokePermissions'])->middleware('permission:permissions.manage');
         Route::get('users/{user}/roles', [UserController::class, 'roles'])->middleware('permission:users.roles');
         Route::post('users/{user}/roles', [UserController::class, 'assignRoles'])->middleware('permission:users.roles');
         Route::delete('users/{user}/roles', [UserController::class, 'revokeRoles'])->middleware('permission:users.roles');
@@ -202,9 +202,9 @@ Route::middleware(['auth:api'])->group(function () {
 
     Route::middleware(['permission:roles.view'])->group(function () {
         Route::apiResource('roles', RoleController::class);
-        Route::get('roles/{role}/permissions', [RoleController::class, 'permissions'])->middleware('permission:roles.permissions');
-        Route::post('roles/{role}/permissions', [RoleController::class, 'assignPermissions'])->middleware('permission:roles.permissions');
-        Route::delete('roles/{role}/permissions', [RoleController::class, 'revokePermissions'])->middleware('permission:roles.permissions');
+        Route::get('roles/{role}/permissions', [RoleController::class, 'permissions'])->middleware('permission:permissions.manage');
+        Route::post('roles/{role}/permissions', [RoleController::class, 'assignPermissions'])->middleware('permission:permissions.manage');
+        Route::delete('roles/{role}/permissions', [RoleController::class, 'revokePermissions'])->middleware('permission:permissions.manage');
         Route::get('roles/{role}/users', [RoleController::class, 'users']);
     });
 

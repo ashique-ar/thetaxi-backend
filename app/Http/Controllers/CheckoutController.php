@@ -359,7 +359,7 @@ class CheckoutController extends Controller
 
             // Send quotation request email to customer
             try {
-                Mail::to($booking->customer->email)->send(new QuotationRequestMail($booking));
+                Mail::to($booking->customer?->user?->email)->send(new QuotationRequestMail($booking));
             } catch (\Exception $e) {
                 Log::error('Failed to send quotation email', [
                     'booking_id' => $booking->id,
