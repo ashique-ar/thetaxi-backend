@@ -1411,7 +1411,8 @@
             };
 
             // UX: show loading state on button and prevent double clicks
-            const spinner = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>';
+            const spinner =
+                '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>';
             if (!$btn.data('original-html')) {
                 $btn.data('original-html', $btn.html());
             }
