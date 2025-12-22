@@ -31,13 +31,15 @@
     <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
     <!--  Style CSS  -->
     <link rel="stylesheet" href="{{ asset('assets/css/style.css?v=1.0.1') }}">
-    
+
     <!-- Booking Form CSS -->
     <link rel="stylesheet" href="{{ asset('assets/css/booking-form.css?v=1.0.02') }}">
 
     <!-- Title -->
     <title>@yield('title', $settings['site_name'] ?? 'TheTaxi - Your Reliable Taxi Service')</title>
-    <link rel="icon" href="{{ isset($settings['favicon']) ? s3_asset($settings['favicon']) : asset('assets/img/favicon.ico') }}" type="image/gif" sizes="20x20">
+    <link rel="icon"
+        href="{{ isset($settings['favicon']) ? s3_asset($settings['favicon']) : asset('assets/img/favicon.ico') }}"
+        type="image/gif" sizes="20x20">
 
     @stack('meta')
     @stack('styles')
@@ -47,12 +49,12 @@
             --black-color: {{ $settings['secondary_color'] ?? '#717171' }} !important;
             --tertiary-color: {{ $settings['tertiary_color'] ?? '#FFFFFF' }} !important;
         }
-        
+
         /* Cart Icon Styles */
         .cart-icon-container {
             padding: 0 10px;
         }
-        
+
         .cart-icon-link {
             color: #333;
             text-decoration: none;
@@ -61,11 +63,11 @@
             align-items: center;
             position: relative;
         }
-        
+
         .cart-icon-link:hover {
             color: var(--primary-color1);
         }
-        
+
         .cart-badge {
             top: -8px;
             right: -8px;
@@ -82,17 +84,25 @@
             border: 2px solid white;
             animation: cartPulse 0.3s ease;
         }
-        
+
         @keyframes cartPulse {
-            0% { transform: scale(0.8); }
-            50% { transform: scale(1.2); }
-            100% { transform: scale(1); }
+            0% {
+                transform: scale(0.8);
+            }
+
+            50% {
+                transform: scale(1.2);
+            }
+
+            100% {
+                transform: scale(1);
+            }
         }
-        
+
         .cart-badge.updated {
             animation: cartPulse 0.5s ease;
         }
-        
+
         /* Mobile Cart Styles */
         .mobile-cart-area .cart-icon-link {
             color: #333;
@@ -101,17 +111,17 @@
             background: rgba(255, 255, 255, 0.1);
             transition: all 0.3s ease;
         }
-        
+
         .mobile-cart-area .cart-icon-link:hover {
             background: rgba(255, 255, 255, 0.2);
             color: var(--primary-color1);
         }
-        
+
         .mobile-cart-area .cart-badge {
             top: 2px;
             right: 10px;
         }
-        
+
         @media (max-width: 767px) {
             .cart-icon-container {
                 order: 1;
@@ -177,93 +187,96 @@
             document.querySelectorAll('.currency-option').forEach(function(link) {
                 link.addEventListener('click', function(e) {
                     e.preventDefault();
-                    
+
                     const currencyCode = this.getAttribute('data-currency');
                     if (!currencyCode) return;
-                    
+
                     // Show loading state
                     const originalText = this.innerHTML;
-                    this.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Loading...';
-                    
+                    this.innerHTML =
+                        '<span class="spinner-border spinner-border-sm me-2"></span>Loading...';
+
                     // Make AJAX request to switch currency
-                    fetch('{{ route("currency.switch") }}', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/x-www-form-urlencoded',
-                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
-                            'Accept': 'application/json'
-                        },
-                        body: 'currency=' + encodeURIComponent(currencyCode)
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            // Reload page to show new prices
-                            window.location.reload();
-                        } else {
-                            console.error('Currency switch failed:', data.message);
+                    fetch('{{ route('currency.switch') }}', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/x-www-form-urlencoded',
+                                'X-CSRF-TOKEN': document.querySelector(
+                                    'meta[name="csrf-token"]').getAttribute('content'),
+                                'Accept': 'application/json'
+                            },
+                            body: 'currency=' + encodeURIComponent(currencyCode)
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success) {
+                                // Reload page to show new prices
+                                window.location.reload();
+                            } else {
+                                console.error('Currency switch failed:', data.message);
+                                this.innerHTML = originalText;
+                                alert('Failed to switch currency. Please try again.');
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error switching currency:', error);
                             this.innerHTML = originalText;
-                            alert('Failed to switch currency. Please try again.');
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error switching currency:', error);
-                        this.innerHTML = originalText;
-                        alert('An error occurred while switching currency. Please try again.');
-                    });
+                            alert(
+                                'An error occurred while switching currency. Please try again.');
+                        });
                 });
             });
-            
+
             // Cart Icon Update Functionality
             updateCartIcon();
-            
+
             // Listen for cart update events instead of polling
             window.addEventListener('cartUpdated', function() {
                 updateCartIcon();
             });
-            
+
             // Update cart on page focus (in case cart was updated in another tab)
             window.addEventListener('focus', function() {
                 updateCartIcon();
             });
         });
-        
+
         function updateCartIcon() {
             const cartBadge = document.getElementById('cartBadge');
             if (!cartBadge) return;
-            
+
             // Make AJAX request to get cart count
-            fetch('{{ route("cart.get") }}', {
-                method: 'GET',
-                headers: {
-                    'Accept': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    const itemCount = data.count || 0;
-                    updateCartBadge(itemCount);
-                }
-            })
-            .catch(error => {
-                console.warn('Failed to update cart icon:', error);
-            });
+            fetch('{{ route('cart.get') }}', {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        const itemCount = data.count || 0;
+                        updateCartBadge(itemCount);
+                    }
+                })
+                .catch(error => {
+                    console.warn('Failed to update cart icon:', error);
+                });
         }
-        
+
         function updateCartBadge(count) {
             const cartBadge = document.getElementById('cartBadge');
             const mobileCartBadge = document.getElementById('mobileCartBadge');
-            
+
             // Update desktop cart badge
             if (cartBadge) {
                 const currentCount = parseInt(cartBadge.textContent) || 0;
-                
+
                 if (count > 0) {
                     cartBadge.textContent = count;
                     cartBadge.style.display = 'flex';
-                    
+
                     // Add pulse animation if count changed
                     if (count !== currentCount) {
                         cartBadge.classList.add('updated');
@@ -275,15 +288,15 @@
                     cartBadge.style.display = 'none';
                 }
             }
-            
+
             // Update mobile cart badge
             if (mobileCartBadge) {
                 const currentMobileCount = parseInt(mobileCartBadge.textContent) || 0;
-                
+
                 if (count > 0) {
                     mobileCartBadge.textContent = count;
                     mobileCartBadge.style.display = 'flex';
-                    
+
                     // Add pulse animation if count changed
                     if (count !== currentMobileCount) {
                         mobileCartBadge.classList.add('updated');
@@ -296,10 +309,10 @@
                 }
             }
         }
-        
+
         // Global function to trigger cart icon update (kept for backward compatibility)
         window.refreshCartIcon = updateCartIcon;
-        
+
         // Global notification function
         window.showSuccessNotification = function(message, duration = 3000) {
             // Create notification if it doesn't exist
@@ -322,10 +335,10 @@
                 `;
                 document.body.appendChild(notification);
             }
-            
+
             notification.textContent = message;
             notification.style.transform = 'translateX(0)';
-            
+
             setTimeout(() => {
                 notification.style.transform = 'translateX(400px)';
             }, duration);

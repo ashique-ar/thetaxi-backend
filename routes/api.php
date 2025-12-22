@@ -180,6 +180,12 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('users/{user}/roles', [UserController::class, 'roles'])->middleware('permission:users.roles');
         Route::post('users/{user}/roles', [UserController::class, 'assignRoles'])->middleware('permission:users.roles');
         Route::delete('users/{user}/roles', [UserController::class, 'revokeRoles'])->middleware('permission:users.roles');
+        
+        // Admin: view/deactivate contexts for a specific user
+        Route::get('users/{user}/contexts', [UserController::class, 'contexts']);
+        Route::post('users/{user}/contexts/deactivate', [UserController::class, 'deactivateContext'])->middleware('permission:users.edit');
+        Route::post('users/{user}/contexts/{context}/roles', [UserController::class, 'assignContextRoles'])->middleware('permission:users.edit');
+        Route::delete('users/{user}/contexts/{context}/roles', [UserController::class, 'revokeContextRole'])->middleware('permission:users.edit');
     });
 
     /*

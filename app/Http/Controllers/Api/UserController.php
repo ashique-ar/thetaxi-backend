@@ -8,6 +8,7 @@ use App\Http\Requests\User\UpdateUserRequest;
 use App\Http\Resources\UserResource;
 use App\Models\User;
 use App\Services\UserService;
+use App\Services\UserContextService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -16,10 +17,12 @@ use Illuminate\Support\Facades\Hash;
 class UserController extends Controller
 {
     protected $userService;
+    protected $contextService;
 
-    public function __construct(UserService $userService)
+    public function __construct(UserService $userService, UserContextService $contextService)
     {
         $this->userService = $userService;
+        $this->contextService = $contextService;
         $this->middleware('permission:permissions.view')->only(['index', 'show']);
         $this->middleware('permission:permissions.create')->only(['store']);
         $this->middleware('permission:permissions.edit')->only(['update']);
@@ -323,6 +326,126 @@ class UserController extends Controller
                 })
             ]
         ]);
+    }
+
+    /**
+     * Get contexts for a specific user (admin)
+     *
+     * @param User $user
+     * @return JsonResponse
+     */
+    public function contexts(User $user): JsonResponse
+    {
+        $activeContexts = $user->getActiveContexts()->map(function($ctx){
+            return array_merge($ctx->toArray(), ['roles' => $ctx->roles()->get()->map(function($r){ return ['id' => $r->id, 'name' => $r->name, 'display_name' => $r->display_name ?? $r->name]; })]);
+        });
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'contexts' => $activeContexts,
+                'available_contexts' => $this->contextService->getAvailableContexts($user),
+                'primary_role' => $this->contextService->getPrimaryRole($user),
+                'has_multiple_contexts' => $user->hasMultipleContexts()
+            ]
+        ]);
+    }
+
+    /**
+     * Assign roles to a specific user context (admin)
+     */
+    public function assignContextRoles(Request $request, User $user, $contextId): JsonResponse
+    {
+        $request->validate([
+            'roles' => ['required', 'array'],
+            'roles.*' => ['required']
+        ]);
+
+        try {
+            $context = $user->contexts()->where('id', $contextId)->first();
+            if (!$context) {
+                return response()->json(['status' => 'error', 'message' => 'Context not found'], 404);
+            }
+
+            $this->contextService->assignRolesToContext($user, $context, $request->roles);
+
+            $activeContexts = $user->getActiveContexts()->map(function($ctx){
+                return array_merge($ctx->toArray(), ['roles' => $ctx->roles()->get()->map(function($r){ return ['id' => $r->id, 'name' => $r->name, 'display_name' => $r->display_name ?? $r->name]; })]);
+            });
+
+            return response()->json(['status' => 'success', 'message' => 'Roles assigned', 'data' => ['contexts' => $activeContexts]]);
+        } catch (\Exception $e) {
+            return response()->json(['status' => 'error', 'message' => 'Failed to assign roles', 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Revoke a role from a specific user context (admin)
+     */
+    public function revokeContextRole(Request $request, User $user, $contextId): JsonResponse
+    {
+        $request->validate([
+            'role_id' => ['required']
+        ]);
+
+        try {
+            $context = $user->contexts()->where('id', $contextId)->first();
+            if (!$context) {
+                return response()->json(['status' => 'error', 'message' => 'Context not found'], 404);
+            }
+
+            // If role_id was provided, revoke only that role; otherwise revoke all roles for the context
+            $roleId = $request->get('role_id');
+
+            if ($roleId) {
+                $this->contextService->revokeRoleFromContext($user, $context, (int)$roleId);
+            } else {
+                $this->contextService->revokeRolesFromContext($user, $context);
+            }
+
+            $activeContexts = $user->getActiveContexts()->map(function($ctx){
+                return array_merge($ctx->toArray(), ['roles' => $ctx->roles()->get()->map(function($r){ return ['id' => $r->id, 'name' => $r->name, 'display_name' => $r->display_name ?? $r->name]; })]);
+            });
+
+            return response()->json(['status' => 'success', 'message' => 'Role revoked from context', 'data' => ['contexts' => $activeContexts]]);
+        } catch (\Exception $e) {
+            return response()->json(['status' => 'error', 'message' => 'Failed to revoke role', 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Deactivate a context for a specific user (admin)
+     */
+    public function deactivateContext(Request $request, User $user): JsonResponse
+    {
+        $request->validate([
+            'context_type' => 'required|string|in:customer,vehicle_owner,staff,agent,driver'
+        ]);
+
+        try {
+            $success = $this->contextService->deactivateContext($user, $request->get('context_type'));
+
+            if ($success) {
+                return response()->json([
+                    'status' => 'success',
+                    'message' => 'Context deactivated successfully',
+                    'data' => [
+                        'available_contexts' => $this->contextService->getAvailableContexts($user)
+                    ]
+                ]);
+            }
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to deactivate context'
+            ], 400);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to deactivate context',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
     /**

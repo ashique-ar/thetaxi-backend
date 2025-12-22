@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Traits\UUID;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Spatie\Permission\Models\Role;
 
 /**
  * User Context Model
@@ -38,6 +39,14 @@ class UserContext extends Model
     public function context()
     {
         return $this->morphTo();
+    }
+
+    /**
+     * Roles assigned to this context (via admin or automatic mapping)
+     */
+    public function roles()
+    {
+        return $this->belongsToMany(Role::class, 'user_context_roles', 'user_context_id', 'role_id');
     }
 
     // Scopes

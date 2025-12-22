@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Models\UserContext;
 use App\Models\Customer;
 use App\Models\Vehicle\VehicleOwner;
+use Spatie\Permission\Models\Role;
 use Illuminate\Support\Facades\DB;
 use Exception;
 
@@ -49,8 +50,19 @@ class UserContextService
                 'created_user_id' => $user->id
             ]);
 
-            // Assign appropriate role if not already assigned
-            $this->assignContextRole($user, $contextType);
+            // Assign appropriate role(s) if provided or by mapping
+            $rolesToAssign = [];
+            if (!empty($contextData['roles'])) {
+                $rolesToAssign = $contextData['roles'];
+            } else {
+                // default mapping
+                $mapped = $this->getDefaultRolesForContext($contextType);
+                if ($mapped) $rolesToAssign = $mapped;
+            }
+
+            if (!empty($rolesToAssign)) {
+                $this->assignRolesToContext($user, $userContext, $rolesToAssign);
+            }
 
             DB::commit();
             return $userContext;
@@ -103,16 +115,109 @@ class UserContextService
      */
     private function assignContextRole(User $user, string $contextType)
     {
+        // Deprecated: older method kept for backward compatibility. Prefer assignRolesToContext.
+        $roles = $this->getDefaultRolesForContext($contextType);
+        if ($roles) {
+            // We'll use assignRolesToContext which persists mapping
+            $dummyContext = (object)['id' => null];
+            $this->assignRolesToContext($user, $dummyContext, $roles);
+        }
+    }
+
+    /**
+     * Return default role names mapped from context type
+     */
+    private function getDefaultRolesForContext(string $contextType): array
+    {
         $roleMap = [
-            'customer' => 'customer',
-            'vehicle_owner' => 'vehicle-owner', // You may need to create this role
-            'staff' => 'staff',
-            'driver' => 'driver',
-            'agent' => 'agent'
+            'customer' => ['customer'],
+            'vehicle_owner' => ['vehicle-owner'],
+            'staff' => ['staff'],
+            'driver' => ['driver'],
+            'agent' => ['agent']
         ];
 
-        if (isset($roleMap[$contextType]) && !$user->hasRole($roleMap[$contextType])) {
-            $user->assignRole($roleMap[$contextType]);
+        return $roleMap[$contextType] ?? [];
+    }
+
+    /**
+     * Assign role(s) to a specific UserContext. Accepts role names or IDs.
+     */
+    public function assignRolesToContext(User $user, $userContext, array $roles): void
+    {
+        foreach ($roles as $roleSpec) {
+            /** @var Role $roleModel */
+            $roleModel = null;
+
+            if (is_numeric($roleSpec)) {
+                $roleModel = Role::find((int)$roleSpec);
+            } else {
+                $roleModel = Role::where('name', (string)$roleSpec)->first();
+            }
+
+            if (!$roleModel) continue;
+
+            // Persist mapping in pivot table (avoid duplicates)
+            $exists = DB::table('user_context_roles')
+                ->where('user_context_id', $userContext->id)
+                ->where('role_id', $roleModel->id)
+                ->exists();
+
+            if (!$exists) {
+                DB::table('user_context_roles')->insert([
+                    'user_context_id' => $userContext->id,
+                    'role_id' => $roleModel->id,
+                    'created_at' => now(),
+                    'updated_at' => now()
+                ]);
+            }
+
+            // Assign to user (if not already present)
+            if (!$user->hasRole($roleModel->name)) {
+                $user->assignRole($roleModel->name);
+            }
+        }
+    }
+
+    /**
+     * Revoke all roles assigned by a given UserContext (and remove mapping entries).
+     * Only revoke the role from the user when no other active contexts grant it.
+     */
+    public function revokeRolesFromContext(User $user, UserContext $userContext): void
+    {
+        $assigned = DB::table('user_context_roles')->where('user_context_id', $userContext->id)->get();
+
+        foreach ($assigned as $row) {
+            $this->revokeRoleFromContext($user, $userContext, $row->role_id);
+        }
+    }
+
+    /**
+     * Revoke a single role from a context (and possibly from the user if no other active contexts grant it)
+     */
+    public function revokeRoleFromContext(User $user, UserContext $userContext, int $roleId): void
+    {
+        $role = Role::find($roleId);
+        if (!$role) return;
+
+        // Remove mapping for this context and role
+        DB::table('user_context_roles')
+            ->where('user_context_id', $userContext->id)
+            ->where('role_id', $roleId)
+            ->delete();
+
+        // Check if any other active contexts for this user have this role
+        $other = DB::table('user_context_roles as ucr')
+            ->join('user_contexts as uc', 'ucr.user_context_id', '=', 'uc.id')
+            ->where('uc.user_id', $user->id)
+            ->where('uc.is_active', true)
+            ->where('ucr.role_id', $roleId)
+            ->exists();
+
+        if (!$other) {
+            if ($user->hasRole($role->name)) {
+                $user->removeRole($role->name);
+            }
         }
     }
 
@@ -162,13 +267,30 @@ class UserContextService
     }
 
     /**
-     * Deactivate a specific context
+     * Deactivate a specific context (revokes roles assigned by that context only if no other active contexts grant them)
      */
     public function deactivateContext(User $user, string $contextType): bool
     {
-        return $user->contexts()
-            ->where('context_type', $contextType)
-            ->update(['is_active' => false]);
+        $contexts = $user->contexts()->where('context_type', $contextType)->where('is_active', true)->get();
+        if ($contexts->isEmpty()) return false;
+
+        DB::beginTransaction();
+        try {
+            foreach ($contexts as $context) {
+                // Revoke roles assigned by this context where appropriate
+                $this->revokeRolesFromContext($user, $context);
+
+                // Mark context inactive
+                $context->is_active = false;
+                $context->save();
+            }
+
+            DB::commit();
+            return true;
+        } catch (\Exception $e) {
+            DB::rollBack();
+            throw $e;
+        }
     }
 
     /**

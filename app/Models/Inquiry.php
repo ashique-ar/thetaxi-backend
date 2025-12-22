@@ -37,21 +37,25 @@ class Inquiry extends BaseModel
      */
     protected $fillable = [
         'customer_id',
+        'agent_id',
+        'assigned_to',
+        'name',
+        'email',
+        'phone',
         'subject',
         'message',
         'status',
         'priority',
         'response',
         'responded_at',
+        'source',
+        'payload',
         'created_user_id',
         'updated_user_id',
         // Additional fields for quotation requests
         'inquiry_type',
         'vehicle_group_id',
         'service_type',
-        'contact_name',
-        'contact_email',
-        'contact_phone',
         'company_name',
         'search_context',
         'form_data',
@@ -66,6 +70,9 @@ class Inquiry extends BaseModel
      */
     protected $casts = [
         'responded_at' => 'datetime',
+        'payload' => 'array',
+        'search_context' => 'array',
+        'form_data' => 'array',
     ];
 
     // Relations
