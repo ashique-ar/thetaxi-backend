@@ -177,9 +177,9 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('users/{user}/permissions', [UserController::class, 'permissions'])->middleware('permission:permissions.manage');
         Route::post('users/{user}/permissions', [UserController::class, 'assignPermissions'])->middleware('permission:permissions.manage');
         Route::delete('users/{user}/permissions', [UserController::class, 'revokePermissions'])->middleware('permission:permissions.manage');
-        Route::get('users/{user}/roles', [UserController::class, 'roles'])->middleware('permission:users.roles');
-        Route::post('users/{user}/roles', [UserController::class, 'assignRoles'])->middleware('permission:users.roles');
-        Route::delete('users/{user}/roles', [UserController::class, 'revokeRoles'])->middleware('permission:users.roles');
+        Route::get('users/{user}/roles', [UserController::class, 'roles'])->middleware('permission:users.edit');
+        Route::post('users/{user}/roles', [UserController::class, 'assignRoles'])->middleware('permission:users.edit');
+        Route::delete('users/{user}/roles', [UserController::class, 'revokeRoles'])->middleware('permission:users.edit');
         
         // Admin: view/deactivate contexts for a specific user
         Route::get('users/{user}/contexts', [UserController::class, 'contexts']);
