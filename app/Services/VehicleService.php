@@ -297,6 +297,12 @@ class VehicleService
                 'Flexible Duration',
                 'Insurance Included'
             ],
+            'day_rental' => [
+                'Professional Driver',
+                'Flexible Itinerary',
+                'Full Day Coverage',
+                'Fuel Included'
+            ],
             'airport_transfers' => [
                 'Professional Driver',
                 'Flight Tracking',
@@ -326,7 +332,7 @@ class VehicleService
         // Could be based on popularity, ratings, etc.
         
         // For rental packages, recommend SUVs and premium vehicles
-        if ($serviceType === 'ride_now') {
+        if ($serviceType === 'ride_now' || $serviceType === 'day_rental') {
             $categoryName = $group->category?->name ?? '';
             return in_array(strtolower($categoryName), ['suv', 'premium', 'luxury']);
         }

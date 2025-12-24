@@ -70,6 +70,9 @@ class BookingSearchRequest extends FormRequest
             case 'ride_now':
                 return $this->rentalPackagesRules();
             
+            case 'day_rental':
+                return $this->rentalPackagesRules();
+            
             case 'custom-tour':
                 return $this->customTourRules();
             
@@ -179,6 +182,25 @@ class BookingSearchRequest extends FormRequest
             'dropoff_time' => 'required|date_format:H:i',
             'package_type' => 'nullable|string|in:half-day,full-day,multi-day,hourly,daily',
             'package_id' => 'nullable|uuid|exists:service_packages,id',
+            // 'passengers' => 'required|integer|min:1|max:15'
+        ];
+    }
+
+    /**
+     * Day rental validation rules.
+     */
+    protected function dayRentalRules(): array
+    {
+        return [
+            'service_type' => 'required|string',
+            'pickup' => 'required|string|max:255',
+            'pickup_lat' => 'nullable|numeric|between:-90,90',
+            'pickup_lng' => 'nullable|numeric|between:-180,180',
+            'date' => 'required|date|after_or_equal:today',
+            'time' => 'required|date_format:H:i',
+            'package_id' => 'nullable|uuid|exists:service_packages,id',
+            'rental_type' => 'nullable|string|in:half_day,full_day,extended_day,multi_day',
+            'num_days' => 'nullable|integer|min:1|max:30',
             // 'passengers' => 'required|integer|min:1|max:15'
         ];
     }

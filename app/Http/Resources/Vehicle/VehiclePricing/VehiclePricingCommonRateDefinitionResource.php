@@ -12,6 +12,7 @@ class VehiclePricingCommonRateDefinitionResource extends JsonResource
         return [
             'id' => $this->id,
             'service_type_id' => $this->service_type_id,
+            'code' => $this->code,
             'vehicle_group_id' => $this->vehicle_group_id,
             'name' => $this->name,
             'description' => $this->description,

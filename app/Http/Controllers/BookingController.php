@@ -145,7 +145,21 @@ class BookingController extends Controller
                 
             case 'ride_now':
                 $pickupDate = Carbon::parse($requestData['pickup_date'] ?? $requestData['date']);
-                // Default to same date if no dropoff date provided (1 day booking)
+                $dropoffDate = isset($requestData['dropoff_date']) 
+                    ? Carbon::parse($requestData['dropoff_date'])
+                    : $pickupDate->copy();
+                    
+                $params['from_date'] = $pickupDate->format('Y-m-d');
+                $params['to_date'] = $dropoffDate->format('Y-m-d');
+                $params['from_time'] = $requestData['pickup_time'] ?? '00:00';
+                $params['to_time'] = $requestData['dropoff_time'] ?? '00:00';
+                $params['pickup_location'] = $this->formatLocation($requestData, 'pickup');
+                $params['dropoff_location'] = $this->formatLocation($requestData, 'dropoff');
+                $params['package_type'] = $requestData['package_type'] ?? 'multi-day';
+                break;
+
+            case 'day_rental':
+                $pickupDate = Carbon::parse($requestData['pickup_date'] ?? $requestData['date']);
                 $dropoffDate = isset($requestData['dropoff_date']) 
                     ? Carbon::parse($requestData['dropoff_date'])
                     : $pickupDate->copy();

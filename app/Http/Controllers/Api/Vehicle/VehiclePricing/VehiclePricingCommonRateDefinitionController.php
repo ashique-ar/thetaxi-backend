@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Api\Vehicle\VehiclePricing;
 
 use App\Http\Controllers\Controller;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCommonRateDefinition;
-use App\Models\Service\ServiceType\ServiceType;
+use App\Models\Service\ServiceType;
 use App\Http\Requests\Vehicle\VehiclePricingCommonRateDefinition\CreateVehiclePricingCommonRateDefinitionRequest;
 use App\Http\Requests\Vehicle\VehiclePricingCommonRateDefinition\UpdateVehiclePricingCommonRateDefinitionRequest;
 use App\Http\Resources\Vehicle\VehiclePricing\VehiclePricingCommonRateDefinitionResource;
@@ -290,7 +290,7 @@ class VehiclePricingCommonRateDefinitionController extends Controller
 
             return response()->json([
                 'status' => 'success',
-                'data' => PricingCommonRateDefinitionResource::collection($commonRates),
+                'data' => VehiclePricingCommonRateDefinitionResource::collection($commonRates),
                 'meta' => [
                     'total' => $commonRates->count(),
                     'service_type_id' => $serviceTypeId === 'global' ? null : $serviceTypeId

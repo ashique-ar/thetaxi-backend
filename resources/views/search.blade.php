@@ -755,6 +755,10 @@
             background: linear-gradient(135deg, #ffc107, #e0a800);
         }
 
+        .vehicle-card[data-service="day_rental"] .category-badge {
+            background: linear-gradient(135deg, #17a2b8, #138496);
+        }
+
         .vehicle-card[data-service="custom_tour"] .category-badge {
             background: linear-gradient(135deg, #6f42c1, #5a32a3);
         }
@@ -1283,6 +1287,7 @@
                                                     <select name="service_type" class="form-select" required>
                                                         <option value="point_to_point">Point to Point</option>
                                                         <option value="ride_now">Ride Now</option>
+                                                        <option value="day_rental">Day Rental</option>
                                                         <option value="airport_transfers">Airport Transfer</option>
                                                         <option value="wedding_hire">Wedding Hire</option>
                                                         <option value="corporate">Corporate</option>

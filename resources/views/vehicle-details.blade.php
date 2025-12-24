@@ -166,6 +166,14 @@
                                     </svg>
                                     <span>Ride Now</span>
                                 </li>
+                                <li class="single-item {{ $searchData['service_type'] === 'day_rental' ? 'active' : '' }}"
+                                    data-service="day_rental">
+                                    <svg width="20" height="20" viewBox="0 0 24 24"
+                                        xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM9 10H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2zm-8 4H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2z"/>
+                                    </svg>
+                                    <span>Day Rental</span>
+                                </li>
                                 {{-- <li class="single-item {{ $searchData['service_type'] === 'point_to_point' ? 'active' : '' }}"
                                     data-service="point_to_point" data-redirect="{{ route('point-to-point') }}">
                                     <svg width="20" height="20" viewBox="0 0 24 24"
@@ -507,6 +515,151 @@
                                             <i class="bi bi-cart-plus"></i> Add to Cart
                                         </button>
                                         <button type="button" class="btn btn-success btn-lg" id="rentalBookNowBtn">
+                                            <i class="bi bi-calendar-check"></i> Book Now
+                                        </button>
+                                    </div>
+                                </form>
+
+                                <!-- Day Rental Form -->
+                                <form id="day_rental-form"
+                                    class="filter-input {{ $searchData['service_type'] === 'day_rental' ? 'show' : '' }}"
+                                    data-service="day_rental">
+                                    @csrf
+                                    <input type="hidden" name="vehicle_group_id" value="{{ $vehicleGroup->id }}">
+                                    <input type="hidden" name="service_type" value="day_rental">
+
+                                    <!-- Location Section -->
+                                    <div class="form-section">
+                                        <h6 class="section-title"><i class="bi bi-geo-alt"></i> Pickup Location</h6>
+                                        <div class="row g-2">
+                                            <div class="col-12">
+                                                <div class="single-search-box location-search-box">
+                                                    <svg width="18" height="18" viewBox="0 0 18 18"
+                                                        xmlns="http://www.w3.org/2000/svg">
+                                                        <path
+                                                            d="M9 0C5.13 0 2 3.13 2 7c0 5.25 7 11 7 11s7-5.75 7-11c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
+                                                    </svg>
+                                                    <input type="text" name="pickup_location" id="dayRentalPickupLocation"
+                                                        class="location-search"
+                                                        value="{{ $searchData['pickup_location'] ?? 'Colombo, Sri Lanka' }}"
+                                                        placeholder="Enter pickup location" required>
+                                                    <input type="hidden" name="pickup_lat" id="dayRentalPickupLat"
+                                                        value="{{ $searchData['pickup_lat'] ?? '' }}">
+                                                    <input type="hidden" name="pickup_lng" id="dayRentalPickupLng"
+                                                        value="{{ $searchData['pickup_lng'] ?? '' }}">
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Date & Time Section -->
+                                    <div class="form-section">
+                                        <h6 class="section-title"><i class="bi bi-calendar3"></i> Date & Time</h6>
+                                        <div class="row g-2">
+                                            <div class="col-8">
+                                                <div class="single-search-box">
+                                                    <svg width="18" height="18" viewBox="0 0 18 18"
+                                                        xmlns="http://www.w3.org/2000/svg">
+                                                        <path
+                                                            d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z" />
+                                                    </svg>
+                                                    <input type="date" name="date" id="dayRentalDate"
+                                                        class="form-control"
+                                                        value="{{ $searchData['from_date'] ?? date('Y-m-d') }}"
+                                                        min="{{ date('Y-m-d') }}" required>
+                                                </div>
+                                            </div>
+                                            <div class="col-4">
+                                                <div class="single-search-box">
+                                                    <svg width="18" height="18" viewBox="0 0 18 18"
+                                                        xmlns="http://www.w3.org/2000/svg">
+                                                        <path
+                                                            d="M9 1C4.03 1 0 5.03 0 10s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z" />
+                                                        <path d="M9.5 5H8v5l4.25 2.52.75-1.23L9.5 9V5z" />
+                                                    </svg>
+                                                    <select name="time" id="dayRentalTime" class="form-select" required>
+                                                        @for ($hour = 6; $hour < 22; $hour++)
+                                                            @for ($min = 0; $min < 60; $min += 30)
+                                                                @php
+                                                                    $time = sprintf('%02d:%02d', $hour, $min);
+                                                                    $selected =
+                                                                        ($searchData['from_time'] ?? '08:00') === $time
+                                                                            ? 'selected'
+                                                                            : '';
+                                                                @endphp
+                                                                <option value="{{ $time }}" {{ $selected }}>
+                                                                    {{ $time }}</option>
+                                                            @endfor
+                                                        @endfor
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Number of Days Section -->
+                                    <div class="form-section">
+                                        <h6 class="section-title"><i class="bi bi-calendar-range"></i> Duration</h6>
+                                        <div class="row g-2">
+                                            <div class="col-12">
+                                                <div class="single-search-box">
+                                                    <select name="num_days" id="dayRentalNumDays" class="form-select" required>
+                                                        <option value="1" selected>1 Day</option>
+                                                        <option value="2">2 Days</option>
+                                                        <option value="3">3 Days</option>
+                                                        <option value="4">4 Days</option>
+                                                        <option value="5">5 Days</option>
+                                                        <option value="6">6 Days</option>
+                                                        <option value="7">7 Days</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Package Selection -->
+                                    <div class="form-section" id="dayRentalPackageSection">
+                                        <h6 class="section-title"><i class="bi bi-box"></i> Package</h6>
+                                        <div class="package-selector" id="day_rental-packages-detail">
+                                            <div class="transfer-type-toggle package-selector-toggle">
+                                                <!-- Packages will be dynamically loaded -->
+                                            </div>
+                                            <div class="loading-packages" style="display: none;">
+                                                <span>Loading packages...</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Pricing Section -->
+                                    <div class="form-section">
+                                        <div class="pricing-display">
+                                            <div id="dayRentalPricingLoader" class="text-center">
+                                                <div class="spinner-border spinner-border-sm" role="status"></div>
+                                                <span class="ms-2">Calculating price...</span>
+                                            </div>
+                                            <div id="dayRentalPricingContent" style="display: none;">
+                                                <div class="price-display-large">
+                                                    <span class="price-label">Price per Day</span>
+                                                    <span class="price-amount"
+                                                        id="dayRentalTotalPrice">{{ getCurrencySymbol() }} 0</span>
+                                                    <span class="price-secondary-info" id="dayRentalTotalPriceInfo" style="display: none;">
+                                                        Total: <strong id="dayRentalTotalPriceValue">{{ getCurrencySymbol() }} 0</strong>
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <div id="dayRentalPricingError" style="display: none;"
+                                                class="text-danger text-center">
+                                                <i class="bi bi-exclamation-triangle"></i> Unable to calculate price
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Action Buttons -->
+                                    <div class="d-grid gap-2">
+                                        <button type="button" class="btn btn-primary btn-lg" id="dayRentalAddToCartBtn">
+                                            <i class="bi bi-cart-plus"></i> Add to Cart
+                                        </button>
+                                        <button type="button" class="btn btn-success btn-lg" id="dayRentalBookNowBtn">
                                             <i class="bi bi-calendar-check"></i> Book Now
                                         </button>
                                     </div>
@@ -1055,6 +1208,7 @@
             // Initialize forms
             initializeAirportForm();
             initializeRentalForm();
+            initializeDayRentalForm();
 
             // Set up image gallery
             setupImageGallery();
@@ -1122,6 +1276,8 @@
                             updateAirportPricing();
                         } else if (service === 'ride_now') {
                             updateRentalPricing();
+                        } else if (service === 'day_rental') {
+                            updateDayRentalPricing();
                         }
                     } else {
                         console.error('Form not found for service:', service);
@@ -1296,6 +1452,100 @@
             // Initialize
             updateRentalDuration();
             updateRentalPricing();
+        }
+
+        function initializeDayRentalForm() {
+            // Date change handler
+            $('#dayRentalDate').on('change', function() {
+                updateDayRentalPricing();
+            });
+
+            // Number of days change handler
+            $('#dayRentalNumDays').on('change', function() {
+                updateDayRentalPricing();
+            });
+
+            // Form field change handlers
+            $('#day_rental-form').on('change', 'input, select', function() {
+                updateDayRentalPricing();
+            });
+
+            // Action button handlers
+            $('#dayRentalAddToCartBtn').on('click', function() {
+                addToCart('day_rental');
+            });
+
+            $('#dayRentalBookNowBtn').on('click', function() {
+                addToCart('day_rental', true);
+            });
+
+            // Load packages for day rental
+            loadDayRentalPackages();
+
+            // Initialize pricing
+            updateDayRentalPricing();
+        }
+
+        function loadDayRentalPackages() {
+            const packageSelector = document.getElementById('day_rental-packages-detail');
+            if (!packageSelector) return;
+
+            const loadingIndicator = packageSelector.querySelector('.loading-packages');
+            const packageToggle = packageSelector.querySelector('.package-selector-toggle');
+
+            if (loadingIndicator) loadingIndicator.style.display = 'block';
+
+            fetch('/api/services/day_rental/packages')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success' && data.data.packages && data.data.packages.length > 0) {
+                        packageToggle.innerHTML = '';
+                        data.data.packages.forEach((pkg, index) => {
+                            const label = document.createElement('label');
+                            label.className = 'transfer-type-option package-option';
+
+                            const input = document.createElement('input');
+                            input.type = 'radio';
+                            input.name = 'package_id';
+                            input.value = pkg.id;
+                            input.id = `day_rental-package-${index}`;
+                            if (index === 0) input.checked = true;
+
+                            const span = document.createElement('span');
+                            span.title = pkg.description || '';
+                            span.textContent = pkg.name;
+
+                            input.addEventListener('change', function() {
+                                updateDayRentalPricing();
+                            });
+
+                            label.appendChild(input);
+                            label.appendChild(span);
+                            packageToggle.appendChild(label);
+                        });
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading day rental packages:', error);
+                })
+                .finally(() => {
+                    if (loadingIndicator) loadingIndicator.style.display = 'none';
+                });
+        }
+
+        function updateDayRentalPricing() {
+            const formData = {
+                service_type: 'day_rental',
+                pickup_location: $('#dayRentalPickupLocation').val(),
+                pickup_lat: $('#dayRentalPickupLat').val(),
+                pickup_lng: $('#dayRentalPickupLng').val(),
+                date: $('#dayRentalDate').val(),
+                time: $('#dayRentalTime').val(),
+                num_days: $('#dayRentalNumDays').val(),
+                package_id: $('input[name="package_id"]:checked', '#day_rental-form').val()
+            };
+
+            updatePricing(formData, 'dayRental');
         }
 
         function updateAirportTransferLocations(type) {

@@ -518,6 +518,15 @@ class DynamicServiceConfigurationService
                 ],
                 'services' => $serviceTypes->whereIn('code', ['chauffeur_driven', 'self_driven'])->values()->toArray()
             ],
+            'day_rental' => [
+                'category_info' => [
+                    'name' => 'Day Rental',
+                    'icon' => 'calendar-day',
+                    'description' => 'Daily vehicle rental with driver for tours and day trips',
+                    'color' => '#17a2b8'
+                ],
+                'services' => $serviceTypes->whereIn('code', ['day_rental'])->values()->toArray()
+            ],
             'custom-tour' => [
                 'category_info' => [
                     'name' => 'Custom Tour',
