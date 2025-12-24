@@ -68,11 +68,9 @@ class BookingSearchRequest extends FormRequest
                 return $this->dropPickupRules();
             
             case 'ride_now':
-                return $this->rentalPackagesRules();
-            
             case 'day_rental':
                 return $this->rentalPackagesRules();
-            
+                
             case 'custom-tour':
                 return $this->customTourRules();
             

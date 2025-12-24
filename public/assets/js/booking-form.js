@@ -187,18 +187,18 @@
         }
 
         // Rental Packages - set today and 3 days later
-        const rentalForm = document.getElementById("ride_now-form");
-        if (rentalForm) {
-            const pickupDateInput = rentalForm.querySelector(
+        const rideNowForm = document.getElementById("ride_now-form");
+        if (rideNowForm) {
+            const pickupDateInput = rideNowForm.querySelector(
                 'input[name="pickup_date"]'
             );
-            const dropoffDateInput = rentalForm.querySelector(
+            const dropoffDateInput = rideNowForm.querySelector(
                 'input[name="dropoff_date"]'
             );
-            const pickupTimeInput = rentalForm.querySelector(
+            const pickupTimeInput = rideNowForm.querySelector(
                 'input[name="pickup_time"]'
             );
-            const dropoffTimeInput = rentalForm.querySelector(
+            const dropoffTimeInput = rideNowForm.querySelector(
                 'input[name="dropoff_time"]'
             );
 
@@ -216,20 +216,84 @@
             }
 
             // Set default locations: Colombo to Galle (for rentals)
-            const pickupInput = rentalForm.querySelector(
+            const pickupInput = rideNowForm.querySelector(
                 'input[name="pickup"]'
             );
-            const dropoffInput = rentalForm.querySelector(
+            const dropoffInput = rideNowForm.querySelector(
                 'input[name="dropoff"]'
             );
-            const pickupLat = rentalForm.querySelector(
+            const pickupLat = rideNowForm.querySelector(
                 'input[name="pickup_lat"]'
             );
-            const pickupLng = rentalForm.querySelector(
+            const pickupLng = rideNowForm.querySelector(
                 'input[name="pickup_lng"]'
             );
-            const dropoffLat = rentalForm.querySelector('input[name="dropoff_lat"]');
-            const dropoffLng = rentalForm.querySelector('input[name="dropoff_lng"]');
+            const dropoffLat = rideNowForm.querySelector('input[name="dropoff_lat"]');
+            const dropoffLng = rideNowForm.querySelector('input[name="dropoff_lng"]');
+
+            if (pickupInput && !pickupInput.value) {
+                pickupInput.value = "Colombo, Sri Lanka";
+                if (pickupLat)
+                    pickupLat.value =
+                        CONFIG.cityCoordinates["Colombo, Sri Lanka"].lat;
+                if (pickupLng)
+                    pickupLng.value =
+                        CONFIG.cityCoordinates["Colombo, Sri Lanka"].lng;
+            }
+            if (dropoffInput && !dropoffInput.value) {
+                dropoffInput.value = "Galle, Sri Lanka";
+                if (dropoffLat)
+                    dropoffLat.value =
+                        CONFIG.cityCoordinates["Galle, Sri Lanka"].lat;
+                if (dropoffLng)
+                    dropoffLng.value =
+                        CONFIG.cityCoordinates["Galle, Sri Lanka"].lng;
+            }
+        }
+
+        const dayRentalForm = document.getElementById("day_rental-form");
+        if (dayRentalForm) {
+            const pickupDateInput = dayRentalForm.querySelector(
+                'input[name="pickup_date"]'
+            );
+            const dropoffDateInput = dayRentalForm.querySelector(
+                'input[name="dropoff_date"]'
+            );
+            const pickupTimeInput = dayRentalForm.querySelector(
+                'input[name="pickup_time"]'
+            );
+            const dropoffTimeInput = dayRentalForm.querySelector(
+                'input[name="dropoff_time"]'
+            );
+
+            if (pickupDateInput && !pickupDateInput.value) {
+                pickupDateInput.value = todayFormatted;
+            }
+            if (dropoffDateInput && !dropoffDateInput.value) {
+                dropoffDateInput.value = threeDaysFormatted;
+            }
+            if (pickupTimeInput && !pickupTimeInput.value) {
+                pickupTimeInput.value = "12:00";
+            }
+            if (dropoffTimeInput && !dropoffTimeInput.value) {
+                dropoffTimeInput.value = "12:00";
+            }
+
+            // Set default locations: Colombo to Galle (for rentals)
+            const pickupInput = dayRentalForm.querySelector(
+                'input[name="pickup"]'
+            );
+            const dropoffInput = dayRentalForm.querySelector(
+                'input[name="dropoff"]'
+            );
+            const pickupLat = dayRentalForm.querySelector(
+                'input[name="pickup_lat"]'
+            );
+            const pickupLng = dayRentalForm.querySelector(
+                'input[name="pickup_lng"]'
+            );
+            const dropoffLat = dayRentalForm.querySelector('input[name="dropoff_lat"]');
+            const dropoffLng = dayRentalForm.querySelector('input[name="dropoff_lng"]');
 
             if (pickupInput && !pickupInput.value) {
                 pickupInput.value = "Colombo, Sri Lanka";
@@ -2822,12 +2886,28 @@
         }
 
         // Ride Now Form (uses pickup_lat/pickup_lng and dropoff_lat/dropoff_lng)
-        const rideForm = document.getElementById('ride_now-form');
-        if (rideForm) {
-            const pickupLat = rideForm.querySelector('input[name="pickup_lat"]');
-            const pickupLng = rideForm.querySelector('input[name="pickup_lng"]');
-            const dropoffLat = rideForm.querySelector('input[name="dropoff_lat"]');
-            const dropoffLng = rideForm.querySelector('input[name="dropoff_lng"]');
+        const rideNowForm = document.getElementById('ride_now-form');
+        if (rideNowForm) {
+            const pickupLat = rideNowForm.querySelector('input[name="pickup_lat"]');
+            const pickupLng = rideNowForm.querySelector('input[name="pickup_lng"]');
+            const dropoffLat = rideNowForm.querySelector('input[name="dropoff_lat"]');
+            const dropoffLng = rideNowForm.querySelector('input[name="dropoff_lng"]');
+
+            console.log('Ride Now coordinates:', {
+                pickupLat: pickupLat?.value || 'not found',
+                pickupLng: pickupLng?.value || 'not found',
+                dropoffLat: dropoffLat?.value || 'not found',
+                dropoffLng: dropoffLng?.value || 'not found',
+                formVisible: !rideForm.classList.contains('hidden')
+            });
+        }
+
+        const dayRentalForm = document.getElementById('day_rental-form');
+        if (dayRentalForm) {
+            const pickupLat = dayRentalForm.querySelector('input[name="pickup_lat"]');
+            const pickupLng = dayRentalForm.querySelector('input[name="pickup_lng"]');
+            const dropoffLat = dayRentalForm.querySelector('input[name="dropoff_lat"]');
+            const dropoffLng = dayRentalForm.querySelector('input[name="dropoff_lng"]');
 
             console.log('Ride Now coordinates:', {
                 pickupLat: pickupLat?.value || 'not found',
