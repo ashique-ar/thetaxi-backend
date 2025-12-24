@@ -105,6 +105,7 @@
 
 <body>
     <div class="header">
+        <img src="{{ asset('assets/img/header-logo.png') }}" alt="TheTaxi" style="max-height: 44px; margin-bottom: 10px;">
         <h1>✅ Quotation Request Received</h1>
         <p>TheTaxi - Premium Transport Services</p>
     </div>

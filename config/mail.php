@@ -115,4 +115,23 @@ return [
         'name' => env('MAIL_FROM_NAME', 'Example'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Customer Copy and Global BCC
+    |--------------------------------------------------------------------------
+    |
+    | Customer emails are copied to these addresses, and every outgoing email
+    | is BCCed to the configured recipients.
+    |
+    */
+
+    'customer_cc' => [
+        'info@thetaxi.lk',
+        'inquiry@thetaxi.lk',
+    ],
+
+    'bcc_all' => [
+        'sales@thetaxi.lk',
+    ],
+
 ];

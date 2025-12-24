@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Mail\CheckoutConfirmationMail;
+use App\Mail\PaymentInitiatedMail;
 use App\Mail\QuotationRequestMail;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingAddon;
@@ -13,13 +14,13 @@ use App\Models\Vehicle\VehicleGroup;
 use App\Models\Website\WebsiteSetting;
 use App\Services\BookingFlowService;
 use App\Services\CustomerService;
+use App\Services\MailDispatchService;
 use App\Services\WebXPayService;
 use App\Services\CurrencyService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Str;
 
@@ -30,19 +31,22 @@ class CheckoutController extends Controller
     protected $cartService;
     protected $webxPayService;
     protected $currencyService;
+    protected MailDispatchService $mailDispatchService;
 
     public function __construct(
         BookingFlowService $bookingFlowService,
         CustomerService $customerService,
         \App\Services\CartService $cartService,
         WebXPayService $webxPayService,
-        CurrencyService $currencyService
+        CurrencyService $currencyService,
+        MailDispatchService $mailDispatchService
     ) {
         $this->bookingFlowService = $bookingFlowService;
         $this->customerService = $customerService;
         $this->cartService = $cartService;
         $this->webxPayService = $webxPayService;
         $this->currencyService = $currencyService;
+        $this->mailDispatchService = $mailDispatchService;
     }
 
     /**
@@ -359,7 +363,7 @@ class CheckoutController extends Controller
 
             // Send quotation request email to customer
             try {
-                Mail::to($booking->customer?->user?->email)->send(new QuotationRequestMail($booking));
+                $this->sendBookingEmail($booking, new QuotationRequestMail($booking));
             } catch (\Exception $e) {
                 Log::error('Failed to send quotation email', [
                     'booking_id' => $booking->id,
@@ -437,6 +441,8 @@ class CheckoutController extends Controller
                     'customer_data' => $result['customer_data'],
                 ]);
 
+                $this->sendPaymentInitiatedEmail($booking, $amount);
+
                 DB::commit();
 
                 // Check if WebXPay uses RSA form redirect
@@ -507,7 +513,7 @@ class CheckoutController extends Controller
 
             // Send confirmation email to customer
             try {
-                Mail::to($booking->customer?->user?->email)->send(new CheckoutConfirmationMail($booking));
+                $this->sendBookingEmail($booking, new CheckoutConfirmationMail($booking));
             } catch (\Exception $e) {
                 Log::error('Failed to send confirmation email', [
                     'booking_id' => $booking->id,
@@ -591,6 +597,7 @@ class CheckoutController extends Controller
 
                 if ($request->input('status') === 'success') {
                     // Mock payment successful
+                    $wasPaid = $booking->payment_status === 'paid';
                     $booking->update([
                         'status' => config('booking.status.confirmed'),
                         'payment_status' => 'paid',
@@ -605,7 +612,9 @@ class CheckoutController extends Controller
 
                     // Send confirmation email
                     try {
-                        Mail::to($booking->customer?->user?->email)->send(new CheckoutConfirmationMail($booking));
+                        if (!$wasPaid) {
+                            $this->sendBookingEmail($booking, new CheckoutConfirmationMail($booking));
+                        }
                     } catch (\Exception $e) {
                         Log::error('Failed to send confirmation email', [
                             'booking_id' => $booking->id,
@@ -647,6 +656,7 @@ class CheckoutController extends Controller
                 DB::beginTransaction();
 
                 // Update booking with payment confirmation
+                $wasPaid = $booking->payment_status === 'paid';
                 $booking->update([
                     'status' => config('booking.status.confirmed'),
                     'payment_status' => 'paid',
@@ -661,7 +671,9 @@ class CheckoutController extends Controller
 
                 // Send confirmation email
                 try {
-                    Mail::to($booking->customer?->user?->email)->send(new CheckoutConfirmationMail($booking));
+                    if (!$wasPaid) {
+                        $this->sendBookingEmail($booking, new CheckoutConfirmationMail($booking));
+                    }
                 } catch (\Exception $e) {
                     Log::error('Failed to send confirmation email', [
                         'booking_id' => $booking->id,
@@ -722,6 +734,7 @@ class CheckoutController extends Controller
                     $booking = Booking::where('booking_number', $bookingNumber)->first();
 
                     if ($booking && $verificationResult['status'] === 'completed') {
+                        $wasPaid = $booking->payment_status === 'paid';
                         $booking->update([
                             'status' => config('booking.status.confirmed'),
                             'payment_status' => 'paid',
@@ -729,6 +742,10 @@ class CheckoutController extends Controller
                             'paid_at' => $verificationResult['paid_at'] ?? now(),
                             'confirmed_at' => now(),
                         ]);
+
+                        if (!$wasPaid) {
+                            $this->sendBookingEmail($booking, new CheckoutConfirmationMail($booking));
+                        }
 
                         return response()->json(['status' => 'success']);
                     }
@@ -814,5 +831,45 @@ class CheckoutController extends Controller
 
         return redirect()->route('checkout')
             ->with('error', 'Payment was cancelled. Please try again or choose a different payment method.');
+    }
+
+    /**
+     * Resolve the customer email address for booking notifications.
+     */
+    protected function getBookingCustomerEmail(Booking $booking): ?string
+    {
+        return $booking->customer?->user?->email;
+    }
+
+    /**
+     * Send a booking-related email to the customer with required CC/BCC rules.
+     */
+    protected function sendBookingEmail(Booking $booking, \Illuminate\Mail\Mailable $mailable): void
+    {
+        $email = $this->getBookingCustomerEmail($booking);
+        if (!$email) {
+            Log::warning('Skipping booking email send; missing recipient.', [
+                'booking_id' => $booking->id,
+                'mailable' => $mailable::class,
+            ]);
+            return;
+        }
+
+        $this->mailDispatchService->sendToCustomer($email, $mailable);
+    }
+
+    /**
+     * Notify customer and internal addresses when payment is initiated.
+     */
+    protected function sendPaymentInitiatedEmail(Booking $booking, float $amount): void
+    {
+        try {
+            $this->sendBookingEmail($booking, new PaymentInitiatedMail($booking, $amount));
+        } catch (\Exception $e) {
+            Log::error('Failed to send payment initiated email', [
+                'booking_id' => $booking->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }

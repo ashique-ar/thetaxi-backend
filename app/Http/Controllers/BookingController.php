@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Services\BookingFlowService;
 use App\Services\CurrencyService;
 use App\Services\DiscountService;
+use App\Services\MailDispatchService;
 use App\Models\BookingSearch;
 use App\Models\Vehicle\VehicleGroup;
 use App\Models\Service\ServiceType;
@@ -22,15 +23,18 @@ class BookingController extends Controller
     protected BookingFlowService $bookingFlowService;
     protected CurrencyService $currencyService;
     protected DiscountService $discountService;
+    protected MailDispatchService $mailDispatchService;
     
     public function __construct(
         BookingFlowService $bookingFlowService,
         CurrencyService $currencyService,
-        DiscountService $discountService
+        DiscountService $discountService,
+        MailDispatchService $mailDispatchService
     ) {
         $this->bookingFlowService = $bookingFlowService;
         $this->currencyService = $currencyService;
         $this->discountService = $discountService;
+        $this->mailDispatchService = $mailDispatchService;
     }
     
     /**
@@ -1387,12 +1391,16 @@ class BookingController extends Controller
         try {
             // Send notification to corporate transport admin
             $adminEmail = config('mail.corporate_transport_admin', 'admin@thetaxi.lk');
-            \Illuminate\Support\Facades\Mail::to($adminEmail)
-                ->send(new \App\Mail\QuotationRequestNotification($inquiry, $requestData, $vehicleGroup));
+            $this->mailDispatchService->sendToInternal(
+                $adminEmail,
+                new \App\Mail\QuotationRequestNotification($inquiry, $requestData, $vehicleGroup)
+            );
             
             // Send confirmation to customer
-            \Illuminate\Support\Facades\Mail::to($requestData['customer_email'])
-                ->send(new \App\Mail\QuotationRequestConfirmation($inquiry, $requestData, $vehicleGroup));
+            $this->mailDispatchService->sendToCustomer(
+                $requestData['customer_email'],
+                new \App\Mail\QuotationRequestConfirmation($inquiry, $requestData, $vehicleGroup)
+            );
 
             Log::info('Quotation request emails sent successfully', [
                 'inquiry_id' => $inquiry->id,

@@ -43,6 +43,7 @@
                                 action="{{ route('booking.enquiry') }}" method="POST">
                                 @csrf
                                 <input type="hidden" name="service_type" value="corporate-transport">
+                                <input type="hidden" name="inquiry_type" value="corporate">
 
                                 <!-- Company Name -->
                                 <div class="single-search-box">

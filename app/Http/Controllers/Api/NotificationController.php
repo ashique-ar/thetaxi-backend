@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\NotificationLog;
+use App\Services\MailDispatchService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
@@ -13,9 +14,12 @@ use Illuminate\Notifications\DatabaseNotification;
 
 class NotificationController extends Controller
 {
+    protected MailDispatchService $mailDispatchService;
+
     // Enforce authentication and permissions for notification endpoints
-    public function __construct()
+    public function __construct(MailDispatchService $mailDispatchService)
     {
+        $this->mailDispatchService = $mailDispatchService;
         $this->middleware('auth:api');
         $this->middleware('permission:notifications.view')->only(['getUserNotifications', 'getUnreadCount']);
         $this->middleware('permission:notifications.mark-read')->only(['markAsRead', 'markAllAsRead']);
@@ -325,7 +329,10 @@ class NotificationController extends Controller
                 'data' => $request->data ?? []
             ];
 
-            \Mail::to($request->email)->send(new \App\Mail\GeneralMail($emailData));
+            $this->mailDispatchService->sendToCustomer(
+                $request->email,
+                new \App\Mail\GeneralMail($emailData)
+            );
 
             return response()->json([
                 'status' => 'success',

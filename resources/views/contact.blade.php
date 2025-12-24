@@ -49,40 +49,81 @@
                                 <p>{{ $settings['contact_form_description'] ?? "We're excited to hear from you! Whether you have a question about our services, want to discuss a new project." }}
                                 </p>
                             </div>
-                            <form>
+                            @if ($errors->any())
+                                <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                                    <strong>Please correct the following errors:</strong>
+                                    <ul class="mb-0 mt-2">
+                                        @foreach ($errors->all() as $error)
+                                            <li>{{ $error }}</li>
+                                        @endforeach
+                                    </ul>
+                                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                                </div>
+                            @endif
+
+                            @if (session('success'))
+                                <div class="alert alert-success alert-dismissible fade show" role="alert">
+                                    {{ session('success') }}
+                                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                                </div>
+                            @endif
+
+                            <form action="{{ route('contact.store') }}" method="POST">
+                                @csrf
+                                <input type="hidden" name="inquiry_type" value="general">
                                 <div class="row g-4 mb-60">
                                     <div class="col-md-6">
                                         <div class="form-inner">
                                             <label>{{ $settings['contact_form_name_label'] ?? 'Full Name' }}</label>
-                                            <input type="text"
-                                                placeholder="{{ $settings['contact_form_name_placeholder'] ?? 'Wasington Mongla' }}">
+                                            <input type="text" name="name"
+                                                placeholder="{{ $settings['contact_form_name_placeholder'] ?? 'Wasington Mongla' }}"
+                                                value="{{ old('name') }}" required>
+                                            @error('name')
+                                                <span class="text-danger small">{{ $message }}</span>
+                                            @enderror
                                         </div>
                                     </div>
                                     <div class="col-md-6">
                                         <div class="form-inner">
                                             <label>{{ $settings['contact_form_email_label'] ?? 'Email Address' }}</label>
-                                            <input type="email"
-                                                placeholder="{{ $settings['contact_form_email_placeholder'] ?? 'info@example.com' }}">
+                                            <input type="email" name="email"
+                                                placeholder="{{ $settings['contact_form_email_placeholder'] ?? 'info@example.com' }}"
+                                                value="{{ old('email') }}" required>
+                                            @error('email')
+                                                <span class="text-danger small">{{ $message }}</span>
+                                            @enderror
                                         </div>
                                     </div>
                                     <div class="col-md-6">
                                         <div class="form-inner">
                                             <label>{{ $settings['contact_form_phone_label'] ?? 'Phone Number' }}</label>
-                                            <input type="text"
-                                                placeholder="{{ $settings['contact_form_phone_placeholder'] ?? '+92 567 *** ***' }}">
+                                            <input type="text" name="phone"
+                                                placeholder="{{ $settings['contact_form_phone_placeholder'] ?? '+92 567 *** ***' }}"
+                                                value="{{ old('phone') }}" required>
+                                            @error('phone')
+                                                <span class="text-danger small">{{ $message }}</span>
+                                            @enderror
                                         </div>
                                     </div>
                                     <div class="col-md-6">
                                         <div class="form-inner">
                                             <label>{{ $settings['contact_form_destination_label'] ?? 'Country' }}</label>
-                                            <input type="text"
-                                                placeholder="{{ $settings['contact_form_destination_placeholder'] ?? 'Enter your Country' }}">
+                                            <input type="text" name="country"
+                                                placeholder="{{ $settings['contact_form_destination_placeholder'] ?? 'Enter your Country' }}"
+                                                value="{{ old('country') }}">
+                                            @error('country')
+                                                <span class="text-danger small">{{ $message }}</span>
+                                            @enderror
                                         </div>
                                     </div>
                                     <div class="col-md-12">
                                         <div class="form-inner">
                                             <label>{{ $settings['contact_form_message_label'] ?? 'Brief/Message' }}</label>
-                                            <textarea placeholder="{{ $settings['contact_form_message_placeholder'] ?? 'Write somethings about inquiry' }}"></textarea>
+                                            <textarea name="message" required
+                                                placeholder="{{ $settings['contact_form_message_placeholder'] ?? 'Write somethings about inquiry' }}">{{ old('message') }}</textarea>
+                                            @error('message')
+                                                <span class="text-danger small">{{ $message }}</span>
+                                            @enderror
                                         </div>
                                     </div>
                                     <div class="col-md-12">
