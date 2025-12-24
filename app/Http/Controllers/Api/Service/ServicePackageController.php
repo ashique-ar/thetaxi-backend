@@ -83,10 +83,10 @@ class ServicePackageController extends Controller
 
         if ($request->filled('search')) {
             $search = $request->search;
-            $query->where(function($q) use ($search) {
+            $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('code', 'like', "%{$search}%")
-                  ->orWhere('description', 'like', "%{$search}%");
+                    ->orWhere('code', 'like', "%{$search}%")
+                    ->orWhere('description', 'like', "%{$search}%");
             });
         }
 
@@ -147,6 +147,7 @@ class ServicePackageController extends Controller
             'rate_type' => 'required|string|in:flat,per_hour,per_day',
             'default_duration_hours' => 'required|integer|min:1',
             'sort_order' => 'nullable|integer|min:0',
+            'service_type_id' => 'required|exists:service_types,id',
             'is_active' => 'boolean',
         ]);
 
