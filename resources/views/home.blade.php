@@ -6,8 +6,10 @@
     <!-- home4 Banner Section Start-->
     <div class="home4-banner-section mb-100">
         <div class="banner-video-area">
-            <video autoplay loop muted playsinline preload="metadata"
-                src="{{ s3_asset($settings['banner_image'] ?? 'assets/video/home4-banner-video.mp4') }}"></video>
+            <img src="{{ $settings['banner_image'] ? s3_asset($settings['banner_image']) : asset('assets/img/home4/home4-banner-img.jpg') }}"
+                alt="" loading="lazy">
+            {{-- <video autoplay loop muted playsinline preload="metadata"
+                src="{{ s3_asset($settings['banner_video'] ?? 'assets/video/home4-banner-video.mp4') }}"></video> --}}
         </div>
         <div class="banner-content-wrap">
             <div class="container">
