@@ -408,6 +408,7 @@
         <form id="day_rental-form" class="filter-input {{ $currentServiceType === 'day_rental' ? 'show' : '' }}"
             data-service="day_rental" action="{{ route('booking.search') }}" method="GET">
 
+            <input type="hidden" name="service_type" value="day_rental">
             <!-- Pickup Location -->
             <div class="single-search-box location-search-box">
                 <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">

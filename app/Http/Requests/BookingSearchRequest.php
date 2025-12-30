@@ -193,18 +193,14 @@ class BookingSearchRequest extends FormRequest
         return [
             'service_type' => 'required|string',
             'pickup' => 'required|string|max:255',
-            // 'dropoff' => 'required|string|max:255',
             'pickup_lat' => 'nullable|numeric|between:-90,90',
             'pickup_lng' => 'nullable|numeric|between:-180,180',
-            // 'dropoff_lat' => 'nullable|numeric|between:-90,90',
-            // 'dropoff_lng' => 'nullable|numeric|between:-180,180',
             'pickup_date' => 'required|date|after_or_equal:today',
             'pickup_time' => 'required|date_format:H:i',
             'dropoff_date' => 'required|date|after:pickup_date',
             'dropoff_time' => 'required|date_format:H:i',
             'package_type' => 'nullable|string|in:half-day,full-day,multi-day,hourly,daily',
             'package_id' => 'nullable|uuid|exists:service_packages,id',
-            // 'passengers' => 'required|integer|min:1|max:15'
         ];
     }
 
