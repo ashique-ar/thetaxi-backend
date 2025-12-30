@@ -34,7 +34,7 @@ class VehicleAddonController extends Controller
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('description', 'like', "%{$search}%");
+                    ->orWhere('description', 'like', "%{$search}%");
             });
         }
 
@@ -85,7 +85,7 @@ class VehicleAddonController extends Controller
     {
         $data = $request->validated();
         $data['created_user_id'] = $request->user()->id;
-        
+
         $addon = VehicleAddon::create($data);
 
         return response()->json([
@@ -102,7 +102,7 @@ class VehicleAddonController extends Controller
     {
         $includes = $request->input('include', '');
         $relations = array_filter(explode(',', $includes));
-        
+
         // Always load serviceType
         if (!in_array('serviceType', $relations)) {
             $relations[] = 'serviceType';
@@ -121,7 +121,7 @@ class VehicleAddonController extends Controller
     {
         $data = $request->validated();
         $data['updated_user_id'] = $request->user()->id;
-        
+
         $vehicleAddon->update($data);
 
         return response()->json([
@@ -205,7 +205,7 @@ class VehicleAddonController extends Controller
         if ($request->filled('vehicle_category')) {
             $query->where(function ($q) use ($request) {
                 $q->whereNull('compatible_vehicle_types')
-                  ->orWhereJsonContains('compatible_vehicle_types', $request->vehicle_category);
+                    ->orWhereJsonContains('compatible_vehicle_types', $request->vehicle_category);
             });
         }
 
@@ -232,7 +232,7 @@ class VehicleAddonController extends Controller
         if ($request->filled('vehicle_type')) {
             $query->where(function ($q) use ($request) {
                 $q->whereNull('compatible_vehicle_types')
-                  ->orWhereJsonContains('compatible_vehicle_types', $request->vehicle_type);
+                    ->orWhereJsonContains('compatible_vehicle_types', $request->vehicle_type);
             });
         }
 
@@ -280,7 +280,7 @@ class VehicleAddonController extends Controller
         ]);
 
         $addon = VehicleAddon::findOrFail($request->addon_id);
-        
+
         $calculation = [
             'addon_id' => $addon->id,
             'addon' => new VehicleAddonResource($addon),
@@ -336,7 +336,8 @@ class VehicleAddonController extends Controller
 
         foreach ($request->addons as $addonRequest) {
             $addon = VehicleAddon::find($addonRequest['addon_id']);
-            if (!$addon) continue;
+            if (!$addon)
+                continue;
 
             $quantity = $addonRequest['quantity'];
             $subtotal = $addon->calculatePrice($quantity);
@@ -371,7 +372,7 @@ class VehicleAddonController extends Controller
         ]);
 
         $addon = VehicleAddon::findOrFail($request->addon_id);
-        
+
         $available = true;
         $reason = null;
         $minQuantity = $addon->min_qty;

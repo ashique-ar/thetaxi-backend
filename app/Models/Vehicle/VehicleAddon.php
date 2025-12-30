@@ -61,7 +61,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 class VehicleAddon extends BaseModel
 {
-    
+
 
     /**
      * The table associated with the model.
@@ -200,7 +200,7 @@ class VehicleAddon extends BaseModel
     {
         return $query->where(function ($q) use ($serviceTypeId) {
             $q->where('service_type_id', $serviceTypeId)
-              ->orWhereNull('service_type_id'); // Universal addons
+                ->orWhereNull('service_type_id'); // Universal addons
         });
     }
 
@@ -220,11 +220,11 @@ class VehicleAddon extends BaseModel
         return $query->where('is_active', true)
             ->where(function ($q) {
                 $q->whereNull('valid_from')
-                  ->orWhere('valid_from', '<=', now());
+                    ->orWhere('valid_from', '<=', now());
             })
             ->where(function ($q) {
                 $q->whereNull('valid_to')
-                  ->orWhere('valid_to', '>=', now());
+                    ->orWhere('valid_to', '>=', now());
             });
     }
 
@@ -238,7 +238,7 @@ class VehicleAddon extends BaseModel
         }
 
         $now = now();
-        
+
         if ($this->valid_from && $this->valid_from > $now) {
             return false;
         }

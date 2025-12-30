@@ -48,13 +48,13 @@ class VehicleAddonResource extends JsonResource
             'valid_from' => $this->valid_from?->format('Y-m-d'),
             'valid_to' => $this->valid_to?->format('Y-m-d'),
             'valid_until' => $this->valid_to?->format('Y-m-d'), // Alias for frontend compatibility
-            
+
             // Computed properties
             'is_valid' => $this->isValid(),
-            
+
             // Relationships
             'service_type' => new ServiceTypeResource($this->whenLoaded('serviceType')),
-            
+
             // Metadata
             'created_at' => $this->created_at?->toISOString(),
             'updated_at' => $this->updated_at?->toISOString(),
