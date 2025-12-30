@@ -18,11 +18,11 @@ class AdminUserSeeder extends Seeder
         // Create admin role for both guards if they don't exist
         $webAdminRole = Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
         $apiAdminRole = Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'api']);
-        
+
         // Sync permissions for both guards
         $webAdminRole->syncPermissions(Permission::where('guard_name', 'web')->get());
         $apiAdminRole->syncPermissions(Permission::where('guard_name', 'api')->get());
-        
+
         // Create admin user
         $admin = User::firstOrCreate(
             ['email' => 'admin@casons.lk'],
@@ -36,15 +36,19 @@ class AdminUserSeeder extends Seeder
                 'password_changed_at' => now(),
             ]
         );
-        
+
         // Remove any existing role assignments
         $admin->roles()->detach();
-        
+
         // Assign admin role to user for API guard only (since your system uses api guard for authentication)
+        if ($webAdminRole) {
+            $admin->assignRole($webAdminRole);
+        }
         if ($apiAdminRole) {
             $admin->assignRole($apiAdminRole);
         }
-        
+
+
         $this->command->info('Admin user created successfully!');
         $this->command->info('Email: admin@casons.lk');
         $this->command->info('Password: casons123');

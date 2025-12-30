@@ -19,11 +19,11 @@ Route::get('/', [HomeController::class, 'index'])->name('home');
 
 // Debug diagnostic endpoints
 Route::get('/test', [\App\Http\Controllers\DebugController::class, 'timeoutDiagnostic'])->name('test');
-Route::get('/test-render', function() {
+Route::get('/test-render', function () {
     $cmsCount = \App\Models\Website\CmsContent::count();
     $settingsService = new \App\Services\WebsiteSettingsService();
     $settings = $settingsService->getHomepageSettings();
-    
+
     return view('test', [
         'cmsCount' => $cmsCount,
         'settingsLoaded' => !empty($settings),
@@ -66,6 +66,8 @@ Route::post('/cart/remove', [CartController::class, 'remove'])->name('cart.remov
 Route::post('/cart/clear', [CartController::class, 'clear'])->name('cart.clear');
 Route::post('/cart/apply-coupon', [CartController::class, 'applyCoupon'])->name('cart.apply-coupon');
 Route::post('/cart/remove-coupon', [CartController::class, 'removeCoupon'])->name('cart.remove-coupon');
+Route::post('/cart/apply-promo-code', [CartController::class, 'applyPromoCode'])->name('cart.apply-promo-code');
+Route::post('/cart/remove-promo-code', [CartController::class, 'removePromoCode'])->name('cart.remove-promo-code');
 Route::get('/cart/summary', [CartController::class, 'getSummary'])->name('cart.summary');
 Route::post('/cart/checkout', [CartController::class, 'checkout'])->name('cart.checkout');
 
@@ -75,6 +77,11 @@ Route::get('/cart/addons/{cartKey}', [CartController::class, 'getItemAddons'])->
 Route::post('/cart/addon/add', [CartController::class, 'addAddon'])->name('cart.addon.add');
 Route::post('/cart/addon/remove', [CartController::class, 'removeAddon'])->name('cart.addon.remove');
 Route::post('/cart/addon/update-qty', [CartController::class, 'updateAddonQty'])->name('cart.addon.update-qty');
+
+// Cart Extra KM routes
+Route::get('/cart/extra-km/{cartKey}', [CartController::class, 'getExtraKmRate'])->name('cart.extra-km.get');
+Route::post('/cart/extra-km/add', [CartController::class, 'addExtraKm'])->name('cart.extra-km.add');
+Route::post('/cart/extra-km/remove', [CartController::class, 'removeExtraKm'])->name('cart.extra-km.remove');
 
 // Checkout routes
 Route::get('/checkout', [CheckoutController::class, 'index'])->name('checkout');
@@ -100,9 +107,13 @@ Route::post('/currency/switch', [CurrencyController::class, 'switch'])->name('cu
 Route::get('/currency/available', [CurrencyController::class, 'available'])->name('currency.available');
 
 // Booking routes
-Route::post('/booking/search', [BookingController::class, 'search'])->name('booking.search');
+// Support GET for search (so public search forms don't require CSRF tokens) while keeping POST for compatibility
+Route::match(['get', 'post'], '/booking/search', [BookingController::class, 'search'])->name('booking.search');
 Route::post('/booking/enquiry', [InquiryController::class, 'store'])->name('booking.enquiry');
 Route::post('/booking/request-quotation', [BookingController::class, 'requestQuotation'])->name('booking.request-quotation');
+
+// Quotation request route (alias for search page modal)
+Route::post('/quotation/request', [BookingController::class, 'requestQuotation'])->name('quotation.request');
 
 // Dynamic service configuration API routes
 Route::get('/api/services/configuration', [BookingController::class, 'getServiceConfiguration'])->name('api.services.configuration');

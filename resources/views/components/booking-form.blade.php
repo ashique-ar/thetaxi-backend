@@ -93,8 +93,7 @@
         <!-- Airport Transfer Form -->
         <form id="airport_transfers-form"
             class="filter-input {{ $currentServiceType === 'airport_transfers' ? 'show' : '' }}"
-            data-service="airport_transfers" action="{{ route('booking.search') }}" method="POST">
-            @csrf
+            data-service="airport_transfers" action="{{ route('booking.search') }}" method="GET">
             <input type="hidden" name="service_type" value="airport_transfers">
 
             <!-- Transfer Type Selection - Compact Toggle Style -->
@@ -275,8 +274,7 @@
 
         <!-- Rental Packages Form -->
         <form id="ride_nows-form" class="filter-input {{ $currentServiceType === 'ride_now' ? 'show' : '' }}"
-            data-service="ride_now" action="{{ route('booking.search') }}" method="POST">
-            @csrf
+            data-service="ride_now" action="{{ route('booking.search') }}" method="GET">
             <input type="hidden" name="service_type" value="ride_now">
 
             <!-- Pickup Location -->
@@ -361,7 +359,7 @@
             </div>
 
             <!-- Drop Off Date -->
-            <div class="single-search-box date-field">
+            {{-- <div class="single-search-box date-field">
                 <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
                     <path
                         d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z" />
@@ -389,7 +387,7 @@
                 @error('dropoff_time')
                     <span class="text-danger small">{{ $message }}</span>
                 @enderror
-            </div>
+            </div> --}}
 
             <div class="package-selector" id="ride_now-packages" style="display: none;"
                 data-selected="{{ old('package_id', isset($search) && isset($search->package_id) ? $search->package_id : '') }}">
@@ -408,9 +406,7 @@
 
         <!-- Day Rental Form -->
         <form id="day_rental-form" class="filter-input {{ $currentServiceType === 'day_rental' ? 'show' : '' }}"
-            data-service="day_rental" action="{{ route('booking.search') }}" method="POST">
-            @csrf
-            <input type="hidden" name="service_type" value="day_rental">
+            data-service="day_rental" action="{{ route('booking.search') }}" method="GET">
 
             <!-- Pickup Location -->
             <div class="single-search-box location-search-box">
@@ -438,7 +434,7 @@
             </div>
 
             <!-- Drop Off Location -->
-            <div class="single-search-box location-search-box">
+            {{-- <div class="single-search-box location-search-box">
                 <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
                     <g>
                         <path
@@ -460,7 +456,7 @@
                 @error('dropoff')
                     <span class="text-danger small">{{ $message }}</span>
                 @enderror
-            </div>
+            </div> --}}
 
             <!-- Pickup Date -->
             <div class="single-search-box date-field">
@@ -1330,8 +1326,10 @@
                 if (form) {
                     const fromLat = form.querySelector('input[name="pickup_lat"]');
                     const fromLng = form.querySelector('input[name="pickup_lng"]');
-                    const toLat = form.querySelector('input[name="dropoff_lat"]');
-                    const toLng = form.querySelector('input[name="dropoff_lng"]');
+                    const toLat = form.querySelector('input[name="pickup_lng"]');
+                    const toLng = form.querySelector('input[name="pickup_lat"]');
+                    // const toLat = form.querySelector('input[name="dropoff_lat"]');
+                    // const toLng = form.querySelector('input[name="dropoff_lng"]');
 
                     console.log(`${formId}:`, {
                         fromLat: fromLat ? fromLat.value : 'NOT FOUND',

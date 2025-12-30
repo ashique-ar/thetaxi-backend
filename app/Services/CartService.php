@@ -4,18 +4,23 @@ namespace App\Services;
 
 use App\Models\Cart;
 use App\Models\Customer;
+use App\Models\PromoCode;
 use App\Models\User;
 use App\Models\Website\WebsiteSetting;
 use App\Services\CurrencyService;
+use App\Services\PromoCodeService;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Session;
 
 class CartService
 {
     protected CurrencyService $currencyService;
+    protected PromoCodeService $promoCodeService;
 
-    public function __construct(CurrencyService $currencyService)
+    public function __construct(CurrencyService $currencyService, PromoCodeService $promoCodeService)
     {
         $this->currencyService = $currencyService;
+        $this->promoCodeService = $promoCodeService;
     }
     /**
      * Get or create cart for current user/customer/session
@@ -141,6 +146,138 @@ class CartService
     }
 
     /**
+     * Apply a promo code to the cart
+     * 
+     * Validates the promo code using PromoCodeService, calculates the discount,
+     * and applies it to the cart totals.
+     *
+     * @param Cart $cart The cart to apply the promo code to
+     * @param string $code The promo code to apply
+     * @param string|null $customerId Optional customer ID for per-customer limit validation
+     * @return array Result array with 'success', 'message', and optionally 'discount' and 'promo_code'
+     */
+    public function applyPromoCode(Cart $cart, string $code, ?string $customerId = null): array
+    {
+        // Check if a promo code is already applied
+        if (!empty($cart->coupon_code)) {
+            return [
+                'success' => false,
+                'error_code' => 'PROMO_CODE_ALREADY_APPLIED',
+                'message' => 'A promo code is already applied to this cart. Please remove it first.',
+            ];
+        }
+
+        // Get the cart subtotal for validation (use LKR values stored in totals)
+        $totals = $cart->totals ?? [];
+        $subtotal = (float)($totals['subtotal'] ?? 0);
+
+        // If cart is empty or has no subtotal, reject
+        if ($subtotal <= 0) {
+            return [
+                'success' => false,
+                'error_code' => 'CART_EMPTY',
+                'message' => 'Cannot apply promo code to an empty cart.',
+            ];
+        }
+
+        // Validate the promo code
+        $validationResult = $this->promoCodeService->validatePromoCode($code, $subtotal, $customerId);
+
+        if (!$validationResult['valid']) {
+            return [
+                'success' => false,
+                'error_code' => $validationResult['error_code'] ?? 'PROMO_CODE_INVALID',
+                'message' => $validationResult['message'] ?? 'Invalid promo code.',
+                'details' => $validationResult['details'] ?? null,
+            ];
+        }
+
+        // Get the promo code for additional info
+        $promoCode = $this->promoCodeService->getByCode($code);
+        
+        if (!$promoCode) {
+            return [
+                'success' => false,
+                'error_code' => 'PROMO_CODE_NOT_FOUND',
+                'message' => 'The promo code does not exist.',
+            ];
+        }
+
+        // Calculate the discount
+        $discount = $this->promoCodeService->calculateDiscount($promoCode, $subtotal);
+
+        // Apply the promo code to the cart
+        $cart->applyCoupon(strtoupper(trim($code)), $discount);
+        $cart->save();
+        
+        // Recalculate totals with the discount
+        $this->updateTotals($cart);
+
+        Log::info('Promo code applied to cart', [
+            'cart_id' => $cart->id,
+            'promo_code' => $promoCode->code,
+            'discount' => $discount,
+            'subtotal' => $subtotal,
+            'customer_id' => $customerId,
+        ]);
+
+        return [
+            'success' => true,
+            'message' => 'Promo code applied successfully.',
+            'discount' => $discount,
+            'promo_code' => [
+                'code' => $promoCode->code,
+                'name' => $promoCode->name,
+                'discount_type' => $promoCode->discount_type,
+                'discount_value' => $promoCode->discount_value,
+            ],
+        ];
+    }
+
+    /**
+     * Remove the applied promo code from the cart
+     * 
+     * Removes the promo code and recalculates cart totals without the discount.
+     *
+     * @param Cart $cart The cart to remove the promo code from
+     * @return array Result array with 'success' and 'message'
+     */
+    public function removePromoCode(Cart $cart): array
+    {
+        // Check if there's a promo code to remove
+        if (empty($cart->coupon_code)) {
+            return [
+                'success' => false,
+                'error_code' => 'NO_PROMO_CODE_APPLIED',
+                'message' => 'No promo code is currently applied to this cart.',
+            ];
+        }
+
+        $removedCode = $cart->coupon_code;
+        $removedDiscount = $cart->coupon_discount;
+
+        // Remove the promo code
+        $cart->removeCoupon();
+        $cart->save();
+        
+        // Recalculate totals without the discount
+        $this->updateTotals($cart);
+
+        Log::info('Promo code removed from cart', [
+            'cart_id' => $cart->id,
+            'removed_code' => $removedCode,
+            'removed_discount' => $removedDiscount,
+        ]);
+
+        return [
+            'success' => true,
+            'message' => 'Promo code removed successfully.',
+            'removed_code' => $removedCode,
+            'removed_discount' => $removedDiscount,
+        ];
+    }
+
+    /**
      * Calculate and update cart totals
      */
     public function updateTotals(Cart $cart): void
@@ -227,13 +364,22 @@ class CartService
             }
         }
         
+        // Calculate extra km charges
+        $extraKmCharges = 0;
+        foreach ($items as $item) {
+            if (is_array($item) && !empty($item['extra_km'])) {
+                $extraKmCharges += (float)($item['extra_km']['total_cost'] ?? 0);
+            }
+        }
+        
         $couponDiscount = $cart->coupon_discount ?? 0;
-        $total = $subtotal + $serviceFee + $tax + $vat + $addonCharges - $couponDiscount;
+        $total = $subtotal + $serviceFee + $tax + $vat + $addonCharges + $extraKmCharges - $couponDiscount;
 
         $totalsArray = [
             'subtotal' => round($subtotal, 2),
             'service_fee' => round($serviceFee, 2),
             'addon_charges' => round($addonCharges, 2),
+            'extra_km_charges' => round($extraKmCharges, 2),
             'tax' => round($tax, 2),
             'tax_label' => config('booking.tax.label', 'NBT'),
             'vat' => round($vat, 2),
@@ -315,6 +461,20 @@ class CartService
             if (isset($item['total_price'])) {
                 $item['total_price'] = $this->currencyService->convertFromLKR((float)$item['total_price'], $selectedCurrency);
                 $item['total_price_lkr'] = (float)($item['total_price_lkr'] ?? $item['total_price']); // Preserve original LKR price
+            }
+            
+            // Convert extra_km prices if present
+            if (isset($item['extra_km']) && is_array($item['extra_km'])) {
+                $extraKm = $item['extra_km'];
+                $item['extra_km'] = [
+                    'km' => $extraKm['km'] ?? 0,
+                    'rate_per_km' => $this->currencyService->convertFromLKR((float)($extraKm['rate_per_km'] ?? 0), $selectedCurrency),
+                    'rate_per_km_lkr' => (float)($extraKm['rate_per_km'] ?? 0),
+                    'total_cost' => $this->currencyService->convertFromLKR((float)($extraKm['total_cost'] ?? 0), $selectedCurrency),
+                    'total_cost_lkr' => (float)($extraKm['total_cost'] ?? 0),
+                    'currency' => $selectedCurrency,
+                    'added_at' => $extraKm['added_at'] ?? null
+                ];
             }
             
             // Add currency and package information
@@ -734,7 +894,7 @@ class CartService
      */
     protected function getTaxPercentage(): float
     {
-        $taxRate = $this->getWebsiteSetting('tax_percentage', config('booking.tax.rate', 0.1));
+        $taxRate = $this->getWebsiteSetting('tax_percentage', config('booking.tax.rate', 0.18));
         return (float)$taxRate / 100; // Convert percentage to decimal
     }
 
@@ -743,7 +903,7 @@ class CartService
      */
     protected function getServiceFeePercentage(): float
     {
-        $feeRate = $this->getWebsiteSetting('service_fee_percentage', config('booking.service_fee.rate', 0.05));
+        $feeRate = $this->getWebsiteSetting('service_fee_percentage', config('booking.service_fee.rate', 0));
         return (float)$feeRate / 100; // Convert percentage to decimal
     }
 
@@ -752,8 +912,178 @@ class CartService
      */
     protected function getVatPercentage(): float
     {
-        $vatRate = $this->getWebsiteSetting('vat_percentage', config('booking.vat.rate', 0.18));
+        $vatRate = $this->getWebsiteSetting('vat_percentage', config('booking.vat.rate', 0));
         return (float)$vatRate / 100; // Convert percentage to decimal
     }
-}
 
+    /**
+     * Get extra km rate for a vehicle group from common rates
+     * 
+     * @param string $vehicleGroupId
+     * @return array|null Returns ['rate' => float, 'currency' => string] or null if not found
+     */
+    public function getExtraKmRateForVehicleGroup(string $vehicleGroupId): ?array
+    {
+        try {
+            // Find the extra_km_rate common rate definition
+            $extraKmDefinition = \App\Models\Vehicle\VehiclePricing\VehiclePricingCommonRateDefinition::where('code', 'extra_km_rate')
+                ->where('is_active', true)
+                ->first();
+
+            if (!$extraKmDefinition) {
+                \Illuminate\Support\Facades\Log::warning('Extra KM rate definition not found');
+                return null;
+            }
+
+            // Get the rate value for this vehicle group
+            $vehicleGroupRate = \App\Models\Vehicle\VehiclePricing\VehicleGroupCommonRatePricing::where('vehicle_group_id', $vehicleGroupId)
+                ->where('common_rate_definition_id', $extraKmDefinition->id)
+                ->where('is_active', true)
+                ->first();
+
+            if ($vehicleGroupRate && $vehicleGroupRate->value > 0) {
+                return [
+                    'rate' => (float)$vehicleGroupRate->value,
+                    'currency' => 'LKR',
+                    'definition_id' => $extraKmDefinition->id,
+                    'definition_name' => $extraKmDefinition->name
+                ];
+            }
+
+            return null;
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Error getting extra km rate', [
+                'vehicle_group_id' => $vehicleGroupId,
+                'error' => $e->getMessage()
+            ]);
+            return null;
+        }
+    }
+
+    /**
+     * Add extra km purchase to a cart item
+     * 
+     * @param Cart $cart
+     * @param string $cartKey
+     * @param int $extraKm Number of extra kilometers to purchase
+     * @return bool
+     */
+    public function addExtraKm(Cart $cart, string $cartKey, int $extraKm): bool
+    {
+        try {
+            $items = $cart->items ?? [];
+            
+            if (!isset($items[$cartKey])) {
+                return false;
+            }
+
+            $vehicleGroupId = $items[$cartKey]['vehicle_group_id'] ?? null;
+            if (!$vehicleGroupId) {
+                return false;
+            }
+
+            // Get extra km rate for this vehicle group
+            $extraKmRate = $this->getExtraKmRateForVehicleGroup($vehicleGroupId);
+            if (!$extraKmRate) {
+                \Illuminate\Support\Facades\Log::warning('Extra KM rate not configured for vehicle group', [
+                    'vehicle_group_id' => $vehicleGroupId
+                ]);
+                return false;
+            }
+
+            // Calculate total extra km cost
+            $extraKmCost = $extraKmRate['rate'] * $extraKm;
+
+            // Store extra km purchase in item
+            $items[$cartKey]['extra_km'] = [
+                'km' => $extraKm,
+                'rate_per_km' => $extraKmRate['rate'],
+                'total_cost' => $extraKmCost,
+                'currency' => $extraKmRate['currency'],
+                'added_at' => now()->toIso8601String()
+            ];
+
+            $cart->items = $items;
+            $cart->save();
+            $this->updateTotals($cart);
+            
+            return true;
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Error adding extra km to cart', [
+                'error' => $e->getMessage(),
+                'cart_key' => $cartKey,
+                'extra_km' => $extraKm
+            ]);
+            return false;
+        }
+    }
+
+    /**
+     * Update extra km quantity in cart item
+     * 
+     * @param Cart $cart
+     * @param string $cartKey
+     * @param int $extraKm New number of extra kilometers (0 to remove)
+     * @return bool
+     */
+    public function updateExtraKm(Cart $cart, string $cartKey, int $extraKm): bool
+    {
+        if ($extraKm <= 0) {
+            return $this->removeExtraKm($cart, $cartKey);
+        }
+        
+        return $this->addExtraKm($cart, $cartKey, $extraKm);
+    }
+
+    /**
+     * Remove extra km purchase from cart item
+     * 
+     * @param Cart $cart
+     * @param string $cartKey
+     * @return bool
+     */
+    public function removeExtraKm(Cart $cart, string $cartKey): bool
+    {
+        try {
+            $items = $cart->items ?? [];
+            
+            if (!isset($items[$cartKey])) {
+                return false;
+            }
+
+            if (isset($items[$cartKey]['extra_km'])) {
+                unset($items[$cartKey]['extra_km']);
+            }
+
+            $cart->items = $items;
+            $cart->save();
+            $this->updateTotals($cart);
+            
+            return true;
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Error removing extra km from cart', [
+                'error' => $e->getMessage(),
+                'cart_key' => $cartKey
+            ]);
+            return false;
+        }
+    }
+
+    /**
+     * Get extra km info for a cart item
+     * 
+     * @param Cart $cart
+     * @param string $cartKey
+     * @return array|null
+     */
+    public function getItemExtraKm(Cart $cart, string $cartKey): ?array
+    {
+        $items = $cart->items ?? [];
+        
+        if (!isset($items[$cartKey])) {
+            return null;
+        }
+
+        return $items[$cartKey]['extra_km'] ?? null;
+    }
+}

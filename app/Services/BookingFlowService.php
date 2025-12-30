@@ -115,9 +115,9 @@ class BookingFlowService
     {
         $serviceType = $params['service_type'];
         $fromDate = Carbon::parse($params['from_date']);
-        $toDate = Carbon::parse($params['to_date']);
+        $toDate = isset($params['to_date']) ? Carbon::parse($params['to_date']) : $fromDate;
         $fromTime = $params['from_time'];
-        $toTime = $params['to_time'];
+        $toTime = isset($params['to_time']) ? Carbon::parse($params['to_time']) : null;
         $pickupLocation = $params['pickup_location'] ?? null;
         $dropoffLocation = $params['dropoff_location'] ?? null;
         $customerId = $params['customer_id'] ?? null;
@@ -264,11 +264,64 @@ class BookingFlowService
                 })->count() > 0;
             }
 
-            // Determine if this vehicle group should allow Request Quotation
-            $allowRequestQuotation = !$isPricingConfigured || 
-                                   $pricingError || 
-                                   $group->force_quotation_request ?? false ||
-                                   ($group->is_active && $availableCount === 0 && $totalCount > 0);
+            // Check if service type requires inquiry (is_inquiry flag)
+            $serviceTypeRequiresInquiry = false;
+            if ($serviceTypeModel) {
+                $serviceTypeRequiresInquiry = $serviceTypeModel->is_inquiry ?? false;
+            }
+
+            // Check if vehicle group is active
+            $isGroupActive = $group->is_active ?? true;
+            
+            // Check if pricing amount is 0 or not configured
+            $hasPricing = $isPricingConfigured && 
+                         isset($pricingInfo['base_amount']) && 
+                         $pricingInfo['base_amount'] > 0;
+            
+            // Check if any vehicles are available in the group
+            $hasAvailableVehicles = $availableCount > 0;
+            
+            // Check if vehicle group is inquiry-only (force quotation)
+            $isInquiryOnly = $group->is_inquiry_only ?? false;
+
+            // Determine if this vehicle group should show Request Quotation instead of Add to Cart/Book Now
+            // Conditions for quotation-only mode:
+            // 1. Price is 0 or not configured
+            // 2. Vehicle group is not active
+            // 3. No vehicles available in the group
+            // 4. Vehicle group is marked as inquiry-only
+            // 5. Service type requires inquiry
+            // 6. Pricing calculation error occurred
+            // 7. Force quotation request flag is set
+            $quotationOnlyReasons = [];
+            
+            if (!$hasPricing) {
+                $quotationOnlyReasons[] = 'pricing_not_configured';
+            }
+            if (!$isGroupActive) {
+                $quotationOnlyReasons[] = 'group_inactive';
+            }
+            if (!$hasAvailableVehicles && $totalCount > 0) {
+                $quotationOnlyReasons[] = 'no_vehicles_available';
+            }
+            if ($isInquiryOnly) {
+                $quotationOnlyReasons[] = 'inquiry_only_vehicle';
+            }
+            if ($serviceTypeRequiresInquiry) {
+                $quotationOnlyReasons[] = 'service_requires_inquiry';
+            }
+            if ($pricingError) {
+                $quotationOnlyReasons[] = 'pricing_error';
+            }
+            if ($group->force_quotation_request ?? false) {
+                $quotationOnlyReasons[] = 'force_quotation';
+            }
+            
+            $isQuotationOnly = !empty($quotationOnlyReasons);
+            $allowRequestQuotation = $isQuotationOnly;
+            
+            // Determine if booking/cart is allowed (opposite of quotation-only)
+            $allowBooking = !$isQuotationOnly && $hasAvailableVehicles && $hasPricing && $isGroupActive;
 
             // Build availability entry (include all groups, even those without pricing)
             $availabilityEntry = [
@@ -292,7 +345,13 @@ class BookingFlowService
                 'disabled' => false, // Don't disable - show Request Quotation instead
                 'disabled_reason' => null,
                 'allow_request_quotation' => $allowRequestQuotation,
-                'show_request_quotation' => $allowRequestQuotation,
+                'show_request_quotation' => $isQuotationOnly,
+                'quotation_only' => $isQuotationOnly,
+                'quotation_only_reasons' => $quotationOnlyReasons,
+                'allow_booking' => $allowBooking,
+                'is_group_active' => $isGroupActive,
+                'is_inquiry_only' => $isInquiryOnly,
+                'service_requires_inquiry' => $serviceTypeRequiresInquiry,
                 'availability_status' => $this->determineGroupAvailabilityStatus($availableCount, $totalCount, $conflictCount),
                 'concurrent_bookings_possible' => $vehicleAnalysis['concurrent_possible'],
                 'override_options_available' => $vehicleAnalysis['override_available'],

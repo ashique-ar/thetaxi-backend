@@ -52,32 +52,32 @@ return [
      * Service Fee Configuration
      */
     'service_fee' => [
-        'enabled' => env('BOOKING_SERVICE_FEE_ENABLED', true),
+        'enabled' => env('BOOKING_SERVICE_FEE_ENABLED', false), // Disabled for now
         'type' => env('BOOKING_SERVICE_FEE_TYPE', 'fixed'), // 'fixed' or 'percentage'
-        'amount' => env('BOOKING_SERVICE_FEE_AMOUNT', 750.00), // In LKR for fixed, or percentage value
+        'amount' => env('BOOKING_SERVICE_FEE_AMOUNT', 0), // Set to 0 for now
         'min_amount' => env('BOOKING_SERVICE_FEE_MIN', 0), // Minimum fee in LKR
         'max_amount' => env('BOOKING_SERVICE_FEE_MAX', null), // Maximum fee in LKR (null = no limit)
     ],
 
     /**
-     * Tax Configuration (NBT - Nation Building Tax)
+     * Tax Configuration (Government Tax)
      */
     'tax' => [
         'enabled' => env('BOOKING_TAX_ENABLED', true),
-        'rate' => env('BOOKING_TAX_RATE', 0.025), // 2.5% NBT
-        'label' => env('BOOKING_TAX_LABEL', 'NBT'),
-        'description' => env('BOOKING_TAX_DESCRIPTION', 'Nation Building Tax'),
+        'rate' => env('BOOKING_TAX_RATE', 0.18), // 18% Government Tax
+        'label' => env('BOOKING_TAX_LABEL', 'Gov. Tax'),
+        'description' => env('BOOKING_TAX_DESCRIPTION', 'Government Tax'),
     ],
 
     /**
      * VAT Configuration
      */
     'vat' => [
-        'enabled' => env('BOOKING_VAT_ENABLED', true),
-        'rate' => env('BOOKING_VAT_RATE', 0.18), // 18% VAT in Sri Lanka
+        'enabled' => env('BOOKING_VAT_ENABLED', false), // Disabled for now
+        'rate' => env('BOOKING_VAT_RATE', 0), // 0% VAT for now
         'label' => env('BOOKING_VAT_LABEL', 'VAT'),
         'description' => env('BOOKING_VAT_DESCRIPTION', 'Value Added Tax'),
-        'applies_to_service_fee' => env('BOOKING_VAT_APPLIES_TO_SERVICE_FEE', true),
+        'applies_to_service_fee' => env('BOOKING_VAT_APPLIES_TO_SERVICE_FEE', false),
     ],
 
     /**
@@ -97,6 +97,11 @@ return [
         'validity_days' => env('BOOKING_QUOTATION_VALIDITY_DAYS', 7),
         'require_approval' => env('BOOKING_QUOTATION_REQUIRE_APPROVAL', true),
     ],
+
+    /**
+     * Search expiry - 0 disables expiry. Set in hours.
+     */
+    'search_expiry_hours' => env('BOOKING_SEARCH_EXPIRY_HOURS', 0),
 
     /**
      * Booking Status Configuration

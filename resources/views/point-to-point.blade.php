@@ -42,7 +42,7 @@
 
                             <!-- Drop & Pickup Form -->
                             <form id="point_to_point-form" class="filter-input show" data-service="point_to_point"
-                                action="{{ route('booking.search') }}" method="POST">
+                                action="{{ route('booking.search') }}" method="GET">
                                 @csrf
                                 <input type="hidden" name="service_type" value="point_to_point">
 
@@ -544,7 +544,7 @@
                     const returnDate = $(this).val();
 
                     if (pickupDate && returnDate && isValidDDMMYYYY(pickupDate) && isValidDDMMYYYY(
-                        returnDate)) {
+                            returnDate)) {
                         const pickup = parseDate(pickupDate);
                         const returnD = parseDate(returnDate);
 
@@ -553,7 +553,7 @@
                             $(this).siblings('.invalid-feedback').remove();
                             $(this).after(
                                 '<div class="invalid-feedback">Return date must be on or after pickup date</div>'
-                                );
+                            );
                         } else {
                             $(this).removeClass('is-invalid');
                             $(this).siblings('.invalid-feedback').remove();

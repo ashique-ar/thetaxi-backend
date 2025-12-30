@@ -192,28 +192,28 @@
             const pickupDateInput = rideNowForm.querySelector(
                 'input[name="pickup_date"]'
             );
-            const dropoffDateInput = rideNowForm.querySelector(
-                'input[name="dropoff_date"]'
-            );
+            // const dropoffDateInput = rideNowForm.querySelector(
+            //     'input[name="dropoff_date"]'
+            // );
             const pickupTimeInput = rideNowForm.querySelector(
                 'input[name="pickup_time"]'
             );
-            const dropoffTimeInput = rideNowForm.querySelector(
-                'input[name="dropoff_time"]'
-            );
+            // const dropoffTimeInput = rideNowForm.querySelector(
+            //     'input[name="dropoff_time"]'
+            // );
 
             if (pickupDateInput && !pickupDateInput.value) {
                 pickupDateInput.value = todayFormatted;
             }
-            if (dropoffDateInput && !dropoffDateInput.value) {
-                dropoffDateInput.value = threeDaysFormatted;
-            }
+            // if (dropoffDateInput && !dropoffDateInput.value) {
+            //     dropoffDateInput.value = threeDaysFormatted;
+            // }
             if (pickupTimeInput && !pickupTimeInput.value) {
                 pickupTimeInput.value = "12:00";
             }
-            if (dropoffTimeInput && !dropoffTimeInput.value) {
-                dropoffTimeInput.value = "12:00";
-            }
+            // if (dropoffTimeInput && !dropoffTimeInput.value) {
+            //     dropoffTimeInput.value = "12:00";
+            // }
 
             // Set default locations: Colombo to Galle (for rentals)
             const pickupInput = rideNowForm.querySelector(
@@ -2898,7 +2898,7 @@
                 pickupLng: pickupLng?.value || 'not found',
                 dropoffLat: dropoffLat?.value || 'not found',
                 dropoffLng: dropoffLng?.value || 'not found',
-                formVisible: !rideForm.classList.contains('hidden')
+                formVisible: !rideNowForm.classList.contains('hidden')
             });
         }
 
@@ -2914,7 +2914,7 @@
                 pickupLng: pickupLng?.value || 'not found',
                 dropoffLat: dropoffLat?.value || 'not found',
                 dropoffLng: dropoffLng?.value || 'not found',
-                formVisible: !rideForm.classList.contains('hidden')
+                formVisible: !dayRentalForm.classList.contains('hidden')
             });
         }
     }

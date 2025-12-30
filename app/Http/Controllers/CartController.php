@@ -550,6 +550,7 @@ class CartController extends Controller
                 'subtotal' => number_format($cartTotals['subtotal'] ?? 0, 2),
                 'service_fee' => number_format($cartTotals['service_fee'] ?? 0, 2),
                 'addon_charges' => number_format($cartTotals['addon_charges'] ?? 0, 2),
+                'extra_km_charges' => number_format($cartTotals['extra_km_charges'] ?? 0, 2),
                 'tax' => number_format($cartTotals['tax'] ?? 0, 2),
                 'vat' => number_format($cartTotals['vat'] ?? 0, 2),
                 'discount' => number_format($cartTotals['coupon_discount'] ?? 0, 2),
@@ -845,6 +846,264 @@ class CartController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Error updating addon quantity'
+            ], 500);
+        }
+    }
+
+    /**
+     * Get extra km rate for a cart item's vehicle group
+     */
+    public function getExtraKmRate(Request $request, string $cartKey)
+    {
+        try {
+            $dbCart = $this->cartService->getOrCreateCart();
+            $items = $dbCart->items ?? [];
+            
+            if (!isset($items[$cartKey])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Cart item not found'
+                ], 404);
+            }
+
+            $vehicleGroupId = $items[$cartKey]['vehicle_group_id'] ?? null;
+            if (!$vehicleGroupId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Vehicle group not found for this item'
+                ], 400);
+            }
+
+            $extraKmRate = $this->cartService->getExtraKmRateForVehicleGroup($vehicleGroupId);
+            $currentExtraKm = $this->cartService->getItemExtraKm($dbCart, $cartKey);
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'rate' => $extraKmRate,
+                    'current_extra_km' => $currentExtraKm,
+                    'vehicle_group_id' => $vehicleGroupId
+                ]
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error getting extra km rate', [
+                'error' => $e->getMessage(),
+                'cart_key' => $cartKey
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Error loading extra km rate'
+            ], 500);
+        }
+    }
+
+    /**
+     * Add or update extra km purchase for a cart item
+     */
+    public function addExtraKm(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'cart_key' => 'required|string',
+                'extra_km' => 'required|integer|min:0|max:10000'
+            ]);
+
+            $dbCart = $this->cartService->getOrCreateCart();
+            $extraKm = (int)$validated['extra_km'];
+
+            if ($extraKm === 0) {
+                // Remove extra km if quantity is 0
+                $success = $this->cartService->removeExtraKm($dbCart, $validated['cart_key']);
+                $message = 'Extra km removed from cart';
+            } else {
+                $success = $this->cartService->addExtraKm($dbCart, $validated['cart_key'], $extraKm);
+                $message = 'Extra km added to cart';
+            }
+
+            if (!$success) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to update extra km. Please ensure extra km rate is configured for this vehicle.'
+                ], 400);
+            }
+
+            // Invalidate cart cache
+            $this->invalidateCartCache();
+
+            $cartArray = $this->cartService->toArray($dbCart);
+
+            return response()->json([
+                'success' => true,
+                'message' => $message,
+                'cart' => $cartArray
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error adding extra km to cart', [
+                'error' => $e->getMessage(),
+                'data' => $request->all()
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Error adding extra km: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Remove extra km purchase from cart item
+     */
+    public function removeExtraKm(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'cart_key' => 'required|string'
+            ]);
+
+            $dbCart = $this->cartService->getOrCreateCart();
+
+            $success = $this->cartService->removeExtraKm($dbCart, $validated['cart_key']);
+
+            if (!$success) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to remove extra km from cart'
+                ], 400);
+            }
+
+            // Invalidate cart cache
+            $this->invalidateCartCache();
+
+            $cartArray = $this->cartService->toArray($dbCart);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Extra km removed from cart',
+                'cart' => $cartArray
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error removing extra km from cart', [
+                'error' => $e->getMessage(),
+                'data' => $request->all()
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Error removing extra km'
+            ], 500);
+        }
+    }
+
+    /**
+     * Apply a promo code to the cart
+     * 
+     * POST /cart/apply-promo-code
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function applyPromoCode(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'promo_code' => 'required|string|max:50'
+            ]);
+
+            $promoCode = strtoupper(trim($validated['promo_code']));
+            $dbCart = $this->cartService->getOrCreateCart();
+
+            // Get customer ID if authenticated
+            $customerId = null;
+            if (auth()->check()) {
+                $user = auth()->user();
+                // Check if user has a customer profile
+                $customer = \App\Models\Customer::where('user_id', $user->id)->first();
+                $customerId = $customer?->id;
+            }
+
+            // Apply promo code using CartService
+            $result = $this->cartService->applyPromoCode($dbCart, $promoCode, $customerId);
+
+            if (!$result['success']) {
+                return response()->json([
+                    'success' => false,
+                    'error_code' => $result['error_code'] ?? 'PROMO_CODE_INVALID',
+                    'message' => $result['message'],
+                    'details' => $result['details'] ?? null
+                ], 400);
+            }
+
+            // Invalidate cart cache
+            $this->invalidateCartCache();
+
+            $cartArray = $this->cartService->toArray($dbCart);
+
+            return response()->json([
+                'success' => true,
+                'message' => $result['message'],
+                'discount' => $result['discount'],
+                'promo_code' => $result['promo_code'],
+                'cart' => $cartArray
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation error',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Error applying promo code', [
+                'error' => $e->getMessage(),
+                'data' => $request->all()
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Error applying promo code: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Remove the applied promo code from the cart
+     * 
+     * POST /cart/remove-promo-code
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function removePromoCode(Request $request)
+    {
+        try {
+            $dbCart = $this->cartService->getOrCreateCart();
+
+            // Remove promo code using CartService
+            $result = $this->cartService->removePromoCode($dbCart);
+
+            if (!$result['success']) {
+                return response()->json([
+                    'success' => false,
+                    'error_code' => $result['error_code'] ?? 'NO_PROMO_CODE_APPLIED',
+                    'message' => $result['message']
+                ], 400);
+            }
+
+            // Invalidate cart cache
+            $this->invalidateCartCache();
+
+            $cartArray = $this->cartService->toArray($dbCart);
+
+            return response()->json([
+                'success' => true,
+                'message' => $result['message'],
+                'removed_code' => $result['removed_code'],
+                'removed_discount' => $result['removed_discount'],
+                'cart' => $cartArray
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error removing promo code', [
+                'error' => $e->getMessage()
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Error removing promo code: ' . $e->getMessage()
             ], 500);
         }
     }

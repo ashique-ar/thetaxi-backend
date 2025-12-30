@@ -3,67 +3,53 @@
 namespace App\Models\Website;
 
 use App\Models\BaseModel;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Str;
 
-class Faq extends BaseModel
+class FAQ extends BaseModel
 {
-    use HasFactory, SoftDeletes;
+    use SoftDeletes;
+
+    protected $table = 'f_a_q_s';
 
     protected $fillable = [
+        'faq_category_id',
         'question',
         'answer',
-        'category',
         'sort_order',
+        'is_featured',
         'is_active',
-        'is_featured'
     ];
 
     protected $casts = [
-        'is_active' => 'boolean',
         'is_featured' => 'boolean',
-        'sort_order' => 'integer'
+        'is_active' => 'boolean',
+        'sort_order' => 'integer',
     ];
 
-    /**
-     * Scope for active FAQs
-     */
-    public function scopeActive(Builder $query): Builder
+    public function category(): BelongsTo
     {
-        return $query->where('is_active', true);
+        return $this->belongsTo(FAQCategory::class, 'faq_category_id');
     }
 
-    /**
-     * Scope for featured FAQs
-     */
-    public function scopeFeatured(Builder $query): Builder
+    public static function active()
     {
-        return $query->where('is_featured', true);
+        return static::where('is_active', true)->orderBy('sort_order');
     }
 
-    /**
-     * Scope for ordered FAQs
-     */
-    public function scopeOrdered(Builder $query): Builder
+    public static function featured()
     {
-        return $query->orderBy('sort_order', 'asc')->orderBy('created_at', 'asc');
+        return static::where('is_featured', true)->where('is_active', true)->orderBy('sort_order');
     }
 
-    /**
-     * Scope by category
-     */
-    public function scopeByCategory(Builder $query, string $category): Builder
+    public function scopeByCategory($query, $categoryId)
     {
-        return $query->where('category', $category);
+        return $query->where('faq_category_id', $categoryId);
     }
 
-    /**
-     * Get answer excerpt
-     */
-    public function getAnswerExcerptAttribute(): string
+    public function scopeSearch($query, $search)
     {
-        return Str::limit(strip_tags($this->answer), 100);
+        return $query->whereFullText(['question', 'answer'], $search);
     }
 }

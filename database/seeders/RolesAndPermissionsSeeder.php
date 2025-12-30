@@ -121,6 +121,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'return-inspection',
             'vehicle-availability',
             'gallery',
+            'popup',
+            'promo-code',
         ];
 
         $ops = ['view', 'create', 'edit', 'update', 'delete', 'manage'];
@@ -173,7 +175,7 @@ class RolesAndPermissionsSeeder extends Seeder
 
             'management' => array_merge(
                 array_filter($permissions, fn($p) => preg_match(
-                    '/^(bookings|customers|inquiries|quotations|image-galleries)\./',
+                    '/^(bookings|customers|inquiries|quotations|image-galleries|popup|promo-code)\./',
                     $p
                 )),
                 ['reports.view', 'analytics.view']

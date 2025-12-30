@@ -17,6 +17,7 @@ use App\Services\CustomerService;
 use App\Services\MailDispatchService;
 use App\Services\WebXPayService;
 use App\Services\CurrencyService;
+use App\Services\PromoCodeService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -32,6 +33,7 @@ class CheckoutController extends Controller
     protected $webxPayService;
     protected $currencyService;
     protected MailDispatchService $mailDispatchService;
+    protected PromoCodeService $promoCodeService;
 
     public function __construct(
         BookingFlowService $bookingFlowService,
@@ -39,7 +41,8 @@ class CheckoutController extends Controller
         \App\Services\CartService $cartService,
         WebXPayService $webxPayService,
         CurrencyService $currencyService,
-        MailDispatchService $mailDispatchService
+        MailDispatchService $mailDispatchService,
+        PromoCodeService $promoCodeService
     ) {
         $this->bookingFlowService = $bookingFlowService;
         $this->customerService = $customerService;
@@ -47,6 +50,7 @@ class CheckoutController extends Controller
         $this->webxPayService = $webxPayService;
         $this->currencyService = $currencyService;
         $this->mailDispatchService = $mailDispatchService;
+        $this->promoCodeService = $promoCodeService;
     }
 
     /**
@@ -295,6 +299,15 @@ class CheckoutController extends Controller
                 $workflowData['flight_details'] = $flightDetails;
             }
 
+            // Store promo code information if applied
+            if (!empty($cartModel->coupon_code)) {
+                $workflowData['promo_code'] = [
+                    'code' => $cartModel->coupon_code,
+                    'discount_amount' => $cartModel->coupon_discount ?? 0,
+                    'order_amount' => $subtotal,
+                ];
+            }
+
             $booking->workflow_data = $workflowData;
             $booking->save();
 
@@ -507,8 +520,12 @@ class CheckoutController extends Controller
                 'confirmed_at' => $paymentProcessed ? now() : null,
             ]);
 
-            // Mark cart as checked out
+            // Mark cart as checked out and record promo code usage
             $dbCart = $this->cartService->getOrCreateCart();
+            
+            // Record promo code usage if a promo code was applied
+            $this->recordPromoCodeUsageFromCart($dbCart, $booking);
+            
             $this->cartService->markAsCheckedOut($dbCart);
 
             // Send confirmation email to customer
@@ -606,8 +623,14 @@ class CheckoutController extends Controller
                         'confirmed_at' => now(),
                     ]);
 
-                    // Mark cart as checked out
+                    // Mark cart as checked out and record promo code usage
                     $dbCart = $this->cartService->getOrCreateCart();
+                    
+                    // Record promo code usage if a promo code was applied
+                    if (!$wasPaid) {
+                        $this->recordPromoCodeUsageFromCart($dbCart, $booking);
+                    }
+                    
                     $this->cartService->markAsCheckedOut($dbCart);
 
                     // Send confirmation email
@@ -665,8 +688,14 @@ class CheckoutController extends Controller
                     'confirmed_at' => now(),
                 ]);
 
-                // Mark cart as checked out
+                // Mark cart as checked out and record promo code usage
                 $dbCart = $this->cartService->getOrCreateCart();
+                
+                // Record promo code usage if a promo code was applied
+                if (!$wasPaid) {
+                    $this->recordPromoCodeUsageFromCart($dbCart, $booking);
+                }
+                
                 $this->cartService->markAsCheckedOut($dbCart);
 
                 // Send confirmation email
@@ -867,6 +896,69 @@ class CheckoutController extends Controller
             $this->sendBookingEmail($booking, new PaymentInitiatedMail($booking, $amount));
         } catch (\Exception $e) {
             Log::error('Failed to send payment initiated email', [
+                'booking_id' => $booking->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Record promo code usage from cart when booking is completed.
+     * 
+     * Creates a PromoCodeUsage record and increments the usage count
+     * if a promo code was applied to the cart.
+     *
+     * @param \App\Models\Cart $cart The cart with potential promo code
+     * @param Booking $booking The completed booking
+     * @return void
+     */
+    protected function recordPromoCodeUsageFromCart(\App\Models\Cart $cart, Booking $booking): void
+    {
+        // Check if a promo code was applied to the cart
+        if (empty($cart->coupon_code)) {
+            return;
+        }
+
+        try {
+            // Get the promo code
+            $promoCode = $this->promoCodeService->getByCode($cart->coupon_code);
+            
+            if (!$promoCode) {
+                Log::warning('Promo code not found when recording usage', [
+                    'coupon_code' => $cart->coupon_code,
+                    'booking_id' => $booking->id,
+                ]);
+                return;
+            }
+
+            // Get order amount from cart totals (subtotal before discount)
+            $totals = $cart->totals ?? [];
+            $orderAmount = (float)($totals['subtotal'] ?? 0);
+            $discountAmount = (float)($cart->coupon_discount ?? 0);
+
+            // Get customer ID from booking
+            $customerId = $booking->customer_id;
+
+            // Record the usage
+            $this->promoCodeService->recordUsage(
+                $promoCode,
+                $customerId,
+                $booking->id,
+                $discountAmount,
+                $orderAmount
+            );
+
+            Log::info('Promo code usage recorded for booking', [
+                'promo_code' => $promoCode->code,
+                'booking_id' => $booking->id,
+                'customer_id' => $customerId,
+                'discount_amount' => $discountAmount,
+                'order_amount' => $orderAmount,
+            ]);
+        } catch (\Exception $e) {
+            // Log error but don't fail the booking
+            Log::error('Failed to record promo code usage', [
+                'coupon_code' => $cart->coupon_code,
                 'booking_id' => $booking->id,
                 'error' => $e->getMessage(),
             ]);

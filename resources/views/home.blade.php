@@ -3,6 +3,9 @@
 @section('title', 'TheTaxi - Your Reliable Taxi Service')
 
 @section('content')
+    <!-- Popup Page Identifier for Popup Display Engine -->
+    <div data-popup-page="homepage"></div>
+
     <!-- home4 Banner Section Start-->
     <div class="home4-banner-section mb-100">
         <div class="banner-video-area">

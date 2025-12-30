@@ -3,6 +3,9 @@
 @section('title', 'Checkout - TheTaxi')
 
 @section('content')
+    <!-- Popup Page Identifier for Popup Display Engine -->
+    <div data-popup-page="checkout"></div>
+
     <!-- Breadcrumb section -->
     <div class="breadcrumb-section"
         style="background-image:linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url({{ asset('assets/img/innerpages/breadcrumb-bg1.jpg') }});">
@@ -38,14 +41,14 @@
 
         // Fetch settings from database
         try {
-            $taxPercentage = \App\Models\Website\WebsiteSetting::getValue('tax_percentage', 10);
-            $serviceFeeSetting = \App\Models\Website\WebsiteSetting::getValue('service_fee_percentage', 5);
+            $taxPercentage = \App\Models\Website\WebsiteSetting::getValue('tax_percentage', 18);
+            $serviceFeeSetting = \App\Models\Website\WebsiteSetting::getValue('service_fee_percentage', 0);
             $vatPercentage = \App\Models\Website\WebsiteSetting::getValue('vat_percentage', 0);
             $advancePercentage = \App\Models\Website\WebsiteSetting::getValue('advance_payment_percentage', 50);
         } catch (Exception $e) {
             \Log::error('Error fetching website settings: ' . $e->getMessage());
-            $taxPercentage = 10;
-            $serviceFeeSetting = 5;
+            $taxPercentage = 18;
+            $serviceFeeSetting = 0;
             $vatPercentage = 0;
             $advancePercentage = 50;
         }
@@ -492,12 +495,21 @@
                                                     </li>
                                                     @php
                                                         $addonCharges = $totals['addon_charges'] ?? 0;
+                                                        $extraKmCharges = $totals['extra_km_charges'] ?? 0;
                                                     @endphp
                                                     @if ($addonCharges > 0)
                                                         <li>
                                                             Addon Charges
                                                             <div class="order-info text-success">
                                                                 <span>{{ $currencySymbol }}{{ number_format($addonCharges, 2) }}</span>
+                                                            </div>
+                                                        </li>
+                                                    @endif
+                                                    @if ($extraKmCharges > 0)
+                                                        <li>
+                                                            Extra KM Charges
+                                                            <div class="order-info text-info">
+                                                                <span>{{ $currencySymbol }}{{ number_format($extraKmCharges, 2) }}</span>
                                                             </div>
                                                         </li>
                                                     @endif
@@ -511,14 +523,14 @@
                                                     @endif
                                                     @if ($tax > 0)
                                                         <li>
-                                                            {{ $taxLabel }}
+                                                            Gov. Tax
                                                             ({{ $taxPercentage }}%)
                                                             <div class="order-info">
                                                                 <span>{{ $currencySymbol }}{{ number_format($tax, 2) }}</span>
                                                             </div>
                                                         </li>
                                                     @endif
-                                                    @if ($vat > 0)
+                                                    @if ($vatPercentage > 0 && $vat > 0)
                                                         <li>
                                                             {{ $vatLabel }}
                                                             ({{ $vatPercentage }}%)
@@ -527,9 +539,46 @@
                                                             </div>
                                                         </li>
                                                     @endif
+                                                    
+                                                    {{-- Promo Code Section --}}
+                                                    <li class="promo-code-checkout-section">
+                                                        <div class="promo-code-checkout-wrapper">
+                                                            <div class="promo-code-header">
+                                                                <i class="bi bi-tag"></i>
+                                                                <span>Promo Code</span>
+                                                            </div>
+                                                            @php
+                                                                $appliedPromoCode = $cartData['coupon_code'] ?? null;
+                                                                $promoDiscount = $cartData['coupon_discount'] ?? 0;
+                                                            @endphp
+                                                            @if ($appliedPromoCode)
+                                                                {{-- Promo code is applied --}}
+                                                                <div class="applied-promo-checkout">
+                                                                    <div class="promo-badge-checkout">
+                                                                        <i class="bi bi-check-circle-fill text-success"></i>
+                                                                        <span class="promo-code-value">{{ $appliedPromoCode }}</span>
+                                                                        <button type="button" class="remove-promo-checkout-btn" title="Remove promo code">
+                                                                            <i class="bi bi-x-lg"></i>
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            @else
+                                                                {{-- No promo code - show input --}}
+                                                                <div class="promo-input-checkout">
+                                                                    <input type="text" id="checkout-promo-input" placeholder="Enter code" autocomplete="off">
+                                                                    <button type="button" id="apply-promo-checkout-btn" class="apply-promo-checkout-btn">
+                                                                        <span class="btn-text">Apply</span>
+                                                                        <span class="btn-loading" style="display: none;"><i class="bi bi-hourglass-split"></i></span>
+                                                                    </button>
+                                                                </div>
+                                                            @endif
+                                                            <div id="checkout-promo-message" class="promo-message-checkout"></div>
+                                                        </div>
+                                                    </li>
+                                                    
                                                     @if ($discount > 0)
-                                                        <li>
-                                                            Discount
+                                                        <li class="discount-checkout-row">
+                                                            <strong class="text-success"><i class="bi bi-tag-fill"></i> Discount</strong>
                                                             <div class="order-info text-success">
                                                                 <span>-{{ $currencySymbol }}{{ number_format($discount, 2) }}</span>
                                                             </div>
@@ -904,6 +953,139 @@
             line-height: 1.4;
         }
 
+        /* Promo Code Checkout Section Styles */
+        .promo-code-checkout-section {
+            flex-direction: column !important;
+            align-items: stretch !important;
+            padding: 15px 0 !important;
+        }
+
+        .promo-code-checkout-wrapper {
+            width: 100%;
+        }
+
+        .promo-code-header {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .promo-code-header i {
+            color: var(--primary-color1);
+        }
+
+        .promo-input-checkout {
+            display: flex;
+            gap: 0;
+        }
+
+        .promo-input-checkout input {
+            flex: 1;
+            padding: 8px 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px 0 0 6px;
+            font-size: 13px;
+            transition: border-color 0.3s ease;
+        }
+
+        .promo-input-checkout input:focus {
+            outline: none;
+            border-color: var(--primary-color1);
+        }
+
+        .apply-promo-checkout-btn {
+            padding: 8px 16px;
+            background: var(--primary-color1);
+            color: white;
+            border: 2px solid var(--primary-color1);
+            border-radius: 0 6px 6px 0;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 13px;
+            transition: all 0.3s ease;
+            min-width: 70px;
+        }
+
+        .apply-promo-checkout-btn:hover:not(:disabled) {
+            background: #a81820;
+            border-color: #a81820;
+        }
+
+        .apply-promo-checkout-btn:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+
+        .applied-promo-checkout {
+            margin-top: 0;
+        }
+
+        .promo-badge-checkout {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: #e8f5e9;
+            border: 1px solid #c8e6c9;
+            border-radius: 6px;
+            padding: 8px 12px;
+        }
+
+        .promo-badge-checkout i.text-success {
+            font-size: 16px;
+        }
+
+        .promo-code-value {
+            font-weight: 700;
+            color: #2e7d32;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            flex: 1;
+        }
+
+        .remove-promo-checkout-btn {
+            background: none;
+            border: none;
+            color: #dc3545;
+            cursor: pointer;
+            padding: 2px 6px;
+            border-radius: 4px;
+            transition: all 0.2s ease;
+            font-size: 12px;
+        }
+
+        .remove-promo-checkout-btn:hover {
+            background: #ffebee;
+            color: #c62828;
+        }
+
+        .promo-message-checkout {
+            margin-top: 8px;
+        }
+
+        .promo-message-checkout .alert {
+            font-size: 12px;
+            padding: 6px 10px;
+            margin-bottom: 0;
+            border-radius: 4px;
+        }
+
+        .discount-checkout-row {
+            background: #f1f8e9;
+            margin: 0 -20px;
+            padding: 12px 20px !important;
+            border-radius: 0;
+        }
+
+        .discount-checkout-row strong {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
         .alert {
             padding: 15px 20px;
             border-radius: 8px;
@@ -1147,6 +1329,116 @@
                 // Disable submit button to prevent double submission
                 $('#checkout-submit-btn').prop('disabled', true).html('<span>Processing...</span>');
             });
+
+            // ==========================================
+            // Promo Code Management for Checkout
+            // ==========================================
+
+            // Apply promo code button click
+            $('#apply-promo-checkout-btn').on('click', function() {
+                const promoCode = $('#checkout-promo-input').val().trim();
+                if (!promoCode) {
+                    showCheckoutPromoError('Please enter a promo code');
+                    return;
+                }
+
+                // Show loading state
+                const btn = $(this);
+                btn.prop('disabled', true);
+                btn.find('.btn-text').hide();
+                btn.find('.btn-loading').show();
+                clearCheckoutPromoMessage();
+
+                $.ajax({
+                    url: '{{ route('cart.apply-promo-code') }}',
+                    method: 'POST',
+                    data: {
+                        _token: '{{ csrf_token() }}',
+                        promo_code: promoCode
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            showCheckoutPromoSuccess(response.message || 'Promo code applied!');
+                            setTimeout(function() {
+                                location.reload();
+                            }, 1000);
+                        } else {
+                            showCheckoutPromoError(response.message || 'Invalid promo code');
+                            resetCheckoutApplyButton();
+                        }
+                    },
+                    error: function(xhr) {
+                        const errorMsg = xhr.responseJSON?.message || 'Error applying promo code';
+                        showCheckoutPromoError(errorMsg);
+                        resetCheckoutApplyButton();
+                    }
+                });
+            });
+
+            // Allow Enter key to apply promo code
+            $('#checkout-promo-input').on('keypress', function(e) {
+                if (e.which === 13) {
+                    e.preventDefault();
+                    $('#apply-promo-checkout-btn').click();
+                }
+            });
+
+            // Remove promo code button click
+            $(document).on('click', '.remove-promo-checkout-btn', function() {
+                const btn = $(this);
+                btn.prop('disabled', true);
+                btn.html('<i class="bi bi-hourglass-split"></i>');
+
+                $.ajax({
+                    url: '{{ route('cart.remove-promo-code') }}',
+                    method: 'POST',
+                    data: {
+                        _token: '{{ csrf_token() }}'
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            showCheckoutPromoSuccess('Promo code removed');
+                            setTimeout(function() {
+                                location.reload();
+                            }, 500);
+                        } else {
+                            showCheckoutPromoError(response.message || 'Error removing promo code');
+                            btn.prop('disabled', false);
+                            btn.html('<i class="bi bi-x-lg"></i>');
+                        }
+                    },
+                    error: function(xhr) {
+                        const errorMsg = xhr.responseJSON?.message || 'Error removing promo code';
+                        showCheckoutPromoError(errorMsg);
+                        btn.prop('disabled', false);
+                        btn.html('<i class="bi bi-x-lg"></i>');
+                    }
+                });
+            });
+
+            // Helper functions for checkout promo code UI
+            function showCheckoutPromoError(message) {
+                $('#checkout-promo-message').html(
+                    '<div class="alert alert-danger py-1 px-2 mb-0"><i class="bi bi-exclamation-circle"></i> ' + message + '</div>'
+                );
+            }
+
+            function showCheckoutPromoSuccess(message) {
+                $('#checkout-promo-message').html(
+                    '<div class="alert alert-success py-1 px-2 mb-0"><i class="bi bi-check-circle"></i> ' + message + '</div>'
+                );
+            }
+
+            function clearCheckoutPromoMessage() {
+                $('#checkout-promo-message').empty();
+            }
+
+            function resetCheckoutApplyButton() {
+                const btn = $('#apply-promo-checkout-btn');
+                btn.prop('disabled', false);
+                btn.find('.btn-text').show();
+                btn.find('.btn-loading').hide();
+            }
         });
     </script>
 

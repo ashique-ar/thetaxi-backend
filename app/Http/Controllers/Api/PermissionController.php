@@ -132,7 +132,7 @@ class PermissionController extends Controller
             }
 
             $permission->delete();
-            
+
             return response()->json([
                 'status' => 'success',
                 'message' => 'Permission deleted successfully'
@@ -155,7 +155,7 @@ class PermissionController extends Controller
     public function roles(Permission $permission): JsonResponse
     {
         $roles = $permission->roles()->select('id', 'name', 'guard_name')->get();
-        
+
         return response()->json([
             'status' => 'success',
             'data' => [
@@ -173,7 +173,7 @@ class PermissionController extends Controller
     public function users(Permission $permission): JsonResponse
     {
         $users = $permission->users()->select('id', 'first_name', 'last_name', 'email')->get();
-        
+
         return response()->json([
             'status' => 'success',
             'data' => [

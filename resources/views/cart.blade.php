@@ -32,9 +32,9 @@
                     $currencySymbol = $cartData['currency_symbol'] ?? getCurrencySymbol();
                     $selectedCurrency = $cartData['currency'] ?? getSelectedCurrency();
 
-                    // Fetch settings from database
-                    $taxPercentage = \App\Models\Website\WebsiteSetting::getValue('tax_percentage', 10);
-                    $serviceFeeSetting = \App\Models\Website\WebsiteSetting::getValue('service_fee_percentage', 5);
+                    // Fetch settings from database with updated defaults
+                    $taxPercentage = \App\Models\Website\WebsiteSetting::getValue('tax_percentage', 18);
+                    $serviceFeeSetting = \App\Models\Website\WebsiteSetting::getValue('service_fee_percentage', 0);
                     $vatPercentage = \App\Models\Website\WebsiteSetting::getValue('vat_percentage', 0);
                 } catch (Exception $e) {
                     \Log::error('Error loading cart: ' . $e->getMessage());
@@ -42,8 +42,8 @@
                     $cartTotals = [];
                     $currencySymbol = getCurrencySymbol();
                     $selectedCurrency = getSelectedCurrency();
-                    $taxPercentage = 10;
-                    $serviceFeeSetting = 5;
+                    $taxPercentage = 18;
+                    $serviceFeeSetting = 0;
                     $vatPercentage = 0;
                 }
             @endphp
@@ -190,6 +190,72 @@
                                                 </div>
                                             </td>
                                         </tr>
+                                        {{-- Extra KM Purchase Section --}}
+                                        <tr class="extra-km-row" data-cart-key="{{ $key }}">
+                                            <td colspan="5">
+                                                <div class="extra-km-container">
+                                                    <div class="extra-km-header">
+                                                        <div class="header-left">
+                                                            <h6 class="mb-0"><i class="bi bi-speedometer2"></i> Purchase Extra Kilometers</h6>
+                                                            <small class="text-muted">Add more km to your package allowance</small>
+                                                        </div>
+                                                        <button type="button"
+                                                            class="btn btn-sm btn-outline-secondary toggle-extra-km-section collapsed"
+                                                            data-cart-key="{{ $key }}"
+                                                            title="Toggle extra km section">
+                                                            <i class="bi bi-chevron-down"></i> Show
+                                                        </button>
+                                                    </div>
+                                                    <div class="extra-km-content collapsed" data-cart-key="{{ $key }}">
+                                                        <div class="extra-km-loading text-center py-3">
+                                                            <div class="spinner-border spinner-border-sm" role="status">
+                                                                <span class="visually-hidden">Loading...</span>
+                                                            </div>
+                                                            <small class="d-block mt-2 text-muted">Loading extra km rate...</small>
+                                                        </div>
+                                                        <div class="extra-km-form" style="display: none;">
+                                                            <div class="extra-km-rate-info mb-3">
+                                                                <span class="rate-label">Rate per km:</span>
+                                                                <span class="rate-value">{{ $currencySymbol }}<span class="extra-km-rate">0.00</span></span>
+                                                            </div>
+                                                            <div class="extra-km-input-group">
+                                                                <label for="extra-km-input-{{ $key }}">Extra Kilometers:</label>
+                                                                <div class="km-qty-control">
+                                                                    <button type="button" class="km-qty-btn km-minus" data-cart-key="{{ $key }}">−</button>
+                                                                    <input type="number" 
+                                                                        id="extra-km-input-{{ $key }}" 
+                                                                        class="extra-km-input" 
+                                                                        data-cart-key="{{ $key }}"
+                                                                        value="{{ $item['extra_km']['km'] ?? 0 }}" 
+                                                                        min="0" 
+                                                                        max="10000" 
+                                                                        step="10"
+                                                                        placeholder="0">
+                                                                    <button type="button" class="km-qty-btn km-plus" data-cart-key="{{ $key }}">+</button>
+                                                                </div>
+                                                            </div>
+                                                            <div class="extra-km-total mt-3">
+                                                                <span class="total-label">Extra KM Cost:</span>
+                                                                <span class="total-value">{{ $currencySymbol }}<span class="extra-km-total-amount">{{ number_format($item['extra_km']['total_cost'] ?? 0, 2) }}</span></span>
+                                                            </div>
+                                                            <div class="extra-km-actions mt-3">
+                                                                <button type="button" class="btn btn-sm btn-primary apply-extra-km" data-cart-key="{{ $key }}">
+                                                                    <i class="bi bi-check-lg"></i> Apply Extra KM
+                                                                </button>
+                                                                @if(isset($item['extra_km']) && ($item['extra_km']['km'] ?? 0) > 0)
+                                                                    <button type="button" class="btn btn-sm btn-outline-danger remove-extra-km" data-cart-key="{{ $key }}">
+                                                                        <i class="bi bi-x-lg"></i> Remove
+                                                                    </button>
+                                                                @endif
+                                                            </div>
+                                                        </div>
+                                                        <div class="extra-km-unavailable" style="display: none;">
+                                                            <p class="text-muted mb-0"><i class="bi bi-info-circle"></i> Extra km purchase is not available for this vehicle.</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
                                     @endforeach
                                 </tbody>
                             </table>
@@ -209,24 +275,28 @@
                                             {{ $currencySymbol }}{{ number_format($cartTotals['subtotal'] ?? 0, 2) }}
                                         </strong>
                                     </li>
-                                    <li>
-                                        Service Charges
-                                        <div class="order-info">
-                                            <p>Processing Fee</p>
-                                            <span
-                                                class="service-fee">{{ $currencySymbol }}{{ number_format($cartTotals['service_fee'] ?? 0, 2) }}</span>
-                                        </div>
-                                    </li>
-                                    <li>
-                                        Tax ({{ $taxPercentage }}%)
-                                        <div class="order-info">
-                                            <p>Estimated Tax</p>
-                                            <span class="tax-amount">
-                                                {{ $currencySymbol }}{{ number_format($cartTotals['tax'] ?? 0, 2) }}
-                                            </span>
-                                        </div>
-                                    </li>
-                                    @if ($vatPercentage > 0)
+                                    @if (($cartTotals['service_fee'] ?? 0) > 0)
+                                        <li>
+                                            Service Charges
+                                            <div class="order-info">
+                                                <p>Processing Fee</p>
+                                                <span
+                                                    class="service-fee">{{ $currencySymbol }}{{ number_format($cartTotals['service_fee'] ?? 0, 2) }}</span>
+                                            </div>
+                                        </li>
+                                    @endif
+                                    @if (($cartTotals['tax'] ?? 0) > 0)
+                                        <li>
+                                            Gov. Tax ({{ $taxPercentage }}%)
+                                            <div class="order-info">
+                                                <p>Government Tax</p>
+                                                <span class="tax-amount">
+                                                    {{ $currencySymbol }}{{ number_format($cartTotals['tax'] ?? 0, 2) }}
+                                                </span>
+                                            </div>
+                                        </li>
+                                    @endif
+                                    @if ($vatPercentage > 0 && ($cartTotals['vat'] ?? 0) > 0)
                                         <li>
                                             VAT ({{ $vatPercentage }}%)
                                             <div class="order-info">
@@ -248,24 +318,61 @@
                                             </div>
                                         </li>
                                     @endif
+                                    @if (($cartTotals['extra_km_charges'] ?? 0) > 0)
+                                        <li>
+                                            Extra KM Charges
+                                            <div class="order-info">
+                                                <p>Additional Kilometers</p>
+                                                <span class="extra-km-charges-amount">
+                                                    {{ $currencySymbol }}{{ number_format($cartTotals['extra_km_charges'] ?? 0, 2) }}
+                                                </span>
+                                            </div>
+                                        </li>
+                                    @endif
                                     <li>
-                                        <div class="coupon-area">
-                                            <span>Coupon Code</span>
-                                            <form id="coupon-form">
-                                                @csrf
-                                                <div class="form-inner">
-                                                    <input type="text" name="coupon_code" placeholder="Enter coupon code"
-                                                        id="coupon-input">
-                                                    <button type="submit" class="apply-btn">Apply</button>
+                                        <div class="promo-code-area">
+                                            <span><i class="bi bi-tag"></i> Promo Code</span>
+                                            @if (!empty($cartModel->coupon_code))
+                                                {{-- Promo code is applied - show applied state --}}
+                                                <div class="applied-promo-code">
+                                                    <div class="promo-code-badge">
+                                                        <i class="bi bi-check-circle-fill text-success"></i>
+                                                        <span class="promo-code-text">{{ $cartModel->coupon_code }}</span>
+                                                        <button type="button" class="remove-promo-btn" id="remove-promo-btn" title="Remove promo code">
+                                                            <i class="bi bi-x-lg"></i>
+                                                        </button>
+                                                    </div>
+                                                    <div class="promo-discount-info">
+                                                        <small class="text-success">
+                                                            You save {{ $currencySymbol }}{{ number_format($cartTotals['coupon_discount'] ?? 0, 2) }}
+                                                        </small>
+                                                    </div>
                                                 </div>
-                                            </form>
-                                            <div id="coupon-message" class="mt-2"></div>
+                                            @else
+                                                {{-- No promo code - show input form --}}
+                                                <form id="promo-code-form">
+                                                    @csrf
+                                                    <div class="form-inner promo-input-group">
+                                                        <input type="text" name="promo_code" placeholder="Enter promo code"
+                                                            id="promo-code-input" autocomplete="off">
+                                                        <button type="submit" class="apply-btn" id="apply-promo-btn">
+                                                            <span class="btn-text">Apply</span>
+                                                            <span class="btn-loading" style="display: none;">
+                                                                <i class="bi bi-hourglass-split"></i>
+                                                            </span>
+                                                        </button>
+                                                    </div>
+                                                </form>
+                                            @endif
+                                            <div id="promo-code-message" class="mt-2"></div>
                                         </div>
                                     </li>
-                                    <li class="discount-row" style="display: none;">
-                                        <strong>Discount</strong>
-                                        <strong class="discount-amount text-success">-$0.00</strong>
+                                    @if (($cartTotals['coupon_discount'] ?? 0) > 0)
+                                    <li class="discount-row">
+                                        <strong class="text-success"><i class="bi bi-tag-fill"></i> Discount</strong>
+                                        <strong class="discount-amount text-success">-{{ $currencySymbol }}{{ number_format($cartTotals['coupon_discount'] ?? 0, 2) }}</strong>
                                     </li>
+                                    @endif
                                     <li>
                                         <strong>Total</strong>
                                         <strong class="cart-total">
@@ -404,6 +511,146 @@
             padding: 8px 12px;
             border: 1px solid #ddd;
             border-radius: 5px 0 0 5px;
+        }
+
+        /* Promo Code Section Styles */
+        .promo-code-area {
+            width: 100%;
+        }
+
+        .promo-code-area > span {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .promo-code-area > span i {
+            color: var(--primary-color1);
+        }
+
+        .promo-input-group {
+            display: flex;
+            margin-top: 0 !important;
+        }
+
+        .promo-input-group input {
+            flex: 1;
+            padding: 10px 14px;
+            border: 2px solid #ddd;
+            border-radius: 6px 0 0 6px;
+            font-size: 14px;
+            transition: border-color 0.3s ease;
+        }
+
+        .promo-input-group input:focus {
+            outline: none;
+            border-color: var(--primary-color1);
+        }
+
+        .promo-input-group input::placeholder {
+            color: #999;
+        }
+
+        .promo-input-group .apply-btn {
+            padding: 10px 20px;
+            background: var(--primary-color1);
+            color: white;
+            border: 2px solid var(--primary-color1);
+            border-radius: 0 6px 6px 0;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            min-width: 80px;
+        }
+
+        .promo-input-group .apply-btn:hover:not(:disabled) {
+            background: #a81820;
+            border-color: #a81820;
+        }
+
+        .promo-input-group .apply-btn:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+
+        /* Applied Promo Code State */
+        .applied-promo-code {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .promo-code-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: #e8f5e9;
+            border: 1px solid #c8e6c9;
+            border-radius: 6px;
+            padding: 10px 14px;
+        }
+
+        .promo-code-badge i.text-success {
+            font-size: 18px;
+        }
+
+        .promo-code-text {
+            font-weight: 700;
+            color: #2e7d32;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            flex: 1;
+        }
+
+        .remove-promo-btn {
+            background: none;
+            border: none;
+            color: #dc3545;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 4px;
+            transition: all 0.2s ease;
+        }
+
+        .remove-promo-btn:hover {
+            background: #ffebee;
+            color: #c62828;
+        }
+
+        .promo-discount-info {
+            padding-left: 4px;
+        }
+
+        .promo-discount-info small {
+            font-weight: 600;
+        }
+
+        /* Discount Row */
+        .discount-row {
+            background: #f1f8e9;
+            margin: 0 -15px;
+            padding: 15px !important;
+            border-radius: 6px;
+        }
+
+        .discount-row strong {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        #promo-code-message .alert {
+            font-size: 13px;
+            border-radius: 6px;
+        }
+
+        #promo-code-message .alert i {
+            margin-right: 6px;
         }
 
         .apply-btn {
@@ -567,6 +814,23 @@
 @push('scripts')
     <script>
         $(document).ready(function() {
+            // Success notification helper function
+            function showSuccessNotification(message, duration = 3000) {
+                const alert = $(`
+                    <div class="alert alert-success alert-dismissible fade show" role="alert" style="position: fixed; top: 20px; right: 20px; z-index: 1100; min-width: 300px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+                        <i class="bi bi-check-circle-fill me-2"></i>
+                        ${message}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                `);
+                $('body').append(alert);
+                setTimeout(function() {
+                    alert.fadeOut(300, function() {
+                        $(this).remove();
+                    });
+                }, duration);
+            }
+
             // Update cart totals from server
             function updateCartTotals() {
                 $.ajax({
@@ -581,6 +845,8 @@
                             $('.vat-amount').text(getCurrencySymbol() + response.vat);
                             $('.addon-charges-amount').text(getCurrencySymbol() + response
                                 .addon_charges);
+                            $('.extra-km-charges-amount').text(getCurrencySymbol() + (response
+                                .extra_km_charges || '0.00'));
                             $('.discount-amount').text('-' + getCurrencySymbol() + response.discount);
                             $('.cart-total').text(getCurrencySymbol() + response.total);
 
@@ -661,38 +927,107 @@
                 }
             });
 
-            // Coupon form
-            $('#coupon-form').on('submit', function(e) {
+            // Promo Code Management
+            // Apply promo code form submission
+            $('#promo-code-form').on('submit', function(e) {
                 e.preventDefault();
 
-                let couponCode = $('#coupon-input').val().trim();
-                if (!couponCode) {
+                let promoCode = $('#promo-code-input').val().trim();
+                if (!promoCode) {
+                    showPromoCodeError('Please enter a promo code');
                     return;
                 }
 
+                // Show loading state
+                const applyBtn = $('#apply-promo-btn');
+                applyBtn.prop('disabled', true);
+                applyBtn.find('.btn-text').hide();
+                applyBtn.find('.btn-loading').show();
+                clearPromoCodeMessage();
+
                 $.ajax({
-                    url: '{{ route('cart.apply-coupon') }}',
+                    url: '{{ route('cart.apply-promo-code') }}',
                     method: 'POST',
                     data: {
                         _token: '{{ csrf_token() }}',
-                        coupon_code: couponCode
+                        promo_code: promoCode
                     },
                     success: function(response) {
                         if (response.success) {
-                            // Reload page to show updated totals with proper currency conversion
-                            location.reload();
+                            // Reload page to show updated totals with promo code applied
+                            showPromoCodeSuccess(response.message || 'Promo code applied successfully!');
+                            setTimeout(function() {
+                                location.reload();
+                            }, 1000);
                         } else {
-                            $('#coupon-message').html('<div class="alert alert-danger">' +
-                                response.message + '</div>');
+                            showPromoCodeError(response.message || 'Invalid promo code');
+                            resetApplyButton();
                         }
                     },
-                    error: function() {
-                        $('#coupon-message').html(
-                            '<div class="alert alert-danger">Error applying coupon. Please try again.</div>'
-                        );
+                    error: function(xhr) {
+                        const errorMsg = xhr.responseJSON?.message || 'Error applying promo code. Please try again.';
+                        showPromoCodeError(errorMsg);
+                        resetApplyButton();
                     }
                 });
             });
+
+            // Remove promo code button click
+            $(document).on('click', '#remove-promo-btn', function() {
+                const btn = $(this);
+                btn.prop('disabled', true);
+                btn.html('<i class="bi bi-hourglass-split"></i>');
+
+                $.ajax({
+                    url: '{{ route('cart.remove-promo-code') }}',
+                    method: 'POST',
+                    data: {
+                        _token: '{{ csrf_token() }}'
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            showSuccessNotification(response.message || 'Promo code removed', 2000);
+                            setTimeout(function() {
+                                location.reload();
+                            }, 500);
+                        } else {
+                            showPromoCodeError(response.message || 'Error removing promo code');
+                            btn.prop('disabled', false);
+                            btn.html('<i class="bi bi-x-lg"></i>');
+                        }
+                    },
+                    error: function(xhr) {
+                        const errorMsg = xhr.responseJSON?.message || 'Error removing promo code. Please try again.';
+                        showPromoCodeError(errorMsg);
+                        btn.prop('disabled', false);
+                        btn.html('<i class="bi bi-x-lg"></i>');
+                    }
+                });
+            });
+
+            // Helper functions for promo code UI
+            function showPromoCodeError(message) {
+                $('#promo-code-message').html(
+                    '<div class="alert alert-danger py-2 px-3 mb-0"><i class="bi bi-exclamation-circle"></i> ' + message + '</div>'
+                );
+            }
+
+            function showPromoCodeSuccess(message) {
+                $('#promo-code-message').html(
+                    '<div class="alert alert-success py-2 px-3 mb-0"><i class="bi bi-check-circle"></i> ' + message + '</div>'
+                );
+            }
+
+            function clearPromoCodeMessage() {
+                $('#promo-code-message').empty();
+            }
+
+            function resetApplyButton() {
+                const applyBtn = $('#apply-promo-btn');
+                applyBtn.prop('disabled', false);
+                applyBtn.find('.btn-text').show();
+                applyBtn.find('.btn-loading').hide();
+            }
 
             // Addon Management - Unified Section
 
@@ -956,6 +1291,177 @@
                 } else {
                     btn.html('<i class="bi bi-chevron-up"></i> Hide');
                 }
+            });
+
+            // ==========================================
+            // Extra KM Purchase Management
+            // ==========================================
+
+            // Load extra km rate for all items on page load
+            $(document).ready(function() {
+                loadExtraKmForAllItems();
+            });
+
+            function loadExtraKmForAllItems() {
+                $('.extra-km-row').each(function() {
+                    const cartKey = $(this).data('cart-key');
+                    loadExtraKmRateForItem(cartKey);
+                });
+            }
+
+            function loadExtraKmRateForItem(cartKey) {
+                const container = $(`.extra-km-row[data-cart-key="${cartKey}"] .extra-km-content`);
+                const loadingEl = container.find('.extra-km-loading');
+                const formEl = container.find('.extra-km-form');
+                const unavailableEl = container.find('.extra-km-unavailable');
+
+                $.ajax({
+                    url: '{{ url('/cart/extra-km') }}/' + cartKey,
+                    method: 'GET',
+                    success: function(response) {
+                        loadingEl.hide();
+                        
+                        if (response.success && response.data.rate) {
+                            const rate = response.data.rate.rate;
+                            const currentExtraKm = response.data.current_extra_km;
+                            
+                            // Update rate display
+                            container.find('.extra-km-rate').text(parseFloat(rate).toFixed(2));
+                            container.data('rate', rate);
+                            
+                            // Update current values if extra km already added
+                            if (currentExtraKm && currentExtraKm.km > 0) {
+                                container.find('.extra-km-input').val(currentExtraKm.km);
+                                container.find('.extra-km-total-amount').text(parseFloat(currentExtraKm.total_cost).toFixed(2));
+                                container.find('.remove-extra-km').show();
+                            }
+                            
+                            formEl.show();
+                        } else {
+                            unavailableEl.show();
+                        }
+                    },
+                    error: function(xhr) {
+                        console.error('Error loading extra km rate:', xhr);
+                        loadingEl.hide();
+                        unavailableEl.show();
+                    }
+                });
+            }
+
+            // Toggle extra km section visibility
+            $(document).on('click', '.toggle-extra-km-section', function() {
+                const btn = $(this);
+                const cartKey = btn.data('cart-key');
+                const content = $(`.extra-km-content[data-cart-key="${cartKey}"]`);
+
+                btn.toggleClass('collapsed');
+                content.toggleClass('collapsed');
+
+                // Update button text and icon
+                if (btn.hasClass('collapsed')) {
+                    btn.html('<i class="bi bi-chevron-down"></i> Show');
+                } else {
+                    btn.html('<i class="bi bi-chevron-up"></i> Hide');
+                }
+            });
+
+            // Extra KM quantity controls
+            $(document).on('click', '.km-plus', function() {
+                const cartKey = $(this).data('cart-key');
+                const input = $(`.extra-km-input[data-cart-key="${cartKey}"]`);
+                const current = parseInt(input.val()) || 0;
+                const max = parseInt(input.attr('max')) || 10000;
+                const step = parseInt(input.attr('step')) || 10;
+                input.val(Math.min(current + step, max)).trigger('input');
+            });
+
+            $(document).on('click', '.km-minus', function() {
+                const cartKey = $(this).data('cart-key');
+                const input = $(`.extra-km-input[data-cart-key="${cartKey}"]`);
+                const current = parseInt(input.val()) || 0;
+                const step = parseInt(input.attr('step')) || 10;
+                input.val(Math.max(0, current - step)).trigger('input');
+            });
+
+            // Update total when km input changes
+            $(document).on('input', '.extra-km-input', function() {
+                const cartKey = $(this).data('cart-key');
+                const km = parseInt($(this).val()) || 0;
+                const container = $(`.extra-km-content[data-cart-key="${cartKey}"]`);
+                const rate = parseFloat(container.data('rate')) || 0;
+                const total = km * rate;
+                
+                container.find('.extra-km-total-amount').text(total.toFixed(2));
+            });
+
+            // Apply extra km
+            $(document).on('click', '.apply-extra-km', function() {
+                const cartKey = $(this).data('cart-key');
+                const km = parseInt($(`.extra-km-input[data-cart-key="${cartKey}"]`).val()) || 0;
+                
+                const btn = $(this);
+                btn.prop('disabled', true).html('<i class="bi bi-hourglass-split"></i> Applying...');
+
+                $.ajax({
+                    url: '{{ route('cart.extra-km.add') }}',
+                    method: 'POST',
+                    data: {
+                        _token: '{{ csrf_token() }}',
+                        cart_key: cartKey,
+                        extra_km: km
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            showSuccessNotification(response.message, 3000);
+                            location.reload();
+                        } else {
+                            alert(response.message || 'Error applying extra km');
+                            btn.prop('disabled', false).html('<i class="bi bi-check-lg"></i> Apply Extra KM');
+                        }
+                    },
+                    error: function(xhr) {
+                        console.error('Error:', xhr);
+                        const errorMsg = xhr.responseJSON?.message || 'Error applying extra km';
+                        alert(errorMsg);
+                        btn.prop('disabled', false).html('<i class="bi bi-check-lg"></i> Apply Extra KM');
+                    }
+                });
+            });
+
+            // Remove extra km
+            $(document).on('click', '.remove-extra-km', function() {
+                const cartKey = $(this).data('cart-key');
+                
+                if (!confirm('Remove extra km from this item?')) {
+                    return;
+                }
+
+                const btn = $(this);
+                btn.prop('disabled', true);
+
+                $.ajax({
+                    url: '{{ route('cart.extra-km.remove') }}',
+                    method: 'POST',
+                    data: {
+                        _token: '{{ csrf_token() }}',
+                        cart_key: cartKey
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            showSuccessNotification('Extra km removed', 3000);
+                            location.reload();
+                        } else {
+                            alert(response.message || 'Error removing extra km');
+                            btn.prop('disabled', false);
+                        }
+                    },
+                    error: function(xhr) {
+                        console.error('Error:', xhr);
+                        alert('Error removing extra km');
+                        btn.prop('disabled', false);
+                    }
+                });
             });
         });
     </script>
@@ -1317,6 +1823,241 @@
             .addon-controls-unified {
                 width: 100%;
                 justify-content: space-between;
+            }
+        }
+
+        /* ==========================================
+           Extra KM Purchase Section Styles
+           ========================================== */
+        .extra-km-row {
+            background-color: #f5f8ff;
+            border-top: 2px solid #d0d8e8;
+        }
+
+        .extra-km-container {
+            padding: 20px 0;
+        }
+
+        .extra-km-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .extra-km-header h6 {
+            font-size: 15px;
+            font-weight: 700;
+            color: #333;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .extra-km-header h6 i {
+            color: #007bff;
+            font-size: 18px;
+        }
+
+        .toggle-extra-km-section {
+            padding: 6px 12px !important;
+            font-size: 12px !important;
+            white-space: nowrap;
+            transition: all 0.3s ease;
+        }
+
+        .toggle-extra-km-section i {
+            margin-right: 4px;
+            transition: transform 0.3s ease;
+        }
+
+        .toggle-extra-km-section.collapsed i {
+            transform: rotate(180deg);
+        }
+
+        .toggle-extra-km-section.collapsed {
+            background-color: #e3f2fd !important;
+            color: #1976d2 !important;
+            border-color: #1976d2 !important;
+        }
+
+        .extra-km-content {
+            transition: max-height 0.3s ease, opacity 0.3s ease, padding 0.3s ease;
+            overflow: hidden;
+            max-height: 500px;
+            opacity: 1;
+            padding: 15px 0;
+        }
+
+        .extra-km-content.collapsed {
+            max-height: 0;
+            opacity: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        .extra-km-form {
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 10px;
+            padding: 20px;
+            max-width: 400px;
+        }
+
+        .extra-km-rate-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 15px;
+            background: #f8f9fa;
+            border-radius: 6px;
+        }
+
+        .rate-label {
+            font-weight: 600;
+            color: #666;
+        }
+
+        .rate-value {
+            font-size: 18px;
+            font-weight: 700;
+            color: #007bff;
+        }
+
+        .extra-km-input-group {
+            margin-top: 15px;
+        }
+
+        .extra-km-input-group label {
+            display: block;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 8px;
+        }
+
+        .km-qty-control {
+            display: flex;
+            align-items: center;
+            gap: 2px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            padding: 4px;
+            background-color: #f9f9f9;
+            width: fit-content;
+        }
+
+        .km-qty-btn {
+            width: 40px;
+            height: 40px;
+            padding: 0;
+            border: none;
+            background: #fff;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 20px;
+            color: #333;
+            border-radius: 6px;
+            transition: all 0.2s ease;
+        }
+
+        .km-qty-btn:hover {
+            background-color: #007bff;
+            color: white;
+        }
+
+        .extra-km-input {
+            width: 80px;
+            text-align: center;
+            border: none;
+            background: white;
+            font-size: 16px;
+            font-weight: 700;
+            padding: 8px;
+            border-radius: 4px;
+        }
+
+        .extra-km-input::-webkit-outer-spin-button,
+        .extra-km-input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+
+        .extra-km-input[type=number] {
+            -moz-appearance: textfield;
+        }
+
+        .extra-km-total {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 15px;
+            background: #e8f5e9;
+            border-radius: 6px;
+            border: 1px solid #c8e6c9;
+        }
+
+        .total-label {
+            font-weight: 600;
+            color: #2e7d32;
+        }
+
+        .total-value {
+            font-size: 20px;
+            font-weight: 700;
+            color: #2e7d32;
+        }
+
+        .extra-km-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .apply-extra-km {
+            flex: 1;
+            min-width: 120px;
+        }
+
+        .extra-km-unavailable {
+            padding: 15px;
+            background: #fff3cd;
+            border-radius: 8px;
+            border: 1px solid #ffc107;
+        }
+
+        .extra-km-unavailable i {
+            color: #856404;
+        }
+
+        @media (max-width: 768px) {
+            .extra-km-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+
+            .extra-km-form {
+                max-width: 100%;
+            }
+
+            .km-qty-control {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .extra-km-actions {
+                flex-direction: column;
+            }
+
+            .apply-extra-km,
+            .remove-extra-km {
+                width: 100%;
             }
         }
     </style>

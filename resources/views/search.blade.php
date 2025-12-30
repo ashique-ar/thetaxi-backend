@@ -202,6 +202,87 @@
         </div>
     </div>
 
+    <!-- Request Quotation Modal -->
+    <div class="modal fade" id="requestQuotationModal" tabindex="-1" aria-labelledby="requestQuotationModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-warning text-dark">
+                    <h5 class="modal-title" id="requestQuotationModalLabel">
+                        <i class="bi bi-calculator"></i> Request Quotation
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form id="quotationRequestForm" method="POST" action="{{ route('quotation.request') }}">
+                    @csrf
+                    <div class="modal-body">
+                        <input type="hidden" name="vehicle_group_id" id="quotation_vehicle_group_id">
+                        <input type="hidden" name="search_id" id="quotation_search_id" value="{{ $search->id ?? '' }}">
+                        
+                        <div class="alert alert-info mb-4">
+                            <i class="bi bi-info-circle"></i>
+                            <strong>Vehicle:</strong> <span id="quotation_vehicle_name"></span>
+                            <br>
+                            <small class="text-muted">This vehicle requires a quotation request. Our team will contact you with pricing details.</small>
+                        </div>
+
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label">First Name *</label>
+                                <input type="text" class="form-control" name="first_name" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Last Name *</label>
+                                <input type="text" class="form-control" name="last_name" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Email *</label>
+                                <input type="email" class="form-control" name="email" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Phone *</label>
+                                <input type="tel" class="form-control" name="phone" required>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Additional Requirements</label>
+                                <textarea class="form-control" name="requirements" rows="3" 
+                                    placeholder="Please describe any special requirements, preferred dates, or questions..."></textarea>
+                            </div>
+                        </div>
+
+                        <!-- Search Details Summary -->
+                        <div class="mt-4 p-3 bg-light rounded">
+                            <h6 class="mb-3"><i class="bi bi-calendar-event"></i> Booking Details</h6>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <small class="text-muted">Pickup Date:</small>
+                                    <p class="mb-1">{{ $search->from_date ? \Carbon\Carbon::parse($search->from_date)->format('M d, Y') : 'Not specified' }}</p>
+                                </div>
+                                <div class="col-md-6">
+                                    <small class="text-muted">Return Date:</small>
+                                    <p class="mb-1">{{ $search->to_date ? \Carbon\Carbon::parse($search->to_date)->format('M d, Y') : 'Not specified' }}</p>
+                                </div>
+                                <div class="col-md-6">
+                                    <small class="text-muted">Pickup Location:</small>
+                                    <p class="mb-1">{{ $search->pickup_location ?? 'Not specified' }}</p>
+                                </div>
+                                <div class="col-md-6">
+                                    <small class="text-muted">Drop-off Location:</small>
+                                    <p class="mb-1">{{ $search->dropoff_location ?? $search->pickup_location ?? 'Not specified' }}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-warning">
+                            <i class="bi bi-send"></i> Submit Request
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
 @endsection
 
 @push('styles')
@@ -1443,6 +1524,53 @@
                     console.error('Add to cart failed, not redirecting to cart.', response);
                     $btn.prop('disabled', false).removeClass('loading');
                     $btn.html($btn.data('original-html'));
+                }
+            });
+        });
+
+        // Request Quotation Modal Handler
+        $(document).on('click', '.request-quotation-btn', function() {
+            const groupId = $(this).data('group-id');
+            const groupName = $(this).data('group-name');
+            const searchId = $(this).data('search-id');
+            
+            // Populate modal fields
+            $('#quotation_vehicle_group_id').val(groupId);
+            $('#quotation_search_id').val(searchId || '{{ $search->id ?? '' }}');
+            $('#quotation_vehicle_name').text(groupName);
+        });
+
+        // Quotation Form Submission
+        $('#quotationRequestForm').on('submit', function(e) {
+            e.preventDefault();
+            
+            const $form = $(this);
+            const $submitBtn = $form.find('button[type="submit"]');
+            const originalBtnText = $submitBtn.html();
+            
+            // Show loading state
+            $submitBtn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-2"></span> Submitting...');
+            
+            $.ajax({
+                url: $form.attr('action'),
+                method: 'POST',
+                data: $form.serialize(),
+                success: function(response) {
+                    if (response.success) {
+                        // Close modal and show success
+                        $('#requestQuotationModal').modal('hide');
+                        showSuccessNotification('Quotation request submitted successfully! Our team will contact you shortly.');
+                        $form[0].reset();
+                    } else {
+                        showErrorNotification(response.message || 'Failed to submit quotation request. Please try again.');
+                    }
+                },
+                error: function(xhr) {
+                    const errorMsg = xhr.responseJSON?.message || 'An error occurred. Please try again.';
+                    showErrorNotification(errorMsg);
+                },
+                complete: function() {
+                    $submitBtn.prop('disabled', false).html(originalBtnText);
                 }
             });
         });

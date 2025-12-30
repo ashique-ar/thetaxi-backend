@@ -24,7 +24,7 @@ class BookingController extends Controller
     protected CurrencyService $currencyService;
     protected DiscountService $discountService;
     protected MailDispatchService $mailDispatchService;
-    
+
     public function __construct(
         BookingFlowService $bookingFlowService,
         CurrencyService $currencyService,
@@ -36,7 +36,7 @@ class BookingController extends Controller
         $this->discountService = $discountService;
         $this->mailDispatchService = $mailDispatchService;
     }
-    
+
     /**
      * Handle booking search request
      * Maps frontend service type code to ServiceType and calls BookingFlowService
@@ -56,7 +56,7 @@ class BookingController extends Controller
                     'frontend_service' => $frontendService,
                     'request_data' => $request->all()
                 ]);
-                
+
                 return redirect()->back()
                     ->withInput()
                     ->with('error', 'Service type not configured. Please contact support.');
@@ -64,7 +64,7 @@ class BookingController extends Controller
 
             // Transform frontend request data to BookingFlowService format
             $searchParams = $this->transformSearchParams($request->all(), $serviceType);
-            
+
             // Store search params and context in session for results page
             session()->put('current_search_params', $searchParams);
             session()->put('search_timestamp', now());
@@ -88,7 +88,7 @@ class BookingController extends Controller
                 ->with('error', 'An error occurred while processing your search. Please try again.');
         }
     }
-    
+
     /**
      * Resolve frontend service type code to ServiceType model
      * Maps frontend codes: airport_transfers, point_to_point, ride_now, wedding_hire, corporate
@@ -100,8 +100,8 @@ class BookingController extends Controller
             ->where('is_active', true)
             ->first();
     }
-    
-    
+
+
     /**
      * Transform frontend search parameters to BookingFlowService format
      * Handles field mapping for different service types
@@ -117,7 +117,7 @@ class BookingController extends Controller
 
         // Handle different frontend service types by code
         $code = $serviceType->code;
-        
+
         switch ($code) {
             case 'airport_transfers':
                 $params['from_date'] = Carbon::parse($requestData['date'])->format('Y-m-d');
@@ -127,14 +127,14 @@ class BookingController extends Controller
                 $params['pickup_location'] = $this->formatLocation($requestData, 'pickup');
                 $params['dropoff_location'] = $this->formatLocation($requestData, 'dropoff');
                 break;
-                
+
             case 'point_to_point':
                 $fromDate = Carbon::parse($requestData['date']);
                 // Default to same date if no return date provided (1 day booking)
-                $toDate = isset($requestData['return_date']) 
+                $toDate = isset($requestData['return_date'])
                     ? Carbon::parse($requestData['return_date'])
                     : $fromDate->copy();
-                    
+
                 $params['from_date'] = $fromDate->format('Y-m-d');
                 $params['to_date'] = $toDate->format('Y-m-d');
                 $params['from_time'] = $requestData['time'] ?? '00:00';
@@ -142,14 +142,27 @@ class BookingController extends Controller
                 $params['pickup_location'] = $this->formatLocation($requestData, 'pickup');
                 $params['dropoff_location'] = $this->formatLocation($requestData, 'dropoff');
                 break;
-                
+
             case 'ride_now':
-            case 'day_rental':
                 $pickupDate = Carbon::parse($requestData['pickup_date'] ?? $requestData['date']);
-                $dropoffDate = isset($requestData['dropoff_date']) 
+                $dropoffDate = isset($requestData['dropoff_date'])
                     ? Carbon::parse($requestData['dropoff_date'])
                     : $pickupDate->copy();
-                    
+
+                $params['from_date'] = $pickupDate->format('Y-m-d');
+                // $params['to_date'] = $dropoffDate->format('Y-m-d');
+                $params['from_time'] = $requestData['pickup_time'] ?? '00:00';
+                // $params['to_time'] = $requestData['dropoff_time'] ?? '00:00';
+                $params['pickup_location'] = $this->formatLocation($requestData, 'pickup');
+                $params['dropoff_location'] = $this->formatLocation($requestData, 'dropoff');
+                $params['package_type'] = $requestData['package_type'] ?? 'multi-day';
+                break;
+            case 'day_rental':
+                $pickupDate = Carbon::parse($requestData['pickup_date'] ?? $requestData['date']);
+                $dropoffDate = isset($requestData['dropoff_date'])
+                    ? Carbon::parse($requestData['dropoff_date'])
+                    : $pickupDate->copy();
+
                 $params['from_date'] = $pickupDate->format('Y-m-d');
                 $params['to_date'] = $dropoffDate->format('Y-m-d');
                 $params['from_time'] = $requestData['pickup_time'] ?? '00:00';
@@ -158,7 +171,7 @@ class BookingController extends Controller
                 $params['dropoff_location'] = $this->formatLocation($requestData, 'dropoff');
                 $params['package_type'] = $requestData['package_type'] ?? 'multi-day';
                 break;
-                
+
             case 'wedding_hire':
                 $params['from_date'] = Carbon::parse($requestData['date'])->format('Y-m-d');
                 $params['to_date'] = Carbon::parse($requestData['date'])->format('Y-m-d');
@@ -178,23 +191,23 @@ class BookingController extends Controller
                 $params['contract_type'] = $requestData['contract_type'] ?? 'weekly';
                 break;
         }
-        
+
         // Add common parameters
-        $params['passengers'] = (int)($requestData['passengers'] ?? 1);
-        
+        $params['passengers'] = (int) ($requestData['passengers'] ?? 1);
+
         // Add ServicePackage support if provided
         if (!empty($requestData['package_id'])) {
             $params['package_id'] = $requestData['package_id'];
-            
+
             Log::info('ServicePackage selected in booking search', [
                 'service_type' => $serviceType->code,
                 'package_id' => $requestData['package_id'],
             ]);
         }
-        
+
         return $params;
     }
-    
+
     /**
      * Format location data for BookingFlowService
      */
@@ -205,7 +218,7 @@ class BookingController extends Controller
             'latitude' => $data["{$prefix}_lat"] ?? null,
             'longitude' => $data["{$prefix}_lng"] ?? null,
         ];
-        
+
         // Ensure numeric values and validate coordinates
         if ($location['latitude']) {
             $latitude = (float) $location['latitude'];
@@ -217,7 +230,7 @@ class BookingController extends Controller
                 $location['latitude'] = null;
             }
         }
-        
+
         if ($location['longitude']) {
             $longitude = (float) $location['longitude'];
             // Validate longitude range (-180 to 180)
@@ -228,10 +241,10 @@ class BookingController extends Controller
                 $location['longitude'] = null;
             }
         }
-                
+
         return $location;
     }
-    
+
     /**
      * Show search results page using BookingFlowService
      * Now calls the same service as the API for consistency
@@ -244,35 +257,36 @@ class BookingController extends Controller
             $searchTimestamp = session()->get('search_timestamp');
             $pricingContext = session()->get('pricing_context');
             $frontendService = session()->get('frontend_service');
-            
+
             if (!$searchParams) {
                 return redirect()->route('home')
                     ->with('error', 'No search data found. Please start a new search.');
             }
-            
-            // Check if search is expired (older than 2 hours)
-            if ($searchTimestamp && Carbon::parse($searchTimestamp)->diffInHours(now()) > 2) {
+
+            // Check if search is expired (configurable in hours; 0 = disabled)
+            $expiryHours = config('booking.search_expiry_hours', 0);
+            if ($expiryHours > 0 && $searchTimestamp && Carbon::parse($searchTimestamp)->diffInHours(now()) > $expiryHours) {
                 return redirect()->route('home')
                     ->with('warning', 'Your search has expired. Please start a new search for updated prices.');
             }
-            
-            $availabilityData = $this->bookingFlowService->getAvailableVehicleGroups($searchParams,true);
+
+            $availabilityData = $this->bookingFlowService->getAvailableVehicleGroups($searchParams, true);
 
             // Extract data and pagination
             $vehicleGroups = $availabilityData['data'] ?? $availabilityData;
             $pagination = $availabilityData['pagination'] ?? null;
             $totalJourneyDistance = $availabilityData['total_journey_distance_km'] ?? null;
-            
+
             // Transform results for view (add public-specific enhancements)
             $transformedData = $this->transformResultsForPublicView($vehicleGroups, $searchParams, $pricingContext);
-          
+
             // Wrap results in expected structure for blade template
             $results = [
                 'data' => $transformedData,
                 'total' => count($transformedData),
                 'pagination' => $pagination
             ];
-            
+
             // Prepare search object for view compatibility (include ID for blade template)
             // Map all search params to individual properties for form binding
             $search = (object) array_merge(
@@ -291,8 +305,8 @@ class BookingController extends Controller
                     'to_date' => $searchParams['to_date'] ?? null,
                     'from_time' => $searchParams['from_time'] ?? null,
                     'to_time' => $searchParams['to_time'] ?? null,
-                    'pickup_location' => is_array($searchParams['pickup_location'] ?? null) 
-                        ? $searchParams['pickup_location']['address'] ?? '' 
+                    'pickup_location' => is_array($searchParams['pickup_location'] ?? null)
+                        ? $searchParams['pickup_location']['address'] ?? ''
                         : $searchParams['pickup_location'] ?? '',
                     'pickup_latitude' => is_array($searchParams['pickup_location'] ?? null)
                         ? $searchParams['pickup_location']['latitude'] ?? null
@@ -318,14 +332,14 @@ class BookingController extends Controller
                     'contract_type' => $searchParams['contract_type'] ?? null,
                 ]
             );
-            
+
             // Get additional data for enhanced UI
             $additionalData = [
                 'popular_destinations' => $this->getPopularDestinations(),
                 'active_promotions' => $this->getActivePromotionalOffers($search),
                 'pagination' => $pagination,
             ];
-            
+
             return view('search', array_merge(compact('search', 'results'), $additionalData));
 
         } catch (\Exception $e) {
@@ -338,7 +352,7 @@ class BookingController extends Controller
                 ->with('error', 'An error occurred while loading search results. Please try again.');
         }
     }
-    
+
     /**
      * Transform BookingFlowService results for public view
      * Adds customer-facing enhancements and formatting
@@ -346,17 +360,17 @@ class BookingController extends Controller
     protected function transformResultsForPublicView(array $vehicleGroups, array $searchParams, $pricingContext): array
     {
         $results = [];
-        
+
         foreach ($vehicleGroups as $index => $groupData) {
-             // Check if we have minimum required data
+            // Check if we have minimum required data
             if (!isset($groupData['id']) || !isset($groupData['name'])) {
                 Log::warning("Skipping vehicle group {$index} - missing required data");
                 continue;
             }
-            
+
             // Format pricing from the structure returned by BookingFlowService
             $pricingInfo = $groupData['pricing_info'] ?? [];
-            
+
             // Get service type information
             $serviceType = null;
             if (isset($searchParams['service_type'])) {
@@ -364,7 +378,7 @@ class BookingController extends Controller
                 $serviceTypeModel = ServiceType::find($serviceTypeId);
                 $serviceType = $serviceTypeModel ? $serviceTypeModel->code : 'point_to_point';
             }
-            
+
             $formattedPricing = !empty($pricingInfo) ? [
                 'base_amount' => $pricingInfo['base_amount'] ?? 0,
                 'total_amount' => $pricingInfo['total_amount'] ?? 0,
@@ -375,7 +389,7 @@ class BookingController extends Controller
                 ]),
                 'service_type' => $serviceType,
             ] : [];
-            
+
             // Build result using the ACTUAL structure from BookingFlowService
             $results[] = [
                 // Direct mapping from BookingFlowService response
@@ -405,10 +419,10 @@ class BookingController extends Controller
                 'payment_options' => $this->getAvailablePaymentOptions($formattedPricing),
             ];
         }
-        
+
         return $results;
     }
-    
+
     /**
      * Format pricing data for public display
      */
@@ -417,7 +431,7 @@ class BookingController extends Controller
         if (empty($pricing)) {
             return [];
         }
-        
+
         return [
             'base_amount' => $pricing['base_pricing']['total_amount'] ?? 0,
             'total_amount' => $pricing['summary']['total_amount'] ?? 0,
@@ -620,7 +634,7 @@ class BookingController extends Controller
     {
         try {
             $cart = session()->get('booking_cart', []);
-            
+
             if (isset($cart[$itemId])) {
                 unset($cart[$itemId]);
                 session()->put('booking_cart', $cart);
@@ -713,7 +727,7 @@ class BookingController extends Controller
     {
         $basePricing = $pricing['base_pricing'] ?? [];
         $summary = $pricing['summary'] ?? [];
-        
+
         return [
             'base_fare' => [
                 'amount' => $basePricing['base_amount'] ?? 0,
@@ -748,7 +762,7 @@ class BookingController extends Controller
     private function getAvailablePaymentOptions($pricing): array
     {
         $totalAmount = $pricing['summary']['total'] ?? 0;
-        
+
         return [
             'cash' => [
                 'available' => true,
@@ -776,7 +790,7 @@ class BookingController extends Controller
      */
     private function getPopularDestinations(): array
     {
-        return Cache::remember('popular_destinations', 3600, function() {
+        return Cache::remember('popular_destinations', 3600, function () {
             // TODO: Query from database based on booking history
             return [
                 ['name' => 'Airport Terminal 1', 'bookings' => 1250],
@@ -814,7 +828,7 @@ class BookingController extends Controller
     {
         $cart = session()->get('booking_cart', []);
         $itemId = Str::uuid()->toString();
-        
+
         $cartItem = [
             'id' => $itemId,
             'search_id' => $search->id,
@@ -825,10 +839,10 @@ class BookingController extends Controller
             'added_at' => now(),
             'pricing_snapshot' => $this->getCartItemPricing($search, $data)
         ];
-        
+
         $cart[$itemId] = $cartItem;
         session()->put('booking_cart', $cart);
-        
+
         return $cartItem;
     }
 
@@ -857,7 +871,7 @@ class BookingController extends Controller
     private function getCartItemDetails(array $item): array
     {
         $vehicleGroup = VehicleGroup::find($item['vehicle_group_id']);
-        
+
         return [
             'id' => $item['id'],
             'vehicle_group' => $vehicleGroup ? $vehicleGroup->toArray() : null,
@@ -876,21 +890,21 @@ class BookingController extends Controller
     private function updateCartItemData(string $itemId, array $data): bool
     {
         $cart = session()->get('booking_cart', []);
-        
+
         if (!isset($cart[$itemId])) {
             return false;
         }
-        
+
         $cart[$itemId]['quantity'] = $data['quantity'];
         $cart[$itemId]['selected_addons'] = $data['selected_addons'] ?? [];
         $cart[$itemId]['updated_at'] = now();
-        
+
         // Recalculate pricing using current search params
         $searchParams = session()->get('current_search_params');
         if ($searchParams) {
             $cart[$itemId]['pricing_snapshot'] = $this->getCartItemPricing($searchParams, $cart[$itemId]);
         }
-        
+
         session()->put('booking_cart', $cart);
         return true;
     }
@@ -902,11 +916,11 @@ class BookingController extends Controller
     {
         $cart = session()->get('booking_cart', []);
         $total = 0;
-        
+
         foreach ($cart as $item) {
             $total += ($item['pricing_snapshot']['total_amount'] ?? 0) * $item['quantity'];
         }
-        
+
         return $total;
     }
 
@@ -918,12 +932,12 @@ class BookingController extends Controller
         // Handle null values with defaults
         $date = $date ?? now()->format('Y-m-d');
         $time = $time ?? '09:00';
-        
+
         try {
             $dateTime = Carbon::parse($date . ' ' . $time);
             $hour = $dateTime->hour;
             $dayOfWeek = $dateTime->dayOfWeek;
-            
+
             // Weekend or rush hours (7-9 AM, 5-7 PM on weekdays)
             return $dayOfWeek >= 5 || ($dayOfWeek < 5 && (($hour >= 7 && $hour <= 9) || ($hour >= 17 && $hour <= 19)));
         } catch (\Exception $e) {
@@ -939,14 +953,17 @@ class BookingController extends Controller
     {
         // Handle null date with default (today)
         $date = $date ?? now()->format('Y-m-d');
-        
+
         try {
             $daysAhead = Carbon::parse($date)->diffInDays(now());
-            
-            if ($daysAhead >= 30) return 0.15; // 15% for 30+ days
-            if ($daysAhead >= 14) return 0.10; // 10% for 14+ days
-            if ($daysAhead >= 7) return 0.05;  // 5% for 7+ days
-            
+
+            if ($daysAhead >= 30)
+                return 0.15; // 15% for 30+ days
+            if ($daysAhead >= 14)
+                return 0.10; // 10% for 14+ days
+            if ($daysAhead >= 7)
+                return 0.05;  // 5% for 7+ days
+
             return 0;
         } catch (\Exception $e) {
             // Return 0 discount if date parsing fails
@@ -962,11 +979,14 @@ class BookingController extends Controller
         $available = $group['available_vehicles'] ?? 0;
         $total = $group['total_vehicles'] ?? 1;
         $percentage = $available / $total;
-        
-        if ($percentage >= 0.7) return 'excellent';
-        if ($percentage >= 0.4) return 'good';
-        if ($percentage >= 0.2) return 'limited';
-        
+
+        if ($percentage >= 0.7)
+            return 'excellent';
+        if ($percentage >= 0.4)
+            return 'good';
+        if ($percentage >= 0.2)
+            return 'limited';
+
         return 'low';
     }
 
@@ -1020,7 +1040,7 @@ class BookingController extends Controller
                 'Expense Tracking'
             ]
         ];
-        
+
         return $features[$code] ?? ['Professional Service', 'Reliable Transport', 'Competitive Pricing'];
     }
 
@@ -1134,9 +1154,10 @@ class BookingController extends Controller
      */
     private function getFormType(string $code): string
     {
-        return match($code) {
+        return match ($code) {
             'airport_transfers', 'point_to_point' => 'transfer',
             'ride_now' => 'rental',
+            'day_rental' => 'rental',
             'wedding_hire' => 'special_occasion',
             'corporate' => 'inquiry',
             default => 'generic'
@@ -1148,7 +1169,7 @@ class BookingController extends Controller
      */
     private function getFormFields(string $code): array
     {
-        return match($code) {
+        return match ($code) {
             'airport_transfers' => [
                 ['name' => 'from', 'label' => 'From Location', 'type' => 'text', 'required' => true],
                 ['name' => 'to', 'label' => 'To Location', 'type' => 'text', 'required' => true],
@@ -1193,7 +1214,7 @@ class BookingController extends Controller
      */
     private function buildValidationRules(string $code): array
     {
-        return match($code) {
+        return match ($code) {
             'airport_transfers' => [
                 'from' => 'required|string|max:255',
                 'to' => 'required|string|max:255',
@@ -1210,7 +1231,7 @@ class BookingController extends Controller
             ],
             'ride_now' => [
                 'pickup_date' => 'required|date_format:d/m/Y|after:today',
-                'dropoff_date' => 'required|date_format:d/m/Y|after:pickup_date',
+                // 'dropoff_date' => 'required|date_format:d/m/Y|after:pickup_date',
                 'pickup_time' => 'required|date_format:H:i',
                 'dropoff_time' => 'required|date_format:H:i',
                 'passengers' => 'nullable|integer|min:1|max:10',
@@ -1395,7 +1416,7 @@ class BookingController extends Controller
                 $adminEmail,
                 new \App\Mail\QuotationRequestNotification($inquiry, $requestData, $vehicleGroup)
             );
-            
+
             // Send confirmation to customer
             $this->mailDispatchService->sendToCustomer(
                 $requestData['customer_email'],

@@ -35,6 +35,9 @@
     <!-- Booking Form CSS -->
     <link rel="stylesheet" href="{{ asset('assets/css/booking-form.css?v=1.0.05') }}">
 
+    <!-- Popup Modal CSS -->
+    <link rel="stylesheet" href="{{ asset('assets/css/popup-modal.css?v=1.0') }}">
+
     <!-- Title -->
     <title>@yield('title', $settings['site_name'] ?? 'TheTaxi - Your Reliable Taxi Service')</title>
     <link rel="icon"
@@ -355,6 +358,9 @@
             offset: 100
         });
     </script>
+
+    <!-- Popup Display Engine JS -->
+    <script src="{{ asset('assets/js/popup-display.js?v=1.0') }}"></script>
 
     @stack('scripts')
 </body>

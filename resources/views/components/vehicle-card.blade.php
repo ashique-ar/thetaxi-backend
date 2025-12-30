@@ -15,6 +15,24 @@
     $mainImage = isset($vehicle['thumbnail'])
         ? s3_asset($vehicle['thumbnail']['path'] ?? '')
         : asset('assets/img/default-vehicle.jpg');
+    
+    // Determine if this vehicle is quotation-only
+    $isQuotationOnly = $vehicle['quotation_only'] ?? false;
+    $allowBooking = $vehicle['allow_booking'] ?? true;
+    $quotationOnlyReasons = $vehicle['quotation_only_reasons'] ?? [];
+    
+    // Check specific conditions for quotation-only
+    $hasPricing = isset($pricing['base_amount']) && $pricing['base_amount'] > 0;
+    $isGroupActive = $vehicle['is_group_active'] ?? true;
+    $hasAvailableVehicles = ($availability['available'] ?? 0) > 0;
+    $isInquiryOnly = $vehicle['is_inquiry_only'] ?? false;
+    $serviceRequiresInquiry = $vehicle['service_requires_inquiry'] ?? false;
+    
+    // Final determination: show quotation button if any condition is met
+    $showQuotationButton = $isQuotationOnly || !$hasPricing || !$isGroupActive || $isInquiryOnly || $serviceRequiresInquiry;
+    
+    // Can add to cart/book only if all conditions are met
+    $canAddToCart = $allowBooking && $hasPricing && $isGroupActive && $hasAvailableVehicles && !$isInquiryOnly && !$serviceRequiresInquiry;
 @endphp
 
 <!-- Vehicle Card -->
@@ -26,13 +44,17 @@
     <div class="vehicle-image-container">
         <img src="{{ $mainImage }}" alt="{{ $vehicle['name'] ?? 'Unknown Vehicle' }}" class="vehicle-img" loading="lazy">
 
-        @if ($availability['available'] > 0)
+        @if ($canAddToCart && $availability['available'] > 0)
             <span class="availability-badge available">
                 <i class="bi bi-check-circle-fill"></i> Available
             </span>
-        @elseif(isset($vehicle['show_request_quotation']) && $vehicle['show_request_quotation'])
+        @elseif($showQuotationButton)
             <span class="availability-badge quotation">
-                <i class="bi bi-calculator"></i> Quote Available
+                <i class="bi bi-calculator"></i> Quote Only
+            </span>
+        @elseif(!$hasAvailableVehicles && ($availability['total'] ?? 0) > 0)
+            <span class="availability-badge unavailable">
+                <i class="bi bi-clock"></i> Fully Booked
             </span>
         @else
             <span class="availability-badge unavailable">
@@ -248,7 +270,7 @@
 
         <!-- Action Buttons -->
         <div class="vehicle-actions mt-3">
-            @if ($availability['available'] > 0)
+            @if ($canAddToCart)
                 @if ($showBookNow && $searchId)
                     <!-- Book Now Button (Primary in Search Results) -->
                     <button type="button" class="btn btn-primary w-100 mb-2 book-now-btn"
@@ -287,16 +309,36 @@
                         <i class="bi bi-eye"></i> View Details
                     </a>
                 @endif
-            @elseif(isset($vehicle['show_request_quotation']) && $vehicle['show_request_quotation'])
-                <!-- Request Quotation Button - when pricing calculation is not possible -->
+            @elseif($showQuotationButton)
+                <!-- Request Quotation Button - when booking is not allowed -->
                 <button type="button" class="btn btn-warning w-100 mb-2 request-quotation-btn"
-                    data-group-id="{{ $vehicle['id'] }}" data-group-name="{{ $vehicle['name'] ?? 'Vehicle' }}"
+                    data-group-id="{{ $vehicle['id'] }}" 
+                    data-group-name="{{ $vehicle['name'] ?? 'Vehicle' }}"
+                    data-search-id="{{ $searchId }}"
                     data-bs-toggle="modal" data-bs-target="#requestQuotationModal">
                     <i class="bi bi-calculator"></i> Request Quotation
                 </button>
                 <p class="text-muted small mb-0 text-center">
-                    <i class="bi bi-info-circle"></i> Pricing requires manual calculation
+                    <i class="bi bi-info-circle"></i>
+                    @if (!$hasPricing)
+                        Price on request
+                    @elseif (!$isGroupActive)
+                        Currently unavailable
+                    @elseif ($isInquiryOnly || $serviceRequiresInquiry)
+                        Inquiry required
+                    @elseif (!$hasAvailableVehicles)
+                        All vehicles booked
+                    @else
+                        Contact us for booking
+                    @endif
                 </p>
+                
+                @if ($showViewDetails)
+                    <a href="{{ $searchId ? route('vehicle.details', ['id' => $vehicle['id'], 'search' => $searchId]) : route('vehicle.details', ['id' => $vehicle['id']]) }}"
+                        class="btn btn-outline-secondary btn-sm w-100 mt-2">
+                        <i class="bi bi-eye"></i> View Details
+                    </a>
+                @endif
             @else
                 <button type="button" class="btn btn-secondary w-100" disabled>
                     <i class="bi bi-exclamation-circle"></i> Not Available

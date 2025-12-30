@@ -180,7 +180,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('users/{user}/roles', [UserController::class, 'roles'])->middleware('permission:users.edit');
         Route::post('users/{user}/roles', [UserController::class, 'assignRoles'])->middleware('permission:users.edit');
         Route::delete('users/{user}/roles', [UserController::class, 'revokeRoles'])->middleware('permission:users.edit');
-        
+
         // Admin: view/deactivate contexts for a specific user
         Route::get('users/{user}/contexts', [UserController::class, 'contexts']);
         Route::post('users/{user}/contexts/deactivate', [UserController::class, 'deactivateContext'])->middleware('permission:users.edit');
@@ -194,10 +194,10 @@ Route::middleware(['auth:api'])->group(function () {
     |--------------------------------------------------------------------------
     */
     Route::prefix('profile')->group(function () {
-            Route::get('', [UserController::class, 'profile']);
-            Route::put('', [UserController::class, 'updateProfile']);
-            Route::post('/change-password', [UserController::class, 'changePassword']);
-            Route::put('/status', [UserController::class, 'updateStatus']);
+        Route::get('', [UserController::class, 'profile']);
+        Route::put('', [UserController::class, 'updateProfile']);
+        Route::post('/change-password', [UserController::class, 'changePassword']);
+        Route::put('/status', [UserController::class, 'updateStatus']);
     });
 
     /*
@@ -220,11 +220,10 @@ Route::middleware(['auth:api'])->group(function () {
     |--------------------------------------------------------------------------
     */
 
-    Route::middleware(['permission:permissions.view'])->group(function () {
-        Route::apiResource('permissions', PermissionController::class);
-        Route::get('permissions/{permission}/roles', [PermissionController::class, 'roles']);
-        Route::get('permissions/{permission}/users', [PermissionController::class, 'users']);
-    });
+    Route::apiResource('permissions', PermissionController::class);
+    Route::get('permissions/{permission}/roles', [PermissionController::class, 'roles']);
+    Route::get('permissions/{permission}/users', [PermissionController::class, 'users']);
+
 
     /*
     |--------------------------------------------------------------------------
@@ -283,20 +282,20 @@ Route::middleware(['auth:api'])->group(function () {
         Route::apiResource('companies', CompanyController::class);
         Route::apiResource('cms-content-types', CmsContentTypeController::class);
         Route::apiResource('cms-contents', CmsContentController::class);
-        
+
         // Public CMS routes (no authentication required)
         Route::get('public/cms-contents/published', [CmsContentController::class, 'published'])->name('api.cms-contents.published');
         Route::get('public/{contentTypeSlug}/{contentSlug}', [CmsContentController::class, 'getBySlug'])->name('api.cms-contents.public');
-        
+
         Route::apiResource('website-settings', WebsiteSettingController::class);
         Route::post('website-settings/update-multiple', [WebsiteSettingController::class, 'updateMultiple']);
         Route::get('website-settings/homepage/settings', [WebsiteSettingController::class, 'homepage']);
-        
+
         // Category-specific settings routes
         Route::get('website-settings/category/{category}', [WebsiteSettingController::class, 'getCategory']);
         Route::put('website-settings/category/{category}', [WebsiteSettingController::class, 'updateCategory']);
         Route::get('website-settings/all/categorized', [WebsiteSettingController::class, 'getAllCategorized']);
-        
+
         // Individual category endpoints for better organization
         Route::get('website-settings/general/settings', [WebsiteSettingController::class, 'general']);
         Route::get('website-settings/seo/settings', [WebsiteSettingController::class, 'seo']);
@@ -308,13 +307,13 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('website-settings/appearance/settings', [WebsiteSettingController::class, 'appearance']);
         Route::apiResource('vip-types', VipTypeController::class);
         Route::apiResource('service-types', ServiceTypeController::class);
-        Route::apiResource('service-packages', ServicePackageController::class);        
+        Route::apiResource('service-packages', ServicePackageController::class);
 
         // Service Configuration API routes for dynamic forms
         Route::get('services/configuration', [BookingController::class, 'getServiceConfiguration'])->name('api.services.configuration');
         Route::get('services/{serviceCode}/form-config', [BookingController::class, 'getServiceFormConfig']);
         Route::get('services/{serviceCode}/validation-rules', [BookingController::class, 'getServiceValidationRules']);
-        
+
         Route::apiResource('driving-license-types', DrivingLicenseTypeController::class);
         Route::apiResource('driving-licenses', DrivingLicenseController::class);
     });
@@ -328,6 +327,17 @@ Route::middleware(['auth:api'])->group(function () {
 
     Route::middleware(['permission:vehicles.view'])->group(function () {
         Route::prefix('vehicles')->group(function () {
+            // Vehicle Addons - Extended routes
+            Route::prefix('vehicle-addons')->group(function () {
+                Route::get('stats', [VehicleAddonController::class, 'stats']);
+                Route::get('available', [VehicleAddonController::class, 'available']);
+                Route::get('for-service', [VehicleAddonController::class, 'forService']);
+                Route::post('calculate-price', [VehicleAddonController::class, 'calculatePrice']);
+                Route::post('calculate-multiple', [VehicleAddonController::class, 'calculateMultiple']);
+                Route::post('check-availability', [VehicleAddonController::class, 'checkAvailability']);
+                Route::post('bulk-update-status', [VehicleAddonController::class, 'bulkUpdateStatus']);
+                Route::put('{vehicleAddon}/toggle-status', [VehicleAddonController::class, 'toggleStatus']);
+            });
             Route::apiResource('vehicle-addons', VehicleAddonController::class);
             Route::apiResource('vehicle-categories', VehicleCategoryController::class);
             Route::apiResource('vehicle-classes', VehicleClassController::class);
@@ -581,7 +591,7 @@ Route::middleware(['auth:api'])->group(function () {
                 ->middleware('permission:bookings.view');
 
             Route::get('/availability/vehicle', [BookingFlowController::class, 'vehicleAvailability']);
-            Route::get('/availability/driver',  [BookingFlowController::class, 'driverAvailability']);
+            Route::get('/availability/driver', [BookingFlowController::class, 'driverAvailability']);
 
 
             // Conflict Checking Routes - Updated to match frontend service
@@ -797,7 +807,7 @@ Route::middleware(['auth:api'])->group(function () {
                 ->middleware('permission:bookings.view');
             Route::get('inspectors/available', [BookingLifecycleController::class, 'getAvailableInspectors'])
                 ->middleware('permission:bookings.view');
-            
+
             Route::post('dispatch-vehicle', [BookingLifecycleController::class, 'dispatchVehicle'])
                 ->middleware('permission:bookings.dispatch');
             Route::post('process-return', [BookingLifecycleController::class, 'processReturn'])
@@ -1074,7 +1084,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::apiResource('faq-categories', \App\Http\Controllers\Api\Admin\FAQCategoryController::class);
         Route::post('faq-categories/bulk-sort', [\App\Http\Controllers\Api\Admin\FAQCategoryController::class, 'bulkUpdateSort']);
         Route::get('faq-categories/{faqCategory}/faqs', [\App\Http\Controllers\Api\Admin\FAQCategoryController::class, 'faqs']);
-        
+
         Route::apiResource('faqs', \App\Http\Controllers\Api\Admin\FAQController::class);
         Route::post('faqs/bulk-update', [\App\Http\Controllers\Api\Admin\FAQController::class, 'bulkUpdate']);
         Route::get('faqs/categories/list', [\App\Http\Controllers\Api\Admin\FAQController::class, 'getCategories']);
@@ -1089,7 +1099,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('navigation-menus/sort-order', [NavigationMenuController::class, 'updateSortOrder']);
         Route::get('navigation-menus/tree/structure', [NavigationMenuController::class, 'tree']);
         Route::post('navigation-menus/{navigationMenu}/duplicate', [NavigationMenuController::class, 'duplicate']);
-        
+
         // Footer Link Management  
         Route::apiResource('footer-links', FooterLinkController::class);
         Route::post('footer-links/sort-order', [FooterLinkController::class, 'updateSortOrder']);
@@ -1110,6 +1120,94 @@ Route::prefix('public')->group(function () {
     Route::get('footer-links/social', [FooterLinkController::class, 'social'])->name('api.footer.social');
     Route::get('footer-links/legal', [FooterLinkController::class, 'legal'])->name('api.footer.legal');
     Route::get('footer-links/contact', [FooterLinkController::class, 'contact'])->name('api.footer.contact');
+});
+
+/*
+|--------------------------------------------------------------------------
+| Popup Management Routes
+|--------------------------------------------------------------------------
+|
+| Admin routes for managing marketing popups and public routes for
+| displaying popups on the website.
+|
+*/
+
+// Admin Popup Management Routes (Requires Authentication and Authorization)
+Route::middleware(['auth:api', 'permission:popup.view'])->group(function () {
+    Route::prefix('admin')->group(function () {
+        // Popup CRUD operations
+        Route::get('popups/statistics', [\App\Http\Controllers\Api\Admin\PopupController::class, 'statistics'])
+            ->name('api.admin.popups.statistics');
+        Route::get('popups', [\App\Http\Controllers\Api\Admin\PopupController::class, 'index'])
+            ->name('api.admin.popups.index');
+        Route::get('popups/{popup}', [\App\Http\Controllers\Api\Admin\PopupController::class, 'show'])
+            ->name('api.admin.popups.show');
+        Route::post('popups', [\App\Http\Controllers\Api\Admin\PopupController::class, 'store'])
+            ->middleware('permission:popup.create')
+            ->name('api.admin.popups.store');
+        Route::put('popups/{popup}', [\App\Http\Controllers\Api\Admin\PopupController::class, 'update'])
+            ->middleware('permission:popup.update')
+            ->name('api.admin.popups.update');
+        Route::delete('popups/{popup}', [\App\Http\Controllers\Api\Admin\PopupController::class, 'destroy'])
+            ->middleware('permission:popup.delete')
+            ->name('api.admin.popups.destroy');
+        Route::patch('popups/{popup}/toggle', [\App\Http\Controllers\Api\Admin\PopupController::class, 'toggle'])
+            ->middleware('permission:popup.update')
+            ->name('api.admin.popups.toggle');
+    });
+});
+
+// Public Popup Routes (No Authentication Required)
+Route::prefix('popups')->group(function () {
+    Route::get('active', [\App\Http\Controllers\Api\Website\PopupController::class, 'getActivePopups'])
+        ->name('api.popups.active');
+    Route::get('highest-priority', [\App\Http\Controllers\Api\Website\PopupController::class, 'getHighestPriorityPopup'])
+        ->name('api.popups.highest-priority');
+});
+
+/*
+|--------------------------------------------------------------------------
+| Promo Code Management Routes
+|--------------------------------------------------------------------------
+|
+| Admin routes for managing promotional codes and public routes for
+| applying/removing promo codes from cart.
+|
+*/
+
+// Admin Promo Code Management Routes (Requires Authentication and Authorization)
+Route::middleware(['auth:api', 'permission:promo-code.view'])->group(function () {
+    Route::prefix('admin')->group(function () {
+        // Promo Code CRUD operations
+        Route::get('promo-codes/statistics', [\App\Http\Controllers\Api\Admin\PromoCodeController::class, 'statistics'])
+            ->name('api.admin.promo-codes.statistics');
+        Route::get('promo-codes', [\App\Http\Controllers\Api\Admin\PromoCodeController::class, 'index'])
+            ->name('api.admin.promo-codes.index');
+        Route::get('promo-codes/{promoCode}', [\App\Http\Controllers\Api\Admin\PromoCodeController::class, 'show'])
+            ->name('api.admin.promo-codes.show');
+        Route::post('promo-codes', [\App\Http\Controllers\Api\Admin\PromoCodeController::class, 'store'])
+            ->middleware('permission:promo-code.create')
+            ->name('api.admin.promo-codes.store');
+        Route::put('promo-codes/{promoCode}', [\App\Http\Controllers\Api\Admin\PromoCodeController::class, 'update'])
+            ->middleware('permission:promo-code.update')
+            ->name('api.admin.promo-codes.update');
+        Route::delete('promo-codes/{promoCode}', [\App\Http\Controllers\Api\Admin\PromoCodeController::class, 'destroy'])
+            ->middleware('permission:promo-code.delete')
+            ->name('api.admin.promo-codes.destroy');
+        Route::patch('promo-codes/{promoCode}/toggle', [\App\Http\Controllers\Api\Admin\PromoCodeController::class, 'toggle'])
+            ->middleware('permission:promo-code.update')
+            ->name('api.admin.promo-codes.toggle');
+        Route::get('promo-codes/{promoCode}/analytics', [\App\Http\Controllers\Api\Admin\PromoCodeController::class, 'analytics'])
+            ->name('api.admin.promo-codes.analytics');
+    });
+});
+
+// Public Promo Code Routes (Cart Integration)
+Route::prefix('cart')->group(function () {
+    Route::post('apply-promo-code', [\App\Http\Controllers\CartController::class, 'applyPromoCode'])
+        ->name('api.cart.apply-promo-code');
+    Route::post('remove-promo-code', [\App\Http\Controllers\CartController::class, 'removePromoCode'])
+        ->name('api.cart.remove-promo-code');
 });
 
 Route::fallback(function () {
