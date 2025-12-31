@@ -28,31 +28,31 @@ class CartService
     public function getOrCreateCart(): Cart
     {
         $user = auth()->user();
-        
+
         // Try to find existing active cart
         if ($user) {
             $cart = Cart::where('user_id', $user->id)
                 ->where('status', 'active')
                 ->latest('last_activity_at')
                 ->first();
-            
+
             if ($cart) {
                 return $cart;
             }
         }
-        
+
         // Check for session-based cart for guests
         $sessionId = session()->getId();
         if ($sessionId) {
             $cart = Cart::where('session_id', $sessionId)
                 ->where('status', 'active')
                 ->first();
-            
+
             if ($cart) {
                 return $cart;
             }
         }
-        
+
         // Create new cart
         return $this->createCart($user);
     }
@@ -68,7 +68,7 @@ class CartService
         $cart->status = 'active';
         $cart->items = [];
         $cart->save();
-        
+
         return $cart;
     }
 
@@ -169,7 +169,7 @@ class CartService
 
         // Get the cart subtotal for validation (use LKR values stored in totals)
         $totals = $cart->totals ?? [];
-        $subtotal = (float)($totals['subtotal'] ?? 0);
+        $subtotal = (float) ($totals['subtotal'] ?? 0);
 
         // If cart is empty or has no subtotal, reject
         if ($subtotal <= 0) {
@@ -194,7 +194,7 @@ class CartService
 
         // Get the promo code for additional info
         $promoCode = $this->promoCodeService->getByCode($code);
-        
+
         if (!$promoCode) {
             return [
                 'success' => false,
@@ -209,7 +209,7 @@ class CartService
         // Apply the promo code to the cart
         $cart->applyCoupon(strtoupper(trim($code)), $discount);
         $cart->save();
-        
+
         // Recalculate totals with the discount
         $this->updateTotals($cart);
 
@@ -259,7 +259,7 @@ class CartService
         // Remove the promo code
         $cart->removeCoupon();
         $cart->save();
-        
+
         // Recalculate totals without the discount
         $this->updateTotals($cart);
 
@@ -283,7 +283,7 @@ class CartService
     public function updateTotals(Cart $cart): void
     {
         $items = $cart->getItems();
-        
+
         if ($items->isEmpty()) {
             $cart->setTotals([
                 'subtotal' => 0,
@@ -304,7 +304,7 @@ class CartService
             $lkrPrice = 0;
             $isPackageService = false;
             $serviceType = '';
-            
+
             if (is_array($item)) {
                 $lkrPrice = $item['price_lkr'] ?? $item['price'] ?? 0;
                 $serviceType = $item['service_type'] ?? '';
@@ -314,66 +314,72 @@ class CartService
                 $serviceType = $item->service_type ?? '';
                 $isPackageService = $item->is_package ?? false;
             }
-            
+
             // Determine if this is a package service (already calculated as total, not per-day)
             $isPackage = $isPackageService || in_array($serviceType, ['wedding_hire', 'airport_transfers']);
-            
+
             if ($isPackage) {
                 // Package services: price is already the total amount, don't multiply by days
-                return (float)$lkrPrice;
+                return (float) $lkrPrice;
             } else {
                 // Per-day services: multiply by number of days
                 $days = is_array($item) ? ($item['days'] ?? 1) : ($item->days ?? 1);
-                return (float)$lkrPrice * (int)$days;
+                return (float) $lkrPrice * (int) $days;
             }
         });
 
         // Calculate service fee dynamically from database settings
-        $serviceFee = $this->calculateServiceFee($subtotal);
-        
-        // Calculate tax dynamically from database settings
-        $tax = 0;
-        if (config('booking.tax.enabled', true)) {
-            $taxRate = $this->getTaxPercentage();
-            $tax = $subtotal * $taxRate;
-        }
-        
-        // Calculate VAT dynamically from database settings
-        $vat = 0;
-        if (config('booking.vat.enabled', true)) {
-            $vatRate = $this->getVatPercentage();
-            $vatBase = $subtotal;
-            
-            // Add service fee to VAT base if configured
-            if (config('booking.vat.applies_to_service_fee', true)) {
-                $vatBase += $serviceFee;
-            }
-            
-            $vat = $vatBase * $vatRate;
-        }
-        
+        $serviceFee = round($this->calculateServiceFee($subtotal), 2);
+
         // Calculate addon charges
         $addonCharges = 0;
         foreach ($items as $item) {
             if (is_array($item) && !empty($item['addons'])) {
                 foreach ($item['addons'] as $addon) {
                     if (is_array($addon)) {
-                        $addonCharges += (float)($addon['calculated_amount'] ?? 0);
+                        $addonCharges += (float) ($addon['calculated_amount'] ?? 0);
                     }
                 }
             }
         }
-        
+        $addonCharges = round($addonCharges, 2);
+
         // Calculate extra km charges
         $extraKmCharges = 0;
         foreach ($items as $item) {
             if (is_array($item) && !empty($item['extra_km'])) {
-                $extraKmCharges += (float)($item['extra_km']['total_cost'] ?? 0);
+                $extraKmCharges += (float) ($item['extra_km']['total_cost'] ?? 0);
             }
         }
-        
-        $couponDiscount = $cart->coupon_discount ?? 0;
-        $total = $subtotal + $serviceFee + $tax + $vat + $addonCharges + $extraKmCharges - $couponDiscount;
+        $extraKmCharges = round($extraKmCharges, 2);
+
+        // Coupon discount (if any)
+        $couponDiscount = round($cart->coupon_discount ?? 0, 2);
+
+        // Calculate tax dynamically from database settings (apply on taxable base after discount)
+        $tax = 0;
+        if (config('booking.tax.enabled', true)) {
+            $taxRate = $this->getTaxPercentage(); // decimal e.g. 0.18
+            $taxableBase = max(0, $subtotal - $couponDiscount) + $serviceFee + $addonCharges + $extraKmCharges;
+            $tax = round($taxableBase * $taxRate, 2);
+        }
+
+        // Calculate VAT dynamically from database settings
+        $vat = 0;
+        if (config('booking.vat.enabled', true)) {
+            $vatRate = $this->getVatPercentage();
+            $vatBase = max(0, $subtotal - $couponDiscount) + $addonCharges + $extraKmCharges;
+
+            // Add service fee to VAT base if configured
+            if (config('booking.vat.applies_to_service_fee', true)) {
+                $vatBase += $serviceFee;
+            }
+
+            $vat = round($vatBase * $vatRate, 2);
+        }
+
+        $subtotalRounded = round($subtotal, 2);
+        $total = round($subtotalRounded + $serviceFee + $tax + $vat + $addonCharges + $extraKmCharges - $couponDiscount, 2);
 
         $totalsArray = [
             'subtotal' => round($subtotal, 2),
@@ -400,7 +406,7 @@ class CartService
         ]);
 
         $cart->setTotals($totalsArray);
-        
+
         $cart->save();
     }
 
@@ -443,72 +449,72 @@ class CartService
     {
         $selectedCurrency = $this->currencyService->getSelectedCurrency();
         $items = $cart->items ?? [];
-        
+
         // Convert item prices to selected currency
         $convertedItems = collect($items)->map(function ($item) use ($selectedCurrency) {
-            $item = is_array($item) ? $item : (array)$item;
-            
+            $item = is_array($item) ? $item : (array) $item;
+
             // Preserve package service indicators
             $serviceType = $item['service_type'] ?? '';
             $isPackage = ($item['is_package'] ?? false) || in_array($serviceType, ['wedding_hire', 'airport_transfers']);
-            
+
             // Convert prices from LKR (stored) to selected currency
             if (isset($item['price'])) {
-                $item['price'] = $this->currencyService->convertFromLKR((float)$item['price'], $selectedCurrency);
-                $item['price_lkr'] = (float)($item['price_lkr'] ?? $item['price']); // Preserve original LKR price
+                $item['price'] = $this->currencyService->convertFromLKR((float) $item['price'], $selectedCurrency);
+                $item['price_lkr'] = (float) ($item['price_lkr'] ?? $item['price']); // Preserve original LKR price
             }
-            
+
             if (isset($item['total_price'])) {
-                $item['total_price'] = $this->currencyService->convertFromLKR((float)$item['total_price'], $selectedCurrency);
-                $item['total_price_lkr'] = (float)($item['total_price_lkr'] ?? $item['total_price']); // Preserve original LKR price
+                $item['total_price'] = $this->currencyService->convertFromLKR((float) $item['total_price'], $selectedCurrency);
+                $item['total_price_lkr'] = (float) ($item['total_price_lkr'] ?? $item['total_price']); // Preserve original LKR price
             }
-            
+
             // Convert extra_km prices if present
             if (isset($item['extra_km']) && is_array($item['extra_km'])) {
                 $extraKm = $item['extra_km'];
                 $item['extra_km'] = [
                     'km' => $extraKm['km'] ?? 0,
-                    'rate_per_km' => $this->currencyService->convertFromLKR((float)($extraKm['rate_per_km'] ?? 0), $selectedCurrency),
-                    'rate_per_km_lkr' => (float)($extraKm['rate_per_km'] ?? 0),
-                    'total_cost' => $this->currencyService->convertFromLKR((float)($extraKm['total_cost'] ?? 0), $selectedCurrency),
-                    'total_cost_lkr' => (float)($extraKm['total_cost'] ?? 0),
+                    'rate_per_km' => $this->currencyService->convertFromLKR((float) ($extraKm['rate_per_km'] ?? 0), $selectedCurrency),
+                    'rate_per_km_lkr' => (float) ($extraKm['rate_per_km'] ?? 0),
+                    'total_cost' => $this->currencyService->convertFromLKR((float) ($extraKm['total_cost'] ?? 0), $selectedCurrency),
+                    'total_cost_lkr' => (float) ($extraKm['total_cost'] ?? 0),
                     'currency' => $selectedCurrency,
                     'added_at' => $extraKm['added_at'] ?? null
                 ];
             }
-            
+
             // Add currency and package information
             $item['currency'] = $selectedCurrency;
             $item['is_package'] = $isPackage;
             $item['service_type'] = $serviceType;
             $item['currency_symbol'] = getCurrencySymbol($selectedCurrency);
-            
+
             return $item;
         })->toArray();
-        
+
         // Convert totals to selected currency
         $totals = $cart->totals ?? [];
         $convertedTotals = [];
-        
+
         foreach ($totals as $key => $value) {
             if (is_numeric($value)) {
-                $convertedTotals[$key] = $this->currencyService->convertFromLKR((float)$value, $selectedCurrency);
-                $convertedTotals[$key . '_lkr'] = (float)$value; // Preserve original LKR value
+                $convertedTotals[$key] = $this->currencyService->convertFromLKR((float) $value, $selectedCurrency);
+                $convertedTotals[$key . '_lkr'] = (float) $value; // Preserve original LKR value
             } else {
                 $convertedTotals[$key] = $value;
             }
         }
-        
+
         $convertedTotals['currency'] = $selectedCurrency;
         $convertedTotals['currency_symbol'] = getCurrencySymbol($selectedCurrency);
-        
+
         return [
             'id' => $cart->id,
             'items' => $convertedItems,
             'totals' => $convertedTotals,
             'coupon_code' => $cart->coupon_code,
-            'coupon_discount' => $this->currencyService->convertFromLKR((float)($cart->coupon_discount ?? 0), $selectedCurrency),
-            'coupon_discount_lkr' => (float)($cart->coupon_discount ?? 0),
+            'coupon_discount' => $this->currencyService->convertFromLKR((float) ($cart->coupon_discount ?? 0), $selectedCurrency),
+            'coupon_discount_lkr' => (float) ($cart->coupon_discount ?? 0),
             'item_count' => $cart->itemCount(),
             'is_empty' => !$cart->hasItems(),
             'currency' => $selectedCurrency,
@@ -527,7 +533,7 @@ class CartService
 
         if (!empty($sessionCart)) {
             $cart->items = $sessionCart;
-            
+
             if ($sessionCoupon) {
                 $cart->coupon_code = $sessionCoupon;
                 $cart->coupon_discount = $sessionDiscount;
@@ -544,7 +550,7 @@ class CartService
     {
         $cart->markCheckedOut();
         $cart->save();
-        
+
         // Clear session cart
         session()->forget(['cart', 'cart_discount', 'applied_coupon']);
     }
@@ -568,7 +574,7 @@ class CartService
         $totalValue = Cart::where('status', 'active')
             ->selectRaw('COALESCE(SUM(JSON_EXTRACT(totals, "$.total")), 0) as total')
             ->value('total') ?? 0;
-        
+
         $checkedOut = Cart::where('status', 'checked_out')
             ->where('created_at', '>=', now()->subDays(7))
             ->count();
@@ -587,7 +593,7 @@ class CartService
     {
         try {
             $items = $cart->items ?? [];
-            
+
             if (!isset($items[$cartKey])) {
                 return false;
             }
@@ -613,7 +619,7 @@ class CartService
                 'description' => $addon->description,
                 'thumbnail' => $addon->thumbnail,
                 'qty' => $qty,
-                'amount' => (float)$addon->amount,
+                'amount' => (float) $addon->amount,
                 'rate_type' => $addon->rate_type,
                 'calculated_amount' => $addonAmount,
                 'added_at' => now()->toIso8601String()
@@ -622,7 +628,7 @@ class CartService
             $cart->items = $items;
             $cart->save();
             $this->updateTotals($cart);
-            
+
             return true;
         } catch (\Exception $e) {
             \Illuminate\Support\Facades\Log::error('Error adding addon to cart', [
@@ -641,13 +647,13 @@ class CartService
     {
         try {
             $items = $cart->items ?? [];
-            
+
             if (!isset($items[$cartKey]['addons'][$addonId])) {
                 return false;
             }
 
             unset($items[$cartKey]['addons'][$addonId]);
-            
+
             // Remove empty addons array
             if (empty($items[$cartKey]['addons'])) {
                 unset($items[$cartKey]['addons']);
@@ -656,7 +662,7 @@ class CartService
             $cart->items = $items;
             $cart->save();
             $this->updateTotals($cart);
-            
+
             return true;
         } catch (\Exception $e) {
             \Illuminate\Support\Facades\Log::error('Error removing addon from cart', [
@@ -675,7 +681,7 @@ class CartService
     {
         try {
             $items = $cart->items ?? [];
-            
+
             if (!isset($items[$cartKey]['addons'][$addonId])) {
                 return false;
             }
@@ -690,8 +696,10 @@ class CartService
             }
 
             // Check qty constraints
-            if (($addon->min_qty && $qty < $addon->min_qty) || 
-                ($addon->max_qty && $qty > $addon->max_qty)) {
+            if (
+                ($addon->min_qty && $qty < $addon->min_qty) ||
+                ($addon->max_qty && $qty > $addon->max_qty)
+            ) {
                 return false;
             }
 
@@ -704,7 +712,7 @@ class CartService
             $cart->items = $items;
             $cart->save();
             $this->updateTotals($cart);
-            
+
             return true;
         } catch (\Exception $e) {
             \Illuminate\Support\Facades\Log::error('Error updating addon qty in cart', [
@@ -723,7 +731,7 @@ class CartService
     public function getItemAddons(Cart $cart, string $cartKey): array
     {
         $items = $cart->items ?? [];
-        
+
         if (!isset($items[$cartKey])) {
             return [];
         }
@@ -737,7 +745,7 @@ class CartService
     public function getAvailableAddons(?string $serviceTypeId = null): array
     {
         $query = \App\Models\Vehicle\VehicleAddon::query();
-        
+
         if ($serviceTypeId) {
             $query->where('service_type_id', $serviceTypeId)->orWhereNull('service_type_id');
         }
@@ -757,10 +765,10 @@ class CartService
         if ($addon->rate_type === 'percentage') {
             // For percentage-based addons, calculate per day
             // This will be adjusted during totals calculation based on item days
-            return (float)$addon->amount;
+            return (float) $addon->amount;
         } else {
             // Flat rate per unit
-            return (float)$addon->amount * $qty;
+            return (float) $addon->amount * $qty;
         }
     }
 
@@ -771,7 +779,7 @@ class CartService
     public function updateTotalsWithAddons(Cart $cart): void
     {
         $items = $cart->getItems();
-        
+
         if ($items->isEmpty()) {
             $cart->setTotals([
                 'subtotal' => 0,
@@ -795,7 +803,7 @@ class CartService
                 $lkrPrice = $item->price_lkr ?? $item->price ?? 0;
             }
             $days = is_array($item) ? ($item['days'] ?? 1) : ($item->days ?? 1);
-            return (float)$lkrPrice * (int)$days;
+            return (float) $lkrPrice * (int) $days;
         });
 
         // Calculate addon charges
@@ -803,7 +811,7 @@ class CartService
             if (!isset($item['addons'])) {
                 return 0;
             }
-            
+
             $itemAddons = is_array($item['addons']) ? $item['addons'] : [];
             return collect($itemAddons)->sum(function ($addon) use ($item) {
                 // For percentage-based addons, calculate based on item price and days
@@ -818,28 +826,39 @@ class CartService
             });
         });
 
-        $serviceFee = $this->calculateServiceFee($subtotal);
-        
+        $serviceFee = round($this->calculateServiceFee($subtotal), 2);
+
+        // Calculate extra km charges (if any)
+        $extraKmCharges = 0;
+        foreach ($items as $item) {
+            if (is_array($item) && !empty($item['extra_km'])) {
+                $extraKmCharges += (float) ($item['extra_km']['total_cost'] ?? 0);
+            }
+        }
+        $extraKmCharges = round($extraKmCharges, 2);
+
+        $couponDiscount = round($cart->coupon_discount ?? 0, 2);
+
         $tax = 0;
         if (config('booking.tax.enabled', true)) {
-            $taxRate = config('booking.tax.rate', 0.025);
-            $tax = $subtotal * $taxRate;
+            $taxRate = $this->getTaxPercentage();
+            $taxableBase = max(0, $subtotal - $couponDiscount) + $addonCharges + $serviceFee + $extraKmCharges;
+            $tax = round($taxableBase * $taxRate, 2);
         }
-        
+
         $vat = 0;
         if (config('booking.vat.enabled', true)) {
-            $vatRate = config('booking.vat.rate', 0.18);
-            $vatBase = $subtotal + $addonCharges;
-            
+            $vatRate = $this->getVatPercentage();
+            $vatBase = max(0, $subtotal - $couponDiscount) + $addonCharges + $extraKmCharges;
+
             if (config('booking.vat.applies_to_service_fee', true)) {
                 $vatBase += $serviceFee;
             }
-            
-            $vat = $vatBase * $vatRate;
+
+            $vat = round($vatBase * $vatRate, 2);
         }
-        
-        $couponDiscount = $cart->coupon_discount ?? 0;
-        $total = $subtotal + $addonCharges + $serviceFee + $tax + $vat - $couponDiscount;
+
+        $total = round($subtotal + $addonCharges + $serviceFee + $tax + $vat + $extraKmCharges - $couponDiscount, 2);
 
         $totalsArray = [
             'subtotal' => round($subtotal, 2),
@@ -884,9 +903,35 @@ class CartService
                 'error' => $e->getMessage()
             ]);
         }
-        
+
         // Fallback to default or config value
         return $default;
+    }
+
+    /**
+     * Normalize a percentage value coming from config or website settings.
+     *
+     * Accepts values like '18', '18%', 18, 0.18 and returns decimal (0.18).
+     */
+    protected function normalizePercentage($value): float
+    {
+        if (is_string($value)) {
+            $value = str_replace('%', '', $value);
+            $value = trim($value);
+        }
+        $val = (float) $value;
+        if ($val > 1) {
+            // Convert whole-number percentages (e.g. 18) to decimal (0.18)
+            $val = $val / 100;
+        }
+        // Clamp to sensible range [0, 1]
+        if ($val < 0) {
+            $val = 0;
+        }
+        if ($val > 1) {
+            $val = 1;
+        }
+        return $val;
     }
 
     /**
@@ -895,7 +940,7 @@ class CartService
     protected function getTaxPercentage(): float
     {
         $taxRate = $this->getWebsiteSetting('tax_percentage', config('booking.tax.rate', 0.18));
-        return (float)$taxRate / 100; // Convert percentage to decimal
+        return $this->normalizePercentage($taxRate);
     }
 
     /**
@@ -904,7 +949,7 @@ class CartService
     protected function getServiceFeePercentage(): float
     {
         $feeRate = $this->getWebsiteSetting('service_fee_percentage', config('booking.service_fee.rate', 0));
-        return (float)$feeRate / 100; // Convert percentage to decimal
+        return $this->normalizePercentage($feeRate); // Normalize different formats (e.g. 5 or 0.05)
     }
 
     /**
@@ -913,7 +958,7 @@ class CartService
     protected function getVatPercentage(): float
     {
         $vatRate = $this->getWebsiteSetting('vat_percentage', config('booking.vat.rate', 0));
-        return (float)$vatRate / 100; // Convert percentage to decimal
+        return $this->normalizePercentage($vatRate);
     }
 
     /**
@@ -943,7 +988,7 @@ class CartService
 
             if ($vehicleGroupRate && $vehicleGroupRate->value > 0) {
                 return [
-                    'rate' => (float)$vehicleGroupRate->value,
+                    'rate' => (float) $vehicleGroupRate->value,
                     'currency' => 'LKR',
                     'definition_id' => $extraKmDefinition->id,
                     'definition_name' => $extraKmDefinition->name
@@ -972,7 +1017,7 @@ class CartService
     {
         try {
             $items = $cart->items ?? [];
-            
+
             if (!isset($items[$cartKey])) {
                 return false;
             }
@@ -1006,7 +1051,7 @@ class CartService
             $cart->items = $items;
             $cart->save();
             $this->updateTotals($cart);
-            
+
             return true;
         } catch (\Exception $e) {
             \Illuminate\Support\Facades\Log::error('Error adding extra km to cart', [
@@ -1031,7 +1076,7 @@ class CartService
         if ($extraKm <= 0) {
             return $this->removeExtraKm($cart, $cartKey);
         }
-        
+
         return $this->addExtraKm($cart, $cartKey, $extraKm);
     }
 
@@ -1046,7 +1091,7 @@ class CartService
     {
         try {
             $items = $cart->items ?? [];
-            
+
             if (!isset($items[$cartKey])) {
                 return false;
             }
@@ -1058,7 +1103,7 @@ class CartService
             $cart->items = $items;
             $cart->save();
             $this->updateTotals($cart);
-            
+
             return true;
         } catch (\Exception $e) {
             \Illuminate\Support\Facades\Log::error('Error removing extra km from cart', [
@@ -1079,7 +1124,7 @@ class CartService
     public function getItemExtraKm(Cart $cart, string $cartKey): ?array
     {
         $items = $cart->items ?? [];
-        
+
         if (!isset($items[$cartKey])) {
             return null;
         }

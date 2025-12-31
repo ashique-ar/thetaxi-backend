@@ -36,6 +36,14 @@
                     $taxPercentage = \App\Models\Website\WebsiteSetting::getValue('tax_percentage', 18);
                     $serviceFeeSetting = \App\Models\Website\WebsiteSetting::getValue('service_fee_percentage', 0);
                     $vatPercentage = \App\Models\Website\WebsiteSetting::getValue('vat_percentage', 0);
+
+                    // Normalize for display (support 0.18 or 18 formats)
+                    $taxPercentage = (float) $taxPercentage;
+                    $taxPercentageLabel =
+                        $taxPercentage > 0 && $taxPercentage <= 1 ? round($taxPercentage * 100, 2) : $taxPercentage;
+                    $vatPercentage = (float) $vatPercentage;
+                    $vatPercentageLabel =
+                        $vatPercentage > 0 && $vatPercentage <= 1 ? round($vatPercentage * 100, 2) : $vatPercentage;
                 } catch (Exception $e) {
                     \Log::error('Error loading cart: ' . $e->getMessage());
                     $cart = [];
@@ -45,6 +53,14 @@
                     $taxPercentage = 18;
                     $serviceFeeSetting = 0;
                     $vatPercentage = 0;
+
+                    // Normalize fallback labels
+                    $taxPercentage = (float) $taxPercentage;
+                    $taxPercentageLabel =
+                        $taxPercentage > 0 && $taxPercentage <= 1 ? round($taxPercentage * 100, 2) : $taxPercentage;
+                    $vatPercentage = (float) $vatPercentage;
+                    $vatPercentageLabel =
+                        $vatPercentage > 0 && $vatPercentage <= 1 ? round($vatPercentage * 100, 2) : $vatPercentage;
                 }
             @endphp
 
@@ -81,7 +97,7 @@
                                 <tbody>
                                     @foreach ($cart as $key => $item)
                                         @php
-                                           // Calculate days from pickup and return dates
+                                            // Calculate days from pickup and return dates
                                             $pickupDate = isset($item['pickup_date'])
                                                 ? \Carbon\Carbon::parse($item['pickup_date'])
                                                 : null;
@@ -112,7 +128,10 @@
                                                         @endif
                                                     </div>
                                                     <div class="product-info-content">
-                                                        <h6>{{ $item['name'] ?? 'Vehicle Rental' }} <span class="badge bg-warning rounded-pill" style="font-size: 10px; vertical-align: middle;">{{ $item['service_type_data']['name'] ?? 'Service Type' }}</span></h6>
+                                                        <h6>{{ $item['name'] ?? 'Vehicle Rental' }} <span
+                                                                class="badge bg-warning rounded-pill"
+                                                                style="font-size: 10px; vertical-align: middle;">{{ $item['service_type_data']['name'] ?? 'Service Type' }}</span>
+                                                        </h6>
 
                                                         <div class="booking-details">
                                                             @if (isset($item['pickup_date']) && isset($item['return_date']))
@@ -177,7 +196,8 @@
                                                             <i class="bi bi-chevron-down"></i> Show
                                                         </button>
                                                     </div>
-                                                    <div class="addons-grid-unified collapsed" data-cart-key="{{ $key }}"
+                                                    <div class="addons-grid-unified collapsed"
+                                                        data-cart-key="{{ $key }}"
                                                         data-service-type="{{ $item['service_type'] ?? '' }}">
                                                         <div class="text-center py-3">
                                                             <div class="spinner-border spinner-border-sm" role="status">
@@ -196,8 +216,10 @@
                                                 <div class="extra-km-container">
                                                     <div class="extra-km-header">
                                                         <div class="header-left">
-                                                            <h6 class="mb-0"><i class="bi bi-speedometer2"></i> Purchase Extra Kilometers</h6>
-                                                            <small class="text-muted">Add more km to your package allowance</small>
+                                                            <h6 class="mb-0"><i class="bi bi-speedometer2"></i> Purchase
+                                                                Extra Kilometers</h6>
+                                                            <small class="text-muted">Add more km to your package
+                                                                allowance</small>
                                                         </div>
                                                         <button type="button"
                                                             class="btn btn-sm btn-outline-secondary toggle-extra-km-section collapsed"
@@ -206,51 +228,61 @@
                                                             <i class="bi bi-chevron-down"></i> Show
                                                         </button>
                                                     </div>
-                                                    <div class="extra-km-content collapsed" data-cart-key="{{ $key }}">
+                                                    <div class="extra-km-content collapsed"
+                                                        data-cart-key="{{ $key }}">
                                                         <div class="extra-km-loading text-center py-3">
                                                             <div class="spinner-border spinner-border-sm" role="status">
                                                                 <span class="visually-hidden">Loading...</span>
                                                             </div>
-                                                            <small class="d-block mt-2 text-muted">Loading extra km rate...</small>
+                                                            <small class="d-block mt-2 text-muted">Loading extra km
+                                                                rate...</small>
                                                         </div>
                                                         <div class="extra-km-form" style="display: none;">
                                                             <div class="extra-km-rate-info mb-3">
                                                                 <span class="rate-label">Rate per km:</span>
-                                                                <span class="rate-value">{{ $currencySymbol }}<span class="extra-km-rate">0.00</span></span>
+                                                                <span class="rate-value">{{ $currencySymbol }}<span
+                                                                        class="extra-km-rate">0.00</span></span>
                                                             </div>
                                                             <div class="extra-km-input-group">
-                                                                <label for="extra-km-input-{{ $key }}">Extra Kilometers:</label>
+                                                                <label for="extra-km-input-{{ $key }}">Extra
+                                                                    Kilometers:</label>
                                                                 <div class="km-qty-control">
-                                                                    <button type="button" class="km-qty-btn km-minus" data-cart-key="{{ $key }}">−</button>
-                                                                    <input type="number" 
-                                                                        id="extra-km-input-{{ $key }}" 
-                                                                        class="extra-km-input" 
+                                                                    <button type="button" class="km-qty-btn km-minus"
+                                                                        data-cart-key="{{ $key }}">−</button>
+                                                                    <input type="number"
+                                                                        id="extra-km-input-{{ $key }}"
+                                                                        class="extra-km-input"
                                                                         data-cart-key="{{ $key }}"
-                                                                        value="{{ $item['extra_km']['km'] ?? 0 }}" 
-                                                                        min="0" 
-                                                                        max="10000" 
-                                                                        step="10"
+                                                                        value="{{ $item['extra_km']['km'] ?? 0 }}"
+                                                                        min="0" max="10000" step="10"
                                                                         placeholder="0">
-                                                                    <button type="button" class="km-qty-btn km-plus" data-cart-key="{{ $key }}">+</button>
+                                                                    <button type="button" class="km-qty-btn km-plus"
+                                                                        data-cart-key="{{ $key }}">+</button>
                                                                 </div>
                                                             </div>
                                                             <div class="extra-km-total mt-3">
                                                                 <span class="total-label">Extra KM Cost:</span>
-                                                                <span class="total-value">{{ $currencySymbol }}<span class="extra-km-total-amount">{{ number_format($item['extra_km']['total_cost'] ?? 0, 2) }}</span></span>
+                                                                <span class="total-value">{{ $currencySymbol }}<span
+                                                                        class="extra-km-total-amount">{{ number_format($item['extra_km']['total_cost'] ?? 0, 2) }}</span></span>
                                                             </div>
                                                             <div class="extra-km-actions mt-3">
-                                                                <button type="button" class="btn btn-sm btn-primary apply-extra-km" data-cart-key="{{ $key }}">
+                                                                <button type="button"
+                                                                    class="btn btn-sm btn-primary apply-extra-km"
+                                                                    data-cart-key="{{ $key }}">
                                                                     <i class="bi bi-check-lg"></i> Apply Extra KM
                                                                 </button>
-                                                                @if(isset($item['extra_km']) && ($item['extra_km']['km'] ?? 0) > 0)
-                                                                    <button type="button" class="btn btn-sm btn-outline-danger remove-extra-km" data-cart-key="{{ $key }}">
+                                                                @if (isset($item['extra_km']) && ($item['extra_km']['km'] ?? 0) > 0)
+                                                                    <button type="button"
+                                                                        class="btn btn-sm btn-outline-danger remove-extra-km"
+                                                                        data-cart-key="{{ $key }}">
                                                                         <i class="bi bi-x-lg"></i> Remove
                                                                     </button>
                                                                 @endif
                                                             </div>
                                                         </div>
                                                         <div class="extra-km-unavailable" style="display: none;">
-                                                            <p class="text-muted mb-0"><i class="bi bi-info-circle"></i> Extra km purchase is not available for this vehicle.</p>
+                                                            <p class="text-muted mb-0"><i class="bi bi-info-circle"></i>
+                                                                Extra km purchase is not available for this vehicle.</p>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -287,7 +319,7 @@
                                     @endif
                                     @if (($cartTotals['tax'] ?? 0) > 0)
                                         <li>
-                                            Gov. Tax ({{ $taxPercentage }}%)
+                                            Gov. Tax ({{ $taxPercentageLabel }}%)
                                             <div class="order-info">
                                                 <p>Government Tax</p>
                                                 <span class="tax-amount">
@@ -298,7 +330,7 @@
                                     @endif
                                     @if ($vatPercentage > 0 && ($cartTotals['vat'] ?? 0) > 0)
                                         <li>
-                                            VAT ({{ $vatPercentage }}%)
+                                            VAT ({{ $vatPercentageLabel }}%)
                                             <div class="order-info">
                                                 <p>Value Added Tax</p>
                                                 <span class="vat-amount">
@@ -338,13 +370,15 @@
                                                     <div class="promo-code-badge">
                                                         <i class="bi bi-check-circle-fill text-success"></i>
                                                         <span class="promo-code-text">{{ $cartModel->coupon_code }}</span>
-                                                        <button type="button" class="remove-promo-btn" id="remove-promo-btn" title="Remove promo code">
+                                                        <button type="button" class="remove-promo-btn"
+                                                            id="remove-promo-btn" title="Remove promo code">
                                                             <i class="bi bi-x-lg"></i>
                                                         </button>
                                                     </div>
                                                     <div class="promo-discount-info">
                                                         <small class="text-success">
-                                                            You save {{ $currencySymbol }}{{ number_format($cartTotals['coupon_discount'] ?? 0, 2) }}
+                                                            You save
+                                                            {{ $currencySymbol }}{{ number_format($cartTotals['coupon_discount'] ?? 0, 2) }}
                                                         </small>
                                                     </div>
                                                 </div>
@@ -353,8 +387,9 @@
                                                 <form id="promo-code-form">
                                                     @csrf
                                                     <div class="form-inner promo-input-group">
-                                                        <input type="text" name="promo_code" placeholder="Enter promo code"
-                                                            id="promo-code-input" autocomplete="off">
+                                                        <input type="text" name="promo_code"
+                                                            placeholder="Enter promo code" id="promo-code-input"
+                                                            autocomplete="off">
                                                         <button type="submit" class="apply-btn" id="apply-promo-btn">
                                                             <span class="btn-text">Apply</span>
                                                             <span class="btn-loading" style="display: none;">
@@ -368,10 +403,11 @@
                                         </div>
                                     </li>
                                     @if (($cartTotals['coupon_discount'] ?? 0) > 0)
-                                    <li class="discount-row">
-                                        <strong class="text-success"><i class="bi bi-tag-fill"></i> Discount</strong>
-                                        <strong class="discount-amount text-success">-{{ $currencySymbol }}{{ number_format($cartTotals['coupon_discount'] ?? 0, 2) }}</strong>
-                                    </li>
+                                        <li class="discount-row">
+                                            <strong class="text-success"><i class="bi bi-tag-fill"></i> Discount</strong>
+                                            <strong
+                                                class="discount-amount text-success">-{{ $currencySymbol }}{{ number_format($cartTotals['coupon_discount'] ?? 0, 2) }}</strong>
+                                        </li>
                                     @endif
                                     <li>
                                         <strong>Total</strong>
@@ -518,7 +554,7 @@
             width: 100%;
         }
 
-        .promo-code-area > span {
+        .promo-code-area>span {
             display: flex;
             align-items: center;
             gap: 6px;
@@ -527,7 +563,7 @@
             margin-bottom: 10px;
         }
 
-        .promo-code-area > span i {
+        .promo-code-area>span i {
             color: var(--primary-color1);
         }
 
@@ -881,8 +917,9 @@
                                 // Remove the row and dispatch cart updated event
                                 $('#cartRow_' + cartKey).remove();
                                 window.dispatchEvent(new CustomEvent('cartUpdated'));
-                                showSuccessNotification('Item removed from cart successfully!', 3000);
-                                
+                                showSuccessNotification('Item removed from cart successfully!',
+                                    3000);
+
                                 // Check if cart is empty
                                 if ($('.cart-table tbody tr').length === 0) {
                                     $('.cart-table tbody').append(
@@ -955,7 +992,8 @@
                     success: function(response) {
                         if (response.success) {
                             // Reload page to show updated totals with promo code applied
-                            showPromoCodeSuccess(response.message || 'Promo code applied successfully!');
+                            showPromoCodeSuccess(response.message ||
+                                'Promo code applied successfully!');
                             setTimeout(function() {
                                 location.reload();
                             }, 1000);
@@ -965,7 +1003,8 @@
                         }
                     },
                     error: function(xhr) {
-                        const errorMsg = xhr.responseJSON?.message || 'Error applying promo code. Please try again.';
+                        const errorMsg = xhr.responseJSON?.message ||
+                            'Error applying promo code. Please try again.';
                         showPromoCodeError(errorMsg);
                         resetApplyButton();
                     }
@@ -986,7 +1025,8 @@
                     },
                     success: function(response) {
                         if (response.success) {
-                            showSuccessNotification(response.message || 'Promo code removed', 2000);
+                            showSuccessNotification(response.message || 'Promo code removed',
+                                2000);
                             setTimeout(function() {
                                 location.reload();
                             }, 500);
@@ -997,7 +1037,8 @@
                         }
                     },
                     error: function(xhr) {
-                        const errorMsg = xhr.responseJSON?.message || 'Error removing promo code. Please try again.';
+                        const errorMsg = xhr.responseJSON?.message ||
+                            'Error removing promo code. Please try again.';
                         showPromoCodeError(errorMsg);
                         btn.prop('disabled', false);
                         btn.html('<i class="bi bi-x-lg"></i>');
@@ -1008,13 +1049,15 @@
             // Helper functions for promo code UI
             function showPromoCodeError(message) {
                 $('#promo-code-message').html(
-                    '<div class="alert alert-danger py-2 px-3 mb-0"><i class="bi bi-exclamation-circle"></i> ' + message + '</div>'
+                    '<div class="alert alert-danger py-2 px-3 mb-0"><i class="bi bi-exclamation-circle"></i> ' +
+                    message + '</div>'
                 );
             }
 
             function showPromoCodeSuccess(message) {
                 $('#promo-code-message').html(
-                    '<div class="alert alert-success py-2 px-3 mb-0"><i class="bi bi-check-circle"></i> ' + message + '</div>'
+                    '<div class="alert alert-success py-2 px-3 mb-0"><i class="bi bi-check-circle"></i> ' +
+                    message + '</div>'
                 );
             }
 
@@ -1320,22 +1363,23 @@
                     method: 'GET',
                     success: function(response) {
                         loadingEl.hide();
-                        
+
                         if (response.success && response.data.rate) {
                             const rate = response.data.rate.rate;
                             const currentExtraKm = response.data.current_extra_km;
-                            
+
                             // Update rate display
                             container.find('.extra-km-rate').text(parseFloat(rate).toFixed(2));
                             container.data('rate', rate);
-                            
+
                             // Update current values if extra km already added
                             if (currentExtraKm && currentExtraKm.km > 0) {
                                 container.find('.extra-km-input').val(currentExtraKm.km);
-                                container.find('.extra-km-total-amount').text(parseFloat(currentExtraKm.total_cost).toFixed(2));
+                                container.find('.extra-km-total-amount').text(parseFloat(currentExtraKm
+                                    .total_cost).toFixed(2));
                                 container.find('.remove-extra-km').show();
                             }
-                            
+
                             formEl.show();
                         } else {
                             unavailableEl.show();
@@ -1391,7 +1435,7 @@
                 const container = $(`.extra-km-content[data-cart-key="${cartKey}"]`);
                 const rate = parseFloat(container.data('rate')) || 0;
                 const total = km * rate;
-                
+
                 container.find('.extra-km-total-amount').text(total.toFixed(2));
             });
 
@@ -1399,7 +1443,7 @@
             $(document).on('click', '.apply-extra-km', function() {
                 const cartKey = $(this).data('cart-key');
                 const km = parseInt($(`.extra-km-input[data-cart-key="${cartKey}"]`).val()) || 0;
-                
+
                 const btn = $(this);
                 btn.prop('disabled', true).html('<i class="bi bi-hourglass-split"></i> Applying...');
 
@@ -1417,14 +1461,16 @@
                             location.reload();
                         } else {
                             alert(response.message || 'Error applying extra km');
-                            btn.prop('disabled', false).html('<i class="bi bi-check-lg"></i> Apply Extra KM');
+                            btn.prop('disabled', false).html(
+                                '<i class="bi bi-check-lg"></i> Apply Extra KM');
                         }
                     },
                     error: function(xhr) {
                         console.error('Error:', xhr);
                         const errorMsg = xhr.responseJSON?.message || 'Error applying extra km';
                         alert(errorMsg);
-                        btn.prop('disabled', false).html('<i class="bi bi-check-lg"></i> Apply Extra KM');
+                        btn.prop('disabled', false).html(
+                            '<i class="bi bi-check-lg"></i> Apply Extra KM');
                     }
                 });
             });
@@ -1432,7 +1478,7 @@
             // Remove extra km
             $(document).on('click', '.remove-extra-km', function() {
                 const cartKey = $(this).data('cart-key');
-                
+
                 if (!confirm('Remove extra km from this item?')) {
                     return;
                 }
@@ -1827,8 +1873,8 @@
         }
 
         /* ==========================================
-           Extra KM Purchase Section Styles
-           ========================================== */
+               Extra KM Purchase Section Styles
+               ========================================== */
         .extra-km-row {
             background-color: #f5f8ff;
             border-top: 2px solid #d0d8e8;

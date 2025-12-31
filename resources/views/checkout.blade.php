@@ -45,12 +45,28 @@
             $serviceFeeSetting = \App\Models\Website\WebsiteSetting::getValue('service_fee_percentage', 0);
             $vatPercentage = \App\Models\Website\WebsiteSetting::getValue('vat_percentage', 0);
             $advancePercentage = \App\Models\Website\WebsiteSetting::getValue('advance_payment_percentage', 50);
+
+            // Normalize for display (support 0.18 or 18 formats)
+            $taxPercentage = (float) $taxPercentage;
+            $taxPercentageLabel =
+                $taxPercentage > 0 && $taxPercentage <= 1 ? round($taxPercentage * 100, 2) : $taxPercentage;
+            $vatPercentage = (float) $vatPercentage;
+            $vatPercentageLabel =
+                $vatPercentage > 0 && $vatPercentage <= 1 ? round($vatPercentage * 100, 2) : $vatPercentage;
         } catch (Exception $e) {
             \Log::error('Error fetching website settings: ' . $e->getMessage());
             $taxPercentage = 18;
             $serviceFeeSetting = 0;
             $vatPercentage = 0;
             $advancePercentage = 50;
+
+            // Normalize fallback labels
+            $taxPercentage = (float) $taxPercentage;
+            $taxPercentageLabel =
+                $taxPercentage > 0 && $taxPercentage <= 1 ? round($taxPercentage * 100, 2) : $taxPercentage;
+            $vatPercentage = (float) $vatPercentage;
+            $vatPercentageLabel =
+                $vatPercentage > 0 && $vatPercentage <= 1 ? round($vatPercentage * 100, 2) : $vatPercentage;
         }
 
         // Payment amount based on type
@@ -188,8 +204,8 @@
                                             <div class="form-inner two mb-25">
                                                 <label>Phone Number*</label>
                                                 <input type="tel" id="phone-input" name="phone"
-                                                    placeholder="+1 (201) 555-0123" autocomplete="phhone" required value="{{ old('phone') }}"
-                                                    style="padding-left: 48px;">
+                                                    placeholder="+1 (201) 555-0123" autocomplete="phhone" required
+                                                    value="{{ old('phone') }}" style="padding-left: 48px;">
                                                 <div id="phone-error" class="text-danger mt-2" style="display: none;">
                                                 </div>
                                                 <div id="phone-valid" class="text-success small mt-1"
@@ -438,15 +454,22 @@
                                                 @foreach ($cart as $key => $item)
                                                     @php
                                                         // Calculate days from pickup and return dates - day-based calculation
-                                                        $pickupDate = isset($item['pickup_date']) ? \Carbon\Carbon::parse($item['pickup_date']) : null;
-                                                        $returnDate = isset($item['return_date']) ? \Carbon\Carbon::parse($item['return_date']) : null;
-                                                        $calculatedDays = ($pickupDate && $returnDate) ? max(1, $pickupDate->diffInDays($returnDate) + 1) : 1;
-                                                        
+                                                        $pickupDate = isset($item['pickup_date'])
+                                                            ? \Carbon\Carbon::parse($item['pickup_date'])
+                                                            : null;
+                                                        $returnDate = isset($item['return_date'])
+                                                            ? \Carbon\Carbon::parse($item['return_date'])
+                                                            : null;
+                                                        $calculatedDays =
+                                                            $pickupDate && $returnDate
+                                                                ? max(1, $pickupDate->diffInDays($returnDate) + 1)
+                                                                : 1;
+
                                                         // Use total_price if available (already calculated for all days in LKR)
                                                         // Otherwise calculate from per-day price and calculated days
-                                                        $itemTotal = isset($item['total_price']) 
-                                                            ? $item['total_price'] 
-                                                            : (($item['price'] ?? 0) * $calculatedDays);
+                                                        $itemTotal = isset($item['total_price'])
+                                                            ? $item['total_price']
+                                                            : ($item['price'] ?? 0) * $calculatedDays;
                                                     @endphp
                                                     <li class="single-item">
                                                         <div class="item-area">
@@ -463,7 +486,8 @@
                                                                 <div class="content-and-quantity">
                                                                     <div class="content">
                                                                         <span>{{ $currencySymbol }}{{ number_format($item['price'] ?? 0, 2) }}/day
-                                                                            × {{ $calculatedDays }} day{{ $calculatedDays !== 1 ? 's' : '' }}</span>
+                                                                            × {{ $calculatedDays }}
+                                                                            day{{ $calculatedDays !== 1 ? 's' : '' }}</span>
                                                                         <h6><a
                                                                                 href="#">{{ $item['name'] ?? 'Vehicle Rental' }}</a>
                                                                         </h6>
@@ -539,7 +563,7 @@
                                                             </div>
                                                         </li>
                                                     @endif
-                                                    
+
                                                     {{-- Promo Code Section --}}
                                                     <li class="promo-code-checkout-section">
                                                         <div class="promo-code-checkout-wrapper">
@@ -555,9 +579,13 @@
                                                                 {{-- Promo code is applied --}}
                                                                 <div class="applied-promo-checkout">
                                                                     <div class="promo-badge-checkout">
-                                                                        <i class="bi bi-check-circle-fill text-success"></i>
-                                                                        <span class="promo-code-value">{{ $appliedPromoCode }}</span>
-                                                                        <button type="button" class="remove-promo-checkout-btn" title="Remove promo code">
+                                                                        <i
+                                                                            class="bi bi-check-circle-fill text-success"></i>
+                                                                        <span
+                                                                            class="promo-code-value">{{ $appliedPromoCode }}</span>
+                                                                        <button type="button"
+                                                                            class="remove-promo-checkout-btn"
+                                                                            title="Remove promo code">
                                                                             <i class="bi bi-x-lg"></i>
                                                                         </button>
                                                                     </div>
@@ -565,20 +593,26 @@
                                                             @else
                                                                 {{-- No promo code - show input --}}
                                                                 <div class="promo-input-checkout">
-                                                                    <input type="text" id="checkout-promo-input" placeholder="Enter code" autocomplete="off">
-                                                                    <button type="button" id="apply-promo-checkout-btn" class="apply-promo-checkout-btn">
+                                                                    <input type="text" id="checkout-promo-input"
+                                                                        placeholder="Enter code" autocomplete="off">
+                                                                    <button type="button" id="apply-promo-checkout-btn"
+                                                                        class="apply-promo-checkout-btn">
                                                                         <span class="btn-text">Apply</span>
-                                                                        <span class="btn-loading" style="display: none;"><i class="bi bi-hourglass-split"></i></span>
+                                                                        <span class="btn-loading"
+                                                                            style="display: none;"><i
+                                                                                class="bi bi-hourglass-split"></i></span>
                                                                     </button>
                                                                 </div>
                                                             @endif
-                                                            <div id="checkout-promo-message" class="promo-message-checkout"></div>
+                                                            <div id="checkout-promo-message"
+                                                                class="promo-message-checkout"></div>
                                                         </div>
                                                     </li>
-                                                    
+
                                                     @if ($discount > 0)
                                                         <li class="discount-checkout-row">
-                                                            <strong class="text-success"><i class="bi bi-tag-fill"></i> Discount</strong>
+                                                            <strong class="text-success"><i class="bi bi-tag-fill"></i>
+                                                                Discount</strong>
                                                             <div class="order-info text-success">
                                                                 <span>-{{ $currencySymbol }}{{ number_format($discount, 2) }}</span>
                                                             </div>
@@ -1268,7 +1302,7 @@
                         paymentMethodSection.show();
                         submitBtn.html(
                             `Complete Booking - ${currencySymbol}${advanceAmount.toFixed(2)} <svg width="10" height="10" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg"><path d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z"></path></svg>`
-                            );
+                        );
                         break;
                     case 'quotation':
                         alertContent.html(`
@@ -1278,7 +1312,7 @@
                         paymentMethodSection.hide();
                         submitBtn.html(
                             'Submit Quotation Request <svg width="10" height="10" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg"><path d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z"></path></svg>'
-                            );
+                        );
                         break;
                     default:
                         alertContent.html(`
@@ -1288,7 +1322,7 @@
                         paymentMethodSection.show();
                         submitBtn.html(
                             `Complete Booking - ${currencySymbol}${fullAmount.toFixed(2)} <svg width="10" height="10" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg"><path d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z"></path></svg>`
-                            );
+                        );
                         break;
                 }
             });
@@ -1368,7 +1402,8 @@
                         }
                     },
                     error: function(xhr) {
-                        const errorMsg = xhr.responseJSON?.message || 'Error applying promo code';
+                        const errorMsg = xhr.responseJSON?.message ||
+                            'Error applying promo code';
                         showCheckoutPromoError(errorMsg);
                         resetCheckoutApplyButton();
                     }
@@ -1402,13 +1437,15 @@
                                 location.reload();
                             }, 500);
                         } else {
-                            showCheckoutPromoError(response.message || 'Error removing promo code');
+                            showCheckoutPromoError(response.message ||
+                                'Error removing promo code');
                             btn.prop('disabled', false);
                             btn.html('<i class="bi bi-x-lg"></i>');
                         }
                     },
                     error: function(xhr) {
-                        const errorMsg = xhr.responseJSON?.message || 'Error removing promo code';
+                        const errorMsg = xhr.responseJSON?.message ||
+                            'Error removing promo code';
                         showCheckoutPromoError(errorMsg);
                         btn.prop('disabled', false);
                         btn.html('<i class="bi bi-x-lg"></i>');
@@ -1419,13 +1456,15 @@
             // Helper functions for checkout promo code UI
             function showCheckoutPromoError(message) {
                 $('#checkout-promo-message').html(
-                    '<div class="alert alert-danger py-1 px-2 mb-0"><i class="bi bi-exclamation-circle"></i> ' + message + '</div>'
+                    '<div class="alert alert-danger py-1 px-2 mb-0"><i class="bi bi-exclamation-circle"></i> ' +
+                    message + '</div>'
                 );
             }
 
             function showCheckoutPromoSuccess(message) {
                 $('#checkout-promo-message').html(
-                    '<div class="alert alert-success py-1 px-2 mb-0"><i class="bi bi-check-circle"></i> ' + message + '</div>'
+                    '<div class="alert alert-success py-1 px-2 mb-0"><i class="bi bi-check-circle"></i> ' +
+                    message + '</div>'
                 );
             }
 
