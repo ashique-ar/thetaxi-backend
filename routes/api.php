@@ -290,6 +290,8 @@ Route::middleware(['auth:api'])->group(function () {
         Route::apiResource('website-settings', WebsiteSettingController::class);
         Route::post('website-settings/update-multiple', [WebsiteSettingController::class, 'updateMultiple']);
         Route::get('website-settings/homepage/settings', [WebsiteSettingController::class, 'homepage']);
+        // Trigger server-side cache clear (optimize:clear) - admin only
+        Route::post('website-settings/optimize-clear', [WebsiteSettingController::class, 'optimizeClear']);
 
         // Category-specific settings routes
         Route::get('website-settings/category/{category}', [WebsiteSettingController::class, 'getCategory']);

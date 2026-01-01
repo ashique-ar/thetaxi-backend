@@ -11,6 +11,8 @@ use App\Services\WebsiteSettingsService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 
 class WebsiteSettingController extends Controller
@@ -22,7 +24,7 @@ class WebsiteSettingController extends Controller
         $this->settingsService = $settingsService;
         $this->middleware('permission:website-settings.view')->only(['index', 'show']);
         $this->middleware('permission:website-settings.create')->only(['store']);
-        $this->middleware('permission:website-settings.edit')->only(['update']);
+        $this->middleware('permission:website-settings.edit')->only(['update', 'optimizeClear']);
         $this->middleware('permission:website-settings.delete')->only(['destroy']);
     }
 
@@ -329,5 +331,31 @@ class WebsiteSettingController extends Controller
             'status' => 'success',
             'data' => $settings
         ]);
+    }
+
+    /**
+     * Run php artisan optimize:clear and clear website settings cache
+     */
+    public function optimizeClear(Request $request): JsonResponse
+    {
+        try {
+            Artisan::call('optimize:clear');
+
+            // $this->settingsService->clearAllCache();
+
+            Log::info('Optimize clear triggered by user: ' . $request->user()->id);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Server caches cleared (optimize:clear executed)'
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Optimize clear failed: ' . $e->getMessage());
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to clear caches'
+            ], 500);
+        }
     }
 }

@@ -16,7 +16,7 @@ class WebsiteSettingsService
     public function get(string $type, $default = null)
     {
         $cacheKey = self::CACHE_PREFIX . $type;
-        
+
         return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($type, $default) {
             return WebsiteSetting::getValue($type, $default);
         });
@@ -43,7 +43,7 @@ class WebsiteSettingsService
         foreach ($types as $type) {
             $cacheKey = self::CACHE_PREFIX . $type;
             $cachedValue = Cache::get($cacheKey);
-            
+
             if ($cachedValue !== null) {
                 $result[$type] = $cachedValue;
             } else {
@@ -54,7 +54,7 @@ class WebsiteSettingsService
         // Fetch uncached values from database
         if (!empty($uncachedTypes)) {
             $uncachedValues = WebsiteSetting::getValues($uncachedTypes);
-            
+
             foreach ($uncachedValues as $type => $value) {
                 $cacheKey = self::CACHE_PREFIX . $type;
                 Cache::put($cacheKey, $value, self::CACHE_DURATION);
@@ -79,17 +79,17 @@ class WebsiteSettingsService
             'banner_image',
             'banner_background',
             'homepage_breadcrumb_image',
-            
+
             // Partner Section
             'partner_section_title',
             'partner_logo_1',
-            
+
             // Featured Vehicles
             'featured_vehicles_title',
             'featured_vehicles_description',
             'featured_vehicles_button_text',
             'vehicles_view_all_text',
-            
+
             // Feature Section - Text, Icons & Vectors
             'feature_1_title',
             'feature_1_description',
@@ -106,7 +106,7 @@ class WebsiteSettingsService
             'feature_card_vector',
             'feature_section_vector1',
             'feature_section_vector2',
-            
+
             // About section settings (homepage)
             'about_section_heading',
             'about_section_title',
@@ -129,12 +129,12 @@ class WebsiteSettingsService
             'counter_people_img_2',
             'counter_people_img_3',
             'counter_people_img_4',
-            
+
             // Offer section settings
             'offer_section_description',
             'offer_slider_img_1',
             'offer_slider_img_2',
-            
+
             // Why Section - Text & Icons
             'why_section_title',
             'why_section_description',
@@ -147,12 +147,12 @@ class WebsiteSettingsService
             'why_feature_icon_3',
             'why_feature_icon_4',
             'why_video_image',
-            
+
             // Ratings & Reviews
             'tripadvisor_logo',
             'tripadvisor_stars',
             'tripadvisor_review',
-            
+
             // Testimonials Section - Images & Vectors
             'testimonials_section_title',
             'testimonials_section_description',
@@ -163,18 +163,18 @@ class WebsiteSettingsService
             'testimonial_author_img_3',
             'testimonial_author_img_4',
             'testimonial_author_img_5',
-            
+
             // Destinations Section
             'destinations_section_title',
             'destinations_section_description',
             'fallback_destination_image',
-            
+
             // Packages/Things to Do Section
             'packages_section_title',
             'packages_section_description',
             'features_section_image',
             'fallback_package_image',
-            
+
             // Blog Section
             'blog_section_title',
             'blog_section_description',
@@ -183,33 +183,33 @@ class WebsiteSettingsService
             'blog_img_1',
             'blog_img_2',
             'blog_img_3',
-            
+
             // Inspirations Section
             'inspirations_section_title',
             'inspirations_section_description',
-            
+
             // FAQ section
             'faq_section_title',
             'faq_section_description',
             'faq_section_vector',
-            
+
             // Counter labels
             'counter_travel_experience_label',
             'counter_happy_traveler_label',
-            
+
             // Custom travel section
             'custom_travel_heading',
             'custom_tours_label',
             'tour_guide_label',
-            
+
             // Commitment section
             'commitment_description',
-            
+
             // Travel inspirations
             'travel_story_1_description',
             'travel_story_2_description',
             'travel_story_3_title',
-            
+
             // Partner/Sponsor Logos
             'partner_logo_2',
             'partner_logo_3',
@@ -222,7 +222,7 @@ class WebsiteSettingsService
             'partner_link_4',
             'partner_link_5',
             'partner_link_6',
-            
+
             // General Settings
             'homepage_title',
             'homepage_subtitle',
@@ -257,7 +257,7 @@ class WebsiteSettingsService
             'about_hero_heading',
             'about_hero_subheading',
             'about_hero_image',
-            
+
             // About Section
             'about_section_title',
             'about_section_subtitle',
@@ -276,17 +276,24 @@ class WebsiteSettingsService
             'about_image_1',
             'about_image_2',
             'about_image_3',
-            
+
             // Founder Information
             'founder_name',
             'founder_title',
             'founder_signature',
             'founder_image',
-            
+
             // Services Section
+            // Keep older keys for backward compatibility
             'about_services_section_title',
             'about_journey_section_title',
             'about_journey_section_description',
+
+            // Canonical keys used across templates and view composers
+            'about_services_title',
+            'about_journey_title',
+            'about_journey_description',
+
             'service_1_title',
             'service_1_description',
             'service_1_icon',
@@ -299,25 +306,30 @@ class WebsiteSettingsService
             'service_4_title',
             'service_4_description',
             'service_4_icon',
-            
+
             // Breadcrumb & Media
             'about_breadcrumb_image',
             'about_section_image',
-            
+
             // Testimonials
             'about_testimonial_img_1',
             'about_testimonial_img_2',
             'about_testimonial_img_3',
             'about_testimonial_img_4',
             'about_testimonial_img_5',
-            
+
             // Rating Logos
             'about_tripadvisor_logo',
             'about_trustpilot_logo',
             'about_why_travel_title',
             'about_why_travel_description',
             'about_partners_title',
-            
+
+            // New dynamic content arrays for About page
+            'about_services',            // JSON array of service items {title,description,icon}
+            'about_journey_items',       // JSON array of journey steps {title,description,image,order}
+            'about_why_cards',           // JSON array of why-cards {title,description,icon}
+
             // General company info
             'company_phone',
             'company_email',
@@ -343,42 +355,42 @@ class WebsiteSettingsService
             'contact_page_description',
             'contact_hero_heading',
             'contact_hero_subheading',
-            
+
             // Contact Information
             'contact_address_1',
             'contact_address_1_title',
             'contact_address_1_phone',
             'contact_address_1_email',
             'contact_address_1_address',
-            
+
             'contact_address_2',
             'contact_address_2_title',
             'contact_address_2_phone',
             'contact_address_2_email',
             'contact_address_2_address',
-            
+
             'contact_address_3',
             'contact_address_3_title',
             'contact_address_3_phone',
             'contact_address_3_email',
             'contact_address_3_address',
-            
+
             // Contact Form
             'contact_form_title',
             'contact_form_description',
             'contact_form_success_message',
             'contact_form_error_message',
-            
+
             // Map & Location
             'contact_map_latitude',
             'contact_map_longitude',
             'contact_map_zoom',
             'contact_map_title',
             'contact_map_embed_url',
-            
+
             // Breadcrumb
             'contact_breadcrumb_image',
-            
+
             // General company info
             'company_name',
             'company_phone',
@@ -412,7 +424,7 @@ class WebsiteSettingsService
     {
         $pattern = self::CACHE_PREFIX . '*';
         $keys = Cache::getRedis()->keys($pattern);
-        
+
         if (!empty($keys)) {
             Cache::getRedis()->del($keys);
         }
@@ -445,18 +457,18 @@ class WebsiteSettingsService
             'faq_hero_heading',
             'faq_hero_subheading',
             'faq_hero_background',
-            
+
             // FAQ Section Content
             'faq_search_placeholder',
             'faq_all_categories_text',
             'faq_no_results_text',
             'faq_load_more_text',
-            
+
             // Featured FAQ Section
             'faq_featured_title',
             'faq_featured_subtitle',
             'faq_featured_show_count',
-            
+
             // FAQ Display Options
             'faq_show_categories',
             'faq_show_search',
@@ -735,11 +747,11 @@ class WebsiteSettingsService
     public function getCategorySettings(string $category): array
     {
         $method = 'get' . ucfirst($category) . 'Settings';
-        
+
         if (method_exists($this, $method)) {
             return $this->$method();
         }
-        
+
         throw new \InvalidArgumentException("Invalid settings category: {$category}");
     }
 
