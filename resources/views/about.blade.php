@@ -97,7 +97,7 @@
                         }
                     }
                 @endphp
-                <ul class="service-list wow animate fadeInUp" data-wow-delay="200ms" data-wow-duration="1500ms">
+                <ul class="service-list wow animate fadeInUp flex-wrap" data-wow-delay="200ms" data-wow-duration="1500ms">
                     @foreach ($services as $s)
                         <li class="single-service">
                             <div class="icon">{!! $s['icon'] ?? '' !!}</div>
