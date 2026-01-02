@@ -283,7 +283,7 @@
                                     <p>{!! nl2br(e($item['description'] ?? '')) !!}</p>
                                 </div>
                             @endforeach
-                        </div>                       
+                        </div>
                     </div>
                 </div>
             </div>
@@ -330,12 +330,11 @@
                     <div class="col-lg-3 col-sm-6 wow animate fadeInDown" data-wow-delay="{{ 200 * ($i + 1) }}ms"
                         data-wow-duration="1500ms">
                         <div class="why-choose-card">
-                            <div class="icon">
-                                {!! $card['icon'] ?? '<svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+                            {!! $card['icon'] ??
+                                '<svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
                                     <circle cx="20" cy="20" r="19.5" stroke="#110F0F" />
                                     <path d="M10 20L16 26L30 12" stroke="#110F0F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                                 </svg>' !!}
-                            </div>
                             <h5>{{ $whyCards['title'] }}</h5>
                         </div>
                     </div>
