@@ -33,7 +33,7 @@
                                 </p>
                             </div>
                             <div class="founder-area">
-                                <img src="{{ $settings['founder_signature'] ? Storage::url($settings['founder_signature']) : asset('assets/img/innerpages/about-page-founder-signature.png') }}"
+                                <img src="{{ $settings['founder_signature'] ? s3_asset('general/signatures/' . $settings['founder_signature']) : asset('assets/img/innerpages/about-page-founder-signature.png') }}"
                                     alt="{{ $settings['founder_name'] ?? 'Founder Signature' }}">
                                 <div class="founder-info">
                                     <h6>{{ $settings['founder_name'] ?? 'Robert Harringson' }}</h6>
