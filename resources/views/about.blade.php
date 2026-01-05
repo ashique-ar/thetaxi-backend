@@ -27,9 +27,9 @@
                                 <h2>{{ $settings['about_section_title'] ?? "Why We're Best Agency" }}</h2>
                                 <h4>{{ $settings['about_section_subtitle'] ?? 'Welcome to TheTaxi Travel Agency – Your Gateway to Unforgettable Journeys!' }}
                                 </h4>
-                                <p>{{ $settings['about_paragraph_1'] ?? 'TheTaxi Travel Agency is a trusted name in the travel industry, offering seamless travel planning, personalized itineraries, and unforgettable adventures. With years of experience and a network of global partners, we ensure a hassle-free and memorable journey for every traveler.' }}
+                                <p>{{ $settings['about_section_description_1'] ?? 'TheTaxi Travel Agency is a trusted name in the travel industry, offering seamless travel planning, personalized itineraries, and unforgettable adventures. With years of experience and a network of global partners, we ensure a hassle-free and memorable journey for every traveler.' }}
                                 </p>
-                                <p>{{ $settings['about_paragraph_2'] ?? "We believe that travel is more than just moving from one place to another—it's about discovering new cultures, creating unforgettable experiences, and making lifelong memories." }}
+                                <p>{{ $settings['about_section_description_2'] ?? "We believe that travel is more than just moving from one place to another—it's about discovering new cultures, creating unforgettable experiences, and making lifelong memories." }}
                                 </p>
                             </div>
                             <div class="founder-area">

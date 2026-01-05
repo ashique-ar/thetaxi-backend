@@ -191,6 +191,8 @@ class SettingsViewComposer
                     'about_section_subtitle',
                     'about_paragraph_1',
                     'about_paragraph_2',
+                    'about_section_description_1',
+                    'about_section_description_2',
                     'about_hero_image',
                     'founder_signature',
                     'founder_name',
