@@ -6,15 +6,20 @@
     <!-- Corporate Transport Banner Section Start-->
     <div class="home4-banner-section mb-100">
         <div class="banner-video-area">
-            <img src="{{ $settings['banner_image'] ? s3_asset($settings['banner_image']) : asset('assets/img/home4/home4-banner-img.jpg') }}"
-                alt="" loading="lazy">
+            @php
+                $corporateBanner = $settings['corporate_banner_image'] ?? null;
+                $fallbackBanner = $settings['banner_image'] ?? null;
+            @endphp
+            <img src="{{ $corporateBanner ? s3_asset($corporateBanner) : ($fallbackBanner ? s3_asset($fallbackBanner) : asset('assets/img/home4/home4-banner-img.jpg')) }}"
+                alt="{{ $settings['corporate_hero_heading'] ?? 'Corporate Transport Solutions' }}" loading="lazy">
             {{-- <video autoplay loop muted playsinline src="{{ asset('assets/video/home4-banner-video.mp4')}}"></video> --}}
         </div>
         <div class="banner-content-wrap">
             <div class="container">
                 <div class="banner-content">
-                    <h1>Corporate Transport Solutions</h1>
-                    <p>Professional transportation services tailored for your business needs</p>
+                    <h1>{{ $settings['corporate_hero_heading'] ?? 'Corporate Transport Solutions' }}</h1>
+                    <p>{{ $settings['corporate_hero_subheading'] ?? 'Professional transportation services tailored for your business needs' }}
+                    </p>
 
                     <!-- Corporate Transport Booking Form -->
                     <div class="filter-wrapper">
@@ -56,7 +61,8 @@
                                         <path d="M2 2h14v14H2V2zm2 2v10h10V4H4zm2 2h6v1H6V6zm0 2h6v1H6V8zm0 2h4v1H6v-1z" />
                                     </svg>
                                     <div class="custom-select-dropdown">
-                                        <input type="text" name="company_name" placeholder="Company Name"
+                                        <input type="text" name="company_name"
+                                            placeholder="{{ $settings['corporate_form_company_placeholder'] ?? 'Company Name' }}"
                                             class="nice-select @error('company_name') is-invalid @enderror"
                                             value="{{ old('company_name') }}" required autocomplete="off">
                                     </div>
@@ -73,7 +79,8 @@
                                             d="M9 9c2.5 0 4.5-2 4.5-4.5S11.5 0 9 0 4.5 2 4.5 4.5 6.5 9 9 9zm0 1.5c-3 0-9 1.5-9 4.5V18h18v-3c0-3-6-4.5-9-4.5z" />
                                     </svg>
                                     <div class="custom-select-dropdown">
-                                        <input type="text" name="contact_person" placeholder="Contact Person"
+                                        <input type="text" name="contact_person"
+                                            placeholder="{{ $settings['corporate_form_contact_placeholder'] ?? 'Contact Person' }}"
                                             class="nice-select @error('contact_person') is-invalid @enderror"
                                             value="{{ old('contact_person') }}" required autocomplete="off">
                                     </div>
@@ -90,7 +97,8 @@
                                             d="M16 2H2c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 2l-7 4.5L2 4h14zm0 10H2V6l7 4.5L16 6v8z" />
                                     </svg>
                                     <div class="custom-select-dropdown">
-                                        <input type="email" name="email" placeholder="Email Address"
+                                        <input type="email" name="email"
+                                            placeholder="{{ $settings['corporate_form_email_placeholder'] ?? 'Email Address' }}"
                                             class="nice-select @error('email') is-invalid @enderror"
                                             value="{{ old('email') }}" required autocomplete="off">
                                     </div>
@@ -107,7 +115,8 @@
                                             d="M3.5 1C2.67 1 2 1.67 2 2.5v13c0 .83.67 1.5 1.5 1.5h11c.83 0 1.5-.67 1.5-1.5v-13C16 1.67 15.33 1 14.5 1h-11zM4 3h10v10H4V3zm5 11.5c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1z" />
                                     </svg>
                                     <div class="custom-select-dropdown">
-                                        <input type="tel" name="phone" placeholder="Phone Number"
+                                        <input type="tel" name="phone"
+                                            placeholder="{{ $settings['corporate_form_phone_placeholder'] ?? 'Phone Number' }}"
                                             class="nice-select @error('phone') is-invalid @enderror"
                                             value="{{ old('phone') }}" required autocomplete="off">
                                     </div>
@@ -118,7 +127,8 @@
 
                                 <!-- Service Requirements - Full Width -->
                                 <div class="corporate-requirements-field">
-                                    <textarea name="requirements" placeholder="Describe your corporate transport requirements..."
+                                    <textarea name="requirements"
+                                        placeholder="{{ $settings['corporate_form_requirements_placeholder'] ?? 'Describe your corporate transport requirements...' }}"
                                         class="@error('requirements') is-invalid @enderror" rows="4" required>{{ old('requirements') }}</textarea>
                                     @error('requirements')
                                         <span class="text-danger small">{{ $message }}</span>
@@ -126,7 +136,7 @@
                                 </div>
 
                                 <button type="submit" class="primary-btn1 corporate-submit-btn">
-                                    <span>Submit Enquiry</span>
+                                    <span>{{ $settings['corporate_form_submit_text'] ?? 'Submit Enquiry' }}</span>
                                 </button>
                             </form>
                         </div>
@@ -143,45 +153,54 @@
             <div class="row text-center mb-5">
                 <div class="col-12">
                     <h2 class="wow animate fadeInDown" data-wow-delay="200ms" data-wow-duration="1500ms">
-                        Why Choose Our Corporate Transport?
+                        {{ $settings['corporate_feature_section_heading'] ?? 'Why Choose Our Corporate Transport?' }}
                     </h2>
                     <p class="wow animate fadeInDown" data-wow-delay="300ms" data-wow-duration="1500ms">
-                        Professional, reliable, and efficient transportation solutions for your business
+                        {{ $settings['corporate_feature_section_description'] ?? 'Professional, reliable, and efficient transportation solutions for your business' }}
                     </p>
                 </div>
             </div>
+            @php
+                $corporateFeatureVector = $settings['corporate_feature_card_vector'] ?? null;
+            @endphp
             <div class="row g-4">
                 <div class="col-lg-4 col-md-6 wow animate fadeInDown" data-wow-delay="200ms" data-wow-duration="1500ms">
                     <div class="feature-card">
                         <div class="icon">
-                            <img src="{{ asset('assets/img/home4/icon/feature-icon1.svg') }}" alt="">
+                            <img src="{{ !empty($settings['corporate_feature_1_icon']) ? s3_asset($settings['corporate_feature_1_icon']) : asset('assets/img/home4/icon/feature-icon1.svg') }}"
+                                alt="{{ $settings['corporate_feature_1_title'] ?? 'Executive Fleet' }}">
                         </div>
-                        <h4>Executive Fleet</h4>
-                        <p>Premium vehicles maintained to the highest standards for your corporate image and comfort.</p>
-                        <img src="{{ asset('assets/img/home4/vector/feature-card-vector.svg') }}" alt=""
-                            class="vector">
+                        <h4>{{ $settings['corporate_feature_1_title'] ?? 'Executive Fleet' }}</h4>
+                        <p>{{ $settings['corporate_feature_1_description'] ?? 'Premium vehicles maintained to the highest standards for your corporate image and comfort.' }}
+                        </p>
+                        <img src="{{ $corporateFeatureVector ? s3_asset($corporateFeatureVector) : asset('assets/img/home4/vector/feature-card-vector.svg') }}"
+                            alt="" class="vector">
                     </div>
                 </div>
                 <div class="col-lg-4 col-md-6 wow animate fadeInDown" data-wow-delay="400ms" data-wow-duration="1500ms">
                     <div class="feature-card two">
                         <div class="icon">
-                            <img src="{{ asset('assets/img/home4/icon/feature-icon2.svg') }}" alt="">
+                            <img src="{{ !empty($settings['corporate_feature_2_icon']) ? s3_asset($settings['corporate_feature_2_icon']) : asset('assets/img/home4/icon/feature-icon2.svg') }}"
+                                alt="{{ $settings['corporate_feature_2_title'] ?? 'Professional Chauffeurs' }}">
                         </div>
-                        <h4>Professional Chauffeurs</h4>
-                        <p>Experienced, uniformed drivers who understand corporate etiquette and punctuality.</p>
-                        <img src="{{ asset('assets/img/home4/vector/feature-card-vector.svg') }}" alt=""
-                            class="vector">
+                        <h4>{{ $settings['corporate_feature_2_title'] ?? 'Professional Chauffeurs' }}</h4>
+                        <p>{{ $settings['corporate_feature_2_description'] ?? 'Experienced, uniformed drivers who understand corporate etiquette and punctuality.' }}
+                        </p>
+                        <img src="{{ $corporateFeatureVector ? s3_asset($corporateFeatureVector) : asset('assets/img/home4/vector/feature-card-vector.svg') }}"
+                            alt="" class="vector">
                     </div>
                 </div>
                 <div class="col-lg-4 col-md-6 wow animate fadeInDown" data-wow-delay="600ms" data-wow-duration="1500ms">
                     <div class="feature-card three">
                         <div class="icon">
-                            <img src="{{ asset('assets/img/home4/icon/feature-icon3.svg') }}" alt="">
+                            <img src="{{ !empty($settings['corporate_feature_3_icon']) ? s3_asset($settings['corporate_feature_3_icon']) : asset('assets/img/home4/icon/feature-icon3.svg') }}"
+                                alt="{{ $settings['corporate_feature_3_title'] ?? 'Account Management' }}">
                         </div>
-                        <h4>Account Management</h4>
-                        <p>Dedicated account managers and monthly billing options for seamless corporate integration.</p>
-                        <img src="{{ asset('assets/img/home4/vector/feature-card-vector.svg') }}" alt=""
-                            class="vector">
+                        <h4>{{ $settings['corporate_feature_3_title'] ?? 'Account Management' }}</h4>
+                        <p>{{ $settings['corporate_feature_3_description'] ?? 'Dedicated account managers and monthly billing options for seamless corporate integration.' }}
+                        </p>
+                        <img src="{{ $corporateFeatureVector ? s3_asset($corporateFeatureVector) : asset('assets/img/home4/vector/feature-card-vector.svg') }}"
+                            alt="" class="vector">
                     </div>
                 </div>
             </div>
@@ -196,43 +215,45 @@
                 <div class="col-lg-6 wow animate fadeInLeft" data-wow-delay="200ms" data-wow-duration="1500ms">
                     <div class="package-content-wrap">
                         <div class="section-title1 mb-4">
-                            <span>Corporate Solutions</span>
-                            <h2>Tailored Business Transport</h2>
+                            <span>{{ $settings['corporate_services_kicker'] ?? 'Corporate Solutions' }}</span>
+                            <h2>{{ $settings['corporate_services_heading'] ?? 'Tailored Business Transport' }}</h2>
                         </div>
-                        <p class="mb-4">Our corporate transport services are designed to meet the unique needs of
-                            businesses, from executive travel to employee shuttles and client transportation.</p>
+                        <p class="mb-4">
+                            {{ $settings['corporate_services_description'] ?? 'Our corporate transport services are designed to meet the unique needs of businesses, from executive travel to employee shuttles and client transportation.' }}
+                        </p>
 
                         <div class="service-features">
                             <div class="feature-item mb-3">
                                 <i class="bi bi-check-circle-fill text-primary me-2"></i>
-                                <span>Executive airport transfers</span>
+                                <span>{{ $settings['corporate_services_feature_1'] ?? 'Executive airport transfers' }}</span>
                             </div>
                             <div class="feature-item mb-3">
                                 <i class="bi bi-check-circle-fill text-primary me-2"></i>
-                                <span>Corporate event transportation</span>
+                                <span>{{ $settings['corporate_services_feature_2'] ?? 'Corporate event transportation' }}</span>
                             </div>
                             <div class="feature-item mb-3">
                                 <i class="bi bi-check-circle-fill text-primary me-2"></i>
-                                <span>Employee shuttle services</span>
+                                <span>{{ $settings['corporate_services_feature_3'] ?? 'Employee shuttle services' }}</span>
                             </div>
                             <div class="feature-item mb-3">
                                 <i class="bi bi-check-circle-fill text-primary me-2"></i>
-                                <span>Client meeting transportation</span>
+                                <span>{{ $settings['corporate_services_feature_4'] ?? 'Client meeting transportation' }}</span>
                             </div>
                             <div class="feature-item mb-3">
                                 <i class="bi bi-check-circle-fill text-primary me-2"></i>
-                                <span>Monthly billing and reporting</span>
+                                <span>{{ $settings['corporate_services_feature_5'] ?? 'Monthly billing and reporting' }}</span>
                             </div>
                             <div class="feature-item mb-3">
                                 <i class="bi bi-check-circle-fill text-primary me-2"></i>
-                                <span>24/7 customer support</span>
+                                <span>{{ $settings['corporate_services_feature_6'] ?? '24/7 customer support' }}</span>
                             </div>
                         </div>
                     </div>
                 </div>
                 <div class="col-lg-6 wow animate fadeInRight" data-wow-delay="400ms" data-wow-duration="1500ms">
                     <div class="package-img-area">
-                        <img src="{{ asset('assets/img/home4/package-img.jpg') }}" alt="Corporate Transport Service"
+                        <img src="{{ !empty($settings['corporate_services_image']) ? s3_asset($settings['corporate_services_image']) : asset('assets/img/home4/package-img.jpg') }}"
+                            alt="{{ $settings['corporate_services_heading'] ?? 'Corporate Transport Service' }}"
                             class="img-fluid">
                     </div>
                 </div>
@@ -247,8 +268,8 @@
             <div class="row">
                 <div class="col-lg-12">
                     <div class="section-title1 text-center mb-5">
-                        <span>Corporate Benefits</span>
-                        <h2>What Makes Us Different</h2>
+                        <span>{{ $settings['corporate_benefits_kicker'] ?? 'Corporate Benefits' }}</span>
+                        <h2>{{ $settings['corporate_benefits_heading'] ?? 'What Makes Us Different' }}</h2>
                     </div>
                 </div>
             </div>
@@ -256,37 +277,45 @@
                 <div class="col-lg-3 col-md-6">
                     <div class="benefit-card text-center">
                         <div class="benefit-icon mb-3">
-                            <i class="bi bi-clock-history" style="font-size: 2.5rem; color: var(--primary-color1);"></i>
+                            <i class="{{ $settings['corporate_benefit_1_icon'] ?? 'bi bi-clock-history' }}"
+                                style="font-size: 2.5rem; color: var(--primary-color1);"></i>
                         </div>
-                        <h5>Punctuality Guaranteed</h5>
-                        <p>On-time arrivals with real-time tracking and proactive communication.</p>
+                        <h5>{{ $settings['corporate_benefit_1_title'] ?? 'Punctuality Guaranteed' }}</h5>
+                        <p>{{ $settings['corporate_benefit_1_description'] ?? 'On-time arrivals with real-time tracking and proactive communication.' }}
+                        </p>
                     </div>
                 </div>
                 <div class="col-lg-3 col-md-6">
                     <div class="benefit-card text-center">
                         <div class="benefit-icon mb-3">
-                            <i class="bi bi-shield-check" style="font-size: 2.5rem; color: var(--primary-color1);"></i>
+                            <i class="{{ $settings['corporate_benefit_2_icon'] ?? 'bi bi-shield-check' }}"
+                                style="font-size: 2.5rem; color: var(--primary-color1);"></i>
                         </div>
-                        <h5>Secure & Safe</h5>
-                        <p>Fully licensed, insured vehicles with background-checked professional drivers.</p>
+                        <h5>{{ $settings['corporate_benefit_2_title'] ?? 'Secure & Safe' }}</h5>
+                        <p>{{ $settings['corporate_benefit_2_description'] ?? 'Fully licensed, insured vehicles with background-checked professional drivers.' }}
+                        </p>
                     </div>
                 </div>
                 <div class="col-lg-3 col-md-6">
                     <div class="benefit-card text-center">
                         <div class="benefit-icon mb-3">
-                            <i class="bi bi-graph-up-arrow" style="font-size: 2.5rem; color: var(--primary-color1);"></i>
+                            <i class="{{ $settings['corporate_benefit_3_icon'] ?? 'bi bi-graph-up-arrow' }}"
+                                style="font-size: 2.5rem; color: var(--primary-color1);"></i>
                         </div>
-                        <h5>Cost Effective</h5>
-                        <p>Competitive rates with volume discounts and transparent pricing structure.</p>
+                        <h5>{{ $settings['corporate_benefit_3_title'] ?? 'Cost Effective' }}</h5>
+                        <p>{{ $settings['corporate_benefit_3_description'] ?? 'Competitive rates with volume discounts and transparent pricing structure.' }}
+                        </p>
                     </div>
                 </div>
                 <div class="col-lg-3 col-md-6">
                     <div class="benefit-card text-center">
                         <div class="benefit-icon mb-3">
-                            <i class="bi bi-headset" style="font-size: 2.5rem; color: var(--primary-color1);"></i>
+                            <i class="{{ $settings['corporate_benefit_4_icon'] ?? 'bi bi-headset' }}"
+                                style="font-size: 2.5rem; color: var(--primary-color1);"></i>
                         </div>
-                        <h5>24/7 Support</h5>
-                        <p>Round-the-clock customer support and emergency assistance when needed.</p>
+                        <h5>{{ $settings['corporate_benefit_4_title'] ?? '24/7 Support' }}</h5>
+                        <p>{{ $settings['corporate_benefit_4_description'] ?? 'Round-the-clock customer support and emergency assistance when needed.' }}
+                        </p>
                     </div>
                 </div>
             </div>
@@ -300,8 +329,8 @@
             <div class="row">
                 <div class="col-lg-8 mx-auto">
                     <div class="section-title1 text-center mb-5">
-                        <span>Frequently Asked Questions</span>
-                        <h2>Corporate Transport Questions</h2>
+                        <span>{{ $settings['corporate_faq_kicker'] ?? 'Frequently Asked Questions' }}</span>
+                        <h2>{{ $settings['corporate_faq_heading'] ?? 'Corporate Transport Questions' }}</h2>
                     </div>
 
                     <div class="accordion" id="corporateFAQ">
@@ -309,15 +338,13 @@
                             <h2 class="accordion-header" id="headingOne">
                                 <button class="accordion-button" type="button" data-bs-toggle="collapse"
                                     data-bs-target="#collapseOne">
-                                    How do I set up a corporate account?
+                                    {{ $settings['corporate_faq_1_question'] ?? 'How do I set up a corporate account?' }}
                                 </button>
                             </h2>
                             <div id="collapseOne" class="accordion-collapse collapse show"
                                 data-bs-parent="#corporateFAQ">
                                 <div class="accordion-body">
-                                    Setting up a corporate account is simple. Submit an enquiry through our form, and our
-                                    corporate sales team will contact you within 24 hours to discuss your requirements and
-                                    set up your account with preferred payment terms.
+                                    {{ $settings['corporate_faq_1_answer'] ?? 'Setting up a corporate account is simple. Submit an enquiry through our form, and our corporate sales team will contact you within 24 hours to discuss your requirements and set up your account with preferred payment terms.' }}
                                 </div>
                             </div>
                         </div>
@@ -326,14 +353,12 @@
                             <h2 class="accordion-header" id="headingTwo">
                                 <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
                                     data-bs-target="#collapseTwo">
-                                    What types of vehicles do you offer for corporate clients?
+                                    {{ $settings['corporate_faq_2_question'] ?? 'What types of vehicles do you offer for corporate clients?' }}
                                 </button>
                             </h2>
                             <div id="collapseTwo" class="accordion-collapse collapse" data-bs-parent="#corporateFAQ">
                                 <div class="accordion-body">
-                                    We offer a premium fleet including executive sedans, luxury SUVs, people carriers for
-                                    groups, and minibuses for larger corporate events. All vehicles are less than 3 years
-                                    old and maintained to the highest standards.
+                                    {{ $settings['corporate_faq_2_answer'] ?? 'We offer a premium fleet including executive sedans, luxury SUVs, people carriers for groups, and minibuses for larger corporate events. All vehicles are less than 3 years old and maintained to the highest standards.' }}
                                 </div>
                             </div>
                         </div>
@@ -342,14 +367,12 @@
                             <h2 class="accordion-header" id="headingThree">
                                 <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
                                     data-bs-target="#collapseThree">
-                                    Do you provide monthly billing?
+                                    {{ $settings['corporate_faq_3_question'] ?? 'Do you provide monthly billing?' }}
                                 </button>
                             </h2>
                             <div id="collapseThree" class="accordion-collapse collapse" data-bs-parent="#corporateFAQ">
                                 <div class="accordion-body">
-                                    Yes, we offer monthly billing with detailed journey reports for all corporate accounts.
-                                    Invoices include trip details, passenger information, and cost center allocation for
-                                    easy expense management.
+                                    {{ $settings['corporate_faq_3_answer'] ?? 'Yes, we offer monthly billing with detailed journey reports for all corporate accounts. Invoices include trip details, passenger information, and cost center allocation for easy expense management.' }}
                                 </div>
                             </div>
                         </div>
@@ -358,14 +381,12 @@
                             <h2 class="accordion-header" id="headingFour">
                                 <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
                                     data-bs-target="#collapseFour">
-                                    Can employees book directly?
+                                    {{ $settings['corporate_faq_4_question'] ?? 'Can employees book directly?' }}
                                 </button>
                             </h2>
                             <div id="collapseFour" class="accordion-collapse collapse" data-bs-parent="#corporateFAQ">
                                 <div class="accordion-body">
-                                    Yes, we can provide your employees with access to our corporate booking portal where
-                                    they can book rides directly using their employee ID. All bookings are automatically
-                                    allocated to your corporate account.
+                                    {{ $settings['corporate_faq_4_answer'] ?? 'Yes, we can provide your employees with access to our corporate booking portal where they can book rides directly using their employee ID. All bookings are automatically allocated to your corporate account.' }}
                                 </div>
                             </div>
                         </div>
@@ -374,14 +395,12 @@
                             <h2 class="accordion-header" id="headingFive">
                                 <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
                                     data-bs-target="#collapseFive">
-                                    What are your service hours?
+                                    {{ $settings['corporate_faq_5_question'] ?? 'What are your service hours?' }}
                                 </button>
                             </h2>
                             <div id="collapseFive" class="accordion-collapse collapse" data-bs-parent="#corporateFAQ">
                                 <div class="accordion-body">
-                                    Our corporate transport service operates 24/7, 365 days a year. Whether you need early
-                                    morning airport transfers or late-night client transportation, we're available whenever
-                                    your business requires it.
+                                    {{ $settings['corporate_faq_5_answer'] ?? 'Our corporate transport service operates 24/7, 365 days a year. Whether you need early morning airport transfers or late-night client transportation, we are available whenever your business requires it.' }}
                                 </div>
                             </div>
                         </div>
