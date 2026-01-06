@@ -5,6 +5,7 @@ namespace App\Services;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use App\Models\Booking\Booking;
+use App\Models\Website\WebsiteSetting;
 use phpseclib3\Crypt\RSA;
 use phpseclib3\Crypt\PublicKeyLoader;
 use phpseclib3\Crypt\Common\AsymmetricKey;
@@ -28,7 +29,8 @@ class WebXPayService
         $this->apiUrl = config('booking.webxpay.api_url');
         $this->checkoutUrl = config('booking.webxpay.checkout_url');
         $this->currency = config('booking.webxpay.currency', 'LKR');
-        $this->enabled = config('booking.webxpay.enabled', false);
+        $settingEnabled = WebsiteSetting::getValue('webxpay_enabled', null);
+        $this->enabled = $this->normalizeBoolean($settingEnabled, config('booking.webxpay.enabled', false));
         $this->apiUsername = config('booking.webxpay.api_username');
         $this->apiPassword = config('booking.webxpay.api_password');
     }
@@ -198,6 +200,31 @@ class WebXPayService
             ]);
             return null;
         }
+    }
+
+    /**
+     * Normalize a boolean value coming from settings.
+     */
+    protected function normalizeBoolean($value, bool $default = false): bool
+    {
+        if ($value === null) {
+            return $default;
+        }
+
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if (is_numeric($value)) {
+            return (int) $value === 1;
+        }
+
+        $normalized = strtolower(trim((string) $value));
+        if ($normalized === '') {
+            return $default;
+        }
+
+        return in_array($normalized, ['1', 'true', 'yes', 'on', 'enabled'], true);
     }
 
     /**

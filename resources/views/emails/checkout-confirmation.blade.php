@@ -154,6 +154,20 @@
         $dropoffLocation = is_string($booking->dropoff_location)
             ? json_decode($booking->dropoff_location, true)
             : $booking->dropoff_location;
+        $advancePercentage = \App\Models\Website\WebsiteSetting::getValue(
+            'advance_payment_percentage',
+            config('booking.advance_payment.percentage', 50)
+        );
+        $taxRateSetting = \App\Models\Website\WebsiteSetting::getValue(
+            'tax_rate',
+            \App\Models\Website\WebsiteSetting::getValue('tax_percentage', config('booking.tax.rate', 2.5))
+        );
+        $vatRateSetting = \App\Models\Website\WebsiteSetting::getValue(
+            'vat_rate',
+            \App\Models\Website\WebsiteSetting::getValue('vat_percentage', config('booking.vat.rate', 18))
+        );
+        $taxRateDisplay = $taxRateSetting > 0 && $taxRateSetting <= 1 ? round($taxRateSetting * 100, 2) : $taxRateSetting;
+        $vatRateDisplay = $vatRateSetting > 0 && $vatRateSetting <= 1 ? round($vatRateSetting * 100, 2) : $vatRateSetting;
     @endphp
 
     <div class="container">
@@ -282,20 +296,12 @@
                         </tr>
                     @endif
                     @if ($booking->tax_amount > 0)
-                        @php
-                            $taxRate = config('booking.tax.rate', 2.5);
-                            $taxRateDisplay = $taxRate > 0 && $taxRate <= 1 ? round($taxRate * 100, 2) : $taxRate;
-                        @endphp
                         <tr>
                             <td>{{ config('booking.tax.label', 'NBT') }} ({{ $taxRateDisplay }}%)</td>
                             <td>{{ $currencySymbol }}{{ number_format($booking->tax_amount, 2) }}</td>
                         </tr>
                     @endif
                     @if (($booking->vat_amount ?? 0) > 0)
-                        @php
-                            $vatRate = config('booking.vat.rate', 18);
-                            $vatRateDisplay = $vatRate > 0 && $vatRate <= 1 ? round($vatRate * 100, 2) : $vatRate;
-                        @endphp
                         <tr>
                             <td>{{ config('booking.vat.label', 'VAT') }} ({{ $vatRateDisplay }}%)</td>
                             <td>{{ $currencySymbol }}{{ number_format($booking->vat_amount, 2) }}</td>
@@ -315,7 +321,7 @@
                     </tr>
                     @if ($booking->payment_type === 'advance')
                         <tr style="background: #e8f4f8;">
-                            <td><strong>Amount Paid ({{ config('booking.advance_payment.percentage', 50) }}%)</strong>
+                            <td><strong>Amount Paid ({{ $advancePercentage }}%)</strong>
                             </td>
                             <td><strong>{{ $currencySymbol }}{{ number_format($booking->amount_to_pay ?? 0, 2) }}</strong>
                             </td>
@@ -455,7 +461,7 @@
                 @elseif($booking->payment_type === 'advance')
                     <div class="highlight-box" style="border-left-color: #28a745;">
                         <h3 style="margin-top: 0; color: #28a745;">✅ Payment Confirmed!</h3>
-                        <p>You have successfully paid {{ config('booking.advance_payment.percentage', 50) }}% advance
+                        <p>You have successfully paid {{ $advancePercentage }}% advance
                             ({{ $currencySymbol }}{{ number_format($booking->amount_to_pay ?? 0, 2) }}).</p>
                         <p><strong>Balance Due at Pickup:</strong>
                             {{ $currencySymbol }}{{ number_format($booking->total_estimated - ($booking->amount_to_pay ?? 0), 2) }}

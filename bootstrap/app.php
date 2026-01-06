@@ -24,6 +24,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
             'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
         ]);
+
+        $middleware->appendToGroup('web', \App\Http\Middleware\WebsiteSettingsSecurity::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

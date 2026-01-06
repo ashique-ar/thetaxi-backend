@@ -358,7 +358,7 @@ class CartService
 
         // Calculate tax dynamically from database settings (apply on taxable base after discount)
         $tax = 0;
-        if (config('booking.tax.enabled', true)) {
+        if ($this->isTaxEnabled()) {
             $taxRate = $this->getTaxPercentage(); // decimal e.g. 0.18
             $taxableBase = max(0, $subtotal - $couponDiscount) + $serviceFee + $addonCharges + $extraKmCharges;
             $tax = round($taxableBase * $taxRate, 2);
@@ -366,7 +366,7 @@ class CartService
 
         // Calculate VAT dynamically from database settings
         $vat = 0;
-        if (config('booking.vat.enabled', true)) {
+        if ($this->isVatEnabled()) {
             $vatRate = $this->getVatPercentage();
             $vatBase = max(0, $subtotal - $couponDiscount) + $addonCharges + $extraKmCharges;
 
@@ -415,19 +415,28 @@ class CartService
      */
     protected function calculateServiceFee(float $subtotal): float
     {
-        if (!config('booking.service_fee.enabled', true)) {
+        if (!$this->isServiceFeeEnabled()) {
             return 0;
         }
 
-        $type = config('booking.service_fee.type', 'fixed');
-        $amount = config('booking.service_fee.amount', 750.00);
-        $minAmount = config('booking.service_fee.min', 0);
-        $maxAmount = config('booking.service_fee.max', null);
+        $type = $this->getSettingValue('service_fee_type', null);
+        if (!$type) {
+            $legacyPercentage = $this->getSettingValue('service_fee_percentage', null);
+            $type = $legacyPercentage !== null ? 'percentage' : 'fixed';
+        }
+
+        $amount = $this->getSettingValue(
+            'service_fee_amount',
+            config('booking.service_fee.amount', 0),
+            ['service_fee_percentage']
+        );
+        $minAmount = config('booking.service_fee.min_amount', 0);
+        $maxAmount = config('booking.service_fee.max_amount', null);
 
         if ($type === 'percentage') {
-            $fee = $subtotal * ($amount / 100);
+            $fee = $subtotal * $this->normalizePercentage($amount);
         } else {
-            $fee = $amount;
+            $fee = (float) $amount;
         }
 
         // Apply min/max constraints
@@ -840,14 +849,14 @@ class CartService
         $couponDiscount = round($cart->coupon_discount ?? 0, 2);
 
         $tax = 0;
-        if (config('booking.tax.enabled', true)) {
+        if ($this->isTaxEnabled()) {
             $taxRate = $this->getTaxPercentage();
             $taxableBase = max(0, $subtotal - $couponDiscount) + $addonCharges + $serviceFee + $extraKmCharges;
             $tax = round($taxableBase * $taxRate, 2);
         }
 
         $vat = 0;
-        if (config('booking.vat.enabled', true)) {
+        if ($this->isVatEnabled()) {
             $vatRate = $this->getVatPercentage();
             $vatBase = max(0, $subtotal - $couponDiscount) + $addonCharges + $extraKmCharges;
 
@@ -909,6 +918,26 @@ class CartService
     }
 
     /**
+     * Get setting value with optional fallback keys.
+     */
+    protected function getSettingValue(string $settingKey, $default = null, array $fallbackKeys = [])
+    {
+        $value = $this->getWebsiteSetting($settingKey, null);
+        if ($value !== null && $value !== '') {
+            return $value;
+        }
+
+        foreach ($fallbackKeys as $fallbackKey) {
+            $fallbackValue = $this->getWebsiteSetting($fallbackKey, null);
+            if ($fallbackValue !== null && $fallbackValue !== '') {
+                return $fallbackValue;
+            }
+        }
+
+        return $default;
+    }
+
+    /**
      * Normalize a percentage value coming from config or website settings.
      *
      * Accepts values like '18', '18%', 18, 0.18 and returns decimal (0.18).
@@ -935,12 +964,46 @@ class CartService
     }
 
     /**
+     * Normalize a boolean value coming from config or website settings.
+     */
+    protected function normalizeBoolean($value, bool $default = false): bool
+    {
+        if ($value === null) {
+            return $default;
+        }
+
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if (is_numeric($value)) {
+            return (int) $value === 1;
+        }
+
+        $normalized = strtolower(trim((string) $value));
+        if ($normalized === '') {
+            return $default;
+        }
+
+        return in_array($normalized, ['1', 'true', 'yes', 'on', 'enabled'], true);
+    }
+
+    /**
      * Get tax percentage from database settings
      */
     protected function getTaxPercentage(): float
     {
-        $taxRate = $this->getWebsiteSetting('tax_percentage', config('booking.tax.rate', 0.18));
+        $taxRate = $this->getSettingValue('tax_rate', config('booking.tax.rate', 0.18), ['tax_percentage']);
         return $this->normalizePercentage($taxRate);
+    }
+
+    /**
+     * Determine if tax is enabled.
+     */
+    protected function isTaxEnabled(): bool
+    {
+        $settingValue = $this->getSettingValue('tax_enabled', null);
+        return $this->normalizeBoolean($settingValue, (bool) config('booking.tax.enabled', true));
     }
 
     /**
@@ -948,7 +1011,10 @@ class CartService
      */
     protected function getServiceFeePercentage(): float
     {
-        $feeRate = $this->getWebsiteSetting('service_fee_percentage', config('booking.service_fee.rate', 0));
+        $feeRate = $this->getSettingValue(
+            'service_fee_percentage',
+            config('booking.service_fee.rate', 0)
+        );
         return $this->normalizePercentage($feeRate); // Normalize different formats (e.g. 5 or 0.05)
     }
 
@@ -957,8 +1023,26 @@ class CartService
      */
     protected function getVatPercentage(): float
     {
-        $vatRate = $this->getWebsiteSetting('vat_percentage', config('booking.vat.rate', 0));
+        $vatRate = $this->getSettingValue('vat_rate', config('booking.vat.rate', 0), ['vat_percentage']);
         return $this->normalizePercentage($vatRate);
+    }
+
+    /**
+     * Determine if VAT is enabled.
+     */
+    protected function isVatEnabled(): bool
+    {
+        $settingValue = $this->getSettingValue('vat_enabled', null);
+        return $this->normalizeBoolean($settingValue, (bool) config('booking.vat.enabled', true));
+    }
+
+    /**
+     * Determine if service fee is enabled.
+     */
+    protected function isServiceFeeEnabled(): bool
+    {
+        $settingValue = $this->getSettingValue('service_fee_enabled', null);
+        return $this->normalizeBoolean($settingValue, (bool) config('booking.service_fee.enabled', true));
     }
 
     /**

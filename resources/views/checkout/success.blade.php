@@ -8,6 +8,22 @@
         $isPaid = $booking && $booking->payment_status === 'paid';
         $isPending = $booking && $booking->payment_status === 'pending';
         $currencySymbol = $booking ? getCurrencySymbol($booking->currency) : '$';
+        $advancePercentage = \App\Models\Website\WebsiteSetting::getValue(
+            'advance_payment_percentage',
+            config('booking.advance_payment.percentage', 50),
+        );
+        $taxRateSetting = \App\Models\Website\WebsiteSetting::getValue(
+            'tax_rate',
+            \App\Models\Website\WebsiteSetting::getValue('tax_percentage', config('booking.tax.rate', 2.5)),
+        );
+        $vatRateSetting = \App\Models\Website\WebsiteSetting::getValue(
+            'vat_rate',
+            \App\Models\Website\WebsiteSetting::getValue('vat_percentage', config('booking.vat.rate', 18)),
+        );
+        $taxRateDisplay =
+            $taxRateSetting > 0 && $taxRateSetting <= 1 ? round($taxRateSetting * 100, 2) : $taxRateSetting;
+        $vatRateDisplay =
+            $vatRateSetting > 0 && $vatRateSetting <= 1 ? round($vatRateSetting * 100, 2) : $vatRateSetting;
     @endphp
     <!-- Breadcrumb section -->
     <div class="breadcrumb-section"
@@ -183,14 +199,14 @@
                                         @if ($booking->tax_amount > 0)
                                             <div class="d-flex justify-content-between mb-2">
                                                 <span>{{ config('booking.tax.label', 'NBT') }}
-                                                    ({{ config('booking.tax.rate', 2.5) }}%):</span>
+                                                    ({{ $taxRateDisplay }}%):</span>
                                                 <span>{{ $currencySymbol }}{{ number_format($booking->tax_amount, 2) }}</span>
                                             </div>
                                         @endif
                                         @if (($booking->vat_amount ?? 0) > 0)
                                             <div class="d-flex justify-content-between mb-2">
                                                 <span>{{ config('booking.vat.label', 'VAT') }}
-                                                    ({{ config('booking.vat.rate', 18) }}%):</span>
+                                                    ({{ $vatRateDisplay }}%):</span>
                                                 <span>{{ $currencySymbol }}{{ number_format($booking->vat_amount, 2) }}</span>
                                             </div>
                                         @endif
@@ -211,7 +227,7 @@
                                             <div class="alert alert-info mb-3">
                                                 <div class="d-flex justify-content-between">
                                                     <span><strong>Amount Paid
-                                                            ({{ config('booking.advance_payment.percentage', 50) }}%):</strong></span>
+                                                            ({{ $advancePercentage }}%):</strong></span>
                                                     <strong>{{ $currencySymbol }}{{ number_format($booking->amount_to_pay ?? 0, 2) }}</strong>
                                                 </div>
                                                 <div class="d-flex justify-content-between mt-2">

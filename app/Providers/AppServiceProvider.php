@@ -2,7 +2,11 @@
 
 namespace App\Providers;
 
+use App\Services\WebsiteSettingsService;
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Passport\Passport;
 use Illuminate\Support\Facades\Gate;
@@ -41,6 +45,19 @@ class AppServiceProvider extends ServiceProvider
         // Register settings view composer for all views
         view()->composer('*', \App\Http\ViewComposers\SettingsViewComposer::class);
 
+        RateLimiter::for('api', function (Request $request) {
+            $settingsService = app(WebsiteSettingsService::class);
+            $settings = $settingsService->getSecuritySettings();
+            $enabled = $this->normalizeSettingBoolean($settings['rate_limiting_enabled'] ?? null, true);
+            $limit = (int) ($settings['rate_limit_per_minute'] ?? 60);
+
+            if (!$enabled || $limit <= 0) {
+                return Limit::none();
+            }
+
+            return Limit::perMinute($limit)->by($request->user()?->id ?: $request->ip());
+        });
+
         Relation::morphMap([
             'driver' => \App\Models\Driver\Driver::class,
             'customer' => \App\Models\Customer::class,
@@ -58,5 +75,30 @@ class AppServiceProvider extends ServiceProvider
             // Non-fatal: ensure app still boots even if alias can't be registered
             \Log::warning('Failed to register middleware alias update.api.session: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Normalize boolean settings values.
+     */
+    protected function normalizeSettingBoolean($value, bool $default = false): bool
+    {
+        if ($value === null) {
+            return $default;
+        }
+
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if (is_numeric($value)) {
+            return (int) $value === 1;
+        }
+
+        $normalized = strtolower(trim((string) $value));
+        if ($normalized === '') {
+            return $default;
+        }
+
+        return in_array($normalized, ['1', 'true', 'yes', 'on', 'enabled'], true);
     }
 }

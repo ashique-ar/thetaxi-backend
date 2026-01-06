@@ -38,13 +38,113 @@
     <!-- Popup Modal CSS -->
     <link rel="stylesheet" href="{{ asset('assets/css/popup-modal.css?v=1.0') }}">
 
+    @php
+        $pageTitle = trim($__env->yieldContent('title'));
+        $siteName = $settings['site_name'] ?? 'TheTaxi - Your Reliable Taxi Service';
+        $titleTemplate = $settings['seo_title_template'] ?? '';
+        $computedTitle = $pageTitle !== '' ? $pageTitle : $siteName;
+        if ($pageTitle !== '' && $titleTemplate) {
+            $computedTitle = str_contains($titleTemplate, '{page_title}')
+                ? str_replace('{page_title}', $pageTitle, $titleTemplate)
+                : $titleTemplate;
+        }
+        $metaDescription = trim($settings['seo_meta_description'] ?? '');
+        $metaKeywords = trim($settings['seo_keywords'] ?? '');
+        $ogImage = $settings['seo_og_image'] ?? '';
+        $ogImageUrl = '';
+        if ($ogImage) {
+            $ogImageUrl = filter_var($ogImage, FILTER_VALIDATE_URL) ? $ogImage : s3_asset($ogImage);
+        }
+        $twitterCard = $settings['seo_twitter_card'] ?? 'summary';
+        $metaStack = trim($__env->yieldPushContent('meta'));
+    @endphp
+
     <!-- Title -->
-    <title>@yield('title', $settings['site_name'] ?? 'TheTaxi - Your Reliable Taxi Service')</title>
+    <title>{{ $computedTitle }}</title>
+    @if ($metaDescription !== '')
+        <meta name="description" content="{{ $metaDescription }}">
+    @endif
+    @if ($metaKeywords !== '')
+        <meta name="keywords" content="{{ $metaKeywords }}">
+    @endif
+    <meta property="og:title" content="{{ $computedTitle }}">
+    @if ($metaDescription !== '')
+        <meta property="og:description" content="{{ $metaDescription }}">
+    @endif
+    @if ($ogImageUrl !== '')
+        <meta property="og:image" content="{{ $ogImageUrl }}">
+    @endif
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="{{ $settings['site_name'] ?? config('app.name') }}">
+    <meta name="twitter:card" content="{{ $twitterCard }}">
+    <meta name="twitter:title" content="{{ $computedTitle }}">
+    @if ($metaDescription !== '')
+        <meta name="twitter:description" content="{{ $metaDescription }}">
+    @endif
+    @if ($ogImageUrl !== '')
+        <meta name="twitter:image" content="{{ $ogImageUrl }}">
+    @endif
     <link rel="icon"
         href="{{ isset($settings['favicon']) ? s3_asset($settings['favicon']) : asset('assets/img/favicon.ico') }}"
         type="image/gif" sizes="20x20">
 
-    @stack('meta')
+    {!! $metaStack !!}
+
+    @if (!empty($settings['google_tag_manager_id']))
+        <!-- Google Tag Manager -->
+        <script>
+            (function(w, d, s, l, i) {
+                w[l] = w[l] || [];
+                w[l].push({
+                    'gtm.start': new Date().getTime(),
+                    event: 'gtm.js'
+                });
+                var f = d.getElementsByTagName(s)[0],
+                    j = d.createElement(s),
+                    dl = l != 'dataLayer' ? '&l=' + l : '';
+                j.async = true;
+                j.src = 'https://www.googletagmanager.com/gtm.js?id=' + i + dl;
+                f.parentNode.insertBefore(j, f);
+            })(window, document, 'script', 'dataLayer', '{{ $settings['google_tag_manager_id'] }}');
+        </script>
+    @endif
+
+    @if (!empty($settings['google_analytics_id']))
+        <!-- Google Analytics -->
+        <script async src="https://www.googletagmanager.com/gtag/js?id={{ $settings['google_analytics_id'] }}"></script>
+        <script>
+            window.dataLayer = window.dataLayer || [];
+            function gtag() {
+                dataLayer.push(arguments);
+            }
+            gtag('js', new Date());
+            gtag('config', '{{ $settings['google_analytics_id'] }}');
+        </script>
+    @endif
+
+    @if (!empty($settings['facebook_pixel_id']))
+        <!-- Facebook Pixel -->
+        <script>
+            !function(f, b, e, v, n, t, s) {
+                if (f.fbq) return;
+                n = f.fbq = function() {
+                    n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments);
+                };
+                if (!f._fbq) f._fbq = n;
+                n.push = n;
+                n.loaded = true;
+                n.version = '2.0';
+                n.queue = [];
+                t = b.createElement(e);
+                t.async = true;
+                t.src = v;
+                s = b.getElementsByTagName(e)[0];
+                s.parentNode.insertBefore(t, s);
+            }(window, document, 'script', 'https://connect.facebook.net/en_US/fbevents.js');
+            fbq('init', '{{ $settings['facebook_pixel_id'] }}');
+            fbq('track', 'PageView');
+        </script>
+    @endif
     @stack('styles')
     <style>
         :root {
@@ -134,6 +234,13 @@
 </head>
 
 <body class="tt-magic-cursor">
+    @if (!empty($settings['google_tag_manager_id']))
+        <!-- Google Tag Manager (noscript) -->
+        <noscript>
+            <iframe src="https://www.googletagmanager.com/ns.html?id={{ $settings['google_tag_manager_id'] }}"
+                height="0" width="0" style="display:none;visibility:hidden"></iframe>
+        </noscript>
+    @endif
 
     <div id="magic-cursor">
         <div id="ball"></div>

@@ -33,9 +33,14 @@
                     $selectedCurrency = $cartData['currency'] ?? getSelectedCurrency();
 
                     // Fetch settings from database with updated defaults
-                    $taxPercentage = \App\Models\Website\WebsiteSetting::getValue('tax_percentage', 18);
-                    $serviceFeeSetting = \App\Models\Website\WebsiteSetting::getValue('service_fee_percentage', 0);
-                    $vatPercentage = \App\Models\Website\WebsiteSetting::getValue('vat_percentage', 0);
+                    $taxPercentage = \App\Models\Website\WebsiteSetting::getValue('tax_rate', null);
+                    if ($taxPercentage === null) {
+                        $taxPercentage = \App\Models\Website\WebsiteSetting::getValue('tax_percentage', 18);
+                    }
+                    $vatPercentage = \App\Models\Website\WebsiteSetting::getValue('vat_rate', null);
+                    if ($vatPercentage === null) {
+                        $vatPercentage = \App\Models\Website\WebsiteSetting::getValue('vat_percentage', 0);
+                    }
 
                     // Normalize for display (support 0.18 or 18 formats)
                     $taxPercentage = (float) $taxPercentage;
@@ -51,7 +56,6 @@
                     $currencySymbol = getCurrencySymbol();
                     $selectedCurrency = getSelectedCurrency();
                     $taxPercentage = 18;
-                    $serviceFeeSetting = 0;
                     $vatPercentage = 0;
 
                     // Normalize fallback labels
@@ -319,7 +323,7 @@
                                     @endif
                                     @if (($cartTotals['tax'] ?? 0) > 0)
                                         <li>
-                                            Gov. Tax ({{ $taxPercentageLabel }}%)
+                                            {{ $cartTotals['tax_label'] ?? 'Gov. Tax' }} ({{ $taxPercentageLabel }}%)
                                             <div class="order-info">
                                                 <p>Government Tax</p>
                                                 <span class="tax-amount">
@@ -330,7 +334,7 @@
                                     @endif
                                     @if ($vatPercentage > 0 && ($cartTotals['vat'] ?? 0) > 0)
                                         <li>
-                                            VAT ({{ $vatPercentageLabel }}%)
+                                            {{ $cartTotals['vat_label'] ?? 'VAT' }} ({{ $vatPercentageLabel }}%)
                                             <div class="order-info">
                                                 <p>Value Added Tax</p>
                                                 <span class="vat-amount">

@@ -39,12 +39,19 @@
         $discount = $totals['coupon_discount'] ?? 0;
         $total = $totals['total'] ?? 0;
 
+        $advancePercentage = $advancePercentage ?? 50;
+        $advancePaymentEnabled = $advancePaymentEnabled ?? true;
+
         // Fetch settings from database
         try {
-            $taxPercentage = \App\Models\Website\WebsiteSetting::getValue('tax_percentage', 18);
-            $serviceFeeSetting = \App\Models\Website\WebsiteSetting::getValue('service_fee_percentage', 0);
-            $vatPercentage = \App\Models\Website\WebsiteSetting::getValue('vat_percentage', 0);
-            $advancePercentage = \App\Models\Website\WebsiteSetting::getValue('advance_payment_percentage', 50);
+            $taxPercentage = \App\Models\Website\WebsiteSetting::getValue('tax_rate', null);
+            if ($taxPercentage === null) {
+                $taxPercentage = \App\Models\Website\WebsiteSetting::getValue('tax_percentage', 18);
+            }
+            $vatPercentage = \App\Models\Website\WebsiteSetting::getValue('vat_rate', null);
+            if ($vatPercentage === null) {
+                $vatPercentage = \App\Models\Website\WebsiteSetting::getValue('vat_percentage', 0);
+            }
 
             // Normalize for display (support 0.18 or 18 formats)
             $taxPercentage = (float) $taxPercentage;
@@ -56,9 +63,7 @@
         } catch (Exception $e) {
             \Log::error('Error fetching website settings: ' . $e->getMessage());
             $taxPercentage = 18;
-            $serviceFeeSetting = 0;
             $vatPercentage = 0;
-            $advancePercentage = 50;
 
             // Normalize fallback labels
             $taxPercentage = (float) $taxPercentage;
@@ -113,22 +118,23 @@
                                             </label>
                                         </div>
                                     </div>
-                                    <div class="col-md-4">
-                                        <div class="payment-option">
-                                            <input type="radio" name="payment_type" value="advance" id="payment_advance"
-                                                {{ $paymentType === 'advance' ? 'checked' : '' }} class="payment-radio">
-                                            <label for="payment_advance" class="payment-label">
-                                                <div class="payment-card">
-                                                    <i class="bi bi-credit-card text-warning"></i>
-                                                    <h6>Pay {{ config('booking.advance_payment.percentage', 50) }}% Advance
-                                                    </h6>
-                                                    <p class="mb-0">Pay remaining on pickup</p>
-                                                    <small class="text-muted">Now:
-                                                        {{ $currencySymbol }}{{ number_format($total * (config('booking.advance_payment.percentage', 50) / 100), 2) }}</small>
-                                                </div>
-                                            </label>
+                                    @if ($advancePaymentEnabled)
+                                        <div class="col-md-4">
+                                            <div class="payment-option">
+                                                <input type="radio" name="payment_type" value="advance" id="payment_advance"
+                                                    {{ $paymentType === 'advance' ? 'checked' : '' }} class="payment-radio">
+                                                <label for="payment_advance" class="payment-label">
+                                                    <div class="payment-card">
+                                                        <i class="bi bi-credit-card text-warning"></i>
+                                                        <h6>Pay {{ $advancePercentage }}% Advance</h6>
+                                                        <p class="mb-0">Pay remaining on pickup</p>
+                                                        <small class="text-muted">Now:
+                                                            {{ $currencySymbol }}{{ number_format($total * ($advancePercentage / 100), 2) }}</small>
+                                                    </div>
+                                                </label>
+                                            </div>
                                         </div>
-                                    </div>
+                                    @endif
                                     <div class="col-md-4">
                                         <div class="payment-option">
                                             <input type="radio" name="payment_type" value="quotation"
@@ -154,8 +160,8 @@
                         <div id="alert-content">
                             @switch($paymentType)
                                 @case('advance')
-                                    <h6><i class="bi bi-info-circle"></i> Advance Payment (50%)</h6>
-                                    <p class="mb-0">You are paying 50% advance. The remaining amount will be collected at the time
+                                    <h6><i class="bi bi-info-circle"></i> Advance Payment ({{ $advancePercentage }}%)</h6>
+                                    <p class="mb-0">You are paying {{ $advancePercentage }}% advance. The remaining amount will be collected at the time
                                         of vehicle pickup.</p>
                                 @break
 
@@ -547,8 +553,8 @@
                                                     @endif
                                                     @if ($tax > 0)
                                                         <li>
-                                                            Gov. Tax
-                                                            ({{ $taxPercentage }}%)
+                                                            {{ $taxLabel }}
+                                                            ({{ $taxPercentageLabel }}%)
                                                             <div class="order-info">
                                                                 <span>{{ $currencySymbol }}{{ number_format($tax, 2) }}</span>
                                                             </div>
@@ -557,7 +563,7 @@
                                                     @if ($vatPercentage > 0 && $vat > 0)
                                                         <li>
                                                             {{ $vatLabel }}
-                                                            ({{ $vatPercentage }}%)
+                                                            ({{ $vatPercentageLabel }}%)
                                                             <div class="order-info">
                                                                 <span>{{ $currencySymbol }}{{ number_format($vat, 2) }}</span>
                                                             </div>
@@ -685,7 +691,7 @@
                                                                 complete your payment.</p>
                                                             @if ($paymentType === 'advance')
                                                                 <small class="text-muted">* You are paying
-                                                                    {{ config('booking.advance_payment.percentage', 50) }}%
+                                                                    {{ $advancePercentage }}%
                                                                     advance. Remaining amount will be collected at
                                                                     check-in.</small>
                                                             @endif
@@ -697,7 +703,7 @@
                                                                 when you check-in to collect the vehicle.</p>
                                                             @if ($paymentType === 'advance')
                                                                 <small class="text-muted">* You need to pay
-                                                                    {{ config('booking.advance_payment.percentage', 50) }}%
+                                                                    {{ $advancePercentage }}%
                                                                     advance at check-in. Remaining after completing the
                                                                     rental.</small>
                                                             @else
@@ -1279,7 +1285,7 @@
             // Get PHP variables from blade
             const currencySymbol = '{{ $currencySymbol }}';
             const total = {{ $total }};
-            const advancePercentage = {{ config('booking.advance_payment.percentage', 50) }};
+            const advancePercentage = {{ $advancePercentage }};
 
             // Payment type selection handling
             $('input[name="payment_type"]').on('change', function() {

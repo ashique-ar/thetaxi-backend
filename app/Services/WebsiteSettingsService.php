@@ -380,6 +380,22 @@ class WebsiteSettingsService
             'contact_form_description',
             'contact_form_success_message',
             'contact_form_error_message',
+            'contact_form_name_label',
+            'contact_form_name_placeholder',
+            'contact_form_email_label',
+            'contact_form_email_placeholder',
+            'contact_form_phone_label',
+            'contact_form_phone_placeholder',
+            'contact_form_destination_label',
+            'contact_form_destination_placeholder',
+            'contact_form_destination_option_1',
+            'contact_form_destination_option_2',
+            'contact_form_destination_option_3',
+            'contact_form_destination_option_4',
+            'contact_form_message_label',
+            'contact_form_message_placeholder',
+            'contact_form_privacy_text',
+            'contact_form_submit_text',
 
             // Map & Location
             'contact_map_latitude',
@@ -415,6 +431,7 @@ class WebsiteSettingsService
     {
         $cacheKey = self::CACHE_PREFIX . $type;
         Cache::forget($cacheKey);
+        Cache::forget('global_settings_flattened');
     }
 
     /**
@@ -491,6 +508,7 @@ class WebsiteSettingsService
             'site_tagline',
             'company_name',
             'company_phone',
+            'company_whatsapp',
             'company_email',
             'company_address',
             'company_website',
@@ -616,6 +634,11 @@ class WebsiteSettingsService
     public function getHeaderSettings(): array
     {
         $types = [
+            // Canonical header labels used in blades
+            'header_help_label',
+            'header_cart_label',
+            'header_quick_search_label',
+            // Legacy keys (backward compatibility)
             'header_need_help_text',
             'header_cart_text',
             'header_search_placeholder',
@@ -636,6 +659,13 @@ class WebsiteSettingsService
     public function getFooterSettings(): array
     {
         $types = [
+            // Canonical footer labels used in blades
+            'footer_inquiry_heading',
+            'footer_inquiry_subheading',
+            'footer_email_label',
+            'footer_phone_label',
+            'footer_company_tagline',
+            // Legacy keys (backward compatibility)
             'footer_inquiry_title',
             'footer_inquiry_subtitle',
             'footer_whatsapp_label',

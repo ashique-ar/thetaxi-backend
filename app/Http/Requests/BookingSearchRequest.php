@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Services\WebsiteSettingsService;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
@@ -81,6 +82,49 @@ class BookingSearchRequest extends FormRequest
             default:
                 return $this->defaultRules();
         }
+    }
+
+    /**
+     * Apply booking configuration validations after base rules.
+     */
+    public function withValidator($validator): void
+    {
+        $validator->after(function ($validator) {
+            try {
+                $settings = app(WebsiteSettingsService::class)->getBookingSettings();
+            } catch (\Exception $e) {
+                Log::warning('Failed to load booking settings for validation', ['error' => $e->getMessage()]);
+                return;
+            }
+
+            $advanceHours = (int) ($settings['booking_advance_hours'] ?? 0);
+            $maxDays = (int) ($settings['booking_max_days'] ?? 0);
+
+            [$dateField, $startDateTime] = $this->resolveStartDateTime();
+            if (!$startDateTime) {
+                return;
+            }
+
+            if ($advanceHours > 0) {
+                $minimumDateTime = now()->addHours($advanceHours);
+                if ($startDateTime->lt($minimumDateTime)) {
+                    $validator->errors()->add(
+                        $dateField,
+                        "Bookings must be made at least {$advanceHours} hours in advance."
+                    );
+                }
+            }
+
+            if ($maxDays > 0) {
+                $latestAllowed = now()->addDays($maxDays)->endOfDay();
+                if ($startDateTime->gt($latestAllowed)) {
+                    $validator->errors()->add(
+                        $dateField,
+                        "Bookings can only be made up to {$maxDays} days in advance."
+                    );
+                }
+            }
+        });
     }
 
     /**
@@ -303,5 +347,47 @@ class BookingSearchRequest extends FormRequest
         } catch (\Exception $e) {
             return null;
         }
+    }
+
+    /**
+     * Resolve the primary booking start date/time field for validation.
+     */
+    protected function resolveStartDateTime(): array
+    {
+        $dateField = null;
+        $timeField = null;
+
+        if ($this->filled('pickup_date')) {
+            $dateField = 'pickup_date';
+            $timeField = $this->filled('pickup_time') ? 'pickup_time' : null;
+        } elseif ($this->filled('date')) {
+            $dateField = 'date';
+            $timeField = $this->filled('time') ? 'time' : null;
+        } elseif ($this->filled('from_date')) {
+            $dateField = 'from_date';
+            $timeField = $this->filled('from_time') ? 'from_time' : null;
+        }
+
+        if (!$dateField) {
+            return [null, null];
+        }
+
+        $date = $this->getCarbonDate($dateField);
+        if (!$date) {
+            return [$dateField, null];
+        }
+
+        if ($timeField) {
+            try {
+                $date->setTimeFromTimeString($this->input($timeField));
+            } catch (\Exception $e) {
+                Log::warning('Failed to parse booking time for validation', [
+                    'field' => $timeField,
+                    'value' => $this->input($timeField),
+                ]);
+            }
+        }
+
+        return [$dateField, $date];
     }
 }

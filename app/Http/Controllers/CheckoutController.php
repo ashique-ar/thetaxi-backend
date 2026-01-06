@@ -18,6 +18,7 @@ use App\Services\MailDispatchService;
 use App\Services\WebXPayService;
 use App\Services\CurrencyService;
 use App\Services\PromoCodeService;
+use App\Services\WebsiteSettingsService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -34,6 +35,7 @@ class CheckoutController extends Controller
     protected $currencyService;
     protected MailDispatchService $mailDispatchService;
     protected PromoCodeService $promoCodeService;
+    protected WebsiteSettingsService $websiteSettingsService;
 
     public function __construct(
         BookingFlowService $bookingFlowService,
@@ -42,7 +44,8 @@ class CheckoutController extends Controller
         WebXPayService $webxPayService,
         CurrencyService $currencyService,
         MailDispatchService $mailDispatchService,
-        PromoCodeService $promoCodeService
+        PromoCodeService $promoCodeService,
+        WebsiteSettingsService $websiteSettingsService
     ) {
         $this->bookingFlowService = $bookingFlowService;
         $this->customerService = $customerService;
@@ -51,6 +54,7 @@ class CheckoutController extends Controller
         $this->currencyService = $currencyService;
         $this->mailDispatchService = $mailDispatchService;
         $this->promoCodeService = $promoCodeService;
+        $this->websiteSettingsService = $websiteSettingsService;
     }
 
     /**
@@ -58,6 +62,13 @@ class CheckoutController extends Controller
      */
     public function index(Request $request)
     {
+        $bookingSettings = $this->websiteSettingsService->getBookingSettings();
+        $guestBookingEnabled = $this->normalizeBoolean($bookingSettings['guest_booking_enabled'] ?? null, true);
+        if (!$guestBookingEnabled && !Auth::check()) {
+            return redirect()->route('cart')
+                ->with('error', 'Guest booking is currently disabled. Please sign in to continue.');
+        }
+
         try {
             $cartModel = $this->cartService->getOrCreateCart();
             $cartData = $this->cartService->toArray($cartModel);
@@ -71,21 +82,34 @@ class CheckoutController extends Controller
             return redirect()->route('cart')->with('error', 'Error loading your cart.');
         }
 
+        $paymentSettings = $this->resolvePaymentSettings();
         $paymentType = $request->get('type', 'full');
 
         // Validate payment type
         if (!in_array($paymentType, ['full', 'advance', 'quotation'])) {
             $paymentType = 'full';
         }
+        if (!$paymentSettings['advance_payment_enabled'] && $paymentType === 'advance') {
+            $paymentType = 'full';
+        }
 
         // Get dynamic T&C based on service type and payment type
         $termsAndConditions = TermsAndCondition::getForCheckout('vehicle_rental', $paymentType);
 
-        // Get available payment methods from config
-        $paymentMethods = collect(config('booking.payment_methods', []))
-            ->filter(fn($method) => $method['enabled'] ?? false);
+        $paymentMethods = $this->getAvailablePaymentMethods($paymentSettings['webxpay_enabled']);
 
-        return view('checkout', compact('cart', 'cartData', 'paymentType', 'termsAndConditions', 'paymentMethods'));
+        $advancePaymentEnabled = $paymentSettings['advance_payment_enabled'];
+        $advancePercentage = $paymentSettings['advance_payment_percentage'];
+
+        return view('checkout', compact(
+            'cart',
+            'cartData',
+            'paymentType',
+            'termsAndConditions',
+            'paymentMethods',
+            'advancePaymentEnabled',
+            'advancePercentage'
+        ));
     }
 
     /**
@@ -93,9 +117,29 @@ class CheckoutController extends Controller
      */
     public function process(Request $request)
     {
+        $bookingSettings = $this->websiteSettingsService->getBookingSettings();
+        $guestBookingEnabled = $this->normalizeBoolean($bookingSettings['guest_booking_enabled'] ?? null, true);
+        if (!$guestBookingEnabled && !Auth::check()) {
+            return redirect()->route('cart')
+                ->with('error', 'Guest booking is currently disabled. Please sign in to continue.');
+        }
+
+        $paymentSettings = $this->resolvePaymentSettings();
+        $advancePaymentEnabled = $paymentSettings['advance_payment_enabled'];
+        $advancePercentage = $paymentSettings['advance_payment_percentage'];
+        $webxpayEnabled = $paymentSettings['webxpay_enabled'];
+        $allowedPaymentTypes = $advancePaymentEnabled ? ['full', 'advance', 'quotation'] : ['full', 'quotation'];
+
+        $allowedPaymentMethodKeys = $this->getAvailablePaymentMethods($webxpayEnabled)->keys()->all();
+        if (empty($allowedPaymentMethodKeys)) {
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'No payment methods are currently available. Please try again later.');
+        }
+
         // Define validation rules
         $rules = [
-            'payment_type' => 'required|in:full,advance,quotation',
+            'payment_type' => 'required|in:' . implode(',', $allowedPaymentTypes),
             'first_name' => 'required|string|max:255',
             'last_name' => 'required|string|max:255',
             'phone' => 'required|string|min:5|max:20',
@@ -120,7 +164,7 @@ class CheckoutController extends Controller
 
         // Add payment method validation only if not quotation
         if ($request->input('payment_type') !== 'quotation') {
-            $rules['payment_method'] = 'required|in:online,offline';
+            $rules['payment_method'] = 'required|in:' . implode(',', $allowedPaymentMethodKeys);
         }
 
         // Custom validation messages
@@ -203,13 +247,6 @@ class CheckoutController extends Controller
             // All amounts are in LKR (base currency)
             // Calculate payment amount based on type
             // Fetch advance percentage from database
-            try {
-                $advancePercentage = (int)WebsiteSetting::getValue('advance_payment_percentage', 50);
-            } catch (\Exception $e) {
-                Log::warning('Failed to fetch advance_payment_percentage from database', ['error' => $e->getMessage()]);
-                $advancePercentage = config('booking.advance_payment.percentage', 50);
-            }
-            
             $paymentAmount = match ($validated['payment_type']) {
                 'advance' => $total * ($advancePercentage / 100),
                 'quotation' => 0,
@@ -425,8 +462,7 @@ class CheckoutController extends Controller
     protected function processOnlinePayment(Booking $booking, float $amount)
     {
         if (!$this->webxPayService->isEnabled()) {
-            // If WebXPay is not enabled, mark as pending for manual processing
-            return redirect()->back()->with('error', 'Online payment is currently unavailable. Please try again later or choose offline payment.');
+            // If WebXPay is not enabled, fall back to offline payment flow
             return $this->processOfflinePayment($booking, 'online');
         }
 
@@ -493,7 +529,6 @@ class CheckoutController extends Controller
      */
     protected function processOfflinePayment(Booking $booking, string $method)
     {
-        return redirect()->back()->with('error', 'Online payment is currently unavailable. Please try again later or choose offline payment.');
         // For offline payments (pay on check-in), booking is confirmed but payment pending
         $booking->update([
             'status' => config('booking.status.confirmed'),
@@ -963,5 +998,95 @@ class CheckoutController extends Controller
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * Resolve payment-related settings with defaults.
+     */
+    protected function resolvePaymentSettings(): array
+    {
+        $settings = $this->websiteSettingsService->getPaymentSettings();
+
+        return [
+            'webxpay_enabled' => $this->normalizeBoolean(
+                $settings['webxpay_enabled'] ?? null,
+                (bool) config('booking.webxpay.enabled', false)
+            ),
+            'advance_payment_enabled' => $this->normalizeBoolean(
+                $settings['advance_payment_enabled'] ?? null,
+                (bool) config('booking.advance_payment.enabled', true)
+            ),
+            'advance_payment_percentage' => $this->normalizeDisplayPercentage(
+                $settings['advance_payment_percentage'] ?? config('booking.advance_payment.percentage', 50),
+                50
+            ),
+        ];
+    }
+
+    /**
+     * Return payment methods filtered by current settings.
+     */
+    protected function getAvailablePaymentMethods(bool $webxpayEnabled)
+    {
+        return collect(config('booking.payment_methods', []))
+            ->filter(function ($method, $key) use ($webxpayEnabled) {
+                $enabled = (bool) ($method['enabled'] ?? false);
+
+                if ($key === 'online') {
+                    return $enabled && $webxpayEnabled;
+                }
+
+                return $enabled;
+            });
+    }
+
+    /**
+     * Normalize a boolean value coming from settings.
+     */
+    protected function normalizeBoolean($value, bool $default = false): bool
+    {
+        if ($value === null) {
+            return $default;
+        }
+
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if (is_numeric($value)) {
+            return (int) $value === 1;
+        }
+
+        $normalized = strtolower(trim((string) $value));
+        if ($normalized === '') {
+            return $default;
+        }
+
+        return in_array($normalized, ['1', 'true', 'yes', 'on', 'enabled'], true);
+    }
+
+    /**
+     * Normalize percentage values to 0-100 for display and calculations.
+     */
+    protected function normalizeDisplayPercentage($value, float $default = 0): float
+    {
+        if ($value === null || $value === '') {
+            return $default;
+        }
+
+        $normalized = is_string($value) ? str_replace('%', '', $value) : $value;
+        $amount = (float) $normalized;
+        if ($amount > 0 && $amount <= 1) {
+            $amount *= 100;
+        }
+
+        if ($amount < 0) {
+            $amount = 0;
+        }
+        if ($amount > 100) {
+            $amount = 100;
+        }
+
+        return $amount;
     }
 }

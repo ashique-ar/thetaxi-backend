@@ -3,6 +3,7 @@
 namespace App\Models\Booking;
 
 use App\Models\BaseModel;
+use App\Models\Website\WebsiteSetting;
 use App\Models\Service\ServiceType;
 use App\Models\Vehicle\VehicleAssignment;
 use App\Enums\BookingLifecycleStatus;
@@ -701,8 +702,66 @@ class Booking extends BaseModel
      */
     public function canBeCancelled(): bool
     {
-        return in_array($this->status, ['pending', 'pending_approval', 'confirmed'])
-            && $this->from_date->isFuture();
+        if (!in_array($this->status, ['pending', 'pending_approval', 'confirmed'])) {
+            return false;
+        }
+
+        $startDateTime = $this->from_date?->copy();
+        if (!$startDateTime) {
+            return false;
+        }
+
+        if ($this->from_time) {
+            try {
+                $startDateTime->setTimeFromTimeString($this->from_time);
+            } catch (\Exception $e) {
+                // If time parsing fails, fall back to date-only comparison.
+            }
+        }
+
+        if (!$startDateTime->isFuture()) {
+            return false;
+        }
+
+        $cancellationAllowed = $this->normalizeSettingBoolean(
+            WebsiteSetting::getValue('cancellation_allowed', null),
+            true
+        );
+        if (!$cancellationAllowed) {
+            return false;
+        }
+
+        $cancellationHours = (int) (WebsiteSetting::getValue('cancellation_hours', 0) ?? 0);
+        if ($cancellationHours > 0) {
+            return now()->addHours($cancellationHours)->lte($startDateTime);
+        }
+
+        return true;
+    }
+
+    /**
+     * Normalize boolean values stored in settings.
+     */
+    protected function normalizeSettingBoolean($value, bool $default = false): bool
+    {
+        if ($value === null) {
+            return $default;
+        }
+
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if (is_numeric($value)) {
+            return (int) $value === 1;
+        }
+
+        $normalized = strtolower(trim((string) $value));
+        if ($normalized === '') {
+            return $default;
+        }
+
+        return in_array($normalized, ['1', 'true', 'yes', 'on', 'enabled'], true);
     }
 
     /**
