@@ -123,6 +123,7 @@ class CheckoutController extends Controller
     public function process(Request $request)
     {
         $bookingSettings = $this->websiteSettingsService->getBookingSettings();
+        $bookingBaseCurrency = $this->resolveBookingBaseCurrency($bookingSettings);
         $guestBookingEnabled = $this->normalizeBoolean($bookingSettings['guest_booking_enabled'] ?? null, true);
         if (!$guestBookingEnabled && !Auth::check()) {
             return redirect()->route('cart')
