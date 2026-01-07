@@ -495,18 +495,18 @@ class CheckoutController extends Controller
 
                 // Store booking ID and RSA encrypted payment data in session
                 session()->put('pending_booking_id', $booking->id);
-                  session()->put('webxpay_payment_data', [
-                      'payment_url' => $result['payment_url'],
-                      'order_id' => $result['order_id'],
-                      'encrypted_payment' => $result['encrypted_payment'],
-                      'secret_key' => $result['secret_key'],
-                      'custom_fields' => $result['custom_fields'],
-                      'enc_method' => $result['enc_method'],
-                      'customer_data' => $result['customer_data'],
-                      'return_url' => $result['return_url'] ?? null,
-                      'cancel_url' => $result['cancel_url'] ?? null,
-                      'notify_url' => $result['notify_url'] ?? null,
-                  ]);
+                session()->put('webxpay_payment_data', [
+                    'payment_url' => $result['payment_url'],
+                    'order_id' => $result['order_id'],
+                    'encrypted_payment' => $result['encrypted_payment'],
+                    'secret_key' => $result['secret_key'],
+                    'custom_fields' => $result['custom_fields'],
+                    'enc_method' => $result['enc_method'],
+                    'customer_data' => $result['customer_data'],
+                    'return_url' => $result['return_url'] ?? null,
+                    'cancel_url' => $result['cancel_url'] ?? null,
+                    'notify_url' => $result['notify_url'] ?? null,
+                ]);
 
                 $this->sendPaymentInitiatedEmail($booking, $amount);
 
@@ -575,10 +575,10 @@ class CheckoutController extends Controller
 
             // Mark cart as checked out and record promo code usage
             $dbCart = $this->cartService->getOrCreateCart();
-            
+
             // Record promo code usage if a promo code was applied
             $this->recordPromoCodeUsageFromCart($dbCart, $booking);
-            
+
             $this->cartService->markAsCheckedOut($dbCart);
 
             // Send confirmation email to customer
@@ -678,12 +678,12 @@ class CheckoutController extends Controller
 
                     // Mark cart as checked out and record promo code usage
                     $dbCart = $this->cartService->getOrCreateCart();
-                    
+
                     // Record promo code usage if a promo code was applied
                     if (!$wasPaid) {
                         $this->recordPromoCodeUsageFromCart($dbCart, $booking);
                     }
-                    
+
                     $this->cartService->markAsCheckedOut($dbCart);
 
                     // Send confirmation email
@@ -743,12 +743,12 @@ class CheckoutController extends Controller
 
                 // Mark cart as checked out and record promo code usage
                 $dbCart = $this->cartService->getOrCreateCart();
-                
+
                 // Record promo code usage if a promo code was applied
                 if (!$wasPaid) {
                     $this->recordPromoCodeUsageFromCart($dbCart, $booking);
                 }
-                
+
                 $this->cartService->markAsCheckedOut($dbCart);
 
                 // Send confirmation email
@@ -978,7 +978,7 @@ class CheckoutController extends Controller
         try {
             // Get the promo code
             $promoCode = $this->promoCodeService->getByCode($cart->coupon_code);
-            
+
             if (!$promoCode) {
                 Log::warning('Promo code not found when recording usage', [
                     'coupon_code' => $cart->coupon_code,
@@ -989,8 +989,8 @@ class CheckoutController extends Controller
 
             // Get order amount from cart totals (subtotal before discount)
             $totals = $cart->totals ?? [];
-            $orderAmount = (float)($totals['subtotal'] ?? 0);
-            $discountAmount = (float)($cart->coupon_discount ?? 0);
+            $orderAmount = (float) ($totals['subtotal'] ?? 0);
+            $discountAmount = (float) ($cart->coupon_discount ?? 0);
 
             // Get customer ID from booking
             $customerId = $booking->customer_id;
