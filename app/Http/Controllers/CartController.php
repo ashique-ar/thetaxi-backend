@@ -129,10 +129,10 @@ class CartController extends Controller
                 'group_name' => 'sometimes|string',
                 'pickup_date' => 'sometimes|date',
                 'from_date' => 'sometimes|date',
-                'return_date' => 'sometimes|date',
-                'to_date' => 'sometimes|date',
+                'return_date' => 'nullable|date',
+                'to_date' => 'nullable|date',
                 'from_time' => 'sometimes|string',
-                'to_time' => 'sometimes|string',
+                'to_time' => 'nullable|string',
                 // Allow pickup/dropoff to be nullable or any shape (frontend may send empty string or array with address/lat/lng)
                 'pickup_location' => 'sometimes|nullable',
                 'pickup_lat' => 'sometimes|nullable|numeric',
