@@ -8,6 +8,7 @@ use App\Services\CartService;
 use App\Services\BookingFlowService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Validator;
 use Carbon\Carbon;
 
 class CartController extends Controller
@@ -121,24 +122,38 @@ class CartController extends Controller
     public function add(Request $request)
     {
         try {
+            $input = $request->all();
+            $input['pickup_date'] = $this->normalizeDateInput($input['pickup_date'] ?? null);
+            $input['from_date'] = $this->normalizeDateInput($input['from_date'] ?? null);
+            $input['return_date'] = $this->normalizeDateInput($input['return_date'] ?? null);
+            $input['to_date'] = $this->normalizeDateInput($input['to_date'] ?? null);
+            $input['dropoff_date'] = $this->normalizeDateInput($input['dropoff_date'] ?? null);
+            $input['date'] = $this->normalizeDateInput($input['date'] ?? null);
+            $input['from_time'] = $this->normalizeTimeInput($input['from_time'] ?? null);
+            $input['to_time'] = $this->normalizeTimeInput($input['to_time'] ?? null);
+            $input['pickup_time'] = $this->normalizeTimeInput($input['pickup_time'] ?? null);
+            $input['dropoff_time'] = $this->normalizeTimeInput($input['dropoff_time'] ?? null);
+            $input['return_time'] = $this->normalizeTimeInput($input['return_time'] ?? null);
+            $input['time'] = $this->normalizeTimeInput($input['time'] ?? null);
+
             // Allow flexible field mapping from frontend
-            $validated = $request->validate([
+            $validator = Validator::make($input, [
                 'vehicle_group_id' => 'sometimes|string',
                 'group_id' => 'sometimes|string',
                 'name' => 'sometimes|string',
                 'group_name' => 'sometimes|string',
-                'pickup_date' => 'sometimes|date',
-                'from_date' => 'sometimes|date',
-                'return_date' => 'sometimes|date',
-                'to_date' => 'sometimes|date',
-                'dropoff_date' => 'sometimes|date',
-                'date' => 'sometimes|date',
-                'from_time' => 'sometimes|string',
-                'to_time' => 'sometimes|string',
-                'pickup_time' => 'sometimes|string',
-                'dropoff_time' => 'sometimes|string',
-                'return_time' => 'sometimes|string',
-                'time' => 'sometimes|string',
+                'pickup_date' => 'sometimes|nullable|date',
+                'from_date' => 'sometimes|nullable|date',
+                'return_date' => 'sometimes|nullable|date',
+                'to_date' => 'sometimes|nullable|date',
+                'dropoff_date' => 'sometimes|nullable|date',
+                'date' => 'sometimes|nullable|date',
+                'from_time' => 'sometimes|nullable|string',
+                'to_time' => 'sometimes|nullable|string',
+                'pickup_time' => 'sometimes|nullable|string',
+                'dropoff_time' => 'sometimes|nullable|string',
+                'return_time' => 'sometimes|nullable|string',
+                'time' => 'sometimes|nullable|string',
                 'pickup' => 'sometimes|string',
                 'dropoff' => 'sometimes|string',
                 // Allow pickup/dropoff to be nullable or any shape (frontend may send empty string or array with address/lat/lng)
@@ -151,6 +166,7 @@ class CartController extends Controller
                 'search_data' => 'sometimes|array',
                 'service_type' => 'sometimes|string'
             ]);
+            $validated = $validator->validate();
 
             // Map frontend field names to standard names
             $vehicleId = $validated['vehicle_group_id'] ?? $validated['group_id'] ?? null;
@@ -171,6 +187,10 @@ class CartController extends Controller
                 ?? $validated['dropoff_time']
                 ?? $validated['return_time']
                 ?? ($validated['search_data']['to_time'] ?? $validated['search_data']['dropoff_time'] ?? $validated['search_data']['return_time'] ?? $fromTime);
+            $pickupDate = $this->normalizeDateInput($pickupDate);
+            $returnDate = $this->normalizeDateInput($returnDate);
+            $fromTime = $this->normalizeTimeInput($fromTime) ?? '10:00';
+            $toTime = $this->normalizeTimeInput($toTime) ?? $fromTime;
 
             // Extract location data with coordinates
             $pickupLocation = $validated['pickup_location']
@@ -1144,5 +1164,47 @@ class CartController extends Controller
                 'message' => 'Error removing promo code: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    private function normalizeDateInput($value): ?string
+    {
+        if (is_array($value)) {
+            $value = $value['date'] ?? $value['value'] ?? reset($value);
+        }
+
+        if ($value === null) {
+            return null;
+        }
+
+        $value = trim((string) $value);
+
+        if ($value === '') {
+            return null;
+        }
+
+        if (preg_match('/^\d{2}\/\d{2}\/\d{4}$/', $value)) {
+            try {
+                return Carbon::createFromFormat('d/m/Y', $value)->format('Y-m-d');
+            } catch (\Exception $e) {
+                return null;
+            }
+        }
+
+        return $value;
+    }
+
+    private function normalizeTimeInput($value): ?string
+    {
+        if (is_array($value)) {
+            $value = $value['time'] ?? $value['value'] ?? reset($value);
+        }
+
+        if ($value === null) {
+            return null;
+        }
+
+        $value = trim((string) $value);
+
+        return $value === '' ? null : $value;
     }
 }
