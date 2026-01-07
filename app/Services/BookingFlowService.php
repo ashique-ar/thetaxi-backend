@@ -52,6 +52,9 @@ class BookingFlowService
     ) {
 
         $vehicleAvailabilityConstraint = function ($query) use ($fromDate, $toDate, $excludeBookingId) {
+            // Filter for active vehicles only
+            $query->where('is_active', true);
+            
             $query->when($excludeBookingId, function ($q) use ($fromDate, $toDate, $excludeBookingId) {
                 // Edit mode: ignore current booking
                 $q->whereNotExists(function ($subQuery) use ($fromDate, $toDate, $excludeBookingId) {
