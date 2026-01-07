@@ -26,6 +26,14 @@ class UpdateVehicleGroupRequest extends FormRequest
             'specs' => ['sometimes', 'nullable', 'array'],
             'thumbnail' => ['sometimes', 'nullable', 'array'],
             'images' => ['sometimes', 'nullable', 'array'],
+            'is_active' => ['sometimes', 'boolean'],
+            'is_featured' => ['sometimes', 'boolean'],
+            'is_inquiry_only' => ['sometimes', 'boolean'],
+            'force_quotation_request' => ['sometimes', 'boolean'],
+            'passengers_count' => ['sometimes', 'nullable', 'integer', 'min:1'],
+            'hand_luggages' => ['sometimes', 'nullable', 'integer', 'min:0'],
+            'air_conditioning' => ['sometimes', 'boolean'],
+            'refundable_deposit' => ['sometimes', 'nullable', 'numeric', 'min:0'],
         ];
     }
 }
