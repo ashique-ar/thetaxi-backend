@@ -129,10 +129,18 @@ class CartController extends Controller
                 'group_name' => 'sometimes|string',
                 'pickup_date' => 'sometimes|date',
                 'from_date' => 'sometimes|date',
-                'return_date' => 'nullable|date',
-                'to_date' => 'nullable|date',
+                'return_date' => 'sometimes|date',
+                'to_date' => 'sometimes|date',
+                'dropoff_date' => 'sometimes|date',
+                'date' => 'sometimes|date',
                 'from_time' => 'sometimes|string',
-                'to_time' => 'nullable|string',
+                'to_time' => 'sometimes|string',
+                'pickup_time' => 'sometimes|string',
+                'dropoff_time' => 'sometimes|string',
+                'return_time' => 'sometimes|string',
+                'time' => 'sometimes|string',
+                'pickup' => 'sometimes|string',
+                'dropoff' => 'sometimes|string',
                 // Allow pickup/dropoff to be nullable or any shape (frontend may send empty string or array with address/lat/lng)
                 'pickup_location' => 'sometimes|nullable',
                 'pickup_lat' => 'sometimes|nullable|numeric',
@@ -147,17 +155,33 @@ class CartController extends Controller
             // Map frontend field names to standard names
             $vehicleId = $validated['vehicle_group_id'] ?? $validated['group_id'] ?? null;
             $name = $validated['name'] ?? $validated['group_name'] ?? 'Vehicle Rental';
-            $pickupDate = $validated['pickup_date'] ?? $validated['from_date'] ?? null;
-            $returnDate = $validated['return_date'] ?? $validated['to_date'] ?? null;
-            $fromTime = $validated['from_time'] ?? ($validated['search_data']['from_time'] ?? '10:00');
-            $toTime = $validated['to_time'] ?? ($validated['search_data']['to_time'] ?? '10:00');
+            $pickupDate = $validated['pickup_date']
+                ?? $validated['from_date']
+                ?? $validated['date']
+                ?? ($validated['search_data']['pickup_date'] ?? $validated['search_data']['from_date'] ?? $validated['search_data']['date'] ?? null);
+            $returnDate = $validated['return_date']
+                ?? $validated['to_date']
+                ?? $validated['dropoff_date']
+                ?? ($validated['search_data']['return_date'] ?? $validated['search_data']['to_date'] ?? $validated['search_data']['dropoff_date'] ?? null);
+            $fromTime = $validated['from_time']
+                ?? $validated['pickup_time']
+                ?? $validated['time']
+                ?? ($validated['search_data']['from_time'] ?? $validated['search_data']['pickup_time'] ?? $validated['search_data']['time'] ?? '10:00');
+            $toTime = $validated['to_time']
+                ?? $validated['dropoff_time']
+                ?? $validated['return_time']
+                ?? ($validated['search_data']['to_time'] ?? $validated['search_data']['dropoff_time'] ?? $validated['search_data']['return_time'] ?? $fromTime);
 
             // Extract location data with coordinates
-            $pickupLocation = $validated['pickup_location'] ?? ($validated['search_data']['pickup_location'] ?? '');
+            $pickupLocation = $validated['pickup_location']
+                ?? $validated['pickup']
+                ?? ($validated['search_data']['pickup_location'] ?? $validated['search_data']['pickup'] ?? '');
             $pickupLat = $validated['pickup_lat'] ?? ($validated['search_data']['pickup_lat'] ?? null);
             $pickupLng = $validated['pickup_lng'] ?? ($validated['search_data']['pickup_lng'] ?? null);
 
-            $returnLocation = $validated['dropoff_location'] ?? ($validated['search_data']['dropoff_location'] ?? $pickupLocation);
+            $returnLocation = $validated['dropoff_location']
+                ?? $validated['dropoff']
+                ?? ($validated['search_data']['dropoff_location'] ?? $validated['search_data']['dropoff'] ?? $pickupLocation);
             $returnLat = $validated['dropoff_lat'] ?? ($validated['search_data']['dropoff_lat'] ?? $pickupLat);
             $returnLng = $validated['dropoff_lng'] ?? ($validated['search_data']['dropoff_lng'] ?? $pickupLng);
 
@@ -175,18 +199,32 @@ class CartController extends Controller
 
             $serviceType = $validated['service_type'] ?? ($validated['search_data']['service_type'] ?? 'airport_transfers');
             $searchData = $validated['search_data'] ?? [];
+            $needReturn = $searchData['need_return'] ?? $request->input('need_return');
 
             // Validate required fields
-            if (!$vehicleId || !$pickupDate || !$returnDate) {
+            if (!$vehicleId || !$pickupDate) {
                 if ($request->ajax()) {
                     return response()->json([
                         'success' => false,
-                        'message' => 'Vehicle ID, pickup date, and return date are required'
+                        'message' => 'Vehicle ID and pickup date are required'
                     ], 400);
                 }
                 return redirect()->back()->with('error', 'Missing required booking information.');
             }
 
+            if ($needReturn && !$returnDate) {
+                if ($request->ajax()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Return date is required for this booking'
+                    ], 400);
+                }
+                return redirect()->back()->with('error', 'Return date is required for this booking.');
+            }
+
+            if (!$returnDate) {
+                $returnDate = $pickupDate;
+            }
 
             // Get vehicle details if it exists
             $vehicleGroup = null;
