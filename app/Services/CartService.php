@@ -371,7 +371,7 @@ class CartService
             $vatBase = max(0, $subtotal - $couponDiscount) + $addonCharges + $extraKmCharges;
 
             // Add service fee to VAT base if configured
-            if (config('booking.vat.applies_to_service_fee', true)) {
+            if ($this->isVatAppliedToServiceFee()) {
                 $vatBase += $serviceFee;
             }
 
@@ -387,9 +387,9 @@ class CartService
             'addon_charges' => round($addonCharges, 2),
             'extra_km_charges' => round($extraKmCharges, 2),
             'tax' => round($tax, 2),
-            'tax_label' => config('booking.tax.label', 'NBT'),
+            'tax_label' => $this->getSettingValue('tax_label', config('booking.tax.label', 'NBT')),
             'vat' => round($vat, 2),
-            'vat_label' => config('booking.vat.label', 'VAT'),
+            'vat_label' => $this->getSettingValue('vat_label', config('booking.vat.label', 'VAT')),
             'coupon_discount' => round($couponDiscount, 2),
             'total' => round($total, 2)
         ];
@@ -419,7 +419,7 @@ class CartService
             return 0;
         }
 
-        $type = $this->getSettingValue('service_fee_type', null);
+        $type = $this->getSettingValue('service_fee_type', config('booking.service_fee.type', null));
         if (!$type) {
             $legacyPercentage = $this->getSettingValue('service_fee_percentage', null);
             $type = $legacyPercentage !== null ? 'percentage' : 'fixed';
@@ -430,8 +430,10 @@ class CartService
             config('booking.service_fee.amount', 0),
             ['service_fee_percentage']
         );
-        $minAmount = config('booking.service_fee.min_amount', 0);
-        $maxAmount = config('booking.service_fee.max_amount', null);
+        $minAmount = $this->getSettingValue('service_fee_min_amount', config('booking.service_fee.min_amount', 0));
+        $maxAmount = $this->getSettingValue('service_fee_max_amount', config('booking.service_fee.max_amount', null));
+        $minAmount = ($minAmount !== null && $minAmount !== '') ? (float) $minAmount : 0;
+        $maxAmount = ($maxAmount !== null && $maxAmount !== '') ? (float) $maxAmount : null;
 
         if ($type === 'percentage') {
             $fee = $subtotal * $this->normalizePercentage($amount);
@@ -860,7 +862,7 @@ class CartService
             $vatRate = $this->getVatPercentage();
             $vatBase = max(0, $subtotal - $couponDiscount) + $addonCharges + $extraKmCharges;
 
-            if (config('booking.vat.applies_to_service_fee', true)) {
+            if ($this->isVatAppliedToServiceFee()) {
                 $vatBase += $serviceFee;
             }
 
@@ -874,9 +876,9 @@ class CartService
             'addon_charges' => round($addonCharges, 2),
             'service_fee' => round($serviceFee, 2),
             'tax' => round($tax, 2),
-            'tax_label' => config('booking.tax.label', 'NBT'),
+            'tax_label' => $this->getSettingValue('tax_label', config('booking.tax.label', 'NBT')),
             'vat' => round($vat, 2),
-            'vat_label' => config('booking.vat.label', 'VAT'),
+            'vat_label' => $this->getSettingValue('vat_label', config('booking.vat.label', 'VAT')),
             'coupon_discount' => round($couponDiscount, 2),
             'total' => round($total, 2)
         ];
@@ -1043,6 +1045,15 @@ class CartService
     {
         $settingValue = $this->getSettingValue('service_fee_enabled', null);
         return $this->normalizeBoolean($settingValue, (bool) config('booking.service_fee.enabled', true));
+    }
+
+    /**
+     * Determine if VAT should apply to service fee.
+     */
+    protected function isVatAppliedToServiceFee(): bool
+    {
+        $settingValue = $this->getSettingValue('vat_applies_to_service_fee', null);
+        return $this->normalizeBoolean($settingValue, (bool) config('booking.vat.applies_to_service_fee', true));
     }
 
     /**

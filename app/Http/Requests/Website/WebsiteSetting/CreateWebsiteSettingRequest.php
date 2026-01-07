@@ -12,7 +12,7 @@ class CreateWebsiteSettingRequest extends FormRequest
     {
         return [
             'type'  => ['required','string','max:255'],
-            'value' => ['nullable','string'],
+            'value' => ['nullable'],
         ];
     }
 }

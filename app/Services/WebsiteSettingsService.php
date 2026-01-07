@@ -686,15 +686,36 @@ class WebsiteSettingsService
     {
         $types = [
             'payment_methods_enabled',
+            'payment_online_enabled',
+            'payment_offline_enabled',
             'webxpay_enabled',
+            'webxpay_merchant_secret',
+            'webxpay_public_key',
+            'webxpay_api_url',
+            'webxpay_api_username',
+            'webxpay_api_password',
+            'webxpay_checkout_url',
+            'webxpay_return_url',
+            'webxpay_cancel_url',
+            'webxpay_notify_url',
+            'webxpay_currency',
             'advance_payment_enabled',
             'advance_payment_percentage',
+            'advance_payment_min_amount',
             'service_fee_enabled',
+            'service_fee_type',
             'service_fee_amount',
+            'service_fee_min_amount',
+            'service_fee_max_amount',
             'tax_enabled',
             'tax_rate',
+            'tax_label',
+            'tax_description',
             'vat_enabled',
-            'vat_rate'
+            'vat_rate',
+            'vat_label',
+            'vat_description',
+            'vat_applies_to_service_fee'
         ];
 
         return $this->getMultiple($types);
@@ -746,7 +767,8 @@ class WebsiteSettingsService
             'cancellation_allowed',
             'cancellation_hours',
             'auto_dispatch_enabled',
-            'guest_booking_enabled'
+            'guest_booking_enabled',
+            'booking_base_currency'
         ];
 
         return $this->getMultiple($types);

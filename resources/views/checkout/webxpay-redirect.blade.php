@@ -89,6 +89,18 @@
             
             {{-- Encryption method --}}
             <input type="hidden" name="enc_method" value="{{ $enc_method }}">
+
+            @if (!empty($return_url))
+                <input type="hidden" name="return_url" value="{{ $return_url }}">
+            @endif
+
+            @if (!empty($cancel_url))
+                <input type="hidden" name="cancel_url" value="{{ $cancel_url }}">
+            @endif
+
+            @if (!empty($notify_url))
+                <input type="hidden" name="notify_url" value="{{ $notify_url }}">
+            @endif
             
             <noscript>
                 <button type="submit" style="

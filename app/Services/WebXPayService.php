@@ -20,19 +20,25 @@ class WebXPayService
     protected bool $enabled;
     protected ?string $apiUsername;
     protected ?string $apiPassword;
+    protected ?string $returnUrl;
+    protected ?string $cancelUrl;
+    protected ?string $notifyUrl;
     protected ?string $jwtToken = null;
 
     public function __construct()
     {
-        $this->secretKey = config('booking.webxpay.merchant_secret');
-        $this->publicKey = config('booking.webxpay.public_key');
-        $this->apiUrl = config('booking.webxpay.api_url');
-        $this->checkoutUrl = config('booking.webxpay.checkout_url');
-        $this->currency = config('booking.webxpay.currency', 'LKR');
-        $settingEnabled = WebsiteSetting::getValue('webxpay_enabled', null);
-        $this->enabled = $this->normalizeBoolean($settingEnabled, config('booking.webxpay.enabled', false));
-        $this->apiUsername = config('booking.webxpay.api_username');
-        $this->apiPassword = config('booking.webxpay.api_password');
+        $this->secretKey = $this->getSettingValue('webxpay_merchant_secret', config('booking.webxpay.merchant_secret'));
+        $this->publicKey = $this->getSettingValue('webxpay_public_key', config('booking.webxpay.public_key'));
+        $this->apiUrl = $this->getSettingValue('webxpay_api_url', config('booking.webxpay.api_url'));
+        $this->checkoutUrl = $this->getSettingValue('webxpay_checkout_url', config('booking.webxpay.checkout_url'));
+        $this->currency = $this->getSettingValue('webxpay_currency', config('booking.webxpay.currency', 'LKR'));
+        $settingEnabled = $this->getSettingValue('webxpay_enabled', null);
+        $this->enabled = $this->normalizeBoolean($settingEnabled, (bool) config('booking.webxpay.enabled', false));
+        $this->apiUsername = $this->getSettingValue('webxpay_api_username', config('booking.webxpay.api_username'));
+        $this->apiPassword = $this->getSettingValue('webxpay_api_password', config('booking.webxpay.api_password'));
+        $this->returnUrl = $this->getSettingValue('webxpay_return_url', config('booking.webxpay.return_url'));
+        $this->cancelUrl = $this->getSettingValue('webxpay_cancel_url', config('booking.webxpay.cancel_url'));
+        $this->notifyUrl = $this->getSettingValue('webxpay_notify_url', config('booking.webxpay.notify_url'));
     }
 
     /**
@@ -159,6 +165,9 @@ class WebXPayService
                 'custom_fields' => $encryptedCustomFields,
                 'enc_method' => 'JCs3J+6oSz4V0LgE0zi/Bg==', // Encryption method indicator (from WebXPay sample)
                 'customer_data' => $customerData,
+                'return_url' => $this->returnUrl,
+                'cancel_url' => $this->cancelUrl,
+                'notify_url' => $this->notifyUrl,
                 'method' => 'rsa_redirect' // Indicates RSA form redirect
             ];
 
@@ -225,6 +234,16 @@ class WebXPayService
         }
 
         return in_array($normalized, ['1', 'true', 'yes', 'on', 'enabled'], true);
+    }
+
+    protected function getSettingValue(string $key, $default = null)
+    {
+        $value = WebsiteSetting::getValue($key, null);
+        if ($value !== null && $value !== '') {
+            return $value;
+        }
+
+        return $default;
     }
 
     /**

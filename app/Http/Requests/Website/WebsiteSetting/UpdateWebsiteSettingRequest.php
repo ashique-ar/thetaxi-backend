@@ -15,7 +15,7 @@ class UpdateWebsiteSettingRequest extends FormRequest
     {
         return [
             'type' => ['sometimes', 'required', 'string', 'max:255'],
-            'value' => ['sometimes', 'nullable', 'string'],
+            'value' => ['sometimes', 'nullable'],
         ];
     }
 }

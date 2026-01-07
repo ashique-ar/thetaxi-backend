@@ -42,6 +42,7 @@ class WebsiteSettingController extends Controller
     public function store(CreateWebsiteSettingRequest $request): JsonResponse
     {
         $data = $request->validated();
+        $data['value'] = WebsiteSetting::normalizeValue($data['value'] ?? null);
         $data['created_user_id'] = $request->user()->id;
         $setting = WebsiteSetting::create($data);
 
@@ -63,6 +64,9 @@ class WebsiteSettingController extends Controller
     public function update(UpdateWebsiteSettingRequest $request, WebsiteSetting $websiteSetting): JsonResponse
     {
         $data = $request->validated();
+        if (array_key_exists('value', $data)) {
+            $data['value'] = WebsiteSetting::normalizeValue($data['value']);
+        }
         $data['updated_user_id'] = $request->user()->id;
         $websiteSetting->update($data);
 
@@ -97,7 +101,7 @@ class WebsiteSettingController extends Controller
         $validator = Validator::make($request->all(), [
             'settings' => 'required|array',
             'settings.*.type' => 'required|string|max:255',
-            'settings.*.value' => 'nullable|string',
+            'settings.*.value' => 'nullable',
         ]);
 
         if ($validator->fails()) {
@@ -115,7 +119,7 @@ class WebsiteSettingController extends Controller
             $setting = WebsiteSetting::updateOrCreate(
                 ['type' => $settingData['type']],
                 [
-                    'value' => $settingData['value'],
+                    'value' => WebsiteSetting::normalizeValue($settingData['value'] ?? null),
                     'updated_user_id' => $request->user()->id,
                 ]
             );
@@ -176,7 +180,7 @@ class WebsiteSettingController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'settings' => 'required|array',
-            'settings.*' => 'nullable|string',
+            'settings.*' => 'nullable',
         ]);
 
         if ($validator->fails()) {
@@ -194,7 +198,7 @@ class WebsiteSettingController extends Controller
                 $setting = WebsiteSetting::updateOrCreate(
                     ['type' => $type],
                     [
-                        'value' => $value,
+                        'value' => WebsiteSetting::normalizeValue($value),
                         'updated_user_id' => $request->user()->id,
                     ]
                 );

@@ -64,6 +64,7 @@ class CheckoutController extends Controller
     {
         $bookingSettings = $this->websiteSettingsService->getBookingSettings();
         $guestBookingEnabled = $this->normalizeBoolean($bookingSettings['guest_booking_enabled'] ?? null, true);
+        $bookingBaseCurrency = $this->resolveBookingBaseCurrency($bookingSettings);
         if (!$guestBookingEnabled && !Auth::check()) {
             return redirect()->route('cart')
                 ->with('error', 'Guest booking is currently disabled. Please sign in to continue.');
@@ -96,7 +97,11 @@ class CheckoutController extends Controller
         // Get dynamic T&C based on service type and payment type
         $termsAndConditions = TermsAndCondition::getForCheckout('vehicle_rental', $paymentType);
 
-        $paymentMethods = $this->getAvailablePaymentMethods($paymentSettings['webxpay_enabled']);
+        $paymentMethods = $this->getAvailablePaymentMethods(
+            $paymentSettings['webxpay_enabled'],
+            $paymentSettings['payment_online_enabled'],
+            $paymentSettings['payment_offline_enabled']
+        );
 
         $advancePaymentEnabled = $paymentSettings['advance_payment_enabled'];
         $advancePercentage = $paymentSettings['advance_payment_percentage'];
@@ -130,7 +135,11 @@ class CheckoutController extends Controller
         $webxpayEnabled = $paymentSettings['webxpay_enabled'];
         $allowedPaymentTypes = $advancePaymentEnabled ? ['full', 'advance', 'quotation'] : ['full', 'quotation'];
 
-        $allowedPaymentMethodKeys = $this->getAvailablePaymentMethods($webxpayEnabled)->keys()->all();
+        $allowedPaymentMethodKeys = $this->getAvailablePaymentMethods(
+            $webxpayEnabled,
+            $paymentSettings['payment_online_enabled'],
+            $paymentSettings['payment_offline_enabled']
+        )->keys()->all();
         if (empty($allowedPaymentMethodKeys)) {
             return redirect()->back()
                 ->withInput()
@@ -247,11 +256,16 @@ class CheckoutController extends Controller
             // All amounts are in LKR (base currency)
             // Calculate payment amount based on type
             // Fetch advance percentage from database
+            $advanceMinAmount = $paymentSettings['advance_payment_min_amount'];
             $paymentAmount = match ($validated['payment_type']) {
                 'advance' => $total * ($advancePercentage / 100),
                 'quotation' => 0,
                 default => $total
             };
+            if ($validated['payment_type'] === 'advance' && $advanceMinAmount > 0) {
+                $paymentAmount = max($paymentAmount, $advanceMinAmount);
+                $paymentAmount = min($paymentAmount, $total);
+            }
 
             // Prepare flight details
             $flightDetails = null;
@@ -313,7 +327,7 @@ class CheckoutController extends Controller
                 'vat_amount' => $vat,
                 'discount_amount' => $discount,
                 'total_estimated' => $total,
-                'currency' => config('booking.base_currency', 'LKR'),
+                'currency' => $bookingBaseCurrency,
                 'payment_method' => $validated['payment_method'] ?? null,
                 'payment_status' => 'pending',
                 'payment_type' => $validated['payment_type'],
@@ -480,15 +494,18 @@ class CheckoutController extends Controller
 
                 // Store booking ID and RSA encrypted payment data in session
                 session()->put('pending_booking_id', $booking->id);
-                session()->put('webxpay_payment_data', [
-                    'payment_url' => $result['payment_url'],
-                    'order_id' => $result['order_id'],
-                    'encrypted_payment' => $result['encrypted_payment'],
-                    'secret_key' => $result['secret_key'],
-                    'custom_fields' => $result['custom_fields'],
-                    'enc_method' => $result['enc_method'],
-                    'customer_data' => $result['customer_data'],
-                ]);
+                  session()->put('webxpay_payment_data', [
+                      'payment_url' => $result['payment_url'],
+                      'order_id' => $result['order_id'],
+                      'encrypted_payment' => $result['encrypted_payment'],
+                      'secret_key' => $result['secret_key'],
+                      'custom_fields' => $result['custom_fields'],
+                      'enc_method' => $result['enc_method'],
+                      'customer_data' => $result['customer_data'],
+                      'return_url' => $result['return_url'] ?? null,
+                      'cancel_url' => $result['cancel_url'] ?? null,
+                      'notify_url' => $result['notify_url'] ?? null,
+                  ]);
 
                 $this->sendPaymentInitiatedEmail($booking, $amount);
 
@@ -873,6 +890,9 @@ class CheckoutController extends Controller
             'custom_fields' => $paymentData['custom_fields'],
             'enc_method' => $paymentData['enc_method'],
             'customer_data' => $paymentData['customer_data'],
+            'return_url' => $paymentData['return_url'] ?? null,
+            'cancel_url' => $paymentData['cancel_url'] ?? null,
+            'notify_url' => $paymentData['notify_url'] ?? null,
         ]);
     }
 
@@ -1012,6 +1032,14 @@ class CheckoutController extends Controller
                 $settings['webxpay_enabled'] ?? null,
                 (bool) config('booking.webxpay.enabled', false)
             ),
+            'payment_online_enabled' => $this->normalizeBoolean(
+                $settings['payment_online_enabled'] ?? null,
+                (bool) config('booking.payment_methods.online.enabled', true)
+            ),
+            'payment_offline_enabled' => $this->normalizeBoolean(
+                $settings['payment_offline_enabled'] ?? null,
+                (bool) config('booking.payment_methods.offline.enabled', true)
+            ),
             'advance_payment_enabled' => $this->normalizeBoolean(
                 $settings['advance_payment_enabled'] ?? null,
                 (bool) config('booking.advance_payment.enabled', true)
@@ -1020,17 +1048,26 @@ class CheckoutController extends Controller
                 $settings['advance_payment_percentage'] ?? config('booking.advance_payment.percentage', 50),
                 50
             ),
+            'advance_payment_min_amount' => $this->normalizeAmount(
+                $settings['advance_payment_min_amount'] ?? config('booking.advance_payment.min_amount', 0),
+                0
+            ),
         ];
     }
 
     /**
      * Return payment methods filtered by current settings.
      */
-    protected function getAvailablePaymentMethods(bool $webxpayEnabled)
+    protected function getAvailablePaymentMethods(bool $webxpayEnabled, bool $onlineEnabled, bool $offlineEnabled)
     {
+        $methodOverrides = [
+            'online' => $onlineEnabled,
+            'offline' => $offlineEnabled,
+        ];
+
         return collect(config('booking.payment_methods', []))
-            ->filter(function ($method, $key) use ($webxpayEnabled) {
-                $enabled = (bool) ($method['enabled'] ?? false);
+            ->filter(function ($method, $key) use ($webxpayEnabled, $methodOverrides) {
+                $enabled = $methodOverrides[$key] ?? (bool) ($method['enabled'] ?? false);
 
                 if ($key === 'online') {
                     return $enabled && $webxpayEnabled;
@@ -1088,5 +1125,25 @@ class CheckoutController extends Controller
         }
 
         return $amount;
+    }
+
+    protected function normalizeAmount($value, float $default = 0): float
+    {
+        if ($value === null || $value === '') {
+            return $default;
+        }
+
+        return (float) $value;
+    }
+
+    protected function resolveBookingBaseCurrency(array $bookingSettings): string
+    {
+        $currency = $bookingSettings['booking_base_currency'] ?? null;
+        $currency = strtoupper(trim((string) $currency));
+        if ($currency !== '') {
+            return $currency;
+        }
+
+        return config('booking.base_currency', 'LKR');
     }
 }

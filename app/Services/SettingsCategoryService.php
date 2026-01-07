@@ -335,6 +335,16 @@ class SettingsCategoryService
             'description' => 'Payment methods and gateway configuration',
             'icon' => 'payment',
             'settings' => [
+                'payment_online_enabled' => [
+                    'label' => 'Online Payments Enabled',
+                    'type' => 'toggle',
+                    'description' => 'Allow online payments during checkout'
+                ],
+                'payment_offline_enabled' => [
+                    'label' => 'Offline Payments Enabled',
+                    'type' => 'toggle',
+                    'description' => 'Allow pay-on-check-in payments'
+                ],
                 'payment_methods_enabled' => [
                     'label' => 'Enabled Payment Methods',
                     'type' => 'checkbox_group',
@@ -352,6 +362,59 @@ class SettingsCategoryService
                     'type' => 'toggle',
                     'description' => 'Enable WebXPay payment gateway'
                 ],
+                'webxpay_merchant_secret' => [
+                    'label' => 'WebXPay Merchant Secret',
+                    'type' => 'password',
+                    'description' => 'Merchant secret for WebXPay verification'
+                ],
+                'webxpay_public_key' => [
+                    'label' => 'WebXPay Public Key',
+                    'type' => 'textarea',
+                    'description' => 'RSA public key used for WebXPay encryption'
+                ],
+                'webxpay_api_url' => [
+                    'label' => 'WebXPay API URL',
+                    'type' => 'url',
+                    'placeholder' => 'https://tokenize.webxpay.com/v1/api',
+                    'description' => 'WebXPay token API base URL'
+                ],
+                'webxpay_api_username' => [
+                    'label' => 'WebXPay API Username',
+                    'type' => 'text',
+                    'description' => 'API authentication username'
+                ],
+                'webxpay_api_password' => [
+                    'label' => 'WebXPay API Password',
+                    'type' => 'password',
+                    'description' => 'API authentication password'
+                ],
+                'webxpay_checkout_url' => [
+                    'label' => 'WebXPay Checkout URL',
+                    'type' => 'url',
+                    'placeholder' => 'https://webxpay.com/index.php?route=checkout/billing',
+                    'description' => 'WebXPay redirect URL for checkout'
+                ],
+                'webxpay_return_url' => [
+                    'label' => 'WebXPay Return URL',
+                    'type' => 'url',
+                    'description' => 'Callback URL after payment completion'
+                ],
+                'webxpay_cancel_url' => [
+                    'label' => 'WebXPay Cancel URL',
+                    'type' => 'url',
+                    'description' => 'Callback URL when the user cancels payment'
+                ],
+                'webxpay_notify_url' => [
+                    'label' => 'WebXPay Notify URL',
+                    'type' => 'url',
+                    'description' => 'Webhook URL for asynchronous notifications'
+                ],
+                'webxpay_currency' => [
+                    'label' => 'WebXPay Currency',
+                    'type' => 'text',
+                    'placeholder' => 'LKR',
+                    'description' => 'Currency used for WebXPay transactions'
+                ],
                 'advance_payment_enabled' => [
                     'label' => 'Advance Payment Required',
                     'type' => 'toggle',
@@ -365,10 +428,26 @@ class SettingsCategoryService
                     'placeholder' => '50',
                     'description' => 'Percentage of total amount required as advance'
                 ],
+                'advance_payment_min_amount' => [
+                    'label' => 'Advance Payment Minimum Amount',
+                    'type' => 'number',
+                    'min' => 0,
+                    'placeholder' => '1000',
+                    'description' => 'Minimum advance payment amount'
+                ],
                 'service_fee_enabled' => [
                     'label' => 'Service Fee Enabled',
                     'type' => 'toggle',
                     'description' => 'Add service fee to bookings'
+                ],
+                'service_fee_type' => [
+                    'label' => 'Service Fee Type',
+                    'type' => 'select',
+                    'options' => [
+                        'fixed' => 'Fixed',
+                        'percentage' => 'Percentage',
+                    ],
+                    'description' => 'How the service fee is calculated'
                 ],
                 'service_fee_amount' => [
                     'label' => 'Service Fee Amount',
@@ -376,6 +455,20 @@ class SettingsCategoryService
                     'step' => '0.01',
                     'placeholder' => '750.00',
                     'description' => 'Fixed service fee amount'
+                ],
+                'service_fee_min_amount' => [
+                    'label' => 'Service Fee Minimum',
+                    'type' => 'number',
+                    'step' => '0.01',
+                    'placeholder' => '0.00',
+                    'description' => 'Minimum service fee amount'
+                ],
+                'service_fee_max_amount' => [
+                    'label' => 'Service Fee Maximum',
+                    'type' => 'number',
+                    'step' => '0.01',
+                    'placeholder' => '0.00',
+                    'description' => 'Maximum service fee amount (leave blank for no limit)'
                 ],
                 'tax_enabled' => [
                     'label' => 'Tax Enabled (NBT)',
@@ -389,6 +482,18 @@ class SettingsCategoryService
                     'placeholder' => '2.5',
                     'description' => 'Tax rate as percentage'
                 ],
+                'tax_label' => [
+                    'label' => 'Tax Label',
+                    'type' => 'text',
+                    'placeholder' => 'Government TAX',
+                    'description' => 'Label shown for tax on invoices'
+                ],
+                'tax_description' => [
+                    'label' => 'Tax Description',
+                    'type' => 'textarea',
+                    'placeholder' => 'Government TAX',
+                    'description' => 'Description for tax'
+                ],
                 'vat_enabled' => [
                     'label' => 'VAT Enabled',
                     'type' => 'toggle',
@@ -400,6 +505,23 @@ class SettingsCategoryService
                     'step' => '0.1',
                     'placeholder' => '18.0',
                     'description' => 'VAT rate as percentage'
+                ],
+                'vat_label' => [
+                    'label' => 'VAT Label',
+                    'type' => 'text',
+                    'placeholder' => 'VAT',
+                    'description' => 'Label shown for VAT on invoices'
+                ],
+                'vat_description' => [
+                    'label' => 'VAT Description',
+                    'type' => 'textarea',
+                    'placeholder' => 'Value Added Tax',
+                    'description' => 'Description for VAT'
+                ],
+                'vat_applies_to_service_fee' => [
+                    'label' => 'VAT Applies to Service Fee',
+                    'type' => 'toggle',
+                    'description' => 'Include service fee in VAT calculation'
                 ]
             ]
         ];
@@ -568,6 +690,18 @@ class SettingsCategoryService
             'description' => 'Booking system configuration and rules',
             'icon' => 'event_seat',
             'settings' => [
+                'booking_base_currency' => [
+                    'label' => 'Booking Base Currency',
+                    'type' => 'select',
+                    'options' => [
+                        'LKR' => 'Sri Lankan Rupee (LKR)',
+                        'USD' => 'US Dollar (USD)',
+                        'EUR' => 'Euro (EUR)',
+                        'GBP' => 'British Pound (GBP)',
+                        'AED' => 'UAE Dirham (AED)',
+                    ],
+                    'description' => 'Base currency for booking calculations'
+                ],
                 'booking_advance_hours' => [
                     'label' => 'Minimum Advance Booking (hours)',
                     'type' => 'number',

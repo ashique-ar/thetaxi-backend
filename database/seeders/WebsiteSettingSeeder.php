@@ -35,7 +35,7 @@ class WebsiteSettingSeeder extends Seeder
             ],
             [
                 'type' => 'service_fee_type',
-                'value' => 'percentage', // Can be 'percentage' or 'flat'
+                'value' => 'fixed', // Can be 'fixed' or 'percentage'
             ],
             [
                 'type' => 'company_name',
@@ -52,6 +52,122 @@ class WebsiteSettingSeeder extends Seeder
             [
                 'type' => 'advance_payment_percentage',
                 'value' => '50',
+            ],
+            [
+                'type' => 'payment_online_enabled',
+                'value' => 'true',
+            ],
+            [
+                'type' => 'payment_offline_enabled',
+                'value' => 'true',
+            ],
+            [
+                'type' => 'webxpay_enabled',
+                'value' => 'false',
+            ],
+            [
+                'type' => 'webxpay_merchant_secret',
+                'value' => '',
+            ],
+            [
+                'type' => 'webxpay_public_key',
+                'value' => '',
+            ],
+            [
+                'type' => 'webxpay_api_url',
+                'value' => 'https://tokenize.webxpay.com/v1/api',
+            ],
+            [
+                'type' => 'webxpay_api_username',
+                'value' => '',
+            ],
+            [
+                'type' => 'webxpay_api_password',
+                'value' => '',
+            ],
+            [
+                'type' => 'webxpay_checkout_url',
+                'value' => 'https://webxpay.com/index.php?route=checkout/billing',
+            ],
+            [
+                'type' => 'webxpay_return_url',
+                'value' => '',
+            ],
+            [
+                'type' => 'webxpay_cancel_url',
+                'value' => '',
+            ],
+            [
+                'type' => 'webxpay_notify_url',
+                'value' => '',
+            ],
+            [
+                'type' => 'webxpay_currency',
+                'value' => 'LKR',
+            ],
+            [
+                'type' => 'service_fee_enabled',
+                'value' => 'false',
+            ],
+            [
+                'type' => 'service_fee_amount',
+                'value' => '0',
+            ],
+            [
+                'type' => 'service_fee_min_amount',
+                'value' => '0',
+            ],
+            [
+                'type' => 'service_fee_max_amount',
+                'value' => '',
+            ],
+            [
+                'type' => 'tax_enabled',
+                'value' => 'true',
+            ],
+            [
+                'type' => 'tax_rate',
+                'value' => '18',
+            ],
+            [
+                'type' => 'tax_label',
+                'value' => 'Government TAX',
+            ],
+            [
+                'type' => 'tax_description',
+                'value' => 'Government TAX',
+            ],
+            [
+                'type' => 'vat_enabled',
+                'value' => 'false',
+            ],
+            [
+                'type' => 'vat_rate',
+                'value' => '18',
+            ],
+            [
+                'type' => 'vat_label',
+                'value' => 'VAT',
+            ],
+            [
+                'type' => 'vat_description',
+                'value' => 'Value Added Tax',
+            ],
+            [
+                'type' => 'vat_applies_to_service_fee',
+                'value' => 'false',
+            ],
+            [
+                'type' => 'advance_payment_enabled',
+                'value' => 'true',
+            ],
+            [
+                'type' => 'advance_payment_min_amount',
+                'value' => '1000',
+            ],
+            [
+                'type' => 'booking_base_currency',
+                'value' => 'LKR',
             ],
         ];
 

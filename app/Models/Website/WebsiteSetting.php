@@ -81,8 +81,33 @@ class WebsiteSetting extends BaseModel
     {
         static::updateOrCreate(
             ['type' => $type],
-            ['value' => $value]
+            ['value' => static::normalizeValue($value)]
         );
+    }
+
+    /**
+     * Normalize a setting value for storage.
+     */
+    public static function normalizeValue($value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        if (is_bool($value)) {
+            return $value ? 'true' : 'false';
+        }
+
+        if (is_numeric($value)) {
+            return (string) $value;
+        }
+
+        if (is_array($value) || is_object($value)) {
+            $encoded = json_encode($value);
+            return $encoded === false ? null : $encoded;
+        }
+
+        return trim((string) $value);
     }
 
     /**
