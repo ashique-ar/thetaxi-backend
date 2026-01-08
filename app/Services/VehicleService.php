@@ -42,7 +42,7 @@ class VehicleService
         // Get featured vehicle groups with relationships - OPTIMIZED with single query
         $vehicleGroups = VehicleGroup::with([
             'grade',
-            'make', 
+            'make',
             'model',
             'transmission',
             'fuelType',
@@ -67,11 +67,11 @@ class VehicleService
                     });
             }
         ])
-        ->where('is_active', true)
-        ->where('is_featured', true)
-        ->orderBy('name')
-        ->limit($limit)
-        ->get();
+            ->where('is_active', true)
+            ->where('is_featured', true)
+            ->orderBy('name')
+            ->limit($limit)
+            ->get();
 
         // Get total counts in separate query (only once per group, not per vehicle)
         $vehicleCounts = DB::table('vehicle_groups')
@@ -97,7 +97,7 @@ class VehicleService
         // Format the results similar to BookingFlowService format
         $results = [];
         $serviceFeatures = $this->getServiceFeatures($serviceType);
-        
+
         foreach ($vehicleGroups as $group) {
             $availableVehicles = $group->vehicles;
             $availableCount = $availableVehicles->count();
@@ -171,7 +171,7 @@ class VehicleService
         try {
             // Convert service_type slug to service_type_id
             $serviceTypeId = $this->getServiceTypeId($params['service_type']);
-            
+
             // Use the BookingFlowService to calculate rates with vehicle_group_id
             $pricingParams = [
                 'vehicle_group_id' => $group->id,
@@ -187,7 +187,7 @@ class VehicleService
             ];
 
             $pricing = $this->bookingFlowService->calculatePricing($pricingParams);
-            
+
             return [
                 'base_amount' => $pricing['base_amount'] ?? $pricing['summary']['subtotal'] ?? 0,
                 'currency' => $pricing['currency'] ?? 'LKR',
@@ -217,7 +217,7 @@ class VehicleService
         $serviceType = ServiceType::where('slug', $serviceTypeSlug)
             ->orWhere('name', $serviceTypeSlug)
             ->first();
-        
+
         return $serviceType?->id;
     }
 
@@ -229,7 +229,7 @@ class VehicleService
         try {
             // Convert service_type slug to service_type_id
             $serviceTypeId = $this->getServiceTypeId($params['service_type']);
-            
+
             // Use the BookingFlowService to calculate rates
             $pricingParams = [
                 'vehicle_group_id' => $group->id,
@@ -245,7 +245,7 @@ class VehicleService
             ];
 
             $pricing = $this->bookingFlowService->calculatePricing($pricingParams);
-            
+
             return [
                 'base_amount' => $pricing['base_amount'] ?? $pricing['summary']['subtotal'] ?? 0,
                 'currency' => $pricing['currency'] ?? 'LKR',
@@ -330,7 +330,7 @@ class VehicleService
     {
         // Business logic for recommendations
         // Could be based on popularity, ratings, etc.
-        
+
         // For rental packages, recommend SUVs and premium vehicles
         if ($serviceType === 'ride_now' || $serviceType === 'day_rental') {
             $categoryName = $group->category?->name ?? '';
@@ -347,7 +347,7 @@ class VehicleService
     {
         return in_array($serviceType, [
             'airport_transfers',
-            'point_to_point', 
+            'point_to_point',
             'corporate-transport',
             'custom-tour'
         ]);

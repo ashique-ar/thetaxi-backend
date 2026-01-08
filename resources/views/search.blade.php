@@ -203,7 +203,8 @@
     </div>
 
     <!-- Request Quotation Modal -->
-    <div class="modal fade" id="requestQuotationModal" tabindex="-1" aria-labelledby="requestQuotationModalLabel" aria-hidden="true">
+    <div class="modal fade" id="requestQuotationModal" tabindex="-1" aria-labelledby="requestQuotationModalLabel"
+        aria-hidden="true">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header bg-warning text-dark">
@@ -216,13 +217,15 @@
                     @csrf
                     <div class="modal-body">
                         <input type="hidden" name="vehicle_group_id" id="quotation_vehicle_group_id">
-                        <input type="hidden" name="search_id" id="quotation_search_id" value="{{ $search->id ?? '' }}">
-                        
+                        <input type="hidden" name="search_id" id="quotation_search_id"
+                            value="{{ $search->id ?? '' }}">
+
                         <div class="alert alert-info mb-4">
                             <i class="bi bi-info-circle"></i>
                             <strong>Vehicle:</strong> <span id="quotation_vehicle_name"></span>
                             <br>
-                            <small class="text-muted">This vehicle requires a quotation request. Our team will contact you with pricing details.</small>
+                            <small class="text-muted">This vehicle requires a quotation request. Our team will contact you
+                                with pricing details.</small>
                         </div>
 
                         <div class="row g-3">
@@ -244,7 +247,7 @@
                             </div>
                             <div class="col-12">
                                 <label class="form-label">Additional Requirements</label>
-                                <textarea class="form-control" name="requirements" rows="3" 
+                                <textarea class="form-control" name="requirements" rows="3"
                                     placeholder="Please describe any special requirements, preferred dates, or questions..."></textarea>
                             </div>
                         </div>
@@ -255,11 +258,15 @@
                             <div class="row">
                                 <div class="col-md-6">
                                     <small class="text-muted">Pickup Date:</small>
-                                    <p class="mb-1">{{ $search->from_date ? \Carbon\Carbon::parse($search->from_date)->format('M d, Y') : 'Not specified' }}</p>
+                                    <p class="mb-1">
+                                        {{ $search->from_date ? \Carbon\Carbon::parse($search->from_date)->format('M d, Y') : 'Not specified' }}
+                                    </p>
                                 </div>
                                 <div class="col-md-6">
                                     <small class="text-muted">Return Date:</small>
-                                    <p class="mb-1">{{ $search->to_date ? \Carbon\Carbon::parse($search->to_date)->format('M d, Y') : 'Not specified' }}</p>
+                                    <p class="mb-1">
+                                        {{ $search->to_date ? \Carbon\Carbon::parse($search->to_date)->format('M d, Y') : 'Not specified' }}
+                                    </p>
                                 </div>
                                 <div class="col-md-6">
                                     <small class="text-muted">Pickup Location:</small>
@@ -267,7 +274,8 @@
                                 </div>
                                 <div class="col-md-6">
                                     <small class="text-muted">Drop-off Location:</small>
-                                    <p class="mb-1">{{ $search->dropoff_location ?? $search->pickup_location ?? 'Not specified' }}</p>
+                                    <p class="mb-1">
+                                        {{ $search->dropoff_location ?? ($search->pickup_location ?? 'Not specified') }}</p>
                                 </div>
                             </div>
                         </div>
@@ -1027,7 +1035,8 @@
                     const from = new Date(fromDate);
                     const to = new Date(toDate);
                     const diffTime = Math.abs(to - from);
-                    durationDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1 || 1; // +1 for calendar days
+                    durationDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1 ||
+                    1; // +1 for calendar days
                 }
 
                 const searchData = {
@@ -1533,7 +1542,7 @@
             const groupId = $(this).data('group-id');
             const groupName = $(this).data('group-name');
             const searchId = $(this).data('search-id');
-            
+
             // Populate modal fields
             $('#quotation_vehicle_group_id').val(groupId);
             $('#quotation_search_id').val(searchId || '{{ $search->id ?? '' }}');
@@ -1543,14 +1552,15 @@
         // Quotation Form Submission
         $('#quotationRequestForm').on('submit', function(e) {
             e.preventDefault();
-            
+
             const $form = $(this);
             const $submitBtn = $form.find('button[type="submit"]');
             const originalBtnText = $submitBtn.html();
-            
+
             // Show loading state
-            $submitBtn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-2"></span> Submitting...');
-            
+            $submitBtn.prop('disabled', true).html(
+                '<span class="spinner-border spinner-border-sm me-2"></span> Submitting...');
+
             $.ajax({
                 url: $form.attr('action'),
                 method: 'POST',
@@ -1559,14 +1569,18 @@
                     if (response.success) {
                         // Close modal and show success
                         $('#requestQuotationModal').modal('hide');
-                        showSuccessNotification('Quotation request submitted successfully! Our team will contact you shortly.');
+                        showSuccessNotification(
+                            'Quotation request submitted successfully! Our team will contact you shortly.'
+                            );
                         $form[0].reset();
                     } else {
-                        showErrorNotification(response.message || 'Failed to submit quotation request. Please try again.');
+                        showErrorNotification(response.message ||
+                            'Failed to submit quotation request. Please try again.');
                     }
                 },
                 error: function(xhr) {
-                    const errorMsg = xhr.responseJSON?.message || 'An error occurred. Please try again.';
+                    const errorMsg = xhr.responseJSON?.message ||
+                    'An error occurred. Please try again.';
                     showErrorNotification(errorMsg);
                 },
                 complete: function() {

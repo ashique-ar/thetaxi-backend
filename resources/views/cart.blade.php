@@ -1191,8 +1191,8 @@
                                         ${isSelected ? '<i class="bi bi-arrow-clockwise"></i> Update' : '<i class="bi bi-plus-lg"></i> Add'}
                                     </button>
                                     ${isSelected ? `<button class="btn-remove-addon-unified remove-addon-btn" data-addon-id="${addon.id}" data-cart-key="${cartKey}" title="Remove this addon">
-                                        <i class="bi bi-trash"></i> Remove
-                                    </button>` : ''}
+                                            <i class="bi bi-trash"></i> Remove
+                                        </button>` : ''}
                                 </div>
                             </div>
                         </div>
@@ -1212,11 +1212,13 @@
             function updateSelectedCount(cartKey, count) {
                 const countElement = $(`.unified-addons-row[data-cart-key="${cartKey}"] .selected-count`);
                 countElement.text(count);
-                
+
                 // Update the small text to indicate removal is possible
                 const parentSmall = countElement.parent();
                 if (count > 0) {
-                    parentSmall.html(`Selected: <span class="selected-count">${count}</span> service(s) <small class="text-success">(Remove available)</small>`);
+                    parentSmall.html(
+                        `Selected: <span class="selected-count">${count}</span> service(s) <small class="text-success">(Remove available)</small>`
+                        );
                 } else {
                     parentSmall.html(`Selected: <span class="selected-count">0</span> service(s)`);
                 }
@@ -1946,8 +1948,8 @@
         }
 
         /* ==========================================
-                   Extra KM Purchase Section Styles
-                   ========================================== */
+                       Extra KM Purchase Section Styles
+                       ========================================== */
         .extra-km-row {
             background-color: #f5f8ff;
             border-top: 2px solid #d0d8e8;

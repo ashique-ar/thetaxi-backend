@@ -156,18 +156,20 @@
             : $booking->dropoff_location;
         $advancePercentage = \App\Models\Website\WebsiteSetting::getValue(
             'advance_payment_percentage',
-            config('booking.advance_payment.percentage', 50)
+            config('booking.advance_payment.percentage', 50),
         );
         $taxRateSetting = \App\Models\Website\WebsiteSetting::getValue(
             'tax_rate',
-            \App\Models\Website\WebsiteSetting::getValue('tax_percentage', config('booking.tax.rate', 2.5))
+            \App\Models\Website\WebsiteSetting::getValue('tax_percentage', config('booking.tax.rate', 2.5)),
         );
         $vatRateSetting = \App\Models\Website\WebsiteSetting::getValue(
             'vat_rate',
-            \App\Models\Website\WebsiteSetting::getValue('vat_percentage', config('booking.vat.rate', 18))
+            \App\Models\Website\WebsiteSetting::getValue('vat_percentage', config('booking.vat.rate', 18)),
         );
-        $taxRateDisplay = $taxRateSetting > 0 && $taxRateSetting <= 1 ? round($taxRateSetting * 100, 2) : $taxRateSetting;
-        $vatRateDisplay = $vatRateSetting > 0 && $vatRateSetting <= 1 ? round($vatRateSetting * 100, 2) : $vatRateSetting;
+        $taxRateDisplay =
+            $taxRateSetting > 0 && $taxRateSetting <= 1 ? round($taxRateSetting * 100, 2) : $taxRateSetting;
+        $vatRateDisplay =
+            $vatRateSetting > 0 && $vatRateSetting <= 1 ? round($vatRateSetting * 100, 2) : $vatRateSetting;
     @endphp
 
     <div class="container">
