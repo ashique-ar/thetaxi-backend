@@ -44,7 +44,7 @@
     <div class="vehicle-image-container">
         <img src="{{ $mainImage }}" alt="{{ $vehicle['name'] ?? 'Unknown Vehicle' }}" class="vehicle-img" loading="lazy">
 
-        @if ($canAddToCart && $availability['available'] > 0)
+        {{-- @if ($canAddToCart && $availability['available'] > 0)
             <span class="availability-badge available">
                 <i class="bi bi-check-circle-fill"></i> Available
             </span>
@@ -60,13 +60,13 @@
             <span class="availability-badge unavailable">
                 <i class="bi bi-x-circle-fill"></i> Not Available
             </span>
-        @endif
+        @endif --}}
 
-        @if ($isRecommended)
+        {{-- @if ($isRecommended)
             <span class="recommended-badge">
                 <i class="bi bi-star-fill"></i> Recommended
             </span>
-        @endif
+        @endif --}}
 
         <!-- Category Badge -->
         @if (isset($vehicle['category']['name']['name']))
