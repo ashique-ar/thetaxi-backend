@@ -1027,7 +1027,7 @@
                     const from = new Date(fromDate);
                     const to = new Date(toDate);
                     const diffTime = Math.abs(to - from);
-                    durationDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) || 1;
+                    durationDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1 || 1; // +1 for calendar days
                 }
 
                 const searchData = {
@@ -1468,7 +1468,7 @@
                 const from = new Date(fromDate);
                 const to = new Date(toDate);
                 const diffTime = Math.abs(to - from);
-                durationDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) || 1;
+                durationDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1 || 1; // +1 for calendar days
             }
 
             const searchData = {

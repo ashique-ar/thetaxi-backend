@@ -110,7 +110,7 @@
                                                 : null;
                                             $calculatedDays =
                                                 $pickupDate && $returnDate
-                                                    ? max(1, $pickupDate->diffInDays($returnDate))
+                                                    ? max(1, $pickupDate->diffInDays($returnDate) + 1)
                                                     : 1;
 
                                             // Use total_price if available (already calculated for all days in LKR)
@@ -311,6 +311,29 @@
                                             {{ $currencySymbol }}{{ number_format($cartTotals['subtotal'] ?? 0, 2) }}
                                         </strong>
                                     </li>
+
+                                    @if (($cartTotals['addon_charges'] ?? 0) > 0)
+                                        <li>
+                                            Addon Charges
+                                            <div class="order-info">
+                                                <p>Additional Services</p>
+                                                <span class="addon-charges-amount">
+                                                    {{ $currencySymbol }}{{ number_format($cartTotals['addon_charges'] ?? 0, 2) }}
+                                                </span>
+                                            </div>
+                                        </li>
+                                    @endif
+                                    @if (($cartTotals['extra_km_charges'] ?? 0) > 0)
+                                        <li>
+                                            Extra KM Charges
+                                            <div class="order-info">
+                                                <p>Additional Kilometers</p>
+                                                <span class="extra-km-charges-amount">
+                                                    {{ $currencySymbol }}{{ number_format($cartTotals['extra_km_charges'] ?? 0, 2) }}
+                                                </span>
+                                            </div>
+                                        </li>
+                                    @endif
                                     @if (($cartTotals['service_fee'] ?? 0) > 0)
                                         <li>
                                             Service Charges
@@ -339,28 +362,6 @@
                                                 <p>Value Added Tax</p>
                                                 <span class="vat-amount">
                                                     {{ $currencySymbol }}{{ number_format($cartTotals['vat'] ?? 0, 2) }}
-                                                </span>
-                                            </div>
-                                        </li>
-                                    @endif
-                                    @if (($cartTotals['addon_charges'] ?? 0) > 0)
-                                        <li>
-                                            Addon Charges
-                                            <div class="order-info">
-                                                <p>Additional Services</p>
-                                                <span class="addon-charges-amount">
-                                                    {{ $currencySymbol }}{{ number_format($cartTotals['addon_charges'] ?? 0, 2) }}
-                                                </span>
-                                            </div>
-                                        </li>
-                                    @endif
-                                    @if (($cartTotals['extra_km_charges'] ?? 0) > 0)
-                                        <li>
-                                            Extra KM Charges
-                                            <div class="order-info">
-                                                <p>Additional Kilometers</p>
-                                                <span class="extra-km-charges-amount">
-                                                    {{ $currencySymbol }}{{ number_format($cartTotals['extra_km_charges'] ?? 0, 2) }}
                                                 </span>
                                             </div>
                                         </li>
@@ -1185,9 +1186,14 @@
                                     <input type="number" class="qty-input-unified" value="${currentQty}" min="0" max="${addon.max_qty || 999}" data-addon-id="${addon.id}" data-cart-key="${cartKey}">
                                     <button class="qty-btn-unified qty-plus-unified" data-addon-id="${addon.id}" data-cart-key="${cartKey}" title="Increase">+</button>
                                 </div>
-                                <button class="btn-apply-addon-unified ${isSelected ? 'btn-addon-update' : 'btn-addon-add'}" data-addon-id="${addon.id}" data-cart-key="${cartKey}">
-                                    ${isSelected ? '<i class="bi bi-arrow-clockwise"></i> Update' : '<i class="bi bi-plus-lg"></i> Add'}
-                                </button>
+                                <div class="addon-action-buttons">
+                                    <button class="btn-apply-addon-unified ${isSelected ? 'btn-addon-update' : 'btn-addon-add'}" data-addon-id="${addon.id}" data-cart-key="${cartKey}">
+                                        ${isSelected ? '<i class="bi bi-arrow-clockwise"></i> Update' : '<i class="bi bi-plus-lg"></i> Add'}
+                                    </button>
+                                    ${isSelected ? `<button class="btn-remove-addon-unified remove-addon-btn" data-addon-id="${addon.id}" data-cart-key="${cartKey}" title="Remove this addon">
+                                        <i class="bi bi-trash"></i> Remove
+                                    </button>` : ''}
+                                </div>
                             </div>
                         </div>
                     `;
@@ -1204,7 +1210,16 @@
             }
 
             function updateSelectedCount(cartKey, count) {
-                $(`.unified-addons-row[data-cart-key="${cartKey}"] .selected-count`).text(count);
+                const countElement = $(`.unified-addons-row[data-cart-key="${cartKey}"] .selected-count`);
+                countElement.text(count);
+                
+                // Update the small text to indicate removal is possible
+                const parentSmall = countElement.parent();
+                if (count > 0) {
+                    parentSmall.html(`Selected: <span class="selected-count">${count}</span> service(s) <small class="text-success">(Remove available)</small>`);
+                } else {
+                    parentSmall.html(`Selected: <span class="selected-count">0</span> service(s)`);
+                }
             }
 
             // Qty controls for unified addons
@@ -1835,6 +1850,36 @@
             background-color: #218838;
         }
 
+        .addon-action-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            flex: 1;
+        }
+
+        .btn-remove-addon-unified {
+            padding: 4px 8px;
+            font-size: 10px;
+            font-weight: 600;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 3px;
+            background-color: #dc3545;
+            color: white;
+        }
+
+        .btn-remove-addon-unified:hover {
+            background-color: #c82333;
+        }
+
         /* Responsive */
         @media (max-width: 768px) {
             .unified-addons-grid {
@@ -1855,9 +1900,21 @@
                 flex-wrap: wrap;
             }
 
+            .addon-action-buttons {
+                flex-direction: row;
+                flex: 1;
+                gap: 6px;
+            }
+
             .btn-apply-addon-unified {
                 flex: 1;
                 min-width: 80px;
+            }
+
+            .btn-remove-addon-unified {
+                flex: 0 0 auto;
+                padding: 4px 6px;
+                font-size: 9px;
             }
         }
 
@@ -1874,11 +1931,23 @@
                 width: 100%;
                 justify-content: space-between;
             }
+
+            .addon-action-buttons {
+                flex-direction: row;
+                gap: 4px;
+                min-width: 120px;
+            }
+
+            .btn-apply-addon-unified,
+            .btn-remove-addon-unified {
+                font-size: 9px;
+                padding: 3px 6px;
+            }
         }
 
         /* ==========================================
-               Extra KM Purchase Section Styles
-               ========================================== */
+                   Extra KM Purchase Section Styles
+                   ========================================== */
         .extra-km-row {
             background-color: #f5f8ff;
             border-top: 2px solid #d0d8e8;

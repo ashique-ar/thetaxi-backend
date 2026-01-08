@@ -73,7 +73,7 @@ class BookingSearch extends BaseModel
     {
         if ($this->pickup_date && $this->dropoff_date) {
             $this->duration_hours = $this->pickup_date->diffInHours($this->dropoff_date);
-            $this->duration_days = $this->pickup_date->diffInDays($this->dropoff_date);
+            $this->duration_days = $this->pickup_date->diffInDays($this->dropoff_date) + 1; // Calendar days
             
             if ($this->duration_days == 0) {
                 $this->duration_days = 1; // Minimum 1 day

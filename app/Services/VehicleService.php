@@ -386,7 +386,7 @@ class VehicleService
             'to_time' => $toTime,
             'pickup_location' => null,
             'dropoff_location' => null,
-            'duration_days' => Carbon::parse($fromDate)->diffInDays(Carbon::parse($toDate)) ?: 1,
+            'duration_days' => Carbon::parse($fromDate)->diffInDays(Carbon::parse($toDate)) + 1 ?: 1,
             'created_at' => Carbon::now()
         ];
     }

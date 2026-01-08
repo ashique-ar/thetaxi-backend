@@ -227,7 +227,7 @@
                     </tr>
                     <tr>
                         <td>Duration</td>
-                        <td>{{ ceil(\Carbon\Carbon::parse($booking->from_date)->diffInDays(\Carbon\Carbon::parse($booking->to_date))) }}
+                        <td>{{ ceil(\Carbon\Carbon::parse($booking->from_date)->diffInDays(\Carbon\Carbon::parse($booking->to_date))) + 1 }}
                             day(s)</td>
                     </tr>
                 </table>
