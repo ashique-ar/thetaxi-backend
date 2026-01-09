@@ -77,7 +77,7 @@
         @if ($booking->bookingItems->count() > 0)
             @foreach ($booking->bookingItems as $index => $item)
                 <x-booking-item-email :item="$item" :index="$index" :currencySymbol="$currencySymbol" />
-            @endforeach        
+            @endforeach
         @endif
     </div>
 
