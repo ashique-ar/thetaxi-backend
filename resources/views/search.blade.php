@@ -98,6 +98,13 @@
                                     {{ number_format($search->total_distance_km, 2) }} km
                                 </span>
                             @endif
+                            @if ($isPackageService)
+                                <span class="package-info">
+                                    <i class="bi bi-speedometer2"></i>
+                                    Max KM: {{ $search->max_km_per_day ?? 100 }} km/day / {{ $search->max_km_per_package ?? 500 }} km total
+                                    <br><small class="text-white-75">Purchase extra km in cart after adding vehicle</small>
+                                </span>
+                            @endif
                         </div>
 
 
@@ -195,6 +202,7 @@
                     <span>Total:</span>
                     <strong id="cartTotalPrice">{{ getCurrencySymbol() }} 0.00</strong>
                 </div>
+                <small class="text-white-75 d-block mb-2">Add extras & purchase extra km in cart</small>
                 <a href="{{ route('cart') }}" class="btn btn-light w-100">
                     <i class="bi bi-cart-check"></i> View Cart & Checkout
                 </a>
@@ -390,6 +398,23 @@
         }
 
         .distance-info i {
+            font-size: 14px;
+        }
+
+        .package-info {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.95);
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 4px;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 8px 12px;
+            border-radius: 20px;
+            font-weight: 600;
+        }
+
+        .package-info i {
             font-size: 14px;
         }
 
