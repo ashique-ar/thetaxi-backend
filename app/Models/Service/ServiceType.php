@@ -94,6 +94,11 @@ class ServiceType extends BaseModel
         return $this->hasMany(VehiclePricingSlabDefinition::class);
     }
 
+    public function packages()
+    {
+        return $this->hasMany(ServicePackage::class);
+    }
+
     /**
      * Get all bookings for this service type.
      *

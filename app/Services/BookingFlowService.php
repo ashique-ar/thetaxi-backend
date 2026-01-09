@@ -59,16 +59,17 @@ class BookingFlowService
                 // Edit mode: ignore current booking
                 $q->whereNotExists(function ($subQuery) use ($fromDate, $toDate, $excludeBookingId) {
                     $subQuery->select(DB::raw(1))
-                        ->from('bookings')
-                        ->whereRaw('bookings.vehicle_id = vehicles.id')
-                        ->where('status', '!=', 'cancelled')
-                        ->where('id', '!=', $excludeBookingId)
+                        ->from('booking_items')
+                        ->join('bookings', 'booking_items.booking_id', '=', 'bookings.id')
+                        ->whereColumn('booking_items.vehicle_id', 'vehicles.id')
+                        ->where('bookings.status', '!=', 'cancelled')
+                        ->where('bookings.id', '!=', $excludeBookingId)
                         ->where(function ($q) use ($fromDate, $toDate) {
-                            $q->whereBetween('from_date', [$fromDate, $toDate])
-                                ->orWhereBetween('to_date', [$fromDate, $toDate])
+                            $q->whereBetween('booking_items.from_date', [$fromDate, $toDate])
+                                ->orWhereBetween('booking_items.to_date', [$fromDate, $toDate])
                                 ->orWhere(function ($inner) use ($fromDate, $toDate) {
-                                    $inner->where('from_date', '<=', $fromDate)
-                                        ->where('to_date', '>=', $toDate);
+                                    $inner->where('booking_items.from_date', '<=', $fromDate)
+                                        ->where('booking_items.to_date', '>=', $toDate);
                                 });
                         });
                 });
@@ -76,15 +77,16 @@ class BookingFlowService
                 // Normal mode
                 $q->whereNotExists(function ($subQuery) use ($fromDate, $toDate) {
                     $subQuery->select(DB::raw(1))
-                        ->from('bookings')
-                        ->whereRaw('bookings.vehicle_id = vehicles.id')
-                        ->where('status', '!=', 'cancelled')
+                        ->from('booking_items')
+                        ->join('bookings', 'booking_items.booking_id', '=', 'bookings.id')
+                        ->whereColumn('booking_items.vehicle_id', 'vehicles.id')
+                        ->where('bookings.status', '!=', 'cancelled')
                         ->where(function ($q) use ($fromDate, $toDate) {
-                            $q->whereBetween('from_date', [$fromDate, $toDate])
-                                ->orWhereBetween('to_date', [$fromDate, $toDate])
+                            $q->whereBetween('booking_items.from_date', [$fromDate, $toDate])
+                                ->orWhereBetween('booking_items.to_date', [$fromDate, $toDate])
                                 ->orWhere(function ($inner) use ($fromDate, $toDate) {
-                                    $inner->where('from_date', '<=', $fromDate)
-                                        ->where('to_date', '>=', $toDate);
+                                    $inner->where('booking_items.from_date', '<=', $fromDate)
+                                        ->where('booking_items.to_date', '>=', $toDate);
                                 });
                         });
                 });
@@ -253,15 +255,15 @@ class BookingFlowService
             if ($sampleVehicle) {
                 // Check for long-term assignments
                 $hasLongTermAssignments = $group->vehicles->filter(function ($vehicle) use ($fromDate, $toDate) {
-                    return $vehicle->bookings()
-                        // ->where('is_long_term', true)
-                        ->where('status', '!=', 'cancelled')
+                    return BookingItem::where('booking_items.vehicle_id', $vehicle->id)
+                        ->join('bookings', 'booking_items.booking_id', '=', 'bookings.id')
+                        ->where('bookings.status', '!=', 'cancelled')
                         ->where(function ($q) use ($fromDate, $toDate) {
-                            $q->whereBetween('from_date', [$fromDate, $toDate])
-                                ->orWhereBetween('to_date', [$fromDate, $toDate])
+                            $q->whereBetween('booking_items.from_date', [$fromDate, $toDate])
+                                ->orWhereBetween('booking_items.to_date', [$fromDate, $toDate])
                                 ->orWhere(function ($inner) use ($fromDate, $toDate) {
-                                    $inner->where('from_date', '<=', $fromDate)
-                                        ->where('to_date', '>=', $toDate);
+                                    $inner->where('booking_items.from_date', '<=', $fromDate)
+                                        ->where('booking_items.to_date', '>=', $toDate);
                                 });
                         })->exists();
                 })->count() > 0;
@@ -622,19 +624,22 @@ class BookingFlowService
 
         $conflicts = [];
 
-        // Check for existing bookings
-        $existingBookings = Booking::where('vehicle_id', $vehicleId)
-            ->where('status', '!=', 'cancelled')
+        // Check for existing bookings through booking_items
+        $existingBookings = BookingItem::where('booking_items.vehicle_id', $vehicleId)
+            ->join('bookings', 'booking_items.booking_id', '=', 'bookings.id')
+            ->where('bookings.status', '!=', 'cancelled')
             ->where(function ($q) use ($fromDate, $toDate) {
-                $q->whereBetween('from_date', [$fromDate, $toDate])
-                    ->orWhereBetween('to_date', [$fromDate, $toDate])
+                $q->whereBetween('booking_items.from_date', [$fromDate, $toDate])
+                    ->orWhereBetween('booking_items.to_date', [$fromDate, $toDate])
                     ->orWhere(function ($inner) use ($fromDate, $toDate) {
-                        $inner->where('from_date', '<=', $fromDate)
-                            ->where('to_date', '>=', $toDate);
+                        $inner->where('booking_items.from_date', '<=', $fromDate)
+                            ->where('booking_items.to_date', '>=', $toDate);
                     });
             })
-            ->with('customer')
-            ->get();
+            ->with('booking.customer')
+            ->select('booking_items.*')
+            ->get()
+            ->map(fn($item) => $item->booking);
 
         foreach ($existingBookings as $booking) {
             $conflicts[] = [
@@ -687,19 +692,22 @@ class BookingFlowService
 
         $conflicts = [];
 
-        // Check for existing bookings
-        $existingBookings = Booking::where('driver_id', $driverId)
-            ->where('status', '!=', 'cancelled')
+        // Check for existing bookings through booking_items
+        $existingBookings = BookingItem::where('booking_items.driver_id', $driverId)
+            ->join('bookings', 'booking_items.booking_id', '=', 'bookings.id')
+            ->where('bookings.status', '!=', 'cancelled')
             ->where(function ($q) use ($fromDate, $toDate) {
-                $q->whereBetween('from_date', [$fromDate, $toDate])
-                    ->orWhereBetween('to_date', [$fromDate, $toDate])
+                $q->whereBetween('booking_items.from_date', [$fromDate, $toDate])
+                    ->orWhereBetween('booking_items.to_date', [$fromDate, $toDate])
                     ->orWhere(function ($inner) use ($fromDate, $toDate) {
-                        $inner->where('from_date', '<=', $fromDate)
-                            ->where('to_date', '>=', $toDate);
+                        $inner->where('booking_items.from_date', '<=', $fromDate)
+                            ->where('booking_items.to_date', '>=', $toDate);
                     });
             })
-            ->with(['customer', 'vehicle'])
-            ->get();
+            ->with('booking.customer', 'booking.vehicle')
+            ->select('booking_items.*')
+            ->get()
+            ->map(fn($item) => $item->booking);
 
         foreach ($existingBookings as $booking) {
             $conflicts[] = [
@@ -849,17 +857,6 @@ class BookingFlowService
 
             // (No normalization: we use $params directly)
             $booking->customer_id = $params['customer_id'] ?? null;
-            $booking->service_type_id = $params['service_type'] ?? ($params['service_type_id'] ?? null);
-            $booking->vehicle_group_id = $params['vehicle_group_id'] ?? null;
-            $booking->vehicle_id = $params['vehicle_id'] ?? ($params['vehicle_id'] ?? null);
-            $booking->driver_id = $params['driver_id'] ?? null;
-
-            $booking->from_date = $params['from_date'] ?? null;
-            $booking->to_date = $params['to_date'] ?? null;
-            $booking->from_time = $params['from_time'] ?? null;
-            $booking->to_time = $params['to_time'] ?? null;
-            $booking->pickup_location = $params['pickup_location'] ?? null;
-            $booking->dropoff_location = $params['dropoff_location'] ?? null;
 
             // pricing snapshot + quick numbers
             $booking->pricing_snapshot = $totals['pricing_snapshot'];
@@ -1742,9 +1739,7 @@ class BookingFlowService
 
         $query = Vehicle::when($vehicleGroupId, fn($q) => $q->where('vehicle_group_id', $vehicleGroupId))->with([
             'vehicleGroup',
-            'bookings.customer.user',
-            'bookings.driver.user',
-            'bookings' => function ($query) use ($fromDate, $toDate) {
+            'bookingItems' => function ($query) use ($fromDate, $toDate) {
                 $query->whereBetween('from_date', [$fromDate, $toDate])
                     ->orWhereBetween('to_date', [$fromDate, $toDate])
                     ->whereIn('status', ['active', 'pending_approval']);
@@ -1799,7 +1794,7 @@ class BookingFlowService
         $includeUnavailable = $params['include_unavailable'] ?? false;
 
         $query = Driver::with([
-            'bookings' => function ($query) use ($fromDate, $toDate) {
+            'driverAssignments' => function ($query) use ($fromDate, $toDate) {
                 $query->whereBetween('from_date', [$fromDate, $toDate])
                     ->orWhereBetween('to_date', [$fromDate, $toDate])
                     ->whereIn('status', ['active', 'pending_approval']);
@@ -5437,33 +5432,37 @@ class BookingFlowService
     {
         $conflicts = [];
 
-        $bookings = $vehicle->bookings()
-            ->where('status', '!=', 'cancelled')
+        // Query through booking_items which contains the date fields
+        $bookingItems = BookingItem::where('booking_items.vehicle_id', $vehicle->id)
+            ->join('bookings', 'booking_items.booking_id', '=', 'bookings.id')
+            ->where('bookings.status', '!=', 'cancelled')
             ->when($excludeBookingId, function ($q) use ($excludeBookingId) {
-                $q->where('id', '!=', $excludeBookingId);
+                $q->where('bookings.id', '!=', $excludeBookingId);
             })
             ->where(function ($q) use ($fromDate, $toDate) {
-                $q->whereBetween('from_date', [$fromDate, $toDate])
-                    ->orWhereBetween('to_date', [$fromDate, $toDate])
+                $q->whereBetween('booking_items.from_date', [$fromDate, $toDate])
+                    ->orWhereBetween('booking_items.to_date', [$fromDate, $toDate])
                     ->orWhere(function ($inner) use ($fromDate, $toDate) {
-                        $inner->where('from_date', '<=', $fromDate)
-                            ->where('to_date', '>=', $toDate);
+                        $inner->where('booking_items.from_date', '<=', $fromDate)
+                            ->where('booking_items.to_date', '>=', $toDate);
                     });
             })
-            ->with(['customer'])
+            ->select('booking_items.*', 'bookings.id as booking_id', 'bookings.status', 'bookings.customer_id')
+            ->with(['booking.customer'])
             ->get();
 
-        foreach ($bookings as $booking) {
-            $overlapType = $this->determineOverlapType($fromDate, $toDate, $booking->from_date, $booking->to_date);
+        foreach ($bookingItems as $item) {
+            $booking = $item->booking;
+            $overlapType = $this->determineOverlapType($fromDate, $toDate, $item->from_date, $item->to_date);
             $canOverride = $this->canOverrideBooking($booking);
 
             $conflicts[] = [
                 'booking_id' => $booking->id,
                 'customer_name' => $booking->customer->first_name . ' ' . $booking->customer->last_name,
-                'from' => $booking->from_date->format('Y-m-d H:i'),
-                'to' => $booking->to_date->format('Y-m-d H:i'),
+                'from' => $item->from_date->format('Y-m-d H:i'),
+                'to' => $item->to_date->format('Y-m-d H:i'),
                 'status' => $booking->status,
-                'type' => $booking->service_type,
+                'type' => $item->service_type_id,
                 'overlap_type' => $overlapType,
                 'can_override' => $canOverride,
                 'priority' => $this->getBookingPriority($booking),
@@ -5524,31 +5523,35 @@ class BookingFlowService
     {
         $conflicts = [];
 
-        $bookings = $driver->bookings()
-            ->where('status', '!=', 'cancelled')
+        // Query through booking_items which contains the date fields
+        $bookingItems = DriverAssignment::where('driver_id', $driver->id)
+            ->join('bookings', 'driver_assignments.booking_id', '=', 'bookings.id')
+            ->where('bookings.status', '!=', 'cancelled')
             ->when($excludeBookingId, function ($q) use ($excludeBookingId) {
-                $q->where('id', '!=', $excludeBookingId);
+                $q->where('bookings.id', '!=', $excludeBookingId);
             })
             ->where(function ($q) use ($fromDate, $toDate) {
-                $q->whereBetween('from_date', [$fromDate, $toDate])
-                    ->orWhereBetween('to_date', [$fromDate, $toDate])
+                $q->whereBetween('driver_assignments.from_date', [$fromDate, $toDate])
+                    ->orWhereBetween('driver_assignments.to_date', [$fromDate, $toDate])
                     ->orWhere(function ($inner) use ($fromDate, $toDate) {
-                        $inner->where('from_date', '<=', $fromDate)
-                            ->where('to_date', '>=', $toDate);
+                        $inner->where('driver_assignments.from_date', '<=', $fromDate)
+                            ->where('driver_assignments.to_date', '>=', $toDate);
                     });
             })
-            ->with(['customer'])
+            ->select('driver_assignments.*', 'bookings.id as booking_id', 'bookings.status', 'bookings.service_type', 'bookings.customer_id')
+            ->with(['booking.customer'])
             ->get();
 
-        foreach ($bookings as $booking) {
-            $overlapType = $this->determineOverlapType($fromDate, $toDate, $booking->from_date, $booking->to_date);
+        foreach ($bookingItems as $item) {
+            $booking = $item->booking;
+            $overlapType = $this->determineOverlapType($fromDate, $toDate, $item->from_date, $item->to_date);
             $canOverride = $this->canOverrideBooking($booking);
 
             $conflicts[] = [
                 'booking_id' => $booking->id,
                 'customer_name' => $booking->customer->first_name . ' ' . $booking->customer->last_name,
-                'from' => $booking->from_date->format('Y-m-d H:i'),
-                'to' => $booking->to_date->format('Y-m-d H:i'),
+                'from' => $item->from_date->format('Y-m-d H:i'),
+                'to' => $item->to_date->format('Y-m-d H:i'),
                 'status' => $booking->status,
                 'type' => $booking->service_type,
                 'overlap_type' => $overlapType,
@@ -5958,12 +5961,18 @@ class BookingFlowService
         if (!$booking->relationLoaded('customer')) {
             $booking->load('customer');
         }
-        if (!$booking->relationLoaded('serviceType')) {
-            $booking->load('serviceType');
+        if (!$booking->relationLoaded('bookingItems')) {
+            $booking->load('bookingItems');
+        }
+
+        // Get first booking item - all assignments are based on the first item
+        $bookingItem = $booking->bookingItems()->first();
+        if (!$bookingItem) {
+            Log::warning("No booking items found for booking {$booking->id}. Skipping assignments.");
+            return;
         }
 
         $customer = $booking->customer;
-        $serviceType = $booking->serviceType;
 
         // Get customer name - handle different possible field names
         $customerName = 'Unknown Customer';
@@ -5979,9 +5988,9 @@ class BookingFlowService
         $assignmentParams = [
             'booking_id' => $booking->id,
             'customer_name' => $customerName,
-            'service_type' => $serviceType ? $serviceType->name : ($params['service_type'] ?? 'Unknown Service'),
-            'assigned_from' => $booking->from_date,
-            'assigned_to' => $booking->to_date,
+            'service_type' => $bookingItem->serviceType ? $bookingItem->serviceType->name : ($params['service_type'] ?? 'Unknown Service'),
+            'assigned_from' => $bookingItem->from_date,
+            'assigned_to' => $bookingItem->to_date,
             'assignment_type' => $this->determineAssignmentType($params),
             'status' => $status,
             'requires_approval' => $status === 'pending_approval' || $booking->requires_approval,
@@ -5991,16 +6000,16 @@ class BookingFlowService
         ];
 
         // Create vehicle assignment if vehicle is selected
-        if ($booking->vehicle_id) {
+        if ($bookingItem->vehicle_id) {
             try {
                 $vehicleAssignmentParams = array_merge($assignmentParams, [
-                    'vehicle_id' => $booking->vehicle_id,
+                    'vehicle_id' => $bookingItem->vehicle_id,
                 ]);
 
                 // Check for overlaps and set overlap details
-                $vehicle = Vehicle::find($booking->vehicle_id);
+                $vehicle = Vehicle::find($bookingItem->vehicle_id);
                 if ($vehicle) {
-                    $conflicts = $vehicle->getAssignmentConflicts($booking->from_date, $booking->to_date, $booking->id);
+                    $conflicts = $vehicle->getAssignmentConflicts($bookingItem->from_date, $bookingItem->to_date, $booking->id);
                     if (!empty($conflicts)) {
                         $vehicleAssignmentParams['overlap_type'] = 'concurrent';
                         $vehicleAssignmentParams['overlap_details'] = $conflicts;
@@ -6011,7 +6020,7 @@ class BookingFlowService
 
                 // Track assignment activity
                 $this->logAssignmentActivity($booking, 'vehicle_assigned', [
-                    'vehicle_id' => $booking->vehicle_id,
+                    'vehicle_id' => $bookingItem->vehicle_id,
                     'vehicle_name' => $vehicle->name ?? $vehicle->title ?? 'Unknown Vehicle',
                     'license_plate' => $vehicle->license_plate ?? null,
                     'assignment_id' => $vehicleAssignment->id,
@@ -6027,18 +6036,18 @@ class BookingFlowService
         }
 
         // Create driver assignment if driver is selected and not self-driven
-        if ($booking->driver_id && !($params['is_self_driven'] ?? false)) {
+        if ($bookingItem->driver_id && !($params['is_self_driven'] ?? false)) {
             try {
                 $driverAssignmentParams = array_merge($assignmentParams, [
-                    'driver_id' => $booking->driver_id,
+                    'driver_id' => $bookingItem->driver_id,
                     'hourly_rate' => $params['driver_hourly_rate'] ?? null,
                     'overtime_applicable' => $params['overtime_applicable'] ?? false,
                 ]);
 
                 // Check for driver conflicts
-                $driver = Driver::find($booking->driver_id);
+                $driver = Driver::find($bookingItem->driver_id);
                 if ($driver) {
-                    $conflicts = $driver->getAssignmentConflicts($booking->from_date, $booking->to_date, $booking->id);
+                    $conflicts = $driver->getAssignmentConflicts($bookingItem->from_date, $bookingItem->to_date, $booking->id);
                     if (!empty($conflicts)) {
                         $driverAssignmentParams['overlap_type'] = 'override'; // Drivers don't typically support concurrent
                         $driverAssignmentParams['overlap_details'] = $conflicts;
@@ -6050,7 +6059,7 @@ class BookingFlowService
 
                 // Track assignment activity
                 $this->logAssignmentActivity($booking, 'driver_assigned', [
-                    'driver_id' => $booking->driver_id,
+                    'driver_id' => $bookingItem->driver_id,
                     'driver_name' => $driver->name ?? 'Unknown Driver',
                     'license_number' => $driver->license_number ?? $driver->license_no ?? null,
                     'assignment_id' => $driverAssignment->id,

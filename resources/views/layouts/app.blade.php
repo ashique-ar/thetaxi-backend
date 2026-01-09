@@ -118,14 +118,14 @@
                 dataLayer.push(arguments);
             }
             gtag('js', new Date());
-            gtag('config', '{{ $settings['google_analytics_id'] }}');
+            gtag('config', "{{ $settings['google_analytics_id'] }}");
         </script>
     @endif
 
     @if (!empty($settings['facebook_pixel_id']))
         <!-- Facebook Pixel -->
         <script>
-            !function(f, b, e, v, n, t, s) {
+            ! function(f, b, e, v, n, t, s) {
                 if (f.fbq) return;
                 n = f.fbq = function() {
                     n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments);
@@ -332,7 +332,8 @@
                             console.error('Error switching currency:', error);
                             this.innerHTML = originalText;
                             alert(
-                                'An error occurred while switching currency. Please try again.');
+                                'An error occurred while switching currency. Please try again.'
+                                );
                         });
                 });
             });

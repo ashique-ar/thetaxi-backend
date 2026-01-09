@@ -19,20 +19,26 @@ return new class extends Migration
             }
         });
 
-        // Drop common unique indexes/constraints if they exist (support Postgres/MySQL)
+        // Drop common unique indexes/constraints if they exist (support Postgres/MySQL/SQLite)
         $indexesToDrop = [
             'vehicle_models_make_name_unique',
             'vehicle_models_name_unique',
             'vehicle_models_make_id_unique',
-            'vehicle_models_make_name_unique',
         ];
+
+        $driver = DB::getDriverName();
 
         foreach ($indexesToDrop as $index) {
             try {
-                // Postgres: DROP INDEX IF EXISTS "index";
-                DB::statement("DROP INDEX IF EXISTS \"{$index}\";");
+                if ($driver === 'sqlite') {
+                    // SQLite: DROP INDEX IF EXISTS index
+                    DB::statement("DROP INDEX IF EXISTS `{$index}`;");
+                } else {
+                    // Postgres: DROP INDEX IF EXISTS "index";
+                    DB::statement("DROP INDEX IF EXISTS \"{$index}\";");
+                }
             } catch (\Exception $e) {
-                // If Postgres drop failed, try dropping as a constraint (for completeness)
+                // If drop failed, try dropping as a constraint (for completeness)
                 try {
                     DB::statement("ALTER TABLE vehicle_models DROP CONSTRAINT IF EXISTS \"{$index}\";");
                 } catch (\Exception $e) {

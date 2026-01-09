@@ -1,0 +1,190 @@
+{
+    "info": {
+        "_postman_id": "email-testing-collection",
+        "name": "Email Templates - Testing",
+        "description": "Test email templates without sending complete booking flows",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "📧 Email Testing",
+            "item": [
+                {
+                    "name": "List All Test Routes",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/api/test-emails/",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "test-emails",
+                                ""
+                            ]
+                        },
+                        "description": "Get all available email test routes and their descriptions"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "💳 Booking & Payment",
+            "item": [
+                {
+                    "name": "Checkout Confirmation Email",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/api/test-emails/checkout-confirmation",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "test-emails",
+                                "checkout-confirmation"
+                            ]
+                        },
+                        "description": "Test booking confirmation email with:\n- Full booking details\n- Vehicle selections with pricing\n- Payment summary\n- Multiple payment statuses\n\n**Sample Data:**\n- Customer: John Doe\n- Duration: 4 days\n- Total: LKR 17,950\n- Payment Status: PAID"
+                    }
+                },
+                {
+                    "name": "Payment Initiated Email",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/api/test-emails/payment-initiated",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "test-emails",
+                                "payment-initiated"
+                            ]
+                        },
+                        "description": "Test payment notification email with:\n- Payment amount and method\n- Payment type (Full/Advance)\n- Urgent action notice\n\n**Sample Data:**\n- Customer: Ahmed Hassan\n- Amount: LKR 8,975.00\n- Type: Advance (50%)\n- Status: PENDING"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "📝 Inquiries",
+            "item": [
+                {
+                    "name": "General Information Email",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/api/test-emails/general",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "test-emails",
+                                "general"
+                            ]
+                        },
+                        "description": "Test generic message template used for:\n- Announcements\n- Informational messages\n- Custom communications"
+                    }
+                },
+                {
+                    "name": "Inquiry Confirmation Email",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/api/test-emails/inquiry-confirmation",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "test-emails",
+                                "inquiry-confirmation"
+                            ]
+                        },
+                        "description": "Test inquiry acknowledgment email with:\n- Reference number\n- Extracted form data\n- Contact details\n- Next steps\n\n**Sample Data:**\n- Type: General Inquiry\n- Company: ABC Corporation\n- Contact: Jane Smith\n- Passengers: 5"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "🚗 Quotation Requests",
+            "item": [
+                {
+                    "name": "Quotation Request (Customer Confirmation)",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/api/test-emails/quotation-request-confirmation",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "test-emails",
+                                "quotation-request-confirmation"
+                            ]
+                        },
+                        "description": "Test customer quotation confirmation email with:\n- Reference number\n- Request details\n- Expected response timeline\n- Process explanation\n\n**Sample Data:**\n- Reference: QR[timestamp]\n- Vehicle: Premium SUV\n- Response Time: 24 hours\n- Status: Under Review"
+                    }
+                },
+                {
+                    "name": "Quotation Request (Staff Notification)",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/api/test-emails/quotation-request-notification",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "test-emails",
+                                "quotation-request-notification"
+                            ]
+                        },
+                        "description": "Test internal staff notification email with:\n- High priority alert\n- Customer details\n- Travel requirements\n- Action required (2-hour SLA)\n\n**Sample Data:**\n- Customer: Robert Wilson\n- Passengers: 8\n- Priority: HIGH\n- Action Required: 2 hours"
+                    }
+                },
+                {
+                    "name": "Quotation Request Details",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/api/test-emails/quotation-request",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "test-emails",
+                                "quotation-request"
+                            ]
+                        },
+                        "description": "Test quotation request summary email with:\n- Customer information\n- Journey details\n- Vehicle preferences\n- Budget range\n- Special requirements\n\n**Sample Data:**\n- Customer: Michael Brown\n- Duration: 3 days\n- Vehicle: Toyota Highlander\n- Budget: LKR 1,000-2,000"
+                    }
+                }
+            ]
+        }
+    ],
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "http://thetaxi.test",
+            "type": "string",
+            "description": "Base URL for the API - Update this to your environment URL"
+        }
+    ]
+}

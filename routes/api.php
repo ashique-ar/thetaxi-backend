@@ -1212,6 +1212,30 @@ Route::prefix('cart')->group(function () {
         ->name('api.cart.remove-promo-code');
 });
 
+/*
+|--------------------------------------------------------------------------
+| Email Template Testing Routes (Development Only)
+|--------------------------------------------------------------------------
+|
+| These routes allow testing email templates with sample data
+| without triggering the complete booking flow
+| Access: /api/test-emails/[template-name]
+|
+*/
+
+if (app()->environment(['local', 'testing', 'staging'])) {
+    Route::prefix('test-emails')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\EmailTestController::class, 'listAll']);
+        Route::get('checkout-confirmation', [\App\Http\Controllers\Api\EmailTestController::class, 'testCheckoutConfirmation']);
+        Route::get('general', [\App\Http\Controllers\Api\EmailTestController::class, 'testGeneral']);
+        Route::get('inquiry-confirmation', [\App\Http\Controllers\Api\EmailTestController::class, 'testInquiryConfirmation']);
+        Route::get('payment-initiated', [\App\Http\Controllers\Api\EmailTestController::class, 'testPaymentInitiated']);
+        Route::get('quotation-request-confirmation', [\App\Http\Controllers\Api\EmailTestController::class, 'testQuotationRequestConfirmation']);
+        Route::get('quotation-request-notification', [\App\Http\Controllers\Api\EmailTestController::class, 'testQuotationRequestNotification']);
+        Route::get('quotation-request', [\App\Http\Controllers\Api\EmailTestController::class, 'testQuotationRequest']);
+    });
+}
+
 Route::fallback(function () {
     return response()->json([
         'status' => 'error',

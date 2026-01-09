@@ -62,8 +62,12 @@ class AnalyticsController extends Controller
                     ->count(),
                 'available_vehicles' => Vehicle::where('status', 'available')->count(),
                 'active_drivers' => Driver::where('status', 'active')->count(),
-                'top_performing_agents' => Agent::select('agents.id', 'users.first_name', 'users.last_name', 
-                    DB::raw('COUNT(bookings.id) as total_bookings'))
+                'top_performing_agents' => Agent::select(
+                    'agents.id',
+                    'users.first_name',
+                    'users.last_name',
+                    DB::raw('COUNT(bookings.id) as total_bookings')
+                )
                     ->join('users', 'agents.user_id', '=', 'users.id')
                     ->leftJoin('bookings', 'agents.id', '=', 'bookings.agent_id')
                     ->groupBy('agents.id', 'users.first_name', 'users.last_name')
@@ -93,7 +97,7 @@ class AnalyticsController extends Controller
         $limit = $request->get('limit', 30);
 
         $cacheKey = "booking_trends_{$period}_{$limit}";
-        
+
         $trends = Cache::remember($cacheKey, 300, function () use ($period, $limit) {
             $query = Booking::select([
                 DB::raw($this->getDateFormat($period) . ' as date'),
@@ -102,9 +106,9 @@ class AnalyticsController extends Controller
                 DB::raw('SUM(CASE WHEN status = "cancelled" THEN 1 ELSE 0 END) as cancelled_bookings'),
                 DB::raw('SUM(CASE WHEN status = "completed" THEN total_amount ELSE 0 END) as revenue')
             ])
-            ->groupBy('date')
-            ->orderBy('date', 'DESC')
-            ->limit($limit);
+                ->groupBy('date')
+                ->orderBy('date', 'DESC')
+                ->limit($limit);
 
             return $query->get();
         });
@@ -130,7 +134,7 @@ class AnalyticsController extends Controller
 
         $stats = Cache::remember($cacheKey, 300, function () use ($period) {
             $dateRange = $this->getDateRange($period);
-            
+
             return [
                 'total_revenue' => Booking::where('status', 'completed')
                     ->whereBetween('created_at', $dateRange)
@@ -146,27 +150,28 @@ class AnalyticsController extends Controller
                     ->min('total_amount'),
                 'revenue_by_vehicle_type' => Vehicle::select(
                     'vehicle_categories.name as category',
-                    DB::raw('SUM(CASE WHEN bookings.status = "completed" THEN bookings.total_amount ELSE 0 END) as revenue')
+                    DB::raw('SUM(CASE WHEN bookings.status = "completed" THEN bookings.total_estimated ELSE 0 END) as revenue')
                 )
-                ->join('vehicle_categories', 'vehicles.category_id', '=', 'vehicle_categories.id')
-                ->leftJoin('bookings', 'vehicles.id', '=', 'bookings.vehicle_id')
-                ->whereBetween('bookings.created_at', $dateRange)
-                ->groupBy('vehicle_categories.id', 'vehicle_categories.name')
-                ->orderByDesc('revenue')
-                ->get(),
+                    ->join('vehicle_categories', 'vehicles.category_id', '=', 'vehicle_categories.id')
+                    ->leftJoin('booking_items', 'vehicles.id', '=', 'booking_items.vehicle_id')
+                    ->leftJoin('bookings', 'booking_items.booking_id', '=', 'bookings.id')
+                    ->whereBetween('bookings.created_at', $dateRange)
+                    ->groupBy('vehicle_categories.id', 'vehicle_categories.name')
+                    ->orderByDesc('revenue')
+                    ->get(),
                 'revenue_by_agent' => Agent::select(
                     'agents.id',
                     'users.first_name',
                     'users.last_name',
                     DB::raw('SUM(CASE WHEN bookings.status = "completed" THEN bookings.total_amount ELSE 0 END) as revenue')
                 )
-                ->join('users', 'agents.user_id', '=', 'users.id')
-                ->leftJoin('bookings', 'agents.id', '=', 'bookings.agent_id')
-                ->whereBetween('bookings.created_at', $dateRange)
-                ->groupBy('agents.id', 'users.first_name', 'users.last_name')
-                ->orderByDesc('revenue')
-                ->limit(10)
-                ->get()
+                    ->join('users', 'agents.user_id', '=', 'users.id')
+                    ->leftJoin('bookings', 'agents.id', '=', 'bookings.agent_id')
+                    ->whereBetween('bookings.created_at', $dateRange)
+                    ->groupBy('agents.id', 'users.first_name', 'users.last_name')
+                    ->orderByDesc('revenue')
+                    ->limit(10)
+                    ->get()
             ];
         });
 
@@ -199,21 +204,21 @@ class AnalyticsController extends Controller
                     DB::raw('COUNT(bookings.id) as total_bookings'),
                     DB::raw('SUM(CASE WHEN bookings.status = "completed" THEN bookings.total_amount ELSE 0 END) as total_spent')
                 )
-                ->join('users', 'customers.user_id', '=', 'users.id')
-                ->leftJoin('bookings', 'customers.id', '=', 'bookings.customer_id')
-                ->groupBy('customers.id', 'users.first_name', 'users.last_name', 'users.email')
-                ->orderByDesc('total_spent')
-                ->limit(10)
-                ->get(),
+                    ->join('users', 'customers.user_id', '=', 'users.id')
+                    ->leftJoin('bookings', 'customers.id', '=', 'bookings.customer_id')
+                    ->groupBy('customers.id', 'users.first_name', 'users.last_name', 'users.email')
+                    ->orderByDesc('total_spent')
+                    ->limit(10)
+                    ->get(),
                 'customer_loyalty_distribution' => $this->getCustomerLoyaltyDistribution(),
                 'customer_registration_trends' => Customer::select([
                     DB::raw('DATE(created_at) as date'),
                     DB::raw('COUNT(*) as registrations')
                 ])
-                ->where('created_at', '>=', Carbon::now()->subDays(30))
-                ->groupBy('date')
-                ->orderBy('date')
-                ->get()
+                    ->where('created_at', '>=', Carbon::now()->subDays(30))
+                    ->groupBy('date')
+                    ->orderBy('date')
+                    ->get()
             ];
         });
 
@@ -241,12 +246,12 @@ class AnalyticsController extends Controller
                     DB::raw('AVG(CASE WHEN bookings.rating IS NOT NULL THEN bookings.rating ELSE 0 END) as average_rating'),
                     DB::raw('SUM(CASE WHEN bookings.status = "completed" THEN bookings.total_amount ELSE 0 END) as total_revenue')
                 )
-                ->join('users', 'drivers.user_id', '=', 'users.id')
-                ->leftJoin('bookings', 'drivers.id', '=', 'bookings.driver_id')
-                ->groupBy('drivers.id', 'users.first_name', 'users.last_name')
-                ->orderByDesc('total_revenue')
-                ->limit(10)
-                ->get(),
+                    ->join('users', 'drivers.user_id', '=', 'users.id')
+                    ->leftJoin('bookings', 'drivers.id', '=', 'bookings.driver_id')
+                    ->groupBy('drivers.id', 'users.first_name', 'users.last_name')
+                    ->orderByDesc('total_revenue')
+                    ->limit(10)
+                    ->get(),
                 'driver_status_distribution' => Driver::select('status', DB::raw('COUNT(*) as count'))
                     ->groupBy('status')
                     ->get(),
@@ -260,9 +265,9 @@ class AnalyticsController extends Controller
                     END as rating_category'),
                     DB::raw('COUNT(*) as count')
                 )
-                ->whereNotNull('rating')
-                ->groupBy('rating_category')
-                ->get()
+                    ->whereNotNull('rating')
+                    ->groupBy('rating_category')
+                    ->get()
             ];
         });
 
@@ -289,30 +294,32 @@ class AnalyticsController extends Controller
                     'vehicles.registration_number',
                     'vehicle_makes.name as make',
                     'vehicle_models.name as model',
-                    DB::raw('COUNT(bookings.id) as total_bookings'),
-                    DB::raw('SUM(CASE WHEN bookings.status = "completed" THEN bookings.total_amount ELSE 0 END) as total_revenue')
+                    DB::raw('COUNT(DISTINCT bookings.id) as total_bookings'),
+                    DB::raw('SUM(CASE WHEN bookings.status = "completed" THEN bookings.total_estimated ELSE 0 END) as total_revenue')
                 )
-                ->join('vehicle_makes', 'vehicles.make_id', '=', 'vehicle_makes.id')
-                ->join('vehicle_models', 'vehicles.model_id', '=', 'vehicle_models.id')
-                ->leftJoin('bookings', 'vehicles.id', '=', 'bookings.vehicle_id')
-                ->groupBy('vehicles.id', 'vehicles.registration_number', 'vehicle_makes.name', 'vehicle_models.name')
-                ->orderByDesc('total_bookings')
-                ->limit(10)
-                ->get(),
+                    ->join('vehicle_makes', 'vehicles.make_id', '=', 'vehicle_makes.id')
+                    ->join('vehicle_models', 'vehicles.model_id', '=', 'vehicle_models.id')
+                    ->leftJoin('booking_items', 'vehicles.id', '=', 'booking_items.vehicle_id')
+                    ->leftJoin('bookings', 'booking_items.booking_id', '=', 'bookings.id')
+                    ->groupBy('vehicles.id', 'vehicles.registration_number', 'vehicle_makes.name', 'vehicle_models.name')
+                    ->orderByDesc('total_bookings')
+                    ->limit(10)
+                    ->get(),
                 'vehicle_status_distribution' => Vehicle::select('status', DB::raw('COUNT(*) as count'))
                     ->groupBy('status')
                     ->get(),
                 'vehicle_category_performance' => Vehicle::select(
                     'vehicle_categories.name as category',
                     DB::raw('COUNT(DISTINCT vehicles.id) as total_vehicles'),
-                    DB::raw('COUNT(bookings.id) as total_bookings'),
-                    DB::raw('SUM(CASE WHEN bookings.status = "completed" THEN bookings.total_amount ELSE 0 END) as total_revenue')
+                    DB::raw('COUNT(DISTINCT bookings.id) as total_bookings'),
+                    DB::raw('SUM(CASE WHEN bookings.status = "completed" THEN bookings.total_estimated ELSE 0 END) as total_revenue')
                 )
-                ->join('vehicle_categories', 'vehicles.category_id', '=', 'vehicle_categories.id')
-                ->leftJoin('bookings', 'vehicles.id', '=', 'bookings.vehicle_id')
-                ->groupBy('vehicle_categories.id', 'vehicle_categories.name')
-                ->orderByDesc('total_revenue')
-                ->get()
+                    ->join('vehicle_categories', 'vehicles.category_id', '=', 'vehicle_categories.id')
+                    ->leftJoin('booking_items', 'vehicles.id', '=', 'booking_items.vehicle_id')
+                    ->leftJoin('bookings', 'booking_items.booking_id', '=', 'bookings.id')
+                    ->groupBy('vehicle_categories.id', 'vehicle_categories.name')
+                    ->orderByDesc('total_revenue')
+                    ->get()
             ];
         });
 
@@ -341,13 +348,13 @@ class AnalyticsController extends Controller
                     DB::raw('SUM(CASE WHEN bookings.status = "completed" THEN bookings.total_amount ELSE 0 END) as total_revenue'),
                     DB::raw('SUM(agent_commissions.amount) as total_commission')
                 )
-                ->join('users', 'agents.user_id', '=', 'users.id')
-                ->leftJoin('bookings', 'agents.id', '=', 'bookings.agent_id')
-                ->leftJoin('agent_commissions', 'agents.id', '=', 'agent_commissions.agent_id')
-                ->groupBy('agents.id', 'users.first_name', 'users.last_name', 'users.email')
-                ->orderByDesc('total_revenue')
-                ->limit(10)
-                ->get(),
+                    ->join('users', 'agents.user_id', '=', 'users.id')
+                    ->leftJoin('bookings', 'agents.id', '=', 'bookings.agent_id')
+                    ->leftJoin('agent_commissions', 'agents.id', '=', 'agent_commissions.agent_id')
+                    ->groupBy('agents.id', 'users.first_name', 'users.last_name', 'users.email')
+                    ->orderByDesc('total_revenue')
+                    ->limit(10)
+                    ->get(),
                 'agent_status_distribution' => Agent::select('status', DB::raw('COUNT(*) as count'))
                     ->groupBy('status')
                     ->get(),
@@ -358,14 +365,14 @@ class AnalyticsController extends Controller
                     DB::raw('COUNT(bookings.id) as monthly_bookings'),
                     DB::raw('SUM(CASE WHEN bookings.status = "completed" THEN bookings.total_amount ELSE 0 END) as monthly_revenue')
                 )
-                ->join('users', 'agents.user_id', '=', 'users.id')
-                ->leftJoin('bookings', 'agents.id', '=', 'bookings.agent_id')
-                ->whereMonth('bookings.created_at', Carbon::now()->month)
-                ->whereYear('bookings.created_at', Carbon::now()->year)
-                ->groupBy('agents.id', 'users.first_name', 'users.last_name')
-                ->orderByDesc('monthly_revenue')
-                ->limit(10)
-                ->get()
+                    ->join('users', 'agents.user_id', '=', 'users.id')
+                    ->leftJoin('bookings', 'agents.id', '=', 'bookings.agent_id')
+                    ->whereMonth('bookings.created_at', Carbon::now()->month)
+                    ->whereYear('bookings.created_at', Carbon::now()->year)
+                    ->groupBy('agents.id', 'users.first_name', 'users.last_name')
+                    ->orderByDesc('monthly_revenue')
+                    ->limit(10)
+                    ->get()
             ];
         });
 
@@ -384,8 +391,8 @@ class AnalyticsController extends Controller
             'customers.id',
             'users.' . config('gamify.reputation_column', 'reputation') . ' as points'
         ])
-        ->join('users', 'customers.user_id', '=', 'users.id')
-        ->get();
+            ->join('users', 'customers.user_id', '=', 'users.id')
+            ->get();
 
         $distribution = [
             'Bronze' => 0,
@@ -396,7 +403,7 @@ class AnalyticsController extends Controller
 
         foreach ($customers as $customer) {
             $points = $customer->points ?? 0;
-            
+
             if ($points >= 1000) {
                 $distribution['Platinum']++;
             } elseif ($points >= 500) {
@@ -436,7 +443,7 @@ class AnalyticsController extends Controller
     private function getDateRange(string $period): array
     {
         $now = Carbon::now();
-        
+
         switch ($period) {
             case 'day':
                 return [$now->copy()->startOfDay(), $now->copy()->endOfDay()];

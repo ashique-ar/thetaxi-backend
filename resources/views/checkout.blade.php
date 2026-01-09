@@ -113,7 +113,7 @@
                                                     <h6>Pay Full Amount</h6>
                                                     <p class="mb-0">Complete payment now</p>
                                                     <small class="text-muted">Total:
-                                                        {{ $currencySymbol }}{{ number_format($total, 2) }}</small>
+                                                        {{ $currencySymbol }} {{ number_format($total, 2) }}</small>
                                                 </div>
                                             </label>
                                         </div>
@@ -121,15 +121,17 @@
                                     @if ($advancePaymentEnabled)
                                         <div class="col-md-4">
                                             <div class="payment-option">
-                                                <input type="radio" name="payment_type" value="advance" id="payment_advance"
-                                                    {{ $paymentType === 'advance' ? 'checked' : '' }} class="payment-radio">
+                                                <input type="radio" name="payment_type" value="advance"
+                                                    id="payment_advance" {{ $paymentType === 'advance' ? 'checked' : '' }}
+                                                    class="payment-radio">
                                                 <label for="payment_advance" class="payment-label">
                                                     <div class="payment-card">
                                                         <i class="bi bi-credit-card text-warning"></i>
                                                         <h6>Pay {{ $advancePercentage }}% Advance</h6>
                                                         <p class="mb-0">Pay remaining on pickup</p>
                                                         <small class="text-muted">Now:
-                                                            {{ $currencySymbol }}{{ number_format($total * ($advancePercentage / 100), 2) }}</small>
+                                                            {{ $currencySymbol }}
+                                                            {{ number_format($total * ($advancePercentage / 100), 2) }}</small>
                                                     </div>
                                                 </label>
                                             </div>
@@ -161,7 +163,8 @@
                             @switch($paymentType)
                                 @case('advance')
                                     <h6><i class="bi bi-info-circle"></i> Advance Payment ({{ $advancePercentage }}%)</h6>
-                                    <p class="mb-0">You are paying {{ $advancePercentage }}% advance. The remaining amount will be collected at the time
+                                    <p class="mb-0">You are paying {{ $advancePercentage }}% advance. The remaining amount will
+                                        be collected at the time
                                         of vehicle pickup.</p>
                                 @break
 
@@ -491,7 +494,8 @@
                                                                 </div>
                                                                 <div class="content-and-quantity">
                                                                     <div class="content">
-                                                                        <span>{{ $currencySymbol }}{{ number_format($item['price'] ?? 0, 2) }}/day
+                                                                        <span>{{ $currencySymbol }}
+                                                                            {{ number_format($item['price'] ?? 0, 2) }}/day
                                                                             × {{ $calculatedDays }}
                                                                             day{{ $calculatedDays !== 1 ? 's' : '' }}</span>
                                                                         <h6><a
@@ -508,7 +512,7 @@
                                                                 </div>
                                                             </div>
                                                             <div class="item-total">
-                                                                {{ $currencySymbol }}{{ number_format($itemTotal, 2) }}
+                                                                {{ $currencySymbol }} {{ number_format($itemTotal, 2) }}
                                                             </div>
                                                         </div>
                                                     </li>
@@ -521,7 +525,8 @@
                                                 <ul>
                                                     <li>
                                                         <strong>Subtotal</strong>
-                                                        <strong>{{ $currencySymbol }}{{ number_format($subtotal, 2) }}</strong>
+                                                        <strong>{{ $currencySymbol }}
+                                                            {{ number_format($subtotal, 2) }}</strong>
                                                     </li>
                                                     @php
                                                         $addonCharges = $totals['addon_charges'] ?? 0;
@@ -531,7 +536,8 @@
                                                         <li>
                                                             Addon Charges
                                                             <div class="order-info text-success">
-                                                                <span>{{ $currencySymbol }}{{ number_format($addonCharges, 2) }}</span>
+                                                                <span>{{ $currencySymbol }}
+                                                                    {{ number_format($addonCharges, 2) }}</span>
                                                             </div>
                                                         </li>
                                                     @endif
@@ -539,7 +545,8 @@
                                                         <li>
                                                             Extra KM Charges
                                                             <div class="order-info text-info">
-                                                                <span>{{ $currencySymbol }}{{ number_format($extraKmCharges, 2) }}</span>
+                                                                <span>{{ $currencySymbol }}
+                                                                    {{ number_format($extraKmCharges, 2) }}</span>
                                                             </div>
                                                         </li>
                                                     @endif
@@ -547,7 +554,8 @@
                                                         <li>
                                                             Service Fee
                                                             <div class="order-info">
-                                                                <span>{{ $currencySymbol }}{{ number_format($serviceFee, 2) }}</span>
+                                                                <span>{{ $currencySymbol }}
+                                                                    {{ number_format($serviceFee, 2) }}</span>
                                                             </div>
                                                         </li>
                                                     @endif
@@ -556,7 +564,8 @@
                                                             {{ $taxLabel }}
                                                             ({{ $taxPercentageLabel }}%)
                                                             <div class="order-info">
-                                                                <span>{{ $currencySymbol }}{{ number_format($tax, 2) }}</span>
+                                                                <span>{{ $currencySymbol }}
+                                                                    {{ number_format($tax, 2) }}</span>
                                                             </div>
                                                         </li>
                                                     @endif
@@ -565,7 +574,8 @@
                                                             {{ $vatLabel }}
                                                             ({{ $vatPercentageLabel }}%)
                                                             <div class="order-info">
-                                                                <span>{{ $currencySymbol }}{{ number_format($vat, 2) }}</span>
+                                                                <span>{{ $currencySymbol }}
+                                                                    {{ number_format($vat, 2) }}</span>
                                                             </div>
                                                         </li>
                                                     @endif
@@ -620,13 +630,15 @@
                                                             <strong class="text-success"><i class="bi bi-tag-fill"></i>
                                                                 Discount</strong>
                                                             <div class="order-info text-success">
-                                                                <span>-{{ $currencySymbol }}{{ number_format($discount, 2) }}</span>
+                                                                <span>-{{ $currencySymbol }}
+                                                                    {{ number_format($discount, 2) }}</span>
                                                             </div>
                                                         </li>
                                                     @endif
                                                     <li class="total-row">
                                                         <strong>Total</strong>
-                                                        <strong>{{ $currencySymbol }}{{ number_format($total, 2) }}</strong>
+                                                        <strong>{{ $currencySymbol }}
+                                                            {{ number_format($total, 2) }}</strong>
                                                     </li>
                                                     @if ($paymentType !== 'full')
                                                         <li class="payment-amount-row">
@@ -642,7 +654,8 @@
                                                                 @if ($paymentType === 'quotation')
                                                                     No Payment Required
                                                                 @else
-                                                                    {{ $currencySymbol }}{{ number_format($paymentAmount, 2) }}
+                                                                    {{ $currencySymbol }}
+                                                                    {{ number_format($paymentAmount, 2) }}
                                                                 @endif
                                                             </strong>
                                                         </li>
@@ -721,7 +734,7 @@
                                                         Submit Quotation Request
                                                     @else
                                                         Complete Booking -
-                                                        {{ $currencySymbol }}{{ number_format($paymentAmount, 2) }}
+                                                        {{ $currencySymbol }} {{ number_format($paymentAmount, 2) }}
                                                     @endif
                                                     <svg width="10" height="10" viewBox="0 0 10 10"
                                                         xmlns="http://www.w3.org/2000/svg">

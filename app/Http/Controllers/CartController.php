@@ -87,12 +87,12 @@ class CartController extends Controller
             });
             
             // Log cart access for monitoring
-            Log::info('Cart API accessed', [
-                'session_id' => session()->getId(),
-                'from_cache' => $fromCache,
-                'cart_items_count' => count($cartArray['items'] ?? []),
-                'user_agent' => request()->userAgent()
-            ]);
+            // Log::info('Cart API accessed', [
+            //     'session_id' => session()->getId(),
+            //     'from_cache' => $fromCache,
+            //     'cart_items_count' => count($cartArray['items'] ?? []),
+            //     'user_agent' => request()->userAgent()
+            // ]);
 
             return response()->json([
                 'success' => true,

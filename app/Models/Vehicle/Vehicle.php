@@ -4,6 +4,7 @@ namespace App\Models\Vehicle;
 
 use App\Models\BaseModel;
 use App\Models\Booking\Booking;
+use App\Models\Booking\BookingItem;
 use App\Models\Company;
 use App\Models\Driver\Driver;
 use App\Traits\UUID;
@@ -222,6 +223,16 @@ class Vehicle extends BaseModel
     public function bookings()
     {
         return $this->hasMany(Booking::class);
+    }
+
+    /**
+     * Get all bookings for this vehicle.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\HasMany
+     */
+    public function bookingItems()
+    {
+        return $this->hasMany(BookingItem::class);
     }
 
     public function maintenanceRecords()

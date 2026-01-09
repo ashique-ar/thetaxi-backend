@@ -25,6 +25,7 @@
         $vatRateDisplay =
             $vatRateSetting > 0 && $vatRateSetting <= 1 ? round($vatRateSetting * 100, 2) : $vatRateSetting;
     @endphp
+
     <!-- Breadcrumb section -->
     <div class="breadcrumb-section"
         style="background-image:linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url({{ asset('assets/img/innerpages/breadcrumb-bg1.jpg') }});">
@@ -57,574 +58,669 @@
     <!-- End Breadcrumb section -->
 
 
-
-    <!-- Success Page Start-->
+    <!-- Email-style Success Page -->
     <div class="checkout-success pt-100 mb-100">
         <div class="container">
             <div class="row justify-content-center">
-                <div class="col-lg-10">
-                    <!-- Success Message -->
-                    {{-- <div class="success-message text-center mb-5">
-                        @if ($isQuotation)
-                            <div class="success-icon quotation">
-                                <i class="bi bi-file-text-fill"></i>
-                            </div>
-                            <h2>Quotation Request Submitted!</h2>
-                            <p class="lead">Thank you for your interest. Our team will review your request and send you a
-                                detailed quotation within 24 hours.</p>
-                        @elseif($isPaid)
-                            <div class="success-icon paid">
-                                <i class="bi bi-check-circle-fill"></i>
-                            </div>
-                            <h2>Payment Successful!</h2>
-                            <p class="lead">Your booking has been confirmed. You will receive a confirmation email
-                                shortly.</p>
-                        @else
-                            <div class="success-icon pending">
-                                <i class="bi bi-clock-fill"></i>
-                            </div>
-                            <h2>Booking Received!</h2>
-                            <p class="lead">Your booking has been received. Please complete the payment to confirm your
-                                reservation.</p>
-                        @endif
-                    </div> --}}
+                <div class="col-lg-10 card p-4">
+                    <!-- Content -->
+                    <div class="email-content">
+                        <!-- Greeting -->
+                        <p class="greeting">
+                            Dear <strong>{{ $booking->customer->full_name ?? 'Valued Customer' }}</strong>,
+                        </p>
 
-                    @if ($booking)
-                        <!-- Booking Receipt -->
-                        <div class="booking-receipt card shadow-lg">
-                            <div class="card-header">
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <h4 class="mb-0"><i class="bi bi-receipt"></i> Booking Receipt</h4>
-                                    {{-- <button onclick="window.print()" class="btn btn-light btn-sm">
-                                <i class="bi bi-printer"></i> Print Receipt
-                            </button> --}}
-                                </div>
+                        <p class="intro-text">
+                            @if ($isQuotation)
+                                Thank you for your quotation request. Our team will review your requirements and get back to
+                                you
+                                within 24 hours.
+                            @elseif($isPaid)
+                                Thank you for your booking with {{ env('COMPANY_NAME', 'Casons Rent A Car') }}! Your
+                                reservation
+                                has been confirmed and we're excited to serve you.
+                            @else
+                                Thank you for your booking with {{ env('COMPANY_NAME', 'Casons Rent A Car') }}! We have
+                                received
+                                your reservation request and will process it shortly.
+                            @endif
+                        </p>
+
+                        @if ($booking)
+                            <!-- Reference Box -->
+                            <div class="reference-box">
+                                <div class="reference-label">Booking Reference</div>
+                                <div class="reference-number">{{ $booking->booking_number }}</div>
                             </div>
-                            <div class="card-body">
-                                <!-- Booking Reference -->
-                                <div class="receipt-section">
-                                    <div class="row">
-                                        <div class="col-md-6">
-                                            <h5>Booking Reference</h5>
-                                            <p class="booking-ref">{{ $booking->booking_number }}</p>
-                                            <p class="text-muted small">Please keep this reference number for your records
-                                            </p>
-                                        </div>
-                                        <div class="col-md-6 text-md-end">
-                                            <h5>Booking Date</h5>
-                                            <p>{{ $booking->created_at->format('M d, Y H:i A') }}</p>
-                                            <p
-                                                class="badge 
-                                        @if ($isPaid) bg-success
-                                        @elseif($isPending) bg-warning text-dark
-                                        @elseif($isQuotation) bg-info
-                                        @else bg-secondary @endif">
-                                                {{ ucfirst(str_replace('_', ' ', $booking->status)) }}
-                                            </p>
-                                        </div>
+
+                            <!-- Vehicle Wise Trip Details Section -->
+                            <div class="section">
+                                <h2 class="section-title">
+                                    <span class="icon">🚗</span> Vehicle Wise Trip Details
+                                </h2>
+                                @if ($booking->bookingItems->count() > 0)
+                                    @foreach ($booking->bookingItems as $index => $item)
+                                        <x-booking-item-email :item="$item" :index="$index" :currencySymbol="$currencySymbol" />
+                                    @endforeach
+                                @endif
+                            </div>
+
+                            <!-- Customer Information Section -->
+                            <div class="section">
+                                <h2 class="section-title">
+                                    <span class="icon">👤</span> Customer Information
+                                </h2>
+                                <table class="info-table">
+                                    <tr>
+                                        <td>Name</td>
+                                        <td>{{ $booking->customer?->user?->full_name ?? 'N/A' }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Email</td>
+                                        <td>{{ $booking->customer?->user?->email ?? 'N/A' }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Phone</td>
+                                        <td>{{ $booking->customer?->user?->phone ?? 'N/A' }}</td>
+                                    </tr>
+                                    @if ($booking->customer->identification ?? null)
+                                        <tr>
+                                            <td>ID Type</td>
+                                            <td>{{ $booking->customer->identification }}</td>
+                                        </tr>
+                                    @endif
+                                    @if (!empty($booking->customer->address))
+                                        <tr>
+                                            <td>Address</td>
+                                            <td>{{ $booking->customer->address }}</td>
+                                        </tr>
+                                    @endif
+                                    @if (!empty($booking->customer->city))
+                                        <tr>
+                                            <td>City</td>
+                                            <td>{{ $booking->customer->city }}</td>
+                                        </tr>
+                                    @endif
+                                    @if (!empty($booking->customer->country))
+                                        <tr>
+                                            <td>Country</td>
+                                            <td>{{ $booking->customer->country }}</td>
+                                        </tr>
+                                    @endif
+                                </table>
+                            </div>
+
+                            <!-- Payment Summary Section -->
+                            <div class="section">
+                                <h2 class="section-title">
+                                    <span class="icon">💳</span> Payment Summary
+                                </h2>
+                                <table class="info-table">
+                                    <tr>
+                                        <td>Subtotal</td>
+                                        <td>{{ $currencySymbol }} {{ number_format($booking->base_amount, 2) }}</td>
+                                    </tr>
+                                    @if ($booking->service_fee > 0)
+                                        <tr>
+                                            <td>Service Fee</td>
+                                            <td>{{ $currencySymbol }} {{ number_format($booking->service_fee, 2) }}</td>
+                                        </tr>
+                                    @endif
+                                    @if ($booking->tax_amount > 0)
+                                        <tr>
+                                            <td>{{ config('booking.tax.label', 'NBT') }} ({{ $taxRateDisplay }}%)</td>
+                                            <td>{{ $currencySymbol }} {{ number_format($booking->tax_amount, 2) }}</td>
+                                        </tr>
+                                    @endif
+                                    @if (($booking->vat_amount ?? 0) > 0)
+                                        <tr>
+                                            <td>{{ config('booking.vat.label', 'VAT') }} ({{ $vatRateDisplay }}%)</td>
+                                            <td>{{ $currencySymbol }} {{ number_format($booking->vat_amount, 2) }}</td>
+                                        </tr>
+                                    @endif
+                                    @if ($booking->discount_amount > 0)
+                                        <tr style="color: #16a34a;">
+                                            <td>Discount</td>
+                                            <td>-{{ $currencySymbol }} {{ number_format($booking->discount_amount, 2) }}
+                                            </td>
+                                        </tr>
+                                    @endif
+                                    <tr class="price-total">
+                                        <td>Total Amount</td>
+                                        <td>{{ $currencySymbol }} {{ number_format($booking->total_estimated, 2) }}</td>
+                                    </tr>
+                                    @if ($booking->payment_type === 'advance')
+                                        <tr style="background: #eff6ff;">
+                                            <td><strong>Amount Paid ({{ $advancePercentage }}%)</strong></td>
+                                            <td><strong>{{ $currencySymbol }}
+                                                    {{ number_format($booking->amount_to_pay ?? 0, 2) }}</strong></td>
+                                        </tr>
+                                        <tr style="background: #eff6ff;">
+                                            <td>Balance Due at Pickup</td>
+                                            <td>{{ $currencySymbol }}
+                                                {{ number_format($booking->total_estimated - ($booking->amount_to_pay ?? 0), 2) }}
+                                            </td>
+                                        </tr>
+                                    @elseif($booking->payment_status === 'paid')
+                                        <tr style="background: #f0fdf4;">
+                                            <td><strong>Amount Paid</strong></td>
+                                            <td><strong>{{ $currencySymbol }}
+                                                    {{ number_format($booking->amount_to_pay ?? $booking->total_estimated, 2) }}</strong>
+                                            </td>
+                                        </tr>
+                                    @endif
+                                    <tr>
+                                        <td>Payment Method</td>
+                                        <td>
+                                            @switch($booking->payment_method)
+                                                @case('webxpay')
+                                                @case('online')
+                                                    WebXPay Secure Gateway
+                                                @break
+
+                                                @case('bank_transfer')
+                                                    Bank Transfer
+                                                @break
+
+                                                @case('online_banking')
+                                                    Online Banking
+                                                @break
+
+                                                @default
+                                                    {{ ucfirst(str_replace('_', ' ', $booking->payment_method ?? 'N/A')) }}
+                                                @break
+                                            @endswitch
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>Payment Status</td>
+                                        <td>
+                                            @if ($booking->payment_status === 'paid')
+                                                <span class="status-badge status-paid">✓ Paid</span>
+                                            @elseif($booking->payment_status === 'pending')
+                                                <span class="status-badge status-pending">⏳ Pending</span>
+                                            @else
+                                                <span
+                                                    class="status-badge status-processing">{{ ucfirst($booking->payment_status) }}</span>
+                                            @endif
+                                        </td>
+                                    </tr>
+                                </table>
+                            </div>
+
+                            @if ($booking->special_requirements)
+                                <div class="section">
+                                    <h2 class="section-title">
+                                        <span class="icon">📋</span> Special Requirements
+                                    </h2>
+                                    <p style="color: #555; line-height: 1.6; margin: 0;">
+                                        {{ $booking->special_requirements }}
+                                    </p>
+                                </div>
+                            @endif
+
+                            <div class="divider"></div>
+
+                            <!-- What's Next Section -->
+                            <div class="section">
+                                <h2 class="section-title">
+                                    <span class="icon">📌</span> What's Next?
+                                </h2>
+
+                                @if ($isQuotation)
+                                    <div class="highlight-box info">
+                                        <h3>Your Request is Being Processed</h3>
+                                        <p><strong>Step 1:</strong> Our team will review your quotation request</p>
+                                        <p><strong>Step 2:</strong> We'll contact you at
+                                            <strong>{{ $booking->customer->phone ?? 'your provided number' }}</strong>
+                                            within
+                                            24 hours
+                                        </p>
+                                        <p><strong>Step 3:</strong> You'll receive a detailed quote with vehicle options and
+                                            pricing</p>
+                                        <p style="margin-bottom: 0;"><strong>Step 4:</strong> Once approved, we'll send a
+                                            secure
+                                            payment link to confirm your booking</p>
                                     </div>
-                                </div>
+                                @elseif($isPending)
+                                    @php
+                                        $paymentLink = \App\Helpers\BookingLinkHelper::getPaymentLink($booking);
+                                        $isFallbackPaymentLink = $paymentLink === route('checkout');
+                                    @endphp
+                                    <div class="highlight-box warning">
+                                        <h3>⏳ Complete Your Payment</h3>
+                                        <p>Click the button below to securely complete your payment online using WebXPay:
+                                        </p>
 
-                                <hr>
-
-                                <!-- Customer Information -->
-                                <div class="receipt-section">
-                                    <h5><i class="bi bi-person-fill"></i> Customer Information</h5>
-                                    <div class="row">
-                                        <div class="col-md-6">
-                                            <p><strong>Name:</strong> {{ $booking->customer?->user?->full_name ?? 'N/A' }}
-                                            </p>
-                                            <p><strong>Email:</strong> {{ $booking->customer?->user?->email ?? 'N/A' }}</p>
-                                        </div>
-                                        <div class="col-md-6">
-                                            <p><strong>Phone:</strong> {{ $booking->customer?->user?->phone ?? 'N/A' }}</p>
-                                            @if ($booking->customer->identification ?? null)
-                                                <p><strong>ID/Passport:</strong> {{ $booking->customer->identification }}
+                                        <!-- Payment Link CTA -->
+                                        <div class="btn-container" style="margin: 20px 0;">
+                                            @if (!$isFallbackPaymentLink)
+                                                <a href="{{ $paymentLink }}" class="btn">
+                                                    🔒 Pay {{ $currencySymbol }}
+                                                    {{ number_format($booking->amount_to_pay ?? $booking->total_estimated, 2) }}
+                                                    with WebXPay
+                                                </a>
+                                                <p
+                                                    style="text-align: center; color: #717171; font-size: 13px; margin: 10px 0;">
+                                                    <span style="color: #28a745;">✓ Secure SSL Encryption</span> •
+                                                    <span style="color: #28a745;">✓ All Major Cards Accepted</span> •
+                                                    <span style="color: #28a745;">✓ Instant Confirmation</span>
                                                 </p>
+                                            @else
+                                                <div class="highlight-box warning" style="text-align:center;">
+                                                    <p style="font-weight:600;">We couldn't generate a secure direct payment
+                                                        link for this booking.</p>
+                                                    <p>Please <a
+                                                            href="mailto:{{ config('mail.from.address', 'bookings@casonsrentacar.lk') }}"
+                                                            style="color:#BF2629; text-decoration:none;">contact support</a>
+                                                        or
+                                                        visit our <a href="{{ route('checkout') }}"
+                                                            style="color:#BF2629; text-decoration:none;">checkout page</a>
+                                                        to
+                                                        complete your payment.</p>
+                                                </div>
                                             @endif
                                         </div>
+
+                                        <p style="margin-bottom: 0; font-style: italic; font-size: 13px;">Secure payment
+                                            powered
+                                            by WebXPay. Your booking will be confirmed immediately after successful payment.
+                                        </p>
                                     </div>
-                                </div>
-
-                                <hr>
-
-                                <!-- Booking Details -->
-                                <div class="receipt-section">
-                                    <h5><i class="bi bi-calendar-check"></i> Booking Details</h5>
-                                    <div class="row">
-                                        <div class="col-md-6">
-                                            <p><strong>Pickup Date:</strong>
-                                                {{ \Carbon\Carbon::parse($booking->from_date)->format('M d, Y H:i A') }}
-                                            </p>
-                                            <p><strong>Pickup Location:</strong>
-                                                @php
-                                                    $pickupLocation = is_string($booking->pickup_location)
-                                                        ? json_decode($booking->pickup_location, true)
-                                                        : $booking->pickup_location;
-                                                @endphp
-                                                {{ $pickupLocation['address'] ?? 'N/A' }}
-                                            </p>
-                                        </div>
-                                        <div class="col-md-6">
-                                            <p><strong>Return Date:</strong>
-                                                {{ \Carbon\Carbon::parse($booking->to_date)->format('M d, Y H:i A') }}</p>
-                                            <p><strong>Return Location:</strong>
-                                                @php
-                                                    $dropoffLocation = is_string($booking->dropoff_location)
-                                                        ? json_decode($booking->dropoff_location, true)
-                                                        : $booking->dropoff_location;
-                                                @endphp
-                                                {{ $dropoffLocation['address'] ?? 'N/A' }}
-                                            </p>
-                                        </div>
+                                @elseif($booking->payment_type === 'advance')
+                                    <div class="highlight-box success">
+                                        <h3>✓ Payment Confirmed!</h3>
+                                        <p>You have successfully paid {{ $advancePercentage }}% advance
+                                            ({{ $currencySymbol }}
+                                            {{ number_format($booking->amount_to_pay ?? 0, 2) }}).</p>
+                                        <p><strong>Balance Due at Pickup:</strong> {{ $currencySymbol }}
+                                            {{ number_format($booking->total_estimated - ($booking->amount_to_pay ?? 0), 2) }}
+                                        </p>
+                                        <p style="margin-bottom: 8px;"><strong>Important Reminders:</strong></p>
+                                        <ul>
+                                            <li>Bring valid government-issued ID/Passport</li>
+                                            <li>Bring a valid driver's license</li>
+                                            <li>A credit card may be required for security deposit</li>
+                                            <li>Arrive 15 minutes before scheduled pickup time</li>
+                                        </ul>
                                     </div>
-                                </div>
-
-                                <hr>
-
-                                <!-- Payment Summary -->
-                                <div class="receipt-section">
-                                    <h5><i class="bi bi-credit-card"></i> Payment Summary</h5>
-                                    <div class="payment-breakdown">
-                                        <div class="d-flex justify-content-between mb-2">
-                                            <span>Subtotal:</span>
-                                            <span>{{ $currencySymbol }}{{ number_format($booking->base_amount, 2) }}</span>
-                                        </div>
-                                        @if ($booking->service_fee > 0)
-                                            <div class="d-flex justify-content-between mb-2">
-                                                <span>Service Fee:</span>
-                                                <span>{{ $currencySymbol }}{{ number_format($booking->service_fee, 2) }}</span>
-                                            </div>
-                                        @endif
-                                        @if ($booking->tax_amount > 0)
-                                            <div class="d-flex justify-content-between mb-2">
-                                                <span>{{ config('booking.tax.label', 'NBT') }}
-                                                    ({{ $taxRateDisplay }}%):</span>
-                                                <span>{{ $currencySymbol }}{{ number_format($booking->tax_amount, 2) }}</span>
-                                            </div>
-                                        @endif
-                                        @if (($booking->vat_amount ?? 0) > 0)
-                                            <div class="d-flex justify-content-between mb-2">
-                                                <span>{{ config('booking.vat.label', 'VAT') }}
-                                                    ({{ $vatRateDisplay }}%):</span>
-                                                <span>{{ $currencySymbol }}{{ number_format($booking->vat_amount, 2) }}</span>
-                                            </div>
-                                        @endif
-                                        @if ($booking->discount_amount > 0)
-                                            <div class="d-flex justify-content-between mb-2 text-success">
-                                                <span>Discount:</span>
-                                                <span>-{{ $currencySymbol }}{{ number_format($booking->discount_amount, 2) }}</span>
-                                            </div>
-                                        @endif
-                                        <hr>
-                                        <div class="d-flex justify-content-between mb-3">
-                                            <strong>Total Amount:</strong>
-                                            <strong
-                                                class="text-primary fs-5">{{ $currencySymbol }}{{ number_format($booking->total_estimated, 2) }}</strong>
-                                        </div>
-
-                                        @if ($booking->payment_type === 'advance')
-                                            <div class="alert alert-info mb-3">
-                                                <div class="d-flex justify-content-between">
-                                                    <span><strong>Amount Paid
-                                                            ({{ $advancePercentage }}%):</strong></span>
-                                                    <strong>{{ $currencySymbol }}{{ number_format($booking->amount_to_pay ?? 0, 2) }}</strong>
-                                                </div>
-                                                <div class="d-flex justify-content-between mt-2">
-                                                    <span>Balance Due at Pickup:</span>
-                                                    <span>{{ $currencySymbol }}{{ number_format($booking->total_estimated - ($booking->amount_to_pay ?? 0), 2) }}</span>
-                                                </div>
-                                            </div>
-                                        @endif
-
-                                        <!-- Payment Method -->
-                                        @if ($booking->payment_method)
-                                            <div class="mt-3">
-                                                <p><strong>Payment Method:</strong>
-                                                    @switch($booking->payment_method)
-                                                        @case('online')
-                                                            Online Payment
-                                                        @break
-
-                                                        @case('bank_transfer')
-                                                            Bank Transfer
-                                                        @break
-
-                                                        @case('online_banking')
-                                                            Online Banking
-                                                        @break
-
-                                                        @default
-                                                            {{ ucfirst(str_replace('_', ' ', $booking->payment_method)) }}
-                                                    @endswitch
-                                                </p>
-                                                @if ($isPaid && $booking->payment_gateway_transaction_id)
-                                                    <p><strong>Transaction ID:</strong>
-                                                        {{ $booking->payment_gateway_transaction_id }}</p>
-                                                @endif
-                                            </div>
-                                        @endif
-                                    </div>
-                                </div>
-
-                                @if ($isPending && ($booking->payment_method === 'bank_transfer' || $booking->payment_method === 'online_banking'))
-                                    <hr>
-                                    <!-- Bank Transfer Instructions -->
-                                    <div class="receipt-section">
-                                        <h5><i class="bi bi-bank"></i> Bank Transfer Instructions</h5>
-                                        <div class="alert alert-warning">
-                                            <p class="mb-2"><strong>Please transfer the payment to:</strong></p>
-                                            <div class="row">
-                                                <div class="col-md-6">
-                                                    <p><strong>Account Name:</strong> Casons Rent A Car (Pvt) Ltd</p>
-                                                    <p><strong>Bank:</strong> Commercial Bank of Ceylon PLC</p>
-                                                    <p><strong>Account No:</strong> 1234567890</p>
-                                                </div>
-                                                <div class="col-md-6">
-                                                    <p><strong>Branch:</strong> Colombo Main Branch</p>
-                                                    <p><strong>SWIFT Code:</strong> CCEYLKLX</p>
-                                                    <p><strong>Reference:</strong> <span
-                                                            class="text-danger">{{ $booking->booking_number }}</span></p>
-                                                </div>
-                                            </div>
-                                            <hr>
-                                            <p class="mb-0 small"><i class="bi bi-info-circle"></i>
-                                                <strong>Important:</strong> Please email your payment receipt to: <a
-                                                    href="mailto:payments@casonsrentacar.lk">payments@casonsrentacar.lk</a>
-                                                with the booking reference in the subject line.
-                                            </p>
-                                        </div>
+                                @else
+                                    <div class="highlight-box success">
+                                        <h3>✓ Your Booking is Confirmed!</h3>
+                                        <p>Your vehicle will be prepared and ready for pickup on
+                                            <strong>{{ \Carbon\Carbon::parse($booking->from_date)->format('F d, Y \a\t g:i A') }}</strong>.
+                                        </p>
+                                        <p style="margin-bottom: 8px;"><strong>Important Reminders:</strong></p>
+                                        <ul>
+                                            <li>Bring valid government-issued ID/Passport</li>
+                                            <li>Bring a valid driver's license</li>
+                                            <li>A credit card may be required for security deposit</li>
+                                            <li>Arrive 15 minutes before scheduled pickup time</li>
+                                        </ul>
                                     </div>
                                 @endif
                             </div>
-                        </div>
-                    @endif
 
-                    <!-- Next Steps -->
-                    <div class="next-steps mt-5">
-                        <h4 class="mb-4 text-center">What's Next?</h4>
-                        <div class="row">
-                            @if ($isQuotation)
-                                <div class="col-md-4 mb-3">
-                                    <div class="step-card">
-                                        <div class="step-number">1</div>
-                                        <h5>Wait for Quotation</h5>
-                                        <p>Our team will review your request and prepare a detailed quotation.</p>
-                                    </div>
-                                </div>
-                                <div class="col-md-4 mb-3">
-                                    <div class="step-card">
-                                        <div class="step-number">2</div>
-                                        <h5>Review & Approve</h5>
-                                        <p>You'll receive the quotation via email within 24 hours for your review.</p>
-                                    </div>
-                                </div>
-                                <div class="col-md-4 mb-3">
-                                    <div class="step-card">
-                                        <div class="step-number">3</div>
-                                        <h5>Confirm Booking</h5>
-                                        <p>Once approved, we'll process your booking and send confirmation.</p>
-                                    </div>
-                                </div>
-                            @elseif($isPending)
-                                <div class="col-md-4 mb-3">
-                                    <div class="step-card">
-                                        <div class="step-number">1</div>
-                                        <h5>Complete Payment</h5>
-                                        <p>Transfer the payment using the bank details provided above.</p>
-                                    </div>
-                                </div>
-                                <div class="col-md-4 mb-3">
-                                    <div class="step-card">
-                                        <div class="step-number">2</div>
-                                        <h5>Payment Verification</h5>
-                                        <p>Our team will verify your payment within 2-4 business hours.</p>
-                                    </div>
-                                </div>
-                                <div class="col-md-4 mb-3">
-                                    <div class="step-card">
-                                        <div class="step-number">3</div>
-                                        <h5>Booking Confirmation</h5>
-                                        <p>You'll receive a confirmation email once payment is verified.</p>
-                                    </div>
-                                </div>
-                            @else
-                                <div class="col-md-4 mb-3">
-                                    <div class="step-card">
-                                        <div class="step-number">1</div>
-                                        <h5>Check Your Email</h5>
-                                        <p>A confirmation email has been sent to
-                                            {{ $booking->customer->email ?? 'your email' }}.</p>
-                                    </div>
-                                </div>
-                                <div class="col-md-4 mb-3">
-                                    <div class="step-card">
-                                        <div class="step-number">2</div>
-                                        <h5>Prepare Documents</h5>
-                                        <p>Bring your ID/Passport and driver's license on the pickup date.</p>
-                                    </div>
-                                </div>
-                                <div class="col-md-4 mb-3">
-                                    <div class="step-card">
-                                        <div class="step-number">3</div>
-                                        <h5>Enjoy Your Ride</h5>
-                                        <p>Arrive at the pickup location and start your journey!</p>
-                                    </div>
-                                </div>
-                            @endif
-                        </div>
-                    </div>
+                            <!-- Need Assistance Section -->
+                            <div class="section">
+                                <h2 class="section-title">
+                                    <span class="icon">📞</span> Need Assistance?
+                                </h2>
+                                <p style="color: #555; margin-bottom: 15px;">If you have any questions about your booking,
+                                    please contact us:</p>
+                                <table class="info-table">
+                                    <tr>
+                                        <td>📞 Phone</td>
+                                        <td><a href="tel:+94112345678" style="color: #BF2629; text-decoration: none;">+94 11
+                                                234
+                                                5678</a></td>
+                                    </tr>
+                                    <tr>
+                                        <td>📧 Email</td>
+                                        <td><a href="mailto:{{ config('mail.from.address', 'bookings@casonsrentacar.lk') }}"
+                                                style="color: #BF2629; text-decoration: none;">{{ config('mail.from.address', 'bookings@casonsrentacar.lk') }}</a>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>🌐 Website</td>
+                                        <td><a href="{{ config('app.url') }}"
+                                                style="color: #BF2629; text-decoration: none;">{{ config('app.url') }}</a>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>💬 WhatsApp</td>
+                                        <td><a href="https://wa.me/94712345678"
+                                                style="color: #BF2629; text-decoration: none;">+94 71 234 5678</a></td>
+                                    </tr>
+                                </table>
+                                <p style="text-align: center; color: #717171; margin-top: 15px; font-size: 13px;">Our
+                                    customer
+                                    support team is available 24/7 to assist you.</p>
+                            </div>
 
-                    <!-- Action Buttons -->
-                    <div class="action-buttons text-center mt-5">
-                        <a href="{{ route('home') }}" class="primary-btn1 me-3">
-                            <span>Back to Home</span>
-                        </a>
-                        @if ($isPending && ($booking->payment_method === 'bank_transfer' || $booking->payment_method === 'online_banking'))
-                            <a href="mailto:payments@casonsrentacar.lk?subject=Payment Receipt - {{ $booking->booking_number }}"
-                                class="primary-btn1 btn-outline">
-                                <span><i class="bi bi-envelope"></i> Email Payment Receipt</span>
-                            </a>
+                            <!-- CTA Button -->
+                            <div class="btn-container">
+                                @if ($isPending)
+                                    @php
+                                        $paymentLink = \App\Helpers\BookingLinkHelper::getPaymentLink($booking);
+                                        $isFallbackPaymentLink = $paymentLink === route('checkout');
+                                    @endphp
+                                    @if (!$isFallbackPaymentLink)
+                                        <a href="{{ $paymentLink }}" class="btn">Complete Payment -
+                                            {{ $currencySymbol }}
+                                            {{ number_format($booking->amount_to_pay ?? $booking->total_estimated - ($booking->amount_paid ?? 0), 2) }}</a>
+                                    @else
+                                        <a href="mailto:{{ config('mail.from.address', 'bookings@casonsrentacar.lk') }}"
+                                            class="btn">Contact Support to Complete Payment</a>
+                                    @endif
+                                @elseif($isPaid)
+                                    <a href="{{ route('home') }}" class="btn">Visit Our Website</a>
+                                @else
+                                    <a href="{{ route('home') }}" class="btn">Visit Our Website</a>
+                                @endif
+                            </div>
+
+                            <p style="text-align: center; color: #555; font-size: 15px;">Thank you for choosing
+                                {{ env('COMPANY_NAME', 'Casons Rent A Car') }}. We look forward to serving you!</p>
                         @endif
-                    </div>
-
-                    <!-- Contact Information -->
-                    <div class="contact-info mt-5 p-4 bg-light rounded">
-                        <h6>Need Help?</h6>
-                        <div class="row">
-                            <div class="col-md-4">
-                                <p><i class="bi bi-telephone"></i> <strong>Phone:</strong><br>
-                                    <a href="tel:+94112345678">+94 11 234 5678</a>
-                                </p>
-                            </div>
-                            <div class="col-md-4">
-                                <p><i class="bi bi-envelope"></i> <strong>Email:</strong><br>
-                                    <a href="mailto:bookings@thetaxi.com">bookings@thetaxi.com</a>
-                                </p>
-                            </div>
-                            <div class="col-md-4">
-                                <p><i class="bi bi-whatsapp"></i> <strong>WhatsApp:</strong><br>
-                                    <a href="https://wa.me/94712345678">+94 71 234 5678</a>
-                                </p>
-                            </div>
-                        </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
-    </div>
-    <!--Success Page End-->
 @endsection
 
 @push('styles')
     <style>
-        .success-message {
-            padding: 40px 20px;
+
+        .greeting {
+            font-size: 16px;
+            color: #333333;
+            margin-bottom: 20px;
+            line-height: 1.6;
         }
 
-        .success-icon {
-            width: 100px;
-            height: 100px;
-            margin: 0 auto 30px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 50px;
-            animation: bounceIn 0.8s ease-out;
+        .greeting strong {
+            color: #BF2629;
         }
 
-        .success-icon.paid {
-            background: rgba(40, 167, 69, 0.1);
-            color: #28a745;
-        }
-
-        .success-icon.pending {
-            background: rgba(255, 193, 7, 0.1);
-            color: #ffc107;
-        }
-
-        .success-icon.quotation {
-            background: rgba(23, 162, 184, 0.1);
-            color: #17a2b8;
-        }
-
-        @keyframes bounceIn {
-            0% {
-                opacity: 0;
-                transform: scale(0.3);
-            }
-
-            50% {
-                opacity: 1;
-                transform: scale(1.05);
-            }
-
-            70% {
-                transform: scale(0.9);
-            }
-
-            100% {
-                opacity: 1;
-                transform: scale(1);
-            }
-        }
-
-        .success-message h2 {
-            color: #333;
-            margin-bottom: 15px;
-        }
-
-        .success-message .lead {
-            color: #666;
-            font-size: 18px;
-        }
-
-        .booking-receipt {
-            margin-bottom: 30px;
-        }
-
-        .booking-receipt .card-header {
-            background: var(--primary-color1) !important;
-            color: white;
-            padding: 20px;
-        }
-
-        .booking-receipt .card-body {
-            padding: 30px;
-        }
-
-        .receipt-section {
+        .intro-text {
+            font-size: 15px;
+            color: #555555;
+            line-height: 1.7;
             margin-bottom: 25px;
         }
 
-        .receipt-section h5 {
-            color: var(--primary-color1);
-            margin-bottom: 15px;
-            font-weight: 600;
-        }
-
-        .booking-ref {
-            font-size: 28px;
-            font-weight: 700;
-            color: var(--primary-color1);
-            letter-spacing: 2px;
-            margin-bottom: 5px;
-        }
-
-        .payment-breakdown {
-            background: #f8f9fa;
-            padding: 20px;
+        /* Reference Box */
+        .reference-box {
+            background: linear-gradient(135deg, #fef5f5 0%, #fff8f8 100%);
+            border: 1px solid rgba(191, 38, 41, 0.15);
+            border-left: 4px solid #BF2629;
             border-radius: 8px;
+            padding: 20px 24px;
+            margin: 25px 0;
         }
 
-        .step-card {
-            background: white;
-            border: 2px solid #e9ecef;
-            border-radius: 12px;
-            padding: 30px 20px;
-            text-align: center;
-            height: 100%;
-            transition: all 0.3s ease;
+        .reference-label {
+            font-size: 12px;
+            color: #717171;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
         }
 
-        .step-card:hover {
-            border-color: var(--primary-color1);
-            transform: translateY(-5px);
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        .reference-number {
+            font-size: 22px;
+            font-weight: 700;
+            color: #BF2629;
+            letter-spacing: 1px;
         }
 
-        .step-number {
-            width: 50px;
-            height: 50px;
-            background: var(--primary-color1);
-            color: white;
-            border-radius: 50%;
+        /* Section */
+        .section {
+            margin-bottom: 30px;
+        }
+
+        .section-title {
+            font-size: 17px;
+            font-weight: 600;
+            color: #BF2629;
+            margin-bottom: 16px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #BF2629;
             display: flex;
             align-items: center;
-            justify-content: center;
-            font-size: 24px;
-            font-weight: 700;
-            margin: 0 auto 20px;
         }
 
-        .step-card h5 {
-            color: #333;
-            margin-bottom: 10px;
+        .section-title .icon {
+            margin-right: 10px;
+        }
+
+        /* Info Table */
+        .info-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .info-table tr {
+            border-bottom: 1px solid #eef0f2;
+        }
+
+        .info-table tr:last-child {
+            border-bottom: none;
+        }
+
+        .info-table td {
+            padding: 12px 0;
+            font-size: 14px;
+            vertical-align: top;
+        }
+
+        .info-table td:first-child {
+            font-weight: 600;
+            color: #717171;
+            width: 40%;
+            padding-right: 15px;
+        }
+
+        .info-table td:last-child {
+            color: #333333;
+        }
+
+        /* Highlight Box */
+        .highlight-box {
+            background-color: #f8f9fa;
+            border-left: 4px solid #BF2629;
+            border-radius: 0 8px 8px 0;
+            padding: 20px 24px;
+            margin: 20px 0;
+        }
+
+        .highlight-box.success {
+            background-color: #f0fdf4;
+            border-left-color: #22c55e;
+        }
+
+        .highlight-box.warning {
+            background-color: #fffbeb;
+            border-left-color: #f59e0b;
+        }
+
+        .highlight-box.info {
+            background-color: #eff6ff;
+            border-left-color: #3b82f6;
+        }
+
+        .highlight-box h3 {
+            margin: 0 0 12px 0;
+            font-size: 16px;
             font-weight: 600;
         }
 
-        .step-card p {
-            color: #666;
+        .highlight-box.success h3 {
+            color: #16a34a;
+        }
+
+        .highlight-box.warning h3 {
+            color: #d97706;
+        }
+
+        .highlight-box.info h3 {
+            color: #2563eb;
+        }
+
+        .highlight-box p {
+            margin: 8px 0;
             font-size: 14px;
-            margin: 0;
+            color: #555555;
+            line-height: 1.6;
         }
 
-        .btn-outline {
-            background: transparent !important;
-            color: var(--primary-color1) !important;
-            border: 2px solid var(--primary-color1) !important;
+        .highlight-box ul {
+            margin: 12px 0 0 0;
+            padding-left: 20px;
         }
 
-        .btn-outline:hover {
-            background: var(--primary-color1) !important;
-            color: white !important;
+        .highlight-box li {
+            font-size: 14px;
+            color: #555555;
+            margin-bottom: 6px;
+            line-height: 1.5;
         }
 
-        .contact-info {
-            border: 1px solid #ddd;
+        /* Button */
+        .btn-container {
+            text-align: center;
+            margin: 30px 0;
         }
 
-        .contact-info a {
-            color: var(--primary-color1);
+        .btn {
+            display: inline-block;
+            padding: 14px 32px;
+            background: linear-gradient(135deg, #BF2629 0%, #a02123 100%);
+            color: #ffffff !important;
             text-decoration: none;
+            font-size: 15px;
+            font-weight: 600;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(191, 38, 41, 0.25);
         }
 
-        .contact-info a:hover {
-            text-decoration: underline;
+        .btn:hover {
+            background: linear-gradient(135deg, #a02123 0%, #8f1d1f 100%);
         }
 
-        @media print {
-
-            .breadcrumb-section,
-            .next-steps,
-            .action-buttons,
-            .contact-info,
-            .btn {
-                display: none !important;
-            }
-
-            .booking-receipt {
-                box-shadow: none;
-                border: 2px solid #000;
-            }
-
-            .booking-receipt .card-header {
-                background: #333 !important;
-                -webkit-print-color-adjust: exact;
-                print-color-adjust: exact;
-            }
+        .btn-secondary {
+            background: #717171;
+            box-shadow: 0 4px 12px rgba(113, 113, 113, 0.25);
         }
 
+        /* Status Badge */
+        .status-badge {
+            display: inline-block;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .status-paid {
+            background-color: #dcfce7;
+            color: #16a34a;
+        }
+
+        .status-pending {
+            background-color: #fef3c7;
+            color: #d97706;
+        }
+
+        .status-processing {
+            background-color: #dbeafe;
+            color: #2563eb;
+        }
+
+        /* Divider */
+        .divider {
+            height: 1px;
+            background: linear-gradient(to right, transparent, #e5e7eb, transparent);
+            margin: 30px 0;
+        }
+
+        /* Footer */
+        .email-footer {
+            background: linear-gradient(135deg, #f8f9fa 0%, #f1f2f4 100%);
+            padding: 30px 35px;
+            text-align: center;
+            border-top: 1px solid #eef0f2;
+        }
+
+        .footer-brand {
+            margin-bottom: 20px;
+        }
+
+        .footer-brand img {
+            max-height: 32px;
+            opacity: 0.8;
+        }
+
+        .footer-text {
+            font-size: 13px;
+            color: #717171;
+            margin: 0;
+            line-height: 1.6;
+        }
+
+        .footer-text strong {
+            color: #BF2629;
+        }
+
+        .footer-links {
+            margin: 15px 0;
+        }
+
+        .footer-links a {
+            color: #717171;
+            text-decoration: none;
+            font-size: 13px;
+            margin: 0 10px;
+        }
+
+        .footer-links a:hover {
+            color: #BF2629;
+        }
+
+        .copyright {
+            font-size: 12px;
+            color: #999999;
+            margin-top: 15px;
+        }
+
+        /* Responsive */
         @media (max-width: 768px) {
-            .success-icon {
-                width: 80px;
-                height: 80px;
-                font-size: 40px;
+            .email-wrapper {
+                padding: 20px 10px;
             }
 
-            .success-message h2 {
-                font-size: 24px;
+            .email-content {
+                padding: 30px 20px;
             }
 
-            .booking-receipt .card-body {
-                padding: 20px;
+            .email-header {
+                padding: 30px 20px;
             }
 
-            .action-buttons .primary-btn1 {
-                display: inline-block;
-                margin-bottom: 10px;
+            .email-header h1 {
+                font-size: 22px;
+            }
+
+            .reference-number {
+                font-size: 18px;
+            }
+
+            .btn {
+                padding: 12px 24px;
+                font-size: 14px;
             }
         }
     </style>
@@ -634,13 +730,13 @@
     <script>
         $(document).ready(function() {
             // Copy booking reference to clipboard on click
-            $('.booking-ref').on('click', function() {
+            $('.reference-number').on('click', function() {
                 const referenceNumber = $(this).text().trim();
 
                 if (navigator.clipboard) {
                     navigator.clipboard.writeText(referenceNumber).then(function() {
                         // Show temporary tooltip
-                        const $ref = $('.booking-ref');
+                        const $ref = $('.reference-number');
                         const originalText = $ref.text();
                         $ref.html('<i class="bi bi-check-circle-fill text-success"></i> Copied!');
 
@@ -654,7 +750,7 @@
             });
 
             // Add cursor pointer and title to booking reference
-            $('.booking-ref').css('cursor', 'pointer').attr('title', 'Click to copy reference number');
+            $('.reference-number').css('cursor', 'pointer').attr('title', 'Click to copy reference number');
         });
     </script>
 @endpush

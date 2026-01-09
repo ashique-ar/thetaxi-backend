@@ -155,18 +155,9 @@ class Booking extends BaseModel
         'customer_id',
         'invoice_number',
         'log_code',
-        'service_type_id',
-        'vehicle_group_id',
-        'vehicle_id',
         'driver_id',
         'vip_id',
         'booking_date',
-        'from_date',
-        'to_date',
-        'from_time',
-        'to_time',
-        'pickup_location',
-        'dropoff_location',
         'total_estimated',
         'total_actual',
         'status',
@@ -177,14 +168,6 @@ class Booking extends BaseModel
         'payment_reference',
         'created_user_id',
         'updated_user_id',
-
-        // Enhanced location fields
-        'pickup_latitude',
-        'pickup_longitude',
-        'pickup_landmark',
-        'dropoff_latitude',
-        'dropoff_longitude',
-        'dropoff_landmark',
 
         // Service details
         'is_self_driven',

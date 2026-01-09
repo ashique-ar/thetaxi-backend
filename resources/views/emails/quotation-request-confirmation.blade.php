@@ -1,200 +1,218 @@
-<!DOCTYPE html>
-<html>
+@extends('emails.layouts.master')
 
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Quotation Request Received</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
-        }
+@section('title', 'Quotation Request Received - ' . config('app.name'))
 
-        .header {
-            background-color: #c91c23;
-            color: white;
-            padding: 20px;
-            text-align: center;
-            border-radius: 5px 5px 0 0;
-        }
+@section('header_title', 'Quotation Request Received')
 
-        .content {
-            background-color: #f9f9f9;
-            padding: 20px;
-            border-radius: 0 0 5px 5px;
-            border: 1px solid #ddd;
-        }
+@section('header_subtitle', 'Your request is being processed')
 
-        .section {
-            margin-bottom: 20px;
-            padding: 15px;
-            background-color: white;
-            border-radius: 5px;
-            border-left: 4px solid #c91c23;
-        }
+@section('content')
+    @php
+        use App\Helpers\BookingLinkHelper;
+        use App\Models\Booking\Booking;
 
-        .section h3 {
-            margin-top: 0;
-            color: #c91c23;
-            border-bottom: 1px solid #eee;
-            padding-bottom: 10px;
-        }
+        // Get the quotation booking for this inquiry to generate checkout link
+        $quotationBooking =
+            isset($booking) && $booking instanceof Booking
+                ? $booking
+                : (isset($inquiryNumber)
+                    ? Booking::where('booking_number', $inquiryNumber)->first()
+                    : null);
+        $checkoutLink = $quotationBooking ? BookingLinkHelper::getQuotationCheckoutLink($quotationBooking) : null;
+    @endphp
 
-        .info-grid {
-            display: grid;
-            grid-template-columns: 1fr 2fr;
-            gap: 10px;
-            margin-bottom: 10px;
-        }
+    <!-- Greeting -->
+    <p class="greeting">
+        Dear <strong>{{ $customerName }}</strong>,
+    </p>
 
-        .info-label {
-            font-weight: bold;
-            color: #666;
-        }
+    <p class="intro-text">
+        Your quotation request for <strong>{{ $vehicleGroup->name }}</strong> has been successfully received and is being
+        processed.
+    </p>
 
-        .success {
-            background-color: #d4edda;
-            border: 1px solid #c3e6cb;
-            padding: 15px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-            text-align: center;
-        }
-
-        .next-steps {
-            background-color: #fff3cd;
-            border: 1px solid #ffeaa7;
-            padding: 15px;
-            border-radius: 5px;
-            text-align: center;
-        }
-
-        .contact-info {
-            background-color: #e3f2fd;
-            border: 1px solid #bbdefb;
-            padding: 15px;
-            border-radius: 5px;
-            text-align: center;
-        }
-
-        .btn {
-            display: inline-block;
-            padding: 12px 25px;
-            background-color: #c91c23;
-            color: white;
-            text-decoration: none;
-            border-radius: 5px;
-            margin: 10px 5px;
-        }
-
-        .footer {
-            text-align: center;
-            margin-top: 30px;
-            padding-top: 20px;
-            border-top: 1px solid #eee;
-            color: #666;
-            font-size: 0.9em;
-        }
-    </style>
-</head>
-
-<body>
-    <div class="header">
-        <img src="{{ asset('assets/img/header-logo.png') }}" alt="TheTaxi" style="max-height: 44px; margin-bottom: 10px;">
-        <h1>✅ Quotation Request Received</h1>
-        <p>TheTaxi - Premium Transport Services</p>
+    <!-- Reference Box -->
+    <div class="reference-box">
+        <div class="reference-label">Reference Number</div>
+        <div class="reference-number">{{ $inquiryNumber }}</div>
     </div>
 
-    <div class="content">
-        <div class="success">
-            <h3>🎉 Thank You, {{ $customerName }}!</h3>
-            <p>Your quotation request for <strong>{{ $vehicleGroup->name }}</strong> has been successfully received and
-                is being processed.</p>
-        </div>
+    <!-- Success Message -->
+    <div class="highlight-box success">
+        <h3>✓ Request Submitted Successfully</h3>
+        <p style="margin-bottom: 0;">Our transport specialists are reviewing your requirements and will prepare a customized
+            quote for you.</p>
+    </div>
 
-        <div class="section">
-            <h3>📋 Your Request Details</h3>
-            <div class="info-grid">
-                <div class="info-label">Reference Number:</div>
-                <div><strong>{{ $inquiryNumber }}</strong></div>
+    <!-- Customer Information -->
+    <div class="section">
+        <h2 class="section-title">
+            <span class="icon">👤</span> Contact Information
+        </h2>
+        <table class="info-table">
+            <tr>
+                <td>Name</td>
+                <td>{{ $customerName }}</td>
+            </tr>
+            @if (isset($customerEmail))
+                <tr>
+                    <td>Email</td>
+                    <td>{{ $customerEmail }}</td>
+                </tr>
+            @endif
+            @if (isset($customerPhone))
+                <tr>
+                    <td>Phone</td>
+                    <td>{{ $customerPhone }}</td>
+                </tr>
+            @endif
+            @if (isset($customerAddress) && !empty($customerAddress))
+                <tr>
+                    <td>Address</td>
+                    <td>{{ $customerAddress }}</td>
+                </tr>
+            @endif
+            @if (isset($customerCity) && !empty($customerCity))
+                <tr>
+                    <td>City</td>
+                    <td>{{ $customerCity }}</td>
+                </tr>
+            @endif
+            @if (isset($customerCountry) && !empty($customerCountry))
+                <tr>
+                    <td>Country</td>
+                    <td>{{ $customerCountry }}</td>
+                </tr>
+            @endif
+        </table>
+    </div>
 
-                <div class="info-label">Vehicle Group:</div>
-                <div>{{ $vehicleGroup->name }}</div>
+    <!-- Request Details Section -->
+    <div class="section">
+        <h2 class="section-title">
+            <span class="icon">📋</span> Your Request Details
+        </h2>
+        @php
+            $currencySymbol =
+                isset($booking) && $booking instanceof \App\Models\Booking\Booking
+                    ? getCurrencySymbol($booking->currency)
+                    : getCurrencySymbol('LKR');
+        @endphp
 
-                @if ($vehicleGroup->description)
-                    <div class="info-label">Description:</div>
-                    <div>{{ $vehicleGroup->description }}</div>
-                @endif
+        @if (isset($booking) && $booking instanceof \App\Models\Booking\Booking && $booking->bookingItems->count() > 0)
+            <!-- Vehicle Wise Trip Details for Multi-Item Bookings -->
+            <h3 style="margin-top: 0; color: #333; font-size: 15px; margin-bottom: 15px;">Vehicle Wise Trip Details</h3>
+            @foreach ($booking->bookingItems as $index => $item)
+                <x-booking-item-email :item="$item" :index="$index" :currencySymbol="$currencySymbol" />
+            @endforeach
+        @endif
+    </div>
 
-                <div class="info-label">Submitted:</div>
-                <div>{{ $inquiry->created_at->format('F j, Y \a\t g:i A') }}</div>
+    <div class="divider"></div>
 
-                <div class="info-label">Status:</div>
-                <div><span style="color: #28a745; font-weight: bold;">Under Review</span></div>
-            </div>
-        </div>
-
-        <div class="section">
-            <h3>⏱️ What Happens Next</h3>
-            <ol>
-                <li><strong>Review Process:</strong> Our transport specialists are reviewing your requirements</li>
-                <li><strong>Route Analysis:</strong> We're calculating the optimal route and pricing for your journey
-                </li>
-                <li><strong>Custom Quote:</strong> A detailed quotation will be prepared specifically for your needs
-                </li>
-                <li><strong>Direct Contact:</strong> Our team will contact you directly with the quotation</li>
-            </ol>
-        </div>
-
-        <div class="next-steps">
-            <h3>📞 Expected Response Time</h3>
-            <p><strong>{{ $estimatedResponseTime }}</strong></p>
-            <p>Our corporate transport team will contact you within this timeframe with a detailed quotation.</p>
-        </div>
-
-        <div class="section">
-            <h3>🚗 Why Request a Quotation?</h3>
-            <p>You're receiving a custom quotation because:</p>
-            <ul>
-                <li>Your journey requires specialized routing or pricing</li>
-                <li>The service involves unique requirements or locations</li>
-                <li>We want to ensure you receive the most accurate pricing</li>
-                <li>Our team can optimize the service for your specific needs</li>
-            </ul>
-        </div>
-
-        <div class="contact-info">
-            <h3>📞 Need Immediate Assistance?</h3>
-            <p>If you have any questions or need to modify your request, contact us:</p>
-            <div style="margin: 15px 0;">
-                <div style="margin: 5px 0;">
-                    📧 Email: <a href="mailto:{{ $supportEmail }}">{{ $supportEmail }}</a>
-                </div>
-                <div style="margin: 5px 0;">
-                    📱 Phone: <a href="tel:{{ $supportPhone }}">{{ $supportPhone }}</a>
-                </div>
-            </div>
-            <p><em>Please reference your inquiry number: <strong>{{ $inquiryNumber }}</strong></em></p>
-        </div>
-
-        <div class="section">
-            <h3>🌟 About TheTaxi Corporate Services</h3>
-            <p>We specialize in providing reliable, professional transport solutions for businesses and individuals.
-                Our fleet of well-maintained vehicles and experienced drivers ensure comfortable and punctual service
-                for all your transport needs.</p>
-        </div>
-
-        <div class="footer">
-            <p>Thank you for choosing TheTaxi for your transport needs.</p>
-            <p>Reference: {{ $inquiryNumber }} | Submitted: {{ $inquiry->created_at->format('Y-m-d H:i:s') }}</p>
-            <p>This is an automated confirmation email. Please do not reply to this email.</p>
+    <!-- What Happens Next Section -->
+    <div class="section">
+        <h2 class="section-title">
+            <span class="icon">⏱️</span> What Happens Next
+        </h2>
+        <div class="highlight-box">
+            <p><strong>1. Review Process:</strong> Our transport specialists are reviewing your requirements</p>
+            <p><strong>2. Route Analysis:</strong> We're calculating the optimal route and pricing for your journey</p>
+            <p><strong>3. Custom Quote:</strong> A detailed quotation will be prepared specifically for your needs</p>
+            <p style="margin-bottom: 0;"><strong>4. Direct Contact:</strong> Our team will contact you directly with the
+                quotation</p>
         </div>
     </div>
-</body>
 
-</html>
+    <!-- Expected Response Time -->
+    <div class="highlight-box info">
+        <h3>📞 Expected Response Time</h3>
+        <p style="font-size: 18px; font-weight: 600; color: #2563eb; margin: 10px 0;">{{ $estimatedResponseTime }}</p>
+        <p style="margin-bottom: 0;">Our corporate transport team will contact you within this timeframe with a detailed
+            quotation.</p>
+    </div>
+
+    @if ($checkoutLink)
+        <!-- Quick Checkout Option -->
+        <div class="section">
+            <h2 class="section-title">
+                <span class="icon">⚡</span> Ready to Proceed?
+            </h2>
+            <p style="color: #555; margin-bottom: 15px;">If you'd like to proceed with this booking now without waiting for
+                our quotation, you can proceed directly to payment with the same vehicle and dates pre-filled.</p>
+
+            <div class="btn-container">
+                <a href="{{ $checkoutLink }}" class="btn"
+                    style="display: inline-block; background-color: #BF2629; color: #FFFFFF; padding: 15px 40px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
+                    🚗 Book Now with WebXPay
+                </a>
+                <p style="text-align: center; color: #717171; font-size: 13px; margin: 10px 0;">
+                    <span style="color: #28a745;">✓ Secure Payment</span> •
+                    <span style="color: #28a745;">✓ Instant Booking</span> •
+                    <span style="color: #28a745;">✓ Email Confirmation</span>
+                </p>
+            </div>
+
+            <p style="text-align: center; color: #717171; font-size: 13px; margin-top: 10px;">
+                If the button doesn't work, copy and paste:<br>
+                <a href="{{ $checkoutLink }}"
+                    style="color: #BF2629; text-decoration: underline; word-break: break-all;">{{ $checkoutLink }}</a>
+            </p>
+        </div>
+    @endif
+
+    <!-- Why Request a Quotation Section -->
+    <div class="section">
+        <h2 class="section-title">
+            <span class="icon">🚗</span> Why Request a Quotation?
+        </h2>
+        <p style="color: #555; margin-bottom: 15px;">You're receiving a custom quotation because:</p>
+        <ul style="color: #555; padding-left: 20px; margin: 0;">
+            <li style="margin-bottom: 8px;">Your journey requires specialized routing or pricing</li>
+            <li style="margin-bottom: 8px;">The service involves unique requirements or locations</li>
+            <li style="margin-bottom: 8px;">We want to ensure you receive the most accurate pricing</li>
+            <li>Our team can optimize the service for your specific needs</li>
+        </ul>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Need Immediate Assistance Section -->
+    <div class="section">
+        <h2 class="section-title">
+            <span class="icon">📞</span> Need Immediate Assistance?
+        </h2>
+        <p style="color: #555; margin-bottom: 15px;">If you have any questions or need to modify your request, contact us:
+        </p>
+        <table class="info-table">
+            <tr>
+                <td>📧 Email</td>
+                <td><a href="mailto:{{ $supportEmail }}"
+                        style="color: #BF2629; text-decoration: none;">{{ $supportEmail }}</a></td>
+            </tr>
+            <tr>
+                <td>📞 Phone</td>
+                <td><a href="tel:{{ $supportPhone }}"
+                        style="color: #BF2629; text-decoration: none;">{{ $supportPhone }}</a></td>
+            </tr>
+        </table>
+        <p style="text-align: center; color: #717171; margin-top: 15px; font-size: 13px; font-style: italic;">
+            Please reference your inquiry number: <strong style="color: #BF2629;">{{ $inquiryNumber }}</strong>
+        </p>
+    </div>
+
+    <!-- About Section -->
+    <div class="section">
+        <h2 class="section-title">
+            <span class="icon">🌟</span> About {{ env('COMPANY_NAME', 'Casons Rent A Car') }}
+        </h2>
+        <p style="color: #555; line-height: 1.7; margin: 0;">
+            We specialize in providing reliable, professional transport solutions for businesses and individuals. Our fleet
+            of well-maintained vehicles and experienced drivers ensure comfortable and punctual service for all your
+            transport needs.
+        </p>
+    </div>
+
+    <p style="text-align: center; color: #555; font-size: 15px; margin-top: 30px;">Thank you for choosing
+        {{ env('COMPANY_NAME', 'Casons Rent A Car') }} for your transport needs!</p>
+@endsection

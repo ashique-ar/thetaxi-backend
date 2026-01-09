@@ -53,15 +53,16 @@ class VehicleService
                     ->where('status', 'available')
                     ->whereNotExists(function ($subQuery) use ($fromDate, $toDate) {
                         $subQuery->select(DB::raw(1))
-                            ->from('bookings')
-                            ->whereRaw('bookings.vehicle_id = vehicles.id')
-                            ->where('status', '!=', 'cancelled')
+                            ->from('booking_items')
+                            ->join('bookings', 'booking_items.booking_id', '=', 'bookings.id')
+                            ->whereColumn('booking_items.vehicle_id', 'vehicles.id')
+                            ->where('bookings.status', '!=', 'cancelled')
                             ->where(function ($q) use ($fromDate, $toDate) {
-                                $q->whereBetween('from_date', [$fromDate, $toDate])
-                                    ->orWhereBetween('to_date', [$fromDate, $toDate])
+                                $q->whereBetween('booking_items.from_date', [$fromDate, $toDate])
+                                    ->orWhereBetween('booking_items.to_date', [$fromDate, $toDate])
                                     ->orWhere(function ($inner) use ($fromDate, $toDate) {
-                                        $inner->where('from_date', '<=', $fromDate)
-                                            ->where('to_date', '>=', $toDate);
+                                        $inner->where('booking_items.from_date', '<=', $fromDate)
+                                            ->where('booking_items.to_date', '>=', $toDate);
                                     });
                             });
                     });

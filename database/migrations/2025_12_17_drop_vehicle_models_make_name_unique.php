@@ -40,6 +40,19 @@ BEGIN
 END $$;
 SQL
             );
+        } elseif ($driver === 'sqlite') {
+            // SQLite: find indexes that include both columns and drop them
+            $rows = DB::select("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='vehicle_models'");
+            foreach ($rows as $row) {
+                $indexName = $row->name ?? null;
+                if ($indexName && strpos($indexName, 'vehicle_models_make_id_unique') !== false) {
+                    try {
+                        DB::statement("DROP INDEX IF EXISTS `{$indexName}`;");
+                    } catch (\Exception $e) {
+                        // ignore
+                    }
+                }
+            }
         } else {
             // MySQL / MariaDB: find indexes that include both columns and drop them
             $rows = DB::select("SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'vehicle_models' AND COLUMN_NAME IN ('make_id','name') GROUP BY INDEX_NAME HAVING COUNT(DISTINCT COLUMN_NAME) = 2");

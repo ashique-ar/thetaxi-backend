@@ -42,7 +42,8 @@ class AvailabilityController extends Controller
 
         foreach ($vehicleIds as $vehicleId) {
             $vehicle = Vehicle::find($vehicleId);
-            if (!$vehicle) continue;
+            if (!$vehicle)
+                continue;
 
             $conflicts = $this->getVehicleConflicts($vehicleId, $startDate, $endDate, $request->booking_id);
             $blocks = $this->getVehicleBlocks($vehicleId, $startDate, $endDate);
@@ -92,7 +93,8 @@ class AvailabilityController extends Controller
 
         foreach ($driverIds as $driverId) {
             $driver = Driver::find($driverId);
-            if (!$driver) continue;
+            if (!$driver)
+                continue;
 
             $conflicts = $this->getDriverConflicts($driverId, $startDate, $endDate, $request->booking_id);
             $timeOff = $this->getDriverTimeOff($driverId, $startDate, $endDate);
@@ -223,7 +225,7 @@ class AvailabilityController extends Controller
         // Update vehicle status if it's a maintenance block
         if ($request->block_type === 'maintenance') {
             Vehicle::where('id', $request->vehicle_id)
-                   ->update(['status' => 'maintenance']);
+                ->update(['status' => 'maintenance']);
         }
 
         return response()->json([
@@ -255,7 +257,7 @@ class AvailabilityController extends Controller
         // Update vehicle status back to available if it was maintenance
         if ($block->block_type === 'maintenance') {
             Vehicle::where('id', $block->vehicle_id)
-                   ->update(['status' => 'available']);
+                ->update(['status' => 'available']);
         }
 
         return response()->json([
@@ -325,15 +327,15 @@ class AvailabilityController extends Controller
     private function getVehicleConflicts(string $vehicleId, Carbon $startDate, Carbon $endDate, ?string $excludeBookingId = null): array
     {
         $query = Booking::where('vehicle_id', $vehicleId)
-                       ->where('status', '!=', 'cancelled')
-                       ->where(function ($q) use ($startDate, $endDate) {
-                           $q->whereBetween('start_date', [$startDate, $endDate])
-                             ->orWhereBetween('end_date', [$startDate, $endDate])
-                             ->orWhere(function ($q2) use ($startDate, $endDate) {
-                                 $q2->where('start_date', '<=', $startDate)
-                                    ->where('end_date', '>=', $endDate);
-                             });
-                       });
+            ->where('status', '!=', 'cancelled')
+            ->where(function ($q) use ($startDate, $endDate) {
+                $q->whereBetween('start_date', [$startDate, $endDate])
+                    ->orWhereBetween('end_date', [$startDate, $endDate])
+                    ->orWhere(function ($q2) use ($startDate, $endDate) {
+                        $q2->where('start_date', '<=', $startDate)
+                            ->where('end_date', '>=', $endDate);
+                    });
+            });
 
         if ($excludeBookingId) {
             $query->where('id', '!=', $excludeBookingId);
@@ -345,37 +347,40 @@ class AvailabilityController extends Controller
     private function getVehicleBlocks(string $vehicleId, Carbon $startDate, Carbon $endDate): array
     {
         return VehicleBlock::where('vehicle_id', $vehicleId)
-                          ->where('status', 'active')
-                          ->where(function ($q) use ($startDate, $endDate) {
-                              $q->whereBetween('start_date', [$startDate, $endDate])
-                                ->orWhereBetween('end_date', [$startDate, $endDate])
-                                ->orWhere(function ($q2) use ($startDate, $endDate) {
-                                    $q2->where('start_date', '<=', $startDate)
-                                       ->where('end_date', '>=', $endDate);
-                                });
-                          })
-                          ->get()
-                          ->toArray();
+            ->where('status', 'active')
+            ->where(function ($q) use ($startDate, $endDate) {
+                $q->whereBetween('start_date', [$startDate, $endDate])
+                    ->orWhereBetween('end_date', [$startDate, $endDate])
+                    ->orWhere(function ($q2) use ($startDate, $endDate) {
+                        $q2->where('start_date', '<=', $startDate)
+                            ->where('end_date', '>=', $endDate);
+                    });
+            })
+            ->get()
+            ->toArray();
     }
 
     private function getDriverConflicts(string $driverId, Carbon $startDate, Carbon $endDate, ?string $excludeBookingId = null): array
     {
-        $query = Booking::where('driver_id', $driverId)
-                       ->where('status', '!=', 'cancelled')
-                       ->where(function ($q) use ($startDate, $endDate) {
-                           $q->whereBetween('start_date', [$startDate, $endDate])
-                             ->orWhereBetween('end_date', [$startDate, $endDate])
-                             ->orWhere(function ($q2) use ($startDate, $endDate) {
-                                 $q2->where('start_date', '<=', $startDate)
-                                    ->where('end_date', '>=', $endDate);
-                             });
-                       });
+        // Import needed: use App\Models\DriverAssignment or similar
+        // Query through DriverAssignment instead of bookings directly
+        $query = \App\Models\DriverAssignment::where('driver_id', $driverId)
+            ->join('bookings', 'driver_assignments.booking_id', '=', 'bookings.id')
+            ->where('bookings.status', '!=', 'cancelled')
+            ->where(function ($q) use ($startDate, $endDate) {
+                $q->whereBetween('driver_assignments.from_date', [$startDate, $endDate])
+                    ->orWhereBetween('driver_assignments.to_date', [$startDate, $endDate])
+                    ->orWhere(function ($q2) use ($startDate, $endDate) {
+                        $q2->where('driver_assignments.from_date', '<=', $startDate)
+                            ->where('driver_assignments.to_date', '>=', $endDate);
+                    });
+            });
 
         if ($excludeBookingId) {
-            $query->where('id', '!=', $excludeBookingId);
+            $query->where('bookings.id', '!=', $excludeBookingId);
         }
 
-        return $query->with('customer')->get()->toArray();
+        return $query->with('booking.customer')->select('driver_assignments.*')->get()->map(fn($item) => $item->booking)->toArray();
     }
 
     private function getDriverTimeOff(string $driverId, Carbon $startDate, Carbon $endDate): array
@@ -402,7 +407,7 @@ class AvailabilityController extends Controller
         // Calculate pricing based on vehicle, dates, duration
         $days = $startDate->diffInDays($endDate) + 1;
         $vehicle = Vehicle::find($vehicleId);
-        
+
         return [
             'daily_rate' => $vehicle->daily_rate ?? 0,
             'total_days' => $days,

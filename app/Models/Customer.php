@@ -37,7 +37,7 @@ use App\Traits\UUID;
  */
 class Customer extends BaseModel
 {
-    
+
 
     /**
      * The attributes that are mass assignable.
@@ -62,6 +62,7 @@ class Customer extends BaseModel
         'postal_code',
         'gender',
         'country_id',
+        'country',
         'state_id',
         'city',
         'created_user_id',
@@ -183,7 +184,7 @@ class Customer extends BaseModel
         if (!$this->user) {
             return null;
         }
-        
+
         return trim($this->user->first_name . ' ' . ($this->user->last_name ?? ''));
     }
 

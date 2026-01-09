@@ -169,11 +169,12 @@
                                                 </div>
                                             </td>
                                             <td data-label="Price">
-                                                <span>{{ $currencySymbol }}{{ number_format($item['price'] ?? 0, 2) }}/day</span>
+                                                <span>{{ $currencySymbol }}
+                                                    {{ number_format($item['price'] ?? 0, 2) }}/day</span>
                                             </td>
                                             <td data-label="Total">
-                                                <span
-                                                    class="item-total">{{ $currencySymbol }}{{ number_format($itemTotal, 2) }}</span>
+                                                <span class="item-total">{{ $currencySymbol }}
+                                                    {{ number_format($itemTotal, 2) }}</span>
                                             </td>
                                             <td data-label="Action">
                                                 <button class="remove-item btn btn-sm btn-outline-danger"
@@ -308,7 +309,7 @@
                                     <li>
                                         <strong>Subtotal</strong>
                                         <strong class="cart-subtotal">
-                                            {{ $currencySymbol }}{{ number_format($cartTotals['subtotal'] ?? 0, 2) }}
+                                            {{ $currencySymbol }} {{ number_format($cartTotals['subtotal'] ?? 0, 2) }}
                                         </strong>
                                     </li>
 
@@ -318,7 +319,8 @@
                                             <div class="order-info">
                                                 <p>Additional Services</p>
                                                 <span class="addon-charges-amount">
-                                                    {{ $currencySymbol }}{{ number_format($cartTotals['addon_charges'] ?? 0, 2) }}
+                                                    {{ $currencySymbol }}
+                                                    {{ number_format($cartTotals['addon_charges'] ?? 0, 2) }}
                                                 </span>
                                             </div>
                                         </li>
@@ -329,7 +331,8 @@
                                             <div class="order-info">
                                                 <p>Additional Kilometers</p>
                                                 <span class="extra-km-charges-amount">
-                                                    {{ $currencySymbol }}{{ number_format($cartTotals['extra_km_charges'] ?? 0, 2) }}
+                                                    {{ $currencySymbol }}
+                                                    {{ number_format($cartTotals['extra_km_charges'] ?? 0, 2) }}
                                                 </span>
                                             </div>
                                         </li>
@@ -339,8 +342,8 @@
                                             Service Charges
                                             <div class="order-info">
                                                 <p>Processing Fee</p>
-                                                <span
-                                                    class="service-fee">{{ $currencySymbol }}{{ number_format($cartTotals['service_fee'] ?? 0, 2) }}</span>
+                                                <span class="service-fee">{{ $currencySymbol }}
+                                                    {{ number_format($cartTotals['service_fee'] ?? 0, 2) }}</span>
                                             </div>
                                         </li>
                                     @endif
@@ -350,7 +353,7 @@
                                             <div class="order-info">
                                                 <p>Government Tax</p>
                                                 <span class="tax-amount">
-                                                    {{ $currencySymbol }}{{ number_format($cartTotals['tax'] ?? 0, 2) }}
+                                                    {{ $currencySymbol }} {{ number_format($cartTotals['tax'] ?? 0, 2) }}
                                                 </span>
                                             </div>
                                         </li>
@@ -361,7 +364,7 @@
                                             <div class="order-info">
                                                 <p>Value Added Tax</p>
                                                 <span class="vat-amount">
-                                                    {{ $currencySymbol }}{{ number_format($cartTotals['vat'] ?? 0, 2) }}
+                                                    {{ $currencySymbol }} {{ number_format($cartTotals['vat'] ?? 0, 2) }}
                                                 </span>
                                             </div>
                                         </li>
@@ -383,7 +386,8 @@
                                                     <div class="promo-discount-info">
                                                         <small class="text-success">
                                                             You save
-                                                            {{ $currencySymbol }}{{ number_format($cartTotals['coupon_discount'] ?? 0, 2) }}
+                                                            {{ $currencySymbol }}
+                                                            {{ number_format($cartTotals['coupon_discount'] ?? 0, 2) }}
                                                         </small>
                                                     </div>
                                                 </div>
@@ -410,14 +414,14 @@
                                     @if (($cartTotals['coupon_discount'] ?? 0) > 0)
                                         <li class="discount-row">
                                             <strong class="text-success"><i class="bi bi-tag-fill"></i> Discount</strong>
-                                            <strong
-                                                class="discount-amount text-success">-{{ $currencySymbol }}{{ number_format($cartTotals['coupon_discount'] ?? 0, 2) }}</strong>
+                                            <strong class="discount-amount text-success">-{{ $currencySymbol }}
+                                                {{ number_format($cartTotals['coupon_discount'] ?? 0, 2) }}</strong>
                                         </li>
                                     @endif
                                     <li>
                                         <strong>Total</strong>
                                         <strong class="cart-total">
-                                            {{ $currencySymbol }}{{ number_format($cartTotals['total'] ?? 0, 2) }}
+                                            {{ $currencySymbol }} {{ number_format($cartTotals['total'] ?? 0, 2) }}
                                         </strong>
                                     </li>
                                 </ul>
@@ -1191,8 +1195,8 @@
                                         ${isSelected ? '<i class="bi bi-arrow-clockwise"></i> Update' : '<i class="bi bi-plus-lg"></i> Add'}
                                     </button>
                                     ${isSelected ? `<button class="btn-remove-addon-unified remove-addon-btn" data-addon-id="${addon.id}" data-cart-key="${cartKey}" title="Remove this addon">
-                                            <i class="bi bi-trash"></i> Remove
-                                        </button>` : ''}
+                                                <i class="bi bi-trash"></i> Remove
+                                            </button>` : ''}
                                 </div>
                             </div>
                         </div>
@@ -1218,7 +1222,7 @@
                 if (count > 0) {
                     parentSmall.html(
                         `Selected: <span class="selected-count">${count}</span> service(s) <small class="text-success">(Remove available)</small>`
-                        );
+                    );
                 } else {
                     parentSmall.html(`Selected: <span class="selected-count">0</span> service(s)`);
                 }
@@ -1948,8 +1952,8 @@
         }
 
         /* ==========================================
-                       Extra KM Purchase Section Styles
-                       ========================================== */
+                           Extra KM Purchase Section Styles
+                           ========================================== */
         .extra-km-row {
             background-color: #f5f8ff;
             border-top: 2px solid #d0d8e8;

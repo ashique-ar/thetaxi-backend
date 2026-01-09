@@ -49,15 +49,16 @@ class CustomerService
                     $existingCustomer->update([
                         'address' => $data['customer_address'] ?? $existingCustomer->address,
                         'city' => $data['customer_city'] ?? $existingCustomer->city,
+                        'country' => $data['customer_country'] ?? $existingCustomer->country,
                         'country_id' => $data['country_id'] ?? $existingCustomer->country_id,
                     ]);
                     return $existingCustomer->load('user');
                 }
             }
-            
+
             // Check if user with this email already exists
             $user = User::where('email', $data['customer_email'])->first();
-            
+
             if (!$user) {
                 // Create new user account for guest
                 $user = User::create([
@@ -80,13 +81,14 @@ class CustomerService
 
             // Check if customer record exists for this user
             $customer = $user->customer;
-            
+
             if (!$customer) {
                 // Create new customer linked to user
                 $customer = Customer::create([
                     'user_id' => $user->id,
                     'address' => $data['customer_address'] ?? null,
                     'city' => $data['customer_city'] ?? null,
+                    'country' => $data['customer_country'] ?? null,
                     'country_id' => $data['country_id'] ?? null,
                     'nic' => $data['customer_identification'] ?? null,
                     'created_user_id' => Auth::id() ?? $user->id,
@@ -96,6 +98,7 @@ class CustomerService
                 $customer->update([
                     'address' => $data['customer_address'] ?? $customer->address,
                     'city' => $data['customer_city'] ?? $customer->city,
+                    'country' => $data['customer_country'] ?? $customer->country,
                     'country_id' => $data['country_id'] ?? $customer->country_id,
                     'nic' => $data['customer_identification'] ?? $customer->nic,
                     'updated_user_id' => Auth::id() ?? $user->id,

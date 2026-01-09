@@ -33,15 +33,27 @@ return new class extends Migration {
         'payment_transactions',
         'taxi_sessions',
         'search_saved',
+        'sqlite_sequence', // SQLite system table
     ];
 
     public function up(): void
     {
-        $tables = DB::table('information_schema.tables')
-            ->select('table_name')
-            ->where('table_schema', 'public')
-            ->pluck('table_name')
-            ->toArray();
+        $connection = DB::connection()->getDriverName();
+        
+        if ($connection === 'pgsql') {
+            $tables = DB::table('information_schema.tables')
+                ->select('table_name')
+                ->where('table_schema', 'public')
+                ->pluck('table_name')
+                ->toArray();
+        } elseif ($connection === 'sqlite') {
+            $tables = DB::select("SELECT name as table_name FROM sqlite_master WHERE type='table'");
+            $tables = array_map(fn($t) => $t->table_name, $tables);
+        } else {
+            // MySQL / MariaDB
+            $tables = DB::select("SELECT TABLE_NAME as table_name FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE()");
+            $tables = array_map(fn($t) => $t->table_name, $tables);
+        }
 
         foreach ($tables as $tbl) {
             if (in_array($tbl, $this->skip, true)) {
@@ -58,11 +70,22 @@ return new class extends Migration {
 
     public function down(): void
     {
-        $tables = DB::table('information_schema.tables')
-            ->select('table_name')
-            ->where('table_schema', 'public')
-            ->pluck('table_name')
-            ->toArray();
+        $connection = DB::connection()->getDriverName();
+        
+        if ($connection === 'pgsql') {
+            $tables = DB::table('information_schema.tables')
+                ->select('table_name')
+                ->where('table_schema', 'public')
+                ->pluck('table_name')
+                ->toArray();
+        } elseif ($connection === 'sqlite') {
+            $tables = DB::select("SELECT name as table_name FROM sqlite_master WHERE type='table'");
+            $tables = array_map(fn($t) => $t->table_name, $tables);
+        } else {
+            // MySQL / MariaDB
+            $tables = DB::select("SELECT TABLE_NAME as table_name FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE()");
+            $tables = array_map(fn($t) => $t->table_name, $tables);
+        }
 
         foreach ($tables as $tbl) {
             if (Schema::hasColumn($tbl, 'is_active')) {

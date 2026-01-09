@@ -45,7 +45,7 @@
                             }
 
                             $packageHours = $search->package_hours ?? null;
-                            $isPackageService = in_array($serviceType, ['wedding_hire', 'airport_transfers']);
+                            // $isPackageService = in_array($serviceType, ['wedding_hire', 'airport_transfers', 'daily_rental',]);
 
                             // Format duration based on service type
                             if ($serviceType === 'wedding_hire' && $packageHours) {
@@ -98,10 +98,11 @@
                                     {{ number_format($search->total_distance_km, 2) }} km
                                 </span>
                             @endif
-                            @if ($isPackageService)
+                            @if ($search->max_km_per_day || $search->max_km_per_package)
                                 <span class="package-info">
                                     <i class="bi bi-speedometer2"></i>
-                                    Max KM: {{ $search->max_km_per_day ?? 100 }} km/day / {{ $search->max_km_per_package ?? 500 }} km total
+                                    Max KM:
+                                    {{ $search->max_km_per_day ? $search->max_km_per_day . ' km/day' : '' }}{{ $search->max_km_per_day && $search->max_km_per_package ? ' / ' : '' }}{{ $search->max_km_per_package ? $search->max_km_per_package . ' km total' : '' }}
                                     <br><small class="text-white-75">Purchase extra km in cart after adding vehicle</small>
                                 </span>
                             @endif
@@ -283,7 +284,8 @@
                                 <div class="col-md-6">
                                     <small class="text-muted">Drop-off Location:</small>
                                     <p class="mb-1">
-                                        {{ $search->dropoff_location ?? ($search->pickup_location ?? 'Not specified') }}</p>
+                                        {{ $search->dropoff_location ?? ($search->pickup_location ?? 'Not specified') }}
+                                    </p>
                                 </div>
                             </div>
                         </div>
@@ -1061,7 +1063,7 @@
                     const to = new Date(toDate);
                     const diffTime = Math.abs(to - from);
                     durationDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1 ||
-                    1; // +1 for calendar days
+                        1; // +1 for calendar days
                 }
 
                 const searchData = {
@@ -1080,23 +1082,50 @@
                     duration_days: durationDays
                 };
 
-                // Send to cart WITHOUT price - let backend recalculate
-                addToCart({
+                const item = {
                     group_id: groupId,
                     group_name: groupName,
                     currency: currency,
                     quantity: 1,
                     ...searchData
+                };
+
+                // UX: show loading state on button and prevent double clicks
+                const spinner =
+                    '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>';
+                if (!btn.data('original-html')) {
+                    btn.data('original-html', btn.html());
+                }
+                btn.prop('disabled', true).addClass('loading');
+                btn.html(spinner + 'Adding...');
+
+                // Safety timeout in case callback never fires
+                const safetyTimer = setTimeout(() => {
+                    console.error('Add to cart safety timeout');
+                    btn.prop('disabled', false).removeClass('loading');
+                    btn.html(btn.data('original-html'));
+                    showErrorNotification(
+                        'Timed out adding to cart. Please check your network and try again.');
+                }, 15000); // 15s
+
+                // Send to cart with callback to restore button state
+                addToCart(item, function(response) {
+                    clearTimeout(safetyTimer);
+                    if (response && response.success !== false) {
+                        // Show success state briefly
+                        btn.html('<i class="bi bi-check-circle-fill"></i> Added!');
+                        setTimeout(() => {
+                            btn.prop('disabled', false).removeClass('loading');
+                            btn.html(btn.data('original-html'));
+                        }, 2000);
+                    } else {
+                        // If adding to cart failed, restore button state and show error
+                        console.error('Add to cart failed.', response);
+                        btn.prop('disabled', false).removeClass('loading');
+                        btn.html(btn.data('original-html'));
+                        showErrorNotification('Failed to add to cart. Please try again.');
+                    }
                 });
-
-                // Visual feedback
-                btn.html('<i class="bi bi-check-circle-fill"></i> Added!');
-                btn.prop('disabled', true);
-
-                setTimeout(() => {
-                    btn.html('<i class="bi bi-cart-plus"></i> Add to Cart');
-                    btn.prop('disabled', false);
-                }, 2000);
             });
 
             // Close cart float
@@ -1596,7 +1625,7 @@
                         $('#requestQuotationModal').modal('hide');
                         showSuccessNotification(
                             'Quotation request submitted successfully! Our team will contact you shortly.'
-                            );
+                        );
                         $form[0].reset();
                     } else {
                         showErrorNotification(response.message ||
@@ -1605,7 +1634,7 @@
                 },
                 error: function(xhr) {
                     const errorMsg = xhr.responseJSON?.message ||
-                    'An error occurred. Please try again.';
+                        'An error occurred. Please try again.';
                     showErrorNotification(errorMsg);
                 },
                 complete: function() {

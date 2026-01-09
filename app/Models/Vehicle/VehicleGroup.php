@@ -4,6 +4,7 @@ namespace App\Models\Vehicle;
 
 use App\Models\BaseModel;
 use App\Models\Booking\Booking;
+use App\Models\Booking\BookingItem;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -136,6 +137,11 @@ class VehicleGroup extends BaseModel
     public function bookings(): HasMany
     {
         return $this->hasMany(Booking::class, 'vehicle_group_id');
+    }
+
+    public function bookingItems(): HasMany
+    {
+        return $this->hasMany(BookingItem::class, 'vehicle_group_id');
     }
 
     /**

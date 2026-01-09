@@ -605,6 +605,7 @@ class BookingFlowController extends Controller
                 'vehicleGroup',
                 'bookingAddons.addon',
                 'approvals',
+                'bookingItems',
             ])->findOrFail($bookingId);
 
             // Check permissions

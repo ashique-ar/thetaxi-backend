@@ -39,7 +39,8 @@ class AssignmentController extends Controller
                 'vehicle.vehicleGroup',
                 'driver.user',
                 'vehicleAssignments.vehicle',
-                'driverAssignments.driver.user'
+                'driverAssignments.driver.user',
+                'bookingItems'
             ])->findOrFail($bookingId);
 
             $result = [

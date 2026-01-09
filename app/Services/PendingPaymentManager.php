@@ -1,0 +1,352 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\Booking\Booking;
+use App\Models\Website\PendingPaymentLink;
+use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
+use Carbon\Carbon;
+
+/**
+ * PendingPaymentManager
+ * 
+ * Manages pending payment links and recovery data independently of cart
+ * Generates persistent payment links with full booking context for email communication
+ * Allows customers to resume payment from emails without relying on cart state
+ */
+class PendingPaymentManager
+{
+    /**
+     * Create a persistent pending payment link
+     * Stores full booking context in database for secure retrieval
+     * 
+     * @param Booking $booking
+     * @param int $expiryHours Default: 7 days (168 hours)
+     * @return PendingPaymentLink
+     */
+    public static function createPaymentLink(Booking $booking, int $expiryHours = 168): PendingPaymentLink
+    {
+        // Generate unique secure token
+        $token = Str::random(64);
+
+        // Prepare booking context data (with enhanced logging)
+        try {
+            $bookingContext = self::prepareBookingContext($booking);
+        } catch (\Exception $e) {
+            Log::error('PendingPaymentManager: Failed preparing booking context', [
+                'booking_id' => $booking->id ?? null,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            throw $e;
+        }
+
+        // Calculate amount due - handle various booking states
+        $amountDue = self::calculateAmountDue($booking);
+
+        if ($amountDue <= 0) {
+            Log::warning('PendingPaymentManager: Amount due is zero or negative when creating payment link', [
+                'booking_id' => $booking->id ?? null,
+                'total_estimated' => $booking->total_estimated ?? null,
+                'amount_to_pay' => $booking->amount_to_pay ?? null,
+                'quotation_amount' => $booking->quotation_amount ?? null,
+                'calculated_amount_due' => $amountDue,
+            ]);
+        }
+
+        // Reuse active pending payment link if one exists to avoid invalidating previously sent tokens
+        $existing = PendingPaymentLink::where('booking_id', $booking->id)
+            ->where('type', 'payment_reminder')
+            ->where('expires_at', '>', Carbon::now())
+            ->first();
+
+        if ($existing) {
+            Log::info('PendingPaymentManager: Reusing existing active pending payment link', [
+                'booking_id' => $booking->id,
+                'payment_link_id' => $existing->id,
+                'amount_due' => $existing->amount_due,
+                'token' => $existing->token,
+            ]);
+
+            // Ensure context and amount are up-to-date
+            $existing->update([
+                'booking_context' => json_encode($bookingContext),
+                'amount_due' => $amountDue,
+                'updated_at' => Carbon::now(),
+            ]);
+
+            return $existing;
+        }
+
+        // No active link found: create a new persistent payment link record
+        $paymentLink = PendingPaymentLink::create([
+            'booking_id' => $booking->id,
+            'token' => $token,
+            'type' => 'payment_reminder',
+            'booking_context' => json_encode($bookingContext),
+            'amount_due' => $amountDue,
+            'expires_at' => Carbon::now()->addHours($expiryHours),
+            'accessed_at' => null,
+            'access_count' => 0,
+        ]);
+
+        Log::info('PendingPaymentManager: Created new pending payment link', [
+            'booking_id' => $booking->id,
+            'payment_link_id' => $paymentLink->id,
+            'amount_due' => $paymentLink->amount_due,
+            'token' => $paymentLink->token,
+        ]);
+
+        return $paymentLink;
+    }
+
+    /**
+     * Calculate amount due for various booking types
+     * 
+     * @param Booking $booking
+     * @return float
+     */
+    private static function calculateAmountDue(Booking $booking): float
+    {
+        // For quotations, try multiple fields to get the amount
+        $totalAmount = $booking->total_estimated
+            ?? $booking->amount_to_pay
+            ?? $booking->quotation_amount
+            ?? $booking->base_amount
+            ?? 0;
+
+        $amountPaid = $booking->amount_paid ?? 0;
+
+        return max(0, $totalAmount - $amountPaid);
+    }
+
+    /**
+     * Generate full payment link URL for email
+     * 
+     * @param Booking $booking
+     * @param int $expiryHours
+     * @return string
+     */
+    public static function generatePaymentLinkUrl(Booking $booking, int $expiryHours = 168): string
+    {
+        try {
+            Log::info('PendingPaymentManager: Starting payment link generation', [
+                'booking_id' => $booking->id,
+                'booking_code' => $booking->booking_code ?? 'N/A',
+                'total_estimated' => $booking->total_estimated,
+                'amount_to_pay' => $booking->amount_to_pay,
+                'quotation_amount' => $booking->quotation_amount ?? 'N/A',
+                'base_amount' => $booking->base_amount ?? 'N/A',
+            ]);
+
+            $paymentLink = self::createPaymentLink($booking, $expiryHours);
+
+            $url = route('checkout.payment-resume', [
+                'token' => $paymentLink->token
+            ]);
+
+            Log::info('PendingPaymentManager: Payment link generated successfully', [
+                'booking_id' => $booking->id,
+                'amount_due' => $paymentLink->amount_due,
+                'url' => $url,
+            ]);
+
+            return $url;
+        } catch (\Exception $e) {
+            Log::error('PendingPaymentManager: Payment link generation failed', [
+                'booking_id' => $booking->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            // Fallback to direct checkout
+            return route('checkout');
+        }
+    }
+
+    /**
+     * Retrieve and validate pending payment link
+     * Marks link as accessed and updates access count
+     * 
+     * @param string $token
+     * @return array|null
+     */
+    public static function retrievePaymentLink(string $token): ?array
+    {
+        try {
+            $paymentLink = PendingPaymentLink::where('token', $token)
+                ->where('expires_at', '>', Carbon::now())
+                ->first();
+
+            if (!$paymentLink) {
+                Log::warning('PendingPaymentManager: retrievePaymentLink did not find a matching record', [
+                    'token' => $token,
+                ]);
+
+                return null;
+            }
+
+            // Update access tracking
+            $paymentLink->update([
+                'accessed_at' => Carbon::now(),
+                'access_count' => $paymentLink->access_count + 1,
+            ]);
+
+            // Return booking context and payment details
+            return [
+                'booking' => $paymentLink->booking()->first(),
+                'context' => json_decode($paymentLink->booking_context, true),
+                'amount_due' => $paymentLink->amount_due,
+                'token' => $token,
+                'expires_at' => $paymentLink->expires_at,
+            ];
+        } catch (\Exception $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Prepare complete booking context for payment recovery
+     * Includes all necessary data to recreate checkout session
+     * 
+     * @param Booking $booking
+     * @return array
+     */
+    private static function prepareBookingContext(Booking $booking): array
+    {
+        try {
+            // Load related data - use bookingItems instead of items (quotation bookings use bookingItems)
+            $booking->load([
+                'customer',
+                'vehicleGroup',
+                'serviceType',
+                'bookingItems',
+                'addons'
+            ]);
+        } catch (\Exception $e) {
+            Log::error('PendingPaymentManager: prepareBookingContext failed to load relationships', [
+                'booking_id' => $booking->id ?? null,
+                'error' => $e->getMessage(),
+            ]);
+            throw $e;
+        }
+
+        // Safely compute items and addons counts (handle legacy/cart-based structures)
+        $itemsCount = 0;
+        if (method_exists($booking, 'bookingItems')) {
+            $itemsCount = $booking->bookingItems?->count() ?? 0;
+        } elseif (!empty($booking->items) && is_array($booking->items)) {
+            $itemsCount = count($booking->items);
+        }
+
+        $addonsCount = 0;
+        if (method_exists($booking, 'addons')) {
+            $addonsCount = $booking->addons?->count() ?? 0;
+        }
+
+        return [
+            'booking_id' => $booking->id,
+            'booking_number' => $booking->booking_number,
+            'customer' => [
+                'id' => $booking->customer?->id,
+                'name' => $booking->customer?->user?->full_name,
+                'email' => $booking->customer?->user?->email,
+                'phone' => $booking->customer?->user?->phone,
+                'address' => $booking->customer?->address,
+                'city' => $booking->customer?->city,
+                'country' => $booking->customer?->country,
+                'country_code' => $booking->customer?->country_code,
+                'postal_code' => $booking->customer?->postal_code,
+            ],
+            'vehicle_group' => [
+                'id' => $booking->vehicle_group_id,
+                'name' => $booking->vehicleGroup?->name,
+            ],
+            'service_type' => [
+                'id' => $booking->service_type_id,
+                'code' => $booking->serviceType?->code,
+                'name' => $booking->serviceType?->name,
+            ],
+            'dates' => [
+                'from_date' => $booking->from_date?->toDateString(),
+                'to_date' => $booking->to_date?->toDateString(),
+                'from_time' => $booking->from_time,
+                'to_time' => $booking->to_time,
+            ],
+            'locations' => [
+                'pickup' => json_decode($booking->pickup_location ?? '{}', true),
+                'dropoff' => json_decode($booking->dropoff_location ?? '{}', true),
+            ],
+            'pricing' => [
+                'base_amount' => $booking->base_amount ?? 0,
+                'service_fee' => $booking->service_fee ?? 0,
+                'tax_amount' => $booking->tax_amount ?? 0,
+                'vat_amount' => $booking->vat_amount ?? 0,
+                'discount_amount' => $booking->discount_amount ?? 0,
+                'total_estimated' => $booking->total_estimated ?? $booking->amount_to_pay ?? $booking->quotation_amount ?? $booking->base_amount ?? 0,
+                'amount_paid' => $booking->amount_paid ?? 0,
+                'currency' => $booking->currency ?? 'LKR',
+            ],
+            'items_count' => $itemsCount,
+            'booking_items' => $booking->bookingItems->map(fn($item) => [
+                'vehicle_group' => $item->vehicle_group_name ?? ($item->vehicleGroup?->name ?? 'N/A'),
+                'service_type' => $item->service_type_name ?? ($item->serviceType?->name ?? 'N/A'),
+                'from_date' => $item->from_date?->toDateString(),
+                'to_date' => $item->to_date?->toDateString(),
+                'from_time' => $item->from_time,
+                'to_time' => $item->to_time,
+                'duration_days' => $item->duration_days,
+                'pickup_location' => json_decode($item->pickup_location ?? '{}', true),
+                'dropoff_location' => json_decode($item->dropoff_location ?? '{}', true),
+                'unit_price' => $item->unit_price,
+                'total_price' => $item->total_price,
+            ])->toArray(),
+            'addons_count' => $addonsCount,
+            'payment_method' => $booking->payment_method,
+            'payment_status' => $booking->payment_status,
+            'booking_status' => $booking->status,
+        ];
+    }
+
+    /**
+     * Invalidate payment link after successful payment
+     * 
+     * @param string $token
+     * @return void
+     */
+    public static function invalidatePaymentLink(string $token): void
+    {
+        PendingPaymentLink::where('token', $token)
+            ->update([
+                'expires_at' => Carbon::now()->subMinute(),
+                'invalidated_at' => Carbon::now(),
+            ]);
+    }
+
+    /**
+     * Get all active pending payment links for a booking
+     * 
+     * @param string $bookingId
+     * @return \Illuminate\Database\Eloquent\Collection
+     */
+    public static function getActiveLinksForBooking(string $bookingId)
+    {
+        return PendingPaymentLink::where('booking_id', $bookingId)
+            ->where('expires_at', '>', Carbon::now())
+            ->get();
+    }
+
+    /**
+     * Cleanup expired payment links (run via scheduled task)
+     * 
+     * @return int Number of deleted records
+     */
+    public static function cleanupExpiredLinks(): int
+    {
+        return PendingPaymentLink::where('expires_at', '<', Carbon::now())
+            ->where('invalidated_at', null)
+            ->delete();
+    }
+}

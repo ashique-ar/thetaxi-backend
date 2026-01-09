@@ -22,7 +22,7 @@ class ReportsController extends Controller
     {
         $period = $request->get('period', 'month');
         $startDate = $this->getStartDate($period);
-        
+
         $stats = [
             'total_bookings' => Booking::where('created_at', '>=', $startDate)->count(),
             'total_revenue' => Booking::where('created_at', '>=', $startDate)
@@ -45,7 +45,7 @@ class ReportsController extends Controller
     public function getBookingAnalytics(Request $request): JsonResponse
     {
         $filters = $this->parseFilters($request);
-        
+
         $query = Booking::query();
         $this->applyFilters($query, $filters);
 
@@ -72,18 +72,18 @@ class ReportsController extends Controller
     {
         $filters = $this->parseFilters($request);
         $groupBy = $request->get('group_by', 'day');
-        
+
         $query = Booking::query();
         $this->applyFilters($query, $filters);
-        
+
         $trends = $query->selectRaw("
             DATE({$this->getDateFormat($groupBy)}) as date,
             COUNT(*) as bookings,
             SUM(CASE WHEN status = 'completed' THEN total_actual ELSE 0 END) as revenue
         ")
-        ->groupBy('date')
-        ->orderBy('date')
-        ->get();
+            ->groupBy('date')
+            ->orderBy('date')
+            ->get();
 
         return response()->json([
             'status' => 'success',
@@ -97,21 +97,22 @@ class ReportsController extends Controller
     public function getServiceTypePerformance(Request $request): JsonResponse
     {
         $filters = $this->parseFilters($request);
-        
+
         $query = Booking::query()
-            ->join('service_types', 'bookings.service_type_id', '=', 'service_types.id')
+            ->join('booking_items', 'bookings.id', '=', 'booking_items.booking_id')
+            ->join('service_types', 'booking_items.service_type_id', '=', 'service_types.id')
             ->select([
                 'service_types.name as service_type',
-                DB::raw('COUNT(bookings.id) as total_bookings'),
-                DB::raw('SUM(CASE WHEN bookings.status = "completed" THEN bookings.total_actual ELSE 0 END) as revenue'),
-                DB::raw('AVG(CASE WHEN bookings.status = "completed" THEN bookings.total_actual ELSE NULL END) as avg_booking_value'),
+                DB::raw('COUNT(DISTINCT bookings.id) as total_bookings'),
+                DB::raw('SUM(CASE WHEN bookings.status = "completed" THEN bookings.total_estimated ELSE 0 END) as revenue'),
+                DB::raw('AVG(CASE WHEN bookings.status = "completed" THEN bookings.total_estimated ELSE NULL END) as avg_booking_value'),
                 DB::raw('SUM(CASE WHEN bookings.status = "completed" THEN 1 ELSE 0 END) as completed_bookings'),
                 DB::raw('SUM(CASE WHEN bookings.status = "cancelled" THEN 1 ELSE 0 END) as cancelled_bookings')
             ])
             ->groupBy('service_types.id', 'service_types.name');
-            
+
         $this->applyFilters($query, $filters);
-        
+
         $performance = $query->get();
 
         return response()->json([
@@ -127,10 +128,10 @@ class ReportsController extends Controller
     {
         $filters = $this->parseFilters($request);
         $period = $request->get('period', 'monthly');
-        
+
         $query = Booking::where('status', 'completed');
         $this->applyFilters($query, $filters);
-        
+
         $reports = $query->selectRaw("
             {$this->getDateFormat($period)} as period,
             SUM(total_actual) as total_revenue,
@@ -139,16 +140,16 @@ class ReportsController extends Controller
             SUM(commission_amount) as commissions_paid,
             SUM(total_actual - commission_amount) as net_revenue
         ")
-        ->groupBy('period')
-        ->orderBy('period')
-        ->get();
+            ->groupBy('period')
+            ->orderBy('period')
+            ->get();
 
         // Calculate growth rates
         foreach ($reports as $index => $report) {
             if ($index > 0) {
                 $previousRevenue = $reports[$index - 1]->total_revenue;
-                $report->growth_rate = $previousRevenue > 0 
-                    ? (($report->total_revenue - $previousRevenue) / $previousRevenue) * 100 
+                $report->growth_rate = $previousRevenue > 0
+                    ? (($report->total_revenue - $previousRevenue) / $previousRevenue) * 100
                     : 0;
             } else {
                 $report->growth_rate = 0;
@@ -167,10 +168,10 @@ class ReportsController extends Controller
     public function getRevenueAnalytics(Request $request): JsonResponse
     {
         $filters = $this->parseFilters($request);
-        
+
         $query = Booking::where('status', 'completed');
         $this->applyFilters($query, $filters);
-        
+
         $analytics = [
             'total_revenue' => $query->sum('total_actual'),
             'total_commission' => $query->sum('commission_amount'),
@@ -192,10 +193,10 @@ class ReportsController extends Controller
     public function getCustomerAnalytics(Request $request): JsonResponse
     {
         $filters = $this->parseFilters($request);
-        
+
         $analytics = [
             'total_customers' => Customer::count(),
-            'active_customers' => Customer::whereHas('bookings', function($q) use ($filters) {
+            'active_customers' => Customer::whereHas('bookings', function ($q) use ($filters) {
                 if (isset($filters['date_from'])) {
                     $q->where('created_at', '>=', $filters['date_from']);
                 }
@@ -221,7 +222,7 @@ class ReportsController extends Controller
     public function getVehicleAnalytics(Request $request): JsonResponse
     {
         $filters = $this->parseFilters($request);
-        
+
         $analytics = [
             'total_vehicles' => Vehicle::count(),
             'active_vehicles' => Vehicle::where('is_active', true)->count(),
@@ -248,7 +249,7 @@ class ReportsController extends Controller
 
         $format = $request->get('format', 'csv');
         $filters = $this->parseFilters($request);
-        
+
         switch ($type) {
             case 'bookings':
                 return $this->exportBookingReport($filters, $format);

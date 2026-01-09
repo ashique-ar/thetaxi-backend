@@ -1,133 +1,108 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quotation Request - {{ config('app.name') }}</title>
-    <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; background-color: #f4f4f4; margin: 0; padding: 0; }
-        .container { max-width: 600px; margin: 20px auto; background: #ffffff; border-radius: 8px; overflow: hidden; }
-        .header { background: #c91c23; color: #ffffff; padding: 24px 20px; text-align: center; }
-        .header img { max-height: 44px; margin-bottom: 10px; }
-        .header h1 { margin: 0; font-size: 24px; }
-        .content { padding: 28px 20px; }
-        .section { margin-bottom: 24px; }
-        .section h2 { color: #c91c23; border-bottom: 2px solid #c91c23; padding-bottom: 8px; margin-bottom: 12px; font-size: 18px; }
-        .info-table { width: 100%; border-collapse: collapse; margin: 12px 0; }
-        .info-table td { padding: 8px 10px; border-bottom: 1px solid #eeeeee; vertical-align: top; }
-        .info-table td:first-child { font-weight: bold; width: 40%; color: #666; }
-        .highlight-box { background: #f8f9fa; border-left: 4px solid #c91c23; padding: 14px; margin: 16px 0; }
-        .reference { font-size: 20px; font-weight: bold; color: #c91c23; letter-spacing: 1px; }
-        .footer { background: #f8f9fa; padding: 18px; text-align: center; font-size: 13px; color: #666; }
-        ul { padding-left: 20px; margin: 0; }
-        @media only screen and (max-width: 600px) {
-            .content { padding: 20px 16px; }
-            .info-table td { display: block; width: 100%; }
-            .info-table td:first-child { border-bottom: none; padding-bottom: 4px; }
-        }
-    </style>
-</head>
-<body>
-@php
-    $workflowData = is_string($booking->workflow_data) ? json_decode($booking->workflow_data, true) : ($booking->workflow_data ?? []);
-    $cartItems = $workflowData['cart_items'] ?? [];
-    $pickupLocation = is_string($booking->pickup_location) ? json_decode($booking->pickup_location, true) : $booking->pickup_location;
-    $contactTime = match ($booking->contact_time ?? null) {
-        'morning' => 'Morning (9 AM - 12 PM)',
-        'afternoon' => 'Afternoon (12 PM - 5 PM)',
-        'evening' => 'Evening (5 PM - 8 PM)',
-        'anytime' => 'Anytime',
-        default => 'Not specified',
-    };
-    $budgetRange = match ($workflowData['budget_range'] ?? null) {
-        'under-500' => 'Under $500',
-        '500-1000' => '$500 - $1,000',
-        '1000-2000' => '$1,000 - $2,000',
-        'over-2000' => 'Over $2,000',
-        default => 'Not specified',
-    };
-@endphp
+@extends('emails.layouts.master')
 
-<div class="container">
-    <div class="header">
-        <img src="{{ asset('assets/img/header-logo.png') }}" alt="TheTaxi">
-        <h1>Quotation Request Received</h1>
+@section('title', 'Quotation Request - ' . config('app.name'))
+
+@section('header_title', 'Quotation Request Received')
+
+@section('header_subtitle', 'Thank you for your interest')
+
+@section('content')
+    @php
+        use App\Helpers\BookingLinkHelper;
+        $workflowData = is_string($booking->workflow_data)
+            ? json_decode($booking->workflow_data, true)
+            : $booking->workflow_data ?? [];
+        $cartItems = $workflowData['cart_items'] ?? [];
+        $pickupLocation = is_string($booking->pickup_location)
+            ? json_decode($booking->pickup_location, true)
+            : $booking->pickup_location;
+        $contactTime = match ($booking->contact_time ?? null) {
+            'morning' => 'Morning (9 AM - 12 PM)',
+            'afternoon' => 'Afternoon (12 PM - 5 PM)',
+            'evening' => 'Evening (5 PM - 8 PM)',
+            'anytime' => 'Anytime',
+            default => 'Not specified',
+        };
+        // $budgetRange = match ($workflowData['budget_range'] ?? null) {
+        //     'under-500' => 'Under $500',
+        //     '500-1000' => '$500 - $1,000',
+        //     '1000-2000' => '$1,000 - $2,000',
+        //     'over-2000' => 'Over $2,000',
+        //     default => 'Not specified',
+        // };
+        $checkoutLink = BookingLinkHelper::getQuotationCheckoutLink($booking);
+    @endphp
+
+    <!-- Greeting -->
+    <p class="greeting">
+        Dear <strong>{{ $booking->customer->full_name ?? 'Valued Customer' }}</strong>,
+    </p>
+
+    <p class="intro-text">
+        Thank you for submitting a quotation request to {{ env('COMPANY_NAME', 'Casons Rent A Car') }}. We have received
+        your inquiry and will get back to you shortly.
+    </p>
+
+    <!-- Reference Box -->
+    <div class="reference-box">
+        <div class="reference-label">Quotation Reference</div>
+        <div class="reference-number">{{ $booking->booking_number }}</div>
     </div>
 
-    <div class="content">
-        <p style="font-size: 15px;">Dear <strong>{{ $booking->customer->full_name ?? 'Valued Customer' }}</strong>,</p>
+    <!-- Request Details Section -->
+    <div class="section">
+        <h2 class="section-title">
+            <span class="icon">📋</span> Your Request Details
+        </h2>
+        <table class="info-table">
+            <tr>
+                <td>Name</td>
+                <td>{{ $booking->customer?->full_name ?? 'N/A' }}</td>
+            </tr>
+            <tr>
+                <td>Email</td>
+                <td>{{ $booking->customer?->email ?? 'N/A' }}</td>
+            </tr>
+            <tr>
+                <td>Phone</td>
+                <td>{{ $booking->customer?->phone ?? 'N/A' }}</td>
+            </tr>
+            <tr>
+                <td>Preferred Contact Time</td>
+                <td>{{ $contactTime }}</td>
+            </tr>
+        </table>
+    </div>
 
-        <p>Thank you for submitting a quotation request to TheTaxi. We have received your inquiry and will get back to you shortly.</p>
-
-        <div class="highlight-box">
-            <p style="margin: 0 0 6px 0; color: #666;">Quotation Reference</p>
-            <p class="reference" style="margin: 0;">{{ $booking->booking_number }}</p>
-        </div>
-
-        <div class="section">
-            <h2>Your Request Details</h2>
-            <table class="info-table">
-                <tr>
-                    <td>Name</td>
-                    <td>{{ $booking->customer?->full_name ?? 'N/A' }}</td>
-                </tr>
-                <tr>
-                    <td>Email</td>
-                    <td>{{ $booking->customer?->email ?? 'N/A' }}</td>
-                </tr>
-                <tr>
-                    <td>Phone</td>
-                    <td>{{ $booking->customer?->phone ?? 'N/A' }}</td>
-                </tr>
-                <tr>
-                    <td>Pickup Location</td>
-                    <td>{{ $pickupLocation['address'] ?? 'N/A' }}</td>
-                </tr>
-                <tr>
-                    <td>Pickup Date</td>
-                    <td>{{ \Carbon\Carbon::parse($booking->from_date)->format('F d, Y H:i A') }}</td>
-                </tr>
-                <tr>
-                    <td>Return Date</td>
-                    <td>{{ \Carbon\Carbon::parse($booking->to_date)->format('F d, Y H:i A') }}</td>
-                </tr>
-                <tr>
-                    <td>Preferred Contact Time</td>
-                    <td>{{ $contactTime }}</td>
-                </tr>
-                <tr>
-                    <td>Budget Range</td>
-                    <td>{{ $budgetRange }}</td>
-                </tr>
-            </table>
-        </div>
-
-        <div class="section">
-            <h2>Vehicles of Interest</h2>
-            @if(!empty($cartItems))
-                <ul>
-                    @foreach($cartItems as $item)
-                        <li>
-                            <strong>{{ $item['name'] ?? 'Vehicle' }}</strong>
-                            <div>Duration: {{ $item['days'] ?? 1 }} day(s)</div>
-                        </li>
-                    @endforeach
-                </ul>
-            @else
-                <p>Vehicle details will be discussed during consultation.</p>
-            @endif
-        </div>
-
-        @if($booking->special_requirements)
-        <div class="section">
-            <h2>Special Requirements</h2>
-            <p>{{ $booking->special_requirements }}</p>
-        </div>
+    <!-- Vehicles Wise Trip Details Section -->
+    <div class="section">
+        <h2 class="section-title">
+            <span class="icon">🚗</span> Vehicle Wise Trip Details
+        </h2>
+        @php
+            $currencySymbol = getCurrencySymbol($booking->currency ?? 'LKR');
+        @endphp
+        @if ($booking->bookingItems->count() > 0)
+            @foreach ($booking->bookingItems as $index => $item)
+                <x-booking-item-email :item="$item" :index="$index" :currencySymbol="$currencySymbol" />
+            @endforeach
         @endif
+    </div>
 
-        @if(!empty($workflowData['flight_details']))
+    @if ($booking->special_requirements)
         <div class="section">
-            <h2>Flight Information</h2>
+            <h2 class="section-title">
+                <span class="icon">📝</span> Special Requirements
+            </h2>
+            <p style="color: #555; line-height: 1.6; margin: 0;">{{ $booking->special_requirements }}</p>
+        </div>
+    @endif
+
+    @if (!empty($workflowData['flight_details']))
+        <div class="section">
+            <h2 class="section-title">
+                <span class="icon">✈️</span> Flight Information
+            </h2>
             @php $flight = $workflowData['flight_details'] ?? []; @endphp
             <table class="info-table">
                 <tr>
@@ -148,19 +123,45 @@
                 </tr>
             </table>
         </div>
-        @endif
+    @endif
 
-        <div class="section">
-            <h2>Next Steps</h2>
-            <p>Our team will review your quotation request and contact you within 24 hours with a detailed quote and options.</p>
+    <div class="divider"></div>
+
+    <!-- Next Steps Section -->
+    <div class="section">
+        <h2 class="section-title">
+            <span class="icon">📌</span> Next Steps
+        </h2>
+        <div class="highlight-box info">
+            <h3>What Happens Now?</h3>
+            <p style="margin-bottom: 0;">Our team will review your quotation request and contact you within 24 hours with a
+                detailed quote and options tailored to your needs.</p>
         </div>
     </div>
 
-    <div class="footer">
-        <p style="margin: 0;">Best regards,</p>
-        <p style="margin: 0; font-weight: bold;">{{ config('app.name', 'TheTaxi') }} Team</p>
-        <p style="margin: 10px 0 0 0; font-size: 12px;">This is an automated email. Please do not reply directly to this message.</p>
+    <!-- Quick Checkout Option -->
+    <div class="section">
+        <h2 class="section-title">
+            <span class="icon">⚡</span> Accept & Proceed to Payment
+        </h2>
+        <p style="color: #555; margin-bottom: 15px;">If you're ready to proceed with the same vehicle and dates now, you can
+            click the button below to proceed directly to payment. All your previously selected options will be pre-filled.
+        </p>
+
+        <div class="btn-container">
+            <a href="{{ $checkoutLink }}" class="btn"
+                style="display: inline-block; background-color: #BF2629; color: #FFFFFF; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-weight: bold;">
+                ✓ Accept Quotation & Proceed to Payment
+            </a>
+        </div>
+
+        <p style="text-align: center; color: #717171; font-size: 13px; margin-top: 10px;">
+            If the button doesn't work, copy and paste this link:<br>
+            <a href="{{ $checkoutLink }}"
+                style="color: #BF2629; text-decoration: underline; word-break: break-all;">{{ $checkoutLink }}</a>
+        </p>
     </div>
-</div>
-</body>
-</html>
+
+    <p style="text-align: center; color: #555; font-size: 15px; margin-top: 30px;">Thank you for choosing
+        {{ env('COMPANY_NAME', 'Casons Rent A Car') }}. We look forward to serving you!</p>
+@endsection

@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::dropIfExists('booking_status_histories');
         Schema::create('booking_status_histories', function (Blueprint $table) {
-            $table->id();
+            $table->uuid('id')->primary();
             $table->uuid('booking_id');
             $table->string('old_status');
             $table->string('new_status');

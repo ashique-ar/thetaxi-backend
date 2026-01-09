@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Booking\Booking;
+use App\Models\Booking\BookingItem;
 use App\Models\Booking\BookingDispatch;
 use App\Models\Booking\BookingQC;
 use App\Models\Vehicle\Vehicle;
@@ -78,7 +79,7 @@ class BookingLifecycleService
     {
         return DB::transaction(function () use ($bookingId, $qualificationData) {
             $booking = Booking::findOrFail($bookingId);
-            
+
             if (!$booking->getLifecycleStatus()->canTransitionTo(BookingLifecycleStatus::INQUIRY_QUALIFIED)) {
                 throw new \Exception('Cannot qualify inquiry from current status');
             }
@@ -111,7 +112,7 @@ class BookingLifecycleService
     {
         return DB::transaction(function () use ($bookingId, $bookingData) {
             $booking = Booking::findOrFail($bookingId);
-            
+
             if (!$booking->getLifecycleStatus()->canTransitionTo(BookingLifecycleStatus::BOOKING_PENDING)) {
                 throw new \Exception('Cannot convert to booking from current status');
             }
@@ -146,13 +147,13 @@ class BookingLifecycleService
     {
         return DB::transaction(function () use ($bookingId, $confirmationData) {
             $booking = Booking::findOrFail($bookingId);
-            
+
             if ($booking->requires_approval && $booking->approval_status !== 'approved') {
                 throw new \Exception('Booking requires approval before confirmation');
             }
 
             $booking->transitionToStatus(BookingLifecycleStatus::BOOKING_CONFIRMED, Auth::id(), $confirmationData);
-            
+
             $this->logLifecycleTransition($booking, BookingLifecycleStatus::BOOKING_PENDING, BookingLifecycleStatus::BOOKING_CONFIRMED, $confirmationData);
 
             return $booking;
@@ -169,7 +170,7 @@ class BookingLifecycleService
     public function startAllocation(string $bookingId): array
     {
         $booking = Booking::findOrFail($bookingId);
-        
+
         if (!$booking->isInStage('allocation_dispatch')) {
             throw new \Exception('Booking is not ready for allocation');
         }
@@ -203,7 +204,7 @@ class BookingLifecycleService
     {
         return DB::transaction(function () use ($bookingId, $assignmentData) {
             $booking = Booking::findOrFail($bookingId);
-            
+
             // Assign vehicle and driver
             $booking->update([
                 'vehicle_id' => $assignmentData['vehicle_id'],
@@ -233,7 +234,7 @@ class BookingLifecycleService
             }
 
             $booking->transitionToStatus(BookingLifecycleStatus::ALLOCATION_ASSIGNED, Auth::id(), $assignmentData);
-            
+
             $this->logLifecycleTransition($booking, BookingLifecycleStatus::ALLOCATION_PENDING, BookingLifecycleStatus::ALLOCATION_ASSIGNED, $assignmentData);
 
             return $booking;
@@ -247,7 +248,7 @@ class BookingLifecycleService
     {
         return DB::transaction(function () use ($bookingId, $dispatchData) {
             $booking = Booking::findOrFail($bookingId);
-            
+
             if (!$booking->vehicle_id) {
                 throw new \Exception('Vehicle must be assigned before dispatch preparation');
             }
@@ -264,7 +265,7 @@ class BookingLifecycleService
             ]);
 
             $booking->transitionToStatus(BookingLifecycleStatus::DISPATCH_READY, Auth::id(), $dispatchData);
-            
+
             $this->logLifecycleTransition($booking, BookingLifecycleStatus::ALLOCATION_APPROVED, BookingLifecycleStatus::DISPATCH_READY, $dispatchData);
 
             return $dispatch;
@@ -279,7 +280,7 @@ class BookingLifecycleService
         return DB::transaction(function () use ($bookingId, $dispatchData) {
             $booking = Booking::findOrFail($bookingId);
             $dispatch = $booking->dispatch;
-            
+
             if (!$dispatch) {
                 throw new \Exception('Dispatch record not found');
             }
@@ -292,7 +293,7 @@ class BookingLifecycleService
             $vehicle->update(['availability_status' => VehicleAvailabilityStatus::ON_HIRE->value]);
 
             $booking->transitionToStatus(BookingLifecycleStatus::DISPATCH_OUT, Auth::id(), $dispatchData);
-            
+
             $this->logLifecycleTransition($booking, BookingLifecycleStatus::DISPATCH_READY, BookingLifecycleStatus::DISPATCH_OUT, $dispatchData);
 
             return $dispatch;
@@ -309,7 +310,7 @@ class BookingLifecycleService
     public function getOngoingStatus(string $bookingId): array
     {
         $booking = Booking::with(['dispatch', 'vehicle', 'driver'])->findOrFail($bookingId);
-        
+
         if (!$booking->isInStage('ongoing')) {
             throw new \Exception('Booking is not in ongoing stage');
         }
@@ -336,12 +337,12 @@ class BookingLifecycleService
     {
         return DB::transaction(function () use ($bookingId, $replacementData) {
             $booking = Booking::findOrFail($bookingId);
-            
+
             // This would integrate with the existing swap functionality
             // from AssignmentController
-            
+
             $booking->transitionToStatus(BookingLifecycleStatus::ONGOING_REPLACEMENT_NEEDED, Auth::id(), $replacementData);
-            
+
             $this->logLifecycleTransition($booking, BookingLifecycleStatus::ONGOING_ACTIVE, BookingLifecycleStatus::ONGOING_REPLACEMENT_NEEDED, $replacementData);
 
             return [
@@ -363,7 +364,7 @@ class BookingLifecycleService
     {
         return DB::transaction(function () use ($bookingId, $returnData) {
             $booking = Booking::findOrFail($bookingId);
-            
+
             if ($booking->dispatch) {
                 $booking->dispatch->update([
                     'expected_return_at' => $returnData['expected_return_at'] ?? $booking->to_date,
@@ -372,7 +373,7 @@ class BookingLifecycleService
             }
 
             $booking->transitionToStatus(BookingLifecycleStatus::RETURN_SCHEDULED, Auth::id(), $returnData);
-            
+
             $this->logLifecycleTransition($booking, BookingLifecycleStatus::ONGOING_ACTIVE, BookingLifecycleStatus::RETURN_SCHEDULED, $returnData);
 
             return $booking;
@@ -387,7 +388,7 @@ class BookingLifecycleService
         return DB::transaction(function () use ($bookingId, $returnData) {
             $booking = Booking::findOrFail($bookingId);
             $dispatch = $booking->dispatch;
-            
+
             if (!$dispatch) {
                 throw new \Exception('Dispatch record not found');
             }
@@ -399,12 +400,12 @@ class BookingLifecycleService
             $vehicle = Vehicle::findOrFail($booking->vehicle_id);
             $vehicle->update(['availability_status' => VehicleAvailabilityStatus::UNAVAILABLE_QC->value]);
 
-            $lifecycleStatus = $dispatch->isOverdue() 
-                ? BookingLifecycleStatus::RETURN_LATE 
+            $lifecycleStatus = $dispatch->isOverdue()
+                ? BookingLifecycleStatus::RETURN_LATE
                 : BookingLifecycleStatus::RETURN_COMPLETED;
 
             $booking->transitionToStatus($lifecycleStatus, Auth::id(), $returnData);
-            
+
             $this->logLifecycleTransition($booking, BookingLifecycleStatus::RETURN_SCHEDULED, $lifecycleStatus, $returnData);
 
             return $dispatch;
@@ -422,7 +423,7 @@ class BookingLifecycleService
     {
         return DB::transaction(function () use ($bookingId, $inspectorId) {
             $booking = Booking::findOrFail($bookingId);
-            
+
             // Create or get QC record
             $qc = $booking->qc ?: $booking->qc()->create([
                 'vehicle_id' => $booking->vehicle_id,
@@ -433,7 +434,7 @@ class BookingLifecycleService
             $qc->startInspection($inspectorId);
 
             $booking->transitionToStatus(BookingLifecycleStatus::QC_IN_PROGRESS, Auth::id());
-            
+
             $this->logLifecycleTransition($booking, BookingLifecycleStatus::QC_PENDING, BookingLifecycleStatus::QC_IN_PROGRESS);
 
             return $qc;
@@ -448,7 +449,7 @@ class BookingLifecycleService
         return DB::transaction(function () use ($bookingId, $inspectionData) {
             $booking = Booking::findOrFail($bookingId);
             $qc = $booking->qc;
-            
+
             if (!$qc) {
                 throw new \Exception('QC record not found');
             }
@@ -456,12 +457,12 @@ class BookingLifecycleService
             $qc->completeInspection($inspectionData);
 
             // Determine next status based on inspection results
-            $nextStatus = $qc->needsRepair() 
-                ? BookingLifecycleStatus::QC_REPAIR_NEEDED 
+            $nextStatus = $qc->needsRepair()
+                ? BookingLifecycleStatus::QC_REPAIR_NEEDED
                 : BookingLifecycleStatus::QC_COMPLETED;
 
             $booking->transitionToStatus($nextStatus, Auth::id(), $inspectionData);
-            
+
             $this->logLifecycleTransition($booking, BookingLifecycleStatus::QC_IN_PROGRESS, $nextStatus, $inspectionData);
 
             // If no repair needed, make vehicle available
@@ -485,7 +486,7 @@ class BookingLifecycleService
         return DB::transaction(function () use ($bookingId, $repairData) {
             $booking = Booking::findOrFail($bookingId);
             $qc = $booking->qc;
-            
+
             if (!$qc) {
                 throw new \Exception('QC record not found');
             }
@@ -493,7 +494,7 @@ class BookingLifecycleService
             $qc->markCompleted();
 
             $booking->transitionToStatus(BookingLifecycleStatus::QC_COMPLETED, Auth::id(), $repairData);
-            
+
             $this->logLifecycleTransition($booking, BookingLifecycleStatus::QC_REPAIR_NEEDED, BookingLifecycleStatus::QC_COMPLETED, $repairData);
 
             // Make vehicle available
@@ -514,9 +515,9 @@ class BookingLifecycleService
     {
         return DB::transaction(function () use ($bookingId, $completionData) {
             $booking = Booking::findOrFail($bookingId);
-            
+
             $booking->transitionToStatus(BookingLifecycleStatus::COMPLETED, Auth::id(), $completionData);
-            
+
             $this->logLifecycleTransition($booking, BookingLifecycleStatus::QC_COMPLETED, BookingLifecycleStatus::COMPLETED, $completionData);
 
             return $booking;
@@ -550,9 +551,9 @@ class BookingLifecycleService
      * Log lifecycle transition
      */
     private function logLifecycleTransition(
-        Booking $booking, 
-        ?BookingLifecycleStatus $fromStatus, 
-        BookingLifecycleStatus $toStatus, 
+        Booking $booking,
+        ?BookingLifecycleStatus $fromStatus,
+        BookingLifecycleStatus $toStatus,
         array $data = []
     ): void {
         Log::info('Booking lifecycle transition', [
@@ -572,7 +573,7 @@ class BookingLifecycleService
     public function getLifecycleSummary(string $bookingId): array
     {
         $booking = Booking::with(['dispatch', 'qc', 'customer', 'vehicle', 'driver'])->findOrFail($bookingId);
-        
+
         $currentStatus = $booking->getLifecycleStatus();
         $nextActions = $booking->getNextActions();
 
@@ -727,7 +728,7 @@ class BookingLifecycleService
         ])->findOrFail($bookingId);
 
         $dispatch = $booking->dispatch;
-        
+
         if (!$dispatch) {
             throw new \Exception('No dispatch found for this booking');
         }
@@ -765,7 +766,7 @@ class BookingLifecycleService
         ])->findOrFail($bookingId);
 
         $dispatch = $booking->dispatch;
-        
+
         if (!$dispatch) {
             throw new \Exception('No dispatch found for this booking');
         }
@@ -808,7 +809,7 @@ class BookingLifecycleService
         $booking = Booking::with(['qc.repairItems'])->findOrFail($bookingId);
 
         $qc = $booking->qc;
-        
+
         if (!$qc) {
             throw new \Exception('No QC record found for this booking');
         }
@@ -922,23 +923,24 @@ class BookingLifecycleService
             ->where('vehicle_id', $vehicleId)
             ->where('status', 'in_progress')
             ->whereBetween('performed_date', [$start, $end])
-            ->orWhere(function($query) use ($start, $end) {
+            ->orWhere(function ($query) use ($start, $end) {
                 $query->whereNull('completed_date')
-                      ->where('performed_date', '<=', $end);
+                    ->where('performed_date', '<=', $end);
             })
             ->exists();
 
-        // Check booking conflicts
-        $bookingConflicts = DB::table('bookings')
-            ->where('current_vehicle_id', $vehicleId)
-            ->where('lifecycle_status', '!=', BookingLifecycleStatus::COMPLETED)
-            ->where(function($query) use ($start, $end) {
-                $query->whereBetween('from_date', [$start, $end])
-                      ->orWhereBetween('to_date', [$start, $end])
-                      ->orWhere(function($q) use ($start, $end) {
-                          $q->where('from_date', '<=', $start)
-                            ->where('to_date', '>=', $end);
-                      });
+        // Check booking conflicts through booking_items
+        $bookingConflicts = DB::table('booking_items')
+            ->join('bookings', 'booking_items.booking_id', '=', 'bookings.id')
+            ->where('booking_items.vehicle_id', $vehicleId)
+            ->where('bookings.lifecycle_status', '!=', BookingLifecycleStatus::COMPLETED)
+            ->where(function ($query) use ($start, $end) {
+                $query->whereBetween('booking_items.from_date', [$start, $end])
+                    ->orWhereBetween('booking_items.to_date', [$start, $end])
+                    ->orWhere(function ($q) use ($start, $end) {
+                        $q->where('booking_items.from_date', '<=', $start)
+                            ->where('booking_items.to_date', '>=', $end);
+                    });
             })
             ->exists();
 
@@ -989,7 +991,7 @@ class BookingLifecycleService
     {
         return DB::transaction(function () use ($bookingId) {
             $booking = Booking::findOrFail($bookingId);
-            
+
             // Ensure booking is completed
             if ($booking->lifecycle_status !== BookingLifecycleStatus::COMPLETED) {
                 throw new \InvalidArgumentException('Booking must be completed to update availability pool');
@@ -997,14 +999,14 @@ class BookingLifecycleService
 
             // Get QC results
             $qc = BookingQC::where('booking_id', $bookingId)->latest()->first();
-            
+
             if (!$qc) {
                 throw new \InvalidArgumentException('QC record not found');
             }
 
             // Update vehicle availability based on QC results
             $vehicle = Vehicle::findOrFail($booking->current_vehicle_id);
-            
+
             if ($qc->repair_required) {
                 // Vehicle needs repair - mark as unavailable
                 $vehicle->update([

@@ -28,8 +28,8 @@ return new class extends Migration {
             $table->time('from_time')->nullable();
             $table->time('to_time')->nullable();
 
-            $table->jsonb('pickup_location')->nullable();
-            $table->jsonb('dropoff_location')->nullable();
+            // $table->jsonb('pickup_location')->nullable();
+            // $table->jsonb('dropoff_location')->nullable();
 
             $table->decimal('total_estimated', 12, 2)->nullable();
             $table->decimal('total_actual', 12, 2)->nullable();

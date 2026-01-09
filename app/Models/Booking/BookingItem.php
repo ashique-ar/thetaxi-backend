@@ -8,14 +8,15 @@ use App\Models\Booking\Booking;
 use App\Models\Vehicle\VehicleGroup;
 use App\Models\Vehicle\Vehicle;
 use App\Models\Driver\Driver;
+use App\Models\Service\ServiceType;
 use App\Models\User;
 
 class BookingItem extends BaseModel
 {
-
     protected $fillable = [
         'booking_id',
         'vehicle_group_id',
+        'service_type_id',
         'vehicle_id',
         'driver_id',
         'quantity',
@@ -26,7 +27,11 @@ class BookingItem extends BaseModel
         'customizations',
         'discounts',
         'from_date',
+        'from_time',
         'to_date',
+        'to_time',
+        'pickup_location',
+        'dropoff_location',
         'duration_days',
         'duration_hours',
         'currency',
@@ -46,6 +51,8 @@ class BookingItem extends BaseModel
         'customizations' => 'array',
         'discounts' => 'array',
         'metadata' => 'array',
+        'pickup_location' => 'array',
+        'dropoff_location' => 'array',
         'from_date' => 'datetime',
         'to_date' => 'datetime',
         'approved_at' => 'datetime',
@@ -73,6 +80,13 @@ class BookingItem extends BaseModel
     {
         return $this->belongsTo(VehicleGroup::class);
     }
+    /**
+     * Get the vehicle group for this item
+     */
+    public function serviceType(): BelongsTo
+    {
+        return $this->belongsTo(ServiceType::class);
+    }
 
     /**
      * Get the specific vehicle if assigned
@@ -96,6 +110,14 @@ class BookingItem extends BaseModel
     public function approvedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'approved_by');
+    }
+
+    /**
+     * Get the amount for this item (alias for total_price)
+     */
+    public function getAmountAttribute()
+    {
+        return $this->total_price;
     }
 
     /**
@@ -137,13 +159,13 @@ class BookingItem extends BaseModel
     {
         $baseTotal = $this->total_price;
         $addonsTotal = 0;
-        
+
         if ($this->addons) {
             foreach ($this->addons as $addon) {
                 $addonsTotal += ($addon['total_price'] ?? 0);
             }
         }
-        
+
         return $baseTotal + $addonsTotal;
     }
 

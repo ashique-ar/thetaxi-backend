@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
+use App\Models\Service\ServicePackage;
 
 class BookingController extends Controller
 {
@@ -64,7 +65,7 @@ class BookingController extends Controller
 
             // Transform frontend request data to BookingFlowService format
             $searchParams = $this->transformSearchParams($request->all(), $serviceType);
-
+            $searchParams['package_type'] = $request->input('package_id') ? $serviceType->packages()->find($request->input('package_id'))?->toArray() : null;
             // Store search params and context in session for results page
             session()->put('current_search_params', $searchParams);
             session()->put('search_timestamp', now());
@@ -277,6 +278,7 @@ class BookingController extends Controller
             $pagination = $availabilityData['pagination'] ?? null;
             $totalJourneyDistance = $availabilityData['total_journey_distance_km'] ?? null;
 
+
             // Transform results for view (add public-specific enhancements)
             $transformedData = $this->transformResultsForPublicView($vehicleGroups, $searchParams, $pricingContext);
 
@@ -333,6 +335,29 @@ class BookingController extends Controller
                 ]
             );
 
+
+            // Attach service package KM limits if package_type present
+            $search->max_km_per_day = null;
+            $search->max_km_per_package = null;
+            if (!empty($searchParams['package_type'])) {
+                // Normalize max_km_per_day: remove trailing .0 when fractional part is zero
+                $maxKmPerDay = $searchParams['package_type']['max_km_per_day'] ?? null;
+                if (is_numeric($maxKmPerDay)) {
+                    $maxKmPerDay = (float) $maxKmPerDay;
+                    $search->max_km_per_day = ($maxKmPerDay == (int) $maxKmPerDay) ? (int) $maxKmPerDay : $maxKmPerDay;
+                } else {
+                    $search->max_km_per_day = $maxKmPerDay;
+                }
+
+                // Normalize max_km_per_package: remove trailing .0 when fractional part is zero
+                $maxKmPerPackage = $searchParams['package_type']['max_km_per_package'] ?? null;
+                if (is_numeric($maxKmPerPackage)) {
+                    $maxKmPerPackage = (float) $maxKmPerPackage;
+                    $search->max_km_per_package = ($maxKmPerPackage == (int) $maxKmPerPackage) ? (int) $maxKmPerPackage : $maxKmPerPackage;
+                } else {
+                    $search->max_km_per_package = $maxKmPerPackage;
+                }
+            }
             // Get additional data for enhanced UI
             $additionalData = [
                 'popular_destinations' => $this->getPopularDestinations(),

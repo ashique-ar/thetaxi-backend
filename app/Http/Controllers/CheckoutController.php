@@ -8,6 +8,7 @@ use App\Mail\PaymentInitiatedMail;
 use App\Mail\QuotationRequestMail;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingAddon;
+use App\Models\Booking\BookingItem;
 use App\Models\Service\ServiceType;
 use App\Models\TermsAndCondition;
 use App\Models\Vehicle\VehicleGroup;
@@ -19,6 +20,8 @@ use App\Services\WebXPayService;
 use App\Services\CurrencyService;
 use App\Services\PromoCodeService;
 use App\Services\WebsiteSettingsService;
+use App\Helpers\BookingLinkHelper;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -55,6 +58,14 @@ class CheckoutController extends Controller
         $this->mailDispatchService = $mailDispatchService;
         $this->promoCodeService = $promoCodeService;
         $this->websiteSettingsService = $websiteSettingsService;
+    }
+
+    /**
+     * Reload booking with eager loaded relations for email sending
+     */
+    protected function reloadBookingForEmail(Booking $booking): Booking
+    {
+        return Booking::with(['customer', 'bookingItems'])->findOrFail($booking->id);
     }
 
     /**
@@ -228,6 +239,7 @@ class CheckoutController extends Controller
             $validated['customer_phone'] = $validated['phone_international'] ?? $validated['phone'];
             $validated['customer_address'] = $validated['address'];
             $validated['customer_city'] = $validated['city'];
+            $validated['customer_country'] = $validated['country'];
             $validated['customer_identification'] = $validated['identification'];
 
             // Step 1: Create or get customer
@@ -304,24 +316,6 @@ class CheckoutController extends Controller
             $booking = Booking::create([
                 'customer_id' => $customer->id,
                 'booking_number' => $number,
-                'from_date' => $fromDate,
-                'to_date' => $toDate,
-                'service_type_id' => $serviceTypeId,
-                'vehicle_group_id' => $firstItem['vehicle_group_id'] ?? null,
-                'pickup_location' => json_encode([
-                    'address' => $firstItem['pickup_location'] ?? '',
-                    'city' => $validated['city'],
-                    'country' => $validated['country'],
-                    'lat' => $firstItem['pickup_lat'] ?? null,
-                    'lng' => $firstItem['pickup_lng'] ?? null,
-                ]),
-                'dropoff_location' => json_encode([
-                    'address' => $firstItem['dropoff_location'] ?? $firstItem['pickup_location'] ?? '',
-                    'city' => $validated['city'],
-                    'country' => $validated['country'],
-                    'lat' => $firstItem['dropoff_lat'] ?? $firstItem['pickup_lat'] ?? null,
-                    'lng' => $firstItem['dropoff_lng'] ?? $firstItem['pickup_lng'] ?? null,
-                ]),
                 'base_amount' => $subtotal,
                 'service_fee' => $serviceFee,
                 'tax_amount' => $tax,
@@ -363,8 +357,107 @@ class CheckoutController extends Controller
             $booking->workflow_data = $workflowData;
             $booking->save();
 
-            // Save BookingAddons from cart items
+            // Create booking items for each cart item
             foreach ($cart as $cartKey => $item) {
+                $itemFromDate = isset($item['from_date']) ? Carbon::parse($item['from_date']) : $fromDate;
+                $itemToDate = isset($item['to_date']) ? Carbon::parse($item['to_date']) : $toDate;
+                $itemFromTime = $item['from_time'] ?? $booking->from_time ?? '00:00';
+                $itemToTime = $item['to_time'] ?? $booking->to_time ?? '00:00';
+
+                // Ensure dates are Carbon instances
+                if (is_string($itemFromDate)) {
+                    $itemFromDate = Carbon::parse($itemFromDate);
+                }
+                if (is_string($itemToDate)) {
+                    $itemToDate = Carbon::parse($itemToDate);
+                }
+
+                // Calculate duration in days (use from cart if available, otherwise calculate)
+                $durationDays = isset($item['days']) ? intval($item['days']) : $itemFromDate->diffInDays($itemToDate);
+                if ($durationDays <= 0) {
+                    $durationDays = 1;
+                }
+
+                // Extract pricing from cart item - cart stores pre-calculated prices
+                $unitPrice = 0;
+                $totalPrice = 0;
+
+                // Cart items have 'price' (unit price) and 'total_price' (total price)
+                if (isset($item['price'])) {
+                    $unitPrice = floatval($item['price']);
+                }
+
+                if (isset($item['total_price'])) {
+                    $totalPrice = floatval($item['total_price']);
+                } elseif (isset($item['total'])) {
+                    $totalPrice = floatval($item['total']);
+                } elseif (isset($item['amount'])) {
+                    $totalPrice = floatval($item['amount']);
+                } elseif ($unitPrice > 0 && $durationDays > 0) {
+                    // Fallback: calculate total from unit price and duration
+                    $totalPrice = $unitPrice * $durationDays;
+                }
+
+                // Normalize service_type_id: extract from service_type_data['id'] or ensure it's a valid UUID or null
+                $serviceTypeId = null;
+                if (isset($item['service_type_data']['id']) && !empty($item['service_type_data']['id'])) {
+                    $serviceTypeIdStr = strval($item['service_type_data']['id']);
+                    // UUID validation pattern (8-4-4-4-12 hex digits)
+                    if (preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $serviceTypeIdStr)) {
+                        $serviceTypeId = $serviceTypeIdStr;
+                    }
+                }
+
+                // In booking_items, 'quantity' field stores duration in days for vehicle rentals
+                $durationQuantity = $durationDays;
+
+                // Create booking item
+                $bookingItem = BookingItem::create([
+                    'booking_id' => $booking->id,
+                    'vehicle_group_id' => $item['vehicle_group_id'] ?? null,
+                    'vehicle_id' => $item['vehicle_id'] ?? null,
+                    'driver_id' => $item['driver_id'] ?? null,
+                    'from_date' => $itemFromDate,
+                    'to_date' => $itemToDate,
+                    'from_time' => $itemFromTime,
+                    'to_time' => $itemToTime,
+                    'pickup_location' => json_encode([
+                        'address' => $item['pickup_location'] ?? '',
+                        'city' => $validated['city'] ?? '',
+                        'country' => $validated['country'] ?? '',
+                        'lat' => $item['pickup_lat'] ?? null,
+                        'lng' => $item['pickup_lng'] ?? null,
+                    ]),
+                    'dropoff_location' => json_encode([
+                        'address' => $item['dropoff_location'] ?? $item['pickup_location'] ?? '',
+                        'city' => $validated['city'] ?? '',
+                        'country' => $validated['country'] ?? '',
+                        'lat' => $item['dropoff_lat'] ?? $item['pickup_lat'] ?? null,
+                        'lng' => $item['dropoff_lng'] ?? $item['pickup_lng'] ?? null,
+                    ]),
+                    'duration_days' => $durationDays,
+                    'duration_hours' => 0,
+                    'service_type_id' => $serviceTypeId,
+                    'unit_price' => $unitPrice,
+                    'total_price' => $totalPrice,
+                    'quantity' => $durationQuantity,  // Stores duration in days for vehicle rentals
+                    'currency' => $bookingBaseCurrency,
+                    'status' => 'confirmed',
+                    'item_type' => 'vehicle_group',
+                    'pricing_breakdown' => [
+                        'base_price' => $unitPrice,
+                        'quantity' => $durationQuantity,  // Duration days
+                        'total' => $totalPrice,
+                    ],
+                    'addons' => $item['addons'] ?? [],
+                    'customizations' => $item['customizations'] ?? [],
+                    'metadata' => [
+                        'cart_key' => $cartKey,
+                        'item_index' => array_search($cartKey, array_keys($cart)),
+                    ]
+                ]);
+
+                // Save BookingAddons from this cart item
                 if (!empty($item['addons']) && is_array($item['addons'])) {
                     foreach ($item['addons'] as $addonId => $addon) {
                         if (is_array($addon)) {
@@ -425,6 +518,9 @@ class CheckoutController extends Controller
             // Mark cart as checked out
             $dbCart = $this->cartService->getOrCreateCart();
             $this->cartService->markAsCheckedOut($dbCart);
+
+            // Reload booking with eager loaded relations for email
+            $booking = $this->reloadBookingForEmail($booking);
 
             // Send quotation request email to customer
             try {
@@ -581,6 +677,9 @@ class CheckoutController extends Controller
 
             $this->cartService->markAsCheckedOut($dbCart);
 
+            // Reload booking with eager loaded relations for email
+            $booking = $this->reloadBookingForEmail($booking);
+
             // Send confirmation email to customer
             try {
                 $this->sendBookingEmail($booking, new CheckoutConfirmationMail($booking));
@@ -689,7 +788,9 @@ class CheckoutController extends Controller
                     // Send confirmation email
                     try {
                         if (!$wasPaid) {
-                            $this->sendBookingEmail($booking, new CheckoutConfirmationMail($booking));
+                            // Reload booking with eager loaded relations for email
+                            $bookingForEmail = $this->reloadBookingForEmail($booking);
+                            $this->sendBookingEmail($bookingForEmail, new CheckoutConfirmationMail($bookingForEmail));
                         }
                     } catch (\Exception $e) {
                         Log::error('Failed to send confirmation email', [
@@ -754,7 +855,9 @@ class CheckoutController extends Controller
                 // Send confirmation email
                 try {
                     if (!$wasPaid) {
-                        $this->sendBookingEmail($booking, new CheckoutConfirmationMail($booking));
+                        // Reload booking with eager loaded relations for email
+                        $bookingForEmail = $this->reloadBookingForEmail($booking);
+                        $this->sendBookingEmail($bookingForEmail, new CheckoutConfirmationMail($bookingForEmail));
                     }
                 } catch (\Exception $e) {
                     Log::error('Failed to send confirmation email', [
@@ -826,7 +929,9 @@ class CheckoutController extends Controller
                         ]);
 
                         if (!$wasPaid) {
-                            $this->sendBookingEmail($booking, new CheckoutConfirmationMail($booking));
+                            // Reload booking with eager loaded relations for email
+                            $bookingForEmail = $this->reloadBookingForEmail($booking);
+                            $this->sendBookingEmail($bookingForEmail, new CheckoutConfirmationMail($bookingForEmail));
                         }
 
                         return response()->json(['status' => 'success']);
@@ -949,6 +1054,8 @@ class CheckoutController extends Controller
     protected function sendPaymentInitiatedEmail(Booking $booking, float $amount): void
     {
         try {
+            // Reload booking with eager loaded relations for email
+            $booking = $this->reloadBookingForEmail($booking);
             $this->sendBookingEmail($booking, new PaymentInitiatedMail($booking, $amount));
         } catch (\Exception $e) {
             Log::error('Failed to send payment initiated email', [
@@ -1146,5 +1253,412 @@ class CheckoutController extends Controller
         }
 
         return config('booking.base_currency', 'LKR');
+    }
+
+    /**
+     * Resume payment for a pending booking from email link
+     * Uses PendingPaymentManager to retrieve full booking context
+     * Allows customers to complete payment for bookings with pending payment status
+     * 
+     * @param Request $request
+     * @return \Illuminate\Http\RedirectResponse|\Illuminate\View\View
+     */
+    public function resumePayment(Request $request)
+    {
+        try {
+            // Prefer route parameter token for path-based links (e.g., /payment-resume/{token})
+            $token = $request->route('token') ?? $request->get('token');
+
+            Log::info('CheckoutController: resumePayment called', [
+                'token' => $token,
+                'full_url' => $request->fullUrl(),
+                'method' => $request->method(),
+                'ip' => $request->ip(),
+            ]);
+
+            if (!$token) {
+                Log::warning('CheckoutController: resumePayment called without token', [
+                    'url' => $request->fullUrl(),
+                    'method' => $request->method(),
+                    'ip' => $request->ip(),
+                ]);
+
+                return redirect()->route('home')->with('error', 'Invalid payment link.');
+            }
+
+            // Retrieve payment link with full booking context using PendingPaymentManager
+            $paymentLinkData = \App\Services\PendingPaymentManager::retrievePaymentLink($token);
+            if (!$paymentLinkData) {
+                Log::warning('CheckoutController: retrievePaymentLink returned null', [
+                    'token' => $token,
+                    'url' => $request->fullUrl(),
+                ]);
+
+                return redirect()->route('home')->with('error', 'Payment link expired or invalid.');
+            }
+
+            $booking = $paymentLinkData['booking'];
+            if (!$booking) {
+                return redirect()->route('home')->with('error', 'Booking not found.');
+            }
+
+            // Extract necessary data
+            $context = $paymentLinkData['context'];
+            $amountDue = $paymentLinkData['amount_due'];
+
+            // Log the payment resume attempt
+            logger('Payment resume accessed', [
+                'token' => $token,
+                'booking_id' => $booking->id,
+                'customer_email' => $context['customer']['email'] ?? 'unknown',
+                'amount_due' => $amountDue,
+                'user_agent' => $request->userAgent(),
+                'ip_address' => $request->ip(),
+            ]);
+
+            // Show dedicated payment resume page with all booking details
+            return view('checkout.payment-resume', [
+                'paymentData' => $paymentLinkData,
+                'booking' => $booking,
+                'context' => $context,
+                'amountDue' => $amountDue,
+                'token' => $token,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error resuming payment from email link', [
+                'error' => $e->getMessage(),
+                'token' => $request->get('token'),
+                'exception' => $e
+            ]);
+
+            return redirect()->route('home')->with('error', 'Unable to load payment details. Please contact support for assistance.');
+        }
+    }
+
+    /**
+     * Process payment from the dedicated payment resume page
+     */
+    public function processPaymentResume(Request $request)
+    {
+        try {
+            $token = $request->input('payment_token');
+            $bookingId = $request->input('booking_id');
+            $amount = $request->input('amount');
+            $paymentMethod = $request->input('payment_method', 'webxpay');
+
+            // Validate the payment link
+            $paymentLinkData = \App\Services\PendingPaymentManager::retrievePaymentLink($token);
+            if (!$paymentLinkData) {
+                return back()->with('error', 'Payment session expired. Please try again.');
+            }
+
+            $booking = $paymentLinkData['booking'];
+
+            // Validate booking ID matches
+            if ($booking->id !== $bookingId) {
+                return back()->with('error', 'Invalid payment request.');
+            }
+
+            // Store necessary data in session for payment processing
+            session([
+                'resume_booking_id' => $booking->id,
+                'resume_payment_amount' => $amount,
+                'resume_booking_context' => $paymentLinkData['context'],
+                'payment_link_token' => $token,
+            ]);
+
+            // Redirect to appropriate payment method
+            if ($paymentMethod === 'webxpay') {
+                return $this->processWebXPayPayment($booking, $amount);
+            }
+
+            // Default to regular checkout flow if other payment methods
+            return redirect()->route('checkout.process');
+
+        } catch (\Exception $e) {
+            Log::error('Error processing payment resume', [
+                'error' => $e->getMessage(),
+                'token' => $request->input('payment_token'),
+                'booking_id' => $request->input('booking_id'),
+                'exception' => $e
+            ]);
+
+            return back()->with('error', 'An error occurred processing your payment. Please try again.');
+        }
+    }
+
+    /**
+     * Process WebXPay payment for resume flow
+     */
+    private function processWebXPayPayment($booking, $amount)
+    {
+        try {
+            if (!$this->webxPayService->isEnabled()) {
+                Log::warning('WebXPay is not enabled; cannot process resume payment', ['booking_id' => $booking->id]);
+                return back()->with('error', 'Online payments are not available.');
+            }
+
+            $paymentType = $booking->payment_type === 'advance' ? 'advance' : 'full';
+            $result = $this->webxPayService->createPayment($booking, $amount, $paymentType);
+
+            if (!($result['success'] ?? false)) {
+                Log::error('WebXPay resume payment creation failed', ['booking_id' => $booking->id, 'error' => $result['message'] ?? 'Unknown']);
+                return back()->with('error', 'Unable to initiate payment. Please try again.');
+            }
+
+            // Update booking to payment_processing
+            $booking->update(['status' => config('booking.status.payment_processing'), 'payment_gateway_order_id' => $result['order_id'] ?? null]);
+
+            // Store booking ID and RSA encrypted payment data in session (same as regular flow)
+            session()->put('pending_booking_id', $booking->id);
+            session()->put('webxpay_payment_data', [
+                'payment_url' => $result['payment_url'],
+                'order_id' => $result['order_id'],
+                'encrypted_payment' => $result['encrypted_payment'],
+                'secret_key' => $result['secret_key'],
+                'custom_fields' => $result['custom_fields'],
+                'enc_method' => $result['enc_method'],
+                'customer_data' => $result['customer_data'],
+                'return_url' => $result['return_url'] ?? null,
+                'cancel_url' => $result['cancel_url'] ?? null,
+                'notify_url' => $result['notify_url'] ?? null,
+            ]);
+
+            // Send payment initiated email
+            $this->sendPaymentInitiatedEmail($booking, $amount);
+
+            // Redirect to our RSA auto-submit page if required
+            if (isset($result['method']) && $result['method'] === 'rsa_redirect') {
+                return redirect()->route('checkout.webxpay.redirect');
+            }
+
+            // Otherwise redirect directly to the payment URL
+            return redirect($result['payment_url']);
+
+        } catch (\Exception $e) {
+            Log::error('Error initiating WebXPay payment for resume', [
+                'booking_id' => $booking->id,
+                'amount' => $amount,
+                'error' => $e->getMessage()
+            ]);
+
+            return back()->with('error', 'Unable to initiate payment. Please try again.');
+        }
+    }
+
+    /**
+     * Convert quotation booking to actual booking
+     * Called when customer accepts quotation and clicks checkout link from email
+     * Pre-fills the checkout form with quotation details
+     * 
+     * @param Request $request
+     * @return \Illuminate\Http\RedirectResponse|\Illuminate\View\View
+     */
+    public function convertQuotationToBooking(Request $request)
+    {
+        try {
+            $token = $request->route('token');
+            Log::info('Quotation to booking conversion accessed', [
+                'token' => $token,
+                'user_agent' => $request->userAgent(),
+                'ip_address' => $request->ip(),
+            ]);
+
+            if (!$token) {
+                return redirect()->route('home')->with('error', 'Invalid quotation link.');
+            }
+
+            $quotationData = BookingLinkHelper::decryptBookingData($token);
+            Log::info('Decrypted quotation data', ['data' => $quotationData]);
+
+            if (!$quotationData || $quotationData['type'] !== 'quotation_conversion') {
+                return redirect()->route('home')->with('error', 'Invalid quotation link.');
+            }
+
+            $quotationBooking = Booking::find($quotationData['booking_id']);
+            Log::info('Fetched quotation booking', [
+                'booking_id' => $quotationBooking ? $quotationBooking->id : null,
+                'status' => $quotationBooking ? $quotationBooking->status : null,
+                'total_estimated' => $quotationBooking ? $quotationBooking->total_estimated : null,
+                'amount_to_pay' => $quotationBooking ? $quotationBooking->amount_to_pay : null,
+            ]);
+
+            if (!$quotationBooking) {
+                return redirect()->route('home')->with('error', 'Quotation not found.');
+            }
+
+            // For quotations, ensure we have payment data
+            if (!$quotationBooking->total_estimated && !$quotationBooking->amount_to_pay) {
+                // Set a default amount or use the quotation amount if available
+                $quotationBooking->total_estimated = $quotationBooking->quotation_amount ?? 1000; // Fallback amount
+                $quotationBooking->save();
+                Log::info('Set default amount for quotation booking', ['amount' => $quotationBooking->total_estimated]);
+            }
+
+            // Generate payment link directly using the PendingPaymentManager
+            try {
+                $paymentLink = \App\Services\PendingPaymentManager::createPaymentLink($quotationBooking);
+                Log::info('Generated payment link for quotation conversion', [
+                    'payment_link_token' => $paymentLink->token,
+                    'amount_due' => $paymentLink->amount_due
+                ]);
+
+                // Guard: if payment amount is not valid, stop and report
+                if (($paymentLink->amount_due ?? 0) <= 0) {
+                    Log::warning('Quotation conversion payment link has zero amount_due', [
+                        'booking_id' => $quotationBooking->id,
+                        'payment_link_id' => $paymentLink->id ?? null,
+                        'amount_due' => $paymentLink->amount_due
+                    ]);
+
+                    return redirect()->route('home')->with('error', 'Quotation amount is invalid. Please contact support.');
+                }
+
+                return redirect()->route('checkout.payment-resume', ['token' => $paymentLink->token])
+                    ->with('info', 'Your quotation is ready for payment. Please complete the booking below.');
+
+            } catch (\Exception $e) {
+                Log::error('Failed to generate payment link', ['error' => $e->getMessage()]);
+                return redirect()->route('home')->with('error', 'Unable to process quotation. Please contact support.');
+            }
+
+        } catch (\Exception $e) {
+            Log::error('Error converting quotation to booking from email link', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'token' => $request->route('token')
+            ]);
+
+            return redirect()->route('home')->with('error', 'An error occurred. Please try again.');
+        }
+    }
+
+    /**
+     * Convert quotation to payment booking
+     * Allows customer to directly proceed to payment from quotation email link
+     * Creates a new confirmed booking with same details and discounts
+     * 
+     * @param Request $request
+     * @return \Illuminate\Http\RedirectResponse
+     */
+    public function quotationToPayment(Request $request)
+    {
+        try {
+            $token = $request->get('token');
+            if (!$token) {
+                return redirect()->route('checkout')->with('error', 'Invalid quotation link.');
+            }
+
+            $quotationData = BookingLinkHelper::decryptBookingData($token);
+            if (!$quotationData || $quotationData['type'] !== 'quotation_payment') {
+                return redirect()->route('checkout')->with('error', 'Invalid quotation link.');
+            }
+
+            $quotationBooking = Booking::find($quotationData['booking_id']);
+            if (!$quotationBooking) {
+                return redirect()->route('checkout')->with('error', 'Quotation not found.');
+            }
+
+            // Check if customer is logged in, if not redirect to login
+            if (!Auth::check() && $quotationBooking->customer && $quotationBooking->customer->user) {
+                session()->put('quotation_booking_id', $quotationBooking->id);
+                return redirect()->route('login')->with('info', 'Please log in to proceed with your quotation booking.');
+            }
+
+            DB::beginTransaction();
+
+            try {
+                // Get quotation booking details
+                $customer = $quotationBooking->customer;
+                $workflowData = $quotationBooking->workflow_data ?? [];
+                $cartItems = $workflowData['cart_items'] ?? [];
+
+                // Create new booking from quotation
+                $newBooking = Booking::create([
+                    'customer_id' => $customer->id,
+                    'booking_number' => 'BK' . strtoupper(substr(md5(microtime()), 0, 8)),
+                    'from_date' => $quotationBooking->from_date,
+                    'to_date' => $quotationBooking->to_date,
+                    'from_time' => $quotationBooking->from_time,
+                    'to_time' => $quotationBooking->to_time,
+                    'service_type_id' => $quotationBooking->service_type_id,
+                    'vehicle_group_id' => $quotationBooking->vehicle_group_id,
+                    'pickup_location' => $quotationBooking->pickup_location,
+                    'dropoff_location' => $quotationBooking->dropoff_location,
+                    'base_amount' => $quotationBooking->base_amount,
+                    'service_fee' => $quotationBooking->service_fee,
+                    'tax_amount' => $quotationBooking->tax_amount,
+                    'vat_amount' => $quotationBooking->vat_amount,
+                    'discount_amount' => $quotationBooking->discount_amount,
+                    'total_estimated' => $quotationBooking->total_estimated,
+                    'currency' => $quotationBooking->currency,
+                    'payment_method' => 'online',
+                    'payment_status' => 'pending',
+                    'payment_type' => 'full',
+                    'amount_to_pay' => $quotationBooking->total_estimated,
+                    'special_requirements' => $quotationBooking->special_requirements,
+                    'contact_time' => $quotationBooking->contact_time,
+                    'status' => config('booking.status.payment_processing'),
+                    'created_from' => 'quotation_acceptance',
+                    'created_user_id' => Auth::id(),
+                    'workflow_data' => $workflowData,
+                ]);
+
+                // Copy booking addons from quotation
+                $quotationBooking->addons()->get()->each(function ($addon) use ($newBooking) {
+                    BookingAddon::create([
+                        'booking_id' => $newBooking->id,
+                        'addon_id' => $addon->addon_id,
+                        'qty' => $addon->qty,
+                        'rate' => $addon->rate,
+                        'amount' => $addon->amount,
+                        'label' => $addon->label,
+                    ]);
+                });
+
+                // Store booking ID in session for payment processing
+                session()->put('pending_booking_id', $newBooking->id);
+                session()->put('quotation_source_id', $quotationBooking->id);
+
+                DB::commit();
+
+                // Redirect to checkout payment with new booking
+                return redirect()->route('checkout')->with('info', 'Quotation converted to booking. Please complete payment.');
+            } catch (\Exception $e) {
+                DB::rollback();
+                throw $e;
+            }
+        } catch (\Exception $e) {
+            Log::error('Error converting quotation to payment booking from email link', [
+                'error' => $e->getMessage(),
+                'token' => $request->get('token')
+            ]);
+
+            return redirect()->route('checkout')->with('error', 'An error occurred. Please try again.');
+        }
+    }
+
+    /**
+     * Invalidate payment link after successful payment
+     * Called when payment is completed to prevent reuse of payment link
+     * 
+     * @param Request $request
+     * @return void
+     */
+    public function invalidatePaymentLink(Request $request): void
+    {
+        try {
+            $token = session()->get('payment_link_token');
+            if ($token) {
+                \App\Services\PendingPaymentManager::invalidatePaymentLink($token);
+                session()->forget('payment_link_token');
+            }
+        } catch (\Exception $e) {
+            Log::warning('Error invalidating payment link', [
+                'error' => $e->getMessage(),
+                'token' => $token ?? null
+            ]);
+        }
     }
 }
