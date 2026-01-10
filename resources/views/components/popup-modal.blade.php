@@ -32,9 +32,11 @@
                     @endphp
                     <div class="popup-image-wrapper">
                         @if ($isVideo)
-                            <video class="popup-video" src="{{ s3_asset($mediaPath) }}" controls autoplay muted loop playsinline></video>
+                            <video class="popup-video" src="{{ s3_asset($mediaPath) }}" controls autoplay muted loop
+                                playsinline></video>
                         @else
-                            <img src="{{ s3_asset($mediaPath) }}" alt="{{ $popup['title'] ?? 'Promotional popup' }}" class="popup-image" loading="lazy">
+                            <img src="{{ s3_asset($mediaPath) }}" alt="{{ $popup['title'] ?? 'Promotional popup' }}"
+                                class="popup-image" loading="lazy">
                         @endif
                     </div>
                 @endif
