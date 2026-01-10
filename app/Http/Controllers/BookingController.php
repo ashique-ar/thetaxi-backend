@@ -244,6 +244,22 @@ class BookingController extends Controller
             }
         }
 
+        // If address is missing but coordinates are present, try to map to known airports
+        if (empty(trim($location['address'] ?? '')) && $location['latitude'] !== null && $location['longitude'] !== null) {
+            $airportMap = [
+                'Colombo BIA Airport' => ['lat' => 7.1808, 'lng' => 79.8841],
+                'Mattala Rajapaksa Airport' => ['lat' => 6.2847, 'lng' => 81.1242],
+                'Jaffna International Airport' => ['lat' => 9.7923, 'lng' => 80.0701],
+            ];
+
+            foreach ($airportMap as $name => $coords) {
+                if (abs($coords['lat'] - $location['latitude']) < 0.0006 && abs($coords['lng'] - $location['longitude']) < 0.0006) {
+                    $location['address'] = $name;
+                    break;
+                }
+            }
+        }
+
         return $location;
     }
 

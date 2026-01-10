@@ -49,9 +49,17 @@
                     @endif
 
                     {{-- Content --}}
-                    @if (!empty($popup['content']))
+                    @php
+                        $popupContent = $popup['content'] ?? '';
+                        // Remove empty paragraphs (including those with only &nbsp; or whitespace)
+                        $popupContent = preg_replace('/<p>(?:\s|&nbsp;|&#160;)*<\/p>/i', '', $popupContent);
+                        // Replace sequences of non-breaking spaces with a single normal space
+                        $popupContent = preg_replace('/(?:&nbsp;|&#160;)+/i', ' ', $popupContent);
+                        $popupContent = trim($popupContent);
+                    @endphp
+                    @if (!empty($popupContent))
                         <div class="popup-content">
-                            {!! $popup['content'] !!}
+                            {!! $popupContent !!}
                         </div>
                     @endif
 
@@ -156,7 +164,8 @@
     /* Popup Image */
     .popup-image-wrapper {
         width: 100%;
-        max-height: 250px;
+        max-height: 40vh;
+        /* keep media to a reasonable fraction of viewport */
         overflow: hidden;
     }
 
@@ -172,12 +181,15 @@
         height: auto;
         display: block;
         object-fit: cover;
-        max-height: 320px;
+        max-height: 40vh;
     }
 
     /* Popup Body */
     .popup-body {
         padding: 24px;
+        max-height: calc(90vh - 40vh);
+        /* allow body to scroll if content is tall */
+        overflow-y: auto;
     }
 
     /* Popup Title */
@@ -195,6 +207,11 @@
         color: #555;
         line-height: 1.6;
         margin-bottom: 20px;
+        overflow-wrap: anywhere;
+        /* allow long words to wrap */
+        word-wrap: break-word;
+        word-break: break-word;
+        hyphens: auto;
     }
 
     .popup-content p {

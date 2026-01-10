@@ -22,6 +22,85 @@
 
     // Get current service type
     $currentServiceType = $getSearchProp('service_type', 'airport_transfers');
+
+    // Normalize pickup/dropoff locations: support string OR object/array with latitude/longitude
+    $normalizeLocation = function ($search, $key) {
+        $result = [
+            'address' => null,
+            'lat' => null,
+            'lng' => null,
+        ];
+
+        if (!isset($search)) {
+            return $result;
+        }
+
+        // Check for dedicated latitude/longitude fields
+        $latKey = $key . '_latitude';
+        $lngKey = $key . '_longitude';
+        if (isset($search->$latKey) || (is_array($search) && isset($search[$latKey]))) {
+            $result['lat'] = is_object($search) ? $search->$latKey : $search[$latKey];
+        }
+        if (isset($search->$lngKey) || (is_array($search) && isset($search[$lngKey]))) {
+            $result['lng'] = is_object($search) ? $search->$lngKey : $search[$lngKey];
+        }
+
+        // If a combined location object exists, extract from it
+        $loc = null;
+        if (is_object($search) && property_exists($search, $key)) {
+            $loc = $search->$key;
+        }
+        if (is_array($search) && isset($search[$key])) {
+            $loc = $search[$key];
+        }
+
+        if ($loc) {
+            if (is_array($loc)) {
+                $result['address'] = $loc['address'] ?? ($loc['name'] ?? null);
+                $result['lat'] = $result['lat'] ?? ($loc['latitude'] ?? ($loc['lat'] ?? null));
+                $result['lng'] = $result['lng'] ?? ($loc['longitude'] ?? ($loc['lng'] ?? null));
+            } elseif (is_object($loc)) {
+                $result['address'] = $loc->address ?? ($loc->name ?? null);
+                $result['lat'] = $result['lat'] ?? ($loc->latitude ?? ($loc->lat ?? null));
+                $result['lng'] = $result['lng'] ?? ($loc->longitude ?? ($loc->lng ?? null));
+            } else {
+                // loc may be a simple string
+                $result['address'] = $loc;
+            }
+        }
+
+        // Fallback: if address empty but coordinates match a known airport, set a friendly label
+        $airportMap = [
+            'Colombo BIA Airport' => ['lat' => '7.1808', 'lng' => '79.8841'],
+            'Mattala Rajapaksa Airport' => ['lat' => '6.2847', 'lng' => '81.1242'],
+            'Jaffna International Airport' => ['lat' => '9.7923', 'lng' => '80.0701'],
+        ];
+
+        if (empty($result['address']) && !empty($result['lat']) && !empty($result['lng'])) {
+            foreach ($airportMap as $name => $coords) {
+                // Use string comparison to avoid float precision issues
+                if (
+                    (string) $coords['lat'] === (string) $result['lat'] &&
+                    (string) $coords['lng'] === (string) $result['lng']
+                ) {
+                    $result['address'] = $name;
+                    break;
+                }
+            }
+        }
+
+        // Final fallback: if still empty, leave null so JS can set defaults
+        return $result;
+    };
+
+    $pickup = $normalizeLocation($search ?? null, 'pickup_location');
+    $dropoff = $normalizeLocation($search ?? null, 'dropoff_location');
+
+    // Utility for safe old() fallback
+    $safeOldOr = function ($field, $value) {
+        $oldValue = old($field);
+        return $oldValue !== null ? $oldValue : $value;
+    };
 @endphp
 
 <div class="filter-wrapper">
@@ -143,15 +222,15 @@
                         class="airport-select from-field hidden @error('from') is-invalid @enderror" disabled>
                         <option value="">Select Airport</option>
                         <option value="Colombo BIA Airport" data-lat="7.1808" data-lng="79.8841"
-                            {{ old('from', isset($search) && isset($search->pickup_location) ? $search->pickup_location : 'Colombo BIA Airport') == 'Colombo BIA Airport' ? 'selected' : '' }}>
+                            {{ old('from') == 'Colombo BIA Airport' || ($pickup['address'] ?? '') == 'Colombo BIA Airport' || ((string) ($pickup['lat'] ?? '') === '7.1808' && (string) ($pickup['lng'] ?? '') === '79.8841') ? 'selected' : '' }}>
                             Bandaranaike International Airport (BIA)
                         </option>
                         <option value="Mattala Rajapaksa Airport" data-lat="6.2847" data-lng="81.1242"
-                            {{ old('from', isset($search) && isset($search->pickup_location) ? $search->pickup_location : '') == 'Mattala Rajapaksa Airport' ? 'selected' : '' }}>
+                            {{ old('from') == 'Mattala Rajapaksa Airport' || ($pickup['address'] ?? '') == 'Mattala Rajapaksa Airport' || ((string) ($pickup['lat'] ?? '') === '6.2847' && (string) ($pickup['lng'] ?? '') === '81.1242') ? 'selected' : '' }}>
                             Mattala Rajapaksa International Airport
                         </option>
                         <option value="Jaffna International Airport" data-lat="9.7923" data-lng="80.0701"
-                            {{ old('from', isset($search) && isset($search->pickup_location) ? $search->pickup_location : '') == 'Jaffna International Airport' ? 'selected' : '' }}>
+                            {{ old('from') == 'Jaffna International Airport' || ($pickup['address'] ?? '') == 'Jaffna International Airport' || ((string) ($pickup['lat'] ?? '') === '9.7923' && (string) ($pickup['lng'] ?? '') === '80.0701') ? 'selected' : '' }}>
                             Jaffna International Airport
                         </option>
                     </select>
@@ -159,13 +238,12 @@
                     <!-- Location Input (shown when to-airport is selected) -->
                     <input type="text" name="from" id="from-location-input" placeholder="Enter pickup location"
                         class="location-search from-field hidden @error('from') is-invalid @enderror"
-                        value="{{ old('from', isset($search) && isset($search->pickup_location) ? $search->pickup_location : 'Colombo, Sri Lanka') }}"
-                        disabled>
+                        value="{{ $safeOldOr('from', $pickup['address'] ?? 'Colombo, Sri Lanka') }}" disabled>
 
                     <input type="hidden" name="pickup_lat" class="location-lat"
-                        value="{{ old('pickup_lat', isset($search) && isset($search->pickup_latitude) ? $search->pickup_latitude : '7.1808') }}">
+                        value="{{ $safeOldOr('pickup_lat', $pickup['lat'] ?? ($search->pickup_latitude ?? '7.1808')) }}">
                     <input type="hidden" name="pickup_lng" class="location-lng"
-                        value="{{ old('pickup_lng', isset($search) && isset($search->pickup_longitude) ? $search->pickup_longitude : '79.8841') }}">
+                        value="{{ $safeOldOr('pickup_lng', $pickup['lng'] ?? ($search->pickup_longitude ?? '79.8841')) }}">
                 </div>
                 @error('from')
                     <span class="text-danger small">{{ $message }}</span>
@@ -187,31 +265,30 @@
                     <!-- Location Input (shown when from-airport is selected) -->
                     <input type="text" name="to" id="to-location-input" placeholder="Enter destination"
                         class="location-search to-field hidden @error('to') is-invalid @enderror"
-                        value="{{ old('to', isset($search) && isset($search->dropoff_location) ? $search->dropoff_location : 'Colombo, Sri Lanka') }}"
-                        disabled>
+                        value="{{ $safeOldOr('to', $dropoff['address'] ?? 'Colombo, Sri Lanka') }}" disabled>
 
                     <!-- Airport Select (shown when to-airport is selected) -->
                     <select name="to" id="to-airport-select"
                         class="airport-select to-field hidden @error('to') is-invalid @enderror" disabled>
                         <option value="">Select Airport</option>
                         <option value="Colombo BIA Airport" data-lat="7.1808" data-lng="79.8841"
-                            {{ old('to', isset($search) && isset($search->dropoff_location) ? $search->dropoff_location : '') == 'Colombo BIA Airport' ? 'selected' : '' }}>
+                            {{ old('to') == 'Colombo BIA Airport' || ($dropoff['address'] ?? '') == 'Colombo BIA Airport' || ((string) ($dropoff['lat'] ?? '') === '7.1808' && (string) ($dropoff['lng'] ?? '') === '79.8841') ? 'selected' : '' }}>
                             Bandaranaike International Airport (BIA)
                         </option>
                         <option value="Mattala Rajapaksa Airport" data-lat="6.2847" data-lng="81.1242"
-                            {{ old('to', isset($search) && isset($search->dropoff_location) ? $search->dropoff_location : '') == 'Mattala Rajapaksa Airport' ? 'selected' : '' }}>
+                            {{ old('to') == 'Mattala Rajapaksa Airport' || ($dropoff['address'] ?? '') == 'Mattala Rajapaksa Airport' || ((string) ($dropoff['lat'] ?? '') === '6.2847' && (string) ($dropoff['lng'] ?? '') === '81.1242') ? 'selected' : '' }}>
                             Mattala Rajapaksa International Airport
                         </option>
                         <option value="Jaffna International Airport" data-lat="9.7923" data-lng="80.0701"
-                            {{ old('to', isset($search) && isset($search->dropoff_location) ? $search->dropoff_location : '') == 'Jaffna International Airport' ? 'selected' : '' }}>
+                            {{ old('to') == 'Jaffna International Airport' || ($dropoff['address'] ?? '') == 'Jaffna International Airport' || ((string) ($dropoff['lat'] ?? '') === '9.7923' && (string) ($dropoff['lng'] ?? '') === '80.0701') ? 'selected' : '' }}>
                             Jaffna International Airport
                         </option>
                     </select>
 
                     <input type="hidden" name="dropoff_lat" class="location-lat"
-                        value="{{ old('dropoff_lat', isset($search) && isset($search->dropoff_latitude) ? $search->dropoff_latitude : '6.9271') }}">
+                        value="{{ $safeOldOr('dropoff_lat', $dropoff['lat'] ?? ($search->dropoff_latitude ?? '6.9271')) }}">
                     <input type="hidden" name="dropoff_lng" class="location-lng"
-                        value="{{ old('dropoff_lng', isset($search) && isset($search->dropoff_longitude) ? $search->dropoff_longitude : '79.8612') }}">
+                        value="{{ $safeOldOr('dropoff_lng', $dropoff['lng'] ?? ($search->dropoff_longitude ?? '79.8612')) }}">
                 </div>
                 @error('to')
                     <span class="text-danger small">{{ $message }}</span>
@@ -294,12 +371,11 @@
                 <div class="custom-select-dropdown">
                     <input type="text" name="pickup" placeholder="Pick up Location"
                         class="location-search @error('pickup') is-invalid @enderror"
-                        value="{{ old('pickup', isset($search) && isset($search->pickup_location) ? $search->pickup_location : 'Colombo, Sri Lanka') }}"
-                        required>
+                        value="{{ $safeOldOr('pickup', $pickup['address'] ?? 'Colombo, Sri Lanka') }}" required>
                     <input type="hidden" name="pickup_lat" class="location-lat"
-                        value="{{ old('pickup_lat', isset($search) && isset($search->pickup_latitude) ? $search->pickup_latitude : '6.9271') }}">
+                        value="{{ $safeOldOr('pickup_lat', $pickup['lat'] ?? ($search->pickup_latitude ?? '6.9271')) }}">
                     <input type="hidden" name="pickup_lng" class="location-lng"
-                        value="{{ old('pickup_lng', isset($search) && isset($search->pickup_longitude) ? $search->pickup_longitude : '79.8612') }}">
+                        value="{{ $safeOldOr('pickup_lng', $pickup['lng'] ?? ($search->pickup_longitude ?? '79.8612')) }}">
                 </div>
                 @error('pickup')
                     <span class="text-danger small">{{ $message }}</span>
@@ -320,12 +396,11 @@
                 <div class="custom-select-dropdown">
                     <input type="text" name="dropoff" placeholder="Drop Off Location"
                         class="location-search @error('dropoff') is-invalid @enderror"
-                        value="{{ old('dropoff', isset($search) && isset($search->dropoff_location) ? $search->dropoff_location : 'Galle, Sri Lanka') }}"
-                        required>
+                        value="{{ $safeOldOr('dropoff', $dropoff['address'] ?? 'Galle, Sri Lanka') }}" required>
                     <input type="hidden" name="dropoff_lat" class="location-lat"
-                        value="{{ old('dropoff_lat', isset($search) && isset($search->dropoff_latitude) ? $search->dropoff_latitude : '6.0535') }}">
+                        value="{{ $safeOldOr('dropoff_lat', $dropoff['lat'] ?? ($search->dropoff_latitude ?? '6.0535')) }}">
                     <input type="hidden" name="dropoff_lng" class="location-lng"
-                        value="{{ old('dropoff_lng', isset($search) && isset($search->dropoff_longitude) ? $search->dropoff_longitude : '80.221') }}">
+                        value="{{ $safeOldOr('dropoff_lng', $dropoff['lng'] ?? ($search->dropoff_longitude ?? '80.221')) }}">
                 </div>
                 @error('dropoff')
                     <span class="text-danger small">{{ $message }}</span>
@@ -428,12 +503,11 @@
                 <div class="custom-select-dropdown">
                     <input type="text" name="pickup" placeholder="Pick up Location"
                         class="location-search @error('pickup') is-invalid @enderror"
-                        value="{{ old('pickup', isset($search) && isset($search->pickup_location) ? $search->pickup_location : 'Colombo, Sri Lanka') }}"
-                        required>
+                        value="{{ $safeOldOr('pickup', $pickup['address'] ?? 'Colombo, Sri Lanka') }}" required>
                     <input type="hidden" name="pickup_lat" class="location-lat"
-                        value="{{ old('pickup_lat', isset($search) && isset($search->pickup_latitude) ? $search->pickup_latitude : '6.9271') }}">
+                        value="{{ $safeOldOr('pickup_lat', $pickup['lat'] ?? ($search->pickup_latitude ?? '6.9271')) }}">
                     <input type="hidden" name="pickup_lng" class="location-lng"
-                        value="{{ old('pickup_lng', isset($search) && isset($search->pickup_longitude) ? $search->pickup_longitude : '79.8612') }}">
+                        value="{{ $safeOldOr('pickup_lng', $pickup['lng'] ?? ($search->pickup_longitude ?? '79.8612')) }}">
                 </div>
                 @error('pickup')
                     <span class="text-danger small">{{ $message }}</span>
@@ -453,12 +527,12 @@
                 <div class="custom-select-dropdown">
                     <input type="text" name="dropoff" placeholder="Drop Off Location"
                         class="location-search @error('dropoff') is-invalid @enderror"
-                        value="{{ old('dropoff', isset($search) && isset($search->dropoff_location) ? $search->dropoff_location : 'Galle, Sri Lanka') }}"
+                        value="{{ $safeOldOr('dropoff', $dropoff['address'] ?? 'Galle, Sri Lanka') }}"
                         required>
                     <input type="hidden" name="dropoff_lat" class="location-lat"
-                        value="{{ old('dropoff_lat', isset($search) && isset($search->dropoff_latitude) ? $search->dropoff_latitude : '6.0535') }}">
+                        value="{{ $safeOldOr('dropoff_lat', $dropoff['lat'] ?? ($search->dropoff_latitude ?? '6.0535')) }}">
                     <input type="hidden" name="dropoff_lng" class="location-lng"
-                        value="{{ old('dropoff_lng', isset($search) && isset($search->dropoff_longitude) ? $search->dropoff_longitude : '80.221') }}">
+                        value="{{ $safeOldOr('dropoff_lng', $dropoff['lng'] ?? ($search->dropoff_longitude ?? '80.221')) }}">
                 </div>
                 @error('dropoff')
                     <span class="text-danger small">{{ $message }}</span>

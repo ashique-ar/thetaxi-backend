@@ -332,6 +332,62 @@
                 endDateInput.value = threeDaysFormatted;
             }
         }
+
+        // Populate address fields from coordinates if address is missing
+        populateAddressFromCoords();
+
+        /**
+         * Fill visible location inputs when server provided coordinates but no address.
+         * It attempts to map coordinates to known city/airport names, otherwise falls back
+         * to a lat,lng string so the user sees a usable value.
+         */
+        function populateAddressFromCoords() {
+            const locInputs = document.querySelectorAll('.location-search, #from-location-input, #to-location-input');
+            locInputs.forEach(input => {
+                try {
+                    if (!input) return;
+                    // Skip if already has a value
+                    if (input.value && input.value.trim() !== '') return;
+
+                    const form = input.closest('form');
+                    if (!form) return;
+
+                    let latInput = null, lngInput = null;
+                    if (input.name === 'pickup' || input.getAttribute('id') === 'from-location-input') {
+                        latInput = form.querySelector('input[name="pickup_lat"]');
+                        lngInput = form.querySelector('input[name="pickup_lng"]');
+                    } else if (input.name === 'dropoff' || input.getAttribute('id') === 'to-location-input') {
+                        latInput = form.querySelector('input[name="dropoff_lat"]');
+                        lngInput = form.querySelector('input[name="dropoff_lng"]');
+                    }
+
+                    if (!latInput || !lngInput) return;
+                    const lat = parseFloat(latInput.value);
+                    const lng = parseFloat(lngInput.value);
+                    if (!isFinite(lat) || !isFinite(lng)) return;
+
+                    // Find matching city/airport by coordinates (small tolerance)
+                    let found = null;
+                    for (const name in CONFIG.cityCoordinates) {
+                        const c = CONFIG.cityCoordinates[name];
+                        if (!c || typeof c.lat === 'undefined' || typeof c.lng === 'undefined') continue;
+                        if (Math.abs(c.lat - lat) < 0.0006 && Math.abs(c.lng - lng) < 0.0006) {
+                            found = name;
+                            break;
+                        }
+                    }
+
+                    if (found) {
+                        input.value = found;
+                    } else {
+                        // Fallback formatted coords
+                        input.value = lat.toFixed(4) + ', ' + lng.toFixed(4);
+                    }
+                } catch (e) {
+                    console.warn('populateAddressFromCoords error', e);
+                }
+            });
+        }
     }
 
     /**
@@ -681,15 +737,34 @@
      * Update location data in hidden fields
      */
     function updateLocationData(input, place) {
-        // For airport transfer form
+        // Helper: map coords to known city/airport names
+        function coordsToName(lat, lng) {
+            if (!lat || !lng) return null;
+            for (const name in CONFIG.cityCoordinates) {
+                const c = CONFIG.cityCoordinates[name];
+                if (!c || typeof c.lat === 'undefined' || typeof c.lng === 'undefined') continue;
+                if (Math.abs(parseFloat(c.lat) - parseFloat(lat)) < 0.0006 && Math.abs(parseFloat(c.lng) - parseFloat(lng)) < 0.0006) {
+                    return name;
+                }
+            }
+            return null;
+        }
+
+        // For airport transfer form FROM
         if (input.name === "from") {
             const form = input.closest("form");
             const latInput = form.querySelector('input[name="pickup_lat"]');
             const lngInput = form.querySelector('input[name="pickup_lng"]');
 
             if (place.geometry && latInput && lngInput) {
-                latInput.value = place.geometry.location.lat();
-                lngInput.value = place.geometry.location.lng();
+                const lat = typeof place.geometry.location.lat === 'function' ? place.geometry.location.lat() : parseFloat(place.geometry.location.lat);
+                const lng = typeof place.geometry.location.lng === 'function' ? place.geometry.location.lng() : parseFloat(place.geometry.location.lng);
+                latInput.value = lat;
+                lngInput.value = lng;
+
+                if ((!input.value || input.value.trim() === '') && (place.formatted_address || (!isNaN(lat) && !isNaN(lng)))) {
+                    input.value = place.formatted_address || coordsToName(lat, lng) || (lat.toFixed(4) + ', ' + lng.toFixed(4));
+                }
             }
         } else if (input.name === "to") {
             const form = input.closest("form");
@@ -697,8 +772,14 @@
             const lngInput = form.querySelector('input[name="dropoff_lng"]');
 
             if (place.geometry && latInput && lngInput) {
-                latInput.value = place.geometry.location.lat();
-                lngInput.value = place.geometry.location.lng();
+                const lat = typeof place.geometry.location.lat === 'function' ? place.geometry.location.lat() : parseFloat(place.geometry.location.lat);
+                const lng = typeof place.geometry.location.lng === 'function' ? place.geometry.location.lng() : parseFloat(place.geometry.location.lng);
+                latInput.value = lat;
+                lngInput.value = lng;
+
+                if ((!input.value || input.value.trim() === '') && (place.formatted_address || (!isNaN(lat) && !isNaN(lng)))) {
+                    input.value = place.formatted_address || coordsToName(lat, lng) || (lat.toFixed(4) + ', ' + lng.toFixed(4));
+                }
             }
         } else if (input.name === "pickup") {
             const form = input.closest("form");
@@ -706,9 +787,15 @@
             const lngInput = form.querySelector('input[name="pickup_lng"]');
 
             if (place.geometry && latInput && lngInput) {
-                latInput.value = place.geometry.location.lat();
-                lngInput.value = place.geometry.location.lng();
+                const lat = typeof place.geometry.location.lat === 'function' ? place.geometry.location.lat() : parseFloat(place.geometry.location.lat);
+                const lng = typeof place.geometry.location.lng === 'function' ? place.geometry.location.lng() : parseFloat(place.geometry.location.lng);
+                latInput.value = lat;
+                lngInput.value = lng;
                 console.log('Updated pickup coordinates via Google Places:', latInput.value, lngInput.value);
+
+                if ((!input.value || input.value.trim() === '') && (place.formatted_address || (!isNaN(lat) && !isNaN(lng)))) {
+                    input.value = place.formatted_address || coordsToName(lat, lng) || (lat.toFixed(4) + ', ' + lng.toFixed(4));
+                }
             } else {
                 console.error('Could not find pickup coordinate fields or place geometry');
             }
@@ -718,9 +805,15 @@
             const lngInput = form.querySelector('input[name="dropoff_lng"]');
 
             if (place.geometry && latInput && lngInput) {
-                latInput.value = place.geometry.location.lat();
-                lngInput.value = place.geometry.location.lng();
+                const lat = typeof place.geometry.location.lat === 'function' ? place.geometry.location.lat() : parseFloat(place.geometry.location.lat);
+                const lng = typeof place.geometry.location.lng === 'function' ? place.geometry.location.lng() : parseFloat(place.geometry.location.lng);
+                latInput.value = lat;
+                lngInput.value = lng;
                 console.log('Updated dropoff coordinates via Google Places:', latInput.value, lngInput.value);
+
+                if ((!input.value || input.value.trim() === '') && (place.formatted_address || (!isNaN(lat) && !isNaN(lng)))) {
+                    input.value = place.formatted_address || coordsToName(lat, lng) || (lat.toFixed(4) + ', ' + lng.toFixed(4));
+                }
             } else {
                 console.error('Could not find dropoff coordinate fields or place geometry');
             }
@@ -1050,7 +1143,7 @@
                     if (fromLat && fromLng) {
                         fromLat.value = selectedOption.dataset.lat;
                         fromLng.value = selectedOption.dataset.lng;
-      
+
                     } else {
                         console.error('FROM coordinate inputs not found');
                     }

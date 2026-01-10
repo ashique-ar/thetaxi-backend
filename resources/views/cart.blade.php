@@ -136,16 +136,14 @@
                                                         @endif
                                                     </div>
                                                     <div class="product-info-content">
-                                                        <h6>
-                                                            {{ $item['name'] ?? 'Vehicle Rental' }}
-                                                        </h6>
-                                                        <!-- Service Type Badge - Highlighted -->
                                                         <span class="service-type-badge"
-                                                            style="display: inline-block; background-color: #e8f4f8; color: #0066cc; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; margin-bottom: 8px; border: 1px solid #0066cc;">
+                                                            style="display: inline-block; background-color: #e8f4f8; color: #0066cc; padding: 4px 10px; border-radius: 12px; font-size: 14px; font-weight: 700; margin-bottom: 8px; border: 1px solid #0066cc;">
                                                             <i class="bi bi-tag"></i>
                                                             {{ $item['service_type_data']['name'] ?? ($item['service_type'] ?? 'Service') }}
                                                         </span>
-
+                                                        <h6>
+                                                            {{ $item['name'] ?? 'Vehicle Rental' }}
+                                                        </h6>
                                                         @php
                                                             // Normalize pickup/dropoff display: support arrays and missing fields
                                                             $pickupLoc = is_array($item['pickup_location'] ?? null)
@@ -198,7 +196,7 @@
                                                                     @endif
                                                                 </p>
                                                                 <p class="text-muted"
-                                                                    style="font-size: 12px; margin-top: 8px;">
+                                                                    style="margin-top: 8px;">
                                                                     <i class="bi bi-hourglass-split"></i> <strong>Duration:
                                                                         {{ $calculatedDays }}
                                                                         day{{ $calculatedDays !== 1 ? 's' : '' }}</strong>
@@ -1331,8 +1329,8 @@
                                         ${isSelected ? '<i class="bi bi-arrow-clockwise"></i> Update' : '<i class="bi bi-plus-lg"></i> Add'}
                                     </button>
                                     ${isSelected ? `<button class="btn-remove-addon-unified remove-addon-btn" data-addon-id="${addon.id}" data-cart-key="${cartKey}" title="Remove this addon">
-                                                                    <i class="bi bi-trash"></i> Remove
-                                                                </button>` : ''}
+                                                                        <i class="bi bi-trash"></i> Remove
+                                                                    </button>` : ''}
                                 </div>
                             </div>
                         </div>
@@ -2201,8 +2199,8 @@
         }
 
         /* ==========================================
-                                               Extra KM Purchase Section Styles
-                                               ========================================== */
+                                                   Extra KM Purchase Section Styles
+                                                   ========================================== */
 
         /* Service type badge */
         .service-type-badge {
