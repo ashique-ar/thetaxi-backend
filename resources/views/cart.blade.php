@@ -1328,8 +1328,8 @@
                                         ${isSelected ? '<i class="bi bi-arrow-clockwise"></i> Update' : '<i class="bi bi-plus-lg"></i> Add'}
                                     </button>
                                     ${isSelected ? `<button class="btn-remove-addon-unified remove-addon-btn" data-addon-id="${addon.id}" data-cart-key="${cartKey}" title="Remove this addon">
-                                                                                <i class="bi bi-trash"></i> Remove
-                                                                            </button>` : ''}
+                                                                                    <i class="bi bi-trash"></i> Remove
+                                                                                </button>` : ''}
                                 </div>
                             </div>
                         </div>
@@ -1618,7 +1618,7 @@
                 const loadingEl = container.find('.extra-km-loading');
                 const formEl = container.find('.extra-km-form');
                 const unavailableEl = container.find('.extra-km-unavailable');
-
+                $(`.extra-km-row[data-cart-key="${cartKey}"]`).hide();
                 $.ajax({
                     url: '{{ url('/cart/extra-km') }}/' + cartKey,
                     method: 'GET',
@@ -1633,6 +1633,8 @@
                             // Hide the entire extra-km section for this cart item when not available
                             $(`.extra-km-row[data-cart-key="${cartKey}"]`).hide();
                             return;
+                        } else {
+                            $(`.extra-km-row[data-cart-key="${cartKey}"]`).show();
                         }
 
                         const rateObj = response.data.rate || null;
@@ -2200,8 +2202,8 @@
         }
 
         /* ==========================================
-                                                           Extra KM Purchase Section Styles
-                                                           ========================================== */
+                                                               Extra KM Purchase Section Styles
+                                                               ========================================== */
 
         /* Service type badge */
         .service-type-badge {
