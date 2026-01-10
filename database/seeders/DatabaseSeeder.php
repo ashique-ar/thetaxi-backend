@@ -17,6 +17,7 @@ class DatabaseSeeder extends Seeder
             // RolesAndPermissionsSeeder::class,
             // AdminUserSeeder::class,
             // CountrySeeder::class,
+            // CountriesFromJsonSeeder::class,
             // StateSeeder::class,
             // CurrencySeeder::class,
             // VipTypeSeeder::class,

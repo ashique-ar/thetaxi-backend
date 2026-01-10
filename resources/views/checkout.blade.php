@@ -213,7 +213,7 @@
                                             <div class="form-inner two mb-25">
                                                 <label>Phone Number*</label>
                                                 <input type="tel" id="phone-input" name="phone"
-                                                    placeholder="+1 (201) 555-0123" autocomplete="phhone" required
+                                                    placeholder="+1 (201) 555-0123" autocomplete="phone" required
                                                     value="{{ old('phone') }}" style="padding-left: 48px;">
                                                 <div id="phone-error" class="text-danger mt-2" style="display: none;">
                                                 </div>
@@ -273,26 +273,17 @@
                                         <div class="col-md-6">
                                             <div class="form-inner two mb-25">
                                                 <label>Country*</label>
-                                                <select id="country-select" name="country" required>
+                                                <select id="country-select" name="country" required class="no-nice">
                                                     <option value="">Select Country</option>
-                                                    <option value="Sri Lanka"
-                                                        {{ old('country', 'Sri Lanka') === 'Sri Lanka' ? 'selected' : '' }}>
-                                                        Sri Lanka (+94)</option>
-                                                    <option value="India"
-                                                        {{ old('country') === 'India' ? 'selected' : '' }}>India (+91)
-                                                    </option>
-                                                    <option value="United States"
-                                                        {{ old('country') === 'United States' ? 'selected' : '' }}>United
-                                                        States (+1)</option>
-                                                    <option value="United Kingdom"
-                                                        {{ old('country') === 'United Kingdom' ? 'selected' : '' }}>United
-                                                        Kingdom (+44)</option>
-                                                    <option value="Canada"
-                                                        {{ old('country') === 'Canada' ? 'selected' : '' }}>Canada (+1)
-                                                    </option>
-                                                    <option value="Australia"
-                                                        {{ old('country') === 'Australia' ? 'selected' : '' }}>Australia
-                                                        (+61)</option>
+                                                    @foreach($countries as $country)
+                                                        <option value="{{ $country->name }}"
+                                                            {{ old('country', 'Sri Lanka') === $country->name ? 'selected' : '' }}>
+                                                            {{ $country->name }}
+                                                            @if($country->callcode)
+                                                                (+{{ $country->callcode }})
+                                                            @endif
+                                                        </option>
+                                                    @endforeach
                                                 </select>
                                                 @error('country')
                                                     <span class="text-danger">{{ $message }}</span>
@@ -1288,8 +1279,66 @@
             max-height: 200px;
             overflow-y: auto;
         }
+
+        /* Select2 custom styling to match form inputs */
+        .select2-container--default .select2-selection--single {
+            min-height: 44px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background: #fff;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            padding: 0;
+        }
+
+        .select2-container--default .select2-selection--single .select2-selection__rendered {
+            color: #333;
+            padding-left: 12px;
+            padding-right: 20px;
+            line-height: 1.2;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .select2-container--default .select2-selection--single .select2-selection__placeholder {
+            color: #6c757d;
+            padding-left: 12px;
+        }
+
+        .select2-container--default .select2-selection--single .select2-selection__arrow {
+            height: 100%;
+            right: 10px;
+            top: 0;
+            display: flex;
+            align-items: center;
+        }
+
+        .select2-container--default.select2-container--open .select2-selection--single {
+            border-color: var(--primary-color1);
+            box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, .15);
+        }
+
+        .select2-dropdown {
+            border: 1px solid #e1e5e9;
+            border-radius: 5px;
+            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+        }
+
+        .select2-container--default .select2-results__option {
+            padding: 8px 12px;
+            font-size: 14px;
+        }
+
+        .select2-container--default .select2-results__option--highlighted[aria-selected] {
+            background-color: var(--primary-color1);
+            color: white;
+        }
     </style>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/intl-tel-input@17/build/css/intlTelInput.css">
+    <!-- Select2 CSS for searchable country dropdown -->
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
 @endpush
 
 @push('scripts')
@@ -1299,6 +1348,13 @@
             const currencySymbol = '{{ $currencySymbol }}';
             const total = {{ $total }};
             const advancePercentage = {{ $advancePercentage }};
+
+            // Initialize Select2 for country dropdown
+            $('#country-select').select2({
+                placeholder: 'Select Country',
+                allowClear: true,
+                width: '100%'
+            });
 
             // Payment type selection handling
             $('input[name="payment_type"]').on('change', function() {
@@ -1507,14 +1563,11 @@
 
     <script>
         $(document).ready(function() {
-            // Country to calling code mapping
+            // Country to calling code mapping - dynamically generated
             const countryCodeMap = {
-                'Sri Lanka': 'lk',
-                'India': 'in',
-                'United States': 'us',
-                'United Kingdom': 'gb',
-                'Canada': 'ca',
-                'Australia': 'au'
+                @foreach($countries as $country)
+                    '{{ $country->name }}': '{{ strtolower($country->code ?? 'us') }}',
+                @endforeach
             };
 
             // Initialize intl-tel-input
@@ -1525,9 +1578,15 @@
             const phoneErrorDiv = document.querySelector('#phone-error');
             const phoneValidDiv = document.querySelector('#phone-valid');
 
+            // Generate preferred countries from available countries
+            const preferredCountryCodes = ['lk', 'in', 'us', 'gb', 'ca', 'au'];
+            const availablePreferredCountries = preferredCountryCodes.filter(code => 
+                @json($countries->pluck('code')->map(fn($c) => strtolower($c))->toArray()).includes(code.toLowerCase())
+            );
+
             const iti = window.intlTelInput(phoneInput, {
                 initialCountry: 'lk',
-                preferredCountries: ['lk', 'in', 'us', 'gb', 'ca', 'au'],
+                preferredCountries: availablePreferredCountries,
                 separateDialCode: true,
                 formatAsYouType: true,
                 utilsScript: 'https://cdn.jsdelivr.net/npm/intl-tel-input@17/build/js/utils.js'
@@ -1614,4 +1673,7 @@
             }
         });
     </script>
+
+    <!-- Select2 JS for searchable country dropdown -->
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 @endpush

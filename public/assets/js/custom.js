@@ -1394,9 +1394,9 @@
     window.wow.init();
   });
 
-  // niceSelect
+  // niceSelect - exclude elements that opt out with .no-nice (e.g. Select2-enabled controls)
   if ($("select").length) {
-    $("select").niceSelect();
+    $("select").not('.no-nice').niceSelect();
   }
 
   // Language Btn
