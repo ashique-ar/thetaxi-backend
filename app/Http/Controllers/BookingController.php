@@ -66,6 +66,7 @@ class BookingController extends Controller
             // Transform frontend request data to BookingFlowService format
             $searchParams = $this->transformSearchParams($request->all(), $serviceType);
             $searchParams['package_type'] = $request->input('package_id') ? $serviceType->packages()->find($request->input('package_id'))?->toArray() : null;
+            $searchParams['service_package_id'] = $searchParams['package_type'] ? $searchParams['package_type']['id'] : null;
             // Store search params and context in session for results page
             session()->put('current_search_params', $searchParams);
             session()->put('search_timestamp', now());
@@ -332,9 +333,10 @@ class BookingController extends Controller
                     'package_type' => $searchParams['package_type'] ?? null,
                     'package_hours' => $searchParams['package_hours'] ?? null,
                     'contract_type' => $searchParams['contract_type'] ?? null,
+                    'service_package_id' => $searchParams['service_package_id'] ?? $searchParams['package_id'] ?? null
+
                 ]
             );
-
 
             // Attach service package KM limits if package_type present
             $search->max_km_per_day = null;

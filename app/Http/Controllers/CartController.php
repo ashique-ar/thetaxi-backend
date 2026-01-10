@@ -135,6 +135,7 @@ class CartController extends Controller
             $input['dropoff_time'] = $this->normalizeTimeInput($input['dropoff_time'] ?? null);
             $input['return_time'] = $this->normalizeTimeInput($input['return_time'] ?? null);
             $input['time'] = $this->normalizeTimeInput($input['time'] ?? null);
+            $input['service_package_id'] = $this->normalizeTimeInput($input['package_id'] ?? null);
 
             // Allow flexible field mapping from frontend
             $validator = Validator::make($input, [
@@ -331,13 +332,13 @@ class CartController extends Controller
                     $availabilityData = $this->bookingFlowService->getAvailableVehicleGroups($pricingParams);
 
                     $availabilityData = isset($availabilityData) && isset($availabilityData['data']) ? $availabilityData['data'] : [];
-                    
+
                     Log::info('Pricing data from BookingFlowService', [
                         'service_package_id' => $servicePackageIdForPricing,
                         'availability_data_count' => count($availabilityData),
                         'availability_data' => $availabilityData
                     ]);
-                    
+
                     // Find pricing for this specific vehicle group
                     $pricingFound = false;
                     foreach ($availabilityData as $vehicleData) {
@@ -355,7 +356,7 @@ class CartController extends Controller
                                 $pricingInfo = $vehicleData['pricing_info'];
                                 $totalPrice = (float) $pricingInfo['base_amount']; // This is TOTAL for all days in LKR
                                 $perDayPrice = $days > 0 ? $totalPrice / $days : 0; // Calculate per-day in LKR
-                                
+
                                 Log::info('Pricing calculated for cart item', [
                                     'service_package_id' => $servicePackageIdForPricing,
                                     'total_price' => $totalPrice,
@@ -363,7 +364,7 @@ class CartController extends Controller
                                     'days' => $days,
                                     'pricing_info' => $pricingInfo
                                 ]);
-                                
+
                                 $pricingFound = true;
                                 break;
                             }
@@ -463,6 +464,15 @@ class CartController extends Controller
                 'added_at' => now()
             ];
 
+            Log::info('Cart item created with pricing', [
+                'service_package_id' => $servicePackageId,
+                'service_package_info' => $servicePackageInfo,
+                'price' => $cartItem['price'],
+                'total_price' => $cartItem['total_price'],
+                'is_package' => $cartItem['is_package'],
+                'days' => $cartItem['days']
+            ]);
+
             // Get or create cart
             $dbCart = $this->cartService->getOrCreateCart();
             // Create unique cart key - includes time and random component for multiple same vehicles added quickly
@@ -518,10 +528,24 @@ class CartController extends Controller
             // Check if item exists before attempting removal
             $item = $dbCart->getItem($validated['cart_key']);
             if (!$item) {
-                return response()->json([
+                // Log detailed debug information for investigation
+                Log::warning('Cart remove requested but item not found', [
+                    'requested_cart_key' => $validated['cart_key'],
+                    'cart_items_keys' => array_keys($dbCart->items ?? [])
+                ]);
+
+                $response = [
                     'success' => false,
                     'message' => 'Item not found in cart'
-                ], 404);
+                ];
+
+                // Include available keys in response when app debug is enabled to aid debugging
+                if (config('app.debug')) {
+                    $response['available_keys'] = array_keys($dbCart->items ?? []);
+                    $response['requested_key'] = $validated['cart_key'];
+                }
+
+                return response()->json($response, 404);
             }
 
             // Remove the item

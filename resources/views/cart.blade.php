@@ -949,42 +949,60 @@
                 return '{{ $currencySymbol ?? 'LKR' }}';
             }
 
-            // Remove item from cart
+            // Remove item from cart (with loading state)
             $(document).on('click', '.remove-item', function() {
-                if (confirm('Are you sure you want to remove this item?')) {
-                    let cartKey = $(this).data('cart-key');
+                const btn = $(this);
+                if (!confirm('Are you sure you want to remove this item?')) return;
 
-                    $.ajax({
-                        url: '{{ route('cart.remove') }}',
-                        method: 'POST',
-                        data: {
-                            _token: '{{ csrf_token() }}',
-                            cart_key: cartKey
-                        },
-                        success: function(response) {
-                            if (response.success) {
-                                // Remove the row and dispatch cart updated event
-                                $('#cartRow_' + cartKey).remove();
-                                window.dispatchEvent(new CustomEvent('cartUpdated'));
-                                showSuccessNotification('Item removed from cart successfully!',
-                                    3000);
+                const cartKey = btn.data('cart-key');
+                const originalHtml = btn.html();
 
-                                // Check if cart is empty
-                                if ($('.cart-table tbody tr').length === 0) {
-                                    $('.cart-table tbody').append(
-                                        '<tr><td colspan="5" class="text-center py-5"><em>Your cart is empty</em></td></tr>'
-                                    );
-                                }
-                            } else {
-                                alert('Error: ' + response.message);
+                // Set loading UI
+                btn.prop('disabled', true);
+                btn.html(
+                    '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Removing...'
+                    );
+
+                $.ajax({
+                    url: '{{ route('cart.remove') }}',
+                    method: 'POST',
+                    data: {
+                        _token: '{{ csrf_token() }}',
+                        cart_key: cartKey
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            // Remove all rows related to this cart item (item row, addons row, extra km row)
+                            $(`tr[data-cart-key="${cartKey}"]`).remove();
+
+                            // Dispatch cart updated event and refresh totals
+                            window.dispatchEvent(new CustomEvent('cartUpdated'));
+                            updateCartTotals();
+
+                            showSuccessNotification(response.message ||
+                                'Item removed from cart successfully!', 3000);
+
+                            // If there are no more cart items, show empty state
+                            if ($('.cart-table tbody tr[data-cart-key]').length === 0) {
+                                $('.cart-table tbody').append(
+                                    '<tr><td colspan="5" class="text-center py-5"><em>Your cart is empty</em></td></tr>'
+                                );
                             }
-                        },
-                        error: function(xhr) {
-                            console.error('Error removing item:', xhr);
-                            alert('Error removing item. Please try again.');
+                        } else {
+                            alert('Error: ' + response.message);
+                            // Restore button on error
+                            btn.prop('disabled', false);
+                            btn.html(originalHtml);
                         }
-                    });
-                }
+                    },
+                    error: function(xhr) {
+                        console.error('Error removing item:', xhr);
+                        alert('Error removing item. Please try again.');
+                        // Restore button on error
+                        btn.prop('disabled', false);
+                        btn.html(originalHtml);
+                    }
+                });
             });
 
             // Clear entire cart
@@ -1313,8 +1331,8 @@
                                         ${isSelected ? '<i class="bi bi-arrow-clockwise"></i> Update' : '<i class="bi bi-plus-lg"></i> Add'}
                                     </button>
                                     ${isSelected ? `<button class="btn-remove-addon-unified remove-addon-btn" data-addon-id="${addon.id}" data-cart-key="${cartKey}" title="Remove this addon">
-                                                            <i class="bi bi-trash"></i> Remove
-                                                        </button>` : ''}
+                                                                <i class="bi bi-trash"></i> Remove
+                                                            </button>` : ''}
                                 </div>
                             </div>
                         </div>
@@ -2183,8 +2201,8 @@
         }
 
         /* ==========================================
-                                       Extra KM Purchase Section Styles
-                                       ========================================== */
+                                           Extra KM Purchase Section Styles
+                                           ========================================== */
 
         /* Service type badge */
         .service-type-badge {
