@@ -325,15 +325,23 @@
                 }
             }
             const titleText = popup.title ? String(popup.title).trim() : '';
-            const contentText = popup.content ? String(popup.content).trim() : '';
+            const rawContent = popup.content ? String(popup.content) : '';
+
+            // Client-side sanitization: remove empty paragraphs and normalize non-breaking spaces
+            let sanitizedContent = rawContent
+                // Convert HTML-encoded non-breaking spaces and literal NBSP to normal spaces
+                .replace(/(?:&nbsp;|&#160;|&amp;nbsp;|&amp;#160;|\u00A0)+/gi, ' ')
+                // Remove empty paragraphs that contain only whitespace or NBSPs
+                .replace(/<p>(?:\s|&nbsp;|&#160;|&amp;nbsp;|&amp;#160;|\u00A0)*<\/p>/gi, '')
+                .trim();
 
             const titleHtml = titleText ? `
                 <h3 class="popup-title">${this.escapeHtml(titleText)}</h3>
             ` : '';
 
-            // Keep content as-is (allow HTML) but treat whitespace-only content as empty
-            const contentHtml = contentText ? `
-                <div class="popup-content">${popup.content}</div>
+            // Use sanitized content (allow HTML) but treat whitespace-only content as empty
+            const contentHtml = sanitizedContent ? `
+                <div class="popup-content">${sanitizedContent}</div>
             ` : '';
 
             const ctaHtml = (popup.cta_text && popup.cta_link) ? `

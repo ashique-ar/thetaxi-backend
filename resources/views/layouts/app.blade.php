@@ -468,7 +468,7 @@
     </script>
 
     <!-- Popup Display Engine JS -->
-    <script src="{{ asset('assets/js/popup-display.js?v=1.0.02') }}"></script>
+    <script src="{{ asset('assets/js/popup-display.js?v=1.0.03') }}"></script>
 
     @stack('scripts')
 </body>
