@@ -307,7 +307,7 @@ class PendingPaymentManager
                         $addonQty = max(1, (int) ($addon['quantity'] ?? ($addon['qty'] ?? 1)));
                         $addonRate = (float) ($addon['rate'] ?? ($addon['unit_price'] ?? ($addon['price'] ?? ($addon['amount'] ?? 0))));
                         $addonTotal = (float) ($addon['total_price'] ?? ($addon['total'] ?? ($addon['calculated_amount'] ?? ($addon['amount'] ?? ($addonRate * $addonQty)))));
-                        
+
                         if ($addonName && ($addonTotal > 0 || $addonRate > 0)) {
                             $addonsData[] = [
                                 'name' => $addonName,

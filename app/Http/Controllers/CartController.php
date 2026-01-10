@@ -331,6 +331,13 @@ class CartController extends Controller
                     $availabilityData = $this->bookingFlowService->getAvailableVehicleGroups($pricingParams);
 
                     $availabilityData = isset($availabilityData) && isset($availabilityData['data']) ? $availabilityData['data'] : [];
+                    
+                    Log::info('Pricing data from BookingFlowService', [
+                        'service_package_id' => $servicePackageIdForPricing,
+                        'availability_data_count' => count($availabilityData),
+                        'availability_data' => $availabilityData
+                    ]);
+                    
                     // Find pricing for this specific vehicle group
                     $pricingFound = false;
                     foreach ($availabilityData as $vehicleData) {
@@ -348,6 +355,15 @@ class CartController extends Controller
                                 $pricingInfo = $vehicleData['pricing_info'];
                                 $totalPrice = (float) $pricingInfo['base_amount']; // This is TOTAL for all days in LKR
                                 $perDayPrice = $days > 0 ? $totalPrice / $days : 0; // Calculate per-day in LKR
+                                
+                                Log::info('Pricing calculated for cart item', [
+                                    'service_package_id' => $servicePackageIdForPricing,
+                                    'total_price' => $totalPrice,
+                                    'per_day_price' => $perDayPrice,
+                                    'days' => $days,
+                                    'pricing_info' => $pricingInfo
+                                ]);
+                                
                                 $pricingFound = true;
                                 break;
                             }

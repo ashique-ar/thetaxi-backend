@@ -301,28 +301,28 @@ class Booking extends BaseModel
      * @var array<string, string>
      */
     protected $casts = [
-        'from_date'           => 'datetime',
-        'to_date'             => 'datetime',
-        'from_time'           => 'string',  // time field cast as string for "HH:MM" format
-        'to_time'             => 'string',  // time field cast as string for "HH:MM" format
+        'from_date' => 'datetime',
+        'to_date' => 'datetime',
+        'from_time' => 'string',  // time field cast as string for "HH:MM" format
+        'to_time' => 'string',  // time field cast as string for "HH:MM" format
         'approval_requested_at' => 'datetime',
-        'confirmed_at'        => 'datetime',
+        'confirmed_at' => 'datetime',
 
         // booleans
-        'requires_approval'   => 'boolean',
-        'has_overrides'       => 'boolean',
-        'confirmed'           => 'boolean',
+        'requires_approval' => 'boolean',
+        'has_overrides' => 'boolean',
+        'confirmed' => 'boolean',
 
         // json
-        'pickup_location'     => 'array',
-        'dropoff_location'    => 'array',
-        'pricing_snapshot'    => 'array',
-        'duration_metrics'    => 'array',
-        'distance_metrics'    => 'array',
-        'discounts'           => 'array',
-        'override_reasons'    => 'array',
-        'review_notes'        => 'array',
-        'workflow_data'       => 'array',
+        'pickup_location' => 'array',
+        'dropoff_location' => 'array',
+        'pricing_snapshot' => 'array',
+        'duration_metrics' => 'array',
+        'distance_metrics' => 'array',
+        'discounts' => 'array',
+        'override_reasons' => 'array',
+        'review_notes' => 'array',
+        'workflow_data' => 'array',
     ];
 
     // Relations
@@ -883,7 +883,7 @@ class Booking extends BaseModel
     public function transitionToStatus(BookingLifecycleStatus $newStatus, string $userId, array $data = []): bool
     {
         $currentStatus = $this->getLifecycleStatus();
-        
+
         if (!$currentStatus->canTransitionTo($newStatus)) {
             return false;
         }
@@ -903,7 +903,7 @@ class Booking extends BaseModel
             case BookingLifecycleStatus::BOOKING_CONFIRMED:
                 $this->markAsConfirmed($userId);
                 break;
-            
+
             case BookingLifecycleStatus::DISPATCH_OUT:
                 if (!$this->dispatch) {
                     $this->dispatch()->create([
@@ -964,7 +964,7 @@ class Booking extends BaseModel
     {
         $currentStatus = $this->getLifecycleStatus();
         $nextStatuses = $currentStatus->getNextStatuses();
-        
+
         return array_map(function ($status) {
             return [
                 'status' => $status->value,

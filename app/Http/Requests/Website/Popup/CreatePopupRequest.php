@@ -29,11 +29,15 @@ class CreatePopupRequest extends FormRequest
             'cta_link' => ['nullable', 'string', 'max:500'],
             'start_date' => ['nullable', 'date'],
             'end_date' => ['nullable', 'date', 'after_or_equal:start_date'],
-            'display_frequency' => ['nullable', 'string', 'in:' . implode(',', [
-                Popup::FREQUENCY_ALWAYS,
-                Popup::FREQUENCY_ONCE_PER_SESSION,
-                Popup::FREQUENCY_ONCE_PER_DAY,
-            ])],
+            'display_frequency' => [
+                'nullable',
+                'string',
+                'in:' . implode(',', [
+                    Popup::FREQUENCY_ALWAYS,
+                    Popup::FREQUENCY_ONCE_PER_SESSION,
+                    Popup::FREQUENCY_ONCE_PER_DAY,
+                ])
+            ],
             'target_pages' => ['nullable', 'array', 'min:1'],
             'target_pages.*' => ['string'],
             'priority' => ['nullable', 'integer', 'min:0'],

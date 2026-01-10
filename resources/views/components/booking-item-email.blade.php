@@ -46,11 +46,14 @@
         foreach ($itemAddons as $addon) {
             $addonName = $addon['name'] ?? ($addon['label'] ?? ($addon['addon_name'] ?? 'Unknown Add-on'));
             $addonQty = max(1, (int) ($addon['quantity'] ?? ($addon['qty'] ?? 1)));
-            $addonRate = (float) ($addon['rate'] ?? ($addon['unit_price'] ?? ($addon['price'] ?? ($addon['amount'] ?? 0))));
-            
+            $addonRate =
+                (float) ($addon['rate'] ?? ($addon['unit_price'] ?? ($addon['price'] ?? ($addon['amount'] ?? 0))));
+
             // Calculate total - prefer explicit total, fallback to rate * qty
-            $addonTotal = (float) ($addon['total_price'] ?? ($addon['total'] ?? ($addon['calculated_amount'] ?? ($addon['amount'] ?? ($addonRate * $addonQty)))));
-            
+            $addonTotal =
+                (float) ($addon['total_price'] ??
+                    ($addon['total'] ?? ($addon['calculated_amount'] ?? ($addon['amount'] ?? $addonRate * $addonQty))));
+
             // Only add if we have valid data
             if ($addonName && ($addonTotal > 0 || $addonRate > 0)) {
                 $addonsList[] = [
@@ -177,7 +180,8 @@
 
         @if ($servicePackageInfo)
             <tr>
-                <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; width: 30%;">
+                <td
+                    style="padding: 8px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; width: 30%;">
                     Service Package
                 </td>
                 <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; color: #555;">
@@ -199,14 +203,21 @@
                 </td>
                 <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; color: #555;">
                     @foreach ($addonsList as $addon)
-                        <div style="margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center;">
+                        <div
+                            style="margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center;">
                             <div>
                                 <strong>{{ $addon['name'] }}</strong>
                                 <small style="color: #777; margin-left: 4px;">
-                                    (Qty: {{ $addon['qty'] }}@if ($addon['rate'] > 0) × {{ $currencySymbol }}{{ number_format($addon['rate'], 2) }}@elseif ($addon['total'] > 0 && $addon['qty'] > 0) - Avg: {{ $currencySymbol }}{{ number_format($addon['total'] / $addon['qty'], 2) }}@endif)
+                                    (Qty: {{ $addon['qty'] }}@if ($addon['rate'] > 0)
+                                        × {{ $currencySymbol }}{{ number_format($addon['rate'], 2) }}
+                                    @elseif ($addon['total'] > 0 && $addon['qty'] > 0)
+                                        - Avg:
+                                        {{ $currencySymbol }}{{ number_format($addon['total'] / $addon['qty'], 2) }}
+                                    @endif)
                                 </small>
                             </div>
-                            <span style="color: #BF2629; font-weight: 600;">{{ $currencySymbol }}{{ number_format($addon['total'], 2) }}</span>
+                            <span
+                                style="color: #BF2629; font-weight: 600;">{{ $currencySymbol }}{{ number_format($addon['total'], 2) }}</span>
                         </div>
                     @endforeach
                 </td>
