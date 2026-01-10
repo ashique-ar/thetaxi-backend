@@ -80,8 +80,8 @@ class CountriesFromJsonSeeder extends Seeder
 
             // Check if country already exists (skip existing)
             $existingCountry = Country::where('code', $countryAttributes['code'])
-                                    ->orWhere('name', $countryAttributes['name'])
-                                    ->first();
+                ->orWhere('name', $countryAttributes['name'])
+                ->first();
 
             if ($existingCountry) {
                 $skipped++;

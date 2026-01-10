@@ -1600,7 +1600,7 @@
       e.preventDefault();
       $("#tour-booking-calendar").removeClass("active");
     });
-    
+
 
     // Tour details
     $(".booking-modal .selected-date").html(

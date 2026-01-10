@@ -275,11 +275,11 @@
                                                 <label>Country*</label>
                                                 <select id="country-select" name="country" required class="no-nice">
                                                     <option value="">Select Country</option>
-                                                    @foreach($countries as $country)
+                                                    @foreach ($countries as $country)
                                                         <option value="{{ $country->name }}"
                                                             {{ old('country', 'Sri Lanka') === $country->name ? 'selected' : '' }}>
                                                             {{ $country->name }}
-                                                            @if($country->callcode)
+                                                            @if ($country->callcode)
                                                                 (+{{ $country->callcode }})
                                                             @endif
                                                         </option>
@@ -1565,7 +1565,7 @@
         $(document).ready(function() {
             // Country to calling code mapping - dynamically generated
             const countryCodeMap = {
-                @foreach($countries as $country)
+                @foreach ($countries as $country)
                     '{{ $country->name }}': '{{ strtolower($country->code ?? 'us') }}',
                 @endforeach
             };
@@ -1580,7 +1580,7 @@
 
             // Generate preferred countries from available countries
             const preferredCountryCodes = ['lk', 'in', 'us', 'gb', 'ca', 'au'];
-            const availablePreferredCountries = preferredCountryCodes.filter(code => 
+            const availablePreferredCountries = preferredCountryCodes.filter(code =>
                 @json($countries->pluck('code')->map(fn($c) => strtolower($c))->toArray()).includes(code.toLowerCase())
             );
 
