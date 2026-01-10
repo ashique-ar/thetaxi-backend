@@ -1,15 +1,16 @@
 @extends('layouts.app')
 
-@s                    <div class="section-title text-center">
-                        <h2>{{ $settings['faq_section_title'] ?? 'General Questions' }}</h2>
-                        <p>{{ $settings['faq_section_description'] ?? "We're committed to offering more than just products—we provide exceptional experiences." }}</p>
-                    </div>on('title', $settings['faq_page_title'] ?? 'FAQ - Frequently Asked Questions - TheTaxi')
+@s <div class="section-title text-center">
+    <h2>{{ $settings['faq_section_title'] ?? 'General Questions' }}</h2>
+    <p>{{ $settings['faq_section_description'] ?? "We're committed to offering more than just products—we provide exceptional experiences." }}
+    </p>
+</div>on('title', $settings['faq_page_title'] ?? 'FAQ - Frequently Asked Questions - TheTaxi')
 
 @section('content')
 
     <!-- Start Breadcrumb section -->
     <div class="breadcrumb-section"
-        style="background-image:linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url({{ s3_asset($settings['faq_breadcrumb_image'] ?? 'assets/img/innerpages/breadcrumb-bg2.jpg') }});">
+        style="background-image:linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url({{ s3_asset($settings['faq_breadcrumb_image'] ?? 'assets/img/innerpages/breadcrumb-bg.jpg') }});">
         <div class="container">
             <div class="banner-content">
                 <h1>{{ $settings['faq_hero_heading'] ?? 'Ask & Question' }}</h1>
@@ -25,55 +26,59 @@
     <!-- faq Page Start-->
     <div class="faq-page pt-100 mb-100">
         <div class="container">
-                        <div class="row justify-content-center mb-50 wow animate fadeInDown" data-wow-delay="200ms"
+            <div class="row justify-content-center mb-50 wow animate fadeInDown" data-wow-delay="200ms"
                 data-wow-duration="1500ms">
                 <div class="col-xl-6 col-lg-8">
                     <div class="section-title text-center">
                         <h2>{{ $settings['faq_section_title'] ?? 'General Questions' }}</h2>
-                        <p>{{ $settings['faq_section_description'] ?? "We're committed to offering more than just products—we provide exceptional experiences." }}</p>
+                        <p>{{ $settings['faq_section_description'] ?? "We're committed to offering more than just products—we provide exceptional experiences." }}
+                        </p>
                     </div>
                 </div>
             </div>
-            
-            @if($settings['faq_show_search'] ?? true)
-            <!-- FAQ Search and Filter Section -->
-            <div class="row justify-content-center mb-40">
-                <div class="col-xl-8 col-lg-10">
-                    <div class="faq-search-wrap">
-                        <form method="GET" action="{{ route('faq.index') }}" class="faq-search-form">
-                            <div class="row g-3 align-items-end">
-                                <div class="col-md-6">
-                                    <div class="form-inner">
-                                        <label>Search FAQs</label>
-                                        <input type="text" name="search" value="{{ $search ?? '' }}" 
-                                               placeholder="{{ $settings['faq_search_placeholder'] ?? 'Search questions and answers...' }}">
+
+            @if ($settings['faq_show_search'] ?? true)
+                <!-- FAQ Search and Filter Section -->
+                <div class="row justify-content-center mb-40">
+                    <div class="col-xl-8 col-lg-10">
+                        <div class="faq-search-wrap">
+                            <form method="GET" action="{{ route('faq.index') }}" class="faq-search-form">
+                                <div class="row g-3 align-items-end">
+                                    <div class="col-md-6">
+                                        <div class="form-inner">
+                                            <label>Search FAQs</label>
+                                            <input type="text" name="search" value="{{ $search ?? '' }}"
+                                                placeholder="{{ $settings['faq_search_placeholder'] ?? 'Search questions and answers...' }}">
+                                        </div>
+                                    </div>
+                                    @if ($settings['faq_show_categories'] ?? true)
+                                        <div class="col-md-4">
+                                            <div class="form-inner">
+                                                <label>Category</label>
+                                                <select name="category" onchange="this.form.submit()">
+                                                    <option value="">
+                                                        {{ $settings['faq_all_categories_text'] ?? 'All Categories' }}
+                                                    </option>
+                                                    @foreach ($categories as $cat)
+                                                        <option value="{{ $cat->id }}"
+                                                            {{ ($categoryId ?? '') == $cat->id ? 'selected' : '' }}>
+                                                            {{ $cat->name }}
+                                                        </option>
+                                                    @endforeach
+                                                </select>
+                                            </div>
+                                        </div>
+                                    @endif
+                                    <div class="col-md-2">
+                                        <button type="submit" class="primary-btn1">Search</button>
                                     </div>
                                 </div>
-                                @if($settings['faq_show_categories'] ?? true)
-                                <div class="col-md-4">
-                                    <div class="form-inner">
-                                        <label>Category</label>
-                                        <select name="category" onchange="this.form.submit()">
-                                            <option value="">{{ $settings['faq_all_categories_text'] ?? 'All Categories' }}</option>
-                                            @foreach($categories as $cat)
-                                                <option value="{{ $cat->id }}" {{ ($categoryId ?? '') == $cat->id ? 'selected' : '' }}>
-                                                    {{ $cat->name }}
-                                                </option>
-                                            @endforeach
-                                        </select>
-                                    </div>
-                                </div>
-                                @endif
-                                <div class="col-md-2">
-                                    <button type="submit" class="primary-btn1">Search</button>
-                                </div>
-                            </div>
-                        </form>
+                            </form>
+                        </div>
                     </div>
                 </div>
-            </div>
             @endif
-            
+
             <div class="row justify-content-center">
                 <div class="col-xl-8 col-lg-10">
                     <div class="faq-wrap">
@@ -152,7 +157,8 @@
                                 <h5 class="accordion-header" id="flush-headingFive">
                                     <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
                                         data-bs-target="#flush-collapseFive" aria-expanded="false"
-                                        aria-controls="flush-collapseFive">Do you provide travel insurance options?</button>
+                                        aria-controls="flush-collapseFive">Do you provide travel insurance
+                                        options?</button>
                                 </h5>
                                 <div id="flush-collapseFive" class="accordion-collapse collapse"
                                     aria-labelledby="flush-headingFive" data-bs-parent="#accordionFlushExample">
@@ -173,7 +179,9 @@
     <!--faq Page End-->
 
     <!--faq Page Banner Start-->
-    <div class="faq-page-banner mb-100" style="background-image: url({{ s3_asset($settings['faq_page_banner_image'] ?? 'assets/img/home7/home7-testimonial-bg.jpg') }});"></div>
+    <div class="faq-page-banner mb-100"
+        style="background-image: url({{ s3_asset($settings['faq_page_banner_image'] ?? 'assets/img/home7/home7-testimonial-bg.jpg') }});">
+    </div>
     <!--faq Page Banner End-->
 
     <!-- faq Page Start-->

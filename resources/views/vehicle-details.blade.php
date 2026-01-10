@@ -170,7 +170,8 @@
                                     data-service="day_rental">
                                     <svg width="20" height="20" viewBox="0 0 24 24"
                                         xmlns="http://www.w3.org/2000/svg">
-                                        <path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM9 10H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2zm-8 4H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2z"/>
+                                        <path
+                                            d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM9 10H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2zm-8 4H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2z" />
                                     </svg>
                                     <span>Day Rental</span>
                                 </li>
@@ -251,7 +252,8 @@
                                                     d="M17.4601 8.4599H16.2564C15.9858 4.86535 13.1291 2.00812 9.53458 1.7372V0.539976C9.53458 0.241723 9.29268 0 8.9946 0C8.69635 0 8.45462 0.241723 8.45462 0.539976V1.7372C4.85986 2.00812 2.00297 4.86535 1.73235 8.4599H0.540018C0.241723 8.4599 0 8.7017 0 8.99987C0 9.29813 0.241723 9.53985 0.539976 9.53985H1.73239C2.00297 13.1344 4.85991 15.9916 8.45441 16.2625V17.4601C8.45441 17.7583 8.69614 18 8.99439 18C9.29251 18 9.53428 17.7583 9.53428 17.4601V16.2625C13.1289 15.9918 15.9858 13.1346 16.2564 9.53985H17.4601C17.7583 9.53985 18 9.29813 18 8.99987C18 8.70175 17.7583 8.4599 17.4601 8.4599ZM8.99443 15.2096C5.56504 15.2094 2.78509 12.4291 2.78509 8.9997C2.78522 5.57014 5.56554 2.7902 8.99494 2.7902C12.4245 2.7902 15.2046 5.57048 15.2046 8.99987C15.2005 12.428 12.4225 15.2058 8.99443 15.2096Z" />
                                             </svg>
                                             <input type="text" name="dropoff_location" id="airportToLocation"
-                                                class="location-search airport-search-field" placeholder="Dropoff Location"
+                                                class="location-search airport-search-field"
+                                                placeholder="Dropoff Location"
                                                 value="{{ $searchData['dropoff_location'] }}" required>
                                             <input type="hidden" name="dropoff_lat" id="airportToLat"
                                                 value="{{ $searchData['dropoff_lat'] }}">
@@ -497,8 +499,11 @@
                                                     <span class="price-label">Price per Day</span>
                                                     <span class="price-amount"
                                                         id="rentalTotalPrice">{{ getCurrencySymbol() }} 0</span>
-                                                    <span class="price-secondary-info" id="rentalTotalPriceInfo" style="display: none;">
-                                                        Total: <strong id="rentalTotalPriceValue">{{ getCurrencySymbol() }} 0</strong>
+                                                    <span class="price-secondary-info" id="rentalTotalPriceInfo"
+                                                        style="display: none;">
+                                                        Total: <strong
+                                                            id="rentalTotalPriceValue">{{ getCurrencySymbol() }}
+                                                            0</strong>
                                                     </span>
                                                 </div>
                                             </div>
@@ -539,8 +544,8 @@
                                                         <path
                                                             d="M9 0C5.13 0 2 3.13 2 7c0 5.25 7 11 7 11s7-5.75 7-11c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
                                                     </svg>
-                                                    <input type="text" name="pickup_location" id="dayRentalPickupLocation"
-                                                        class="location-search"
+                                                    <input type="text" name="pickup_location"
+                                                        id="dayRentalPickupLocation" class="location-search"
                                                         value="{{ $searchData['pickup_location'] ?? 'Colombo, Sri Lanka' }}"
                                                         placeholder="Enter pickup location" required>
                                                     <input type="hidden" name="pickup_lat" id="dayRentalPickupLat"
@@ -577,7 +582,8 @@
                                                             d="M9 1C4.03 1 0 5.03 0 10s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z" />
                                                         <path d="M9.5 5H8v5l4.25 2.52.75-1.23L9.5 9V5z" />
                                                     </svg>
-                                                    <select name="time" id="dayRentalTime" class="form-select" required>
+                                                    <select name="time" id="dayRentalTime" class="form-select"
+                                                        required>
                                                         @for ($hour = 6; $hour < 22; $hour++)
                                                             @for ($min = 0; $min < 60; $min += 30)
                                                                 @php
@@ -603,7 +609,8 @@
                                         <div class="row g-2">
                                             <div class="col-12">
                                                 <div class="single-search-box">
-                                                    <select name="num_days" id="dayRentalNumDays" class="form-select" required>
+                                                    <select name="num_days" id="dayRentalNumDays" class="form-select"
+                                                        required>
                                                         <option value="1" selected>1 Day</option>
                                                         <option value="2">2 Days</option>
                                                         <option value="3">3 Days</option>
@@ -642,8 +649,11 @@
                                                     <span class="price-label">Price per Day</span>
                                                     <span class="price-amount"
                                                         id="dayRentalTotalPrice">{{ getCurrencySymbol() }} 0</span>
-                                                    <span class="price-secondary-info" id="dayRentalTotalPriceInfo" style="display: none;">
-                                                        Total: <strong id="dayRentalTotalPriceValue">{{ getCurrencySymbol() }} 0</strong>
+                                                    <span class="price-secondary-info" id="dayRentalTotalPriceInfo"
+                                                        style="display: none;">
+                                                        Total: <strong
+                                                            id="dayRentalTotalPriceValue">{{ getCurrencySymbol() }}
+                                                            0</strong>
                                                     </span>
                                                 </div>
                                             </div>
@@ -910,8 +920,8 @@
         /* ==================== FORM SECTION ORGANIZATION ==================== */
         .form-section {
             /* margin-bottom: 24px;
-            padding-bottom: 20px;
-            border-bottom: 1px solid #f0f0f0; */
+                padding-bottom: 20px;
+                border-bottom: 1px solid #f0f0f0; */
         }
 
         .form-section:last-of-type {
@@ -1219,15 +1229,15 @@
             const filterInputs = document.querySelectorAll('.filter-input');
 
             // Auto-select correct tab based on search service type
-            const searchServiceType = '{{ $searchData["service_type"] ?? "airport_transfers" }}';
+            const searchServiceType = '{{ $searchData['service_type'] ?? 'airport_transfers' }}';
             console.log('Search service type:', searchServiceType);
-            
+
             // Find and click the matching tab
             const matchingItem = Array.from(filterItems).find(item => {
                 const service = item.getAttribute('data-service');
                 return service === searchServiceType;
             });
-            
+
             if (matchingItem) {
                 console.log('Auto-selecting tab for service:', searchServiceType);
                 // Simulate click to activate the tab
@@ -1267,7 +1277,7 @@
 
                     const targetForm = document.querySelector(`#${service}-form`);
                     console.log('Target form found:', targetForm);
-                    
+
                     if (targetForm) {
                         targetForm.classList.add('show');
 
@@ -1302,7 +1312,7 @@
             locationInputs.forEach(input => {
                 // Check if this input should be restricted to airports only
                 const isAirportField = isAirportLocationField(input);
-                
+
                 let options = {
                     componentRestrictions: {
                         country: 'lk'
@@ -1348,29 +1358,53 @@
             ];
 
             const cityCoords = {
-                "Colombo, Sri Lanka": { lat: 6.9271, lng: 79.8612 },
-                "Galle, Sri Lanka": { lat: 6.0535, lng: 80.221 },
-                "Kandy, Sri Lanka": { lat: 7.2906, lng: 80.6337 },
-                "Negombo, Sri Lanka": { lat: 7.1408, lng: 79.8636 },
-                "Jaffna, Sri Lanka": { lat: 9.6615, lng: 80.7855 },
-                "Trincomalee, Sri Lanka": { lat: 8.5711, lng: 81.2344 },
-                "Colombo BIA Airport": { lat: 7.1808, lng: 79.8841 },
-                "Mattala Rajapaksa Airport": { lat: 6.2744, lng: 81.1239 }
+                "Colombo, Sri Lanka": {
+                    lat: 6.9271,
+                    lng: 79.8612
+                },
+                "Galle, Sri Lanka": {
+                    lat: 6.0535,
+                    lng: 80.221
+                },
+                "Kandy, Sri Lanka": {
+                    lat: 7.2906,
+                    lng: 80.6337
+                },
+                "Negombo, Sri Lanka": {
+                    lat: 7.1408,
+                    lng: 79.8636
+                },
+                "Jaffna, Sri Lanka": {
+                    lat: 9.6615,
+                    lng: 80.7855
+                },
+                "Trincomalee, Sri Lanka": {
+                    lat: 8.5711,
+                    lng: 81.2344
+                },
+                "Colombo BIA Airport": {
+                    lat: 7.1808,
+                    lng: 79.8841
+                },
+                "Mattala Rajapaksa Airport": {
+                    lat: 6.2744,
+                    lng: 81.1239
+                }
             };
 
             $('.location-search').autocomplete({
                 source: function(request, response) {
                     const term = request.term.toLowerCase();
-                    
+
                     // Check if this is an airport-restricted field
                     const isAirportField = $(this.element).parents('#airport_transfers-form').length > 0;
-                    
+
                     let availableLocations = isAirportField ? airportLocations : allCities;
-                    
-                    const filtered = availableLocations.filter(city => 
+
+                    const filtered = availableLocations.filter(city =>
                         city.toLowerCase().includes(term)
                     );
-                    
+
                     response(filtered);
                 },
                 minLength: 1,
@@ -1650,16 +1684,16 @@
                             // For rental package: show price per day
                             const pickupDate = $('#rentalPickupDate').val();
                             const returnDate = $('#rentalReturnDate').val();
-                            
+
                             if (pickupDate && returnDate) {
                                 const pickup = new Date(pickupDate);
                                 const returnD = new Date(returnDate);
                                 const diffTime = Math.abs(returnD - pickup);
                                 const diffDays = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1);
-                                
+
                                 const perDayPrice = totalAmount / diffDays;
                                 $(`#${prefix}TotalPrice`).text(currency + ' ' + formatPrice(perDayPrice));
-                                
+
                                 // Show total price as secondary info
                                 $(`#${prefix}TotalPriceValue`).text(currency + ' ' + formatPrice(totalAmount));
                                 $(`#${prefix}TotalPriceInfo`).show();

@@ -195,8 +195,7 @@
                                                                             {{ $item['to_time'] }}</span>
                                                                     @endif
                                                                 </p>
-                                                                <p class="text-muted"
-                                                                    style="margin-top: 8px;">
+                                                                <p class="text-muted" style="margin-top: 8px;">
                                                                     <i class="bi bi-hourglass-split"></i> <strong>Duration:
                                                                         {{ $calculatedDays }}
                                                                         day{{ $calculatedDays !== 1 ? 's' : '' }}</strong>
@@ -1329,8 +1328,8 @@
                                         ${isSelected ? '<i class="bi bi-arrow-clockwise"></i> Update' : '<i class="bi bi-plus-lg"></i> Add'}
                                     </button>
                                     ${isSelected ? `<button class="btn-remove-addon-unified remove-addon-btn" data-addon-id="${addon.id}" data-cart-key="${cartKey}" title="Remove this addon">
-                                                                        <i class="bi bi-trash"></i> Remove
-                                                                    </button>` : ''}
+                                                                            <i class="bi bi-trash"></i> Remove
+                                                                        </button>` : ''}
                                 </div>
                             </div>
                         </div>
@@ -2199,8 +2198,8 @@
         }
 
         /* ==========================================
-                                                   Extra KM Purchase Section Styles
-                                                   ========================================== */
+                                                       Extra KM Purchase Section Styles
+                                                       ========================================== */
 
         /* Service type badge */
         .service-type-badge {

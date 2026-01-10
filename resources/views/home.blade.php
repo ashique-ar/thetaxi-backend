@@ -1078,7 +1078,8 @@
                 const item = cart[key];
                 const itemTotal = (item.price || item.base_price || 0) * (item.days || item.quantity || 1);
                 total += itemTotal;
-
+                console.log(item);
+                
                 $('#cartFloatItems').append(`
                 <div class="cart-float-item">
                     <div class="d-flex justify-content-between align-items-start mb-2">

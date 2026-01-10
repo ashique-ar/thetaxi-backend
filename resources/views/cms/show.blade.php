@@ -20,7 +20,7 @@
     <style>
         /* Article show improvements */
         .article-hero {
-            background: linear-gradient(180deg, rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.35)), url('{{ $content->thumbnail ? s3_asset($content->thumbnail) : asset('assets/img/innerpages/breadcrumb-bg2.jpg') }}') center/cover no-repeat;
+            background: linear-gradient(180deg, rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.35)), url('{{ $content->thumbnail ? s3_asset($content->thumbnail) : asset('assets/img/innerpages/breadcrumb-bg.jpg') }}') center/cover no-repeat;
             padding: 60px 0;
             color: #fff;
         }

@@ -1080,8 +1080,8 @@
                     dropoff_lat: {{ $search->dropoff_latitude ?? 'null' }},
                     dropoff_lng: {{ $search->dropoff_longitude ?? 'null' }},
                     duration_days: durationDays,
-                    service_package_id: '{{ $search->service_package_id ?? $search->package_id ?? '' }}',
-                    package_id : '{{ $search->service_package_id ?? $search->package_id ?? '' }}',
+                    service_package_id: '{{ $search->service_package_id ?? ($search->package_id ?? '') }}',
+                    package_id: '{{ $search->service_package_id ?? ($search->package_id ?? '') }}',
                 };
 
                 const item = {

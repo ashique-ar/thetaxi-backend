@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Vehicle\VehicleGroup;
 use App\Models\Service\ServiceType;
+use App\Models\Vehicle\VehiclePricing\VehiclePricingSlabDefinition;
 use App\Services\CartService;
 use App\Services\BookingFlowService;
 use Illuminate\Http\Request;
@@ -1097,6 +1098,11 @@ class CartController extends Controller
             }
 
             $vehicleGroupId = $items[$cartKey]['vehicle_group_id'] ?? null;
+            Log::info('Getting extra km rate for cart item', [
+                'cart_key' => $cartKey,
+                'cart_item' => $items[$cartKey],
+                'vehicle_group_id' => $vehicleGroupId
+            ]);
             if (!$vehicleGroupId) {
                 return response()->json([
                     'success' => false,
@@ -1104,23 +1110,33 @@ class CartController extends Controller
                 ], 400);
             }
 
-            $extraKmRate = $this->cartService->getExtraKmRateForVehicleGroup($vehicleGroupId);
-            $currentExtraKm = $this->cartService->getItemExtraKm($dbCart, $cartKey);
+            if ($items[$cartKey]['service_type_data'] && isset($items[$cartKey]['service_type_data']['id'])) {
+                $extraKmRate = $this->cartService->getExtraKmRateForVehicleGroup($vehicleGroupId);
+                $currentExtraKm = $this->cartService->getItemExtraKm($dbCart, $cartKey);
 
-            // Determine if this vehicle group has slab pricing configured (slab-based pricing implies extra-km purchase availability)
-            $hasSlabPricing = \App\Models\Vehicle\VehiclePricing\VehicleGroupPricing::where('vehicle_group_id', $vehicleGroupId)
-                ->where('is_active', true)
-                ->exists();
+                // Determine if this vehicle group has slab pricing configured (slab-based pricing implies extra-km purchase availability)
+                $hasSlabPricing = VehiclePricingSlabDefinition::where('service_type_id', $items[$cartKey]['service_type_data']['id'])
+                    ->where('is_active', true)
+                    ->exists();
 
-            return response()->json([
-                'success' => true,
-                'data' => [
-                    'rate' => $extraKmRate,
-                    'current_extra_km' => $currentExtraKm,
-                    'vehicle_group_id' => $vehicleGroupId,
-                    'has_slab' => (bool) $hasSlabPricing,
-                ]
-            ]);
+                return response()->json([
+                    'success' => true,
+                    'data' => [
+                        'rate' => $extraKmRate,
+                        'current_extra_km' => $currentExtraKm,
+                        'vehicle_group_id' => $vehicleGroupId,
+                        'has_slab' => (bool) $hasSlabPricing,
+                        'service_type' => $items[$cartKey]['service_type_data']['name'] ?? null,
+                    ]
+                ]);
+            } else {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Service type data missing for this cart item'
+                ], 400);
+            }
+
+
         } catch (\Exception $e) {
             Log::error('Error getting extra km rate', [
                 'error' => $e->getMessage(),
