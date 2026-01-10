@@ -102,6 +102,12 @@
                     <span>{{ $vehicle['seating_capacity'] }} Seats</span>
                 </div>
             @endif
+            @if (isset($vehicle['no_of_doors']) && $vehicle['no_of_doors'])
+                <div class="spec-item">
+                    <i class="bi bi-people-fill"></i>
+                    <span>{{ $vehicle['no_of_doors'] }} Doors</span>
+                </div>
+            @endif
 
             @if (isset($vehicle['transmission']['name']))
                 <div class="spec-item">
