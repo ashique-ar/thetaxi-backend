@@ -73,19 +73,19 @@ class CartController extends Controller
                     'count' => 0
                 ], 429);
             }
-            
+
             // Set rate limit cache for 1 second
             cache()->put($cacheKey, true, 1);
 
             // Cache cart data for 30 seconds to reduce database queries
             $cartCacheKey = 'cart_data_' . session()->getId();
             $fromCache = cache()->has($cartCacheKey);
-            
-            $cartArray = cache()->remember($cartCacheKey, 30, function() {
+
+            $cartArray = cache()->remember($cartCacheKey, 30, function () {
                 $dbCart = $this->cartService->getOrCreateCart();
                 return $this->cartService->toArray($dbCart);
             });
-            
+
             // Log cart access for monitoring
             // Log::info('Cart API accessed', [
             //     'session_id' => session()->getId(),
@@ -105,7 +105,7 @@ class CartController extends Controller
                 'error' => $e->getMessage(),
                 'session_id' => session()->getId()
             ]);
-            
+
             return response()->json([
                 'success' => false,
                 'message' => 'Error loading cart',
@@ -214,8 +214,8 @@ class CartController extends Controller
             }
 
             // Ensure we have string values (avoid validation errors when empty)
-            $pickupLocation = is_null($pickupLocation) ? '' : (string)$pickupLocation;
-            $returnLocation = is_null($returnLocation) ? '' : (string)$returnLocation;
+            $pickupLocation = is_null($pickupLocation) ? '' : (string) $pickupLocation;
+            $returnLocation = is_null($returnLocation) ? '' : (string) $returnLocation;
 
             $serviceType = $validated['service_type'] ?? ($validated['search_data']['service_type'] ?? 'airport_transfers');
             $searchData = $validated['search_data'] ?? [];
@@ -333,7 +333,7 @@ class CartController extends Controller
 
                             if (isset($vehicleData['pricing_info']['base_amount'])) {
                                 $pricingInfo = $vehicleData['pricing_info'];
-                                $totalPrice = (float)$pricingInfo['base_amount']; // This is TOTAL for all days in LKR
+                                $totalPrice = (float) $pricingInfo['base_amount']; // This is TOTAL for all days in LKR
                                 $perDayPrice = $days > 0 ? $totalPrice / $days : 0; // Calculate per-day in LKR
                                 $pricingFound = true;
                                 break;
@@ -352,7 +352,7 @@ class CartController extends Controller
                     'service_type' => $serviceType,
                     'dates' => ['from' => $pickupDate, 'to' => $returnDate],
                     'error' => $e->getMessage(),
-                    'stack_trace'=> $e->getTraceAsString()
+                    'stack_trace' => $e->getTraceAsString()
                 ]);
 
                 // Return error - do NOT add item with 0 price
@@ -384,17 +384,17 @@ class CartController extends Controller
 
             // Determine if this is a package service for proper cart calculation
             $isPackageService = in_array($serviceType, ['wedding_hire', 'airport_transfers']);
-            
+
             $cartItem = [
                 'vehicle_group_id' => $vehicleId,
                 'name' => $vehicleGroup?->name ?? $name,
                 'vehicle_type' => $vehicleGroup?->vehicle_type ?? 'Sedan',
                 'image' => $vehicleGroup?->thumbnail['path'] ?? null,
-                'price' => $isPackageService ? (float)$totalPrice : (float)$perDayPrice, // Use total for packages, per-day for others
-                'price_lkr' => $isPackageService ? (float)$totalPrice : (float)$perDayPrice, // Explicitly store LKR price
-                'total_price' => (float)$totalPrice, // Store total price in LKR
-                'total_price_lkr' => (float)$totalPrice, // Explicitly store LKR total
-                'days' => (int)$days,
+                'price' => $isPackageService ? (float) $totalPrice : (float) $perDayPrice, // Use total for packages, per-day for others
+                'price_lkr' => $isPackageService ? (float) $totalPrice : (float) $perDayPrice, // Explicitly store LKR price
+                'total_price' => (float) $totalPrice, // Store total price in LKR
+                'total_price_lkr' => (float) $totalPrice, // Explicitly store LKR total
+                'days' => (int) $days,
                 'pickup_date' => $pickupDateObj->toDateString(),
                 'return_date' => $returnDateObj->toDateString(),
                 'from_time' => $fromTime,
@@ -420,7 +420,7 @@ class CartController extends Controller
 
             // Add to database cart
             $this->cartService->addItem($dbCart, $cartItem, $cartKey);
-            
+
             // Invalidate cart cache
             $this->invalidateCartCache();
 
@@ -467,7 +467,7 @@ class CartController extends Controller
         if ($this->cartService->removeItem($dbCart, $validated['cart_key'])) {
             // Invalidate cart cache
             $this->invalidateCartCache();
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Item removed from cart successfully',
@@ -488,7 +488,7 @@ class CartController extends Controller
     {
         $dbCart = $this->cartService->getOrCreateCart();
         $this->cartService->clearCart($dbCart);
-        
+
         // Invalidate cart cache
         $this->invalidateCartCache();
 
@@ -601,7 +601,7 @@ class CartController extends Controller
         try {
             $dbCart = $this->cartService->getOrCreateCart();
             $cartTotals = $dbCart->totals ?? [];
-            
+
             return response()->json([
                 'success' => true,
                 'cart_count' => count($dbCart->items ?? []),
@@ -737,7 +737,7 @@ class CartController extends Controller
      */
     public function getItemAddons(Request $request, string $cartKey)
     {
-        try {            
+        try {
             $dbCart = $this->cartService->getOrCreateCart();
             $addonsMap = $this->cartService->getItemAddons($dbCart, $cartKey);
 
@@ -989,7 +989,7 @@ class CartController extends Controller
         try {
             $dbCart = $this->cartService->getOrCreateCart();
             $items = $dbCart->items ?? [];
-            
+
             if (!isset($items[$cartKey])) {
                 return response()->json([
                     'success' => false,
@@ -1040,7 +1040,7 @@ class CartController extends Controller
             ]);
 
             $dbCart = $this->cartService->getOrCreateCart();
-            $extraKm = (int)$validated['extra_km'];
+            $extraKm = (int) $validated['extra_km'];
 
             if ($extraKm === 0) {
                 // Remove extra km if quantity is 0

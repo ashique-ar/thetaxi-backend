@@ -1199,8 +1199,8 @@
                                         ${isSelected ? '<i class="bi bi-arrow-clockwise"></i> Update' : '<i class="bi bi-plus-lg"></i> Add'}
                                     </button>
                                     ${isSelected ? `<button class="btn-remove-addon-unified remove-addon-btn" data-addon-id="${addon.id}" data-cart-key="${cartKey}" title="Remove this addon">
-                                                <i class="bi bi-trash"></i> Remove
-                                            </button>` : ''}
+                                                    <i class="bi bi-trash"></i> Remove
+                                                </button>` : ''}
                                 </div>
                             </div>
                         </div>
@@ -1279,7 +1279,8 @@
                 const btn = $(this);
                 const addonId = btn.data('addon-id');
                 const cartKey = btn.data('cart-key');
-                const qty = parseInt(btn.closest('.unified-addon-card').find('.qty-input-unified').val()) || 0;
+                const qty = parseInt(btn.closest('.unified-addon-card').find('.qty-input-unified').val()) ||
+                    0;
 
                 // Build updates list by comparing current qty with data-original-qty
                 const updates = [];
@@ -1293,7 +1294,11 @@
 
                     // Include if changed OR if this is the clicked addon (user expects it to be applied)
                     if (current !== original || (aAddonId === addonId && aCartKey === cartKey)) {
-                        updates.push({ cart_key: aCartKey, addon_id: aAddonId, qty: current });
+                        updates.push({
+                            cart_key: aCartKey,
+                            addon_id: aAddonId,
+                            qty: current
+                        });
                     }
                 });
 
@@ -1313,13 +1318,18 @@
                                 location.reload();
                             } else {
                                 alert(response.message || 'Error updating addons');
-                                btn.prop('disabled', false).html(btn.hasClass('btn-addon-update') ? '<i class="bi bi-arrow-clockwise"></i> Update' : '<i class="bi bi-plus-lg"></i> Add');
+                                btn.prop('disabled', false).html(btn.hasClass(
+                                        'btn-addon-update') ?
+                                    '<i class="bi bi-arrow-clockwise"></i> Update' :
+                                    '<i class="bi bi-plus-lg"></i> Add');
                             }
                         },
                         error: function(xhr) {
                             const msg = xhr.responseJSON?.message || 'Error updating addons';
                             alert(msg);
-                            btn.prop('disabled', false).html(btn.hasClass('btn-addon-update') ? '<i class="bi bi-arrow-clockwise"></i> Update' : '<i class="bi bi-plus-lg"></i> Add');
+                            btn.prop('disabled', false).html(btn.hasClass('btn-addon-update') ?
+                                '<i class="bi bi-arrow-clockwise"></i> Update' :
+                                '<i class="bi bi-plus-lg"></i> Add');
                         }
                     });
                 } else {
@@ -1424,8 +1434,11 @@
                     },
                     success: function(response) {
                         if (response.success) {
-                            showSuccessNotification(response.message || 'Addons updated for all items');
-                            setTimeout(function() { location.reload(); }, 600);
+                            showSuccessNotification(response.message ||
+                                'Addons updated for all items');
+                            setTimeout(function() {
+                                location.reload();
+                            }, 600);
                         } else {
                             alert(response.message || 'Error updating addons');
                             btn.prop('disabled', false).html('Update All Addons');
@@ -2046,8 +2059,8 @@
         }
 
         /* ==========================================
-                           Extra KM Purchase Section Styles
-                           ========================================== */
+                               Extra KM Purchase Section Styles
+                               ========================================== */
         .extra-km-row {
             background-color: #f5f8ff;
             border-top: 2px solid #d0d8e8;
