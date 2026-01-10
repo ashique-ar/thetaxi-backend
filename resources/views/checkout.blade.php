@@ -176,7 +176,7 @@
 
                                 @default
                                     <h6><i class="bi bi-credit-card"></i> Full Payment</h6>
-                                    <p class="mb-0">You are making full payment for your vehicle rental booking.</p>
+                                    <p class="mb-0">You are making full payment for your booking.</p>
                             @endswitch
                         </div>
                     </div>
@@ -490,7 +490,7 @@
                                                                             × {{ $calculatedDays }}
                                                                             day{{ $calculatedDays !== 1 ? 's' : '' }}</span>
                                                                         <h6><a
-                                                                                href="#">{{ $item['name'] ?? 'Vehicle Rental' }}</a>
+                                                                                href="#">{{ $item['name'] ?? '' }}</a>
                                                                         </h6>
                                                                         <p><small>{{ $pickupDate ? $pickupDate->format('M d') : '' }}
                                                                                 -
@@ -705,15 +705,6 @@
                                                             <h6><i class="bi bi-cash-coin"></i> Pay on Check-in:</h6>
                                                             <p>Your booking will be confirmed. Payment will be collected
                                                                 when you check-in to collect the vehicle.</p>
-                                                            @if ($paymentType === 'advance')
-                                                                <small class="text-muted">* You need to pay
-                                                                    {{ $advancePercentage }}%
-                                                                    advance at check-in. Remaining after completing the
-                                                                    rental.</small>
-                                                            @else
-                                                                <small class="text-muted">* Full payment will be collected
-                                                                    at check-in.</small>
-                                                            @endif
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1392,7 +1383,7 @@
                     default:
                         alertContent.html(`
                     <h6><i class="bi bi-credit-card"></i> Full Payment</h6>
-                    <p class="mb-0">You are making full payment for your vehicle rental booking.</p>
+                    <p class="mb-0">You are making full payment for your booking.</p>
                 `);
                         paymentMethodSection.show();
                         submitBtn.html(
