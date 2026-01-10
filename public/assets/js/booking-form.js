@@ -2866,8 +2866,6 @@
      * Debug function to log current coordinate values
      */
     function logCoordinateValues() {
-        console.log('=== COORDINATE VALUES DEBUG ===');
-
         // Airport Transfers Form (uses pickup_lat/pickup_lng and dropoff_lat/dropoff_lng)
         const airportForm = document.getElementById('airport_transfers-form');
         if (airportForm) {
@@ -2875,14 +2873,6 @@
             const fromLng = airportForm.querySelector('input[name="pickup_lng"]');
             const toLat = airportForm.querySelector('input[name="dropoff_lat"]');
             const toLng = airportForm.querySelector('input[name="dropoff_lng"]');
-
-            console.log('Airport Transfers coordinates:', {
-                fromLat: fromLat?.value || 'not found',
-                fromLng: fromLng?.value || 'not found',
-                toLat: toLat?.value || 'not found',
-                toLng: toLng?.value || 'not found',
-                formVisible: !airportForm.classList.contains('hidden')
-            });
         }
 
         // Ride Now Form (uses pickup_lat/pickup_lng and dropoff_lat/dropoff_lng)
@@ -2892,14 +2882,6 @@
             const pickupLng = rideNowForm.querySelector('input[name="pickup_lng"]');
             const dropoffLat = rideNowForm.querySelector('input[name="dropoff_lat"]');
             const dropoffLng = rideNowForm.querySelector('input[name="dropoff_lng"]');
-
-            console.log('Ride Now coordinates:', {
-                pickupLat: pickupLat?.value || 'not found',
-                pickupLng: pickupLng?.value || 'not found',
-                dropoffLat: dropoffLat?.value || 'not found',
-                dropoffLng: dropoffLng?.value || 'not found',
-                formVisible: !rideNowForm.classList.contains('hidden')
-            });
         }
 
         const dayRentalForm = document.getElementById('day_rental-form');
@@ -2908,14 +2890,6 @@
             const pickupLng = dayRentalForm.querySelector('input[name="pickup_lng"]');
             const dropoffLat = dayRentalForm.querySelector('input[name="dropoff_lat"]');
             const dropoffLng = dayRentalForm.querySelector('input[name="dropoff_lng"]');
-
-            console.log('Ride Now coordinates:', {
-                pickupLat: pickupLat?.value || 'not found',
-                pickupLng: pickupLng?.value || 'not found',
-                dropoffLat: dropoffLat?.value || 'not found',
-                dropoffLng: dropoffLng?.value || 'not found',
-                formVisible: !dayRentalForm.classList.contains('hidden')
-            });
         }
     }
 
@@ -3053,18 +3027,13 @@
         init();
     }
 
-    // Add debugging capabilities and force coordinate updates
     setTimeout(() => {
-        console.log('=== INITIAL COORDINATE CHECK ===');
         logCoordinateValues();
 
-        // Ensure coordinates are set with fallback values
         ensureCoordinateValues();
         forceAirportCoordinateUpdate();
 
-        // Log again after forced updates
         setTimeout(() => {
-            console.log('=== AFTER COORDINATE INITIALIZATION ===');
             logCoordinateValues();
         }, 1000);
     }, 1500);

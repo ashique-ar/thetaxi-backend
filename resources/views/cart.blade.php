@@ -1101,26 +1101,91 @@
             }
 
             function loadUnifiedAddonsForItem(cartKey, serviceType) {
-                $.ajax({
-                    url: '{{ route('cart.addons.available') }}',
-                    method: 'GET',
-                    data: {
-                        service_type_id: serviceType || ''
-                    },
-                    success: function(response) {
-                        if (response.success && response.data) {
-                            // Fetch currently selected addons for this cart item
-                            fetchSelectedAddonsForItem(cartKey, response.data, serviceType);
-                        } else {
-                            displayUnifiedAddonsErrorForItem(cartKey, 'No services available');
+                const container = $(`.addons-grid-unified[data-cart-key="${cartKey}"]`);
+                if (!container.length) return Promise.resolve();
+                if (container.data('addons-loaded')) return Promise.resolve();
+
+                return new Promise(function(resolve, reject) {
+                    $.ajax({
+                        url: '{{ route('cart.addons.available') }}',
+                        method: 'GET',
+                        data: {
+                            service_type_id: serviceType || ''
+                        },
+                        success: function(response) {
+                            if (response.success && response.data) {
+                                // Fetch currently selected addons for this cart item
+                                $.ajax({
+                                    url: '{{ route('cart.addons.get', ['cartKey' => ':cartKey']) }}'.replace(':cartKey', cartKey),
+                                    method: 'GET',
+                                    success: function(resp2) {
+                                        if (resp2.success && resp2.data) {
+                                            displayUnifiedAddonsForItem(cartKey, response.data, resp2.data, serviceType);
+                                        } else {
+                                            displayUnifiedAddonsForItem(cartKey, response.data, {}, serviceType);
+                                        }
+                                        container.data('addons-loaded', true);
+                                        resolve();
+                                    },
+                                    error: function() {
+                                        displayUnifiedAddonsErrorForItem(cartKey, 'Error loading services');
+                                        container.data('addons-loaded', true);
+                                        reject(new Error('Error fetching selected addons'));
+                                    }
+                                });
+                            } else {
+                                displayUnifiedAddonsErrorForItem(cartKey, 'No services available');
+                                container.data('addons-loaded', true);
+                                resolve();
+                            }
+                        },
+                        error: function(xhr) {
+                            console.error('Error loading addons:', xhr);
+                            displayUnifiedAddonsErrorForItem(cartKey, 'Error loading services');
+                            container.data('addons-loaded', true);
+                            reject(new Error('Error loading addons'));
                         }
-                    },
-                    error: function(xhr) {
-                        console.error('Error loading addons:', xhr);
-                        displayUnifiedAddonsErrorForItem(cartKey, 'Error loading services');
-                    }
+                    });
                 });
             }
+
+            // Preload addons in the background with limited concurrency to avoid hammering the API
+            async function preloadAddonsInBackground(concurrency = 3, staggerMs = 150) {
+                const rows = $('.unified-addons-row').toArray();
+                let index = 0;
+                const errors = [];
+
+                async function worker() {
+                    while (true) {
+                        const i = index++;
+                        if (i >= rows.length) break;
+                        const row = rows[i];
+                        const cartKey = $(row).data('cart-key');
+                        const serviceType = $(row).find('.addons-grid-unified').data('service-type');
+                        try {
+                            await loadUnifiedAddonsForItem(cartKey, serviceType);
+                        } catch (e) {
+                            console.warn('Preload addon error for', cartKey, e);
+                            errors.push({ cartKey, error: e });
+                        }
+                        // Small delay between requests
+                        await new Promise(r => setTimeout(r, staggerMs));
+                    }
+                }
+
+                const workers = [];
+                for (let w = 0; w < Math.max(1, Math.min(concurrency, rows.length)); w++) workers.push(worker());
+                await Promise.all(workers);
+                if (errors.length) console.warn('Some addon preloads failed', errors);
+            }
+
+            // Schedule background preload after full window load so assets and scripts settle
+            window.addEventListener('load', function() {
+                // Delay slightly to prioritize critical resources
+                setTimeout(function() {
+                    preloadAddonsInBackground(3, 150).catch(e => console.warn('Addon preload failed', e));
+                }, 500);
+            });
 
             function fetchSelectedAddonsForItem(cartKey, allAddons, serviceType) {
                 $.ajax({
