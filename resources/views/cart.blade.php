@@ -5,7 +5,7 @@
 @section('content')
     <!-- Breadcrumb section -->
     <div class="breadcrumb-section"
-        style="background-image:linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url({{ asset('assets/img/innerpages/breadcrumb-bg1.jpg') }});">
+        style="background-image:linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url({{ asset('assets/img/innerpages/breadcrumb-bg.jpg') }});">
         <div class="container">
             <div class="banner-content">
                 <h1>Shopping Cart</h1>
@@ -961,7 +961,7 @@
                 btn.prop('disabled', true);
                 btn.html(
                     '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Removing...'
-                    );
+                );
 
                 $.ajax({
                     url: '{{ route('cart.remove') }}',
@@ -1331,8 +1331,8 @@
                                         ${isSelected ? '<i class="bi bi-arrow-clockwise"></i> Update' : '<i class="bi bi-plus-lg"></i> Add'}
                                     </button>
                                     ${isSelected ? `<button class="btn-remove-addon-unified remove-addon-btn" data-addon-id="${addon.id}" data-cart-key="${cartKey}" title="Remove this addon">
-                                                                <i class="bi bi-trash"></i> Remove
-                                                            </button>` : ''}
+                                                                    <i class="bi bi-trash"></i> Remove
+                                                                </button>` : ''}
                                 </div>
                             </div>
                         </div>
@@ -2201,8 +2201,8 @@
         }
 
         /* ==========================================
-                                           Extra KM Purchase Section Styles
-                                           ========================================== */
+                                               Extra KM Purchase Section Styles
+                                               ========================================== */
 
         /* Service type badge */
         .service-type-badge {
