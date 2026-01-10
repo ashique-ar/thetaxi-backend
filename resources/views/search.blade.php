@@ -6,7 +6,7 @@
 
     <!-- Breadcrumb section Start-->
     <div class="breadcrumb-section three"
-        style="background-image:linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url({{ asset('assets/img/innerpages/breadcrumb-bg6.jpg') }});">
+        style="background-image:linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url({{ asset('assets/img/innerpages/breadcrumb-bg.jpg') }});">
         <div class="container">
             <div class="banner-content">
                 <h1>Available Vehicles</h1>
