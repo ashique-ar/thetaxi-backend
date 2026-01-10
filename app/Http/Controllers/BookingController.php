@@ -447,12 +447,11 @@ class BookingController extends Controller
                 'total_count' => $groupData['total_count'] ?? 0,
                 'thumbnail' => $groupData['thumbnail'] ?? null,
                 'recommended' => false, // Can be enhanced later
-                'service_features' => $this->getServiceFeatures($searchParams['service_type'] ?? 'airport_transfers'),
+                'service_features' => $this->getServiceFeatures($serviceType ?? 'airport_transfers'),
                 'savings_info' => [],
                 'payment_options' => $this->getAvailablePaymentOptions($formattedPricing),
             ];
         }
-
         return $results;
     }
 
@@ -1039,6 +1038,7 @@ class BookingController extends Controller
         $features = [
             'airport_transfers' => [
                 'Professional Airport Transfers',
+                'Meet & Greet included',
                 'Door-to-Door Service',
                 'Meet & Greet Available',
                 'Real-time Tracking',
