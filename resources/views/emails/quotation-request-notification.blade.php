@@ -12,7 +12,8 @@
         <h3>⚠️ Action Required</h3>
         <p style="margin-bottom: 0;">A new quotation request has been submitted for
             <strong>{{ $vehicleGroup->name }}</strong>. Distance calculation was not possible due to missing coordinates,
-            requiring manual quotation.</p>
+            requiring manual quotation.
+        </p>
     </div>
 
     <!-- Inquiry Details Section -->
