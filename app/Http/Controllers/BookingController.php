@@ -428,6 +428,7 @@ class BookingController extends Controller
                 'description' => $groupData['description'] ?? '',
                 'seating_capacity' => $groupData['seating_capacity'] ?? null,
                 'passengers_count' => $groupData['passengers_count'] ?? null,
+                'no_of_doors' => $groupData['no_of_doors'] ?? null,
                 'air_conditioning' => $groupData['air_conditioning'] ?? null,
                 'refundable_deposit' => $groupData['refundable_deposit'] ?? null,
                 'luggage_capacity' => $groupData['luggage_capacity'] ?? null,
@@ -1039,10 +1040,7 @@ class BookingController extends Controller
             'airport_transfers' => [
                 'Professional Airport Transfers',
                 'Meet & Greet included',
-                'Door-to-Door Service',
-                'Meet & Greet Available',
-                'Real-time Tracking',
-                'Affordable Rates'
+                'No Hidden Charges',
             ],
             'point_to_point' => [
                 'Point-to-Point Transfers',
@@ -1055,8 +1053,7 @@ class BookingController extends Controller
                 'Flexible Rental Packages',
                 'Self-Drive Options',
                 'Long-Term Discounts',
-                'Flexible Drop-off',
-                'Insurance Included'
+                'No Hidden Charges',
             ],
             'day_rental' => [
                 '24/7 Road Side Assistance',
