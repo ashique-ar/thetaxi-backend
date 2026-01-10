@@ -59,7 +59,7 @@ class SettingsCategoryService
                     'label' => 'Company Name',
                     'type' => 'text',
                     'required' => true,
-                    'placeholder' => 'Casons Rent A Car',
+                    'placeholder' => 'TheTaxi Company',
                     'description' => 'Official company name'
                 ],
                 'company_phone' => [
@@ -789,17 +789,17 @@ class SettingsCategoryService
     public function getCategorySettings(string $category): array
     {
         $categories = $this->getAllSettingCategories();
-        
+
         if (!isset($categories[$category])) {
             throw new \InvalidArgumentException("Invalid settings category: {$category}");
         }
 
         $config = $categories[$category];
         $settingTypes = array_keys($config['settings']);
-        
+
         // Get actual values from the settings service
         $values = $this->settingsService->getMultiple($settingTypes);
-        
+
         return [
             'config' => $config,
             'values' => $values
@@ -813,17 +813,17 @@ class SettingsCategoryService
     {
         $categories = $this->getAllSettingCategories();
         $result = [];
-        
+
         foreach ($categories as $categoryKey => $categoryConfig) {
             $settingTypes = array_keys($categoryConfig['settings']);
             $values = $this->settingsService->getMultiple($settingTypes);
-            
+
             $result[$categoryKey] = [
                 'config' => $categoryConfig,
                 'values' => $values
             ];
         }
-        
+
         return $result;
     }
 
@@ -833,13 +833,13 @@ class SettingsCategoryService
     public function updateCategorySettings(string $category, array $settings): void
     {
         $categories = $this->getAllSettingCategories();
-        
+
         if (!isset($categories[$category])) {
             throw new \InvalidArgumentException("Invalid settings category: {$category}");
         }
-        
+
         $validSettings = array_keys($categories[$category]['settings']);
-        
+
         foreach ($settings as $type => $value) {
             if (in_array($type, $validSettings)) {
                 $this->settingsService->set($type, $value);

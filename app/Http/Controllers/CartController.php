@@ -909,6 +909,79 @@ class CartController extends Controller
     }
 
     /**
+     * Bulk update addon quantities for multiple items
+     */
+    public function updateAllAddons(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'updates' => 'required|array',
+                'updates.*.cart_key' => 'required|string',
+                'updates.*.addon_id' => 'required|string|uuid',
+                'updates.*.qty' => 'required|integer|min:0'
+            ]);
+
+            $dbCart = $this->cartService->getOrCreateCart();
+
+            $anyFailures = false;
+            $errors = [];
+
+            foreach ($validated['updates'] as $upd) {
+                try {
+                    $cartKey = $upd['cart_key'];
+                    $addonId = $upd['addon_id'];
+                    $qty = (int) $upd['qty'];
+
+                    if ($qty > 0) {
+                        $addonsMap = $this->cartService->getItemAddons($dbCart, $cartKey);
+                        if (isset($addonsMap[$addonId])) {
+                            $success = $this->cartService->updateAddonQty($dbCart, $cartKey, $addonId, $qty);
+                        } else {
+                            $success = $this->cartService->addAddon($dbCart, $cartKey, $addonId, $qty);
+                        }
+                    } else {
+                        $success = $this->cartService->removeAddon($dbCart, $cartKey, $addonId);
+                    }
+
+                    if (!$success) {
+                        $anyFailures = true;
+                        $errors[] = "Failed to update addon {$addonId} for item {$cartKey}";
+                    }
+                } catch (\Exception $e) {
+                    $anyFailures = true;
+                    $errors[] = $e->getMessage();
+                    Log::error('Error bulk updating addon', ['error' => $e->getMessage(), 'data' => $upd]);
+                }
+            }
+
+            $this->invalidateCartCache();
+
+            $cartArray = $this->cartService->toArray($dbCart);
+
+            if ($anyFailures) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Some updates failed: ' . implode('; ', array_slice($errors, 0, 3)),
+                    'errors' => $errors,
+                    'cart' => $cartArray
+                ], 207);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'All addons updated successfully',
+                'cart' => $cartArray
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error in updateAllAddons', ['error' => $e->getMessage(), 'data' => $request->all()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Error updating addons: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
      * Get extra km rate for a cart item's vehicle group
      */
     public function getExtraKmRate(Request $request, string $cartKey)

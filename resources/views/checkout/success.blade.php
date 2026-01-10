@@ -76,11 +76,11 @@
                                 you
                                 within 24 hours.
                             @elseif($isPaid)
-                                Thank you for your booking with {{ env('COMPANY_NAME', 'Casons Rent A Car') }}! Your
+                                Thank you for your booking with {{ env('COMPANY_NAME', 'TheTaxi Company') }}! Your
                                 reservation
                                 has been confirmed and we're excited to serve you.
                             @else
-                                Thank you for your booking with {{ env('COMPANY_NAME', 'Casons Rent A Car') }}! We have
+                                Thank you for your booking with {{ env('COMPANY_NAME', 'TheTaxi Company') }}! We have
                                 received
                                 your reservation request and will process it shortly.
                             @endif
@@ -421,7 +421,7 @@
                             </div>
 
                             <p style="text-align: center; color: #555; font-size: 15px;">Thank you for choosing
-                                {{ env('COMPANY_NAME', 'Casons Rent A Car') }}. We look forward to serving you!</p>
+                                {{ env('COMPANY_NAME', 'TheTaxi Company') }}. We look forward to serving you!</p>
                         @endif
                     </div>
                 </div>
@@ -432,7 +432,6 @@
 
 @push('styles')
     <style>
-
         .greeting {
             font-size: 16px;
             color: #333333;

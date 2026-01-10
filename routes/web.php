@@ -77,6 +77,8 @@ Route::get('/cart/addons/{cartKey}', [CartController::class, 'getItemAddons'])->
 Route::post('/cart/addon/add', [CartController::class, 'addAddon'])->name('cart.addon.add');
 Route::post('/cart/addon/remove', [CartController::class, 'removeAddon'])->name('cart.addon.remove');
 Route::post('/cart/addon/update-qty', [CartController::class, 'updateAddonQty'])->name('cart.addon.update-qty');
+// Bulk update all addon quantities (cart-level)
+Route::post('/cart/addons/update-all', [CartController::class, 'updateAllAddons'])->name('cart.addons.update-all');
 
 // Cart Extra KM routes
 Route::get('/cart/extra-km/{cartKey}', [CartController::class, 'getExtraKmRate'])->name('cart.extra-km.get');

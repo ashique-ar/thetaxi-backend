@@ -204,7 +204,7 @@
     <!-- About Section -->
     <div class="section">
         <h2 class="section-title">
-            <span class="icon">🌟</span> About {{ env('COMPANY_NAME', 'Casons Rent A Car') }}
+            <span class="icon">🌟</span> About {{ env('COMPANY_NAME', 'TheTaxi Company') }}
         </h2>
         <p style="color: #555; line-height: 1.7; margin: 0;">
             We specialize in providing reliable, professional transport solutions for businesses and individuals. Our fleet
@@ -214,5 +214,5 @@
     </div>
 
     <p style="text-align: center; color: #555; font-size: 15px; margin-top: 30px;">Thank you for choosing
-        {{ env('COMPANY_NAME', 'Casons Rent A Car') }} for your transport needs!</p>
+        {{ env('COMPANY_NAME', 'TheTaxi Company') }} for your transport needs!</p>
 @endsection

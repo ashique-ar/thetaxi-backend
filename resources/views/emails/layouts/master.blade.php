@@ -488,8 +488,8 @@
                         <!-- Header -->
                         <div class="email-header">
                             <div class="logo-container">
-                                <img src="{{ asset('assets/img/casons-logo-white.png') }}"
-                                    alt="{{ env('COMPANY_NAME', 'Casons Rent A Car') }}">
+                                <img src="{{ s3_asset($settings['logo_header'] ?? 'assets/img/header-logo.png') }}"
+                                    alt="{{ env('COMPANY_NAME', 'TheTaxi Company') }}">
                             </div>
                             <h1>@yield('header_title', 'Welcome')</h1>
                             @hasSection('header_subtitle')
@@ -506,12 +506,12 @@
                         <div class="email-footer">
                             <div class="footer-brand">
                                 <img src="{{ asset('assets/img/casons-logo-gray.png') }}"
-                                    alt="{{ env('COMPANY_NAME', 'Casons Rent A Car') }}">
+                                    alt="{{ env('COMPANY_NAME', 'TheTaxi Company') }}">
                             </div>
 
                             <p class="footer-text">
                                 Best regards,<br>
-                                <strong>{{ env('COMPANY_NAME', 'Casons Rent A Car') }} Team</strong>
+                                <strong>{{ env('COMPANY_NAME', 'TheTaxi Company') }} Team</strong>
                             </p>
 
                             <div class="footer-links">
@@ -522,7 +522,7 @@
                             </div>
 
                             <p class="copyright">
-                                © {{ date('Y') }} {{ env('COMPANY_NAME', 'Casons Rent A Car') }} (Pvt) Ltd. All
+                                © {{ date('Y') }} {{ env('COMPANY_NAME', 'TheTaxi Company') }} (Pvt) Ltd. All
                                 rights reserved.<br>
                                 <span style="font-size: 11px; color: #aaa;">This is an automated email. Please do not
                                     reply directly to this message.</span>

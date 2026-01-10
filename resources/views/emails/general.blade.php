@@ -2,7 +2,7 @@
 
 @section('title', config('app.name'))
 
-@section('header_title', env('COMPANY_NAME', 'Casons Rent A Car'))
+@section('header_title', env('COMPANY_NAME', 'TheTaxi Company'))
 
 @section('header_subtitle', 'Premium Car Rental Services')
 

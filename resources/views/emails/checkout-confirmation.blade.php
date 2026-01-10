@@ -52,13 +52,13 @@
 
     <p class="intro-text">
         @if ($booking->payment_status === 'paid')
-            Thank you for your booking with {{ env('COMPANY_NAME', 'Casons Rent A Car') }}! Your reservation has been
+            Thank you for your booking with {{ env('COMPANY_NAME', 'TheTaxi Company') }}! Your reservation has been
             confirmed and we're excited to serve you.
         @elseif($booking->status === 'quotation_requested')
             Thank you for your quotation request. Our team will review your requirements and get back to you within 24
             hours.
         @else
-            Thank you for your booking with {{ env('COMPANY_NAME', 'Casons Rent A Car') }}! We have received your
+            Thank you for your booking with {{ env('COMPANY_NAME', 'TheTaxi Company') }}! We have received your
             reservation request and will process it shortly.
         @endif
     </p>
@@ -292,7 +292,7 @@
                             style="display: inline-block; background-color: #BF2629; color: #FFFFFF; padding: 15px 40px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
                             🔒 Pay
                             {{ $currencySymbol }}
-                            {{ number_format($booking->amount_to_pay ?? $booking->total_estimated, 2) }}                            
+                            {{ number_format($booking->amount_to_pay ?? $booking->total_estimated, 2) }}
                         </a>
                         <p style="text-align: center; color: #717171; font-size: 13px; margin: 10px 0;">
                             <span style="color: #28a745;">✓ Secure SSL Encryption</span> •
@@ -409,5 +409,5 @@
     </div>
 
     <p style="text-align: center; color: #555; font-size: 15px;">Thank you for choosing
-        {{ env('COMPANY_NAME', 'Casons Rent A Car') }}. We look forward to serving you!</p>
+        {{ env('COMPANY_NAME', 'TheTaxi Company') }}. We look forward to serving you!</p>
 @endsection

@@ -163,6 +163,6 @@
 
     <!-- CTA Button -->
     <div class="btn-container">
-        <a href="{{ route('home') }}" class="btn">Visit {{ env('COMPANY_NAME', 'Casons Rent A Car') }}</a>
+        <a href="{{ route('home') }}" class="btn">Visit {{ env('COMPANY_NAME', 'TheTaxi Company') }}</a>
     </div>
 @endsection

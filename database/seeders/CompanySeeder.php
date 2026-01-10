@@ -17,7 +17,7 @@ class CompanySeeder extends Seeder
         $companies = [
             [
                 'id' => Str::uuid(),
-                'name' => 'Casons Rent A Car - Head Office',
+                'name' => 'TheTaxi Company - Head Office',
                 'address' => '181, Gothami Gardens, Gothami Road, Rajagiriya, Sri Lanka.',
                 'latitude' => 6.9186278,
                 'longitude' => 79.8854714,
@@ -28,7 +28,7 @@ class CompanySeeder extends Seeder
             ],
             [
                 'id' => Str::uuid(),
-                'name' => 'Casons Rent A Car - Mattale Airport Branch',
+                'name' => 'TheTaxi Company - Mattale Airport Branch',
                 'address' => 'Mattala Rajapaksa International Airport',
                 'latitude' => 6.2913906,
                 'longitude' => 81.1213571,
@@ -39,7 +39,7 @@ class CompanySeeder extends Seeder
             ],
             [
                 'id' => Str::uuid(),
-                'name' => 'Casons Rent A Car - BIA Branch',
+                'name' => 'TheTaxi Company - BIA Branch',
                 'address' => 'Colombo Bandaranaike International Airport',
                 'latitude' => 7.1801596,
                 'longitude' => 79.8816746,

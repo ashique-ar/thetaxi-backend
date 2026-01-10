@@ -132,7 +132,7 @@ class NavigationMenuSeeder extends Seeder
             'url' => '/about',
             'target' => '_self',
             'icon' => 'info',
-            'description' => 'Learn about Casons Rent A Car',
+            'description' => 'Learn about TheTaxi Company',
             'sort_order' => 4,
             'is_active' => true,
             'show_in_header' => true,

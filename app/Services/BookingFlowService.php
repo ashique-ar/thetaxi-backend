@@ -3231,8 +3231,8 @@ class BookingFlowService
         if (empty($locations)) {
             $locations[] = [
                 'id' => 'default',
-                'name' => 'Casons Rent A Car (Main)',
-                'address' => 'Casons Rent A Car, Colombo, Sri Lanka',
+                'name' => 'TheTaxi Company (Main)',
+                'address' => 'TheTaxi Company, Colombo, Sri Lanka',
                 'latitude' => 6.9271,
                 'longitude' => 79.8612,
                 'is_default' => true,

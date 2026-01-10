@@ -84,6 +84,10 @@
                                                 stroke-width="1.5" stroke-linecap="round" />
                                         </svg>
                                     </a>
+                                    <button id="update-all-addons-btn" class="details-button ms-3">
+                                        Update All Addons
+                                        <i class="bi bi-arrow-repeat"></i>
+                                    </button>
                                     <button class="details-button clear-cart ms-3">
                                         Clear Cart <i class="bi bi-trash"></i>
                                     </button>
@@ -1187,7 +1191,7 @@
                             <div class="addon-controls-unified">
                                 <div class="qty-control-unified">
                                     <button class="qty-btn-unified qty-minus-unified" data-addon-id="${addon.id}" data-cart-key="${cartKey}" title="Decrease">−</button>
-                                    <input type="number" class="qty-input-unified" value="${currentQty}" min="0" max="${addon.max_qty || 999}" data-addon-id="${addon.id}" data-cart-key="${cartKey}">
+                                    <input type="number" class="qty-input-unified" value="${currentQty}" data-original-qty="${currentQty}" min="0" max="${addon.max_qty || 999}" data-addon-id="${addon.id}" data-cart-key="${cartKey}">
                                     <button class="qty-btn-unified qty-plus-unified" data-addon-id="${addon.id}" data-cart-key="${cartKey}" title="Increase">+</button>
                                 </div>
                                 <div class="addon-action-buttons">
@@ -1270,19 +1274,61 @@
                 }
             }
 
-            // Apply/Update addon
+            // Apply/Update addon (single-click also performs bulk update if other changes exist)
             $(document).on('click', '.btn-apply-addon-unified', function() {
-                const addonId = $(this).data('addon-id');
-                const cartKey = $(this).data('cart-key');
-                const qty = parseInt($(this).closest('.unified-addon-card').find('.qty-input-unified')
-                    .val()) || 0;
+                const btn = $(this);
+                const addonId = btn.data('addon-id');
+                const cartKey = btn.data('cart-key');
+                const qty = parseInt(btn.closest('.unified-addon-card').find('.qty-input-unified').val()) || 0;
 
-                if (qty === 0) {
-                    // Remove addon if quantity is 0
-                    removeAddonFromCart(cartKey, addonId);
+                // Build updates list by comparing current qty with data-original-qty
+                const updates = [];
+                $('.qty-input-unified').each(function() {
+                    const $el = $(this);
+                    const original = parseInt($el.attr('data-original-qty') || 0);
+                    const current = parseInt($el.val() || 0);
+                    const aCartKey = $el.data('cart-key');
+                    const aAddonId = $el.data('addon-id');
+                    if (!aCartKey || !aAddonId) return;
+
+                    // Include if changed OR if this is the clicked addon (user expects it to be applied)
+                    if (current !== original || (aAddonId === addonId && aCartKey === cartKey)) {
+                        updates.push({ cart_key: aCartKey, addon_id: aAddonId, qty: current });
+                    }
+                });
+
+                if (updates.length > 1) {
+                    // Perform bulk update for all changed addons
+                    btn.prop('disabled', true).html('<i class="bi bi-hourglass-split"></i> Updating...');
+                    $.ajax({
+                        url: '{{ route('cart.addons.update-all') }}',
+                        method: 'POST',
+                        data: {
+                            _token: '{{ csrf_token() }}',
+                            updates: updates
+                        },
+                        success: function(response) {
+                            if (response.success) {
+                                // On success, reload to show updated prices and states
+                                location.reload();
+                            } else {
+                                alert(response.message || 'Error updating addons');
+                                btn.prop('disabled', false).html(btn.hasClass('btn-addon-update') ? '<i class="bi bi-arrow-clockwise"></i> Update' : '<i class="bi bi-plus-lg"></i> Add');
+                            }
+                        },
+                        error: function(xhr) {
+                            const msg = xhr.responseJSON?.message || 'Error updating addons';
+                            alert(msg);
+                            btn.prop('disabled', false).html(btn.hasClass('btn-addon-update') ? '<i class="bi bi-arrow-clockwise"></i> Update' : '<i class="bi bi-plus-lg"></i> Add');
+                        }
+                    });
                 } else {
-                    // Add or update addon
-                    addOrUpdateAddonToCart(cartKey, addonId, qty);
+                    // Fallback to single-item behavior
+                    if (qty === 0) {
+                        removeAddonFromCart(cartKey, addonId);
+                    } else {
+                        addOrUpdateAddonToCart(cartKey, addonId, qty);
+                    }
                 }
             });
 
@@ -1342,6 +1388,54 @@
                 if (confirm('Remove this addon?')) {
                     removeAddonFromCart(cartKey, addonId);
                 }
+            });
+
+            // Update All Addons - batch update all changed addon quantities
+            $('#update-all-addons-btn').on('click', function() {
+                const btn = $(this);
+                const updates = [];
+
+                $('.qty-input-unified').each(function() {
+                    const $el = $(this);
+                    const original = parseInt($el.attr('data-original-qty') || 0);
+                    const current = parseInt($el.val() || 0);
+                    if (current !== original) {
+                        updates.push({
+                            cart_key: $el.data('cart-key'),
+                            addon_id: $el.data('addon-id'),
+                            qty: current
+                        });
+                    }
+                });
+
+                if (updates.length === 0) {
+                    alert('No addon changes detected.');
+                    return;
+                }
+
+                btn.prop('disabled', true).html('Updating...');
+
+                $.ajax({
+                    url: '{{ route('cart.addons.update-all') }}',
+                    method: 'POST',
+                    data: {
+                        _token: '{{ csrf_token() }}',
+                        updates: updates
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            showSuccessNotification(response.message || 'Addons updated for all items');
+                            setTimeout(function() { location.reload(); }, 600);
+                        } else {
+                            alert(response.message || 'Error updating addons');
+                            btn.prop('disabled', false).html('Update All Addons');
+                        }
+                    },
+                    error: function(xhr) {
+                        alert(xhr.responseJSON?.message || 'Error updating addons');
+                        btn.prop('disabled', false).html('Update All Addons');
+                    }
+                });
             });
 
             // Toggle addons section visibility

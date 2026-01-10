@@ -293,7 +293,7 @@
                         </div>
 
                         <p style="text-align: center; color: #555; font-size: 15px;">Thank you for choosing
-                            {{ env('COMPANY_NAME', 'Casons Rent A Car') }}. We look forward to serving you!</p>
+                            {{ env('COMPANY_NAME', 'TheTaxi Company') }}. We look forward to serving you!</p>
                     @endif
                 </div>
             </div>
@@ -303,7 +303,7 @@
 
 @push('styles')
     <style>
-      /* Content */
+        /* Content */
         .email-content {
             padding: 40px 35px;
         }

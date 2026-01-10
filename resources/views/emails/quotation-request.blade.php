@@ -39,7 +39,7 @@
     </p>
 
     <p class="intro-text">
-        Thank you for submitting a quotation request to {{ env('COMPANY_NAME', 'Casons Rent A Car') }}. We have received
+        Thank you for submitting a quotation request to {{ env('COMPANY_NAME', 'TheTaxi Company') }}. We have received
         your inquiry and will get back to you shortly.
     </p>
 
@@ -187,5 +187,5 @@
     </div>
 
     <p style="text-align: center; color: #555; font-size: 15px; margin-top: 30px;">Thank you for choosing
-        {{ env('COMPANY_NAME', 'Casons Rent A Car') }}. We look forward to serving you!</p>
+        {{ env('COMPANY_NAME', 'TheTaxi Company') }}. We look forward to serving you!</p>
 @endsection
