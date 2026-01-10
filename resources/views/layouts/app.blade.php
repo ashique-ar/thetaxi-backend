@@ -287,7 +287,7 @@
     <script src="{{ asset('assets/js/jquery.fancybox.min.js') }}"></script>
 
     <script src="{{ asset('assets/js/select-dropdown.js') }}"></script>
-    <script src="{{ asset('assets/js/custom.js?v=1.0') }}"></script>
+    <script src="{{ asset('assets/js/custom.js?v=1.0.01') }}"></script>
     <script src="{{ asset('assets/js/booking-form.js?v=1.0.05') }}"></script>
 
     <!-- Currency Switching JavaScript -->
