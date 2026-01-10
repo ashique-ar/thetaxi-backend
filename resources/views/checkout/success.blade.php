@@ -349,7 +349,7 @@
                                         <!-- Payment Link CTA -->
                                         <div class="btn-container" style="margin: 20px 0;">
                                             @if (!$isFallbackPaymentLink)
-                                                <a href="{{ $paymentLink }}" class="btn">
+                                                <a href="{{ $paymentLink }}" class="btn btn-new">
                                                     🔒 Pay {{ $currencySymbol }}
                                                     {{ number_format($booking->amount_to_pay ?? $booking->total_estimated, 2) }}
                                                     with WebXPay
@@ -460,17 +460,17 @@
                                         $isFallbackPaymentLink = $paymentLink === route('checkout');
                                     @endphp
                                     @if (!$isFallbackPaymentLink)
-                                        <a href="{{ $paymentLink }}" class="btn">Complete Payment -
+                                        <a href="{{ $paymentLink }}" class="btn btn-new">Complete Payment -
                                             {{ $currencySymbol }}
                                             {{ number_format($booking->amount_to_pay ?? $booking->total_estimated - ($booking->amount_paid ?? 0), 2) }}</a>
                                     @else
                                         <a href="mailto:{{ config('mail.from.address', 'bookings@casonsrentacar.lk') }}"
-                                            class="btn">Contact Support to Complete Payment</a>
+                                            class="btn btn-new">Contact Support to Complete Payment</a>
                                     @endif
                                 @elseif($isPaid)
-                                    <a href="{{ route('home') }}" class="btn">Visit Our Website</a>
+                                    <a href="{{ route('home') }}" class="btn btn-new">Visit Our Website</a>
                                 @else
-                                    <a href="{{ route('home') }}" class="btn">Visit Our Website</a>
+                                    <a href="{{ route('home') }}" class="btn btn-new">Visit Our Website</a>
                                 @endif
                             </div>
 
@@ -647,7 +647,7 @@
             margin: 30px 0;
         }
 
-        .btn {
+        .btn-new {
             display: inline-block;
             padding: 14px 32px;
             background: linear-gradient(135deg, #BF2629 0%, #a02123 100%);

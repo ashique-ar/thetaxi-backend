@@ -28,7 +28,6 @@ use App\Traits\UUID;
  * @property string|null $license_plate Vehicle license plate
  * @property int|null $model_year Vehicle model year
  * @property string|null $color Vehicle color
- * @property string|null $no_of_doors Number of doors
  * @property string|null $ac Air conditioning availability
  * @property string|null $thumbnail Vehicle thumbnail image
  * @property string|null $slug Vehicle URL slug
@@ -82,7 +81,6 @@ class Vehicle extends BaseModel
         'license_plate',
         'model_year',
         'color',
-        'no_of_doors',
         'ac',
         'thumbnail',
         'slug',

@@ -33,6 +33,7 @@ class CreateVehicleGroupRequest extends FormRequest
             'passengers_count' => ['nullable', 'integer', 'min:1'],
             'hand_luggages' => ['nullable', 'integer', 'min:0'],
             'air_conditioning' => ['nullable', 'boolean'],
+            'no_of_doors' => ['nullable', 'boolean'],
             'refundable_deposit' => ['nullable', 'numeric', 'min:0'],
         ];
     }

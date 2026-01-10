@@ -70,6 +70,7 @@ class VehicleGroup extends BaseModel
         'passengers_count',
         'hand_luggages',
         'air_conditioning',
+        'no_of_doors',
         'refundable_deposit',
         'created_user_id',
         'updated_user_id',
