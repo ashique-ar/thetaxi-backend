@@ -109,12 +109,6 @@
                     <span>{{ $vehicle['transmission']['name'] }}</span>
                 </div>
             @endif
-            @if (isset($vehicle['air_conditioning']) && $vehicle['air_conditioning'])
-                <div class="spec-item">
-                    <i class="bi bi-gear-fill"></i>
-                    <span>Air conditioning</span>
-                </div>
-            @endif
 
             @if (isset($vehicle['fuel_type']['name']))
                 <div class="spec-item">
