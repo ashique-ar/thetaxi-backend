@@ -244,21 +244,8 @@ class BookingController extends Controller
             }
         }
 
-        // If address is missing but coordinates are present, try to map to known airports
-        if (empty(trim($location['address'] ?? '')) && $location['latitude'] !== null && $location['longitude'] !== null) {
-            $airportMap = [
-                'Colombo BIA Airport' => ['lat' => 7.1808, 'lng' => 79.8841],
-                'Mattala Rajapaksa Airport' => ['lat' => 6.2847, 'lng' => 81.1242],
-                'Jaffna International Airport' => ['lat' => 9.7923, 'lng' => 80.0701],
-            ];
-
-            foreach ($airportMap as $name => $coords) {
-                if (abs($coords['lat'] - $location['latitude']) < 0.0006 && abs($coords['lng'] - $location['longitude']) < 0.0006) {
-                    $location['address'] = $name;
-                    break;
-                }
-            }
-        }
+        // Do not synthesize or guess an address from coordinates here; prefer the raw address from the request or initial data.
+        // If address is missing, leave it null/empty so the client can display exactly what was provided.
 
         return $location;
     }
@@ -439,8 +426,11 @@ class BookingController extends Controller
                 'id' => $groupData['id'],
                 'name' => $groupData['name'],
                 'description' => $groupData['description'] ?? '',
-                'seating_capacity' => $groupData['features']['seating_capacity'] ?? null,
-                'luggage_capacity' => $groupData['features']['luggage_capacity'] ?? null,
+                'seating_capacity' => $groupData['seating_capacity'] ?? null,
+                'passengers_count' => $groupData['passengers_count'] ?? null,
+                'air_conditioning' => $groupData['air_conditioning'] ?? null,
+                'refundable_deposit' => $groupData['refundable_deposit'] ?? null,
+                'luggage_capacity' => $groupData['luggage_capacity'] ?? null,
                 'category' => [
                     'name' => $groupData['category'] ?? null,
                 ],
@@ -1063,6 +1053,13 @@ class BookingController extends Controller
             ],
             'ride_now' => [
                 'Flexible Rental Packages',
+                'Self-Drive Options',
+                'Long-Term Discounts',
+                'Flexible Drop-off',
+                'Insurance Included'
+            ],
+            'day_rental' => [
+                '24/7 Road Side Assistance',
                 'Self-Drive Options',
                 'Long-Term Discounts',
                 'Flexible Drop-off',

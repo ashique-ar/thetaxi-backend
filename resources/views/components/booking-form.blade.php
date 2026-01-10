@@ -69,25 +69,8 @@
             }
         }
 
-        // Fallback: if address empty but coordinates match a known airport, set a friendly label
-        $airportMap = [
-            'Colombo BIA Airport' => ['lat' => '7.1808', 'lng' => '79.8841'],
-            'Mattala Rajapaksa Airport' => ['lat' => '6.2847', 'lng' => '81.1242'],
-            'Jaffna International Airport' => ['lat' => '9.7923', 'lng' => '80.0701'],
-        ];
-
-        if (empty($result['address']) && !empty($result['lat']) && !empty($result['lng'])) {
-            foreach ($airportMap as $name => $coords) {
-                // Use string comparison to avoid float precision issues
-                if (
-                    (string) $coords['lat'] === (string) $result['lat'] &&
-                    (string) $coords['lng'] === (string) $result['lng']
-                ) {
-                    $result['address'] = $name;
-                    break;
-                }
-            }
-        }
+        // Do not synthesize or guess an address from coordinates here; prefer the raw address from form or initial data.
+        // Final fallback: if still empty, leave null so JS can set defaults if desired.
 
         // Final fallback: if still empty, leave null so JS can set defaults
         return $result;
@@ -222,15 +205,15 @@
                         class="airport-select from-field hidden @error('from') is-invalid @enderror" disabled>
                         <option value="">Select Airport</option>
                         <option value="Colombo BIA Airport" data-lat="7.1808" data-lng="79.8841"
-                            {{ old('from') == 'Colombo BIA Airport' || ($pickup['address'] ?? '') == 'Colombo BIA Airport' || ((string) ($pickup['lat'] ?? '') === '7.1808' && (string) ($pickup['lng'] ?? '') === '79.8841') ? 'selected' : '' }}>
+                            {{ old('from') == 'Colombo BIA Airport' || ($pickup['address'] ?? '') == 'Colombo BIA Airport' ? 'selected' : '' }}>
                             Bandaranaike International Airport (BIA)
                         </option>
                         <option value="Mattala Rajapaksa Airport" data-lat="6.2847" data-lng="81.1242"
-                            {{ old('from') == 'Mattala Rajapaksa Airport' || ($pickup['address'] ?? '') == 'Mattala Rajapaksa Airport' || ((string) ($pickup['lat'] ?? '') === '6.2847' && (string) ($pickup['lng'] ?? '') === '81.1242') ? 'selected' : '' }}>
+                            {{ old('from') == 'Mattala Rajapaksa Airport' || ($pickup['address'] ?? '') == 'Mattala Rajapaksa Airport' ? 'selected' : '' }}>
                             Mattala Rajapaksa International Airport
                         </option>
                         <option value="Jaffna International Airport" data-lat="9.7923" data-lng="80.0701"
-                            {{ old('from') == 'Jaffna International Airport' || ($pickup['address'] ?? '') == 'Jaffna International Airport' || ((string) ($pickup['lat'] ?? '') === '9.7923' && (string) ($pickup['lng'] ?? '') === '80.0701') ? 'selected' : '' }}>
+                            {{ old('from') == 'Jaffna International Airport' || ($pickup['address'] ?? '') == 'Jaffna International Airport' ? 'selected' : '' }}>
                             Jaffna International Airport
                         </option>
                     </select>
@@ -272,15 +255,15 @@
                         class="airport-select to-field hidden @error('to') is-invalid @enderror" disabled>
                         <option value="">Select Airport</option>
                         <option value="Colombo BIA Airport" data-lat="7.1808" data-lng="79.8841"
-                            {{ old('to') == 'Colombo BIA Airport' || ($dropoff['address'] ?? '') == 'Colombo BIA Airport' || ((string) ($dropoff['lat'] ?? '') === '7.1808' && (string) ($dropoff['lng'] ?? '') === '79.8841') ? 'selected' : '' }}>
+                            {{ old('to') == 'Colombo BIA Airport' || ($dropoff['address'] ?? '') == 'Colombo BIA Airport' ? 'selected' : '' }}>
                             Bandaranaike International Airport (BIA)
                         </option>
                         <option value="Mattala Rajapaksa Airport" data-lat="6.2847" data-lng="81.1242"
-                            {{ old('to') == 'Mattala Rajapaksa Airport' || ($dropoff['address'] ?? '') == 'Mattala Rajapaksa Airport' || ((string) ($dropoff['lat'] ?? '') === '6.2847' && (string) ($dropoff['lng'] ?? '') === '81.1242') ? 'selected' : '' }}>
+                            {{ old('to') == 'Mattala Rajapaksa Airport' || ($dropoff['address'] ?? '') == 'Mattala Rajapaksa Airport' ? 'selected' : '' }}>
                             Mattala Rajapaksa International Airport
                         </option>
                         <option value="Jaffna International Airport" data-lat="9.7923" data-lng="80.0701"
-                            {{ old('to') == 'Jaffna International Airport' || ($dropoff['address'] ?? '') == 'Jaffna International Airport' || ((string) ($dropoff['lat'] ?? '') === '9.7923' && (string) ($dropoff['lng'] ?? '') === '80.0701') ? 'selected' : '' }}>
+                            {{ old('to') == 'Jaffna International Airport' || ($dropoff['address'] ?? '') == 'Jaffna International Airport' ? 'selected' : '' }}>
                             Jaffna International Airport
                         </option>
                     </select>

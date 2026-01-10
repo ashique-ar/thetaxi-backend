@@ -89,7 +89,6 @@
                 @endforeach
             </div>
         @endif
-
         <!-- Vehicle Specs Grid -->
         <div class="vehicle-specs">
             @if (isset($vehicle['passengers_count']) && $vehicle['passengers_count'])
@@ -108,6 +107,12 @@
                 <div class="spec-item">
                     <i class="bi bi-gear-fill"></i>
                     <span>{{ $vehicle['transmission']['name'] }}</span>
+                </div>
+            @endif
+            @if (isset($vehicle['air_conditioning']) && $vehicle['air_conditioning'])
+                <div class="spec-item">
+                    <i class="bi bi-gear-fill"></i>
+                    <span>Air conditioning</span>
                 </div>
             @endif
 
@@ -460,14 +465,6 @@
                 min-height: 48px;
             }
 
-            /* Specs Grid */
-            .vehicle-specs {
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                gap: 10px;
-                margin-bottom: 16px;
-            }
-
             .spec-item {
                 display: flex;
                 align-items: center;
@@ -736,12 +733,6 @@
 
                 .price-amount {
                     font-size: 24px;
-                }
-            }
-
-            @media (max-width: 575px) {
-                .vehicle-specs {
-                    grid-template-columns: 1fr;
                 }
             }
 

@@ -3,14 +3,11 @@
 namespace App\Services;
 
 use App\Models\Cart;
-use App\Models\Customer;
-use App\Models\PromoCode;
 use App\Models\User;
 use App\Models\Website\WebsiteSetting;
 use App\Services\CurrencyService;
 use App\Services\PromoCodeService;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Session;
 
 class CartService
 {

@@ -366,23 +366,8 @@
                     const lng = parseFloat(lngInput.value);
                     if (!isFinite(lat) || !isFinite(lng)) return;
 
-                    // Find matching city/airport by coordinates (small tolerance)
-                    let found = null;
-                    for (const name in CONFIG.cityCoordinates) {
-                        const c = CONFIG.cityCoordinates[name];
-                        if (!c || typeof c.lat === 'undefined' || typeof c.lng === 'undefined') continue;
-                        if (Math.abs(c.lat - lat) < 0.0006 && Math.abs(c.lng - lng) < 0.0006) {
-                            found = name;
-                            break;
-                        }
-                    }
-
-                    if (found) {
-                        input.value = found;
-                    } else {
-                        // Fallback formatted coords
-                        input.value = lat.toFixed(4) + ', ' + lng.toFixed(4);
-                    }
+                    // Do not synthesize friendly labels from coordinates; always show formatted coords
+                    input.value = lat.toFixed(4) + ', ' + lng.toFixed(4);
                 } catch (e) {
                     console.warn('populateAddressFromCoords error', e);
                 }
@@ -737,18 +722,7 @@
      * Update location data in hidden fields
      */
     function updateLocationData(input, place) {
-        // Helper: map coords to known city/airport names
-        function coordsToName(lat, lng) {
-            if (!lat || !lng) return null;
-            for (const name in CONFIG.cityCoordinates) {
-                const c = CONFIG.cityCoordinates[name];
-                if (!c || typeof c.lat === 'undefined' || typeof c.lng === 'undefined') continue;
-                if (Math.abs(parseFloat(c.lat) - parseFloat(lat)) < 0.0006 && Math.abs(parseFloat(c.lng) - parseFloat(lng)) < 0.0006) {
-                    return name;
-                }
-            }
-            return null;
-        }
+
 
         // For airport transfer form FROM
         if (input.name === "from") {
@@ -763,7 +737,7 @@
                 lngInput.value = lng;
 
                 if ((!input.value || input.value.trim() === '') && (place.formatted_address || (!isNaN(lat) && !isNaN(lng)))) {
-                    input.value = place.formatted_address || coordsToName(lat, lng) || (lat.toFixed(4) + ', ' + lng.toFixed(4));
+                    input.value = place.formatted_address || (lat.toFixed(4) + ', ' + lng.toFixed(4));
                 }
             }
         } else if (input.name === "to") {
@@ -778,7 +752,7 @@
                 lngInput.value = lng;
 
                 if ((!input.value || input.value.trim() === '') && (place.formatted_address || (!isNaN(lat) && !isNaN(lng)))) {
-                    input.value = place.formatted_address || coordsToName(lat, lng) || (lat.toFixed(4) + ', ' + lng.toFixed(4));
+                    input.value = place.formatted_address || (lat.toFixed(4) + ', ' + lng.toFixed(4));
                 }
             }
         } else if (input.name === "pickup") {
@@ -794,7 +768,7 @@
                 console.log('Updated pickup coordinates via Google Places:', latInput.value, lngInput.value);
 
                 if ((!input.value || input.value.trim() === '') && (place.formatted_address || (!isNaN(lat) && !isNaN(lng)))) {
-                    input.value = place.formatted_address || coordsToName(lat, lng) || (lat.toFixed(4) + ', ' + lng.toFixed(4));
+                    input.value = place.formatted_address || (lat.toFixed(4) + ', ' + lng.toFixed(4));
                 }
             } else {
                 console.error('Could not find pickup coordinate fields or place geometry');
@@ -812,7 +786,7 @@
                 console.log('Updated dropoff coordinates via Google Places:', latInput.value, lngInput.value);
 
                 if ((!input.value || input.value.trim() === '') && (place.formatted_address || (!isNaN(lat) && !isNaN(lng)))) {
-                    input.value = place.formatted_address || coordsToName(lat, lng) || (lat.toFixed(4) + ', ' + lng.toFixed(4));
+                    input.value = place.formatted_address || (lat.toFixed(4) + ', ' + lng.toFixed(4));
                 }
             } else {
                 console.error('Could not find dropoff coordinate fields or place geometry');

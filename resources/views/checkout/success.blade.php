@@ -295,6 +295,26 @@
 
                             <div class="divider"></div>
 
+                            @if ($booking->acceptedTerms && $booking->acceptedTerms->count())
+                                <div class="section">
+                                    <h2 class="section-title">
+                                        <span class="icon">📜</span> Accepted Terms & Conditions
+                                    </h2>
+                                    @foreach ($booking->acceptedTerms as $bt)
+                                        @php $tc = $bt->terms; @endphp
+                                        <div class="term-item mb-3">
+                                            <h6 style="margin:0; font-weight:700">{{ $tc->title ?? 'Terms' }} <small
+                                                    style="font-weight:400; font-size:12px">v{{ $bt->terms_version ?? ($tc->version ?? '1') }}</small>
+                                            </h6>
+                                            <div style="color:#555; margin-top:6px">{!! \Illuminate\Support\Str::limit($tc->content ?? '', 400) !!} @if (!empty($tc->slug))
+                                                    <a href="#" target="_blank">Read full</a>
+                                                @endif
+                                            </div>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            @endif
+
                             <!-- What's Next Section -->
                             <div class="section">
                                 <h2 class="section-title">

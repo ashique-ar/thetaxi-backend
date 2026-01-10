@@ -68,7 +68,8 @@ class CheckoutController extends Controller
         return Booking::with([
             'customer',
             'bookingItems.vehicleGroup',
-            'bookingItems.serviceType'
+            'bookingItems.serviceType',
+            'acceptedTerms.terms'
         ])->findOrFail($booking->id);
     }
 
@@ -109,8 +110,31 @@ class CheckoutController extends Controller
             $paymentType = 'full';
         }
 
-        // Get dynamic T&C based on service type and payment type
-        $termsAndConditions = TermsAndCondition::getForCheckout('vehicle_rental', $paymentType);
+        // Get dynamic T&C grouped by service type and payment type based on cart items
+        $serviceMap = [
+            'airport_transfers' => 'vehicle_rental',
+            'ride_now' => 'vehicle_rental',
+            'day_rental' => 'vehicle_rental',
+            'point_to_point' => 'vehicle_rental',
+            'corporate_transport' => 'vehicle_rental',
+        ];
+
+        $serviceCodes = collect($cart)->pluck('service_type')->filter()->unique();
+        $termsByService = [];
+
+        foreach ($serviceCodes as $code) {
+            $mapped = $serviceMap[$code] ?? $code; // fallback to same code
+            $terms = TermsAndCondition::getForCheckout($mapped, $paymentType);
+            if ($terms && $terms->count()) {
+                $termsByService[$mapped] = $terms;
+            }
+        }
+
+        // Always include general terms if available
+        $general = TermsAndCondition::getForCheckout('general', $paymentType);
+        if ($general && $general->count()) {
+            $termsByService['general'] = $general;
+        }
 
         $paymentMethods = $this->getAvailablePaymentMethods(
             $paymentSettings['webxpay_enabled'],
@@ -128,7 +152,7 @@ class CheckoutController extends Controller
             'cart',
             'cartData',
             'paymentType',
-            'termsAndConditions',
+            'termsByService',
             'paymentMethods',
             'advancePaymentEnabled',
             'advancePercentage',
@@ -188,8 +212,9 @@ class CheckoutController extends Controller
             'contact_time' => 'nullable|string|in:morning,afternoon,evening,anytime',
             'budget_range' => 'nullable|string|in:under-500,500-1000,1000-2000,over-2000',
             'save_info' => 'boolean',
-            'terms_accepted' => 'required|accepted'
         ];
+
+
 
         // Add payment method validation only if not quotation
         if ($request->input('payment_type') !== 'quotation') {
@@ -212,8 +237,7 @@ class CheckoutController extends Controller
             'city.required' => 'Please enter your city.',
             'country.required' => 'Please enter your country.',
             'payment_method.required' => 'Please select a payment method.',
-            'terms_accepted.required' => 'You must accept the terms and conditions.',
-            'terms_accepted.accepted' => 'You must accept the terms and conditions to proceed.',
+            'terms_accepted.*.accepted' => 'You must accept all applicable terms and conditions to proceed.',
         ];
 
         $validated = $request->validate($rules, $messages);
@@ -236,6 +260,24 @@ class CheckoutController extends Controller
             $this->cartService->updateTotals($cartModel);
             // Refresh the model to get updated totals
             $cartModel->refresh();
+        }
+
+        // Re-check dynamic Terms & Conditions acceptance based on cart service types
+        $serviceCodes = collect($cart)->pluck('service_type')->filter()->unique();
+        $requiredTerms = collect();
+        foreach ($serviceCodes as $code) {
+            $mapped = $serviceMap[$code] ?? $code;
+            $requiredTerms = $requiredTerms->merge(TermsAndCondition::getForCheckout($mapped, $validated['payment_type'] ?? 'full'));
+        }
+        $requiredTerms = $requiredTerms->merge(TermsAndCondition::getForCheckout('general', $validated['payment_type'] ?? 'full'));
+
+        // Validate that all required terms are accepted
+        $accepted = $request->input('terms_accepted', []);
+        foreach ($requiredTerms->pluck('id')->unique()->toArray() as $tcId) {
+            if (empty($accepted[$tcId])) {
+                // Throw validation error
+                return redirect()->back()->withInput()->withErrors(['terms_accepted' => 'You must accept all applicable terms and conditions to proceed.']);
+            }
         }
         try {
             DB::beginTransaction();
@@ -355,6 +397,21 @@ class CheckoutController extends Controller
                     ];
                 })->toArray(),
             ];
+
+            // Persist accepted Terms & Conditions for this booking if provided
+            $acceptedTerms = $request->input('terms_accepted', []);
+            if (is_array($acceptedTerms) && !empty($acceptedTerms)) {
+                foreach ($acceptedTerms as $termId => $version) {
+                    $tc = TermsAndCondition::find($termId);
+                    if ($tc) {
+                        \App\Models\Booking\BookingTerm::updateOrCreate(
+                            ['booking_id' => $booking->id, 'terms_and_condition_id' => $termId],
+                            ['terms_version' => $version, 'accepted_at' => now()]
+                        );
+                        Log::info('Saved accepted T&C for booking', ['booking_id' => $booking->id, 'terms_id' => $termId, 'version' => $version]);
+                    }
+                }
+            }
 
             if ($flightDetails) {
                 $workflowData['flight_details'] = $flightDetails;

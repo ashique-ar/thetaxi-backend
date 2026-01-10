@@ -385,18 +385,35 @@
                                             </div>
                                         @endif
 
-                                        <!-- Dynamic Terms and Conditions -->
-                                        @if (!empty($termsAndConditions))
+                                        <!-- Dynamic Terms and Conditions grouped by service type -->
+                                        @if (!empty($termsByService))
                                             <div class="col-md-12">
                                                 <div class="terms-conditions-section">
                                                     <h6>Terms & Conditions</h6>
                                                     <div class="terms-content">
-                                                        @foreach ($termsAndConditions as $tc)
-                                                            <div class="term-item mb-3">
-                                                                <h6 class="term-title">{{ $tc->title }}</h6>
-                                                                <div class="term-body">
-                                                                    {!! $tc->content !!}
-                                                                </div>
+                                                        @foreach ($termsByService as $service => $terms)
+                                                            <div class="terms-group mb-4">
+                                                                <h6 class="service-heading mb-2">
+                                                                    {{ ucfirst(str_replace('_', ' ', $service)) }}</h6>
+                                                                @foreach ($terms as $tc)
+                                                                    <div class="term-item mb-3">
+                                                                        <div class="form-check">
+                                                                            <input class="form-check-input"
+                                                                                type="checkbox"
+                                                                                name="terms_accepted[{{ $tc->id }}]"
+                                                                                value="{{ $tc->version }}"
+                                                                                id="tc_{{ $tc->id }}"
+                                                                                {{ old('terms_accepted.' . $tc->id) ? 'checked' : '' }}>
+                                                                            <label class="form-check-label"
+                                                                                for="tc_{{ $tc->id }}">
+                                                                                <strong>{{ $tc->title }}</strong>
+                                                                            </label>
+                                                                        </div>
+                                                                        <div class="term-body mt-2">
+                                                                            {!! $tc->content !!}
+                                                                        </div>
+                                                                    </div>
+                                                                @endforeach
                                                             </div>
                                                         @endforeach
                                                     </div>
@@ -416,27 +433,7 @@
                                                 </div>
                                             </div>
                                         </div>
-                                        <div class="col-md-12">
-                                            <div class="form-inner2">
-                                                <div class="form-check">
-                                                    <input class="form-check-input" type="checkbox" name="terms_accepted"
-                                                        value="1" id="termsAccepted" required
-                                                        {{ old('terms_accepted') ? 'checked' : '' }}>
-                                                    <label class="form-check-label" for="termsAccepted">
-                                                        @if (!empty($termsAndConditions))
-                                                            I agree to the above Terms & Conditions and Privacy Policy*
-                                                        @else
-                                                            I agree to the <a href="#" target="_blank">Terms &
-                                                                Conditions</a> and <a href="#"
-                                                                target="_blank">Privacy Policy</a>*
-                                                        @endif
-                                                    </label>
-                                                </div>
-                                                @error('terms_accepted')
-                                                    <span class="text-danger">{{ $message }}</span>
-                                                @enderror
-                                            </div>
-                                        </div>
+
                                     </div>
                                 </div>
                             </div>

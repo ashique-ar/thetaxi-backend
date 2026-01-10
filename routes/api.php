@@ -1148,7 +1148,7 @@ Route::middleware(['auth:api', 'permission:popup.view'])->group(function () {
             ->middleware('permission:popup.create')
             ->name('api.admin.popups.store');
         Route::put('popups/{popup}', [\App\Http\Controllers\Api\Admin\PopupController::class, 'update'])
-            ->middleware('permission:popup.update')
+            ->middleware('permission:popup.edit')
             ->name('api.admin.popups.update');
         Route::delete('popups/{popup}', [\App\Http\Controllers\Api\Admin\PopupController::class, 'destroy'])
             ->middleware('permission:popup.delete')
@@ -1156,6 +1156,21 @@ Route::middleware(['auth:api', 'permission:popup.view'])->group(function () {
         Route::patch('popups/{popup}/toggle', [\App\Http\Controllers\Api\Admin\PopupController::class, 'toggle'])
             ->middleware('permission:popup.update')
             ->name('api.admin.popups.toggle');
+
+        // Terms & Conditions CRUD (admin)
+        Route::get('terms', [\App\Http\Controllers\Api\TermsController::class, 'index'])
+            ->name('api.admin.terms.index');
+        Route::get('terms/{id}', [\App\Http\Controllers\Api\TermsController::class, 'show'])
+            ->name('api.admin.terms.show');
+        Route::post('terms', [\App\Http\Controllers\Api\TermsController::class, 'store'])
+            ->middleware('permission:terms.create')
+            ->name('api.admin.terms.store');
+        Route::put('terms/{id}', [\App\Http\Controllers\Api\TermsController::class, 'update'])
+            ->middleware('permission:terms.edit')
+            ->name('api.admin.terms.update');
+        Route::delete('terms/{id}', [\App\Http\Controllers\Api\TermsController::class, 'destroy'])
+            ->middleware('permission:terms.delete')
+            ->name('api.admin.terms.destroy');
     });
 });
 

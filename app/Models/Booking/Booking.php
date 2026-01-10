@@ -144,7 +144,13 @@ use App\Enums\QCStatus;
  */
 class Booking extends BaseModel
 {
-
+    /**
+     * Accepted T&C for this booking (booking_terms)
+     */
+    public function acceptedTerms()
+    {
+        return $this->hasMany(\App\Models\Booking\BookingTerm::class, 'booking_id');
+    }
 
     /**
      * The attributes that are mass assignable.

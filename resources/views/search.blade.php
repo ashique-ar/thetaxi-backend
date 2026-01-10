@@ -530,15 +530,6 @@
             line-height: 1.3;
             min-height: 48px;
         }
-
-        /* Specs Grid */
-        .vehicle-specs {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-            margin-bottom: 16px;
-        }
-
         .spec-item {
             display: flex;
             align-items: center;
@@ -749,11 +740,6 @@
             }
         }
 
-        @media (max-width: 575px) {
-            .vehicle-specs {
-                grid-template-columns: 1fr;
-            }
-        }
 
         /* ==================== SERVICE-AWARE FEATURES ==================== */
         /* Recommended Vehicle Badge */
