@@ -222,7 +222,8 @@ class PendingPaymentManager
                 'customer',
                 'vehicleGroup',
                 'serviceType',
-                'bookingItems',
+                'bookingItems.vehicleGroup',
+                'bookingItems.serviceType',
                 'addons'
             ]);
         } catch (\Exception $e) {
@@ -290,19 +291,82 @@ class PendingPaymentManager
                 'currency' => $booking->currency ?? 'LKR',
             ],
             'items_count' => $itemsCount,
-            'booking_items' => $booking->bookingItems->map(fn($item) => [
-                'vehicle_group' => $item->vehicle_group_name ?? ($item->vehicleGroup?->name ?? 'N/A'),
-                'service_type' => $item->service_type_name ?? ($item->serviceType?->name ?? 'N/A'),
-                'from_date' => $item->from_date?->toDateString(),
-                'to_date' => $item->to_date?->toDateString(),
-                'from_time' => $item->from_time,
-                'to_time' => $item->to_time,
-                'duration_days' => $item->duration_days,
-                'pickup_location' => json_decode($item->pickup_location ?? '{}', true),
-                'dropoff_location' => json_decode($item->dropoff_location ?? '{}', true),
-                'unit_price' => $item->unit_price,
-                'total_price' => $item->total_price,
-            ])->toArray(),
+            'booking_items' => $booking->bookingItems->map(function ($item) {
+                // Get vehicle group images
+                $vehicleGroupImages = [];
+                $vehicleGroup = $item->vehicleGroup;
+                if ($vehicleGroup && $vehicleGroup->images) {
+                    $vehicleGroupImages = is_array($vehicleGroup->images) ? $vehicleGroup->images : [];
+                }
+
+                // Process addons data with improved structure
+                $addonsData = [];
+                if ($item->addons && is_array($item->addons)) {
+                    foreach ($item->addons as $addon) {
+                        $addonName = $addon['name'] ?? ($addon['label'] ?? ($addon['addon_name'] ?? 'Unknown Add-on'));
+                        $addonQty = max(1, (int) ($addon['quantity'] ?? ($addon['qty'] ?? 1)));
+                        $addonRate = (float) ($addon['rate'] ?? ($addon['unit_price'] ?? ($addon['price'] ?? ($addon['amount'] ?? 0))));
+                        $addonTotal = (float) ($addon['total_price'] ?? ($addon['total'] ?? ($addon['calculated_amount'] ?? ($addon['amount'] ?? ($addonRate * $addonQty)))));
+                        
+                        if ($addonName && ($addonTotal > 0 || $addonRate > 0)) {
+                            $addonsData[] = [
+                                'name' => $addonName,
+                                'quantity' => $addonQty,
+                                'qty' => $addonQty, // Keep both for compatibility
+                                'rate' => $addonRate,
+                                'unit_price' => $addonRate, // Keep both for compatibility
+                                'total_price' => $addonTotal,
+                                'total' => $addonTotal, // Keep both for compatibility
+                            ];
+                        }
+                    }
+                }
+
+                // Check for extra kilometers in customizations or metadata
+                $extraKilometers = 0;
+                $extraKmRate = 0;
+                $extraKmTotal = 0;
+
+                $customizations = $item->customizations ?? [];
+                $metadata = $item->metadata ?? [];
+
+                // Look for extra kilometers in various places
+                if (is_array($customizations)) {
+                    foreach ($customizations as $customization) {
+                        if (isset($customization['type']) && in_array($customization['type'], ['extra_km', 'extra_kilometers', 'additional_km'])) {
+                            $extraKilometers = $customization['quantity'] ?? $customization['km'] ?? $customization['value'] ?? 0;
+                            $extraKmRate = $customization['rate'] ?? $customization['price_per_km'] ?? 0;
+                            $extraKmTotal = $customization['total'] ?? ($extraKilometers * $extraKmRate);
+                            break;
+                        }
+                    }
+                }
+
+                if ($extraKilometers == 0 && is_array($metadata)) {
+                    $extraKilometers = $metadata['extra_km'] ?? $metadata['extra_kilometers'] ?? $metadata['additional_km'] ?? 0;
+                    $extraKmRate = $metadata['extra_km_rate'] ?? $metadata['km_rate'] ?? 0;
+                    $extraKmTotal = $metadata['extra_km_total'] ?? ($extraKilometers * $extraKmRate);
+                }
+
+                return [
+                    'vehicle_group' => $item->vehicle_group_name ?? ($item->vehicleGroup?->name ?? 'N/A'),
+                    'service_type' => $item->service_type_name ?? ($item->serviceType?->name ?? 'N/A'),
+                    'from_date' => $item->from_date?->toDateString(),
+                    'to_date' => $item->to_date?->toDateString(),
+                    'from_time' => $item->from_time,
+                    'to_time' => $item->to_time,
+                    'duration_days' => $item->duration_days,
+                    'pickup_location' => json_decode($item->pickup_location ?? '{}', true),
+                    'dropoff_location' => json_decode($item->dropoff_location ?? '{}', true),
+                    'unit_price' => $item->unit_price,
+                    'total_price' => $item->total_price,
+                    'vehicle_group_images' => $vehicleGroupImages,
+                    'addons' => $addonsData,
+                    'extra_kilometers' => $extraKilometers,
+                    'extra_km_rate' => $extraKmRate,
+                    'extra_km_total' => $extraKmTotal,
+                ];
+            })->toArray(),
             'addons_count' => $addonsCount,
             'payment_method' => $booking->payment_method,
             'payment_status' => $booking->payment_status,

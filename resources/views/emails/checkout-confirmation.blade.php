@@ -160,6 +160,35 @@
                     <td>-{{ $currencySymbol }} {{ number_format($booking->discount_amount, 2) }}</td>
                 </tr>
             @endif
+
+            @php
+                $addonCharges = (float) ($booking->bookingAddons->sum('amount') ?? 0);
+                $extraKmCharges = (float) ($booking->bookingAddons->where('is_milage', true)->sum('amount') ?? 0);
+                if (empty($extraKmCharges)) {
+                    $workflow = is_string($booking->workflow_data)
+                        ? json_decode($booking->workflow_data, true)
+                        : $booking->workflow_data ?? [];
+                    $extraKmCharges = 0;
+                    foreach ($workflow['cart_items'] ?? [] as $ci) {
+                        $extraKmCharges += (float) ($ci['extra_km']['total_cost'] ?? 0);
+                    }
+                }
+            @endphp
+
+            @if ($addonCharges > 0)
+                <tr>
+                    <td>Addon Charges</td>
+                    <td>{{ $currencySymbol }} {{ number_format($addonCharges, 2) }}</td>
+                </tr>
+            @endif
+
+            @if ($extraKmCharges > 0)
+                <tr>
+                    <td>Extra KM Charges</td>
+                    <td>{{ $currencySymbol }} {{ number_format($extraKmCharges, 2) }}</td>
+                </tr>
+            @endif
+
             <tr class="price-total">
                 <td>Total Amount</td>
                 <td>{{ $currencySymbol }} {{ number_format($booking->total_estimated, 2) }}</td>

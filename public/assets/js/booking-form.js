@@ -1045,16 +1045,12 @@
         if (fromAirportSelect && !fromAirportSelect.hasAirportHandler) {
             fromAirportSelect.addEventListener('change', function () {
                 const selectedOption = this.options[this.selectedIndex];
-                console.log('FROM airport changed:', selectedOption.value);
 
                 if (selectedOption && selectedOption.dataset.lat && selectedOption.dataset.lng) {
                     if (fromLat && fromLng) {
                         fromLat.value = selectedOption.dataset.lat;
                         fromLng.value = selectedOption.dataset.lng;
-                        console.log('FROM airport coordinates set:', {
-                            lat: fromLat.value,
-                            lng: fromLng.value
-                        });
+      
                     } else {
                         console.error('FROM coordinate inputs not found');
                     }

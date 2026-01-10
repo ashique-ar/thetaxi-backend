@@ -469,6 +469,10 @@ class CartService
             $serviceType = $item['service_type'] ?? '';
             $isPackage = ($item['is_package'] ?? false) || in_array($serviceType, ['wedding_hire', 'airport_transfers']);
 
+            // Preserve service package info
+            $servicePackageInfo = $item['service_package_info'] ?? null;
+            $servicePackageId = $item['service_package_id'] ?? null;
+
             // Convert prices from LKR (stored) to selected currency
             if (isset($item['price'])) {
                 $item['price'] = $this->currencyService->convertFromLKR((float) $item['price'], $selectedCurrency);
@@ -498,10 +502,20 @@ class CartService
             $item['currency'] = $selectedCurrency;
             $item['is_package'] = $isPackage;
             $item['service_type'] = $serviceType;
+            $item['service_package_id'] = $servicePackageId;
+            $item['service_package_info'] = $servicePackageInfo;
             $item['currency_symbol'] = getCurrencySymbol($selectedCurrency);
 
             return $item;
-        })->toArray();
+        })
+        // Sort items by pickup date (earliest first) for consistent display across the UI
+        ->sortBy(function ($i) {
+            // Normalize pickup date - missing dates go to end
+            $d = $i['pickup_date'] ?? ($i['from_date'] ?? null);
+            return $d ? \Carbon\Carbon::parse($d)->format('Y-m-d H:i:s') : '9999-12-31 23:59:59';
+        })
+        ->values()
+        ->toArray();
 
         // Convert totals to selected currency
         $totals = $cart->totals ?? [];

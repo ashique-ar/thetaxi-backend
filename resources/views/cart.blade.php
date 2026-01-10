@@ -136,36 +136,54 @@
                                                         @endif
                                                     </div>
                                                     <div class="product-info-content">
-                                                        <h6>{{ $item['name'] ?? 'Vehicle Rental' }} <span
-                                                                class="badge bg-warning rounded-pill"
-                                                                style="font-size: 10px; vertical-align: middle;">{{ $item['service_type_data']['name'] ?? 'Service Type' }}</span>
+                                                        <h6>
+                                                            {{ $item['name'] ?? 'Vehicle Rental' }}
                                                         </h6>
+                                                        <!-- Service Type Badge - Highlighted -->
+                                                        <span class="service-type-badge" style="display: inline-block; background-color: #e8f4f8; color: #0066cc; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; margin-bottom: 8px; border: 1px solid #0066cc;">
+                                                            <i class="bi bi-tag"></i> {{ $item['service_type_data']['name'] ?? ($item['service_type'] ?? 'Service') }}
+                                                        </span>
+
+                                                        @php
+                                                            // Normalize pickup/dropoff display: support arrays and missing fields
+                                                            $pickupLoc = is_array($item['pickup_location'] ?? null)
+                                                                ? ($item['pickup_location']['address'] ?? '')
+                                                                : ($item['pickup_location'] ?? '');
+                                                            $dropoffLoc = is_array($item['dropoff_location'] ?? null)
+                                                                ? ($item['dropoff_location']['address'] ?? '')
+                                                                : ($item['dropoff_location'] ?? '');
+
+                                                            // For airport transfers, fallback to airport fields or flight details
+                                                            if (($item['service_type'] ?? '') === 'airport_transfers') {
+                                                                $pickupLoc = $pickupLoc ?: ($item['pickup_airport'] ?? ($item['flight_details']['arrival_airport'] ?? ''));
+                                                                $dropoffLoc = $dropoffLoc ?: ($item['dropoff_airport'] ?? ($item['flight_details']['departure_airport'] ?? ''));
+                                                            }
+                                                        @endphp
 
                                                         <div class="booking-details">
                                                             @if (isset($item['pickup_date']) && isset($item['return_date']))
-                                                                <p>
-                                                                    {{ $item['pickup_location'] }} -
-                                                                    {{ $item['dropoff_location'] }}
+                                                                <!-- Pickup and Dropoff Locations - Always Displayed -->
+                                                                <p style="margin-bottom: 6px;">
+                                                                    <i class="bi bi-geo-alt-fill" style="color: #0066cc;"></i>
+                                                                    <strong>{{ $pickupLoc ?: 'Pickup Location' }}</strong>
+                                                                    <i class="bi bi-arrow-right" style="margin: 0 4px; color: #999;"></i>
+                                                                    <strong>{{ $dropoffLoc ?: 'Dropoff Location' }}</strong>
                                                                 </p>
 
-                                                                <p>
+                                                                <p style="margin-bottom: 6px;">
+                                                                    <i class="bi bi-calendar-event" style="color: #666;"></i>
                                                                     {{ $pickupDate->format('M d, Y') }}
                                                                     @if (isset($item['from_time']))
-                                                                        <span class="text-muted">@
-                                                                            {{ $item['from_time'] }}</span>
+                                                                        <span class="text-muted">@ {{ $item['from_time'] }}</span>
                                                                     @endif
-                                                                    -
+                                                                    <span style="margin: 0 4px; color: #999;">→</span>
                                                                     {{ $returnDate->format('M d, Y') }}
                                                                     @if (isset($item['to_time']))
-                                                                        <span class="text-muted">@
-                                                                            {{ $item['to_time'] }}</span>
+                                                                        <span class="text-muted">@ {{ $item['to_time'] }}</span>
                                                                     @endif
                                                                 </p>
-                                                                <p class="text-muted"
-                                                                    style="font-size: 12px; margin-top: 8px;">
-                                                                    <i class="bi bi-calendar-event"></i> <strong>Duration:
-                                                                        {{ $calculatedDays }}
-                                                                        day{{ $calculatedDays !== 1 ? 's' : '' }}</strong>
+                                                                <p class="text-muted" style="font-size: 12px; margin-top: 8px;">
+                                                                    <i class="bi bi-hourglass-split"></i> <strong>Duration: {{ $calculatedDays }} day{{ $calculatedDays !== 1 ? 's' : '' }}</strong>
                                                                 </p>
                                                             @endif
                                                         </div>
@@ -1574,27 +1592,35 @@
                     success: function(response) {
                         loadingEl.hide();
 
-                        if (response.success && response.data.rate) {
-                            const rate = response.data.rate.rate;
-                            const currentExtraKm = response.data.current_extra_km;
+                        // Show extra-km UI only when vehicle group has slab pricing configured
+                        const hasSlab = Boolean(response.success && response.data && response.data.has_slab);
 
-                            // Update rate display
+                        if (!hasSlab) {
+                            unavailableEl.show();
+                            return;
+                        }
+
+                        const rateObj = response.data.rate || null;
+                        const currentExtraKm = response.data.current_extra_km || null;
+
+                        // If rate info present, update rate display
+                        if (rateObj && rateObj.rate) {
+                            const rate = rateObj.rate;
                             container.find('.extra-km-rate').text(parseFloat(rate).toFixed(2));
                             container.data('rate', rate);
-
-                            // Update current values if extra km already added
-                            if (currentExtraKm && currentExtraKm.km > 0) {
-                                container.find('.extra-km-input').val(currentExtraKm.km);
-                                container.find('.extra-km-total-amount').text(parseFloat(currentExtraKm
-                                    .total_cost).toFixed(2));
-                                container.find('.remove-extra-km').show();
-                            }
-
-                            formEl.show();
-                        } else {
-                            unavailableEl.show();
                         }
+
+                        // Update current values if extra km already added
+                        if (currentExtraKm && currentExtraKm.km > 0) {
+                            container.find('.extra-km-input').val(currentExtraKm.km);
+                            container.find('.extra-km-total-amount').text(parseFloat(currentExtraKm.total_cost).toFixed(2));
+                            container.find('.remove-extra-km').show();
+                        }
+
+                        // Show the form for slab-priced items
+                        formEl.show();
                     },
+
                     error: function(xhr) {
                         console.error('Error loading extra km rate:', xhr);
                         loadingEl.hide();
@@ -2139,6 +2165,19 @@
         /* ==========================================
                                    Extra KM Purchase Section Styles
                                    ========================================== */
+
+        /* Service type badge */
+        .service-type-badge {
+            display: inline-block;
+            background: #e3f2fd;
+            color: #1976d2;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 12px;
+            margin-left: 8px;
+            vertical-align: middle;
+        }
         .extra-km-row {
             background-color: #f5f8ff;
             border-top: 2px solid #d0d8e8;

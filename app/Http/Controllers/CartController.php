@@ -303,6 +303,9 @@ class CartController extends Controller
                         'longitude' => $returnLng
                     ];
 
+                    // Extract service package ID from search_data if available
+                    $servicePackageIdForPricing = $searchData['service_package_id'] ?? $request->input('service_package_id');
+
                     $pricingParams = [
                         'service_type' => $serviceTypeModel->id,
                         'vehicle_groups' => [$vehicleId],
@@ -313,6 +316,16 @@ class CartController extends Controller
                         'pickup_location' => $pickupLocationArray,
                         'dropoff_location' => $returnLocationArray
                     ];
+
+                    // Add service package ID to pricing params if provided (BookingFlowService expects 'package_id')
+                    if ($servicePackageIdForPricing) {
+                        $pricingParams['package_id'] = $servicePackageIdForPricing;
+                    }
+
+                    Log::info('Cart add pricing params', [
+                        'service_package_id' => $servicePackageIdForPricing,
+                        'pricing_params' => $pricingParams
+                    ]);
 
                     // Get pricing from BookingFlowService
                     $availabilityData = $this->bookingFlowService->getAvailableVehicleGroups($pricingParams);
@@ -385,6 +398,25 @@ class CartController extends Controller
             // Determine if this is a package service for proper cart calculation
             $isPackageService = in_array($serviceType, ['wedding_hire', 'airport_transfers']);
 
+            // Get service package info if provided in search_data
+            $servicePackageId = $searchData['service_package_id'] ?? $request->input('service_package_id');
+            $servicePackageInfo = null;
+            if ($servicePackageId) {
+                $servicePackage = \App\Models\Service\ServicePackage::find($servicePackageId);
+                if ($servicePackage) {
+                    $servicePackageInfo = [
+                        'id' => $servicePackage->id,
+                        'name' => $servicePackage->name,
+                        'code' => $servicePackage->code,
+                        'price_multiplier' => (float) $servicePackage->price_multiplier,
+                        'rate_type' => $servicePackage->rate_type,
+                        'max_km_per_day' => (float) $servicePackage->max_km_per_day,
+                        'max_km_per_package' => (float) $servicePackage->max_km_per_package,
+                        'default_duration_hours' => (int) $servicePackage->default_duration_hours,
+                    ];
+                }
+            }
+
             $cartItem = [
                 'vehicle_group_id' => $vehicleId,
                 'name' => $vehicleGroup?->name ?? $name,
@@ -407,6 +439,8 @@ class CartController extends Controller
                 'return_longitude' => $returnLng,
                 'service_type' => $serviceType,
                 'service_type_data' => $serviceTypeModel,
+                'service_package_id' => $servicePackageId,
+                'service_package_info' => $servicePackageInfo, // Store service package details
                 'search_data' => $searchData,
                 'base_currency' => 'LKR', // Mark as LKR base pricing
                 'is_package' => $isPackageService, // Critical: Mark package services to prevent double multiplication
@@ -462,23 +496,48 @@ class CartController extends Controller
             'cart_key' => 'required|string'
         ]);
 
-        $dbCart = $this->cartService->getOrCreateCart();
+        try {
+            $dbCart = $this->cartService->getOrCreateCart();
 
-        if ($this->cartService->removeItem($dbCart, $validated['cart_key'])) {
-            // Invalidate cart cache
-            $this->invalidateCartCache();
+            // Check if item exists before attempting removal
+            $item = $dbCart->getItem($validated['cart_key']);
+            if (!$item) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Item not found in cart'
+                ], 404);
+            }
+
+            // Remove the item
+            if ($this->cartService->removeItem($dbCart, $validated['cart_key'])) {
+                // Invalidate cart cache to force fresh data on next request
+                $this->invalidateCartCache();
+
+                // Reload cart from database to ensure fresh data
+                $dbCart = $this->cartService->getOrCreateCart();
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Item removed from cart successfully',
+                    'cart' => $this->cartService->toArray($dbCart)
+                ]);
+            }
 
             return response()->json([
-                'success' => true,
-                'message' => 'Item removed from cart successfully',
-                'cart' => $this->cartService->toArray($dbCart)
+                'success' => false,
+                'message' => 'Failed to remove item from cart'
+            ], 400);
+        } catch (\Exception $e) {
+            Log::error('Error removing item from cart', [
+                'error' => $e->getMessage(),
+                'cart_key' => $validated['cart_key'] ?? null
             ]);
-        }
 
-        return response()->json([
-            'success' => false,
-            'message' => 'Item not found in cart'
-        ], 404);
+            return response()->json([
+                'success' => false,
+                'message' => 'Error removing item from cart'
+            ], 500);
+        }
     }
 
     /**
@@ -1008,12 +1067,18 @@ class CartController extends Controller
             $extraKmRate = $this->cartService->getExtraKmRateForVehicleGroup($vehicleGroupId);
             $currentExtraKm = $this->cartService->getItemExtraKm($dbCart, $cartKey);
 
+            // Determine if this vehicle group has slab pricing configured (slab-based pricing implies extra-km purchase availability)
+            $hasSlabPricing = \App\Models\Vehicle\VehiclePricing\VehicleGroupPricing::where('vehicle_group_id', $vehicleGroupId)
+                ->where('is_active', true)
+                ->exists();
+
             return response()->json([
                 'success' => true,
                 'data' => [
                     'rate' => $extraKmRate,
                     'current_extra_km' => $currentExtraKm,
-                    'vehicle_group_id' => $vehicleGroupId
+                    'vehicle_group_id' => $vehicleGroupId,
+                    'has_slab' => (bool) $hasSlabPricing,
                 ]
             ]);
         } catch (\Exception $e) {

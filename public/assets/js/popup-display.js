@@ -299,23 +299,24 @@
             // Prefer server-generated S3 URL if provided (popup.image_url), otherwise fall back
             const imageSrc = popup.image_url || this.getImageUrl(popup.image);
 
-            // Decide whether media is an image or a video
+            // Decide whether media is an image or a video using the resolved URL (imageSrc)
             let mediaHtml = '';
-            if (popup.image) {
-                const ext = (popup.image || '').split('.').pop().toLowerCase();
-                const isVideo = ['mp4', 'webm', 'ogg', 'mov', 'avi'].includes(ext);
+            const srcForExt = String(imageSrc || popup.image || '');
+            const ext = (srcForExt.split('.').pop() || '').toLowerCase();
+            const isVideo = ['mp4', 'webm', 'ogg', 'mov', 'avi'].includes(ext);
 
+            if (imageSrc) {
                 if (isVideo) {
                     mediaHtml = `
                         <div class="popup-image-wrapper">
-                            <video src="${this.escapeHtml(imageSrc || '')}" 
+                            <video src="${this.escapeHtml(imageSrc)}" 
                                    class="popup-video" controls autoplay muted loop playsinline></video>
                         </div>
                     `;
                 } else {
                     mediaHtml = `
                         <div class="popup-image-wrapper">
-                            <img src="${this.escapeHtml(imageSrc || '')}" 
+                            <img src="${this.escapeHtml(imageSrc)}" 
                                  alt="${this.escapeHtml(popup.title || 'Promotional popup')}" 
                                  class="popup-image"
                                  loading="lazy">
@@ -323,11 +324,15 @@
                     `;
                 }
             }
-            const titleHtml = popup.title ? `
-                <h3 class="popup-title">${this.escapeHtml(popup.title)}</h3>
+            const titleText = popup.title ? String(popup.title).trim() : '';
+            const contentText = popup.content ? String(popup.content).trim() : '';
+
+            const titleHtml = titleText ? `
+                <h3 class="popup-title">${this.escapeHtml(titleText)}</h3>
             ` : '';
 
-            const contentHtml = popup.content ? `
+            // Keep content as-is (allow HTML) but treat whitespace-only content as empty
+            const contentHtml = contentText ? `
                 <div class="popup-content">${popup.content}</div>
             ` : '';
 
@@ -345,6 +350,10 @@
                 </div>
             ` : '';
 
+            // Only render popup body when at least one of title/content/cta exists
+            const hasBody = Boolean(titleHtml || contentHtml || ctaHtml);
+            const bodyHtml = hasBody ? `\n                <div class="popup-body">\n                    ${titleHtml}\n                    ${contentHtml}\n                    ${ctaHtml}\n                </div>\n            ` : '';
+
             return `
                 <div id="popup-modal-${popup.id}" 
                      class="popup-modal-overlay" 
@@ -356,12 +365,8 @@
                             <button type="button" class="popup-close-btn" aria-label="Close popup">
                                 <i class="bi bi-x-lg"></i>
                             </button>
-                            ${imageHtml}
-                            <div class="popup-body">
-                                ${titleHtml}
-                                ${contentHtml}
-                                ${ctaHtml}
-                            </div>
+                            ${mediaHtml}
+                            ${bodyHtml}
                         </div>
                     </div>
                 </div>
@@ -376,19 +381,31 @@
         getImageUrl(imagePath) {
             if (!imagePath) return '';
 
-            // If it's already a full URL, return as-is
-            if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
-                return imagePath;
+            const trimmed = String(imagePath).trim();
+
+            // Full URL -> return as-is
+            if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+                return trimmed;
             }
 
-            // Check if s3_asset function result (already processed)
-            if (imagePath.includes('s3.amazonaws.com') || imagePath.includes('cloudfront.net')) {
-                return imagePath;
+            // Already S3 or CDN -> return as-is
+            if (trimmed.includes('s3.amazonaws.com') || trimmed.includes('cloudfront.net')) {
+                return trimmed;
             }
 
-            // Assume it's an S3 path - construct URL
-            // This should match the s3_asset helper behavior
-            return imagePath;
+            // Absolute path -> return as-is
+            if (trimmed.startsWith('/')) {
+                return trimmed;
+            }
+
+            // Relative path with folders -> make it absolute
+            if (trimmed.includes('/')) {
+                return '/' + trimmed.replace(/^\/+/, '');
+            }
+
+            // Plain filename -> assume Angular public popups folder
+            // e.g., /popups/media/your-file.jpg
+            return '/popups/media/' + trimmed;
         }
 
         /**

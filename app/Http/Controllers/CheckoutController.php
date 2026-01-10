@@ -65,7 +65,11 @@ class CheckoutController extends Controller
      */
     protected function reloadBookingForEmail(Booking $booking): Booking
     {
-        return Booking::with(['customer', 'bookingItems'])->findOrFail($booking->id);
+        return Booking::with([
+            'customer',
+            'bookingItems.vehicleGroup',
+            'bookingItems.serviceType'
+        ])->findOrFail($booking->id);
     }
 
     /**
@@ -343,6 +347,13 @@ class CheckoutController extends Controller
                 'additional_notes' => $validated['additional_notes'] ?? null,
                 'budget_range' => $validated['budget_range'] ?? null,
                 'cart_items' => $cart,
+                'service_packages' => collect($cart)->map(function ($item) {
+                    return [
+                        'vehicle_group_id' => $item['vehicle_group_id'] ?? null,
+                        'service_package_id' => $item['service_package_id'] ?? null,
+                        'service_package_info' => $item['service_package_info'] ?? null,
+                    ];
+                })->toArray(),
             ];
 
             if ($flightDetails) {
@@ -458,6 +469,8 @@ class CheckoutController extends Controller
                     'metadata' => [
                         'cart_key' => $cartKey,
                         'item_index' => array_search($cartKey, array_keys($cart)),
+                        'service_package_id' => $item['service_package_id'] ?? null,
+                        'service_package_info' => $item['service_package_info'] ?? null,
                     ]
                 ]);
 
@@ -736,8 +749,12 @@ class CheckoutController extends Controller
             return redirect()->route('home')->with('error', 'Invalid booking reference.');
         }
 
-        // Fetch booking for display
-        $booking = Booking::where('booking_number', $reference)->first();
+        // Fetch booking for display with eager loaded relationships
+        $booking = Booking::with([
+            'customer',
+            'bookingItems.vehicleGroup',
+            'bookingItems.serviceType'
+        ])->where('booking_number', $reference)->first();
 
         if (!$booking) {
             return redirect()->route('home')->with('error', 'Booking not found.');

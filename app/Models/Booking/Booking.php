@@ -521,7 +521,8 @@ class Booking extends BaseModel
      */
     public function bookingItems()
     {
-        return $this->hasMany(BookingItem::class);
+        // Order booking items by pickup/start date to ensure consistent chronological display
+        return $this->hasMany(BookingItem::class)->orderBy('from_date', 'asc');
     }
 
     /**

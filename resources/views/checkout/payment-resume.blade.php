@@ -59,11 +59,60 @@
                             </h2>
                             @if (!empty($context['booking_items']))
                                 @foreach ($context['booking_items'] as $index => $item)
+                                    @php
+                                        // Get vehicle group images if available from context
+                                        $vehicleGroupImages = $item['vehicle_group_images'] ?? [];
+                                        $defaultImage = null;
+                                        if (!empty($vehicleGroupImages)) {
+                                            $defaultImage = is_array($vehicleGroupImages[0])
+                                                ? $vehicleGroupImages[0]['url'] ??
+                                                    ($vehicleGroupImages[0]['path'] ?? null)
+                                                : $vehicleGroupImages[0];
+                                        }
+                                        
+                                        // Process addons data consistently
+                                        $itemAddons = $item['addons'] ?? [];
+                                        $addonsList = [];
+                                        if (is_array($itemAddons)) {
+                                            foreach ($itemAddons as $addon) {
+                                                $addonName = $addon['name'] ?? ($addon['label'] ?? ($addon['addon_name'] ?? 'Unknown Add-on'));
+                                                $addonQty = max(1, (int) ($addon['quantity'] ?? ($addon['qty'] ?? 1)));
+                                                $addonRate = (float) ($addon['rate'] ?? ($addon['unit_price'] ?? ($addon['price'] ?? ($addon['amount'] ?? 0))));
+                                                $addonTotal = (float) ($addon['total_price'] ?? ($addon['total'] ?? ($addon['calculated_amount'] ?? ($addon['amount'] ?? ($addonRate * $addonQty)))));
+                                                
+                                                if ($addonName && ($addonTotal > 0 || $addonRate > 0)) {
+                                                    $addonsList[] = [
+                                                        'name' => $addonName,
+                                                        'qty' => $addonQty,
+                                                        'rate' => $addonRate,
+                                                        'total' => $addonTotal,
+                                                    ];
+                                                }
+                                            }
+                                        }
+                                        
+                                        // Check for extra kilometers
+                                        $extraKilometers = $item['extra_kilometers'] ?? ($item['extra_km'] ?? 0);
+                                        $extraKmRate = $item['extra_km_rate'] ?? ($item['km_rate'] ?? 0);
+                                        $extraKmTotal = $item['extra_km_total'] ?? ($extraKilometers * $extraKmRate);
+                                    @endphp
                                     <div class="booking-item-email">
-                                        <div class="vehicle-header">
-                                            <h3>Vehicle {{ $index + 1 }}: {{ $item['vehicle_group'] }}</h3>
-                                            <span class="service-type">{{ $item['service_type'] }}</span>
+                                        <div
+                                            style="display: flex; align-items: flex-start; gap: 15px; margin-bottom: 15px;">
+                                            @if ($defaultImage)
+                                                <div style="flex-shrink: 0;">
+                                                    <img src="{{ asset($defaultImage) }}" alt="{{ $item['vehicle_group'] }}"
+                                                        style="width: 120px; height: 80px; object-fit: cover; border-radius: 6px; border: 1px solid #ddd;">
+                                                </div>
+                                            @endif
+                                            <div style="flex: 1;">
+                                                <div class="vehicle-header">
+                                                    <h3>Vehicle {{ $index + 1 }}: {{ $item['vehicle_group'] }}</h3>
+                                                    <span class="service-type-badge">{{ $item['service_type'] }}</span>
+                                                </div>
+                                            </div>
                                         </div>
+
                                         <div class="trip-details">
                                             <div class="location-info">
                                                 <div class="pickup-info">
@@ -90,8 +139,72 @@
                                                     Days</span>
                                             </div>
                                         </div>
+
+                                        {{-- Selected Addons & Extra KM for context items (arrays) --}}
+                                        @if(!empty($addonsList))
+                                        <div class="addons-section" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #eee;">
+                                            <h4 style="margin: 0 0 10px 0; color: #333; font-size: 14px;">Selected Add-ons:</h4>
+                                            @foreach($addonsList as $addon)
+                                                <div style="display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px solid #f0f0f0;">
+                                                    <span>
+                                                        <strong>{{ $addon['name'] }}</strong>
+                                                        <small style="color: #777; margin-left: 4px;">
+                                                            (Qty: {{ $addon['qty'] }}@if($addon['rate'] > 0) × {{ $currencySymbol }}{{ number_format($addon['rate'], 2) }}@elseif($addon['total'] > 0 && $addon['qty'] > 0) - Avg: {{ $currencySymbol }}{{ number_format($addon['total'] / $addon['qty'], 2) }}@endif)
+                                                        </small>
+                                                    </span>
+                                                    <span style="color: #BF2629; font-weight: 600;">{{ $currencySymbol }}{{ number_format($addon['total'], 2) }}</span>
+                                                </div>
+                                            @endforeach
+                                        </div>
+                                        @endif
+                                        
+                                        @if($extraKilometers > 0)
+                                        <div class="extra-km-section" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #eee;">
+                                            <h4 style="margin: 0 0 10px 0; color: #333; font-size: 14px;">Extra Kilometers:</h4>
+                                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 5px 0;">
+                                                <span>
+                                                    <strong>{{ number_format($extraKilometers) }} km</strong>
+                                                    @if($extraKmRate > 0)
+                                                        <small style="color: #777;"> @ {{ $currencySymbol }}{{ number_format($extraKmRate, 2) }}/km</small>
+                                                    @endif
+                                                </span>
+                                                @if($extraKmTotal > 0)
+                                                    <span style="color: #BF2629; font-weight: 600;">{{ $currencySymbol }}{{ number_format($extraKmTotal, 2) }}</span>
+                                                @endif
+                                            </div>
+                                        </div>
+                                        @endif
                                     </div>
                                 @endforeach
+                            @endif
+
+                            @php
+                                // Show addon/extra km totals if available in pricing context
+                                $pricing = $context['pricing'] ?? [];
+                                $contextAddonCharges = (float) ($pricing['addon_charges'] ?? 0);
+                                $contextExtraKmCharges = (float) ($pricing['extra_km_charges'] ?? 0);
+                            @endphp
+
+                            @if ($contextAddonCharges > 0 || $contextExtraKmCharges > 0)
+                                <div class="section" style="margin-top:12px;">
+                                    <h2 class="section-title"><span class="icon">➕</span> Additional Charges</h2>
+                                    <table class="info-table">
+                                        @if ($contextAddonCharges > 0)
+                                            <tr>
+                                                <td>Addon Charges</td>
+                                                <td>{{ $currencySymbol }} {{ number_format($contextAddonCharges, 2) }}
+                                                </td>
+                                            </tr>
+                                        @endif
+                                        @if ($contextExtraKmCharges > 0)
+                                            <tr>
+                                                <td>Extra KM Charges</td>
+                                                <td>{{ $currencySymbol }} {{ number_format($contextExtraKmCharges, 2) }}
+                                                </td>
+                                            </tr>
+                                        @endif
+                                    </table>
+                                </div>
                             @endif
                         </div>
 
@@ -393,13 +506,15 @@
             font-size: 16px;
         }
 
-        .service-type {
-            background: #BF2629;
-            color: white;
-            padding: 4px 12px;
+        .service-type-badge {
+            display: inline-block;
+            background: #e3f2fd;
+            color: #1976d2;
+            padding: 4px 8px;
             border-radius: 12px;
-            font-size: 12px;
             font-weight: 600;
+            font-size: 12px;
+            vertical-align: middle;
         }
 
         .trip-details {

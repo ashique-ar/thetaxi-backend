@@ -489,16 +489,20 @@
                                                                             {{ number_format($item['price'] ?? 0, 2) }}/day
                                                                             × {{ $calculatedDays }}
                                                                             day{{ $calculatedDays !== 1 ? 's' : '' }}</span>
-                                                                        <h6><a
-                                                                                href="#">{{ $item['name'] ?? '' }}</a>
+                                                                        <h6>
+                                                                            <a href="#">{{ $item['name'] ?? '' }}</a>
+                                                                            <span class="service-type-badge">{{ $item['service_type_data']['name'] ?? ($item['service_type'] ?? 'Service') }}</span>
                                                                         </h6>
-                                                                        <p><small>{{ $pickupDate ? $pickupDate->format('M d') : '' }}
-                                                                                -
-                                                                                {{ $returnDate ? $returnDate->format('M d, Y') : '' }}</small>
-                                                                        </p>
-                                                                        <p><small><i class="bi bi-geo-alt"></i>
-                                                                                {{ $item['pickup_location'] ?? 'Location' }}</small>
-                                                                        </p>
+                                                                        <p><small>{{ $pickupDate ? $pickupDate->format('M d') : '' }} - {{ $returnDate ? $returnDate->format('M d, Y') : '' }}</small></p>
+                                                                        @php
+                                                                            $pickupLoc = is_array($item['pickup_location'] ?? null) ? ($item['pickup_location']['address'] ?? '') : ($item['pickup_location'] ?? '');
+                                                                            $dropoffLoc = is_array($item['dropoff_location'] ?? null) ? ($item['dropoff_location']['address'] ?? '') : ($item['dropoff_location'] ?? '');
+                                                                            if (($item['service_type'] ?? '') === 'airport_transfers') {
+                                                                                $pickupLoc = $pickupLoc ?: ($item['pickup_airport'] ?? ($item['flight_details']['arrival_airport'] ?? ''));
+                                                                                $dropoffLoc = $dropoffLoc ?: ($item['dropoff_airport'] ?? ($item['flight_details']['departure_airport'] ?? ''));
+                                                                            }
+                                                                        @endphp
+                                                                        <p><small><i class="bi bi-geo-alt"></i> {{ $pickupLoc ?: 'N/A' }}</small></p>
                                                                     </div>
                                                                 </div>
                                                             </div>

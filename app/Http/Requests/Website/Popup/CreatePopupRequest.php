@@ -21,8 +21,9 @@ class CreatePopupRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'title' => ['required', 'string', 'max:255'],
-            'content' => ['required', 'string'],
+            // Title and content are optional to allow media-only popups
+            'title' => ['nullable', 'string', 'max:255'],
+            'content' => ['nullable', 'string'],
             'image' => ['nullable', 'string', 'max:500'],
             'cta_text' => ['nullable', 'string', 'max:100'],
             'cta_link' => ['nullable', 'string', 'max:500'],
@@ -46,8 +47,6 @@ class CreatePopupRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'title.required' => 'The title field is required.',
-            'content.required' => 'The content field is required.',
             'end_date.after_or_equal' => 'The end date must be after or equal to the start date.',
             'display_frequency.in' => 'Invalid display frequency value.',
             'target_pages.min' => 'At least one target page must be selected.',

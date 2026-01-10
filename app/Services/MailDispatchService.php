@@ -52,6 +52,9 @@ class MailDispatchService
      */
     protected function customerCcRecipients(): array
     {
+        if (app()->environment('local', 'testing')) {
+            return [];
+        }
         return array_values(array_filter(config('mail.customer_cc', [])));
     }
 
@@ -60,6 +63,9 @@ class MailDispatchService
      */
     protected function globalBccRecipients(): array
     {
+        if (app()->environment('local', 'testing')) {
+            return [];
+        }
         return array_values(array_filter(config('mail.bcc_all', [])));
     }
 }

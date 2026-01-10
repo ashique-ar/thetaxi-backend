@@ -133,5 +133,4 @@ return [
     'bcc_all' => [
         'sales@thetaxi.lk',
     ],
-
 ];

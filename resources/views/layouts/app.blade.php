@@ -33,7 +33,7 @@
     <link rel="stylesheet" href="{{ asset('assets/css/style.css?v=1.0.2') }}">
 
     <!-- Booking Form CSS -->
-    <link rel="stylesheet" href="{{ asset('assets/css/booking-form.css?v=1.0.05') }}">
+    <link rel="stylesheet" href="{{ asset('assets/css/booking-form.css?v=1.0.06') }}">
 
     <!-- Popup Modal CSS -->
     <link rel="stylesheet" href="{{ asset('assets/css/popup-modal.css?v=1.0') }}">
@@ -288,7 +288,7 @@
 
     <script src="{{ asset('assets/js/select-dropdown.js') }}"></script>
     <script src="{{ asset('assets/js/custom.js?v=1.0.01') }}"></script>
-    <script src="{{ asset('assets/js/booking-form.js?v=1.0.06') }}"></script>
+    <script src="{{ asset('assets/js/booking-form.js?v=1.0.07') }}"></script>
 
     <!-- Currency Switching JavaScript -->
     <script>
@@ -468,7 +468,7 @@
     </script>
 
     <!-- Popup Display Engine JS -->
-    <script src="{{ asset('assets/js/popup-display.js?v=1.0') }}"></script>
+    <script src="{{ asset('assets/js/popup-display.js?v=1.0.01') }}"></script>
 
     @stack('scripts')
 </body>

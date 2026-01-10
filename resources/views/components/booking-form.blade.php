@@ -128,6 +128,7 @@
 
             <!-- From Location -->
             <div class="single-search-box from-location location-search-box">
+                <label class="input-label">Pickup Location</label>
                 <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
                     <g>
                         <path
@@ -173,6 +174,7 @@
 
             <!-- To Location -->
             <div class="single-search-box to-location location-search-box">
+                <label class="input-label">Destination</label>
                 <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
                     <g>
                         <path
@@ -218,6 +220,7 @@
 
             <!-- Date -->
             <div class="single-search-box date-field">
+                <label class="input-label">Pickup Date</label>
                 <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
                     <path
                         d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z" />
@@ -233,6 +236,7 @@
 
             <!-- Time -->
             <div class="single-search-box">
+                <label class="input-label">Pickup Time</label>
                 <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
                     <path
                         d="M9 0C4.03 0 0 4.03 0 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm.5-12H8v5l4.25 2.52.75-1.23-3.5-2.08V4z" />
@@ -304,6 +308,7 @@
 
             <!-- Drop Off Location -->
             <div class="single-search-box location-search-box">
+                <label class="input-label">Drop Off Location</label>
                 <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
                     <g>
                         <path
@@ -411,6 +416,7 @@
             <input type="hidden" name="service_type" value="day_rental">
             <!-- Pickup Location -->
             <div class="single-search-box location-search-box">
+                <label class="input-label">Pickup Location</label>
                 <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
                     <g>
                         <path
@@ -461,6 +467,7 @@
 
             <!-- Pickup Date -->
             <div class="single-search-box date-field">
+                <label class="input-label">Pickup Date</label>
                 <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
                     <path
                         d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z" />
@@ -476,6 +483,7 @@
 
             <!-- Pickup Time -->
             <div class="single-search-box">
+                <label class="input-label">Pickup Time</label>
                 <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
                     <path
                         d="M9 0C4.03 0 0 4.03 0 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm.5-12H8v5l4.25 2.52.75-1.23-3.5-2.08V4z" />
@@ -492,6 +500,7 @@
 
             <!-- Drop Off Date -->
             <div class="single-search-box date-field">
+                <label class="input-label">Return Date</label>
                 <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
                     <path
                         d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z" />
@@ -507,6 +516,7 @@
 
             <!-- Drop Off Time -->
             <div class="single-search-box">
+                <label class="input-label">Return Time</label>
                 <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
                     <path
                         d="M9 0C4.03 0 0 4.03 0 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm.5-12H8v5l4.25 2.52.75-1.23-3.5-2.08V4z" />
@@ -1383,54 +1393,53 @@
 
         // Add coordinate debugging to form submissions
         $('form').on('submit', function(e) {
-        console.log('=== FORM SUBMISSION COORDINATE CHECK ===');
-        debugCoordinates();
+            console.log('=== FORM SUBMISSION COORDINATE CHECK ===');
+            debugCoordinates();
 
-        const form = this;
-        const formId = form.id;
-        let hasValidCoordinates = false;
+            const form = this;
+            const formId = form.id;
+            let hasValidCoordinates = false;
 
-        // Check coordinates based on form type
-        if (formId === 'airport_transfers-form') {
-            const fromLat = form.querySelector('input[name="pickup_lat"]');
-            const fromLng = form.querySelector('input[name="pickup_lng"]');
-            const toLat = form.querySelector('input[name="dropoff_lat"]');
-            const toLng = form.querySelector('input[name="dropoff_lng"]');
+            // Check coordinates based on form type
+            if (formId === 'airport_transfers-form') {
+                const fromLat = form.querySelector('input[name="pickup_lat"]');
+                const fromLng = form.querySelector('input[name="pickup_lng"]');
+                const toLat = form.querySelector('input[name="dropoff_lat"]');
+                const toLng = form.querySelector('input[name="dropoff_lng"]');
 
-            hasValidCoordinates = (fromLat && fromLat.value && fromLng && fromLng.value &&
-                toLat && toLat.value && toLng && toLng.value);
+                hasValidCoordinates = (fromLat && fromLat.value && fromLng && fromLng.value &&
+                    toLat && toLat.value && toLng && toLng.value);
 
-            console.log('Airport Transfer coordinates check:', {
-                fromLat: fromLat?.value,
-                fromLng: fromLng?.value,
-                toLat: toLat?.value,
-                toLng: toLng?.value
-            });
-        } else if ((formId === 'ride_now-form' || formId === 'day_rental-form' ||
-                formId === 'day_rental-form')) {
-            const pickupLat = form.querySelector('input[name="pickup_lat"]');
-            const pickupLng = form.querySelector('input[name="pickup_lng"]');
-            const dropoffLat = form.querySelector('input[name="dropoff_lat"]');
-            const dropoffLng = form.querySelector('input[name="dropoff_lng"]');
+                console.log('Airport Transfer coordinates check:', {
+                    fromLat: fromLat?.value,
+                    fromLng: fromLng?.value,
+                    toLat: toLat?.value,
+                    toLng: toLng?.value
+                });
+            } else if ((formId === 'ride_now-form' || formId === 'day_rental-form' ||
+                    formId === 'day_rental-form')) {
+                const pickupLat = form.querySelector('input[name="pickup_lat"]');
+                const pickupLng = form.querySelector('input[name="pickup_lng"]');
+                const dropoffLat = form.querySelector('input[name="dropoff_lat"]');
+                const dropoffLng = form.querySelector('input[name="dropoff_lng"]');
 
-            hasValidCoordinates = (pickupLat && pickupLat.value && pickupLng && pickupLng.value &&
-                dropoffLat && dropoffLat.value && dropoffLng && dropoffLng.value);
+                hasValidCoordinates = (pickupLat && pickupLat.value && pickupLng && pickupLng.value &&
+                    dropoffLat && dropoffLat.value && dropoffLng && dropoffLng.value);
 
-            console.log('Ride Now coordinates check:', {
-                pickupLat: pickupLat?.value,
-                pickupLng: pickupLng?.value,
-                dropoffLat: dropoffLat?.value,
-                dropoffLng: dropoffLng?.value
-            });
-        }
+                console.log('Ride Now coordinates check:', {
+                    pickupLat: pickupLat?.value,
+                    pickupLng: pickupLng?.value,
+                    dropoffLat: dropoffLat?.value,
+                    dropoffLng: dropoffLng?.value
+                });
+            }
 
-        if (!hasValidCoordinates) {
-            console.warn('WARNING: Some coordinates are missing for form:', formId);
-            // Still allow submission but log the warning
-        } else {
-            console.log('✓ All coordinates present for submission of form:', formId);
-        }
-        });
+            if (!hasValidCoordinates) {
+                console.warn('WARNING: Some coordinates are missing for form:', formId);
+                // Still allow submission but log the warning
+            } else {
+                console.log('✓ All coordinates present for submission of form:', formId);
+            }
         });
     </script>
 @endpush

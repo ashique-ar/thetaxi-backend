@@ -43,7 +43,12 @@
                     <i class="bi bi-car-front-fill me-1"></i>
                     Vehicle {{ $index + 1 }}: {{ $vehicleGroupName }}
                 </strong>
-                <div class="small text-muted">{{ $serviceTypeName }}</div>
+                <!-- Service Type Badge - Highlighted -->
+                <div class="small mt-1">
+                    <span class="badge bg-warning text-dark" style="font-size: 11px; font-weight: 600;">
+                        <i class="bi bi-tag"></i> {{ $serviceTypeName }}
+                    </span>
+                </div>
             </div>
             <div class="col-md-5 text-md-end">
                 <span class="badge bg-white text-dark border">
@@ -96,7 +101,12 @@
                     <i class="bi bi-car-front-fill me-2"></i>
                     Vehicle {{ $index + 1 }}: {{ $vehicleGroupName }}
                 </h6>
-                <p class="text-muted small mb-0">Service: {{ $serviceTypeName }}</p>
+                <!-- Service Type Badge - Highlighted -->
+                <div class="mt-2">
+                    <span class="badge bg-warning text-dark" style="font-size: 12px; font-weight: 600;">
+                        <i class="bi bi-tag"></i> {{ $serviceTypeName }}
+                    </span>
+                </div>
             </div>
             <div class="col-md-4 text-md-end">
                 <span class="badge bg-light text-dark border">
@@ -113,13 +123,13 @@
                     </div>
                     <div class="ms-3">
                         <div class="text-uppercase small text-muted font-weight-bold">
-                            Pickup
+                            Pickup Location
                         </div>
                         <div>
-                            {{ $fromDate }} at {{ $fromTime }}
-                        </div>
-                        <div class="small">
                             {{ $pickupAddress }}
+                        </div>
+                        <div class="small text-muted">
+                            {{ $fromDate }} at {{ $fromTime }}
                         </div>
                     </div>
                 </div>
@@ -131,13 +141,13 @@
                     </div>
                     <div class="ms-3">
                         <div class="text-uppercase small text-muted font-weight-bold">
-                            Return
+                            Return Location
                         </div>
                         <div>
-                            {{ $toDate }} at {{ $toTime }}
-                        </div>
-                        <div class="small">
                             {{ $dropoffAddress }}
+                        </div>
+                        <div class="small text-muted">
+                            {{ $toDate }} at {{ $toTime }}
                         </div>
                     </div>
                 </div>
