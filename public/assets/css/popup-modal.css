@@ -81,7 +81,7 @@
     color: #333;
 }
 
-/* Popup Image */
+/* Popup Image / Video */
 .popup-image-wrapper {
     width: 100%;
     max-height: 250px;
@@ -93,6 +93,14 @@
     height: auto;
     object-fit: cover;
     display: block;
+}
+
+.popup-video {
+    width: 100%;
+    height: auto;
+    display: block;
+    object-fit: cover;
+    max-height: 320px;
 }
 
 /* Popup Body */

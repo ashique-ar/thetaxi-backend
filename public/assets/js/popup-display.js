@@ -299,14 +299,30 @@
             // Prefer server-generated S3 URL if provided (popup.image_url), otherwise fall back
             const imageSrc = popup.image_url || this.getImageUrl(popup.image);
 
-            const imageHtml = popup.image ? `
-                <div class="popup-image-wrapper">
-                    <img src="${this.escapeHtml(imageSrc || '')}" 
-                         alt="${this.escapeHtml(popup.title || 'Promotional popup')}" 
-                         class="popup-image"
-                         loading="lazy">
-                </div>
-            ` : '';
+            // Decide whether media is an image or a video
+            let mediaHtml = '';
+            if (popup.image) {
+                const ext = (popup.image || '').split('.').pop().toLowerCase();
+                const isVideo = ['mp4', 'webm', 'ogg', 'mov', 'avi'].includes(ext);
+
+                if (isVideo) {
+                    mediaHtml = `
+                        <div class="popup-image-wrapper">
+                            <video src="${this.escapeHtml(imageSrc || '')}" 
+                                   class="popup-video" controls autoplay muted loop playsinline></video>
+                        </div>
+                    `;
+                } else {
+                    mediaHtml = `
+                        <div class="popup-image-wrapper">
+                            <img src="${this.escapeHtml(imageSrc || '')}" 
+                                 alt="${this.escapeHtml(popup.title || 'Promotional popup')}" 
+                                 class="popup-image"
+                                 loading="lazy">
+                        </div>
+                    `;
+                }
+            }
             const titleHtml = popup.title ? `
                 <h3 class="popup-title">${this.escapeHtml(popup.title)}</h3>
             ` : '';

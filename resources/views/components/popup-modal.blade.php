@@ -23,11 +23,19 @@
                     <i class="bi bi-x-lg"></i>
                 </button>
 
-                {{-- Popup Image --}}
+                {{-- Popup Media --}}
                 @if (!empty($popup['image']))
+                    @php
+                        $mediaPath = $popup['image'];
+                        $ext = strtolower(pathinfo($mediaPath, PATHINFO_EXTENSION));
+                        $isVideo = in_array($ext, ['mp4', 'webm', 'ogg', 'mov', 'avi']);
+                    @endphp
                     <div class="popup-image-wrapper">
-                        <img src="{{ s3_asset($popup['image']) }}" alt="{{ $popup['title'] ?? 'Promotional popup' }}"
-                            class="popup-image" loading="lazy">
+                        @if ($isVideo)
+                            <video class="popup-video" src="{{ s3_asset($mediaPath) }}" controls autoplay muted loop playsinline></video>
+                        @else
+                            <img src="{{ s3_asset($mediaPath) }}" alt="{{ $popup['title'] ?? 'Promotional popup' }}" class="popup-image" loading="lazy">
+                        @endif
                     </div>
                 @endif
 
@@ -155,6 +163,14 @@
         height: auto;
         object-fit: cover;
         display: block;
+    }
+
+    .popup-video {
+        width: 100%;
+        height: auto;
+        display: block;
+        object-fit: cover;
+        max-height: 320px;
     }
 
     /* Popup Body */
