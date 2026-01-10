@@ -49,10 +49,10 @@
         <div class="reference-number">{{ $booking->booking_number }}</div>
     </div>
 
-    <!-- Request Details Section -->
+    <!-- Customer Information Section -->
     <div class="section">
         <h2 class="section-title">
-            <span class="icon">📋</span> Your Request Details
+            <span class="icon">👤</span> Customer Information
         </h2>
         <table class="info-table">
             <tr>
@@ -67,6 +67,30 @@
                 <td>Phone</td>
                 <td>{{ $booking->customer?->phone ?? 'N/A' }}</td>
             </tr>
+            @if ($booking->customer?->identification ?? null)
+                <tr>
+                    <td>Identification</td>
+                    <td>{{ $booking->customer->identification }}</td>
+                </tr>
+            @endif
+            @if (!empty($booking->customer?->address))
+                <tr>
+                    <td>Address</td>
+                    <td>{{ $booking->customer->address }}</td>
+                </tr>
+            @endif
+            @if (!empty($booking->customer?->city))
+                <tr>
+                    <td>City</td>
+                    <td>{{ $booking->customer->city }}</td>
+                </tr>
+            @endif
+            @if (!empty($booking->customer?->country))
+                <tr>
+                    <td>Country</td>
+                    <td>{{ $booking->customer->country }}</td>
+                </tr>
+            @endif
             <tr>
                 <td>Preferred Contact Time</td>
                 <td>{{ $contactTime }}</td>

@@ -64,6 +64,30 @@
                 <td><a href="tel:{{ $customerPhone }}"
                         style="color: #BF2629; text-decoration: none;">{{ $customerPhone }}</a></td>
             </tr>
+            @if (isset($customerIdentification) && !empty($customerIdentification))
+                <tr>
+                    <td>Identification</td>
+                    <td>{{ $customerIdentification }}</td>
+                </tr>
+            @endif
+            @if (isset($customerAddress) && !empty($customerAddress))
+                <tr>
+                    <td>Address</td>
+                    <td>{{ $customerAddress }}</td>
+                </tr>
+            @endif
+            @if (isset($customerCity) && !empty($customerCity))
+                <tr>
+                    <td>City</td>
+                    <td>{{ $customerCity }}</td>
+                </tr>
+            @endif
+            @if (isset($customerCountry) && !empty($customerCountry))
+                <tr>
+                    <td>Country</td>
+                    <td>{{ $customerCountry }}</td>
+                </tr>
+            @endif
             @if ($companyName)
                 <tr>
                     <td>Company</td>

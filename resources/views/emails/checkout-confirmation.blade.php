@@ -82,6 +82,49 @@
     </div>
 
     <!-- Customer Information Section -->
+    <div class="section">
+        <h2 class="section-title">
+            <span class="icon">👤</span> Customer Information
+        </h2>
+        <table class="info-table">
+            <tr>
+                <td>Name</td>
+                <td>{{ $booking->customer->full_name ?? 'N/A' }}</td>
+            </tr>
+            <tr>
+                <td>Email</td>
+                <td>{{ $booking->customer->email ?? 'N/A' }}</td>
+            </tr>
+            <tr>
+                <td>Phone</td>
+                <td>{{ $booking->customer->phone ?? 'N/A' }}</td>
+            </tr>
+            @if ($booking->customer->identification ?? null)
+                <tr>
+                    <td>Identification</td>
+                    <td>{{ $booking->customer->identification }}</td>
+                </tr>
+            @endif
+            @if (!empty($booking->customer->address))
+                <tr>
+                    <td>Address</td>
+                    <td>{{ $booking->customer->address }}</td>
+                </tr>
+            @endif
+            @if (!empty($booking->customer->city))
+                <tr>
+                    <td>City</td>
+                    <td>{{ $booking->customer->city }}</td>
+                </tr>
+            @endif
+            @if (!empty($booking->customer->country))
+                <tr>
+                    <td>Country</td>
+                    <td>{{ $booking->customer->country }}</td>
+                </tr>
+            @endif
+        </table>
+    </div>
 
     <!-- Payment Summary Section -->
     <div class="section">
