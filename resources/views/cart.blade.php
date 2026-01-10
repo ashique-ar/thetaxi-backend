@@ -1116,25 +1116,33 @@
                             if (response.success && response.data) {
                                 // Fetch currently selected addons for this cart item
                                 $.ajax({
-                                    url: '{{ route('cart.addons.get', ['cartKey' => ':cartKey']) }}'.replace(':cartKey', cartKey),
+                                    url: '{{ route('cart.addons.get', ['cartKey' => ':cartKey']) }}'
+                                        .replace(':cartKey', cartKey),
                                     method: 'GET',
                                     success: function(resp2) {
                                         if (resp2.success && resp2.data) {
-                                            displayUnifiedAddonsForItem(cartKey, response.data, resp2.data, serviceType);
+                                            displayUnifiedAddonsForItem(cartKey,
+                                                response.data, resp2.data,
+                                                serviceType);
                                         } else {
-                                            displayUnifiedAddonsForItem(cartKey, response.data, {}, serviceType);
+                                            displayUnifiedAddonsForItem(cartKey,
+                                                response.data, {}, serviceType);
                                         }
                                         container.data('addons-loaded', true);
                                         resolve();
                                     },
                                     error: function() {
-                                        displayUnifiedAddonsErrorForItem(cartKey, 'Error loading services');
+                                        displayUnifiedAddonsErrorForItem(cartKey,
+                                            'Error loading services');
                                         container.data('addons-loaded', true);
-                                        reject(new Error('Error fetching selected addons'));
+                                        reject(new Error(
+                                            'Error fetching selected addons'
+                                            ));
                                     }
                                 });
                             } else {
-                                displayUnifiedAddonsErrorForItem(cartKey, 'No services available');
+                                displayUnifiedAddonsErrorForItem(cartKey,
+                                    'No services available');
                                 container.data('addons-loaded', true);
                                 resolve();
                             }
@@ -1166,7 +1174,10 @@
                             await loadUnifiedAddonsForItem(cartKey, serviceType);
                         } catch (e) {
                             console.warn('Preload addon error for', cartKey, e);
-                            errors.push({ cartKey, error: e });
+                            errors.push({
+                                cartKey,
+                                error: e
+                            });
                         }
                         // Small delay between requests
                         await new Promise(r => setTimeout(r, staggerMs));
@@ -1174,7 +1185,8 @@
                 }
 
                 const workers = [];
-                for (let w = 0; w < Math.max(1, Math.min(concurrency, rows.length)); w++) workers.push(worker());
+                for (let w = 0; w < Math.max(1, Math.min(concurrency, rows.length)); w++) workers.push(
+            worker());
                 await Promise.all(workers);
                 if (errors.length) console.warn('Some addon preloads failed', errors);
             }
@@ -1183,7 +1195,8 @@
             window.addEventListener('load', function() {
                 // Delay slightly to prioritize critical resources
                 setTimeout(function() {
-                    preloadAddonsInBackground(3, 150).catch(e => console.warn('Addon preload failed', e));
+                    preloadAddonsInBackground(3, 150).catch(e => console.warn(
+                        'Addon preload failed', e));
                 }, 500);
             });
 
@@ -1264,8 +1277,8 @@
                                         ${isSelected ? '<i class="bi bi-arrow-clockwise"></i> Update' : '<i class="bi bi-plus-lg"></i> Add'}
                                     </button>
                                     ${isSelected ? `<button class="btn-remove-addon-unified remove-addon-btn" data-addon-id="${addon.id}" data-cart-key="${cartKey}" title="Remove this addon">
-                                                    <i class="bi bi-trash"></i> Remove
-                                                </button>` : ''}
+                                                        <i class="bi bi-trash"></i> Remove
+                                                    </button>` : ''}
                                 </div>
                             </div>
                         </div>
@@ -2124,8 +2137,8 @@
         }
 
         /* ==========================================
-                               Extra KM Purchase Section Styles
-                               ========================================== */
+                                   Extra KM Purchase Section Styles
+                                   ========================================== */
         .extra-km-row {
             background-color: #f5f8ff;
             border-top: 2px solid #d0d8e8;
