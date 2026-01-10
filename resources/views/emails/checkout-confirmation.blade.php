@@ -292,8 +292,7 @@
                             style="display: inline-block; background-color: #BF2629; color: #FFFFFF; padding: 15px 40px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
                             🔒 Pay
                             {{ $currencySymbol }}
-                            {{ number_format($booking->amount_to_pay ?? $booking->total_estimated, 2) }}
-                            with WebXPay
+                            {{ number_format($booking->amount_to_pay ?? $booking->total_estimated, 2) }}                            
                         </a>
                         <p style="text-align: center; color: #717171; font-size: 13px; margin: 10px 0;">
                             <span style="color: #28a745;">✓ Secure SSL Encryption</span> •

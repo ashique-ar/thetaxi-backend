@@ -144,7 +144,7 @@
             <div class="btn-container">
                 <a href="{{ $checkoutLink }}" class="btn"
                     style="display: inline-block; background-color: #BF2629; color: #FFFFFF; padding: 15px 40px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
-                    🚗 Book Now with WebXPay
+                    Book Now
                 </a>
                 <p style="text-align: center; color: #717171; font-size: 13px; margin: 10px 0;">
                     <span style="color: #28a745;">✓ Secure Payment</span> •
