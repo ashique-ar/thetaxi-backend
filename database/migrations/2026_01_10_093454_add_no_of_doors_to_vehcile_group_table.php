@@ -11,7 +11,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('vehcile_group', function (Blueprint $table) {
+        Schema::table('vehcile_groups', function (Blueprint $table) {
             $table->integer('no_of_doors')->nullable()->after('hand_luggages');
         });
     }
