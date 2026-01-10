@@ -509,14 +509,13 @@ class CartService
             return $item;
         })
             // Sort items by pickup date (earliest first) for consistent display across the UI
+            // NOTE: do NOT call ->values() here because that reindexes associative keys (cart keys)
+            // which breaks client-side removal that relies on the original cart_key values.
             ->sortBy(function ($i) {
                 // Normalize pickup date - missing dates go to end
                 $d = $i['pickup_date'] ?? ($i['from_date'] ?? null);
                 return $d ? \Carbon\Carbon::parse($d)->format('Y-m-d H:i:s') : '9999-12-31 23:59:59';
-            })
-            ->values()
-            ->toArray();
-
+            });
         // Convert totals to selected currency
         $totals = $cart->totals ?? [];
         $convertedTotals = [];
