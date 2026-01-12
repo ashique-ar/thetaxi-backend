@@ -205,21 +205,55 @@
             </td>
         </tr>
 
-        @if ($servicePackageInfo)
+        @if (!empty($distanceDetails))
+            @php
+                $allowedTotalKm = $distanceDetails['allowed_total_km'] ?? null;
+                $freeKmPerDay = $distanceDetails['free_km_per_day'] ?? null;
+                $freeKmPerPackage = $distanceDetails['free_km_per_package'] ?? null;
+                $extraKmPrice = $distanceDetails['extra_km_price'] ?? null;
+            @endphp
+
             <tr>
-                <td
-                    style="padding: 8px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; width: 30%;">
-                    Service Package
-                </td>
-                <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; color: #555;">
-                    <strong>{{ $servicePackageInfo['name'] ?? 'N/A' }}</strong>
-                    @if ($servicePackageInfo['price_multiplier'] ?? null)
-                        <small style="color: #717171; display: block; margin-top: 2px;">
-                            Multiplier: {{ number_format($servicePackageInfo['price_multiplier'], 2) }}x
-                        </small>
-                    @endif
+                <td colspan="2" style="background: #f8fafc; font-weight: bold; color: #374151; padding: 12px;">
+                    📏 Distance & Kilometer Information
                 </td>
             </tr>
+
+            @if ($freeKmPerDay && $durationDays > 1)
+                <tr>
+                    <td>Free KM per Day</td>
+                    <td><strong>{{ number_format($freeKmPerDay, 0) }} km</strong>
+                    </td>
+                </tr>
+                @if ($allowedTotalKm)
+                    <tr>
+                        <td>Total Allowed KM</td>
+                        <td><strong>{{ number_format($allowedTotalKm, 0) }}
+                                km</strong> <small>({{ $durationDays }}
+                                days)</small></td>
+                    </tr>
+                @endif
+            @elseif($freeKmPerPackage)
+                <tr>
+                    <td>Included KM</td>
+                    <td><strong>{{ number_format($freeKmPerPackage, 0) }}
+                            km</strong> <small>(per package)</small></td>
+                </tr>
+            @elseif($allowedTotalKm)
+                <tr>
+                    <td>Included KM</td>
+                    <td><strong>{{ number_format($allowedTotalKm, 0) }} km</strong>
+                    </td>
+                </tr>
+            @endif
+
+            @if ($extraKmPrice)
+                <tr>
+                    <td>Extra KM Rate</td>
+                    <td><strong>{{ $currencySymbol }}{{ number_format($extraKmPrice, 2) }}</strong>
+                        per km</td>
+                </tr>
+            @endif
         @endif
 
         @if (!empty($addonsList))
