@@ -198,6 +198,68 @@
                                                 </div>
                                             </div>
                                         @endif
+
+                                        {{-- Distance Details Section --}}
+                                        @php
+                                            $distanceDetails = $item['distance_details'] ?? [];
+                                            $allowedTotalKm = $distanceDetails['allowed_total_km'] ?? null;
+                                            $freeKmPerDay = $distanceDetails['free_km_per_day'] ?? null;
+                                            $freeKmPerPackage = $distanceDetails['free_km_per_package'] ?? null;
+                                            $extraKmPrice = $distanceDetails['extra_km_price'] ?? null;
+                                            $durationDays = $item['days'] ?? 1;
+                                        @endphp
+
+                                        @if (!empty($distanceDetails) && ($allowedTotalKm || $freeKmPerDay || $freeKmPerPackage || $extraKmPrice))
+                                            <div class="distance-details-section"
+                                                style="background: #f8fafc; border-radius: 6px; padding: 12px; margin: 15px 0; border-left: 4px solid #3b82f6;">
+                                                <h5
+                                                    style="font-size: 13px; color: #374151; margin-bottom: 8px; font-weight: 600;">
+                                                    📏 Kilometer Information</h5>
+
+                                                @if ($freeKmPerDay && $durationDays > 1)
+                                                    <div
+                                                        style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                                                        <small style="color: #6b7280;">Free KM per Day:</small>
+                                                        <strong
+                                                            style="font-size: 12px;">{{ number_format($freeKmPerDay, 0) }}
+                                                            km</strong>
+                                                    </div>
+                                                    @if ($allowedTotalKm)
+                                                        <div
+                                                            style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                                                            <small style="color: #6b7280;">Total Allowed:</small>
+                                                            <strong
+                                                                style="font-size: 12px;">{{ number_format($allowedTotalKm, 0) }}
+                                                                km</strong>
+                                                        </div>
+                                                    @endif
+                                                @elseif($freeKmPerPackage)
+                                                    <div
+                                                        style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                                                        <small style="color: #6b7280;">Included KM:</small>
+                                                        <strong
+                                                            style="font-size: 12px;">{{ number_format($freeKmPerPackage, 0) }}
+                                                            km</strong>
+                                                    </div>
+                                                @elseif($allowedTotalKm)
+                                                    <div
+                                                        style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                                                        <small style="color: #6b7280;">Included KM:</small>
+                                                        <strong
+                                                            style="font-size: 12px;">{{ number_format($allowedTotalKm, 0) }}
+                                                            km</strong>
+                                                    </div>
+                                                @endif
+
+                                                @if ($extraKmPrice)
+                                                    <div style="display: flex; justify-content: space-between;">
+                                                        <small style="color: #6b7280;">Extra KM Rate:</small>
+                                                        <strong
+                                                            style="font-size: 12px; color: #dc2626;">{{ $currencySymbol }}{{ number_format($extraKmPrice, 2) }}/km</strong>
+                                                    </div>
+                                                @endif
+                                            </div>
+                                        @endif
                                     </div>
                                 @endforeach
                             @endif

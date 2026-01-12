@@ -98,6 +98,33 @@
         $extraKmTotal = $metadata['extra_km_total'] ?? $extraKilometers * $extraKmRate;
     }
 
+    // Get distance details from booking item metadata or workflow data
+    $distanceDetails = [];
+
+    // Check if distance_details exists in item metadata
+    if (isset($metadata['distance_details'])) {
+        $distanceDetails = $metadata['distance_details'];
+    } elseif (isset($item->distance_details)) {
+        $distanceDetails = is_string($item->distance_details)
+            ? json_decode($item->distance_details, true)
+            : $item->distance_details;
+    }
+
+    // Fallback: try to get from workflow_data cart items
+    if (empty($distanceDetails) && isset($item->booking->workflow_data)) {
+        $workflowData = is_string($item->booking->workflow_data)
+            ? json_decode($item->booking->workflow_data, true)
+            : $item->booking->workflow_data;
+
+        $cartItems = $workflowData['cart_items'] ?? [];
+        foreach ($cartItems as $cartItem) {
+            if (isset($cartItem['vehicle_group_id']) && $cartItem['vehicle_group_id'] == $item->vehicle_group_id) {
+                $distanceDetails = $cartItem['distance_details'] ?? [];
+                break;
+            }
+        }
+    }
+
     // Get pricing values with fallbacks
     $unitPrice = $item->unit_price ?? ($item->amount ?? 0);
     $totalPrice = $item->total_price ?? ($item->amount ?? 0);

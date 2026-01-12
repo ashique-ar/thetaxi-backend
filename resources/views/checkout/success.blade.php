@@ -102,22 +102,113 @@
                                     @foreach ($booking->bookingItems as $index => $item)
                                         <x-booking-item-email :item="$item" :index="$index" :currencySymbol="$currencySymbol" />
                                     @endforeach
-                                @endif
-                            </div>
+                                @else
+                                    @php
+                                        // Fallback: get vehicle details from workflow_data if no booking items
+                                        $workflowData = is_string($booking->workflow_data)
+                                            ? json_decode($booking->workflow_data, true)
+                                            : $booking->workflow_data ?? [];
+                                        $cartItems = $workflowData['cart_items'] ?? [];
+                                    @endphp
 
-                            <!-- Customer Information Section -->
-                            <div class="section">
-                                <h2 class="section-title">
-                                    <span class="icon">👤</span> Customer Information
-                                </h2>
-                                <table class="info-table">
-                                    <tr>
-                                        <td>Name</td>
-                                        <td>{{ $booking->customer?->user?->full_name ?? 'N/A' }}</td>
-                                    </tr>
-                                    <tr>
-                                        <td>Email</td>
-                                        <td>{{ $booking->customer?->user?->email ?? 'N/A' }}</td>
+                                    @foreach ($cartItems as $index => $cartItem)
+                                        @php
+                                            $vehicleGroup = \App\Models\Vehicle\VehicleGroup::find(
+                                                $cartItem['vehicle_group_id'] ?? null,
+                                            );
+                                            $serviceType = \App\Models\Service\ServiceType::find(
+                                                $cartItem['service_type_id'] ?? null,
+                                            );
+                                            $distanceDetails = $cartItem['distance_details'] ?? [];
+                                            $durationDays = $cartItem['days'] ?? 1;
+                                        @endphp
+
+                                        <div class="trip-item"
+                                            style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; margin-bottom: 20px;">
+                                            <h3 style="color: #1f2937; margin-bottom: 15px;">Trip {{ $index + 1 }}</h3>
+
+                                            <table class="info-table">
+                                                <tr>
+                                                    <td>Vehicle</td>
+                                                    <td>{{ $vehicleGroup->name ?? 'N/A' }}</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>Service Type</td>
+                                                    <td>{{ $serviceType->name ?? ($cartItem['service_type'] ?? 'N/A') }}
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td>Duration</td>
+                                                    <td>{{ $durationDays }} day{{ $durationDays !== 1 ? 's' : '' }}</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>Dates</td>
+                                                    <td>
+                                                        {{ \Carbon\Carbon::parse($cartItem['pickup_date'])->format('M d, Y') }}
+                                                        @if ($cartItem['pickup_date'] !== $cartItem['return_date'])
+                                                            -
+                                                            {{ \Carbon\Carbon::parse($cartItem['return_date'])->format('M d, Y') }}
+                                                        @endif
+                                                    </td>
+                                                </tr>
+                                            </table>
+
+                                            {{-- Distance Details --}}
+                                            @if (!empty($distanceDetails))
+                                                @php
+                                                    $allowedTotalKm = $distanceDetails['allowed_total_km'] ?? null;
+                                                    $freeKmPerDay = $distanceDetails['free_km_per_day'] ?? null;
+                                                    $freeKmPerPackage = $distanceDetails['free_km_per_package'] ?? null;
+                                                    $extraKmPrice = $distanceDetails['extra_km_price'] ?? null;
+                                                @endphp
+
+                                                <table class="info-table" style="margin-top: 15px;">
+                                                    <tr>
+                                                        <td colspan="2"
+                                                            style="background: #f8fafc; font-weight: bold; color: #374151; padding: 12px;">
+                                                            📏 Distance & Kilometer Information
+                                                        </td>
+                                                    </tr>
+
+                                                    @if ($freeKmPerDay && $durationDays > 1)
+                                                        <tr>
+                                                            <td>Free KM per Day</td>
+                                                            <td><strong>{{ number_format($freeKmPerDay, 0) }} km</strong>
+                                                            </td>
+                                                        </tr>
+                                                        @if ($allowedTotalKm)
+                                                            <tr>
+                                                                <td>Total Allowed KM</td>
+                                                                <td><strong>{{ number_format($allowedTotalKm, 0) }}
+                                                                        km</strong> <small>({{ $durationDays }}
+                                                                        days)</small></td>
+                                                            </tr>
+                                                        @endif
+                                                    @elseif($freeKmPerPackage)
+                                                        <tr>
+                                                            <td>Included KM</td>
+                                                            <td><strong>{{ number_format($freeKmPerPackage, 0) }}
+                                                                    km</strong> <small>(per package)</small></td>
+                                                        </tr>
+                                                    @elseif($allowedTotalKm)
+                                                        <tr>
+                                                            <td>Included KM</td>
+                                                            <td><strong>{{ number_format($allowedTotalKm, 0) }} km</strong>
+                                                            </td>
+                                                        </tr>
+                                                    @endif
+
+                                                    @if ($extraKmPrice)
+                                                        <tr>
+                                                            <td>Extra KM Rate</td>
+                                                            <td><strong>{{ $currencySymbol }}{{ number_format($extraKmPrice, 2) }}</strong>
+                                                                per km</td>
+                                                        </tr>
+                                                    @endif
+                                                </table>
+                                            @endif
+                                        </div>
+                                    @endforeach
                                     </tr>
                                     <tr>
                                         <td>Phone</td>
@@ -147,7 +238,7 @@
                                             <td>{{ $booking->customer->country }}</td>
                                         </tr>
                                     @endif
-                                </table>
+                                    </table>
                             </div>
 
                             <!-- Payment Summary Section -->
