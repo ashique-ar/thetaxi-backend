@@ -530,6 +530,7 @@
             line-height: 1.3;
             min-height: 48px;
         }
+
         .spec-item {
             display: flex;
             align-items: center;
