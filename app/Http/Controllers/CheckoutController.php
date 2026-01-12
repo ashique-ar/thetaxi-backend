@@ -352,15 +352,15 @@ class CheckoutController extends Controller
 
             switch ($validated['payment_type']) {
                 case 'quotation':
-                    $number = 'QT' . strtoupper(substr(md5(microtime()), 0, 8));
+                    $number = Booking::generateQuotationNumber();
                     break;
                 case 'advance':
                 case 'online':
                 case 'full':
-                    $number = 'BK' . strtoupper(substr(md5(microtime()), 0, 8));
+                    $number = Booking::generateBookingNumber();
                     break;
                 default:
-                    $number = 'QT' . strtoupper(substr(md5(microtime()), 0, 8));
+                    $number = Booking::generateQuotationNumber();
             }
 
             $booking = Booking::create([
@@ -588,6 +588,12 @@ class CheckoutController extends Controller
                 'status' => config('booking.status.quotation_requested'),
                 'payment_status' => 'not_required',
             ]);
+
+            // Ensure booking number uses 'QT' prefix for quotations (6-digit sequence)
+            if (strpos($booking->booking_number ?? '', 'QT') !== 0) {
+                $booking->booking_number = Booking::generateQuotationNumber();
+                $booking->save();
+            }
 
             // Mark cart as checked out
             $dbCart = $this->cartService->getOrCreateCart();
@@ -1655,7 +1661,7 @@ class CheckoutController extends Controller
                 // Create new booking from quotation
                 $newBooking = Booking::create([
                     'customer_id' => $customer->id,
-                    'booking_number' => 'BK' . strtoupper(substr(md5(microtime()), 0, 8)),
+                    'booking_number' => Booking::generateBookingNumber(),
                     'from_date' => $quotationBooking->from_date,
                     'to_date' => $quotationBooking->to_date,
                     'from_time' => $quotationBooking->from_time,

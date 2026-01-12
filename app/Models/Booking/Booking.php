@@ -991,15 +991,53 @@ class Booking extends BaseModel
 
     /**
      * Generate unique booking number
+     *
+     * Format: {PREFIX}{6-digit-sequence} e.g. BK000001 or QT000123
+     * Accepts optional $prefix (default 'BK').
      */
     public static function generateBookingNumber(): string
     {
+        // Default booking number generator (BKxxxxxx)
         $prefix = 'BK';
-        // $date = now();
-        $uniqueId = uniqid();
-        $sequence = str_pad(static::whereDate('created_at', today())->count() + 1, 4, '0', STR_PAD_LEFT);
 
-        return $prefix . $uniqueId . $sequence;
+        // Attempt to find the most recent booking with this prefix and increment the trailing number
+        $last = static::where('booking_number', 'like', $prefix . '%')
+            ->orderByDesc('created_at')
+            ->first();
+
+        $next = 1;
+
+        if ($last && preg_match('/(\d{1,})$/', $last->booking_number, $m)) {
+            $next = intval($m[1]) + 1;
+        } else {
+            $count = static::where('booking_number', 'like', $prefix . '%')->count();
+            $next = $count + 1;
+        }
+
+        return $prefix . str_pad($next, 6, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * Generate quotation number (QTxxxxxx)
+     */
+    public static function generateQuotationNumber(): string
+    {
+        $prefix = 'QT';
+
+        $last = static::where('booking_number', 'like', $prefix . '%')
+            ->orderByDesc('created_at')
+            ->first();
+
+        $next = 1;
+
+        if ($last && preg_match('/(\d{1,})$/', $last->booking_number, $m)) {
+            $next = intval($m[1]) + 1;
+        } else {
+            $count = static::where('booking_number', 'like', $prefix . '%')->count();
+            $next = $count + 1;
+        }
+
+        return $prefix . str_pad($next, 6, '0', STR_PAD_LEFT);
     }
 
     /**

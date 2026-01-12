@@ -4677,7 +4677,7 @@ class BookingFlowService
 
         return [
             'id' => (string) $booking->id,
-            'booking_number' => $booking->booking_number ?? ('BK' . substr(md5($booking->id), 0, 10)),
+            'booking_number' => $booking->booking_number ?? Booking::generateBookingNumber(),
             'status' => (string) ($booking->status ?? 'pending'),
             'workflow_step' => (string) ($booking->workflow_step ?? 'pending_approval'),
             'requires_approval' => (bool) ($booking->requires_approval ?? false),

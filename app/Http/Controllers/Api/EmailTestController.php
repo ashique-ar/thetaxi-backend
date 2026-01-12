@@ -19,7 +19,7 @@ class EmailTestController
     {
         // Create mock booking data
         $booking = (object) [
-            'booking_number' => 'BK' . date('YmdHis'),
+            'booking_number' => \App\Models\Booking\Booking::generateBookingNumber(),
             'customer' => (object) [
                 'full_name' => 'John Doe',
                 'email' => 'john@example.com',
@@ -118,7 +118,7 @@ class EmailTestController
     public function testPaymentInitiated(): View
     {
         $booking = (object) [
-            'booking_number' => 'BK' . date('YmdHis'),
+            'booking_number' => \App\Models\Booking\Booking::generateBookingNumber(),
             'customer' => (object) [
                 'full_name' => 'Ahmed Hassan',
                 'email' => 'ahmed@example.com',
@@ -200,7 +200,7 @@ class EmailTestController
     public function testQuotationRequest(): View
     {
         $booking = (object) [
-            'booking_number' => 'BK' . date('YmdHis'),
+            'booking_number' => \App\Models\Booking\Booking::generateQuotationNumber(),
             'customer' => (object) [
                 'full_name' => 'Michael Brown',
                 'email' => 'michael@example.com',
