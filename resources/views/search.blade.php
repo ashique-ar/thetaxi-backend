@@ -1027,7 +1027,11 @@
                     }
                 });
 
-                $grid.html($cards);
+                // Re-append sorted column wrappers (preserves grid classes and layout)
+                $grid.empty();
+                $cards.forEach(function(c) {
+                    $grid.append(c);
+                });
             }
 
             // Add to cart functionality
@@ -1338,12 +1342,12 @@
                 let visibleCount = 0;
 
                 if (searchTerm === '') {
-                    // Show all vehicles
-                    $vehicleCards.show();
+                    // Show all vehicles - remove Bootstrap d-none instead of jQuery show()
+                    $vehicleCards.removeClass('d-none');
                     visibleCount = totalVehicles;
                     $clearButton.hide();
                 } else {
-                    // Filter vehicles
+                    // Filter vehicles - toggle d-none on the column wrappers to keep grid classes intact
                     $vehicleCards.each(function() {
                         const vehicleName = $(this).data('name') ? $(this).data('name')
                             .toLowerCase() : '';
@@ -1351,10 +1355,10 @@
                         const cardText = vehicleCard.text().toLowerCase();
 
                         if (vehicleName.includes(searchTerm) || cardText.includes(searchTerm)) {
-                            $(this).show();
+                            $(this).removeClass('d-none');
                             visibleCount++;
                         } else {
-                            $(this).hide();
+                            $(this).addClass('d-none');
                         }
                     });
                     $clearButton.show();
