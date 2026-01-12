@@ -281,6 +281,7 @@ class BookingController extends Controller
             $vehicleGroups = $availabilityData['data'] ?? $availabilityData;
             $pagination = $availabilityData['pagination'] ?? null;
             $totalJourneyDistance = $availabilityData['total_journey_distance_km'] ?? null;
+            $totalJourneyDuration = $availabilityData['total_journey_duration_seconds'] ?? null;
 
 
             // Transform results for view (add public-specific enhancements)
@@ -304,6 +305,7 @@ class BookingController extends Controller
                     'service_type' => $frontendService, // Form needs this
                     'created_at' => $searchTimestamp,
                     'total_distance_km' => $totalJourneyDistance, // Add distance information
+                    'total_duration_seconds' => $totalJourneyDuration, // Add duration information
                 ],
                 // Flatten search_params so form fields can access properties
                 [

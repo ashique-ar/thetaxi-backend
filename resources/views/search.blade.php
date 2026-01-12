@@ -98,6 +98,12 @@
                                     {{ number_format($search->total_distance_km, 2) }} km
                                 </span>
                             @endif
+                            @if (isset($search->total_duration_seconds) && $search->total_duration_seconds > 0)
+                                <span class="duration-info">
+                                    <i class="bi bi-clock"></i>
+                                    {{ gmdate('H:i', $search->total_duration_seconds) }} estimated
+                                </span>
+                            @endif
                             @if ($search->max_km_per_day || $search->max_km_per_package)
                                 <span class="package-info">
                                     <i class="bi bi-speedometer2"></i>
@@ -157,7 +163,7 @@
                             $isRecommended = $result['recommended'] ?? false;
                         @endphp
 
-                        <div class="col-lg-3 col-md-4 col-sm-12" data-vehicle-group="{{ $result['id'] }}"
+                        <div class="col-lg-3 col-md-4 col-sm-12 vehicle-card-wrapper" data-vehicle-group="{{ $result['id'] }}"
                             data-price="{{ $pricing['base_amount'] ?? 0 }}"
                             data-name="{{ $result['name'] ?? 'Unknown Vehicle' }}">
                             <x-vehicle-card :vehicle="$result" :pricing="$pricing" :enhancedPricing="$enhancedPricing" :serviceFeatures="$serviceFeatures"
@@ -1005,7 +1011,7 @@
             // Function to sort vehicle results
             function sortVehicleResults(sortBy) {
                 const $grid = $('.vehicle-results-grid');
-                const $cards = $grid.find('[data-vehicle-group]').toArray();
+                const $cards = $grid.find('.vehicle-card-wrapper').toArray();
 
                 $cards.sort(function(a, b) {
                     const priceA = parseFloat($(a).data('price')) || 0;
@@ -1332,7 +1338,7 @@
             const $searchInput = $('#vehicleGroupSearch');
             const $clearButton = $('#clearSearch');
             // Always target the column wrappers so the grid classes (e.g., col-lg-3) are preserved
-            const $vehicleCards = $('.vehicle-results-grid').find('[data-vehicle-group]');
+            const $vehicleCards = $('.vehicle-results-grid').find('.vehicle-card-wrapper');
             const $vehicleCountDisplay = $('#vehicleGroupsCount');
             let totalVehicles = $vehicleCards.length;
 

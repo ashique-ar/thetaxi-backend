@@ -170,17 +170,12 @@
             $hasExtraKmPrice = isset($distanceDetails['extra_km_price']) && $distanceDetails['extra_km_price'] > 0;
             $showDistanceDetails = $hasFreeKmPerDay || $hasFreeKmPerPackage || $hasAllowedKm || $hasExtraKmPrice;
 
-            // Calculate per-day km from allowed_total_km if free_km_per_day is not set
-            $perDayKm = null;
-            if ($hasFreeKmPerDay) {
-                $perDayKm = $distanceDetails['free_km_per_day'];
-            } elseif ($hasAllowedKm && $durationDays > 0) {
-                // Derive per-day km from total allowed km
-                $perDayKm = $distanceDetails['allowed_total_km'] / $durationDays;
-            }
+            // Check if we have journey duration
+            $journeyDurationSeconds = $distanceDetails['journey_duration_seconds'] ?? null;
+            $showDurationDetails = $journeyDurationSeconds && $journeyDurationSeconds > 0;
         @endphp
 
-        @if ($showDistanceDetails)
+        @if ($showDistanceDetails || $showDurationDetails)
             <div class="pricing-details">
                 {{-- Show free KM per day for daily rentals --}}
                 @if ($perDayKm && !$hasFreeKmPerPackage)
@@ -204,6 +199,14 @@
                     <small class="pricing-detail-item">
                         <i class="bi bi-lightning-fill"></i> Extra:
                         {{ getCurrencySymbol() }}{{ number_format($distanceDetails['extra_km_price'], 0) }}/km
+                    </small>
+                @endif
+
+                {{-- Show journey duration --}}
+                @if ($showDurationDetails)
+                    <small class="pricing-detail-item">
+                        <i class="bi bi-clock"></i>
+                        {{ gmdate('H:i', $journeyDurationSeconds) }} estimated
                     </small>
                 @endif
             </div>

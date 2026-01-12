@@ -389,9 +389,11 @@ class BookingFlowService
 
         // Calculate total journey distance if locations are provided
         $totalJourneyDistance = null;
+        $totalJourneyDuration = null;
         if ($pickupLocation && $dropoffLocation) {
             $distanceData = $this->calculateCompanyDistances($pickupLocation, $dropoffLocation, $serviceType);
             $totalJourneyDistance = $distanceData['journey_distance'] ?? null;
+            $totalJourneyDuration = $distanceData['journey_duration_seconds'] ?? null;
         }
 
         // Return with pagination if requested
@@ -407,12 +409,14 @@ class BookingFlowService
                     'to' => min($page * $perPage, $total),
                 ],
                 'total_journey_distance_km' => $totalJourneyDistance,
+                'total_journey_duration_seconds' => $totalJourneyDuration,
             ];
         }
 
         return [
             'data' => $availability,
             'total_journey_distance_km' => $totalJourneyDistance,
+            'total_journey_duration_seconds' => $totalJourneyDuration,
         ];
     }
 
@@ -2245,7 +2249,8 @@ class BookingFlowService
             $kmCalculations,
             $slabInfo,
             $params['service_type_id'] ?? null,
-            $params['vehicle_group_id'] ?? null
+            $params['vehicle_group_id'] ?? null,
+            $params['duration_seconds'] ?? null
         );
 
         Log::debug('TransformCalculationResult - Distance Details Built', [
@@ -2297,13 +2302,15 @@ class BookingFlowService
      * @param array|null $slabInfo Slab information including km limits
      * @param string|null $serviceTypeId Service type for rate lookup
      * @param string|null $vehicleGroupId Vehicle group for rate lookup
+     * @param int|null $durationSeconds Duration in seconds from Google API
      * @return array Distance details for frontend display
      */
     private function buildDistanceDetails(
         array $kmCalculations,
         ?array $slabInfo,
         ?string $serviceTypeId,
-        ?string $vehicleGroupId
+        ?string $vehicleGroupId,
+        ?int $durationSeconds = null
     ): array {
         $distanceDetails = [
             'journey_distance' => $kmCalculations['journey_distance'] ?? 0,
@@ -2314,6 +2321,7 @@ class BookingFlowService
             'effective_days' => $kmCalculations['effective_days'] ?? 1,
             'free_km_per_day' => null,
             'free_km_per_package' => null,
+            'journey_duration_seconds' => $durationSeconds,
         ];
 
         // Extract per-day or per-package limits from slab info
@@ -2874,7 +2882,7 @@ class BookingFlowService
         return $hasCustomBasePricing || $hasCustomAddonPricing || $isHighValue || $hasLargeDiscount;
     }
 
-    private function calculateDistance(array $from, array $to): ?float
+    private function calculateDistance(array $from, array $to): ?array
     {
 
         // Validate input and handle different location formats
@@ -2899,10 +2907,10 @@ class BookingFlowService
         }
 
         try {
-            $distance = app(GoogleMapsService::class)->distanceKm($from, $to);
-            return $distance;
+            $result = app(GoogleMapsService::class)->distanceAndDuration($from, $to);
+            return $result;
         } catch (\Exception $e) {
-            Log::error('Error calculating distance', [
+            Log::error('Error calculating distance and duration', [
                 'from' => $from,
                 'to' => $to,
                 'error' => $e->getMessage(),
@@ -2919,14 +2927,15 @@ class BookingFlowService
         $vehicle = $specificVehicleId ? Vehicle::find($specificVehicleId) : null;
         $company = $vehicle ? $vehicle->company : \App\Models\Company::getDefaultCompany();
 
-        $journeyDistance = $this->calculateDistance($pickupLocation, $dropoffLocation);
+        $journeyData = $this->calculateDistance($pickupLocation, $dropoffLocation);
 
         // Handle case when journey distance cannot be calculated
-        if ($journeyDistance === null) {
+        if ($journeyData === null) {
             return [
                 'pickup_distance' => null,
                 'delivery_distance' => null,
                 'journey_distance' => null,
+                'journey_duration_seconds' => null,
                 'calculation_possible' => false,
                 'service_type_used' => $serviceType,
                 'company_used' => [
@@ -2942,11 +2951,15 @@ class BookingFlowService
             ];
         }
 
+        $journeyDistance = $journeyData['distance_km'];
+        $journeyDuration = $journeyData['duration_seconds'];
+
         if (!$company || !$company->latitude || !$company->longitude) {
             return [
                 'pickup_distance' => 10.0,
                 'delivery_distance' => 10.0,
                 'journey_distance' => round($journeyDistance, 2),
+                'journey_duration_seconds' => $journeyDuration,
                 'calculation_possible' => true,
                 'service_type_used' => $serviceType,
                 'company_used' => [
@@ -2968,19 +2981,30 @@ class BookingFlowService
         $isWithDriver = $this->isWithDriverService($serviceType);
 
         $distances = [];
+        $durations = [];
 
         if ($isWithDriver) {
             // With Driver Services:
             // - Pickup Distance: From company to customer's starting location (driver goes to pickup)
             // - Delivery Distance: From customer's drop-off location to company (driver returns)
-            $distances['pickup_distance'] = $this->calculateDistance($companyLocation, $pickupLocation);
-            $distances['delivery_distance'] = $this->calculateDistance($dropoffLocation, $companyLocation);
+            $pickupData = $this->calculateDistance($companyLocation, $pickupLocation);
+            $deliveryData = $this->calculateDistance($dropoffLocation, $companyLocation);
+            
+            $distances['pickup_distance'] = $pickupData ? $pickupData['distance_km'] : null;
+            $distances['delivery_distance'] = $deliveryData ? $deliveryData['distance_km'] : null;
+            $durations['pickup_duration_seconds'] = $pickupData ? $pickupData['duration_seconds'] : null;
+            $durations['delivery_duration_seconds'] = $deliveryData ? $deliveryData['duration_seconds'] : null;
         } else {
             // Self Drive Services:
             // - Pickup Distance: From customer's drop-off location to company (customer returns vehicle)
             // - Delivery Distance: From company to customer's starting location (vehicle delivery)
-            $distances['pickup_distance'] = $this->calculateDistance($dropoffLocation, $companyLocation);
-            $distances['delivery_distance'] = $this->calculateDistance($companyLocation, $pickupLocation);
+            $pickupData = $this->calculateDistance($dropoffLocation, $companyLocation);
+            $deliveryData = $this->calculateDistance($companyLocation, $pickupLocation);
+            
+            $distances['pickup_distance'] = $pickupData ? $pickupData['distance_km'] : null;
+            $distances['delivery_distance'] = $deliveryData ? $deliveryData['distance_km'] : null;
+            $durations['pickup_duration_seconds'] = $pickupData ? $pickupData['duration_seconds'] : null;
+            $durations['delivery_duration_seconds'] = $deliveryData ? $deliveryData['duration_seconds'] : null;
         }
 
         // Check if any distance calculation failed
@@ -2989,6 +3013,7 @@ class BookingFlowService
                 'pickup_distance' => $distances['pickup_distance'],
                 'delivery_distance' => $distances['delivery_distance'],
                 'journey_distance' => $journeyDistance,
+                'journey_duration_seconds' => $journeyDuration,
                 'calculation_possible' => false,
                 'service_type_used' => $serviceType,
                 'company_used' => [
@@ -3004,8 +3029,11 @@ class BookingFlowService
         // Enhanced return structure with all required fields for pricing calculations (no costs here)
         return [
             'journey_distance' => round($journeyDistance, 2),
+            'journey_duration_seconds' => $journeyDuration,
             'pickup_distance' => round($distances['pickup_distance'], 2),
+            'pickup_duration_seconds' => $durations['pickup_duration_seconds'],
             'delivery_distance' => round($distances['delivery_distance'], 2),
+            'delivery_duration_seconds' => $durations['delivery_duration_seconds'],
             'total_distance' => round($journeyDistance + $distances['pickup_distance'] + $distances['delivery_distance'], 2), // Main billable distance (excludes company legs)
             'calculation_possible' => true,
             'service_type_used' => $serviceType,
