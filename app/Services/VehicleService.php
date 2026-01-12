@@ -293,7 +293,6 @@ class VehicleService
     {
         $features = [
             'ride_now' => [
-                'Self Drive Available',
                 'With Driver Available',
                 'Flexible Duration',
                 'Insurance Included'
