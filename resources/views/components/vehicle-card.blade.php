@@ -173,6 +173,9 @@
             // Check if we have journey duration
             $journeyDurationSeconds = $distanceDetails['journey_duration_seconds'] ?? null;
             $showDurationDetails = $journeyDurationSeconds && $journeyDurationSeconds > 0;
+
+            // Define perDayKm from distance details
+            $perDayKm = $distanceDetails['free_km_per_day'] ?? null;
         @endphp
 
         @if ($showDistanceDetails || $showDurationDetails)
