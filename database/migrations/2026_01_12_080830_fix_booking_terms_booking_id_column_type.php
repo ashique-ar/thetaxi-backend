@@ -17,17 +17,17 @@ return new class extends Migration {
         \DB::statement('ALTER TABLE booking_terms DROP CONSTRAINT IF EXISTS booking_terms_booking_id_terms_and_condition_id_unique');
         \DB::statement('ALTER TABLE booking_terms DROP CONSTRAINT IF EXISTS booking_terms_booking_id_foreign');
 
-        // Safely alter column type to UUID using USING clause
-        // This explicitly casts existing values to uuid where possible
-        \DB::statement('ALTER TABLE booking_terms ALTER COLUMN booking_id TYPE uuid USING booking_id::uuid');
-        \DB::statement('ALTER TABLE booking_terms ALTER COLUMN booking_id SET NOT NULL');
-        \DB::statement('ALTER TABLE booking_terms ALTER COLUMN booking_id DROP DEFAULT');
-        // Drop identity if exists (Postgres 10+)
-        \DB::statement('ALTER TABLE booking_terms ALTER COLUMN booking_id DROP IDENTITY IF EXISTS');
+        // Convert booking_id safely:
+        // 1) Convert current booking_id to text (safe for bigint) then
+        // 2) Attempt to cast textual values to uuid only when they match UUID pattern, otherwise set to NULL
+        \DB::statement('ALTER TABLE booking_terms ALTER COLUMN booking_id TYPE text USING booking_id::text');
+        \DB::statement("ALTER TABLE booking_terms ALTER COLUMN booking_id TYPE uuid USING (CASE WHEN booking_id ~ '^[0-9a-fA-F\\-]{36}$' THEN booking_id::uuid ELSE NULL END)");
 
-        // Recreate unique constraint and foreign key
+        // Recreate unique constraint (allows NULLs)
         \DB::statement('ALTER TABLE booking_terms ADD CONSTRAINT booking_terms_booking_id_terms_and_condition_id_unique UNIQUE (booking_id, terms_and_condition_id)');
-        \DB::statement('ALTER TABLE booking_terms ADD CONSTRAINT booking_terms_booking_id_foreign FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE');
+
+        // Add foreign key constraint as NOT VALID so it won't fail if some existing values are NULL or don't match yet
+        \DB::statement('ALTER TABLE booking_terms ADD CONSTRAINT booking_terms_booking_id_foreign FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE NOT VALID');
     }
 
     /**

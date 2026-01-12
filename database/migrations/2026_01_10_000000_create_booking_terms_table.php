@@ -10,6 +10,7 @@ return new class extends Migration {
      */
     public function up(): void
     {
+        
         Schema::create('booking_terms', function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->uuid('booking_id'); // Fixed: should be uuid to match bookings table
