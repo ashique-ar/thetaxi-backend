@@ -201,6 +201,56 @@
                                                                         day{{ $calculatedDays !== 1 ? 's' : '' }}</strong>
                                                                 </p>
                                                             @endif
+
+                                                            {{-- Display included km information --}}
+                                                            @php
+                                                                $distanceDetails = $item['distance_details'] ?? [];
+                                                                
+                                                                // If distance_details is empty, try to get from service package info or calculate
+                                                                if (empty($distanceDetails)) {
+                                                                    $servicePackageInfo = $item['service_package_info'] ?? [];
+                                                                    if (!empty($servicePackageInfo)) {
+                                                                        $distanceDetails = [
+                                                                            'free_km_per_day' => $servicePackageInfo['max_km_per_day'] ?? null,
+                                                                            'free_km_per_package' => $servicePackageInfo['max_km_per_package'] ?? null,
+                                                                            'allowed_total_km' => isset($servicePackageInfo['max_km_per_day']) 
+                                                                                ? ($servicePackageInfo['max_km_per_day'] * $calculatedDays) 
+                                                                                : ($servicePackageInfo['max_km_per_package'] ?? null),
+                                                                        ];
+                                                                    }
+                                                                }
+                                                                
+                                                                $freeKmPerDay = $distanceDetails['free_km_per_day'] ?? null;
+                                                                $freeKmPerPackage = $distanceDetails['free_km_per_package'] ?? null;
+                                                                $allowedTotalKm = $distanceDetails['allowed_total_km'] ?? null;
+                                                                $extraKmPrice = $distanceDetails['extra_km_price'] ?? null;
+                                                                
+                                                                // Calculate per-day km if only total is available
+                                                                if (!$freeKmPerDay && !$freeKmPerPackage && $allowedTotalKm && $calculatedDays > 0) {
+                                                                    $freeKmPerDay = $allowedTotalKm / $calculatedDays;
+                                                                }
+                                                            @endphp
+                                                            @if ($freeKmPerDay || $freeKmPerPackage || $allowedTotalKm)
+                                                                <p class="text-muted" style="margin-top: 6px;">
+                                                                    <i class="bi bi-speedometer2" style="color: #28a745;"></i>
+                                                                    @if ($freeKmPerDay)
+                                                                        <strong>{{ number_format($freeKmPerDay, 0) }} km/day</strong> included
+                                                                        @if ($calculatedDays > 1)
+                                                                            <span class="text-muted">({{ number_format($freeKmPerDay * $calculatedDays, 0) }} km total)</span>
+                                                                        @endif
+                                                                    @elseif ($freeKmPerPackage)
+                                                                        <strong>{{ number_format($freeKmPerPackage, 0) }} km</strong> included
+                                                                    @elseif ($allowedTotalKm)
+                                                                        <strong>{{ number_format($allowedTotalKm, 0) }} km</strong> included
+                                                                    @endif
+                                                                    @if ($extraKmPrice)
+                                                                        <span class="ms-2 text-warning">
+                                                                            <i class="bi bi-lightning-fill"></i> 
+                                                                            Extra: {{ $currencySymbol }}{{ number_format($extraKmPrice, 0) }}/km
+                                                                        </span>
+                                                                    @endif
+                                                                </p>
+                                                            @endif
                                                         </div>
                                                     </div>
                                                 </div>

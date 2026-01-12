@@ -1072,16 +1072,35 @@ class CartService
      * @param string $vehicleGroupId
      * @return array|null Returns ['rate' => float, 'currency' => string] or null if not found
      */
-    public function getExtraKmRateForVehicleGroup(string $vehicleGroupId): ?array
+    /**
+     * Get extra km rate for a vehicle group and optional service type
+     * 
+     * The extra_km_rate is defined per service type in common rate definitions,
+     * then vehicle groups can have specific values assigned.
+     * 
+     * @param string $vehicleGroupId Vehicle group ID
+     * @param string|null $serviceTypeId Optional service type ID for more specific lookup
+     * @return array|null Rate info with 'rate', 'currency', 'definition_id', 'definition_name'
+     */
+    public function getExtraKmRateForVehicleGroup(string $vehicleGroupId, ?string $serviceTypeId = null): ?array
     {
         try {
-            // Find the extra_km_rate common rate definition
-            $extraKmDefinition = \App\Models\Vehicle\VehiclePricing\VehiclePricingCommonRateDefinition::where('code', 'extra_km_rate')
-                ->where('is_active', true)
-                ->first();
+            // Build query to find the extra_km_rate common rate definition
+            $definitionQuery = \App\Models\Vehicle\VehiclePricing\VehiclePricingCommonRateDefinition::where('code', 'extra_km_rate')
+                ->where('is_active', true);
+
+            // If service type is provided, filter by it for more accurate rate
+            if ($serviceTypeId) {
+                $definitionQuery->where('service_type_id', $serviceTypeId);
+            }
+
+            $extraKmDefinition = $definitionQuery->first();
 
             if (!$extraKmDefinition) {
-                \Illuminate\Support\Facades\Log::warning('Extra KM rate definition not found');
+                \Illuminate\Support\Facades\Log::warning('Extra KM rate definition not found', [
+                    'vehicle_group_id' => $vehicleGroupId,
+                    'service_type_id' => $serviceTypeId,
+                ]);
                 return null;
             }
 
@@ -1092,18 +1111,74 @@ class CartService
                 ->first();
 
             if ($vehicleGroupRate && $vehicleGroupRate->value > 0) {
+                \Illuminate\Support\Facades\Log::debug('Extra KM rate found for vehicle group', [
+                    'vehicle_group_id' => $vehicleGroupId,
+                    'service_type_id' => $serviceTypeId,
+                    'rate' => $vehicleGroupRate->value,
+                    'definition_id' => $extraKmDefinition->id,
+                ]);
+
                 return [
                     'rate' => (float) $vehicleGroupRate->value,
                     'currency' => 'LKR',
                     'definition_id' => $extraKmDefinition->id,
-                    'definition_name' => $extraKmDefinition->name
+                    'definition_name' => $extraKmDefinition->name,
+                    'service_type_id' => $extraKmDefinition->service_type_id,
                 ];
             }
+
+            \Illuminate\Support\Facades\Log::warning('Extra KM rate not configured for vehicle group', [
+                'vehicle_group_id' => $vehicleGroupId,
+                'service_type_id' => $serviceTypeId,
+                'definition_id' => $extraKmDefinition->id,
+            ]);
 
             return null;
         } catch (\Exception $e) {
             \Illuminate\Support\Facades\Log::error('Error getting extra km rate', [
                 'vehicle_group_id' => $vehicleGroupId,
+                'service_type_id' => $serviceTypeId,
+                'error' => $e->getMessage()
+            ]);
+            return null;
+        }
+    }
+
+    /**
+     * Get KM limits from slab definition for a service type
+     * 
+     * @param string $serviceTypeId Service type ID
+     * @param int $days Number of days for the booking
+     * @return array|null KM limit info with 'free_km_per_day', 'free_km_per_package', 'allowed_total_km'
+     */
+    public function getSlabKmLimits(string $serviceTypeId, int $days = 1): ?array
+    {
+        try {
+            $slabDefinition = \App\Models\Vehicle\VehiclePricing\VehiclePricingSlabDefinition::where('service_type_id', $serviceTypeId)
+                ->where('is_active', true)
+                ->orderBy('min_days')
+                ->first();
+
+            if (!$slabDefinition) {
+                return null;
+            }
+
+            $result = [];
+
+            if ($slabDefinition->max_km_per_day && $slabDefinition->max_km_per_day > 0) {
+                $result['free_km_per_day'] = (float) $slabDefinition->max_km_per_day;
+                $result['allowed_total_km'] = (float) ($slabDefinition->max_km_per_day * $days);
+                $result['calculation_type'] = 'daily';
+            } elseif ($slabDefinition->max_km_per_package && $slabDefinition->max_km_per_package > 0) {
+                $result['free_km_per_package'] = (float) $slabDefinition->max_km_per_package;
+                $result['allowed_total_km'] = (float) $slabDefinition->max_km_per_package;
+                $result['calculation_type'] = 'package';
+            }
+
+            return !empty($result) ? $result : null;
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Error getting slab km limits', [
+                'service_type_id' => $serviceTypeId,
                 'error' => $e->getMessage()
             ]);
             return null;
@@ -1132,11 +1207,15 @@ class CartService
                 return false;
             }
 
-            // Get extra km rate for this vehicle group
-            $extraKmRate = $this->getExtraKmRateForVehicleGroup($vehicleGroupId);
+            // Get service type ID from cart item for accurate rate lookup
+            $serviceTypeId = $items[$cartKey]['service_type_data']['id'] ?? null;
+
+            // Get extra km rate for this vehicle group and service type
+            $extraKmRate = $this->getExtraKmRateForVehicleGroup($vehicleGroupId, $serviceTypeId);
             if (!$extraKmRate) {
                 \Illuminate\Support\Facades\Log::warning('Extra KM rate not configured for vehicle group', [
-                    'vehicle_group_id' => $vehicleGroupId
+                    'vehicle_group_id' => $vehicleGroupId,
+                    'service_type_id' => $serviceTypeId,
                 ]);
                 return false;
             }

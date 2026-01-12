@@ -411,14 +411,23 @@ class BookingController extends Controller
 
             $formattedPricing = !empty($pricingInfo) ? [
                 'base_amount' => $pricingInfo['base_amount'] ?? 0,
-                'total_amount' => $pricingInfo['total_amount'] ?? 0,
+                'total_amount' => $pricingInfo['total_amount'] ?? $pricingInfo['base_amount'] ?? 0,
                 'currency' => $pricingInfo['currency'] ?? 'LKR',
                 'breakdown' => $pricingInfo['breakdown'] ?? [],
+                'distance_details' => $pricingInfo['distance_details'] ?? null,
                 'duration_info' => array_merge($pricingInfo['duration_info'] ?? [], [
                     'package_hours' => $searchParams['package_hours'] ?? null
                 ]),
                 'service_type' => $serviceType,
             ] : [];
+
+            // Log pricing info for debugging
+            Log::debug('TransformResultsForPublicView - Pricing formatted', [
+                'vehicle_group_id' => $groupData['id'],
+                'pricing_info_has_distance_details' => isset($pricingInfo['distance_details']),
+                'distance_details' => $pricingInfo['distance_details'] ?? null,
+                'base_amount' => $formattedPricing['base_amount'] ?? 0,
+            ]);
 
             // Build result using the ACTUAL structure from BookingFlowService
             $results[] = [

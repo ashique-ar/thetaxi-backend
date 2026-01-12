@@ -45,6 +45,10 @@ class CartController extends Controller
         }
 
         $cartItems = $dbCart->getItems();
+
+        // Enrich cart items with distance_details if missing
+        $cartItems = $this->enrichCartItemsWithDistanceDetails($cartItems);
+
         $totals = $dbCart->totals ?? [];
 
         $subtotal = $totals['subtotal'] ?? 0;
@@ -54,6 +58,83 @@ class CartController extends Controller
         $total = $totals['total'] ?? 0;
 
         return view('cart', compact('cartItems', 'subtotal', 'serviceFee', 'tax', 'discount', 'total', 'dbCart'));
+    }
+
+    /**
+     * Enrich cart items with distance_details if missing
+     * This handles legacy cart items that were added before distance_details was stored
+     */
+    private function enrichCartItemsWithDistanceDetails($cartItems): array
+    {
+        $enrichedItems = [];
+
+        foreach ($cartItems as $key => $item) {
+            // If distance_details is already set and has data, skip
+            if (
+                !empty($item['distance_details']) &&
+                (isset($item['distance_details']['allowed_total_km']) ||
+                    isset($item['distance_details']['free_km_per_day']) ||
+                    isset($item['distance_details']['extra_km_price']))
+            ) {
+                $enrichedItems[$key] = $item;
+                continue;
+            }
+
+            // Try to get distance details from service package info
+            $servicePackageInfo = $item['service_package_info'] ?? [];
+            $serviceTypeData = $item['service_type_data'] ?? [];
+            $vehicleGroupId = $item['vehicle_group_id'] ?? null;
+            $serviceTypeId = $serviceTypeData['id'] ?? null;
+            $days = $item['days'] ?? 1;
+
+            $distanceDetails = [];
+
+            // Get km limits from service package first
+            if (!empty($servicePackageInfo)) {
+                $maxKmPerDay = $servicePackageInfo['max_km_per_day'] ?? null;
+                $maxKmPerPackage = $servicePackageInfo['max_km_per_package'] ?? null;
+
+                if ($maxKmPerDay) {
+                    $distanceDetails['free_km_per_day'] = (float) $maxKmPerDay;
+                    $distanceDetails['allowed_total_km'] = (float) ($maxKmPerDay * $days);
+                } elseif ($maxKmPerPackage) {
+                    $distanceDetails['free_km_per_package'] = (float) $maxKmPerPackage;
+                    $distanceDetails['allowed_total_km'] = (float) $maxKmPerPackage;
+                }
+            }
+
+            // If no km limits from service package, try slab definition
+            if (empty($distanceDetails) && $serviceTypeId) {
+                $slabKmLimits = $this->cartService->getSlabKmLimits($serviceTypeId, $days);
+                if ($slabKmLimits) {
+                    $distanceDetails = $slabKmLimits;
+                }
+            }
+
+            // Get extra km rate from common rate definitions
+            if ($vehicleGroupId && $serviceTypeId) {
+                $extraKmRate = $this->cartService->getExtraKmRateForVehicleGroup($vehicleGroupId, $serviceTypeId);
+                if ($extraKmRate && isset($extraKmRate['rate'])) {
+                    $distanceDetails['extra_km_price'] = (float) $extraKmRate['rate'];
+                }
+            }
+
+            // Only set if we have some data
+            if (!empty($distanceDetails)) {
+                $item['distance_details'] = $distanceDetails;
+
+                Log::debug('Enriched cart item with distance details', [
+                    'cart_key' => $key,
+                    'vehicle_group_id' => $vehicleGroupId,
+                    'service_type_id' => $serviceTypeId,
+                    'distance_details' => $distanceDetails,
+                ]);
+            }
+
+            $enrichedItems[$key] = $item;
+        }
+
+        return $enrichedItems;
     }
 
     /**
@@ -264,6 +345,7 @@ class CartController extends Controller
             // Recalculate pricing using BookingFlowService instead of accepting from frontend
             $totalPrice = 0;
             $perDayPrice = 0;
+            $pricingInfo = null; // Store full pricing info including distance_details
 
             Log::info(
                 'Adding item to cart',
@@ -459,6 +541,7 @@ class CartController extends Controller
                 'service_type_data' => $serviceTypeModel,
                 'service_package_id' => $servicePackageId,
                 'service_package_info' => $servicePackageInfo, // Store service package details
+                'distance_details' => $pricingInfo['distance_details'] ?? null, // Store km limits and extra km rate
                 'search_data' => $searchData,
                 'base_currency' => 'LKR', // Mark as LKR base pricing
                 'is_package' => $isPackageService, // Critical: Mark package services to prevent double multiplication
@@ -468,6 +551,7 @@ class CartController extends Controller
             Log::info('Cart item created with pricing', [
                 'service_package_id' => $servicePackageId,
                 'service_package_info' => $servicePackageInfo,
+                'distance_details' => $cartItem['distance_details'],
                 'price' => $cartItem['price'],
                 'total_price' => $cartItem['total_price'],
                 'is_package' => $cartItem['is_package'],
@@ -1111,13 +1195,22 @@ class CartController extends Controller
             }
 
             if ($items[$cartKey]['service_type_data'] && isset($items[$cartKey]['service_type_data']['id'])) {
-                $extraKmRate = $this->cartService->getExtraKmRateForVehicleGroup($vehicleGroupId);
+                $serviceTypeId = $items[$cartKey]['service_type_data']['id'];
+                $extraKmRate = $this->cartService->getExtraKmRateForVehicleGroup($vehicleGroupId, $serviceTypeId);
                 $currentExtraKm = $this->cartService->getItemExtraKm($dbCart, $cartKey);
 
                 // Determine if this vehicle group has slab pricing configured (slab-based pricing implies extra-km purchase availability)
-                $hasSlabPricing = VehiclePricingSlabDefinition::where('service_type_id', $items[$cartKey]['service_type_data']['id'])
+                $hasSlabPricing = VehiclePricingSlabDefinition::where('service_type_id', $serviceTypeId)
                     ->where('is_active', true)
                     ->exists();
+
+                Log::debug('Extra KM rate lookup for cart item', [
+                    'cart_key' => $cartKey,
+                    'vehicle_group_id' => $vehicleGroupId,
+                    'service_type_id' => $serviceTypeId,
+                    'extra_km_rate' => $extraKmRate,
+                    'has_slab_pricing' => $hasSlabPricing,
+                ]);
 
                 return response()->json([
                     'success' => true,
@@ -1125,6 +1218,7 @@ class CartController extends Controller
                         'rate' => $extraKmRate,
                         'current_extra_km' => $currentExtraKm,
                         'vehicle_group_id' => $vehicleGroupId,
+                        'service_type_id' => $serviceTypeId,
                         'has_slab' => (bool) $hasSlabPricing,
                         'service_type' => $items[$cartKey]['service_type_data']['name'] ?? null,
                     ]

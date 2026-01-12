@@ -18,6 +18,8 @@ use App\Models\Service\ServiceType;
 use App\Models\Service\ServicePackage;
 use App\Models\Company;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCalculationDefinition;
+use App\Models\Vehicle\VehiclePricing\VehiclePricingCommonRateDefinition;
+use App\Models\Vehicle\VehiclePricing\VehicleGroupCommonRatePricing;
 use App\Models\Vehicle\VehiclePricing\DistrictPricingAdjustment;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -243,6 +245,14 @@ class BookingFlowService
                             'duration_info' => $durationInfo,
                             'pricing_note' => $this->generatePricingNote($basePricing, $durationInfo)
                         ];
+
+                        // Log for debugging distance_details flow
+                        Log::debug('GetAvailableVehicleGroups - Pricing info built', [
+                            'vehicle_group_id' => $group->id,
+                            'has_distance_details' => isset($basePricing['distance_details']),
+                            'distance_details' => $basePricing['distance_details'] ?? 'NOT SET',
+                            'base_amount' => $basePricing['total_amount'],
+                        ]);
                     }
                 }
             } catch (\Exception $e) {
@@ -2133,9 +2143,11 @@ class BookingFlowService
                 'inputs' => $calculationInputs,
                 'service_package_info' => $servicePackageInfo,
                 'result' => $calculationResult
+
             ]);
             // Transform result to standard pricing structure
             return $this->transformCalculationResult($calculationResult, $params, $mode);
+
         } catch (\Exception $e) {
             Log::error("Dynamic pricing calculation failed: " . $e->getMessage(), [
                 'params' => $params,
@@ -2218,12 +2230,35 @@ class BookingFlowService
 
     /**
      * Transform calculation result to standard pricing structure
+     * Enhanced to properly extract distance_details for frontend consumption
      */
     private function transformCalculationResult(array $calculationResult, array $params, string $mode): array
     {
         $totalAmount = $calculationResult['total_amount'] ?? 0;
         $totalAmountWithoutCustomizations = $calculationResult['total_amount_without_customizations'] ?? 0;
         $breakdown = $calculationResult['breakdown'] ?? [];
+        $kmCalculations = $calculationResult['km_calculations'] ?? [];
+        $slabInfo = $calculationResult['slab_info'] ?? [];
+
+        // Build distance_details from km_calculations and slab_info
+        $distanceDetails = $this->buildDistanceDetails(
+            $kmCalculations,
+            $slabInfo,
+            $params['service_type_id'] ?? null,
+            $params['vehicle_group_id'] ?? null
+        );
+
+        Log::debug('TransformCalculationResult - Distance Details Built', [
+            'km_calculations' => $kmCalculations,
+            'slab_info' => $slabInfo ? [
+                'type' => $slabInfo['type'] ?? null,
+                'max_km_per_day' => $slabInfo['max_km_per_day'] ?? null,
+                'max_km_per_package' => $slabInfo['max_km_per_package'] ?? null,
+            ] : null,
+            'distance_details' => $distanceDetails,
+            'service_type_id' => $params['service_type_id'] ?? null,
+            'vehicle_group_id' => $params['vehicle_group_id'] ?? null,
+        ]);
 
         // Build standard pricing structure
         $result = [
@@ -2231,6 +2266,7 @@ class BookingFlowService
             'total_amount' => $totalAmount,
             'total_amount_without_customizations' => $totalAmountWithoutCustomizations,
             'breakdown' => $this->formatPricingBreakdown($breakdown),
+            'distance_details' => $distanceDetails,
             'calculation_metadata' => [
                 'definition_used' => $calculationResult['definition_id'] ?? null,
                 'variables_used' => $calculationResult['variables_used'] ?? [],
@@ -2242,11 +2278,138 @@ class BookingFlowService
         // Add detailed breakdown if full calculation mode
         if ($mode === 'full_calculation') {
             $result['detailed_breakdown'] = $calculationResult['detailed_breakdown'] ?? [];
-            $result['km_calculations'] = $calculationResult['km_calculations'] ?? [];
-            $result['slab_information'] = $calculationResult['slab_information'] ?? [];
+            $result['km_calculations'] = $kmCalculations;
+            $result['slab_information'] = $slabInfo;
         }
 
         return $result;
+    }
+
+    /**
+     * Build distance_details structure for frontend consumption
+     * 
+     * This method consolidates km limits and extra km rates from:
+     * - km_calculations (actual distances and overages)
+     * - slab_info (package/daily km limits)
+     * - common rate definitions (extra_km_rate per vehicle group)
+     * 
+     * @param array $kmCalculations KM calculations from pricing calculation
+     * @param array|null $slabInfo Slab information including km limits
+     * @param string|null $serviceTypeId Service type for rate lookup
+     * @param string|null $vehicleGroupId Vehicle group for rate lookup
+     * @return array Distance details for frontend display
+     */
+    private function buildDistanceDetails(
+        array $kmCalculations,
+        ?array $slabInfo,
+        ?string $serviceTypeId,
+        ?string $vehicleGroupId
+    ): array {
+        $distanceDetails = [
+            'journey_distance' => $kmCalculations['journey_distance'] ?? 0,
+            'allowed_total_km' => $kmCalculations['allowed_km'] ?? 0,
+            'extra_km' => $kmCalculations['extra_km'] ?? 0,
+            'extra_km_price' => null,
+            'calculation_type' => $kmCalculations['calculation_type'] ?? 'none',
+            'effective_days' => $kmCalculations['effective_days'] ?? 1,
+            'free_km_per_day' => null,
+            'free_km_per_package' => null,
+        ];
+
+        // Extract per-day or per-package limits from slab info
+        if ($slabInfo) {
+            $slabDefinition = $slabInfo['slab_definition'] ?? null;
+
+            if (isset($slabInfo['max_km_per_day']) && $slabInfo['max_km_per_day'] > 0) {
+                $distanceDetails['free_km_per_day'] = (float) $slabInfo['max_km_per_day'];
+            } elseif ($slabDefinition && isset($slabDefinition->max_km_per_day) && $slabDefinition->max_km_per_day > 0) {
+                $distanceDetails['free_km_per_day'] = (float) $slabDefinition->max_km_per_day;
+            }
+
+            if (isset($slabInfo['max_km_per_package']) && $slabInfo['max_km_per_package'] > 0) {
+                $distanceDetails['free_km_per_package'] = (float) $slabInfo['max_km_per_package'];
+            } elseif ($slabDefinition && isset($slabDefinition->max_km_per_package) && $slabDefinition->max_km_per_package > 0) {
+                $distanceDetails['free_km_per_package'] = (float) $slabDefinition->max_km_per_package;
+            }
+        }
+
+        // Get extra_km_rate from common rate definitions
+        if ($serviceTypeId && $vehicleGroupId) {
+            $extraKmRate = $this->getExtraKmRateForVehicleGroup($serviceTypeId, $vehicleGroupId);
+
+            if ($extraKmRate !== null) {
+                $distanceDetails['extra_km_price'] = (float) $extraKmRate;
+            }
+
+            Log::debug('BuildDistanceDetails - Extra KM Rate Lookup', [
+                'service_type_id' => $serviceTypeId,
+                'vehicle_group_id' => $vehicleGroupId,
+                'extra_km_rate' => $extraKmRate,
+            ]);
+        }
+
+        return $distanceDetails;
+    }
+
+    /**
+     * Get extra km rate for a specific vehicle group and service type
+     * 
+     * Looks up the extra_km_rate from common rate definitions.
+     * This rate is used for charging extra kilometers beyond the allowed limit.
+     * 
+     * @param string $serviceTypeId Service type ID
+     * @param string $vehicleGroupId Vehicle group ID
+     * @return float|null Extra km rate or null if not configured
+     */
+    private function getExtraKmRateForVehicleGroup(string $serviceTypeId, string $vehicleGroupId): ?float
+    {
+        try {
+            // Look up the extra_km_rate common rate definition for this service type
+            $commonRatePricing = VehicleGroupCommonRatePricing::whereHas('commonRateDefinition', function ($query) use ($serviceTypeId) {
+                $query->where('code', 'extra_km_rate')
+                    ->where('service_type_id', $serviceTypeId)
+                    ->where('is_active', true);
+            })
+                ->where('vehicle_group_id', $vehicleGroupId)
+                ->where('is_active', true)
+                ->first();
+
+            if ($commonRatePricing && $commonRatePricing->value !== null) {
+                Log::debug('Extra KM Rate found for vehicle group', [
+                    'vehicle_group_id' => $vehicleGroupId,
+                    'service_type_id' => $serviceTypeId,
+                    'rate' => $commonRatePricing->value,
+                ]);
+                return (float) $commonRatePricing->value;
+            }
+
+            // Fallback: Try to get a default rate from the common rate definition itself
+            $commonRateDefinition = VehiclePricingCommonRateDefinition::where('code', 'extra_km_rate')
+                ->where('service_type_id', $serviceTypeId)
+                ->where('is_active', true)
+                ->first();
+
+            if ($commonRateDefinition) {
+                Log::warning('Extra KM Rate not configured for vehicle group, no default available', [
+                    'vehicle_group_id' => $vehicleGroupId,
+                    'service_type_id' => $serviceTypeId,
+                    'common_rate_definition_id' => $commonRateDefinition->id,
+                ]);
+            } else {
+                Log::warning('Extra KM Rate definition not found for service type', [
+                    'service_type_id' => $serviceTypeId,
+                ]);
+            }
+
+            return null;
+        } catch (\Exception $e) {
+            Log::error('Error fetching extra km rate', [
+                'service_type_id' => $serviceTypeId,
+                'vehicle_group_id' => $vehicleGroupId,
+                'error' => $e->getMessage(),
+            ]);
+            return null;
+        }
     }
 
 

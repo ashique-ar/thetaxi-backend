@@ -171,7 +171,7 @@ class VehiclePricingCalculationDefinition extends Model
             $built['district_info'] = $districtInfo;
 
             return $built;
-        } catch (\Exception $e) {          
+        } catch (\Exception $e) {
             Log::error("Price calculation failed for definition {$this->id}: " . $e->getMessage(), [
                 'inputs' => $inputs,
                 'variables' => $this->variables,
@@ -433,7 +433,7 @@ class VehiclePricingCalculationDefinition extends Model
     {
         $result = [
             'journey_distance' => $inputs['journey_distance'] ?? $inputs['total_distance'] ?? 0,
-            'allowed_km' => 100,
+            'allowed_km' => 0,
             'extra_km' => 0,
             'daily_overage' => 0,
             'package_overage' => 0,
@@ -442,26 +442,38 @@ class VehiclePricingCalculationDefinition extends Model
             'effective_days' => 0
         ];
 
-        
-        if (!$slabInfo || !$result['journey_distance']) {
+        Log::debug('Calculating KM overages - Initial', [
+            'journey_distance' => $result['journey_distance'],
+            'result' => $result,
+            'slab_info' => $slabInfo,
+            'service_package_info' => $servicePackageInfo,
+            'inputs' => $inputs
+        ]);
+        if (!$slabInfo) {
             return $result;
         }
 
+        Log::debug('Calculating KM overages', [
+            'journey_distance' => $result['journey_distance'],
+            'slab_info' => $slabInfo,
+            'service_package_info' => $servicePackageInfo,
+            'inputs' => $inputs
+        ]);
         $actualKm = (float) $result['journey_distance'];
 
         // Enhanced daily calculation for calendar days
         $calendarDays = $this->calculateCalendarDays($inputs);
         $result['calendar_days'] = $calendarDays;
         $result['effective_days'] = max(1, $calendarDays); // Minimum 1 day
-        
-        
-        if($servicePackageInfo && $servicePackageInfo['max_km_per_day']) {
-            $result['calculation_type'] ='daily';
+
+
+        if ($servicePackageInfo && $servicePackageInfo['max_km_per_day']) {
+            $result['calculation_type'] = 'daily';
             $result['allowed_km'] = $servicePackageInfo['max_km_per_day'] * $result['effective_days'];
             $result['extra_km'] = max(0, $actualKm - $result['allowed_km']);
             $result['package_overage'] = $result['extra_km'];
         } elseif ($servicePackageInfo && $servicePackageInfo['max_km_per_package']) {
-            $result['calculation_type'] = 'package' ;
+            $result['calculation_type'] = 'package';
             $result['allowed_km'] = $servicePackageInfo['max_km_per_package'];
             $result['extra_km'] = max(0, $actualKm - $result['allowed_km']);
             $result['package_overage'] = $result['extra_km'];
@@ -483,7 +495,7 @@ class VehiclePricingCalculationDefinition extends Model
             $result['calculation_type'] = 'unlimited';
             $result['allowed_km'] = $actualKm; // All KM is billable
         }
-
+        Log::debug('KM overages calculated', $result);
         return $result;
     }
 
@@ -567,7 +579,7 @@ class VehiclePricingCalculationDefinition extends Model
             $isRequired = $variable['is_required'] ?? true;
             $defaultValue = $variable['default_value'] ?? null;
             // Definition-driven variables only
-            
+
             if ($varName === 'extra_km') {
                 $value = $kmCalculations['extra_km'] ?? 0;
             } elseif ($varName === 'allowed_km') {
@@ -862,9 +874,9 @@ class VehiclePricingCalculationDefinition extends Model
                 'in', 'contains' => is_array($expectedValue) && in_array($actualValue, $expectedValue),
                 'not_in', 'not_contains' => is_array($expectedValue) && !in_array($actualValue, $expectedValue),
                 'between' => is_array($expectedValue) && count($expectedValue) === 2 &&
-                    is_numeric($actualValue) &&
-                    $actualValue >= $expectedValue[0] &&
-                    $actualValue <= $expectedValue[1],
+                is_numeric($actualValue) &&
+                $actualValue >= $expectedValue[0] &&
+                $actualValue <= $expectedValue[1],
                 'exists' => $actualValue !== null,
                 'not_exists' => $actualValue === null,
                 'empty' => empty($actualValue),
@@ -946,7 +958,7 @@ class VehiclePricingCalculationDefinition extends Model
         }
 
         // Evaluate using eval (in production, replace with a proper math parser)
-        $result = @eval("return {$expression};");
+        $result = @eval ("return {$expression};");
 
         if ($result === false || !is_numeric($result)) {
             throw new \Exception("Failed to evaluate expression: {$expression}");
@@ -967,10 +979,10 @@ class VehiclePricingCalculationDefinition extends Model
     ): array {
         $adjustments = [];
         $currentAmount = $baseAmount;
-        
+
         $vehicleGroupId = $inputs['vehicle_group_id'] ?? null;
         $totalDistance = $kmCalculations['journey_distance'] ?? 0;
-        
+
         if ($vehicleGroupId && $totalDistance > 0) {
             $kmRangeResult = KmRangePricingRule::calculateBestPricing(
                 $totalDistance,
@@ -978,7 +990,7 @@ class VehiclePricingCalculationDefinition extends Model
                 $this->service_type_id,
                 $vehicleGroupId
             );
-            
+
             if (!empty($kmRangeResult['rules_applied'])) {
                 foreach ($kmRangeResult['rules_applied'] as $rule) {
                     $adjustments[] = [
@@ -990,14 +1002,14 @@ class VehiclePricingCalculationDefinition extends Model
                 }
             }
         }
-        
+
         $priceAdjustmentResult = PriceAdjustment::applyAdjustments(
             $currentAmount,
             $this->service_type_id,
             $vehicleGroupId,
             'total_price'
         );
-        
+
         if (!empty($priceAdjustmentResult['adjustments_applied'])) {
             foreach ($priceAdjustmentResult['adjustments_applied'] as $adjustment) {
                 $adjustments[] = [
@@ -1010,7 +1022,7 @@ class VehiclePricingCalculationDefinition extends Model
             }
             $currentAmount = $priceAdjustmentResult['final_amount'];
         }
-        
+
         return [
             'final_amount' => $currentAmount,
             'adjustments' => $adjustments,

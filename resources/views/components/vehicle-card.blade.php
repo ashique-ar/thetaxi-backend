@@ -15,24 +15,31 @@
     $mainImage = isset($vehicle['thumbnail'])
         ? s3_asset($vehicle['thumbnail']['path'] ?? '')
         : asset('assets/img/default-vehicle.jpg');
-    
+
     // Determine if this vehicle is quotation-only
     $isQuotationOnly = $vehicle['quotation_only'] ?? false;
     $allowBooking = $vehicle['allow_booking'] ?? true;
     $quotationOnlyReasons = $vehicle['quotation_only_reasons'] ?? [];
-    
+
     // Check specific conditions for quotation-only
     $hasPricing = isset($pricing['base_amount']) && $pricing['base_amount'] > 0;
     $isGroupActive = $vehicle['is_group_active'] ?? true;
     $hasAvailableVehicles = ($availability['available'] ?? 0) > 0;
     $isInquiryOnly = $vehicle['is_inquiry_only'] ?? false;
     $serviceRequiresInquiry = $vehicle['service_requires_inquiry'] ?? false;
-    
+
     // Final determination: show quotation button if any condition is met
-    $showQuotationButton = $isQuotationOnly || !$hasPricing || !$isGroupActive || $isInquiryOnly || $serviceRequiresInquiry;
-    
+    $showQuotationButton =
+        $isQuotationOnly || !$hasPricing || !$isGroupActive || $isInquiryOnly || $serviceRequiresInquiry;
+
     // Can add to cart/book only if all conditions are met
-    $canAddToCart = $allowBooking && $hasPricing && $isGroupActive && $hasAvailableVehicles && !$isInquiryOnly && !$serviceRequiresInquiry;
+    $canAddToCart =
+        $allowBooking &&
+        $hasPricing &&
+        $isGroupActive &&
+        $hasAvailableVehicles &&
+        !$isInquiryOnly &&
+        !$serviceRequiresInquiry;
 @endphp
 
 <!-- Vehicle Card -->
@@ -147,19 +154,56 @@
             @endif
         </div>
 
-        <!-- Pricing Details Row -->
-        @if (isset($pricing['distance_details']['allowed_total_km']) || isset($pricing['distance_details']['extra_km_price']))
+        {{-- Debug: Uncomment to see pricing data --}}
+        {{-- @dump($pricing) --}}
+
+        <!-- Distance/KM Details Row -->
+        @php
+            $distanceDetails = $pricing['distance_details'] ?? [];
+            $durationInfo = $pricing['duration_info'] ?? [];
+            $durationDays = $durationInfo['days'] ?? 1;
+
+            $hasFreeKmPerDay = isset($distanceDetails['free_km_per_day']) && $distanceDetails['free_km_per_day'] > 0;
+            $hasFreeKmPerPackage =
+                isset($distanceDetails['free_km_per_package']) && $distanceDetails['free_km_per_package'] > 0;
+            $hasAllowedKm = isset($distanceDetails['allowed_total_km']) && $distanceDetails['allowed_total_km'] > 0;
+            $hasExtraKmPrice = isset($distanceDetails['extra_km_price']) && $distanceDetails['extra_km_price'] > 0;
+            $showDistanceDetails = $hasFreeKmPerDay || $hasFreeKmPerPackage || $hasAllowedKm || $hasExtraKmPrice;
+
+            // Calculate per-day km from allowed_total_km if free_km_per_day is not set
+            $perDayKm = null;
+            if ($hasFreeKmPerDay) {
+                $perDayKm = $distanceDetails['free_km_per_day'];
+            } elseif ($hasAllowedKm && $durationDays > 0) {
+                // Derive per-day km from total allowed km
+                $perDayKm = $distanceDetails['allowed_total_km'] / $durationDays;
+            }
+        @endphp
+
+        @if ($showDistanceDetails)
             <div class="pricing-details">
-                @if (isset($pricing['distance_details']['allowed_total_km']))
+                {{-- Show free KM per day for daily rentals --}}
+                @if ($perDayKm && !$hasFreeKmPerPackage)
                     <small class="pricing-detail-item">
-                        <i class="bi bi-signpost-2"></i> Km: {{ $pricing['distance_details']['allowed_total_km'] }} km
+                        <i class="bi bi-speedometer2"></i>
+                        {{ number_format($perDayKm, 0) }} km/day
+                        @if ($durationDays > 1 && $hasAllowedKm)
+                            <span class="text-muted">({{ number_format($distanceDetails['allowed_total_km'], 0) }} km
+                                total)</span>
+                        @endif
+                    </small>
+                @elseif ($hasFreeKmPerPackage)
+                    {{-- Show free KM per package for package-based services --}}
+                    <small class="pricing-detail-item">
+                        <i class="bi bi-speedometer2"></i>
+                        {{ number_format($distanceDetails['free_km_per_package'], 0) }} km included
                     </small>
                 @endif
 
-                @if (isset($pricing['distance_details']['extra_km_price']))
+                @if ($hasExtraKmPrice)
                     <small class="pricing-detail-item">
                         <i class="bi bi-lightning-fill"></i> Extra:
-                        {{ getCurrencySymbol() }}{{ number_format($pricing['distance_details']['extra_km_price'], 0) }}/km
+                        {{ getCurrencySymbol() }}{{ number_format($distanceDetails['extra_km_price'], 0) }}/km
                     </small>
                 @endif
             </div>
@@ -317,10 +361,9 @@
             @elseif($showQuotationButton)
                 <!-- Request Quotation Button - when booking is not allowed -->
                 <button type="button" class="btn btn-warning w-100 mb-2 request-quotation-btn"
-                    data-group-id="{{ $vehicle['id'] }}" 
-                    data-group-name="{{ $vehicle['name'] ?? 'Vehicle' }}"
-                    data-search-id="{{ $searchId }}"
-                    data-bs-toggle="modal" data-bs-target="#requestQuotationModal">
+                    data-group-id="{{ $vehicle['id'] }}" data-group-name="{{ $vehicle['name'] ?? 'Vehicle' }}"
+                    data-search-id="{{ $searchId }}" data-bs-toggle="modal"
+                    data-bs-target="#requestQuotationModal">
                     <i class="bi bi-calculator"></i> Request Quotation
                 </button>
                 <p class="text-muted small mb-0 text-center">
@@ -337,7 +380,7 @@
                         Contact us for booking
                     @endif
                 </p>
-                
+
                 @if ($showViewDetails)
                     <a href="{{ $searchId ? route('vehicle.details', ['id' => $vehicle['id'], 'search' => $searchId]) : route('vehicle.details', ['id' => $vehicle['id']]) }}"
                         class="btn btn-outline-secondary btn-sm w-100 mt-2">
