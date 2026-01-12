@@ -10,24 +10,24 @@ return new class extends Migration {
      */
     public function up(): void
     {
-        Schema::table('booking_terms', function (Blueprint $table) {
-            // Drop the unique constraint if it exists (using raw SQL for PostgreSQL)
-            \DB::statement('ALTER TABLE booking_terms DROP CONSTRAINT IF EXISTS booking_terms_booking_id_terms_and_condition_id_unique');
+        // Use raw SQL with explicit casting and IF EXISTS checks to make this safe on PostgreSQL
+        // Drop index (some installs create an index instead of a named constraint)
+        \DB::statement('DROP INDEX IF EXISTS booking_terms_booking_id_terms_and_condition_id_index');
+        // Drop unique constraint and foreign key if they exist
+        \DB::statement('ALTER TABLE booking_terms DROP CONSTRAINT IF EXISTS booking_terms_booking_id_terms_and_condition_id_unique');
+        \DB::statement('ALTER TABLE booking_terms DROP CONSTRAINT IF EXISTS booking_terms_booking_id_foreign');
 
-            // Drop any foreign key constraint on booking_id if it exists
-            \DB::statement('ALTER TABLE booking_terms DROP CONSTRAINT IF EXISTS booking_terms_booking_id_foreign');
-        });
+        // Safely alter column type to UUID using USING clause
+        // This explicitly casts existing values to uuid where possible
+        \DB::statement('ALTER TABLE booking_terms ALTER COLUMN booking_id TYPE uuid USING booking_id::uuid');
+        \DB::statement('ALTER TABLE booking_terms ALTER COLUMN booking_id SET NOT NULL');
+        \DB::statement('ALTER TABLE booking_terms ALTER COLUMN booking_id DROP DEFAULT');
+        // Drop identity if exists (Postgres 10+)
+        \DB::statement('ALTER TABLE booking_terms ALTER COLUMN booking_id DROP IDENTITY IF EXISTS');
 
-        Schema::table('booking_terms', function (Blueprint $table) {
-            // Change booking_id from unsignedBigInteger to uuid
-            $table->uuid('booking_id')->change();
-
-            // Recreate the unique constraint
-            $table->unique(['booking_id', 'terms_and_condition_id']);
-
-            // Add foreign key constraint back if needed
-            $table->foreign('booking_id')->references('id')->on('bookings')->onDelete('cascade');
-        });
+        // Recreate unique constraint and foreign key
+        \DB::statement('ALTER TABLE booking_terms ADD CONSTRAINT booking_terms_booking_id_terms_and_condition_id_unique UNIQUE (booking_id, terms_and_condition_id)');
+        \DB::statement('ALTER TABLE booking_terms ADD CONSTRAINT booking_terms_booking_id_foreign FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE');
     }
 
     /**
@@ -35,18 +35,18 @@ return new class extends Migration {
      */
     public function down(): void
     {
-        Schema::table('booking_terms', function (Blueprint $table) {
-            // Drop foreign key constraint
-            $table->dropForeign(['booking_id']);
+        // Attempt a safe revert back to integer where possible. This may leave NULLs where UUIDs can't be cast to integers.
+        // Drop constraints first
+        \DB::statement('ALTER TABLE booking_terms DROP CONSTRAINT IF EXISTS booking_terms_booking_id_foreign');
+        \DB::statement('ALTER TABLE booking_terms DROP CONSTRAINT IF EXISTS booking_terms_booking_id_terms_and_condition_id_unique');
 
-            // Drop the unique constraint
-            $table->dropUnique(['booking_id', 'terms_and_condition_id']);
+        // Try casting back to bigint for values that are numeric; non-numeric UUIDs will become NULL
+        \DB::statement("ALTER TABLE booking_terms ALTER COLUMN booking_id TYPE bigint USING (CASE WHEN booking_id ~ '^[0-9]+$' THEN booking_id::bigint ELSE NULL END)");
 
-            // Revert booking_id back to unsignedBigInteger
-            $table->unsignedBigInteger('booking_id')->change();
+        // Make booking_id nullable again (since some values may have become NULL)
+        \DB::statement('ALTER TABLE booking_terms ALTER COLUMN booking_id DROP NOT NULL');
 
-            // Recreate the unique constraint
-            $table->unique(['booking_id', 'terms_and_condition_id']);
-        });
+        // Recreate the unique constraint on the (possibly nullable) columns
+        \DB::statement('ALTER TABLE booking_terms ADD CONSTRAINT booking_terms_booking_id_terms_and_condition_id_unique UNIQUE (booking_id, terms_and_condition_id)');
     }
 };
