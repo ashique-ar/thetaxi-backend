@@ -14,7 +14,7 @@ class GoogleMapsService
     public function __construct()
     {
         // Use a dedicated MAPS key, or fall back to the PLACES key you already use
-        $this->apiKey = config('services.google.places_api_key','');
+        $this->apiKey = config('services.google.places_api_key', '');
         $this->ttl = config('services.google.cache_ttl', 3600); // 1h default
 
         if (empty($this->apiKey)) {
@@ -39,14 +39,16 @@ class GoogleMapsService
         return Cache::remember($cacheKey, $this->ttl, function () use ($o, $d, $mode, $avoidTolls, $avoidHighways) {
             try {
                 $params = [
-                    'key'    => $this->apiKey,
+                    'key' => $this->apiKey,
                     'origins' => $o,
                     'destinations' => $d,
-                    'mode'   => $mode,
-                    'units'  => 'metric',
+                    'mode' => $mode,
+                    'units' => 'metric',
                 ];
-                if ($avoidTolls)    $params['avoid'] = ($params['avoid'] ?? '') . (empty($params['avoid']) ? 'tolls' : '|tolls');
-                if ($avoidHighways) $params['avoid'] = ($params['avoid'] ?? '') . (empty($params['avoid']) ? 'highways' : '|highways');
+                if ($avoidTolls)
+                    $params['avoid'] = ($params['avoid'] ?? '') . (empty($params['avoid']) ? 'tolls' : '|tolls');
+                if ($avoidHighways)
+                    $params['avoid'] = ($params['avoid'] ?? '') . (empty($params['avoid']) ? 'highways' : '|highways');
 
                 $resp = Http::timeout(12)->get('https://maps.googleapis.com/maps/api/distancematrix/json', $params);
                 if (!$resp->successful()) {
@@ -67,7 +69,7 @@ class GoogleMapsService
 
                 $meters = $element['distance']['value'] ?? 0;
                 $seconds = $element['duration']['value'] ?? 0;
-                
+
                 return [
                     'distance_km' => $meters > 0 ? round($meters / 1000, 3) : 0.0,
                     'duration_seconds' => $seconds
@@ -138,7 +140,7 @@ class GoogleMapsService
             $leg = $data['routes'][0]['legs'][0];
             $meters = $leg['distance']['value'] ?? 0;
             $seconds = $leg['duration']['value'] ?? 0;
-            
+
             return [
                 'distance_km' => $meters > 0 ? round($meters / 1000, 3) : 0.0,
                 'duration_seconds' => $seconds
@@ -172,7 +174,8 @@ class GoogleMapsService
 
         // fallback: address strings if present
         foreach (['address', 'formatted_address', 'name'] as $k) {
-            if (!empty($loc[$k])) return (string) $loc[$k];
+            if (!empty($loc[$k]))
+                return (string) $loc[$k];
         }
 
         return null;

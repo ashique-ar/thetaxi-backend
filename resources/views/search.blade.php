@@ -163,8 +163,8 @@
                             $isRecommended = $result['recommended'] ?? false;
                         @endphp
 
-                        <div class="col-lg-3 col-md-4 col-sm-12 vehicle-card-wrapper" data-vehicle-group="{{ $result['id'] }}"
-                            data-price="{{ $pricing['base_amount'] ?? 0 }}"
+                        <div class="col-lg-3 col-md-4 col-sm-12 vehicle-card-wrapper"
+                            data-vehicle-group="{{ $result['id'] }}" data-price="{{ $pricing['base_amount'] ?? 0 }}"
                             data-name="{{ $result['name'] ?? 'Unknown Vehicle' }}">
                             <x-vehicle-card :vehicle="$result" :pricing="$pricing" :enhancedPricing="$enhancedPricing" :serviceFeatures="$serviceFeatures"
                                 :availability="$availability" :searchId="$search->id" :isRecommended="$isRecommended" :showBookNow="true" :showViewDetails="false" />

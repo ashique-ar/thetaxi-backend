@@ -2989,7 +2989,7 @@ class BookingFlowService
             // - Delivery Distance: From customer's drop-off location to company (driver returns)
             $pickupData = $this->calculateDistance($companyLocation, $pickupLocation);
             $deliveryData = $this->calculateDistance($dropoffLocation, $companyLocation);
-            
+
             $distances['pickup_distance'] = $pickupData ? $pickupData['distance_km'] : null;
             $distances['delivery_distance'] = $deliveryData ? $deliveryData['distance_km'] : null;
             $durations['pickup_duration_seconds'] = $pickupData ? $pickupData['duration_seconds'] : null;
@@ -3000,7 +3000,7 @@ class BookingFlowService
             // - Delivery Distance: From company to customer's starting location (vehicle delivery)
             $pickupData = $this->calculateDistance($dropoffLocation, $companyLocation);
             $deliveryData = $this->calculateDistance($companyLocation, $pickupLocation);
-            
+
             $distances['pickup_distance'] = $pickupData ? $pickupData['distance_km'] : null;
             $distances['delivery_distance'] = $deliveryData ? $deliveryData['distance_km'] : null;
             $durations['pickup_duration_seconds'] = $pickupData ? $pickupData['duration_seconds'] : null;
