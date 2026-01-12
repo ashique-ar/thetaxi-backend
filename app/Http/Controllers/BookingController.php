@@ -1060,13 +1060,11 @@ class BookingController extends Controller
             ],
             'ride_now' => [
                 'Flexible Rental Packages',
-                'Self-Drive Options',
                 'Long-Term Discounts',
                 'No Hidden Charges',
             ],
             'day_rental' => [
                 '24/7 Road Side Assistance',
-                'Self-Drive Options',
                 'Long-Term Discounts',
                 'Flexible Drop-off',
                 'Insurance Included'
