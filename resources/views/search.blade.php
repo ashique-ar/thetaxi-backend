@@ -1535,7 +1535,9 @@
                 dropoff_location: '{{ $search->dropoff_location ?? '' }}',
                 dropoff_lat: {{ $search->dropoff_latitude ?? 'null' }},
                 dropoff_lng: {{ $search->dropoff_longitude ?? 'null' }},
-                duration_days: durationDays
+                duration_days: durationDays,
+                service_package_id: '{{ $search->service_package_id ?? ($search->package_id ?? '') }}',
+                package_id: '{{ $search->service_package_id ?? ($search->package_id ?? '') }}'
             };
 
             // Create proper item object for addToCart

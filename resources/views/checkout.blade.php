@@ -496,6 +496,46 @@
                                                                                 -
                                                                                 {{ $returnDate ? $returnDate->format('M d, Y') : '' }}</small>
                                                                         </p>
+                                                                        
+                                                                        @php
+                                                                            // Distance details for km information display
+                                                                            $distanceDetails = $item['distance_details'] ?? [];
+                                                                            
+                                                                            // If distance_details is empty, try to get from service package info or calculate
+                                                                            if (empty($distanceDetails) && isset($item['service_package_info'])) {
+                                                                                $servicePackageInfo = $item['service_package_info'];
+                                                                                // Build fallback distance_details from service package
+                                                                                $distanceDetails = [
+                                                                                    'allowed_total_km' => isset($servicePackageInfo['max_km_per_day']) 
+                                                                                        ? ($servicePackageInfo['max_km_per_day'] * $calculatedDays) 
+                                                                                        : null,
+                                                                                    'free_km_per_day' => $servicePackageInfo['max_km_per_day'] ?? null,
+                                                                                    'extra_km_price' => null, // Will be fetched from service separately
+                                                                                    'free_km_per_package' => $servicePackageInfo['max_km_per_package'] ?? null,
+                                                                                ];
+                                                                            }
+                                                                            
+                                                                            $allowedTotalKm = $distanceDetails['allowed_total_km'] ?? null;
+                                                                            $extraKmPrice = $distanceDetails['extra_km_price'] ?? null;
+                                                                            $freeKmPerDay = $distanceDetails['free_km_per_day'] ?? null;
+                                                                        @endphp
+                                                                        
+                                                                        @if($allowedTotalKm || $freeKmPerDay)
+                                                                            <p><small style="color: #0066cc;">
+                                                                                <i class="bi bi-speedometer2"></i>
+                                                                                @if($freeKmPerDay && $calculatedDays > 1)
+                                                                                    {{ number_format($freeKmPerDay, 0) }} km/day ({{ number_format($allowedTotalKm ?? ($freeKmPerDay * $calculatedDays), 0) }} km total)
+                                                                                @elseif($allowedTotalKm)
+                                                                                    {{ number_format($allowedTotalKm, 0) }} km included
+                                                                                @else
+                                                                                    {{ number_format($freeKmPerDay, 0) }} km included
+                                                                                @endif
+                                                                                
+                                                                                @if($extraKmPrice)
+                                                                                    <span style="color: #999;"> | Extra: {{ $currencySymbol }}{{ number_format($extraKmPrice, 2) }}/km</span>
+                                                                                @endif
+                                                                            </small></p>
+                                                                        @endif
                                                                         @php
                                                                             $pickupLoc = is_array(
                                                                                 $item['pickup_location'] ?? null,
