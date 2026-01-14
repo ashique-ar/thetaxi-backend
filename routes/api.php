@@ -284,8 +284,6 @@ Route::middleware(['auth:api'])->group(function () {
         Route::apiResource('business-settings', BusinessSettingController::class);
         Route::apiResource('currencies', CurrencyController::class);
         Route::apiResource('companies', CompanyController::class);
-        Route::apiResource('cms-content-types', CmsContentTypeController::class);
-        Route::apiResource('cms-contents', CmsContentController::class);
 
         // Public CMS routes (no authentication required)
         Route::get('public/cms-contents/published', [CmsContentController::class, 'published'])->name('api.cms-contents.published');
@@ -323,6 +321,10 @@ Route::middleware(['auth:api'])->group(function () {
         Route::apiResource('driving-license-types', DrivingLicenseTypeController::class);
         Route::apiResource('driving-licenses', DrivingLicenseController::class);
     });
+
+    // CMS content management (protected by controller permissions)
+    Route::apiResource('cms-content-types', CmsContentTypeController::class);
+    Route::apiResource('cms-contents', CmsContentController::class);
 
 
     /*

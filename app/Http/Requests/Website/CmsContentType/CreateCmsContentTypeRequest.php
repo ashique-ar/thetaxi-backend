@@ -7,7 +7,6 @@ use Illuminate\Foundation\Http\FormRequest;
 class CreateCmsContentTypeRequest extends FormRequest
 {
 
-
     public function rules()
     {
         return [
