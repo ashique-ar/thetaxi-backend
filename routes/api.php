@@ -1087,6 +1087,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('faq-categories/bulk-sort', [\App\Http\Controllers\Api\Admin\FAQCategoryController::class, 'bulkUpdateSort']);
         Route::get('faq-categories/{faqCategory}/faqs', [\App\Http\Controllers\Api\Admin\FAQCategoryController::class, 'faqs']);
 
+        Route::get('faqs/stats', [\App\Http\Controllers\Api\Admin\FAQController::class, 'stats']);
         Route::apiResource('faqs', \App\Http\Controllers\Api\Admin\FAQController::class);
         Route::post('faqs/bulk-update', [\App\Http\Controllers\Api\Admin\FAQController::class, 'bulkUpdate']);
         Route::get('faqs/categories/list', [\App\Http\Controllers\Api\Admin\FAQController::class, 'getCategories']);

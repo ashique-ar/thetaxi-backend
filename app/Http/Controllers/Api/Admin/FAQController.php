@@ -168,4 +168,24 @@ class FAQController extends Controller
             'data' => $categories
         ]);
     }
+
+    /**
+     * Get FAQ statistics
+     */
+    public function stats(): JsonResponse
+    {
+        $total = FAQ::count();
+        $active = FAQ::active()->count();
+        $featured = FAQ::where('is_featured', true)->count();
+        $categories = FAQCategory::count();
+
+        return response()->json([
+            'data' => [
+                'total_faqs' => $total,
+                'active_faqs' => $active,
+                'featured_faqs' => $featured,
+                'total_categories' => $categories,
+            ]
+        ]);
+    }
 }
