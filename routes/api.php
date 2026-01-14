@@ -170,23 +170,27 @@ Route::middleware(['auth:api'])->group(function () {
     */
 
     Route::middleware(['permission:users.view'])->group(function () {
-        Route::apiResource('users', UserController::class);
-        Route::post('users/{user}/activate', [UserController::class, 'activate'])->middleware('permission:users.manage');
-        Route::post('users/{user}/deactivate', [UserController::class, 'deactivate'])->middleware('permission:users.manage');
-        Route::post('users/{user}/reset-password', [UserController::class, 'resetPassword'])->middleware('permission:users.manage');
+        Route::get('users', [UserController::class, 'index']);
+        Route::get('users/{user}', [UserController::class, 'show']);
         Route::get('users/{user}/permissions', [UserController::class, 'permissions'])->middleware('permission:permissions.manage');
-        Route::post('users/{user}/permissions', [UserController::class, 'assignPermissions'])->middleware('permission:permissions.manage');
-        Route::delete('users/{user}/permissions', [UserController::class, 'revokePermissions'])->middleware('permission:permissions.manage');
         Route::get('users/{user}/roles', [UserController::class, 'roles'])->middleware('permission:users.edit');
-        Route::post('users/{user}/roles', [UserController::class, 'assignRoles'])->middleware('permission:users.edit');
-        Route::delete('users/{user}/roles', [UserController::class, 'revokeRoles'])->middleware('permission:users.edit');
 
-        // Admin: view/deactivate contexts for a specific user
+        // Admin: view contexts for a specific user
         Route::get('users/{user}/contexts', [UserController::class, 'contexts']);
-        Route::post('users/{user}/contexts/deactivate', [UserController::class, 'deactivateContext'])->middleware('permission:users.edit');
-        Route::post('users/{user}/contexts/{context}/roles', [UserController::class, 'assignContextRoles'])->middleware('permission:users.edit');
-        Route::delete('users/{user}/contexts/{context}/roles', [UserController::class, 'revokeContextRole'])->middleware('permission:users.edit');
     });
+    Route::post('users', [UserController::class, 'store'])->middleware('permission:users.create');
+    Route::put('users/{user}', [UserController::class, 'update'])->middleware('permission:users.edit');
+    Route::delete('users/{user}', [UserController::class, 'destroy'])->middleware('permission:users.delete');
+    Route::post('users/{user}/activate', [UserController::class, 'activate'])->middleware('permission:users.manage');
+    Route::post('users/{user}/deactivate', [UserController::class, 'deactivate'])->middleware('permission:users.manage');
+    Route::post('users/{user}/reset-password', [UserController::class, 'resetPassword'])->middleware('permission:users.manage');
+    Route::post('users/{user}/permissions', [UserController::class, 'assignPermissions'])->middleware('permission:permissions.manage');
+    Route::delete('users/{user}/permissions', [UserController::class, 'revokePermissions'])->middleware('permission:permissions.manage');
+    Route::post('users/{user}/roles', [UserController::class, 'assignRoles'])->middleware('permission:users.edit');
+    Route::delete('users/{user}/roles', [UserController::class, 'revokeRoles'])->middleware('permission:users.edit');
+    Route::post('users/{user}/contexts/deactivate', [UserController::class, 'deactivateContext'])->middleware('permission:users.edit');
+    Route::post('users/{user}/contexts/{context}/roles', [UserController::class, 'assignContextRoles'])->middleware('permission:users.edit');
+    Route::delete('users/{user}/contexts/{context}/roles', [UserController::class, 'revokeContextRole'])->middleware('permission:users.edit');
 
     /*
     |--------------------------------------------------------------------------
@@ -506,33 +510,54 @@ Route::middleware(['auth:api'])->group(function () {
     });
 
     Route::group(['prefix' => 'reports'], function () {
-        Route::get('/dashboard-stats', [ReportsController::class, 'getDashboardStats']);
-        Route::get('/booking-analytics', [ReportsController::class, 'getBookingAnalytics']);
-        Route::get('/financial-reports', [ReportsController::class, 'getFinancialReports']);
-        Route::post('/export', [ReportsController::class, 'exportReport']);
-        Route::get('/performance-metrics', [ReportsController::class, 'getPerformanceMetrics']);
-        Route::get('/customer-analytics', [ReportsController::class, 'getCustomerAnalytics']);
+        Route::get('/dashboard-stats', [ReportsController::class, 'getDashboardStats'])
+            ->middleware('permission:reports.view');
+        Route::get('/booking-analytics', [ReportsController::class, 'getBookingAnalytics'])
+            ->middleware('permission:reports.view');
+        Route::get('/financial-reports', [ReportsController::class, 'getFinancialReports'])
+            ->middleware('permission:reports.view');
+        Route::post('/export', [ReportsController::class, 'exportReport'])
+            ->middleware('permission:reports.generate');
+        Route::get('/performance-metrics', [ReportsController::class, 'getPerformanceMetrics'])
+            ->middleware('permission:reports.view');
+        Route::get('/customer-analytics', [ReportsController::class, 'getCustomerAnalytics'])
+            ->middleware('permission:reports.view');
     });
 
     Route::group(['prefix' => 'medical-records'], function () {
-        Route::get('/', [MedicalRecordController::class, 'index']);
-        Route::post('/', [MedicalRecordController::class, 'store']);
-        Route::get('/{id}', [MedicalRecordController::class, 'show']);
-        Route::put('/{id}', [MedicalRecordController::class, 'update']);
-        Route::delete('/{id}', [MedicalRecordController::class, 'destroy']);
-        Route::post('/bulk-update', [MedicalRecordController::class, 'bulkUpdate']);
-        Route::get('/compliance-report', [MedicalRecordController::class, 'getComplianceReport']);
-        Route::post('/{id}/upload-document', [MedicalRecordController::class, 'uploadDocument']);
-        Route::get('/categories', [MedicalRecordController::class, 'getCategories']);
+        Route::get('/', [MedicalRecordController::class, 'index'])
+            ->middleware('permission:medical-records.view');
+        Route::post('/', [MedicalRecordController::class, 'store'])
+            ->middleware('permission:medical-records.create');
+        Route::get('/{id}', [MedicalRecordController::class, 'show'])
+            ->middleware('permission:medical-records.view');
+        Route::put('/{id}', [MedicalRecordController::class, 'update'])
+            ->middleware('permission:medical-records.edit');
+        Route::delete('/{id}', [MedicalRecordController::class, 'destroy'])
+            ->middleware('permission:medical-records.delete');
+        Route::post('/bulk-update', [MedicalRecordController::class, 'bulkUpdate'])
+            ->middleware('permission:medical-records.manage');
+        Route::get('/compliance-report', [MedicalRecordController::class, 'getComplianceReport'])
+            ->middleware('permission:medical-records.view');
+        Route::post('/{id}/upload-document', [MedicalRecordController::class, 'uploadDocument'])
+            ->middleware('permission:medical-records.edit');
+        Route::get('/categories', [MedicalRecordController::class, 'getCategories'])
+            ->middleware('permission:medical-records.view');
     });
 
     Route::group(['prefix' => 'availability', 'middleware' => ['auth:sanctum']], function () {
-        Route::post('/check-vehicle', [AvailabilityController::class, 'checkVehicleAvailability']);
-        Route::post('/check-driver', [AvailabilityController::class, 'checkDriverAvailability']);
-        Route::get('/vehicles', [AvailabilityController::class, 'getAvailableVehicles']);
-        Route::post('/block-vehicle', [AvailabilityController::class, 'blockVehicle']);
-        Route::delete('/blocks/{id}', [AvailabilityController::class, 'removeVehicleBlock']);
-        Route::get('/calendar', [AvailabilityController::class, 'getAvailabilityCalendar']);
+        Route::post('/check-vehicle', [AvailabilityController::class, 'checkVehicleAvailability'])
+            ->middleware('permission:vehicle-availability.view');
+        Route::post('/check-driver', [AvailabilityController::class, 'checkDriverAvailability'])
+            ->middleware('permission:vehicle-availability.view');
+        Route::get('/vehicles', [AvailabilityController::class, 'getAvailableVehicles'])
+            ->middleware('permission:vehicle-availability.view');
+        Route::post('/block-vehicle', [AvailabilityController::class, 'blockVehicle'])
+            ->middleware('permission:vehicle-availability.manage');
+        Route::delete('/blocks/{id}', [AvailabilityController::class, 'removeVehicleBlock'])
+            ->middleware('permission:vehicle-availability.manage');
+        Route::get('/calendar', [AvailabilityController::class, 'getAvailabilityCalendar'])
+            ->middleware('permission:vehicle-availability.view');
     });
 
     /*
@@ -1083,14 +1108,37 @@ Route::get('health', function () {
 // Admin FAQ Management Routes
 Route::middleware(['auth:api'])->group(function () {
     Route::prefix('admin')->group(function () {
-        Route::apiResource('faq-categories', \App\Http\Controllers\Api\Admin\FAQCategoryController::class);
-        Route::post('faq-categories/bulk-sort', [\App\Http\Controllers\Api\Admin\FAQCategoryController::class, 'bulkUpdateSort']);
-        Route::get('faq-categories/{faqCategory}/faqs', [\App\Http\Controllers\Api\Admin\FAQCategoryController::class, 'faqs']);
+        Route::get('faq-categories', [\App\Http\Controllers\Api\Admin\FAQCategoryController::class, 'index'])
+            ->middleware('permission:faq-categories.view');
+        Route::get('faq-categories/{faqCategory}', [\App\Http\Controllers\Api\Admin\FAQCategoryController::class, 'show'])
+            ->middleware('permission:faq-categories.view');
+        Route::post('faq-categories', [\App\Http\Controllers\Api\Admin\FAQCategoryController::class, 'store'])
+            ->middleware('permission:faq-categories.create');
+        Route::put('faq-categories/{faqCategory}', [\App\Http\Controllers\Api\Admin\FAQCategoryController::class, 'update'])
+            ->middleware('permission:faq-categories.edit');
+        Route::delete('faq-categories/{faqCategory}', [\App\Http\Controllers\Api\Admin\FAQCategoryController::class, 'destroy'])
+            ->middleware('permission:faq-categories.delete');
+        Route::post('faq-categories/bulk-sort', [\App\Http\Controllers\Api\Admin\FAQCategoryController::class, 'bulkUpdateSort'])
+            ->middleware('permission:faq-categories.edit');
+        Route::get('faq-categories/{faqCategory}/faqs', [\App\Http\Controllers\Api\Admin\FAQCategoryController::class, 'faqs'])
+            ->middleware('permission:faq-categories.view');
 
-        Route::get('faqs/stats', [\App\Http\Controllers\Api\Admin\FAQController::class, 'stats']);
-        Route::apiResource('faqs', \App\Http\Controllers\Api\Admin\FAQController::class);
-        Route::post('faqs/bulk-update', [\App\Http\Controllers\Api\Admin\FAQController::class, 'bulkUpdate']);
-        Route::get('faqs/categories/list', [\App\Http\Controllers\Api\Admin\FAQController::class, 'getCategories']);
+        Route::get('faqs/stats', [\App\Http\Controllers\Api\Admin\FAQController::class, 'stats'])
+            ->middleware('permission:faqs.view');
+        Route::get('faqs', [\App\Http\Controllers\Api\Admin\FAQController::class, 'index'])
+            ->middleware('permission:faqs.view');
+        Route::get('faqs/{faq}', [\App\Http\Controllers\Api\Admin\FAQController::class, 'show'])
+            ->middleware('permission:faqs.view');
+        Route::post('faqs', [\App\Http\Controllers\Api\Admin\FAQController::class, 'store'])
+            ->middleware('permission:faqs.create');
+        Route::put('faqs/{faq}', [\App\Http\Controllers\Api\Admin\FAQController::class, 'update'])
+            ->middleware('permission:faqs.edit');
+        Route::delete('faqs/{faq}', [\App\Http\Controllers\Api\Admin\FAQController::class, 'destroy'])
+            ->middleware('permission:faqs.delete');
+        Route::post('faqs/bulk-update', [\App\Http\Controllers\Api\Admin\FAQController::class, 'bulkUpdate'])
+            ->middleware('permission:faqs.edit');
+        Route::get('faqs/categories/list', [\App\Http\Controllers\Api\Admin\FAQController::class, 'getCategories'])
+            ->middleware('permission:faqs.view');
     });
 });
 
