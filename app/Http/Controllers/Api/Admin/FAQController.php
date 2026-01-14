@@ -90,7 +90,7 @@ class FAQController extends Controller
     public function show(FAQ $faq): JsonResponse
     {
         $faq->load('category');
-        
+
         return response()->json([
             'data' => $faq
         ]);
@@ -163,7 +163,7 @@ class FAQController extends Controller
     public function getCategories(): JsonResponse
     {
         $categories = FAQCategory::active()->get(['id', 'name', 'slug']);
-        
+
         return response()->json([
             'data' => $categories
         ]);
