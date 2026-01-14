@@ -24,7 +24,7 @@
     <!-- Reference Box -->
     <div class="reference-box">
         <div class="reference-label">Reference Number</div>
-        <div class="reference-number">{{ $inquiry->id }}</div>
+        <div class="reference-number">{{ $inquiry->inquiry_number }}</div>
     </div>
 
     <!-- Inquiry Details Section -->

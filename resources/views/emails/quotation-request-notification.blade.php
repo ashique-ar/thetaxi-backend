@@ -24,7 +24,7 @@
         <table class="info-table">
             <tr>
                 <td>Inquiry ID</td>
-                <td><strong>{{ $inquiry->id }}</strong></td>
+                <td><strong>{{ $inquiry->inquiry_number ?? $inquiry->id }}</strong></td>
             </tr>
             <tr>
                 <td>Vehicle Group</td>
@@ -155,6 +155,6 @@
     </div>
 
     <p style="text-align: center; color: #717171; font-size: 13px; margin-top: 30px;">
-        Inquiry ID: {{ $inquiry->id }} | Generated: {{ now()->format('Y-m-d H:i:s') }}
+        Inquiry ID: {{ $inquiry->inquiry_number ?? $inquiry->id }} | Generated: {{ now()->format('Y-m-d H:i:s') }}
     </p>
 @endsection

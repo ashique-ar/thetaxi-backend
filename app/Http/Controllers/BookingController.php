@@ -1476,6 +1476,7 @@ class BookingController extends Controller
 
             Log::info('Quotation request emails sent successfully', [
                 'inquiry_id' => $inquiry->id,
+                'inquiry_number' => $inquiry->inquiry_number ?? null,
                 'customer_email' => $requestData['customer_email'],
                 'admin_email' => $adminEmail,
                 'vehicle_group' => $vehicleGroup->name,
@@ -1484,6 +1485,7 @@ class BookingController extends Controller
         } catch (\Exception $e) {
             Log::error('Error sending quotation request emails', [
                 'inquiry_id' => $inquiry->id,
+                'inquiry_number' => $inquiry->inquiry_number ?? null,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);

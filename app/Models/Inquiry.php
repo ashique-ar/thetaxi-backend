@@ -28,7 +28,7 @@ use App\Traits\UUID;
  */
 class Inquiry extends BaseModel
 {
-    
+
 
     /**
      * The attributes that are mass assignable.
@@ -52,6 +52,8 @@ class Inquiry extends BaseModel
         'payload',
         'created_user_id',
         'updated_user_id',
+        // Inquiry number
+        'inquiry_number',
         // Additional fields for quotation requests
         'inquiry_type',
         'vehicle_group_id',
@@ -105,5 +107,42 @@ class Inquiry extends BaseModel
     public function updatedBy()
     {
         return $this->belongsTo(User::class, 'updated_user_id');
+    }
+
+    /**
+     * Generate inquiry number (INQxxxxxx)
+     */
+    public static function generateInquiryNumber(): string
+    {
+        $prefix = 'INQ';
+
+        $last = static::where('inquiry_number', 'like', $prefix . '%')
+            ->orderByDesc('created_at')
+            ->first();
+
+        $next = 1;
+
+        if ($last && preg_match('/(\d{1,})$/', $last->inquiry_number, $m)) {
+            $next = intval($m[1]) + 1;
+        } else {
+            $count = static::where('inquiry_number', 'like', $prefix . '%')->count();
+            $next = $count + 1;
+        }
+
+        return $prefix . str_pad($next, 6, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * Boot method to set inquiry number on create
+     */
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::creating(function ($inquiry) {
+            if (empty($inquiry->inquiry_number)) {
+                $inquiry->inquiry_number = static::generateInquiryNumber();
+            }
+        });
     }
 }

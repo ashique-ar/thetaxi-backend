@@ -33,7 +33,7 @@ class InquiryConfirmationMail extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: "{$this->typeLabel} Received - Reference {$this->inquiry->id}"
+            subject: "{$this->typeLabel} Received - Reference {$this->inquiry->inquiry_number}"
         );
     }
 

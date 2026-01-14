@@ -49,10 +49,23 @@ class InquiryController extends Controller
                 'payload' => $payload,
             ]);
 
-            $this->mailDispatchService->sendToCustomer(
-                $meta['email'],
-                new InquiryConfirmationMail($inquiry, $meta['label'], $meta['intro'])
-            );
+            if ($type === 'corporate') {
+                // For corporate inquiries, only send to the customer and zufer@thetaxi.lk
+                $this->mailDispatchService->sendToCustomer(
+                    $meta['email'],
+                    new InquiryConfirmationMail($inquiry, $meta['label'], $meta['intro']),
+                    [
+                        'cc' => [],
+                        'suppress_global_bcc' => true,
+                        'bcc' => ['zufer@thetaxi.lk'],
+                    ]
+                );
+            } else {
+                $this->mailDispatchService->sendToCustomer(
+                    $meta['email'],
+                    new InquiryConfirmationMail($inquiry, $meta['label'], $meta['intro'])
+                );
+            }
 
             return back()->with('success', $meta['success_message']);
         } catch (\Exception $e) {

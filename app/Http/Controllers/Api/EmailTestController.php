@@ -81,6 +81,7 @@ class EmailTestController
     {
         $inquiry = (object) [
             'id' => 'INQ' . date('YmdHis'),
+            'inquiry_number' => 'INQ' . date('YmdHis'),
             'email' => 'inquiry@example.com',
             'phone' => '+94 71 987 6543',
             'message' => 'I am interested in renting a vehicle for my family trip.',
