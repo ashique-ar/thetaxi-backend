@@ -1098,20 +1098,42 @@ Route::middleware(['auth:api'])->group(function () {
 Route::middleware(['auth:api'])->group(function () {
     Route::prefix('admin')->group(function () {
         // Navigation Menu Management
-        Route::apiResource('navigation-menus', NavigationMenuController::class);
-        Route::post('navigation-menus/sort-order', [NavigationMenuController::class, 'updateSortOrder']);
-        Route::get('navigation-menus/tree/structure', [NavigationMenuController::class, 'tree']);
-        Route::post('navigation-menus/{navigationMenu}/duplicate', [NavigationMenuController::class, 'duplicate']);
+        Route::middleware(['permission:navigation-menus.view'])->group(function () {
+            Route::get('navigation-menus', [NavigationMenuController::class, 'index']);
+            Route::get('navigation-menus/{navigationMenu}', [NavigationMenuController::class, 'show']);
+            Route::get('navigation-menus/tree/structure', [NavigationMenuController::class, 'tree']);
+        });
+        Route::post('navigation-menus', [NavigationMenuController::class, 'store'])
+            ->middleware('permission:navigation-menus.create');
+        Route::put('navigation-menus/{navigationMenu}', [NavigationMenuController::class, 'update'])
+            ->middleware('permission:navigation-menus.edit');
+        Route::delete('navigation-menus/{navigationMenu}', [NavigationMenuController::class, 'destroy'])
+            ->middleware('permission:navigation-menus.delete');
+        Route::post('navigation-menus/sort-order', [NavigationMenuController::class, 'updateSortOrder'])
+            ->middleware('permission:navigation-menus.edit');
+        Route::post('navigation-menus/{navigationMenu}/duplicate', [NavigationMenuController::class, 'duplicate'])
+            ->middleware('permission:navigation-menus.create');
 
         // Footer Link Management  
-        Route::apiResource('footer-links', FooterLinkController::class);
-        Route::post('footer-links/sort-order', [FooterLinkController::class, 'updateSortOrder']);
-        Route::get('footer-links/grouped/sections', [FooterLinkController::class, 'grouped']);
-        Route::get('footer-links/sections/available', [FooterLinkController::class, 'sections']);
-        Route::post('footer-links/{footerLink}/duplicate', [FooterLinkController::class, 'duplicate']);
-        Route::get('footer-links/social/list', [FooterLinkController::class, 'social']);
-        Route::get('footer-links/legal/list', [FooterLinkController::class, 'legal']);
-        Route::get('footer-links/contact/list', [FooterLinkController::class, 'contact']);
+        Route::middleware(['permission:footer-links.view'])->group(function () {
+            Route::get('footer-links', [FooterLinkController::class, 'index']);
+            Route::get('footer-links/{footerLink}', [FooterLinkController::class, 'show']);
+            Route::get('footer-links/grouped/sections', [FooterLinkController::class, 'grouped']);
+            Route::get('footer-links/sections/available', [FooterLinkController::class, 'sections']);
+            Route::get('footer-links/social/list', [FooterLinkController::class, 'social']);
+            Route::get('footer-links/legal/list', [FooterLinkController::class, 'legal']);
+            Route::get('footer-links/contact/list', [FooterLinkController::class, 'contact']);
+        });
+        Route::post('footer-links', [FooterLinkController::class, 'store'])
+            ->middleware('permission:footer-links.create');
+        Route::put('footer-links/{footerLink}', [FooterLinkController::class, 'update'])
+            ->middleware('permission:footer-links.edit');
+        Route::delete('footer-links/{footerLink}', [FooterLinkController::class, 'destroy'])
+            ->middleware('permission:footer-links.delete');
+        Route::post('footer-links/sort-order', [FooterLinkController::class, 'updateSortOrder'])
+            ->middleware('permission:footer-links.edit');
+        Route::post('footer-links/{footerLink}/duplicate', [FooterLinkController::class, 'duplicate'])
+            ->middleware('permission:footer-links.create');
     });
 });
 
@@ -1160,8 +1182,10 @@ Route::middleware(['auth:api', 'permission:popup.view'])->group(function () {
 
         // Terms & Conditions CRUD (admin)
         Route::get('terms', [\App\Http\Controllers\Api\TermsController::class, 'index'])
+            ->middleware('permission:terms.view')
             ->name('api.admin.terms.index');
         Route::get('terms/{id}', [\App\Http\Controllers\Api\TermsController::class, 'show'])
+            ->middleware('permission:terms.view')
             ->name('api.admin.terms.show');
         Route::post('terms', [\App\Http\Controllers\Api\TermsController::class, 'store'])
             ->middleware('permission:terms.create')

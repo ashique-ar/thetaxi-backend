@@ -13,6 +13,10 @@ class ServicePackageController extends Controller
     public function __construct()
     {
         $this->middleware('auth:api')->except(['getPackagesByService']);
+        $this->middleware('permission:service-packages.view')->only(['index']);
+        $this->middleware('permission:service-packages.create')->only(['store']);
+        $this->middleware('permission:service-packages.edit')->only(['update']);
+        $this->middleware('permission:service-packages.delete')->only(['destroy']);
     }
 
     /**
