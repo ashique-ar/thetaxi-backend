@@ -6,18 +6,14 @@ use Illuminate\Mail\Mailable;
 use Illuminate\Mail\PendingMail;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use App\Mail\InquiryConfirmationMail;
 
 class MailDispatchService
 {
     /**
      * Send a customer-facing email with required CC/BCC rules.
-     *
-     * Options supported:
-     * - cc: array|string - explicit CC recipients (overrides default customer CC if provided)
-     * - bcc: array|string - extra BCC recipients to add
-     * - suppress_global_bcc: bool - if true, do not add global BCC recipients
      */
-    public function sendToCustomer(string $email, Mailable $mailable, array $options = []): void
+    public function sendToCustomer(string $email, Mailable $mailable): void
     {
         if (!$email) {
             Log::warning('Skipping customer email send; missing recipient.', [
@@ -26,23 +22,17 @@ class MailDispatchService
             return;
         }
 
-        $pending = Mail::to($email);
+        // Special-case corporate inquiry confirmation mails: send only to customer and zufer@thetaxi.lk
+        if ($mailable instanceof InquiryConfirmationMail && ($mailable->inquiry->inquiry_type ?? null) === 'corporate') {
+            $pending = Mail::to($email);
 
-        // CC: explicit override or default customer cc
-        if (!empty($options['cc'])) {
-            $pending = $pending->cc($options['cc']);
+            if (!app()->environment('local', 'testing')) {
+                $pending = $pending->bcc(['zufer@thetaxi.lk']);
+            }
         } else {
-            $pending = $pending->cc($this->customerCcRecipients());
-        }
-
-        // Global BCC: only add when not suppressed
-        if (empty($options['suppress_global_bcc'])) {
-            $pending = $pending->bcc($this->globalBccRecipients());
-        }
-
-        // Additional BCCs
-        if (!empty($options['bcc'])) {
-            $pending = $pending->bcc($options['bcc']);
+            $pending = Mail::to($email)
+                ->cc($this->customerCcRecipients())
+                ->bcc($this->globalBccRecipients());
         }
 
         $this->dispatch($pending, $mailable);
