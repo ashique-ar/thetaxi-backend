@@ -72,7 +72,7 @@ class AuthController extends Controller
         try {
             $credentials = $request->only('email', 'password');
             $user = $this->authService->authenticate($credentials);
-            
+
             if (!$user) {
                 return response()->json([
                     'status' => 'error',
@@ -125,7 +125,7 @@ class AuthController extends Controller
                     'user' => new UserResource($result['user']),
                     'token' => $result['tokens']
                 ]
-            ],200);
+            ], 200);
         } catch (ValidationException $e) {
             return response()->json([
                 'status' => 'error',
@@ -231,7 +231,7 @@ class AuthController extends Controller
     public function profile(Request $request): JsonResponse
     {
         try {
-            $user = $request->user();
+            $user = $request->user()->load(['role', 'agent', 'permissions', 'roles']);
             return response()->json([
                 'status' => 'success',
                 'data' => [
