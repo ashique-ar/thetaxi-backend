@@ -39,6 +39,36 @@ class AppServiceProvider extends ServiceProvider
             return $user->isActive();
         });
 
+        // Backwards compatibility: accept legacy hyphen-style abilities (e.g. "update-roles")
+        // by mapping them to dot-style permissions (e.g. "roles.update"). This prevents
+        // "This action is unauthorized." errors where older code checks use the
+        // hyphen naming convention while permissions are stored as resource.operation.
+        Gate::before(function ($user, $ability) {
+            if (!is_string($ability)) {
+                return null;
+            }
+
+            // If ability already contains a dot, leave it alone
+            if (str_contains($ability, '.')) {
+                return null;
+            }
+
+            // If ability is hyphenated, try to map verb-resource => resource.verb
+            if (str_contains($ability, '-')) {
+                [$verb, $resource] = explode('-', $ability, 2);
+
+                if ($verb && $resource) {
+                    $mapped = "{$resource}.{$verb}";
+
+                    if ($user->can($mapped)) {
+                        return true;
+                    }
+                }
+            }
+
+            return null;
+        });
+
         // Register currency view composer for all views
         view()->composer('*', \App\Http\ViewComposers\CurrencyViewComposer::class);
 
