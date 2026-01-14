@@ -7,13 +7,13 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class UpdateBookingChannelRequest extends FormRequest
 {
-    public function authorize() { return true; }
+
 
     public function rules()
     {
         return [
-            'name'        => ['sometimes','nullable','string','max:100'],
-            'description' => ['sometimes','nullable','string'],
+            'name' => ['sometimes', 'nullable', 'string', 'max:100'],
+            'description' => ['sometimes', 'nullable', 'string'],
         ];
     }
 }

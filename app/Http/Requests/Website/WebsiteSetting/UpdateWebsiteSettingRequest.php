@@ -6,10 +6,7 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class UpdateWebsiteSettingRequest extends FormRequest
 {
-    public function authorize()
-    {
-        return true;
-    }
+
 
     public function rules()
     {

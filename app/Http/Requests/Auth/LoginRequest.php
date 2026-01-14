@@ -10,13 +10,7 @@ use Illuminate\Support\Str;
 
 class LoginRequest extends FormRequest
 {
-    /**
-     * Determine if the user is authorized to make this request.
-     */
-    public function authorize(): bool
-    {
-        return true;
-    }
+
 
     /**
      * Get the validation rules that apply to the request.
@@ -80,10 +74,10 @@ class LoginRequest extends FormRequest
 
         if (RateLimiter::tooManyAttempts($key, $maxAttempts)) {
             $seconds = RateLimiter::availableIn($key);
-            
+
             throw ValidationException::withMessages([
                 'email' => [
-                    'Too many login attempts. Please try again in ' . 
+                    'Too many login attempts. Please try again in ' .
                     gmdate('i:s', $seconds) . ' minutes.'
                 ]
             ]);
@@ -99,7 +93,7 @@ class LoginRequest extends FormRequest
      */
     protected function throttleKey(): string
     {
-        return Str::transliterate(Str::lower($this->input('email')).'|'.$this->ip());
+        return Str::transliterate(Str::lower($this->input('email')) . '|' . $this->ip());
     }
 
     /**

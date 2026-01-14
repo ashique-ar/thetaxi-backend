@@ -171,9 +171,9 @@ Route::middleware(['auth:api'])->group(function () {
 
     Route::middleware(['permission:users.view'])->group(function () {
         Route::apiResource('users', UserController::class);
-        Route::post('users/{user}/activate', [UserController::class, 'activate'])->middleware('permission:users.activate');
-        Route::post('users/{user}/deactivate', [UserController::class, 'deactivate'])->middleware('permission:users.deactivate');
-        Route::post('users/{user}/reset-password', [UserController::class, 'resetPassword'])->middleware('permission:users.reset-password');
+        Route::post('users/{user}/activate', [UserController::class, 'activate'])->middleware('permission:users.manage');
+        Route::post('users/{user}/deactivate', [UserController::class, 'deactivate'])->middleware('permission:users.manage');
+        Route::post('users/{user}/reset-password', [UserController::class, 'resetPassword'])->middleware('permission:users.manage');
         Route::get('users/{user}/permissions', [UserController::class, 'permissions'])->middleware('permission:permissions.manage');
         Route::post('users/{user}/permissions', [UserController::class, 'assignPermissions'])->middleware('permission:permissions.manage');
         Route::delete('users/{user}/permissions', [UserController::class, 'revokePermissions'])->middleware('permission:permissions.manage');

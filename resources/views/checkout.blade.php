@@ -95,92 +95,6 @@
                 <form id="checkout-form" method="POST" action="{{ route('checkout.process') }}">
                     @csrf
 
-                    <!-- Payment Type Selection Section -->
-                    <div class="payment-type-selection mb-4">
-                        <div class="card">
-                            <div class="card-header">
-                                <h5 class="mb-0"><i class="bi bi-credit-card"></i> Choose Payment Option</h5>
-                            </div>
-                            <div class="card-body">
-                                <div class="row g-3">
-                                    <div class="col-md-4">
-                                        <div class="payment-option">
-                                            <input type="radio" name="payment_type" value="full" id="payment_full"
-                                                {{ $paymentType === 'full' ? 'checked' : '' }} class="payment-radio">
-                                            <label for="payment_full" class="payment-label">
-                                                <div class="payment-card">
-                                                    <i class="bi bi-credit-card-fill text-success"></i>
-                                                    <h6>Pay Full Amount</h6>
-                                                    <p class="mb-0">Complete payment now</p>
-                                                    <small class="text-muted">Total:
-                                                        {{ $currencySymbol }} {{ number_format($total, 2) }}</small>
-                                                </div>
-                                            </label>
-                                        </div>
-                                    </div>
-                                    @if ($advancePaymentEnabled)
-                                        <div class="col-md-4">
-                                            <div class="payment-option">
-                                                <input type="radio" name="payment_type" value="advance"
-                                                    id="payment_advance" {{ $paymentType === 'advance' ? 'checked' : '' }}
-                                                    class="payment-radio">
-                                                <label for="payment_advance" class="payment-label">
-                                                    <div class="payment-card">
-                                                        <i class="bi bi-credit-card text-warning"></i>
-                                                        <h6>Pay {{ $advancePercentage }}% Advance</h6>
-                                                        <p class="mb-0">Pay remaining on pickup</p>
-                                                        <small class="text-muted">Now:
-                                                            {{ $currencySymbol }}
-                                                            {{ number_format($total * ($advancePercentage / 100), 2) }}</small>
-                                                    </div>
-                                                </label>
-                                            </div>
-                                        </div>
-                                    @endif
-                                    <div class="col-md-4">
-                                        <div class="payment-option">
-                                            <input type="radio" name="payment_type" value="quotation"
-                                                id="payment_quotation" {{ $paymentType === 'quotation' ? 'checked' : '' }}
-                                                class="payment-radio">
-                                            <label for="payment_quotation" class="payment-label">
-                                                <div class="payment-card">
-                                                    <i class="bi bi-file-text text-info"></i>
-                                                    <h6>Request Quotation</h6>
-                                                    <p class="mb-0">Get detailed pricing</p>
-                                                    <small class="text-muted">No payment now</small>
-                                                </div>
-                                            </label>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Payment Type Alert -->
-                    <div class="alert alert-info mb-4" id="payment-type-alert">
-                        <div id="alert-content">
-                            @switch($paymentType)
-                                @case('advance')
-                                    <h6><i class="bi bi-info-circle"></i> Advance Payment ({{ $advancePercentage }}%)</h6>
-                                    <p class="mb-0">You are paying {{ $advancePercentage }}% advance. The remaining amount will
-                                        be collected at the time
-                                        of vehicle pickup.</p>
-                                @break
-
-                                @case('quotation')
-                                    <h6><i class="bi bi-file-text"></i> Request Quotation</h6>
-                                    <p class="mb-0">You are requesting a quotation. Our team will contact you with detailed
-                                        pricing and booking information.</p>
-                                @break
-
-                                @default
-                                    <h6><i class="bi bi-credit-card"></i> Full Payment</h6>
-                                    <p class="mb-0">You are making full payment for your booking.</p>
-                            @endswitch
-                        </div>
-                    </div>
-
                     <div class="row g-lg-4 gy-5">
                         <div class="col-lg-7">
                             <div class="checkout-form-wrapper">
@@ -389,12 +303,58 @@
                                         @if (!empty($termsByService))
                                             <div class="col-md-12">
                                                 <div class="terms-conditions-section">
-                                                    <h6>Terms & Conditions</h6>
+                                                    <h6>Service Terms & Conditions</h6>
                                                     <div class="terms-content">
                                                         @foreach ($termsByService as $service => $terms)
                                                             <div class="terms-group mb-4">
                                                                 <h6 class="service-heading mb-2">
                                                                     {{ ucfirst(str_replace('_', ' ', $service)) }}</h6>
+                                                                @foreach ($terms as $tc)
+                                                                    <div class="term-item mb-3">
+                                                                        <div class="form-check">
+                                                                            <input class="form-check-input"
+                                                                                type="checkbox"
+                                                                                name="terms_accepted[{{ $tc->id }}]"
+                                                                                value="{{ $tc->version }}"
+                                                                                id="tc_{{ $tc->id }}"
+                                                                                {{ old('terms_accepted.' . $tc->id) ? 'checked' : '' }}>
+                                                                            <label class="form-check-label"
+                                                                                for="tc_{{ $tc->id }}">
+                                                                                <strong>{{ $tc->title }}</strong>
+                                                                            </label>
+                                                                        </div>
+                                                                        <div class="term-body mt-2">
+                                                                            {!! $tc->content !!}
+                                                                        </div>
+                                                                    </div>
+                                                                @endforeach
+                                                            </div>
+                                                        @endforeach
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        @endif
+
+                                        <!-- Payment Type Terms -->
+                                        @if (!empty($termsByPaymentType))
+                                            @php
+                                                $paymentTypeLabels = [
+                                                    'full' => 'Full Payment',
+                                                    'advance' => 'Advance Payment',
+                                                    'checkin' => 'Pay on Check-in',
+                                                    'quotation' => 'Quotation Request',
+                                                ];
+                                            @endphp
+                                            <div class="col-md-12">
+                                                <div class="terms-conditions-section payment-terms-section">
+                                                    <h6>Payment Terms & Conditions</h6>
+                                                    <div class="terms-content">
+                                                        @foreach ($termsByPaymentType as $type => $terms)
+                                                            <div class="terms-group mb-4 payment-terms-group"
+                                                                data-payment-type="{{ $type }}"
+                                                                style="{{ $paymentType === $type ? '' : 'display:none;' }}">
+                                                                <h6 class="service-heading mb-2">
+                                                                    {{ $paymentTypeLabels[$type] ?? ucfirst($type) }}</h6>
                                                                 @foreach ($terms as $tc)
                                                                     <div class="term-item mb-3">
                                                                         <div class="form-check">
@@ -740,6 +700,8 @@
                                                                 @if ($paymentType === 'advance')
                                                                     Amount to Pay
                                                                     ({{ $advancePercentage }}%)
+                                                                @elseif($paymentType === 'checkin')
+                                                                    Pay on Check-in
                                                                 @elseif($paymentType === 'quotation')
                                                                     Quotation Request
                                                                 @endif
@@ -747,6 +709,9 @@
                                                             <strong class="text-primary">
                                                                 @if ($paymentType === 'quotation')
                                                                     No Payment Required
+                                                                @elseif($paymentType === 'checkin')
+                                                                    {{ $currencySymbol }}
+                                                                    {{ number_format($total, 2) }}
                                                                 @else
                                                                     {{ $currencySymbol }}
                                                                     {{ number_format($paymentAmount, 2) }}
@@ -757,7 +722,127 @@
                                                 </ul>
                                             </div>
 
-                                            @if ($paymentType !== 'quotation')
+                                            <!-- Payment Type Selection Section -->
+                                            <div class="payment-type-selection mb-4">
+                                                <div class="card">
+                                                    <div class="card-header">
+                                                        <h6 class="mb-0"><i class="bi bi-credit-card"></i> Payment Option
+                                                        </h6>
+                                                    </div>
+                                                    <div class="card-body">
+                                                        <div class="row g-3">
+                                                            <div class="col-12">
+                                                                <div class="payment-option">
+                                                                    <input type="radio" name="payment_type" value="full"
+                                                                        id="payment_full"
+                                                                        {{ $paymentType === 'full' ? 'checked' : '' }}
+                                                                        class="payment-radio">
+                                                                    <label for="payment_full" class="payment-label">
+                                                                        <div class="payment-card">
+                                                                            <i class="bi bi-credit-card-fill text-success"></i>
+                                                                            <h6>Pay Full Amount</h6>
+                                                                            <p class="mb-0">Complete payment now</p>
+                                                                            <small class="text-muted">Total:
+                                                                                {{ $currencySymbol }}
+                                                                                {{ number_format($total, 2) }}</small>
+                                                                        </div>
+                                                                    </label>
+                                                                </div>
+                                                            </div>
+                                                            @if ($advancePaymentEnabled)
+                                                                <div class="col-12">
+                                                                    <div class="payment-option">
+                                                                        <input type="radio" name="payment_type"
+                                                                            value="advance" id="payment_advance"
+                                                                            {{ $paymentType === 'advance' ? 'checked' : '' }}
+                                                                            class="payment-radio">
+                                                                        <label for="payment_advance" class="payment-label">
+                                                                            <div class="payment-card">
+                                                                                <i class="bi bi-credit-card text-warning"></i>
+                                                                                <h6>Pay {{ $advancePercentage }}% Advance</h6>
+                                                                                <p class="mb-0">Pay remaining on pickup</p>
+                                                                                <small class="text-muted">Now:
+                                                                                    {{ $currencySymbol }}
+                                                                                    {{ number_format($total * ($advancePercentage / 100), 2) }}</small>
+                                                                            </div>
+                                                                        </label>
+                                                                    </div>
+                                                                </div>
+                                                            @endif
+                                                            @if ($offlinePaymentEnabled)
+                                                                <div class="col-12">
+                                                                    <div class="payment-option">
+                                                                        <input type="radio" name="payment_type"
+                                                                            value="checkin" id="payment_checkin"
+                                                                            {{ $paymentType === 'checkin' ? 'checked' : '' }}
+                                                                            class="payment-radio">
+                                                                        <label for="payment_checkin" class="payment-label">
+                                                                            <div class="payment-card">
+                                                                                <i class="bi bi-cash-coin text-primary"></i>
+                                                                                <h6>Pay on Check-in</h6>
+                                                                                <p class="mb-0">Pay when you collect</p>
+                                                                                <small class="text-muted">Due:
+                                                                                    {{ $currencySymbol }}
+                                                                                    {{ number_format($total, 2) }}</small>
+                                                                            </div>
+                                                                        </label>
+                                                                    </div>
+                                                                </div>
+                                                            @endif
+                                                            <div class="col-12">
+                                                                <div class="payment-option">
+                                                                    <input type="radio" name="payment_type"
+                                                                        value="quotation" id="payment_quotation"
+                                                                        {{ $paymentType === 'quotation' ? 'checked' : '' }}
+                                                                        class="payment-radio">
+                                                                    <label for="payment_quotation"
+                                                                        class="payment-label">
+                                                                        <div class="payment-card">
+                                                                            <i class="bi bi-file-text text-info"></i>
+                                                                            <h6>Request Quotation</h6>
+                                                                            <p class="mb-0">Get detailed pricing</p>
+                                                                            <small class="text-muted">No payment now</small>
+                                                                        </div>
+                                                                    </label>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <!-- Payment Type Alert -->
+                                            <div class="alert alert-info mb-4" id="payment-type-alert">
+                                                <div id="alert-content">
+                                                    @switch($paymentType)
+                                                        @case('advance')
+                                                            <h6><i class="bi bi-info-circle"></i> Advance Payment
+                                                                ({{ $advancePercentage }}%)</h6>
+                                                            <p class="mb-0">You are paying {{ $advancePercentage }}%
+                                                                advance. The remaining amount will be collected at the time
+                                                                of vehicle pickup.</p>
+                                                        @break
+
+                                                        @case('checkin')
+                                                            <h6><i class="bi bi-cash-coin"></i> Pay on Check-in</h6>
+                                                            <p class="mb-0">No payment is required now. You will pay the full
+                                                                amount when you check-in to collect the vehicle.</p>
+                                                        @break
+
+                                                        @case('quotation')
+                                                            <h6><i class="bi bi-file-text"></i> Request Quotation</h6>
+                                                            <p class="mb-0">You are requesting a quotation. Our team will
+                                                                contact you with detailed pricing and booking information.</p>
+                                                        @break
+
+                                                        @default
+                                                            <h6><i class="bi bi-credit-card"></i> Full Payment</h6>
+                                                            <p class="mb-0">You are making full payment for your booking.</p>
+                                                    @endswitch
+                                                </div>
+                                            </div>
+
+                                            @if (!in_array($paymentType, ['quotation', 'checkin']))
                                                 <!-- Payment Method Selection -->
                                                 <div class="choose-payment-method">
                                                     <h6>Select Payment Method</h6>
@@ -817,6 +902,8 @@
                                                 <span>
                                                     @if ($paymentType === 'quotation')
                                                         Submit Quotation Request
+                                                    @elseif ($paymentType === 'checkin')
+                                                        Confirm Booking - Pay on Check-in
                                                     @else
                                                         Complete Booking -
                                                         {{ $currencySymbol }} {{ number_format($paymentAmount, 2) }}
@@ -1442,6 +1529,7 @@
             const currencySymbol = '{{ $currencySymbol }}';
             const total = {{ $total }};
             const advancePercentage = {{ $advancePercentage }};
+            const paymentTermsGroups = $('.payment-terms-group');
 
             // Initialize Select2 for country dropdown
             $('#country-select').select2({
@@ -1449,6 +1537,17 @@
                 allowClear: true,
                 width: '100%'
             });
+
+            function updatePaymentTerms(type) {
+                if (!paymentTermsGroups.length) {
+                    return;
+                }
+                paymentTermsGroups.hide();
+                const match = paymentTermsGroups.filter(`[data-payment-type="${type}"]`);
+                if (match.length) {
+                    match.show();
+                }
+            }
 
             // Payment type selection handling
             $('input[name="payment_type"]').on('change', function() {
@@ -1483,6 +1582,16 @@
                             'Submit Quotation Request <svg width="10" height="10" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg"><path d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z"></path></svg>'
                         );
                         break;
+                    case 'checkin':
+                        alertContent.html(`
+                    <h6><i class="bi bi-cash-coin"></i> Pay on Check-in</h6>
+                    <p class="mb-0">No payment is required now. You will pay the full amount when you check-in to collect the vehicle.</p>
+                `);
+                        paymentMethodSection.hide();
+                        submitBtn.html(
+                            `Confirm Booking - Pay on Check-in <svg width="10" height="10" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg"><path d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z"></path></svg>`
+                        );
+                        break;
                     default:
                         alertContent.html(`
                     <h6><i class="bi bi-credit-card"></i> Full Payment</h6>
@@ -1494,6 +1603,7 @@
                         );
                         break;
                 }
+                updatePaymentTerms(paymentType);
             });
 
             // Payment method selection
@@ -1514,14 +1624,15 @@
 
             // Trigger change event on page load if a payment method is already selected
             $('input[name="payment_method"]:checked').trigger('change');
+            updatePaymentTerms($('input[name="payment_type"]:checked').val());
 
             // Form validation
             $('#checkout-form').on('submit', function(e) {
                 const paymentType = $('input[name="payment_type"]:checked').val();
                 const paymentMethod = $('input[name="payment_method"]:checked').val();
 
-                // Skip payment method validation for quotation requests
-                if (paymentType !== 'quotation') {
+                // Skip payment method validation for quotation and pay-on-checkin
+                if (!['quotation', 'checkin'].includes(paymentType)) {
                     if (!paymentMethod) {
                         e.preventDefault();
                         alert('Please select a payment method');

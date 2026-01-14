@@ -7,10 +7,7 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class UpdateVehicleOwnerRequest extends FormRequest
 {
-    public function authorize()
-    {
-        return true;
-    }
+
     public function rules()
     {
         $vehicleOwnerId = $this->route('vehicleOwner')->id;

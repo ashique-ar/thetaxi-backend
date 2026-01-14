@@ -7,10 +7,7 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class CreateVehiclePricingSlabDefinitionRequest extends FormRequest
 {
-    public function authorize()
-    {
-        return true;
-    }
+
     public function rules()
     {
         return [
@@ -21,7 +18,7 @@ class CreateVehiclePricingSlabDefinitionRequest extends FormRequest
             'min_hours' => ['required', 'integer', 'min:0'],
             'max_hours' => ['required', 'integer', 'gte:min_hours'],
             'sort_order' => ['nullable', 'integer', 'min:0'],
-            'is_active' => ['boolean'],            
+            'is_active' => ['boolean'],
         ];
     }
 }

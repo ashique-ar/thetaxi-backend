@@ -14,6 +14,7 @@ use Spatie\Activitylog\Traits\LogsActivity;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Spatie\Permission\Traits\HasRoles;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB;
 
 /**
  * App\Models\User
@@ -334,7 +335,20 @@ class User extends Authenticatable
      */
     public function getPermissionsArray()
     {
-        return $this->getAllPermissions()->pluck('name')->toArray();
+        $directPermissions = DB::table('model_has_permissions')
+            ->join('permissions', 'permissions.id', '=', 'model_has_permissions.permission_id')
+            ->where('model_has_permissions.model_type', self::class)
+            ->where('model_has_permissions.model_id', $this->id)
+            ->pluck('permissions.name');
+
+        $rolePermissions = DB::table('model_has_roles')
+            ->join('role_has_permissions', 'role_has_permissions.role_id', '=', 'model_has_roles.role_id')
+            ->join('permissions', 'permissions.id', '=', 'role_has_permissions.permission_id')
+            ->where('model_has_roles.model_type', self::class)
+            ->where('model_has_roles.model_id', $this->id)
+            ->pluck('permissions.name');
+
+        return $directPermissions->merge($rolePermissions)->unique()->values()->toArray();
     }
 
     /**
@@ -344,7 +358,14 @@ class User extends Authenticatable
      */
     public function getRolesArray()
     {
-        return $this->roles()->pluck('name')->toArray();
+        return DB::table('model_has_roles')
+            ->join('roles', 'roles.id', '=', 'model_has_roles.role_id')
+            ->where('model_has_roles.model_type', self::class)
+            ->where('model_has_roles.model_id', $this->id)
+            ->pluck('roles.name')
+            ->unique()
+            ->values()
+            ->toArray();
     }
 
     /**

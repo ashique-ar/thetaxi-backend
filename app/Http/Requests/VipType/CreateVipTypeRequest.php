@@ -6,13 +6,13 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class CreateVipTypeRequest extends FormRequest
 {
-    public function authorize() { return true; }
+
 
     public function rules()
     {
         return [
-            'name'        => ['nullable','string','max:255'],
-            'description' => ['nullable','string'],
+            'name' => ['nullable', 'string', 'max:255'],
+            'description' => ['nullable', 'string'],
         ];
     }
 }

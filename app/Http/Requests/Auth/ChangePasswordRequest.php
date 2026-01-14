@@ -7,13 +7,7 @@ use Illuminate\Validation\Rules\Password;
 
 class ChangePasswordRequest extends FormRequest
 {
-    /**
-     * Determine if the user is authorized to make this request.
-     */
-    public function authorize(): bool
-    {
-        return true;
-    }
+
 
     /**
      * Get the validation rules that apply to the request.
@@ -24,12 +18,15 @@ class ChangePasswordRequest extends FormRequest
     {
         return [
             'current_password' => ['required', 'string'],
-            'new_password' => ['required', 'string', Password::min(8)
-                ->letters()
-                ->mixedCase()
-                ->numbers()
-                ->symbols()
-                ->uncompromised()
+            'new_password' => [
+                'required',
+                'string',
+                Password::min(8)
+                    ->letters()
+                    ->mixedCase()
+                    ->numbers()
+                    ->symbols()
+                    ->uncompromised()
             ],
             'new_password_confirmation' => ['required', 'same:new_password'],
             'revoke_tokens' => ['nullable', 'boolean'],

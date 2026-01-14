@@ -10,10 +10,7 @@ use Illuminate\Validation\Validator;
 
 class CreateCustomerRequest extends FormRequest
 {
-    public function authorize()
-    {
-        return true;
-    }
+
 
     public function rules()
     {
@@ -49,29 +46,29 @@ class CreateCustomerRequest extends FormRequest
     {
         $validator->after(function ($validator) {
             $email = $this->input('email');
-            
+
             if ($email) {
                 $user = User::where('email', $email)->first();
-                
+
                 if ($user) {
                     // Check if user already has customer context
                     $existingContext = UserContext::where('user_id', $user->id)
                         ->where('context_type', 'customer')
                         ->where('is_active', true)
                         ->first();
-                    
+
                     if ($existingContext) {
                         $validator->errors()->add(
-                            'email', 
+                            'email',
                             'This email is already registered as a customer. Please use a different email or contact the administrator.'
                         );
                     }
-                    
+
                     // Also check direct Customer model for backwards compatibility
                     $existingCustomer = Customer::where('user_id', $user->id)->first();
                     if ($existingCustomer) {
                         $validator->errors()->add(
-                            'email', 
+                            'email',
                             'This email is already registered as a customer. Please use a different email or contact the administrator.'
                         );
                     }

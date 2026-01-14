@@ -9,13 +9,7 @@ use Carbon\Carbon;
 
 class BookingSearchRequest extends FormRequest
 {
-    /**
-     * Determine if the user is authorized to make this request.
-     */
-    public function authorize(): bool
-    {
-        return true;
-    }
+
 
     /**
      * Prepare the data for validation.
@@ -23,33 +17,33 @@ class BookingSearchRequest extends FormRequest
     protected function prepareForValidation(): void
     {
         $data = $this->all();
-        
+
         // Convert DD/MM/YYYY format to Y-m-d for validation and processing
         if (isset($data['from_date']) && $this->isValidDDMMYYYY($data['from_date'])) {
             $data['from_date'] = $this->convertDDMMYYYYToYMD($data['from_date']);
         }
-        
+
         if (isset($data['to_date']) && $this->isValidDDMMYYYY($data['to_date'])) {
             $data['to_date'] = $this->convertDDMMYYYYToYMD($data['to_date']);
         }
-        
+
         // Legacy field support for backward compatibility
         if (isset($data['date']) && $this->isValidDDMMYYYY($data['date'])) {
             $data['date'] = $this->convertDDMMYYYYToYMD($data['date']);
         }
-        
+
         if (isset($data['return_date']) && $this->isValidDDMMYYYY($data['return_date'])) {
             $data['return_date'] = $this->convertDDMMYYYYToYMD($data['return_date']);
         }
-        
+
         if (isset($data['pickup_date']) && $this->isValidDDMMYYYY($data['pickup_date'])) {
             $data['pickup_date'] = $this->convertDDMMYYYYToYMD($data['pickup_date']);
         }
-        
+
         if (isset($data['dropoff_date']) && $this->isValidDDMMYYYY($data['dropoff_date'])) {
             $data['dropoff_date'] = $this->convertDDMMYYYYToYMD($data['dropoff_date']);
         }
-        
+
         $this->replace($data);
     }
 
@@ -59,26 +53,26 @@ class BookingSearchRequest extends FormRequest
     public function rules(): array
     {
         $serviceType = $this->input('service_type');
-        
+
         // Service-specific validation rules
         switch ($serviceType) {
             case 'airport_transfers':
                 return $this->airportTransferRules();
-            
+
             case 'point_to_point':
                 return $this->dropPickupRules();
-            
+
             case 'ride_now':
                 return $this->rentalPackagesRules();
             case 'day_rental':
                 return $this->dayRentalRules();
-                
+
             case 'custom-tour':
                 return $this->customTourRules();
-            
+
             case 'corporate-transport':
                 return $this->corporateTransportRules();
-            
+
             default:
                 return $this->defaultRules();
         }

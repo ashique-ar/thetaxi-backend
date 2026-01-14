@@ -101,12 +101,23 @@ class CheckoutController extends Controller
 
         $paymentSettings = $this->resolvePaymentSettings();
         $paymentType = $request->get('type', 'full');
+        $offlinePaymentEnabled = $this->normalizeBoolean($paymentSettings['payment_offline_enabled'] ?? null, false);
 
         // Validate payment type
-        if (!in_array($paymentType, ['full', 'advance', 'quotation'])) {
+        $allowedPaymentTypes = ['full', 'quotation'];
+        if ($paymentSettings['advance_payment_enabled']) {
+            $allowedPaymentTypes[] = 'advance';
+        }
+        if ($offlinePaymentEnabled) {
+            $allowedPaymentTypes[] = 'checkin';
+        }
+        if (!in_array($paymentType, $allowedPaymentTypes, true)) {
             $paymentType = 'full';
         }
         if (!$paymentSettings['advance_payment_enabled'] && $paymentType === 'advance') {
+            $paymentType = 'full';
+        }
+        if (!$offlinePaymentEnabled && $paymentType === 'checkin') {
             $paymentType = 'full';
         }
 
@@ -121,19 +132,35 @@ class CheckoutController extends Controller
 
         $serviceCodes = collect($cart)->pluck('service_type')->filter()->unique();
         $termsByService = [];
+        $termsByPaymentType = [];
 
         foreach ($serviceCodes as $code) {
             $mapped = $serviceMap[$code] ?? $code; // fallback to same code
-            $terms = TermsAndCondition::getForCheckout($mapped, $paymentType);
+            $terms = TermsAndCondition::getServiceTerms($mapped);
             if ($terms && $terms->count()) {
                 $termsByService[$mapped] = $terms;
             }
         }
 
-        // Always include general terms if available
-        $general = TermsAndCondition::getForCheckout('general', $paymentType);
+        // Always include general service terms if available
+        $general = TermsAndCondition::getGeneralServiceTerms();
         if ($general && $general->count()) {
             $termsByService['general'] = $general;
+        }
+
+        $availablePaymentTypes = ['full', 'quotation'];
+        if ($paymentSettings['advance_payment_enabled']) {
+            $availablePaymentTypes[] = 'advance';
+        }
+        if ($offlinePaymentEnabled) {
+            $availablePaymentTypes[] = 'checkin';
+        }
+
+        foreach ($availablePaymentTypes as $type) {
+            $paymentTerms = TermsAndCondition::getPaymentTermsForCheckout($type);
+            if ($paymentTerms && $paymentTerms->count()) {
+                $termsByPaymentType[$type] = $paymentTerms;
+            }
         }
 
         $paymentMethods = $this->getAvailablePaymentMethods(
@@ -153,9 +180,11 @@ class CheckoutController extends Controller
             'cartData',
             'paymentType',
             'termsByService',
+            'termsByPaymentType',
             'paymentMethods',
             'advancePaymentEnabled',
             'advancePercentage',
+            'offlinePaymentEnabled',
             'countries'
         ));
     }
@@ -177,7 +206,11 @@ class CheckoutController extends Controller
         $advancePaymentEnabled = $paymentSettings['advance_payment_enabled'];
         $advancePercentage = $paymentSettings['advance_payment_percentage'];
         $webxpayEnabled = $paymentSettings['webxpay_enabled'];
+        $offlinePaymentEnabled = $this->normalizeBoolean($paymentSettings['payment_offline_enabled'] ?? null, false);
         $allowedPaymentTypes = $advancePaymentEnabled ? ['full', 'advance', 'quotation'] : ['full', 'quotation'];
+        if ($offlinePaymentEnabled) {
+            $allowedPaymentTypes[] = 'checkin';
+        }
 
         $allowedPaymentMethodKeys = $this->getAvailablePaymentMethods(
             $webxpayEnabled,
@@ -216,8 +249,8 @@ class CheckoutController extends Controller
 
 
 
-        // Add payment method validation only if not quotation
-        if ($request->input('payment_type') !== 'quotation') {
+        // Add payment method validation only if not quotation or pay-on-checkin
+        if (!in_array($request->input('payment_type'), ['quotation', 'checkin'], true)) {
             $rules['payment_method'] = 'required|in:' . implode(',', $allowedPaymentMethodKeys);
         }
 
@@ -241,6 +274,14 @@ class CheckoutController extends Controller
         ];
 
         $validated = $request->validate($rules, $messages);
+        if (($validated['payment_type'] ?? null) === 'checkin') {
+            if (!in_array('offline', $allowedPaymentMethodKeys, true)) {
+                return redirect()->back()
+                    ->withInput()
+                    ->with('error', 'Pay on check-in is currently unavailable. Please choose another payment option.');
+            }
+            $validated['payment_method'] = 'offline';
+        }
 
         // Get cart from database
         $cartModel = $this->cartService->getOrCreateCart();
@@ -263,13 +304,24 @@ class CheckoutController extends Controller
         }
 
         // Re-check dynamic Terms & Conditions acceptance based on cart service types
+        $serviceMap = [
+            'airport_transfers' => 'vehicle_rental',
+            'ride_now' => 'vehicle_rental',
+            'day_rental' => 'vehicle_rental',
+            'point_to_point' => 'vehicle_rental',
+            'corporate_transport' => 'vehicle_rental',
+        ];
         $serviceCodes = collect($cart)->pluck('service_type')->filter()->unique();
         $requiredTerms = collect();
         foreach ($serviceCodes as $code) {
             $mapped = $serviceMap[$code] ?? $code;
-            $requiredTerms = $requiredTerms->merge(TermsAndCondition::getForCheckout($mapped, $validated['payment_type'] ?? 'full'));
+            $requiredTerms = $requiredTerms->merge(TermsAndCondition::getServiceTerms($mapped));
         }
-        $requiredTerms = $requiredTerms->merge(TermsAndCondition::getForCheckout('general', $validated['payment_type'] ?? 'full'));
+        $requiredTerms = $requiredTerms->merge(TermsAndCondition::getGeneralServiceTerms());
+        $requiredTerms = $requiredTerms->merge(
+            TermsAndCondition::getPaymentTermsForCheckout($validated['payment_type'] ?? 'full')
+        );
+        $requiredTerms = $requiredTerms->unique('id');
 
         // Validate that all required terms are accepted
         $accepted = $request->input('terms_accepted', []);
@@ -323,6 +375,7 @@ class CheckoutController extends Controller
             $paymentAmount = match ($validated['payment_type']) {
                 'advance' => $total * ($advancePercentage / 100),
                 'quotation' => 0,
+                'checkin' => $total,
                 default => $total
             };
             if ($validated['payment_type'] === 'advance' && $advanceMinAmount > 0) {
@@ -355,6 +408,7 @@ class CheckoutController extends Controller
                     $number = Booking::generateQuotationNumber();
                     break;
                 case 'advance':
+                case 'checkin':
                 case 'online':
                 case 'full':
                     $number = Booking::generateBookingNumber();
@@ -560,6 +614,8 @@ class CheckoutController extends Controller
                 case 'advance':
                 case 'full':
                     return $this->processPayment($booking, $validated, $paymentAmount);
+                case 'checkin':
+                    return $this->processOfflinePayment($booking, 'offline');
 
                 default:
                     throw new \Exception('Invalid payment type');

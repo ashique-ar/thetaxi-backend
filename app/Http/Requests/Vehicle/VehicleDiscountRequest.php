@@ -7,13 +7,7 @@ use Illuminate\Validation\Rule;
 
 class VehicleDiscountRequest extends FormRequest
 {
-    /**
-     * Determine if the user is authorized to make this request.
-     */
-    public function authorize(): bool
-    {
-        return true;
-    }
+
 
     /**
      * Get the validation rules that apply to the request.
@@ -33,21 +27,21 @@ class VehicleDiscountRequest extends FormRequest
             ],
             'name' => 'required|string|max:255',
             'description' => 'nullable|string|max:1000',
-            
+
             // Scope configuration
             'service_type_id' => 'nullable|string|exists:service_types,id',
             'vehicle_group_id' => 'nullable|string|exists:vehicle_groups,id',
-            
+
             // Discount configuration
             'amount' => 'required|numeric|min:0|max:999999.99',
             'is_percentage' => 'required|boolean',
             'applies_to' => 'required|in:subtotal,total,addons',
-            
+
             // Validity period
             'valid_from' => 'nullable|date|after_or_equal:today',
             'valid_to' => 'nullable|date|after:valid_from',
             'is_active' => 'sometimes|boolean',
-            
+
             // Additional configuration
             'minimum_amount' => 'nullable|numeric|min:0|max:999999.99',
             'maximum_discount' => 'nullable|numeric|min:0|max:999999.99',

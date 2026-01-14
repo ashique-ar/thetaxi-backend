@@ -7,15 +7,15 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class CreateVehicleMaintenanceScheduleRequest extends FormRequest
 {
-    public function authorize() { return true; }
+
     public function rules()
     {
         return [
-            'vehicle_id'   => ['required','exists:vehicles,id'],
-            'type'         => ['required','string'],
-            'interval_km'  => ['nullable','integer','min:0'],
-            'interval_days'=> ['nullable','integer','min:0'],
-            'next_due_date'=> ['nullable','date'],
+            'vehicle_id' => ['required', 'exists:vehicles,id'],
+            'type' => ['required', 'string'],
+            'interval_km' => ['nullable', 'integer', 'min:0'],
+            'interval_days' => ['nullable', 'integer', 'min:0'],
+            'next_due_date' => ['nullable', 'date'],
         ];
     }
 }

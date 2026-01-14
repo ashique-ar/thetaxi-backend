@@ -7,6 +7,7 @@
         $isQuotation = $type === 'quotation';
         $isPaid = $booking && $booking->payment_status === 'paid';
         $isPending = $booking && $booking->payment_status === 'pending';
+        $isPayOnCheckin = $booking && $booking->payment_type === 'checkin';
         $currencySymbol = $booking ? getCurrencySymbol($booking->currency) : '$';
         $advancePercentage = \App\Models\Website\WebsiteSetting::getValue(
             'advance_payment_percentage',
@@ -44,6 +45,12 @@
                     </div> --}}
                     <h1>Payment Successful!</h1>
                     <p class="lead">Your booking has been confirmed. You will receive a confirmation email shortly.</p>
+                @elseif($isPayOnCheckin)
+                    {{-- <div class="success-icon pending">
+                        <i class="bi bi-clock-fill"></i>
+                    </div> --}}
+                    <h1>Booking Confirmed!</h1>
+                    <p class="lead">Payment will be collected when you check-in to collect the vehicle.</p>
                 @else
                     {{-- <div class="success-icon pending">
                         <i class="bi bi-clock-fill"></i>
@@ -235,6 +242,12 @@
                                                 {{ number_format($booking->total_estimated - ($booking->amount_to_pay ?? 0), 2) }}
                                             </td>
                                         </tr>
+                                    @elseif($booking->payment_type === 'checkin')
+                                        <tr style="background: #fff7ed;">
+                                            <td><strong>Amount Due at Check-in</strong></td>
+                                            <td><strong>{{ $currencySymbol }}
+                                                    {{ number_format($booking->total_estimated, 2) }}</strong></td>
+                                        </tr>
                                     @elseif($booking->payment_status === 'paid')
                                         <tr style="background: #f0fdf4;">
                                             <td><strong>Amount Paid</strong></td>
@@ -335,6 +348,21 @@
                                         <p style="margin-bottom: 0;"><strong>Step 4:</strong> Once approved, we'll send a
                                             secure
                                             payment link to confirm your booking</p>
+                                    </div>
+                                @elseif($isPayOnCheckin)
+                                    <div class="highlight-box success">
+                                        <h3>ƒo" Pay on Check-in</h3>
+                                        <p>Your booking is confirmed. Please pay the full amount when you check-in to
+                                            collect the vehicle.</p>
+                                        <p><strong>Amount Due at Check-in:</strong> {{ $currencySymbol }}
+                                            {{ number_format($booking->total_estimated, 2) }}</p>
+                                        <p style="margin-bottom: 8px;"><strong>Important Reminders:</strong></p>
+                                        <ul>
+                                            <li>Bring valid government-issued ID/Passport</li>
+                                            <li>Bring a valid driver's license</li>
+                                            <li>A credit card may be required for security deposit</li>
+                                            <li>Arrive 15 minutes before scheduled pickup time</li>
+                                        </ul>
                                     </div>
                                 @elseif($isPending)
                                     @php

@@ -11,10 +11,7 @@ use Illuminate\Validation\Validator;
 
 class CreateVehicleOwnerRequest extends FormRequest
 {
-    public function authorize()
-    {
-        return true;
-    }
+
 
     public function rules()
     {
@@ -42,29 +39,29 @@ class CreateVehicleOwnerRequest extends FormRequest
     {
         $validator->after(function ($validator) {
             $email = $this->input('email');
-            
+
             if ($email) {
                 $user = User::where('email', $email)->first();
-                
+
                 if ($user) {
                     // Check if user already has vehicle owner context
                     $existingContext = UserContext::where('user_id', $user->id)
                         ->where('context_type', 'vehicle_owner')
                         ->where('is_active', true)
                         ->first();
-                    
+
                     if ($existingContext) {
                         $validator->errors()->add(
-                            'email', 
+                            'email',
                             'This email is already registered as a vehicle owner. Please use a different email or contact the administrator.'
                         );
                     }
-                    
+
                     // Also check direct VehicleOwner model for backwards compatibility
                     $existingVehicleOwner = VehicleOwner::where('user_id', $user->id)->first();
                     if ($existingVehicleOwner) {
                         $validator->errors()->add(
-                            'email', 
+                            'email',
                             'This email is already registered as a vehicle owner. Please use a different email or contact the administrator.'
                         );
                     }

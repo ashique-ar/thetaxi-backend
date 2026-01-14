@@ -7,14 +7,11 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class CreateVehiclePricingSlabRequest extends FormRequest
 {
-    public function authorize()
-    {
-        return true;
-    }
+
     public function rules()
     {
         return [
-            'service_type_id' => ['required', 'exists:service_types,id'],            
+            'service_type_id' => ['required', 'exists:service_types,id'],
             'region_id' => ['nullable', 'exists:company_regions,id'],
             'valid_from' => ['nullable', 'date'],
             'valid_to' => ['nullable', 'date', 'after_or_equal:valid_from'],

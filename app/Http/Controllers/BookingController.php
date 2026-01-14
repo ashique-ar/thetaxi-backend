@@ -283,6 +283,8 @@ class BookingController extends Controller
             $totalJourneyDistance = $availabilityData['total_journey_distance_km'] ?? null;
             $totalJourneyDuration = $availabilityData['total_journey_duration_seconds'] ?? null;
 
+            // Ensure vehicleGroups is always an array
+            $vehicleGroups = $vehicleGroups ?? [];
 
             // Transform results for view (add public-specific enhancements)
             $transformedData = $this->transformResultsForPublicView($vehicleGroups, $searchParams, $pricingContext);
@@ -392,6 +394,9 @@ class BookingController extends Controller
     protected function transformResultsForPublicView(array $vehicleGroups, array $searchParams, $pricingContext): array
     {
         $results = [];
+
+        // Ensure vehicleGroups is an array
+        $vehicleGroups = $vehicleGroups ?? [];
 
         foreach ($vehicleGroups as $index => $groupData) {
             // Check if we have minimum required data

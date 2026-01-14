@@ -6,12 +6,12 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class CreateWebsiteSettingRequest extends FormRequest
 {
-    public function authorize() { return true; }
+
 
     public function rules()
     {
         return [
-            'type'  => ['required','string','max:255'],
+            'type' => ['required', 'string', 'max:255'],
             'value' => ['nullable'],
         ];
     }

@@ -77,4 +77,42 @@ class TermsAndCondition extends BaseModel
 
         return $query->get();
     }
+
+    /**
+     * Get service-type terms only (no payment-type filtering).
+     */
+    public static function getServiceTerms(string $serviceType)
+    {
+        return self::active()
+            ->where('service_type', $serviceType)
+            ->whereNull('payment_type')
+            ->orderBy('display_order', 'asc')
+            ->get();
+    }
+
+    /**
+     * Get general service terms (applies to all services).
+     */
+    public static function getGeneralServiceTerms()
+    {
+        return self::active()
+            ->whereNull('payment_type')
+            ->where(function ($q) {
+                $q->whereNull('service_type')
+                  ->orWhere('service_type', 'general');
+            })
+            ->orderBy('display_order', 'asc')
+            ->get();
+    }
+
+    /**
+     * Get payment-type terms (service_type must be null).
+     */
+    public static function getPaymentTermsForCheckout(string $paymentType)
+    {
+        return self::active()
+            ->where('payment_type', $paymentType)
+            ->orderBy('display_order', 'asc')
+            ->get();
+    }
 }

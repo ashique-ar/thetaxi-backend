@@ -14,8 +14,15 @@ class TermsController extends Controller
     {
         $serviceType = $request->query('service_type');
         $paymentType = $request->query('payment_type');
+        $scope = $request->query('scope');
 
         $query = TermsAndCondition::query();
+
+        if ($scope === 'service') {
+            $query->whereNull('payment_type');
+        } elseif ($scope === 'payment') {
+            $query->whereNull('service_type');
+        }
 
         if ($serviceType) {
             $query->where('service_type', $serviceType);
@@ -42,7 +49,7 @@ class TermsController extends Controller
             'slug' => 'required|string|max:255|unique:terms_and_conditions,slug',
             'content' => 'required|string',
             'service_type' => 'nullable|string|max:100',
-            'payment_type' => 'nullable|string|max:50',
+            'payment_type' => 'nullable|string|in:full,advance,quotation,checkin',
             'version' => 'nullable|integer',
             'is_active' => 'boolean',
             'effective_date' => 'nullable|date',
@@ -54,6 +61,21 @@ class TermsController extends Controller
         }
 
         $payload = $validator->validated();
+        $serviceType = $payload['service_type'] ?? null;
+        $paymentType = $payload['payment_type'] ?? null;
+
+        if (empty($serviceType) && empty($paymentType)) {
+            return response()->json([
+                'success' => false,
+                'errors' => ['scope' => ['Either service_type or payment_type is required.']]
+            ], 422);
+        }
+        if (!empty($serviceType) && !empty($paymentType)) {
+            return response()->json([
+                'success' => false,
+                'errors' => ['scope' => ['Only one of service_type or payment_type can be set.']]
+            ], 422);
+        }
         $term = TermsAndCondition::create($payload);
 
         return response()->json(['success' => true, 'data' => $term]);
@@ -68,7 +90,7 @@ class TermsController extends Controller
             'slug' => 'sometimes|required|string|max:255|unique:terms_and_conditions,slug,' . $term->id,
             'content' => 'sometimes|required|string',
             'service_type' => 'nullable|string|max:100',
-            'payment_type' => 'nullable|string|max:50',
+            'payment_type' => 'nullable|string|in:full,advance,quotation,checkin',
             'version' => 'nullable|integer',
             'is_active' => 'boolean',
             'effective_date' => 'nullable|date',
@@ -79,7 +101,24 @@ class TermsController extends Controller
             return response()->json(['success' => false, 'errors' => $validator->errors()], 422);
         }
 
-        $term->update($validator->validated());
+        $payload = $validator->validated();
+        $serviceType = array_key_exists('service_type', $payload) ? $payload['service_type'] : $term->service_type;
+        $paymentType = array_key_exists('payment_type', $payload) ? $payload['payment_type'] : $term->payment_type;
+
+        if (empty($serviceType) && empty($paymentType)) {
+            return response()->json([
+                'success' => false,
+                'errors' => ['scope' => ['Either service_type or payment_type is required.']]
+            ], 422);
+        }
+        if (!empty($serviceType) && !empty($paymentType)) {
+            return response()->json([
+                'success' => false,
+                'errors' => ['scope' => ['Only one of service_type or payment_type can be set.']]
+            ], 422);
+        }
+
+        $term->update($payload);
         return response()->json(['success' => true, 'data' => $term]);
     }
 

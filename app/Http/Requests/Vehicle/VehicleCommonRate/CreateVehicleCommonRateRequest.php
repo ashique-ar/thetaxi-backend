@@ -7,10 +7,7 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class CreateVehicleCommonRateRequest extends FormRequest
 {
-    public function authorize()
-    {
-        return true;
-    }
+
     public function rules()
     {
         return [

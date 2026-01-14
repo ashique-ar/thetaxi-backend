@@ -7,15 +7,12 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class UpdateRegionRequest extends FormRequest
 {
-    public function authorize()
-    {
-        return true;
-    }
+
     public function rules()
     {
         return [
-           'name'        => ['sometimes','required','string','max:255'],
-            'description' => ['sometimes','nullable','string'],
+            'name' => ['sometimes', 'required', 'string', 'max:255'],
+            'description' => ['sometimes', 'nullable', 'string'],
         ];
     }
 }

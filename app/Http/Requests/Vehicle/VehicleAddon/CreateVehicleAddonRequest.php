@@ -7,10 +7,7 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class CreateVehicleAddonRequest extends FormRequest
 {
-    public function authorize(): bool
-    {
-        return true;
-    }
+
 
     public function rules(): array
     {

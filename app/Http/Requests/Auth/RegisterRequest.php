@@ -7,13 +7,7 @@ use Illuminate\Validation\Rules\Password;
 
 class RegisterRequest extends FormRequest
 {
-    /**
-     * Determine if the user is authorized to make this request.
-     */
-    public function authorize(): bool
-    {
-        return true;
-    }
+
 
     /**
      * Get the validation rules that apply to the request.
@@ -27,12 +21,15 @@ class RegisterRequest extends FormRequest
             'last_name' => ['nullable', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
             'phone' => ['nullable', 'string', 'max:20', 'unique:users,phone'],
-            'password' => ['required', 'string', Password::min(8)
-                ->letters()
-                ->mixedCase()
-                ->numbers()
-                ->symbols()
-                ->uncompromised()
+            'password' => [
+                'required',
+                'string',
+                Password::min(8)
+                    ->letters()
+                    ->mixedCase()
+                    ->numbers()
+                    ->symbols()
+                    ->uncompromised()
             ],
             'password_confirmation' => ['required', 'same:password'],
             'role_id' => ['nullable', 'exists:roles,id'],
@@ -103,11 +100,11 @@ class RegisterRequest extends FormRequest
     public function getCleanedData(): array
     {
         $data = $this->validated();
-        
+
         // Remove confirmation fields
         unset($data['password_confirmation']);
         unset($data['terms_accepted']);
-        
+
         // Set default role if not provided
         if (!isset($data['role_id'])) {
             $data['role_id'] = $this->getDefaultRoleId();

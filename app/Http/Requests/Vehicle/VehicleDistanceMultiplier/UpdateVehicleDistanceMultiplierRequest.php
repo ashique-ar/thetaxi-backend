@@ -7,10 +7,7 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class UpdateVehicleDistanceMultiplierRequest extends FormRequest
 {
-    public function authorize()
-    {
-        return true;
-    }
+
     public function rules()
     {
         return [
