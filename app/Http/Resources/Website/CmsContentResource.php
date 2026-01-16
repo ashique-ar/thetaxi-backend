@@ -42,7 +42,13 @@ class CmsContentResource extends JsonResource
             'created_by' => $this->whenLoaded('createdBy', function () {
                 return [
                     'id' => $this->createdBy->id,
-                    'name' => $this->createdBy->name,
+                    'name' => $this->createdBy->first_name . ' ' . $this->createdBy->last_name,
+                ];
+            }),
+            'updated_by' => $this->whenLoaded('updatedBy', function () {
+                return [
+                    'id' => $this->updatedBy->id,
+                    'name' => $this->updatedBy->first_name . ' ' . $this->updatedBy->last_name,
                 ];
             }),
         ];

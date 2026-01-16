@@ -23,41 +23,41 @@ class CmsContentController extends Controller
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        $q = CmsContent::with(['contentType', 'createdBy']);
-        
+        $q = CmsContent::with(['contentType', 'createdBy', 'updatedBy']);
+
         if ($request->filled('search')) {
             $q->where(function ($query) use ($request) {
                 $query->where('title', 'like', '%' . $request->search . '%')
-                      ->orWhere('slug', 'like', '%' . $request->search . '%')
-                      ->orWhere('author', 'like', '%' . $request->search . '%')
-                      ->orWhere('excerpt', 'like', '%' . $request->search . '%');
+                    ->orWhere('slug', 'like', '%' . $request->search . '%')
+                    ->orWhere('author', 'like', '%' . $request->search . '%')
+                    ->orWhere('excerpt', 'like', '%' . $request->search . '%');
             });
         }
-        
+
         if ($request->filled('cms_content_type_id')) {
             $q->where('cms_content_type_id', $request->cms_content_type_id);
         }
-        
+
         if ($request->filled('status')) {
             $q->where('status', $request->status);
         }
-        
+
         if ($request->filled('is_active')) {
             $q->where('is_active', $request->boolean('is_active'));
         }
-        
+
         if ($request->filled('is_featured')) {
             $q->where('is_featured', $request->boolean('is_featured'));
         }
-        
+
         if ($request->filled('content_type_slug')) {
             $q->byType($request->content_type_slug);
         }
-        
+
         $q->orderBy('display_order', 'asc')
-          ->orderBy('published_at', 'desc')
-          ->orderBy('created_at', 'desc');
-          
+            ->orderBy('published_at', 'desc')
+            ->orderBy('created_at', 'desc');
+
         return CmsContentResource::collection(
             $q->paginate($request->per_page ?? 15)
         );
@@ -79,7 +79,7 @@ class CmsContentController extends Controller
     public function show(CmsContent $cms_content): JsonResponse
     {
         $cms_content->load(['contentType', 'createdBy', 'updatedBy']);
-        
+
         return response()->json([
             'status' => 'success',
             'data' => ['content' => new CmsContentResource($cms_content)]
@@ -116,18 +116,18 @@ class CmsContentController extends Controller
     {
         $q = CmsContent::published()
             ->with(['contentType', 'createdBy']);
-        
+
         if ($request->filled('content_type_slug')) {
             $q->byType($request->content_type_slug);
         }
-        
+
         if ($request->filled('is_featured')) {
             $q->featured();
         }
-        
+
         $q->orderBy('is_featured', 'desc')
-          ->orderBy('published_at', 'desc');
-          
+            ->orderBy('published_at', 'desc');
+
         return CmsContentResource::collection(
             $q->paginate($request->per_page ?? 15)
         );

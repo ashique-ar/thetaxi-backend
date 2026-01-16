@@ -100,6 +100,10 @@ class InquiryController extends Controller
                 'contact_person' => 'required|string|max:255',
                 'email' => 'required|email|max:255',
                 'phone' => 'required|string|max:20',
+                'service_type_select' => 'required|string|in:airport_transfer,corporate_event,employee_shuttle,client_meeting,other',
+                'other_service_type' => 'required_if:service_type_select,other|string|max:255',
+                'employee_strength' => 'required|string|in:1-10,11-50,51-100,101-500,500+',
+                'city_name' => 'required|string|max:255',
                 'requirements' => 'required|string|max:1000',
             ],
             'point_to_point' => [
@@ -117,6 +121,7 @@ class InquiryController extends Controller
                 'name' => 'required|string|max:255',
                 'email' => 'required|email|max:255',
                 'phone' => 'required|string|max:20',
+                'service_type_select' => 'required|string|in:general_inquiry,booking,corporate,complaint,feedback,other',
                 'country' => 'nullable|string|max:100',
                 'message' => 'required|string|max:2000',
             ],
@@ -180,6 +185,9 @@ class InquiryController extends Controller
             $lines[] = 'Contact: ' . ($data['contact_person'] ?? 'N/A');
             $lines[] = 'Email: ' . ($data['email'] ?? 'N/A');
             $lines[] = 'Phone: ' . ($data['phone'] ?? 'N/A');
+            $lines[] = 'Service Type: ' . $this->formatServiceType($data);
+            $lines[] = 'Employee Strength: ' . ($data['employee_strength'] ?? 'N/A');
+            $lines[] = 'City: ' . ($data['city_name'] ?? 'N/A');
             $lines[] = 'Requirements: ' . ($data['requirements'] ?? 'N/A');
             return implode("\n", $lines);
         }
@@ -210,11 +218,36 @@ class InquiryController extends Controller
         $lines[] = 'Name: ' . ($data['name'] ?? 'N/A');
         $lines[] = 'Email: ' . ($data['email'] ?? 'N/A');
         $lines[] = 'Phone: ' . ($data['phone'] ?? 'N/A');
+        $lines[] = 'Service Type: ' . $this->formatServiceType($data);
         if (!empty($data['country'])) {
             $lines[] = 'Country: ' . $data['country'];
         }
         $lines[] = 'Message: ' . ($data['message'] ?? 'N/A');
 
         return implode("\n", $lines);
+    }
+
+    /**
+     * Format service type for display.
+     */
+    protected function formatServiceType(array $data): string
+    {
+        $serviceType = $data['service_type_select'] ?? '';
+        if ($serviceType === 'other') {
+            return $data['other_service_type'] ?? 'Other';
+        }
+
+        return match ($serviceType) {
+            'airport_transfer' => 'Airport Transfer',
+            'corporate_event' => 'Corporate Event',
+            'employee_shuttle' => 'Employee Shuttle',
+            'client_meeting' => 'Client Meeting',
+            'general_inquiry' => 'General Inquiry',
+            'booking' => 'Booking',
+            'corporate' => 'Corporate Transport',
+            'complaint' => 'Complaint',
+            'feedback' => 'Feedback',
+            default => 'N/A',
+        };
     }
 }

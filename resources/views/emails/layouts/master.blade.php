@@ -505,7 +505,7 @@
                         <!-- Footer -->
                         <div class="email-footer">
                             <div class="footer-brand">
-                                <img src="{{ asset('assets/img/casons-logo-gray.png') }}"
+                                <img src="{{ s3_asset($settings['logo_header'] ?? 'assets/img/header-logo.png') }}"
                                     alt="{{ env('COMPANY_NAME', 'TheTaxi Company') }}">
                             </div>
 

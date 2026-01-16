@@ -109,6 +109,35 @@
                                     </div>
                                     <div class="col-md-6">
                                         <div class="form-inner">
+                                            <label>Service Type</label>
+                                            <select name="service_type_select" required>
+                                                <option value="">Select Service Type</option>
+                                                <option value="general_inquiry"
+                                                    {{ old('service_type_select') == 'general_inquiry' ? 'selected' : '' }}>
+                                                    General Inquiry</option>
+                                                <option value="booking"
+                                                    {{ old('service_type_select') == 'booking' ? 'selected' : '' }}>Booking
+                                                </option>
+                                                <option value="corporate"
+                                                    {{ old('service_type_select') == 'corporate' ? 'selected' : '' }}>
+                                                    Corporate Transport</option>
+                                                <option value="complaint"
+                                                    {{ old('service_type_select') == 'complaint' ? 'selected' : '' }}>
+                                                    Complaint</option>
+                                                <option value="feedback"
+                                                    {{ old('service_type_select') == 'feedback' ? 'selected' : '' }}>
+                                                    Feedback</option>
+                                                <option value="other"
+                                                    {{ old('service_type_select') == 'other' ? 'selected' : '' }}>Other
+                                                </option>
+                                            </select>
+                                            @error('service_type_select')
+                                                <span class="text-danger small">{{ $message }}</span>
+                                            @enderror
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="form-inner">
                                             <label>{{ $settings['contact_form_destination_label'] ?? 'Country' }}</label>
                                             <input type="text" name="country"
                                                 placeholder="{{ $settings['contact_form_destination_placeholder'] ?? 'Enter your Country' }}"

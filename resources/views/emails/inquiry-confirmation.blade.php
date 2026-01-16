@@ -105,6 +105,41 @@
                     <td>{{ $form['requirements'] }}</td>
                 </tr>
             @endif
+            @if ($inquiry->inquiry_type === 'corporate')
+                @if (!empty($form['service_type_select']))
+                    <tr>
+                        <td>Service Type</td>
+                        <td>
+                            @php
+                                $serviceType = $form['service_type_select'];
+                                if ($serviceType === 'other') {
+                                    echo $form['other_service_type'] ?? 'Other';
+                                } else {
+                                    echo match ($serviceType) {
+                                        'airport_transfer' => 'Airport Transfer',
+                                        'corporate_event' => 'Corporate Event',
+                                        'employee_shuttle' => 'Employee Shuttle',
+                                        'client_meeting' => 'Client Meeting',
+                                        default => $serviceType,
+                                    };
+                                }
+                            @endphp
+                        </td>
+                    </tr>
+                @endif
+                @if (!empty($form['employee_strength']))
+                    <tr>
+                        <td>Employee Strength</td>
+                        <td>{{ $form['employee_strength'] }} Employees</td>
+                    </tr>
+                @endif
+                @if (!empty($form['city_name']))
+                    <tr>
+                        <td>City</td>
+                        <td>{{ $form['city_name'] }}</td>
+                    </tr>
+                @endif
+            @endif
             @if (!empty($form['message']))
                 <tr>
                     <td>Message</td>
