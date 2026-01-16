@@ -156,9 +156,8 @@
                                         <div class="col-md-6">
                                             <div class="form-inner two mb-25">
                                                 <label>National ID / Passport*</label>
-                                                <input type="text" name="identification"
-                                                    placeholder="ID/Passport number" required
-                                                    value="{{ old('identification') }}">
+                                                <input type="text" name="identification" placeholder="ID/Passport number"
+                                                    required value="{{ old('identification') }}">
                                                 @error('identification')
                                                     <span class="text-danger">{{ $message }}</span>
                                                 @enderror
@@ -254,50 +253,6 @@
                                                 <textarea name="additional_notes" placeholder="Any other information you'd like to share...">{{ old('additional_notes') }}</textarea>
                                             </div>
                                         </div>
-
-                                        @if ($paymentType === 'quotation')
-                                            <!-- Additional fields for quotation request -->
-                                            <div class="col-md-6">
-                                                <div class="form-inner two mb-25">
-                                                    <label>Preferred Contact Time</label>
-                                                    <select name="contact_time" class="form-select">
-                                                        <option value="">Select preferred time</option>
-                                                        <option value="morning"
-                                                            {{ old('contact_time') == 'morning' ? 'selected' : '' }}>
-                                                            Morning (9 AM - 12 PM)</option>
-                                                        <option value="afternoon"
-                                                            {{ old('contact_time') == 'afternoon' ? 'selected' : '' }}>
-                                                            Afternoon (12 PM - 5 PM)</option>
-                                                        <option value="evening"
-                                                            {{ old('contact_time') == 'evening' ? 'selected' : '' }}>
-                                                            Evening (5 PM - 8 PM)</option>
-                                                        <option value="anytime"
-                                                            {{ old('contact_time') == 'anytime' ? 'selected' : '' }}>
-                                                            Anytime</option>
-                                                    </select>
-                                                </div>
-                                            </div>
-                                            <div class="col-md-6">
-                                                <div class="form-inner two mb-25">
-                                                    <label>Budget Range (Optional)</label>
-                                                    <select name="budget_range" class="form-select">
-                                                        <option value="">Select budget range</option>
-                                                        <option value="under-500"
-                                                            {{ old('budget_range') == 'under-500' ? 'selected' : '' }}>
-                                                            Under $500</option>
-                                                        <option value="500-1000"
-                                                            {{ old('budget_range') == '500-1000' ? 'selected' : '' }}>$500
-                                                            - $1,000</option>
-                                                        <option value="1000-2000"
-                                                            {{ old('budget_range') == '1000-2000' ? 'selected' : '' }}>
-                                                            $1,000 - $2,000</option>
-                                                        <option value="over-2000"
-                                                            {{ old('budget_range') == 'over-2000' ? 'selected' : '' }}>Over
-                                                            $2,000</option>
-                                                    </select>
-                                                </div>
-                                            </div>
-                                        @endif
 
                                         <!-- Dynamic Terms and Conditions grouped by service type -->
                                         @if (!empty($termsByService))
@@ -726,20 +681,22 @@
                                             <div class="payment-type-selection mb-4">
                                                 <div class="card">
                                                     <div class="card-header">
-                                                        <h6 class="mb-0"><i class="bi bi-credit-card"></i> Payment Option
+                                                        <h6 class="mb-0"><i class="bi bi-credit-card"></i> Payment
+                                                            Option
                                                         </h6>
                                                     </div>
                                                     <div class="card-body">
                                                         <div class="row g-3">
-                                                            <div class="col-12">
+                                                            <div class="col-6">
                                                                 <div class="payment-option">
-                                                                    <input type="radio" name="payment_type" value="full"
-                                                                        id="payment_full"
+                                                                    <input type="radio" name="payment_type"
+                                                                        value="full" id="payment_full"
                                                                         {{ $paymentType === 'full' ? 'checked' : '' }}
                                                                         class="payment-radio">
                                                                     <label for="payment_full" class="payment-label">
                                                                         <div class="payment-card">
-                                                                            <i class="bi bi-credit-card-fill text-success"></i>
+                                                                            <i
+                                                                                class="bi bi-credit-card-fill text-success"></i>
                                                                             <h6>Pay Full Amount</h6>
                                                                             <p class="mb-0">Complete payment now</p>
                                                                             <small class="text-muted">Total:
@@ -750,17 +707,21 @@
                                                                 </div>
                                                             </div>
                                                             @if ($advancePaymentEnabled)
-                                                                <div class="col-12">
+                                                                <div class="col-6">
                                                                     <div class="payment-option">
                                                                         <input type="radio" name="payment_type"
                                                                             value="advance" id="payment_advance"
                                                                             {{ $paymentType === 'advance' ? 'checked' : '' }}
                                                                             class="payment-radio">
-                                                                        <label for="payment_advance" class="payment-label">
+                                                                        <label for="payment_advance"
+                                                                            class="payment-label">
                                                                             <div class="payment-card">
-                                                                                <i class="bi bi-credit-card text-warning"></i>
-                                                                                <h6>Pay {{ $advancePercentage }}% Advance</h6>
-                                                                                <p class="mb-0">Pay remaining on pickup</p>
+                                                                                <i
+                                                                                    class="bi bi-credit-card text-warning"></i>
+                                                                                <h6>Pay {{ $advancePercentage }}% Advance
+                                                                                </h6>
+                                                                                <p class="mb-0">Pay remaining on pickup
+                                                                                </p>
                                                                                 <small class="text-muted">Now:
                                                                                     {{ $currencySymbol }}
                                                                                     {{ number_format($total * ($advancePercentage / 100), 2) }}</small>
@@ -770,15 +731,17 @@
                                                                 </div>
                                                             @endif
                                                             @if ($offlinePaymentEnabled)
-                                                                <div class="col-12">
+                                                                <div class="col-6">
                                                                     <div class="payment-option">
                                                                         <input type="radio" name="payment_type"
                                                                             value="checkin" id="payment_checkin"
                                                                             {{ $paymentType === 'checkin' ? 'checked' : '' }}
                                                                             class="payment-radio">
-                                                                        <label for="payment_checkin" class="payment-label">
+                                                                        <label for="payment_checkin"
+                                                                            class="payment-label">
                                                                             <div class="payment-card">
-                                                                                <i class="bi bi-cash-coin text-primary"></i>
+                                                                                <i
+                                                                                    class="bi bi-cash-coin text-primary"></i>
                                                                                 <h6>Pay on Check-in</h6>
                                                                                 <p class="mb-0">Pay when you collect</p>
                                                                                 <small class="text-muted">Due:
@@ -789,19 +752,19 @@
                                                                     </div>
                                                                 </div>
                                                             @endif
-                                                            <div class="col-12">
+                                                            <div class="col-6">
                                                                 <div class="payment-option">
                                                                     <input type="radio" name="payment_type"
                                                                         value="quotation" id="payment_quotation"
                                                                         {{ $paymentType === 'quotation' ? 'checked' : '' }}
                                                                         class="payment-radio">
-                                                                    <label for="payment_quotation"
-                                                                        class="payment-label">
+                                                                    <label for="payment_quotation" class="payment-label">
                                                                         <div class="payment-card">
                                                                             <i class="bi bi-file-text text-info"></i>
                                                                             <h6>Request Quotation</h6>
                                                                             <p class="mb-0">Get detailed pricing</p>
-                                                                            <small class="text-muted">No payment now</small>
+                                                                            <small class="text-muted">No payment
+                                                                                now</small>
                                                                         </div>
                                                                     </label>
                                                                 </div>
@@ -1881,4 +1844,7 @@
 
     <!-- Select2 JS for searchable country dropdown -->
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
+    <!-- Checkout Payment Type Handler -->
+    <script src="{{ asset('assets/js/checkout-payment-type.js') }}"></script>
 @endpush

@@ -69,8 +69,8 @@ class BookingLinkHelper
                 'booking_id' => $booking->id,
                 'type' => 'quotation_conversion',
                 'vehicle_group_id' => $booking->vehicle_group_id,
-                'from_date' => $booking->from_date->toDateString(),
-                'to_date' => $booking->to_date->toDateString(),
+                'from_date' => $booking->from_date?->toDateString(),
+                'to_date' => $booking->to_date?->toDateString(),
             ]);
 
             $url = route('checkout.quotation-convert', [

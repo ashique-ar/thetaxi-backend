@@ -10,9 +10,9 @@
         ? json_decode($item->dropoff_location, true)
         : $item->dropoff_location ?? [];
 
-    // Format dates safely
-    $fromDate = \Carbon\Carbon::parse($item->from_date)->format('M d, Y');
-    $toDate = \Carbon\Carbon::parse($item->to_date)->format('M d, Y');
+    // Format dates safely - handle null values
+    $fromDate = $item->from_date ? \Carbon\Carbon::parse($item->from_date)->format('M d, Y') : 'N/A';
+    $toDate = $item->to_date ? \Carbon\Carbon::parse($item->to_date)->format('M d, Y') : 'N/A';
     $fromTime = $item->from_time ?? '00:00';
     $toTime = $item->to_time ?? '00:00';
 
