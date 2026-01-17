@@ -29,9 +29,9 @@ class UpdateVehicleGroupRequest extends FormRequest
             'force_quotation_request' => ['sometimes', 'boolean'],
             'passengers_count' => ['sometimes', 'nullable', 'integer', 'min:1'],
             'hand_luggages' => ['sometimes', 'nullable', 'integer', 'min:0'],
-            'air_conditioning' => ['sometimes', 'boolean'],
-            'no_of_doors' => ['sometimes', 'integer'],
-            'refundable_deposit' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'air_conditioning' => ['nullable', 'boolean'],
+            'no_of_doors' => ['nullable', 'integer'],
+            'refundable_deposit' => ['nullable', 'nullable', 'numeric', 'min:0'],
         ];
     }
 }
