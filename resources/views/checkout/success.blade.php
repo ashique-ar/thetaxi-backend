@@ -46,13 +46,15 @@
                         <i class="bi bi-check-circle-fill"></i>
                     </div> --}}
                     <h1>Advance Payment Successful!</h1>
-                    <p class="lead">Your {{ $advancePercentage }}% advance payment has been confirmed. You will receive a confirmation email shortly.</p>
+                    <p class="lead">Your {{ $advancePercentage }}% advance payment has been confirmed. You will receive a
+                        confirmation email shortly.</p>
                 @elseif($isFullPayment)
                     {{-- <div class="success-icon paid">
                         <i class="bi bi-check-circle-fill"></i>
                     </div> --}}
                     <h1>Payment Successful!</h1>
-                    <p class="lead">Your booking has been confirmed and fully paid. You will receive a confirmation email shortly.</p>
+                    <p class="lead">Your booking has been confirmed and fully paid. You will receive a confirmation email
+                        shortly.</p>
                 @elseif($isPayOnCheckin)
                     {{-- <div class="success-icon pending">
                         <i class="bi bi-clock-fill"></i>
@@ -91,8 +93,8 @@
                                 you
                                 within 24 hours.
                             @elseif($isAdvancePayment)
-                                Thank you for your advance payment with {{ env('COMPANY_NAME', 'TheTaxi Company') }}! 
-                                Your {{ $advancePercentage }}% advance payment has been confirmed. The remaining balance 
+                                Thank you for your advance payment with {{ env('COMPANY_NAME', 'TheTaxi Company') }}!
+                                Your {{ $advancePercentage }}% advance payment has been confirmed. The remaining balance
                                 will be collected at pickup.
                             @elseif($isFullPayment)
                                 Thank you for your booking with {{ env('COMPANY_NAME', 'TheTaxi Company') }}! Your
@@ -375,7 +377,9 @@
                                             <li>Bring a valid driver's license</li>
                                             <li>A credit card may be required for security deposit</li>
                                             <li>Arrive 15 minutes before scheduled pickup time</li>
-                                            <li><strong>Pay remaining balance at pickup: {{ $currencySymbol }} {{ number_format($booking->total_estimated - ($booking->amount_to_pay ?? 0), 2) }}</strong></li>
+                                            <li><strong>Pay remaining balance at pickup: {{ $currencySymbol }}
+                                                    {{ number_format($booking->total_estimated - ($booking->amount_to_pay ?? 0), 2) }}</strong>
+                                            </li>
                                         </ul>
                                     </div>
                                 @elseif($isPayOnCheckin)
@@ -441,7 +445,8 @@
                                 @elseif($isFullPayment)
                                     <div class="highlight-box success">
                                         <h3>✓ Your Booking is Fully Paid!</h3>
-                                        <p>Your payment has been successfully processed and your vehicle will be prepared and ready for pickup on
+                                        <p>Your payment has been successfully processed and your vehicle will be prepared
+                                            and ready for pickup on
                                             <strong>{{ \Carbon\Carbon::parse($booking->from_date)->format('F d, Y \a\t g:i A') }}</strong>.
                                         </p>
                                         <p style="margin-bottom: 8px;"><strong>Important Reminders:</strong></p>

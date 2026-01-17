@@ -345,7 +345,9 @@
                     <li>Bring a valid driver's license</li>
                     <li>A credit card may be required for security deposit</li>
                     <li>Arrive 15 minutes before scheduled pickup time</li>
-                    <li><strong>Pay remaining balance at pickup: {{ $currencySymbol }} {{ number_format($booking->total_estimated - ($booking->amount_to_pay ?? 0), 2) }}</strong></li>
+                    <li><strong>Pay remaining balance at pickup: {{ $currencySymbol }}
+                            {{ number_format($booking->total_estimated - ($booking->amount_to_pay ?? 0), 2) }}</strong>
+                    </li>
                 </ul>
             </div>
         @elseif($booking->payment_type === 'checkin')
