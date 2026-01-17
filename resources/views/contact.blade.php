@@ -99,7 +99,7 @@
                                     <div class="col-md-6">
                                         <div class="form-inner">
                                             <label>{{ $settings['contact_form_phone_label'] ?? 'Phone Number' }}</label>
-                                            <input type="text" name="phone"
+                                            <input type="text" id="contact-phone" name="phone"
                                                 placeholder="{{ $settings['contact_form_phone_placeholder'] ?? '+92 567 *** ***' }}"
                                                 value="{{ old('phone') }}" required>
                                             @error('phone')
@@ -216,6 +216,7 @@
 
     @push('styles')
         <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/intl-tel-input@17/build/css/intlTelInput.css">
     @endpush
 
     <!--Contact Map Section Start-->
@@ -253,7 +254,81 @@
                 } else {
                     console.warn('jQuery not loaded - Select2 will not be initialized');
                 }
+
+                // Initialize intl-tel-input for contact phone (if library is loaded)
+                const contactPhone = document.getElementById('contact-phone');
+                if (contactPhone && typeof window.intlTelInput === 'function') {
+                    const itiContact = window.intlTelInput(contactPhone, {
+                        initialCountry: '{{ $settings['default_country_code'] ?? 'lk' }}',
+                        preferredCountries: ['lk', 'us', 'gb', 'au'],
+                        separateDialCode: true,
+                        utilsScript: 'https://cdn.jsdelivr.net/npm/intl-tel-input@17/build/js/utils.js'
+                    });
+                    const contactForm = contactPhone.closest('form');
+                    if (contactForm) {
+                        contactForm.addEventListener('submit', function() {
+                            if (itiContact.isValidNumber()) {
+                                contactPhone.value = itiContact.getNumber();
+                            }
+                        });
+                    }
+                }
             });
+        </script>
+        <script src="https://cdn.jsdelivr.net/npm/intl-tel-input@17/build/js/intlTelInput.js"></script>
+        <script>
+            // Ensure intlTelInput is initialized even if the library loads after DOMContentLoaded
+            (function initContactITI() {
+                const contactPhone = document.getElementById('contact-phone');
+                if (!contactPhone) return;
+
+                function setup() {
+                    if (typeof window.intlTelInput !== 'function') return;
+
+                    // Avoid double initialization
+                    if (contactPhone._itiInstance) return;
+
+                    const itiContact = window.intlTelInput(contactPhone, {
+                        initialCountry: '{{ $settings['default_country_code'] ?? 'lk' }}',
+                        preferredCountries: ['lk', 'us', 'gb', 'au'],
+                        separateDialCode: true,
+                        utilsScript: 'https://cdn.jsdelivr.net/npm/intl-tel-input@17/build/js/utils.js'
+                    });
+
+                    contactPhone._itiInstance = itiContact;
+
+                    const contactForm = contactPhone.closest('form');
+                    if (contactForm) {
+                        contactForm.addEventListener('submit', function() {
+                            if (itiContact.isValidNumber()) {
+                                contactPhone.value = itiContact.getNumber();
+                            }
+                        });
+                    }
+                }
+
+                if (typeof window.intlTelInput === 'function') {
+                    setup();
+                } else {
+                    // If script not yet loaded, wait for it to load
+                    const script = document.querySelector('script[src*="intlTelInput"]');
+                    if (script) {
+                        script.addEventListener('load', setup);
+                    } else {
+                        // fallback: poll for the function
+                        const interval = setInterval(function() {
+                            if (typeof window.intlTelInput === 'function') {
+                                clearInterval(interval);
+                                setup();
+                            }
+                        }, 100);
+                        // stop polling after 5 seconds
+                        setTimeout(function() {
+                            clearInterval(interval);
+                        }, 5000);
+                    }
+                }
+            })();
         </script>
     @endpush
 @endsection
