@@ -16,6 +16,20 @@ if (!function_exists('getUserfromReq')) {
     }
 }
 
+if (!function_exists('assetVersion')) {
+    /**
+     * Generate a versioned URL for an asset based on file modification time
+     * 
+     * @param string $path The path to the asset relative to public directory
+     * @return string The versioned asset URL
+     */
+    function assetVersion($path)
+    {
+        return \App\Helpers\AssetVersioner::version($path);
+    }
+}
+
+
 if (!function_exists('image_upload')) {
     function image_upload($destinationPath, $file, $sizex = null, $sizey = null, $imageName = null, $format = null)
     {
