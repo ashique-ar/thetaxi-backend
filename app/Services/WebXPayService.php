@@ -317,11 +317,14 @@ class WebXPayService
                 'custom_fields' => $customData
             ]);
 
-            // Status code '00' or '2' = success in WebXPay
-            // '00' = Approved (most common response)
-            // '2' = Also indicates approved/success
-            // Any other code = failed/declined
-            $isSuccessful = in_array($statusCode, ['00', '2'], true);
+            // Check for approved/success status
+            // statusCode can be: 'Approved..', 'SUCCESS', '2', etc.
+            // paymentGateway can be: '00' (approved), '2', etc.
+            // Both need to indicate success
+            $isSuccessful = (
+                (stripos($statusCode, 'Approved') !== false || in_array($statusCode, ['00', '2'], true)) &&
+                (in_array($paymentGateway, ['00', '2'], true) || stripos($paymentGateway, 'success') !== false)
+            );
 
             return [
                 'success' => $isSuccessful,

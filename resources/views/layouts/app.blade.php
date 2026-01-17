@@ -30,7 +30,7 @@
     <!-- AOS Animation CSS -->
     <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
     <!--  Style CSS  -->
-    <link rel="stylesheet" href="{{ asset('assets/css/style.css?v=1.0.3') }}">
+    <link rel="stylesheet" href="{{ asset('assets/css/style.css?v=1.0.4') }}">
 
     <!-- Booking Form CSS -->
     <link rel="stylesheet" href="{{ asset('assets/css/booking-form.css?v=1.0.06') }}">

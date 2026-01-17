@@ -806,61 +806,6 @@
                                                 </div>
                                             </div>
 
-                                            @if (!in_array($paymentType, ['quotation', 'checkin']))
-                                                <!-- Payment Method Selection -->
-                                                <div class="choose-payment-method">
-                                                    <h6>Select Payment Method</h6>
-                                                    @error('payment_method')
-                                                        <div class="alert alert-danger">{{ $message }}</div>
-                                                    @enderror
-                                                    <div class="payment-option">
-                                                        <ul>
-                                                            @foreach ($paymentMethods as $key => $method)
-                                                                <li class="{{ $key }}">
-                                                                    <input type="radio" name="payment_method"
-                                                                        value="{{ $key }}"
-                                                                        id="payment_{{ $key }}"
-                                                                        {{ old('payment_method') === $key ? 'checked' : '' }}>
-                                                                    <label for="payment_{{ $key }}">
-                                                                        <i class="{{ $method['icon'] ?? 'bi-credit-card' }}"
-                                                                            style="font-size: 24px;"></i>
-                                                                        <span>{{ $method['label'] ?? ucfirst($key) }}</span>
-                                                                        @if (isset($method['description']))
-                                                                            <small class="d-block text-muted"
-                                                                                style="font-size: 11px;">{{ $method['description'] }}</small>
-                                                                        @endif
-                                                                        <div class="checked">
-                                                                            <i class="bi bi-check"></i>
-                                                                        </div>
-                                                                    </label>
-                                                                </li>
-                                                            @endforeach
-                                                        </ul>
-                                                    </div>
-
-                                                    <!-- Payment Method Info -->
-                                                    <div class="pt-25" id="PaymentMethodInfo">
-                                                        <div class="alert alert-info" id="OnlinePaymentInfo"
-                                                            style="display: none;">
-                                                            <h6><i class="bi bi-credit-card-fill"></i> Online Payment:</h6>
-                                                            <p>You will be redirected to our secure payment gateway to
-                                                                complete your payment.</p>
-                                                            @if ($paymentType === 'advance')
-                                                                <small class="text-muted">* You are paying
-                                                                    {{ $advancePercentage }}%
-                                                                    advance. Remaining amount will be collected at
-                                                                    check-in.</small>
-                                                            @endif
-                                                        </div>
-                                                        <div class="alert alert-info" id="OfflinePaymentInfo"
-                                                            style="display: none;">
-                                                            <h6><i class="bi bi-cash-coin"></i> Pay on Check-in:</h6>
-                                                            <p>Your booking will be confirmed. Payment will be collected
-                                                                when you check-in to collect the vehicle.</p>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            @endif
 
                                             <button type="submit" class="primary-btn1 w-100" id="checkout-submit-btn">
                                                 <span>
@@ -1570,21 +1515,6 @@
                 updatePaymentTerms(paymentType);
             });
 
-            // Payment method selection
-            $('.payment-option input[type="radio"]').on('change', function() {
-                $('.payment-option li').removeClass('active');
-                $(this).closest('li').addClass('active');
-
-                // Show/hide payment method specific info
-                $('#OnlinePaymentInfo, #OfflinePaymentInfo').hide();
-
-                const paymentMethod = $(this).val();
-                if (paymentMethod === 'online') {
-                    $('#OnlinePaymentInfo').slideDown();
-                } else if (paymentMethod === 'offline') {
-                    $('#OfflinePaymentInfo').slideDown();
-                }
-            });
 
             // Trigger change event on page load if a payment method is already selected
             $('input[name="payment_method"]:checked').trigger('change');

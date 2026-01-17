@@ -37236,7 +37236,7 @@ header.style-3.two .main-menu>ul>li.active>a i {
 
   .cart-page .cart-shopping-wrapper .cart-table tbody tr td::before {
     content: attr(data-label);
-    position: absolute;
+    /* position: absolute; */
     left: 15px;
     color: var(--text-color);
     font-family: var(--font-poppins);
