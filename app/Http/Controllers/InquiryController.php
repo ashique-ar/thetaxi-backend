@@ -101,7 +101,7 @@ class InquiryController extends Controller
                 'email' => 'required|email|max:255',
                 'phone' => 'required|string|max:20',
                 'service_type_select' => 'required|string|in:airport_transfer,corporate_event,employee_shuttle,client_meeting,other',
-                'other_service_type' => 'required_if:service_type_select,other|string|max:255',
+                'other_service_type' => 'required_if:service_type_select,other|nullable|string|max:255',
                 'employee_strength' => 'required|string|in:1-10,11-50,51-100,101-500,500+',
                 'city_name' => 'required|string|max:255',
                 'requirements' => 'required|string|max:1000',
