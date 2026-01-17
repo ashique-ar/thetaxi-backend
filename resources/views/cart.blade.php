@@ -205,48 +205,76 @@
                                                             {{-- Display included km information --}}
                                                             @php
                                                                 $distanceDetails = $item['distance_details'] ?? [];
-                                                                
+
                                                                 // If distance_details is empty, try to get from service package info or calculate
                                                                 if (empty($distanceDetails)) {
-                                                                    $servicePackageInfo = $item['service_package_info'] ?? [];
+                                                                    $servicePackageInfo =
+                                                                        $item['service_package_info'] ?? [];
                                                                     if (!empty($servicePackageInfo)) {
                                                                         $distanceDetails = [
-                                                                            'free_km_per_day' => $servicePackageInfo['max_km_per_day'] ?? null,
-                                                                            'free_km_per_package' => $servicePackageInfo['max_km_per_package'] ?? null,
-                                                                            'allowed_total_km' => isset($servicePackageInfo['max_km_per_day']) 
-                                                                                ? ($servicePackageInfo['max_km_per_day'] * $calculatedDays) 
-                                                                                : ($servicePackageInfo['max_km_per_package'] ?? null),
+                                                                            'free_km_per_day' =>
+                                                                                $servicePackageInfo['max_km_per_day'] ??
+                                                                                null,
+                                                                            'free_km_per_package' =>
+                                                                                $servicePackageInfo[
+                                                                                    'max_km_per_package'
+                                                                                ] ?? null,
+                                                                            'allowed_total_km' => isset(
+                                                                                $servicePackageInfo['max_km_per_day'],
+                                                                            )
+                                                                                ? $servicePackageInfo[
+                                                                                        'max_km_per_day'
+                                                                                    ] * $calculatedDays
+                                                                                : $servicePackageInfo[
+                                                                                        'max_km_per_package'
+                                                                                    ] ?? null,
                                                                         ];
                                                                     }
                                                                 }
-                                                                
-                                                                $freeKmPerDay = $distanceDetails['free_km_per_day'] ?? null;
-                                                                $freeKmPerPackage = $distanceDetails['free_km_per_package'] ?? null;
-                                                                $allowedTotalKm = $distanceDetails['allowed_total_km'] ?? null;
-                                                                $extraKmPrice = $distanceDetails['extra_km_price'] ?? null;
-                                                                
+
+                                                                $freeKmPerDay =
+                                                                    $distanceDetails['free_km_per_day'] ?? null;
+                                                                $freeKmPerPackage =
+                                                                    $distanceDetails['free_km_per_package'] ?? null;
+                                                                $allowedTotalKm =
+                                                                    $distanceDetails['allowed_total_km'] ?? null;
+                                                                $extraKmPrice =
+                                                                    $distanceDetails['extra_km_price'] ?? null;
+
                                                                 // Calculate per-day km if only total is available
-                                                                if (!$freeKmPerDay && !$freeKmPerPackage && $allowedTotalKm && $calculatedDays > 0) {
+                                                                if (
+                                                                    !$freeKmPerDay &&
+                                                                    !$freeKmPerPackage &&
+                                                                    $allowedTotalKm &&
+                                                                    $calculatedDays > 0
+                                                                ) {
                                                                     $freeKmPerDay = $allowedTotalKm / $calculatedDays;
                                                                 }
                                                             @endphp
                                                             @if ($freeKmPerDay || $freeKmPerPackage || $allowedTotalKm)
                                                                 <p class="text-muted" style="margin-top: 6px;">
-                                                                    <i class="bi bi-speedometer2" style="color: #28a745;"></i>
+                                                                    <i class="bi bi-speedometer2"
+                                                                        style="color: #28a745;"></i>
                                                                     @if ($freeKmPerDay)
-                                                                        <strong>{{ number_format($freeKmPerDay, 0) }} km/day</strong> included
+                                                                        <strong>{{ number_format($freeKmPerDay, 0) }}
+                                                                            km/day</strong> included
                                                                         @if ($calculatedDays > 1)
-                                                                            <span class="text-muted">({{ number_format($freeKmPerDay * $calculatedDays, 0) }} km total)</span>
+                                                                            <span
+                                                                                class="text-muted">({{ number_format($freeKmPerDay * $calculatedDays, 0) }}
+                                                                                km total)</span>
                                                                         @endif
                                                                     @elseif ($freeKmPerPackage)
-                                                                        <strong>{{ number_format($freeKmPerPackage, 0) }} km</strong> included
+                                                                        <strong>{{ number_format($freeKmPerPackage, 0) }}
+                                                                            km</strong> included
                                                                     @elseif ($allowedTotalKm)
-                                                                        <strong>{{ number_format($allowedTotalKm, 0) }} km</strong> included
+                                                                        <strong>{{ number_format($allowedTotalKm, 0) }}
+                                                                            km</strong> included
                                                                     @endif
                                                                     @if ($extraKmPrice)
                                                                         <span class="ms-2 text-warning">
-                                                                            <i class="bi bi-lightning-fill"></i> 
-                                                                            Extra: {{ $currencySymbol }}{{ number_format($extraKmPrice, 0) }}/km
+                                                                            <i class="bi bi-lightning-fill"></i>
+                                                                            Extra:
+                                                                            {{ $currencySymbol }}{{ number_format($extraKmPrice, 0) }}/km
                                                                         </span>
                                                                     @endif
                                                                 </p>
@@ -904,14 +932,37 @@
         }
 
         @media (max-width: 768px) {
+
+            /* Cart Layout Stack */
+            .row.g-lg-4.gy-5 {
+                flex-direction: column;
+            }
+
+            .col-xl-8.col-lg-7 {
+                max-width: 100% !important;
+                flex-basis: 100% !important;
+            }
+
+            .col-xl-4.col-lg-5 {
+                max-width: 100% !important;
+                flex-basis: 100% !important;
+            }
+
+            /* Cart Table Mobile */
             .cart-table {
                 display: block;
-                overflow-x: auto;
-                white-space: nowrap;
+                overflow-x: visible;
+                white-space: normal;
+                width: 100%;
             }
 
             .cart-table thead {
                 display: none;
+            }
+
+            .cart-table tbody {
+                display: block;
+                width: 100%;
             }
 
             .cart-table tr {
@@ -919,25 +970,203 @@
                 border: 1px solid #ddd;
                 margin-bottom: 15px;
                 border-radius: 8px;
-                padding: 15px;
+                padding: 12px;
+                background: white;
             }
 
             .cart-table td {
                 display: block;
-                padding: 10px 0;
+                padding: 8px 0;
                 border: none;
                 text-align: left !important;
+                width: 100%;
+                word-wrap: break-word;
+                overflow-wrap: break-word;
             }
 
             .cart-table td:before {
                 content: attr(data-label) ": ";
-                font-weight: 600;
-                margin-right: 10px;
+                font-weight: 700;
+                margin-right: 5px;
+                color: #333;
+                display: inline;
+            }
+
+            .cart-table td[data-label="Vehicle Info"]:before {
+                display: none;
+            }
+
+            .cart-table td[data-label="Vehicle Info"] {
+                padding: 0;
+            }
+
+            /* Product Info - Stack vertically */
+            .product-info-wrapper {
+                flex-direction: column;
+                text-align: left;
+                align-items: flex-start;
+                gap: 10px;
+            }
+
+            .product-info-img {
+                width: 100%;
+                height: auto;
+                max-height: 200px;
+            }
+
+            .product-info-content {
+                width: 100%;
+            }
+
+            .product-info-content h6 {
+                font-size: 16px;
+                margin: 8px 0;
+                line-height: 1.4;
+                word-break: break-word;
+            }
+
+            .service-type-badge {
+                display: inline-block;
+                margin-bottom: 8px !important;
+                font-size: 12px !important;
+            }
+
+            .booking-details {
+                width: 100%;
+            }
+
+            .booking-details p {
+                font-size: 12px;
+                line-height: 1.5;
+                margin-bottom: 6px;
+                word-break: break-word;
+            }
+
+            .booking-details i {
+                margin-right: 4px;
+            }
+
+            /* Action buttons stacking */
+            .cart-widget-title {
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            .cart-widget-title .d-flex {
+                flex-direction: column;
+                width: 100%;
+                gap: 8px;
+            }
+
+            .cart-widget-title .d-flex a,
+            .cart-widget-title .d-flex button {
+                width: 100%;
+                font-size: 13px;
+            }
+
+            .details-button {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 100%;
+                padding: 10px;
+            }
+
+            /* Order Summary */
+            .order-summary-list li {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 5px;
+                padding: 10px 0;
+            }
+
+            .order-info {
+                width: 100%;
+                text-align: right;
+            }
+
+            .payment-buttons {
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            .payment-buttons .primary-btn1,
+            .payment-buttons .outline-btn {
+                width: 100%;
+                font-size: 13px;
+            }
+        }
+
+        @media (max-width: 576px) {
+            .cart-page {
+                padding-top: 50px;
+                padding-bottom: 50px;
+            }
+
+            .cart-table tr {
+                padding: 10px;
+                margin-bottom: 12px;
+            }
+
+            .cart-table td {
+                padding: 6px 0;
+                font-size: 13px;
             }
 
             .product-info-wrapper {
+                gap: 8px;
+            }
+
+            .product-info-img {
+                width: 100%;
+                height: auto;
+                max-height: 150px;
+            }
+
+            .product-info-content h6 {
+                font-size: 14px;
+            }
+
+            .booking-details p {
+                font-size: 11px;
+                margin-bottom: 4px;
+            }
+
+            .remove-item {
+                font-size: 11px;
+                padding: 6px 8px;
+            }
+
+            .promo-input-group {
                 flex-direction: column;
-                text-align: center;
+            }
+
+            .promo-input-group input {
+                border-radius: 5px;
+                margin-bottom: 8px;
+            }
+
+            .apply-btn {
+                border-radius: 5px;
+                width: 100%;
+            }
+
+            .order-summary-list li strong {
+                font-size: 12px;
+            }
+
+            .cart-order-sum-area {
+                position: relative;
+            }
+
+            .payment-buttons {
+                flex-direction: column;
+            }
+
+            .payment-buttons button,
+            .payment-buttons a {
+                width: 100%;
+                font-size: 12px;
             }
         }
     </style>
@@ -1378,8 +1607,8 @@
                                         ${isSelected ? '<i class="bi bi-arrow-clockwise"></i> Update' : '<i class="bi bi-plus-lg"></i> Add'}
                                     </button>
                                     ${isSelected ? `<button class="btn-remove-addon-unified remove-addon-btn" data-addon-id="${addon.id}" data-cart-key="${cartKey}" title="Remove this addon">
-                                                                                    <i class="bi bi-trash"></i> Remove
-                                                                                </button>` : ''}
+                                                                                        <i class="bi bi-trash"></i> Remove
+                                                                                    </button>` : ''}
                                 </div>
                             </div>
                         </div>
@@ -2189,13 +2418,23 @@
         /* Responsive */
         @media (max-width: 768px) {
             .unified-addons-grid {
-                grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+                grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
             }
 
             .addons-header-unified {
                 flex-direction: column;
                 align-items: flex-start;
                 gap: 8px;
+                width: 100%;
+            }
+
+            .addons-header-unified .header-left {
+                width: 100%;
+            }
+
+            .addons-header-unified .header-left h6 {
+                font-size: 14px;
+                word-break: break-word;
             }
 
             .addon-card-header-unified {
@@ -2209,18 +2448,29 @@
             .addon-action-buttons {
                 flex-direction: row;
                 flex: 1;
-                gap: 6px;
+                gap: 4px;
+                width: 100%;
             }
 
             .btn-apply-addon-unified {
                 flex: 1;
-                min-width: 80px;
+                min-width: 60px;
+                font-size: 12px;
+                padding: 4px 6px;
             }
 
             .btn-remove-addon-unified {
                 flex: 0 0 auto;
                 padding: 4px 6px;
                 font-size: 9px;
+            }
+
+            .unified-addons-container {
+                padding: 10px;
+            }
+
+            .addon-item-unified {
+                padding: 10px;
             }
         }
 
@@ -2241,7 +2491,7 @@
             .addon-action-buttons {
                 flex-direction: row;
                 gap: 4px;
-                min-width: 120px;
+                min-width: 100%;
             }
 
             .btn-apply-addon-unified,
@@ -2252,8 +2502,8 @@
         }
 
         /* ==========================================
-                                                               Extra KM Purchase Section Styles
-                                                               ========================================== */
+                                                                   Extra KM Purchase Section Styles
+                                                                   ========================================== */
 
         /* Service type badge */
         .service-type-badge {
@@ -2479,10 +2729,21 @@
                 flex-direction: column;
                 align-items: flex-start;
                 gap: 10px;
+                width: 100%;
+            }
+
+            .extra-km-header .header-left {
+                width: 100%;
+            }
+
+            .extra-km-header .header-left h6 {
+                font-size: 14px;
+                word-break: break-word;
             }
 
             .extra-km-form {
                 max-width: 100%;
+                width: 100%;
             }
 
             .km-qty-control {
@@ -2490,13 +2751,55 @@
                 justify-content: center;
             }
 
+            .extra-km-rate-info {
+                flex-direction: column;
+                align-items: flex-start;
+                width: 100%;
+            }
+
+            .extra-km-rate-info .rate-label {
+                display: block;
+                margin-bottom: 4px;
+            }
+
             .extra-km-actions {
                 flex-direction: column;
+                gap: 8px;
             }
 
             .apply-extra-km,
             .remove-extra-km {
                 width: 100%;
+                font-size: 13px;
+            }
+
+            .extra-km-input-group {
+                width: 100%;
+            }
+
+            .extra-km-total {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .extra-km-rate-info {
+                font-size: 12px;
+            }
+
+            .total-value {
+                font-size: 16px;
+            }
+
+            .km-qty-btn {
+                width: 32px;
+                height: 32px;
+                font-size: 14px;
+            }
+
+            .extra-km-input {
+                font-size: 12px;
             }
         }
     </style>
