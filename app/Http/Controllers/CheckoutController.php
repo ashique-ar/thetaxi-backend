@@ -251,13 +251,6 @@ class CheckoutController extends Controller
             'save_info' => 'boolean',
         ];
 
-
-
-        // Add payment method validation only if not quotation or pay-on-checkin
-        if (!in_array($request->input('payment_type'), ['quotation', 'checkin'], true)) {
-            $rules['payment_method'] = 'required|in:' . implode(',', $allowedPaymentMethodKeys);
-        }
-
         // Custom validation messages
         $messages = [
             'first_name.required' => 'Please enter your first name.',
@@ -273,18 +266,36 @@ class CheckoutController extends Controller
             'address.required' => 'Please enter your address.',
             'city.required' => 'Please enter your city.',
             'country.required' => 'Please enter your country.',
-            'payment_method.required' => 'Please select a payment method.',
             'terms_accepted.*.accepted' => 'You must accept all applicable terms and conditions to proceed.',
         ];
 
         $validated = $request->validate($rules, $messages);
-        if (($validated['payment_type'] ?? null) === 'checkin') {
-            if (!in_array('offline', $allowedPaymentMethodKeys, true)) {
-                return redirect()->back()
-                    ->withInput()
-                    ->with('error', 'Pay on check-in is currently unavailable. Please choose another payment option.');
-            }
-            $validated['payment_method'] = 'offline';
+        
+        // Automatically set payment method based on payment type
+        $paymentType = $validated['payment_type'] ?? 'full';
+        switch ($paymentType) {
+            case 'checkin':
+                if (!in_array('offline', $allowedPaymentMethodKeys, true)) {
+                    return redirect()->back()
+                        ->withInput()
+                        ->with('error', 'Pay on check-in is currently unavailable. Please choose another payment option.');
+                }
+                $validated['payment_method'] = 'offline';
+                break;
+            case 'quotation':
+                $validated['payment_method'] = null; // No payment method for quotation
+                break;
+            case 'advance':
+            case 'full':
+            default:
+                // Default to online (WebXPay) for full and advance payments
+                if (!in_array('online', $allowedPaymentMethodKeys, true)) {
+                    return redirect()->back()
+                        ->withInput()
+                        ->with('error', 'Online payment is currently unavailable. Please try again later.');
+                }
+                $validated['payment_method'] = 'online';
+                break;
         }
 
         // Get cart from database

@@ -83,41 +83,30 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     /**
-     * Show or hide payment method section based on payment type
+     * Set payment method based on payment type
      */
-    function updatePaymentMethodVisibility(paymentType) {
-        const config = paymentTypeConfig[paymentType];
+    function setPaymentMethodForType(paymentType) {
+        const paymentMethodField = document.querySelector('input[name="payment_method"]');
+        if (!paymentMethodField) return;
 
-        if (paymentMethodSection) {
-            if (config.requiresMethod) {
-                paymentMethodSection.style.display = 'block';
-                console.log(`%c✓ Showing payment method section for ${paymentType}`, 'color: #27ae60; font-weight: bold;');
-            } else {
-                paymentMethodSection.style.display = 'none';
-                console.log(`%c✗ Hiding payment method section for ${paymentType}`, 'color: #c0392b; font-weight: bold;');
-            }
+        let method = null;
+        switch (paymentType) {
+            case 'full':
+            case 'advance':
+                method = 'online'; // Default to WebXPay
+                break;
+            case 'checkin':
+                method = 'offline';
+                break;
+            case 'quotation':
+                method = null;
+                break;
+            default:
+                method = 'online';
         }
-    }
 
-    /**
-     * Update form validation requirements based on payment type
-     */
-    function updateFormValidation(paymentType) {
-        const config = paymentTypeConfig[paymentType];
-        const paymentMethodRadios = document.querySelectorAll('input[name="payment_method"]');
-
-        if (config.requiresMethod) {
-            paymentMethodRadios.forEach(radio => {
-                radio.required = true;
-            });
-            console.log('%c→ Payment method now REQUIRED', 'color: #f39c12; font-weight: bold;');
-        } else {
-            paymentMethodRadios.forEach(radio => {
-                radio.required = false;
-                radio.checked = false;
-            });
-            console.log('%c→ Payment method now OPTIONAL', 'color: #9b59b6; font-weight: bold;');
-        }
+        paymentMethodField.value = method || '';
+        console.log(`%c→ Payment method set to: ${method || 'none'}`, 'color: #2ecc71; font-weight: bold;');
     }
 
     /**
@@ -128,14 +117,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         logPaymentTypeSelection(selectedType);
         updateAlertContent(selectedType);
-        updatePaymentMethodVisibility(selectedType);
-        updateFormValidation(selectedType);
-
-        // Update form hidden field if needed
-        const paymentTypeInput = document.querySelector('input[type="hidden"][name="payment_type_selected"]');
-        if (paymentTypeInput) {
-            paymentTypeInput.value = selectedType;
-        }
+        setPaymentMethodForType(selectedType);
 
         // Trigger custom event for other scripts to listen to
         const event_obj = new CustomEvent('paymentTypeChanged', {
@@ -148,33 +130,6 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     /**
-     * Validate form before submission
-     */
-    function validateCheckoutForm(event) {
-        const selectedPaymentType = document.querySelector('input[name="payment_type"]:checked')?.value;
-        const paymentTypeConfig_current = paymentTypeConfig[selectedPaymentType];
-
-        console.log('%c=== FORM VALIDATION ===', 'color: #3498db; font-weight: bold; font-size: 14px;');
-        console.log(`%cSelected Payment Type: ${selectedPaymentType}`, 'color: #2ecc71;');
-
-        if (paymentTypeConfig_current?.requiresMethod) {
-            const selectedPaymentMethod = document.querySelector('input[name="payment_method"]:checked')?.value;
-            console.log(`%cSelected Payment Method: ${selectedPaymentMethod}`, 'color: #2ecc71;');
-
-            if (!selectedPaymentMethod) {
-                event.preventDefault();
-                console.error('%c✗ VALIDATION FAILED: No payment method selected', 'color: #c0392b; font-weight: bold;');
-                alert('Please select a payment method to proceed.');
-                return false;
-            }
-        }
-
-        console.log('%c✓ VALIDATION PASSED', 'color: #27ae60; font-weight: bold;');
-        console.log('%c======================', 'color: #3498db; font-weight: bold; font-size: 14px;');
-        return true;
-    }
-
-    /**
      * Initialize payment type handlers
      */
     function init() {
@@ -184,11 +139,6 @@ document.addEventListener('DOMContentLoaded', function () {
         paymentTypeRadios.forEach(radio => {
             radio.addEventListener('change', handlePaymentTypeChange);
         });
-
-        // Add form validation listener
-        if (checkoutForm) {
-            checkoutForm.addEventListener('submit', validateCheckoutForm);
-        }
 
         // Initialize with currently selected payment type
         const initialPaymentType = document.querySelector('input[name="payment_type"]:checked')?.value;
@@ -209,11 +159,10 @@ document.addEventListener('DOMContentLoaded', function () {
     window.checkoutPaymentTypeDebug = {
         logPaymentTypeSelection,
         updateAlertContent,
-        updatePaymentMethodVisibility,
-        updateFormValidation,
+        setPaymentMethodForType,
         getPaymentTypeConfig: () => paymentTypeConfig,
         getSelectedPaymentType: () => document.querySelector('input[name="payment_type"]:checked')?.value,
-        getSelectedPaymentMethod: () => document.querySelector('input[name="payment_method"]:checked')?.value
+        getPaymentMethod: () => document.querySelector('input[name="payment_method"]')?.value
     };
 
     console.log('%c💡 Debug commands available at window.checkoutPaymentTypeDebug', 'color: #3498db; font-style: italic;');

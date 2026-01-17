@@ -806,6 +806,9 @@
                                                 </div>
                                             </div>
 
+                                            <!-- Hidden payment method field - set automatically based on payment type -->
+                                            <input type="hidden" name="payment_method" id="payment_method_field"
+                                                value="">
 
                                             <button type="submit" class="primary-btn1 w-100" id="checkout-submit-btn">
                                                 <span>
