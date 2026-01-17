@@ -155,16 +155,6 @@
                                         </div>
                                         <div class="col-md-6">
                                             <div class="form-inner two mb-25">
-                                                <label>National ID / Passport*</label>
-                                                <input type="text" name="identification" placeholder="ID/Passport number"
-                                                    required value="{{ old('identification') }}">
-                                                @error('identification')
-                                                    <span class="text-danger">{{ $message }}</span>
-                                                @enderror
-                                            </div>
-                                        </div>
-                                        <div class="col-md-6">
-                                            <div class="form-inner two mb-25">
                                                 <label>Street Address*</label>
                                                 <input type="text" name="address" placeholder="Enter street address"
                                                     required value="{{ old('address') }}">
@@ -199,6 +189,17 @@
                                                     @endforeach
                                                 </select>
                                                 @error('country')
+                                                    <span class="text-danger">{{ $message }}</span>
+                                                @enderror
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <div class="form-inner two mb-25">
+                                                <label>National ID / Passport</label>
+                                                <input type="text" name="identification"
+                                                    placeholder="ID/Passport number (optional)"
+                                                    value="{{ old('identification') }}">
+                                                @error('identification')
                                                     <span class="text-danger">{{ $message }}</span>
                                                 @enderror
                                             </div>

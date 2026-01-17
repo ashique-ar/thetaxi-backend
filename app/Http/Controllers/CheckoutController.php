@@ -20,6 +20,7 @@ use App\Services\WebXPayService;
 use App\Services\CurrencyService;
 use App\Services\PromoCodeService;
 use App\Services\WebsiteSettingsService;
+use App\Services\PaymentEventService;
 use App\Helpers\BookingLinkHelper;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -36,6 +37,7 @@ class CheckoutController extends Controller
     protected $cartService;
     protected $webxPayService;
     protected $currencyService;
+    protected $paymentEventService;
     protected MailDispatchService $mailDispatchService;
     protected PromoCodeService $promoCodeService;
     protected WebsiteSettingsService $websiteSettingsService;
@@ -48,7 +50,8 @@ class CheckoutController extends Controller
         CurrencyService $currencyService,
         MailDispatchService $mailDispatchService,
         PromoCodeService $promoCodeService,
-        WebsiteSettingsService $websiteSettingsService
+        WebsiteSettingsService $websiteSettingsService,
+        PaymentEventService $paymentEventService
     ) {
         $this->bookingFlowService = $bookingFlowService;
         $this->customerService = $customerService;
@@ -58,6 +61,7 @@ class CheckoutController extends Controller
         $this->mailDispatchService = $mailDispatchService;
         $this->promoCodeService = $promoCodeService;
         $this->websiteSettingsService = $websiteSettingsService;
+        $this->paymentEventService = $paymentEventService;
     }
 
     /**
@@ -232,7 +236,7 @@ class CheckoutController extends Controller
             'phone_country_code' => 'required|string|max:5',
             'phone_international' => 'required|string|regex:/^\+[0-9]{1,3}[0-9]{6,14}$/',
             'email' => 'required|email|max:255',
-            'identification' => 'required|string|max:50',
+            'identification' => 'nullable|string|max:50',
             'address' => 'required|string|max:500',
             'city' => 'required|string|max:100',
             'country' => 'required|string|max:100',
@@ -1038,23 +1042,96 @@ class CheckoutController extends Controller
     public function webxpayCallback(Request $request)
     {
         try {
-            $bookingId = session()->get('pending_booking_id');
+            Log::info('WebXPay callback received', ['request' => $request->all(), 'session_pending_booking_id' => session()->get('pending_booking_id')]);
+            // record callback received
+            $this->paymentEventService->recordEvent('callback_received', [
+                'payload' => $request->all(),
+                'source' => 'webxpay',
+                'message' => 'Callback received from WebXPay'
+            ]);
 
-            if (!$bookingId) {
-                return redirect()->route('cart')->with('error', 'No pending booking found.');
+            // Try to determine booking from session first
+            $bookingId = session()->get('pending_booking_id');
+            $booking = $bookingId ? Booking::find($bookingId) : null;
+
+            // If booking not found in session, try to extract from custom_fields or verification
+            if (!$booking) {
+                // Attempt to extract from incoming custom_fields (base64 encoded)
+                $customFieldsRaw = $request->input('custom_fields');
+                if ($customFieldsRaw) {
+                    try {
+                        $decoded = base64_decode($customFieldsRaw);
+                        Log::info('WebXPay callback custom_fields decoded', ['decoded' => $decoded]);
+                        // record custom fields
+                        $this->paymentEventService->recordEvent('callback_custom_fields_decoded', [
+                            'payload' => ['decoded' => $decoded],
+                            'source' => 'webxpay',
+                            'booking_id' => $possibleBookingId ?? null,
+                            'booking_number' => $possibleBookingNumber ?? null,
+                        ]);
+                        $parts = explode('|', $decoded);
+                        $possibleBookingId = $parts[0] ?? null;
+                        $possibleBookingNumber = $parts[2] ?? null;
+
+                        if ($possibleBookingId) {
+                            $booking = Booking::find($possibleBookingId);
+                        }
+
+                        if (!$booking && $possibleBookingNumber) {
+                            $booking = Booking::where('booking_number', $possibleBookingNumber)->first();
+                        }
+                    } catch (\Exception $e) {
+                        Log::warning('Failed to parse custom_fields from callback', ['error' => $e->getMessage()]);
+                    }
+                }
             }
 
-            $booking = Booking::find($bookingId);
+            // If still not found, attempt full verification to get booking id (handles signed responses)
+            $verificationResult = null;
+            if (!$booking && $this->webxPayService->isEnabled()) {
+                $callbackData = $request->all();
+                $verificationResult = $this->webxPayService->verifyPayment($callbackData);
+                Log::info('WebXPay verification result', $verificationResult);
+                // Store verification result to DB for audit
+                $this->paymentEventService->recordEvent('verification_result', [
+                    'payload' => $verificationResult,
+                    'source' => 'webxpay',
+                    'booking_id' => $verificationResult['booking_id'] ?? null,
+                    'booking_number' => $verificationResult['booking_number'] ?? null,
+                    'transaction_id' => $verificationResult['transaction_id'] ?? null,
+                    'status' => $verificationResult['status'] ?? null,
+                ]);
+
+                if (!empty($verificationResult['booking_id'])) {
+                    $booking = Booking::find($verificationResult['booking_id']);
+                }
+                if (!$booking && !empty($verificationResult['booking_number'])) {
+                    $booking = Booking::where('booking_number', $verificationResult['booking_number'])->first();
+                }
+            }
 
             if (!$booking) {
-                return redirect()->route('cart')->with('error', 'Booking not found.');
+                Log::error('WebXPay callback: Booking not found after attempts', ['request' => $request->all(), 'verification' => $verificationResult ?? null]);
+                // Record unmatched callback for operations to investigate
+                $this->paymentEventService->recordEvent('unmatched_callback', [
+                    'payload' => $request->all(),
+                    'source' => 'webxpay',
+                    'message' => 'Callback received but booking could not be resolved'
+                ]);
+
+                // Show a friendly callback page so we don't lose context in redirect to cart
+                return view('checkout.callback-error', ['message' => 'Booking not found. If you have been charged, contact support with your transaction details.']);
             }
 
             // Check if this is from mock gateway (test mode)
             if ($request->has('status') && !$this->webxPayService->isEnabled()) {
+                Log::info('WebXPay mock callback processing', ['booking_id' => $booking->id, 'status' => $request->input('status')]);
+                $this->paymentEventService->recordEvent('mock_callback_processing', ['booking_id' => $booking->id, 'payload' => $request->all(), 'source' => 'webxpay']);
                 DB::beginTransaction();
 
                 if ($request->input('status') === 'success') {
+                    Log::info('WebXPay mock: marking booking as paid', ['booking_id' => $booking->id]);
+                    $this->paymentEventService->recordEvent('payment_success', ['booking_id' => $booking->id, 'transaction_id' => $request->input('transaction_id'), 'payload' => $request->all(), 'source' => 'webxpay', 'status' => 'success']);
                     // Mock payment successful
                     $wasPaid = $booking->payment_status === 'paid';
                     $booking->update([
@@ -1064,6 +1141,8 @@ class CheckoutController extends Controller
                         'paid_at' => now(),
                         'confirmed_at' => now(),
                     ]);
+
+                    Log::info('WebXPay mock: booking updated', ['booking_id' => $booking->id, 'status' => $booking->status, 'payment_status' => $booking->payment_status]);
 
                     // Mark cart as checked out and record promo code usage
                     $dbCart = $this->cartService->getOrCreateCart();
@@ -1081,6 +1160,7 @@ class CheckoutController extends Controller
                             // Reload booking with eager loaded relations for email
                             $bookingForEmail = $this->reloadBookingForEmail($booking);
                             $this->sendBookingEmail($bookingForEmail, new CheckoutConfirmationMail($bookingForEmail));
+                            Log::info('Checkout confirmation email sent', ['booking_id' => $booking->id]);
                         }
                     } catch (\Exception $e) {
                         Log::error('Failed to send confirmation email', [
@@ -1101,6 +1181,8 @@ class CheckoutController extends Controller
                         'status' => 'confirmed'
                     ])->with('success', 'Payment successful! Your booking is confirmed.');
                 } else {
+                    Log::info('WebXPay mock: payment failed', ['booking_id' => $booking->id]);
+                    $this->paymentEventService->recordEvent('payment_failed', ['booking_id' => $booking->id, 'payload' => $request->all(), 'source' => 'webxpay', 'status' => 'failed']);
                     // Mock payment failed
                     $booking->update([
                         'status' => config('booking.status.pending_payment'),
@@ -1115,11 +1197,26 @@ class CheckoutController extends Controller
                 }
             }
 
-            // Real WebXPay verification
-            $callbackData = $request->all();
-            $verificationResult = $this->webxPayService->verifyPayment($callbackData);
+            // Real WebXPay verification (if not already performed)
+            if ($verificationResult === null) {
+                $callbackData = $request->all();
+                $verificationResult = $this->webxPayService->verifyPayment($callbackData);
+                Log::info('WebXPay verification result', $verificationResult);
 
-            if ($verificationResult['success'] && $verificationResult['status'] === 'completed') {
+                // Store verification result for auditing
+                $this->paymentEventService->recordEvent('verification_result', [
+                    'payload' => $verificationResult,
+                    'source' => 'webxpay',
+                    'booking_id' => $verificationResult['booking_id'] ?? null,
+                    'booking_number' => $verificationResult['booking_number'] ?? null,
+                    'transaction_id' => $verificationResult['transaction_id'] ?? null,
+                    'status' => $verificationResult['status'] ?? null,
+                ]);
+            }
+
+            if (!empty($verificationResult['success']) && ($verificationResult['status'] === 'completed' || $verificationResult['status'] === 'success')) {
+                Log::info('WebXPay: payment successful, processing booking', ['booking_id' => $booking->id, 'transaction_id' => $verificationResult['transaction_id'] ?? null]);
+                $this->paymentEventService->recordEvent('payment_success', ['booking_id' => $booking->id, 'booking_number' => $booking->booking_number, 'transaction_id' => $verificationResult['transaction_id'] ?? null, 'payload' => $verificationResult, 'source' => 'webxpay', 'status' => 'success']);
                 DB::beginTransaction();
 
                 // Update booking with payment confirmation
@@ -1127,10 +1224,12 @@ class CheckoutController extends Controller
                 $booking->update([
                     'status' => config('booking.status.confirmed'),
                     'payment_status' => 'paid',
-                    'payment_gateway_transaction_id' => $verificationResult['transaction_id'],
+                    'payment_gateway_transaction_id' => $verificationResult['transaction_id'] ?? null,
                     'paid_at' => $verificationResult['paid_at'] ?? now(),
                     'confirmed_at' => now(),
                 ]);
+
+                Log::info('WebXPay: booking updated to confirmed', ['booking_id' => $booking->id]);
 
                 // Mark cart as checked out and record promo code usage
                 $dbCart = $this->cartService->getOrCreateCart();
@@ -1148,6 +1247,7 @@ class CheckoutController extends Controller
                         // Reload booking with eager loaded relations for email
                         $bookingForEmail = $this->reloadBookingForEmail($booking);
                         $this->sendBookingEmail($bookingForEmail, new CheckoutConfirmationMail($bookingForEmail));
+                        Log::info('Checkout confirmation email sent', ['booking_id' => $booking->id]);
                     }
                 } catch (\Exception $e) {
                     Log::error('Failed to send confirmation email', [
@@ -1168,6 +1268,8 @@ class CheckoutController extends Controller
                     'status' => 'confirmed'
                 ])->with('success', 'Payment successful! Your booking is confirmed.');
             } else {
+                Log::warning('WebXPay: payment verification failed', ['verification' => $verificationResult, 'booking_id' => $booking->id]);
+                $this->paymentEventService->recordEvent('payment_failed', ['booking_id' => $booking->id, 'booking_number' => $booking->booking_number, 'payload' => $verificationResult, 'source' => 'webxpay', 'status' => 'failed']);
                 // Payment failed or pending
                 $booking->update([
                     'status' => config('booking.status.pending_payment'),
