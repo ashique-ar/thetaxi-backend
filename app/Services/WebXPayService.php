@@ -101,20 +101,20 @@ class WebXPayService
 
         try {
             $orderId = $booking->booking_number . '-' . time();
-            
+
             // Step 1: Create plaintext payment data
             // Format: unique_order_id|total_amount
             // WebXPay expects amount as decimal with 2 decimal places (e.g., 240696.51)
             $amountFormatted = number_format($amount, 2, '.', '');
             $plaintext = $orderId . '|' . $amountFormatted;
-            
+
             // Step 2: Encrypt with RSA public key
             $encryptedPayment = $this->encryptWithPublicKey($plaintext);
-            
+
             if (!$encryptedPayment) {
                 throw new \Exception('Failed to encrypt payment data');
             }
-            
+
             // Step 3: Prepare customer details
             $customerData = [
                 'first_name' => $booking->customer?->user?->first_name ?? explode(' ', $booking->customer?->user?->full_name ?? 'Customer')[0],
@@ -130,7 +130,7 @@ class WebXPayService
                 'process_currency' => $this->currency,
                 'cms' => 'Laravel',
             ];
-            
+
             // Step 4: Prepare custom fields (booking_id|payment_type|booking_number|customer_id)
             $customFields = implode('|', [
                 $booking->id,
@@ -139,7 +139,7 @@ class WebXPayService
                 $booking->customer->id ?? 'guest'
             ]);
             $encryptedCustomFields = base64_encode($customFields);
-            
+
             Log::info('WebXPay payment initiated (RSA Redirect)', [
                 'booking_id' => $booking->id,
                 'order_id' => $orderId,
@@ -153,8 +153,8 @@ class WebXPayService
             Log::debug('WebXPay custom fields', [
                 'custom_fields_plaintext' => $customFields,
                 'custom_fields_encrypted' => $encryptedCustomFields,
-                'encryptedPayment'=> $encryptedPayment
-            ]); 
+                'encryptedPayment' => $encryptedPayment
+            ]);
             // Step 5: Return all data for form submission
             return [
                 'success' => true,
@@ -194,14 +194,14 @@ class WebXPayService
         try {
             // Use openssl_public_encrypt for compatibility with WebXPay sample code
             $success = openssl_public_encrypt($plaintext, $encrypted, $this->publicKey);
-            
+
             if (!$success) {
                 throw new \Exception('OpenSSL encryption failed: ' . openssl_error_string());
             }
-            
+
             // Base64 encode for transmission
             return base64_encode($encrypted);
-            
+
         } catch (\Exception $e) {
             Log::error('RSA encryption failed', [
                 'error' => $e->getMessage(),
@@ -279,7 +279,7 @@ class WebXPayService
                     'expected' => substr($payment, 0, 100),
                     'got' => substr($decryptedSignature, 0, 100)
                 ]);
-                
+
                 return [
                     'success' => false,
                     'message' => 'Invalid payment signature'
@@ -289,7 +289,7 @@ class WebXPayService
             // Step 5: Parse payment response
             // Format: order_id|order_reference_number|date_time_transaction|payment_gateway_used|status_code|comment
             $responseData = explode('|', $payment);
-            
+
             if (count($responseData) < 5) {
                 return [
                     'success' => false,
@@ -317,8 +317,11 @@ class WebXPayService
                 'custom_fields' => $customData
             ]);
 
-            // Status code 2 = success in WebXPay
-            $isSuccessful = ($statusCode == '2');
+            // Status code '00' or '2' = success in WebXPay
+            // '00' = Approved (most common response)
+            // '2' = Also indicates approved/success
+            // Any other code = failed/declined
+            $isSuccessful = in_array($statusCode, ['00', '2'], true);
 
             return [
                 'success' => $isSuccessful,
@@ -357,13 +360,13 @@ class WebXPayService
         try {
             // Use openssl_public_decrypt for compatibility with WebXPay sample code
             $success = openssl_public_decrypt($encrypted, $decrypted, $this->publicKey);
-            
+
             if (!$success) {
                 throw new \Exception('OpenSSL decryption failed: ' . openssl_error_string());
             }
-            
+
             return $decrypted;
-            
+
         } catch (\Exception $e) {
             Log::error('RSA decryption failed', [
                 'error' => $e->getMessage()
@@ -381,15 +384,15 @@ class WebXPayService
     {
         // Remove + sign if present
         $phone = str_replace('+', '', $phone);
-        
+
         // If starts with country code (94 for Sri Lanka), replace with 0
         if (str_starts_with($phone, '94')) {
             $phone = '0' . substr($phone, 2);
         }
-        
+
         // Keep only digits
         $phone = preg_replace('/[^0-9]/', '', $phone);
-        
+
         return $phone ?: '0000000000';
     }
 }
