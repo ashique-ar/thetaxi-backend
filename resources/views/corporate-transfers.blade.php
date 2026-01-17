@@ -564,7 +564,7 @@
 
             // Listen for changes on the select element
             serviceTypeSelect.addEventListener('change', handleServiceTypeChange);
-            
+
             // Also trigger on page load if 'other' was previously selected (after form submission)
             handleServiceTypeChange();
 
@@ -577,28 +577,28 @@
                     otherServiceInput.disabled = false;
                 }
             });
-                    preferredCountries: ['lk', 'us', 'gb', 'au'],
-                    separateDialCode: true,
-                    utilsScript: 'https://cdn.jsdelivr.net/npm/intl-tel-input@17/build/js/utils.js'
-                });
+            preferredCountries: ['lk', 'us', 'gb', 'au'],
+                separateDialCode: true,
+                utilsScript: 'https://cdn.jsdelivr.net/npm/intl-tel-input@17/build/js/utils.js'
+        });
 
-                // Update the input value to include country code on form submit
-                form.addEventListener('submit', function() {
-                    if (iti.isValidNumber()) {
-                        mobileInput.value = iti.getNumber();
-                    }
-                });
+        // Update the input value to include country code on form submit
+        form.addEventListener('submit', function() {
+            if (iti.isValidNumber()) {
+                mobileInput.value = iti.getNumber();
             }
+        });
+        }
 
-            // Initialize nice-select for selects if available
-            if (typeof $ !== 'undefined' && $.fn.niceSelect) {
-                $('select.form-select').niceSelect();
+        // Initialize nice-select for selects if available
+        if (typeof $ !== 'undefined' && $.fn.niceSelect) {
+            $('select.form-select').niceSelect();
 
-                // Re-bind change event for nice-select
-                $(document).on('change.niceSelect', '#service-type-select', function() {
-                    handleServiceTypeChange();
-                });
-            }
+            // Re-bind change event for nice-select
+            $(document).on('change.niceSelect', '#service-type-select', function() {
+                handleServiceTypeChange();
+            });
+        }
         });
     </script>
 
