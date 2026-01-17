@@ -552,25 +552,31 @@
                 if (isOtherSelected) {
                     otherServiceContainer.style.display = 'block';
                     otherServiceInput.required = true;
+                    otherServiceInput.disabled = false;
                     otherServiceInput.focus();
                 } else {
                     otherServiceContainer.style.display = 'none';
                     otherServiceInput.required = false;
+                    otherServiceInput.disabled = true; // disable so HTML5 won't validate hidden field
                     otherServiceInput.value = '';
                 }
             }
 
             // Listen for changes on the select element
             serviceTypeSelect.addEventListener('change', handleServiceTypeChange);
-
+            
             // Also trigger on page load if 'other' was previously selected (after form submission)
             handleServiceTypeChange();
 
-            // Initialize intl-tel-input for mobile
-            const mobileInput = document.getElementById('corporate-mobile');
-            if (mobileInput) {
-                const iti = window.intlTelInput(mobileInput, {
-                    initialCountry: 'lk',
+            // Ensure before submit the other field is disabled when not needed
+            form.addEventListener('submit', function() {
+                if (serviceTypeSelect.value !== 'other') {
+                    otherServiceInput.disabled = true;
+                    otherServiceInput.value = '';
+                } else {
+                    otherServiceInput.disabled = false;
+                }
+            });
                     preferredCountries: ['lk', 'us', 'gb', 'au'],
                     separateDialCode: true,
                     utilsScript: 'https://cdn.jsdelivr.net/npm/intl-tel-input@17/build/js/utils.js'
