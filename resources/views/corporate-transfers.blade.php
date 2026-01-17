@@ -48,8 +48,8 @@
                             @endif
 
                             <!-- Corporate Transport Form -->
-                            <form id="corporate-transport-form" class="filter-input show" data-service="corporate-transport"
-                                action="{{ route('booking.enquiry') }}" method="POST">
+                            <form id="corporate-transport-form" class="filter-input show "
+                                data-service="corporate-transport" action="{{ route('booking.enquiry') }}" method="POST">
                                 @csrf
                                 <input type="hidden" name="service_type" value="corporate-transport">
                                 <input type="hidden" name="inquiry_type" value="corporate">
@@ -63,7 +63,7 @@
                                     <div class="custom-select-dropdown">
                                         <input type="text" name="company_name"
                                             placeholder="{{ $settings['corporate_form_company_placeholder'] ?? 'Company Name' }}"
-                                            class="nice-select @error('company_name') is-invalid @enderror"
+                                            class="@error('company_name') is-invalid @enderror"
                                             value="{{ old('company_name') }}" required autocomplete="off">
                                     </div>
                                     @error('company_name')
@@ -81,7 +81,7 @@
                                     <div class="custom-select-dropdown">
                                         <input type="text" name="contact_person"
                                             placeholder="{{ $settings['corporate_form_contact_placeholder'] ?? 'Contact Person' }}"
-                                            class="nice-select @error('contact_person') is-invalid @enderror"
+                                            class="@error('contact_person') is-invalid @enderror"
                                             value="{{ old('contact_person') }}" required autocomplete="off">
                                     </div>
                                     @error('contact_person')
@@ -99,8 +99,8 @@
                                     <div class="custom-select-dropdown">
                                         <input type="email" name="email"
                                             placeholder="{{ $settings['corporate_form_email_placeholder'] ?? 'Email Address' }}"
-                                            class="nice-select @error('email') is-invalid @enderror"
-                                            value="{{ old('email') }}" required autocomplete="off">
+                                            class="@error('email') is-invalid @enderror" value="{{ old('email') }}"
+                                            required autocomplete="off">
                                     </div>
                                     @error('email')
                                         <span class="text-danger small">{{ $message }}</span>
@@ -109,18 +109,110 @@
 
                                 <!-- Phone -->
                                 <div class="single-search-box">
-                                    <svg width="18" height="18" viewBox="0 0 18 18"
+                                    {{-- <svg width="18" height="18" viewBox="0 0 18 18"
                                         xmlns="http://www.w3.org/2000/svg">
                                         <path
                                             d="M3.5 1C2.67 1 2 1.67 2 2.5v13c0 .83.67 1.5 1.5 1.5h11c.83 0 1.5-.67 1.5-1.5v-13C16 1.67 15.33 1 14.5 1h-11zM4 3h10v10H4V3zm5 11.5c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1z" />
+                                    </svg> --}}
+                                    {{-- <div class="custom-select-dropdown"> --}}
+                                    <input type="tel" id="corporate-mobile" name="phone"
+                                        placeholder="{{ $settings['corporate_form_phone_placeholder'] ?? 'Mobile Number' }}"
+                                        class="@error('phone') is-invalid @enderror" value="{{ old('phone') }}" required
+                                        autocomplete="off">
+                                    {{-- </div> --}}
+                                    @error('phone')
+                                        <span class="text-danger small">{{ $message }}</span>
+                                    @enderror
+                                </div>
+
+                                <!-- Type of Services -->
+                                <div class="single-search-box">
+                                    <svg width="18" height="18" viewBox="0 0 18 18"
+                                        xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M9 1L2 4v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V4L9 1z" />
+                                    </svg>
+                                    <select name="service_type_select" id="service-type-select"
+                                        class="form-select @error('service_type_select') is-invalid @enderror" required>
+                                        <option value="">Select Service Type</option>
+                                        <option value="airport_transfer"
+                                            {{ old('service_type_select') == 'airport_transfer' ? 'selected' : '' }}>
+                                            Airport Transfer</option>
+                                        <option value="corporate_event"
+                                            {{ old('service_type_select') == 'corporate_event' ? 'selected' : '' }}>
+                                            Corporate Event</option>
+                                        <option value="employee_shuttle"
+                                            {{ old('service_type_select') == 'employee_shuttle' ? 'selected' : '' }}>
+                                            Employee Shuttle</option>
+                                        <option value="client_meeting"
+                                            {{ old('service_type_select') == 'client_meeting' ? 'selected' : '' }}>
+                                            Client Meeting</option>
+                                        <option value="other"
+                                            {{ old('service_type_select') == 'other' ? 'selected' : '' }}>Other
+                                        </option>
+                                    </select>
+                                    @error('service_type_select')
+                                        <span class="text-danger small">{{ $message }}</span>
+                                    @enderror
+                                </div>
+
+                                <!-- Other Service Type Input (hidden by default) -->
+                                <div class="single-search-box" id="other-service-container" style="display: none;">
+                                    <svg width="18" height="18" viewBox="0 0 18 18"
+                                        xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M9 1L2 4v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V4L9 1z" />
+                                    </svg>
+                                    <input type="text" id="other-service-input" name="other_service_type"
+                                        placeholder="Please specify the service type"
+                                        class="@error('other_service_type') is-invalid @enderror"
+                                        value="{{ old('other_service_type') }}" autocomplete="off">
+                                    @error('other_service_type')
+                                        <span class="text-danger small">{{ $message }}</span>
+                                    @enderror
+                                </div>
+
+                                <!-- Employee Strength -->
+                                <div class="single-search-box">
+                                    <svg width="18" height="18" viewBox="0 0 18 18"
+                                        xmlns="http://www.w3.org/2000/svg">
+                                        <path
+                                            d="M9 9c2.5 0 4.5-2 4.5-4.5S11.5 0 9 0 4.5 2 4.5 4.5 6.5 9 9 9zm0 1.5c-3 0-9 1.5-9 4.5V18h18v-3c0-3-6-4.5-9-4.5z" />
+                                    </svg>
+                                    <select name="employee_strength" id="employee-strength"
+                                        class="form-select @error('employee_strength') is-invalid @enderror" required>
+                                        <option value="">Select Employee Strength</option>
+                                        <option value="1-10" {{ old('employee_strength') == '1-10' ? 'selected' : '' }}>
+                                            1-10 Employees
+                                        </option>
+                                        <option value="11-50"
+                                            {{ old('employee_strength') == '11-50' ? 'selected' : '' }}>11-50 Employees
+                                        </option>
+                                        <option value="51-100"
+                                            {{ old('employee_strength') == '51-100' ? 'selected' : '' }}>51-100
+                                            Employees</option>
+                                        <option value="101-500"
+                                            {{ old('employee_strength') == '101-500' ? 'selected' : '' }}>101-500
+                                            Employees</option>
+                                        <option value="500+" {{ old('employee_strength') == '500+' ? 'selected' : '' }}>
+                                            500+ Employees
+                                        </option>
+                                    </select>
+                                    @error('employee_strength')
+                                        <span class="text-danger small">{{ $message }}</span>
+                                    @enderror
+                                </div>
+
+                                <!-- City Name -->
+                                <div class="single-search-box">
+                                    <svg width="18" height="18" viewBox="0 0 18 18"
+                                        xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M9 1L2 4v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V4L9 1z" />
                                     </svg>
                                     <div class="custom-select-dropdown">
-                                        <input type="tel" name="phone"
-                                            placeholder="{{ $settings['corporate_form_phone_placeholder'] ?? 'Phone Number' }}"
-                                            class="nice-select @error('phone') is-invalid @enderror"
-                                            value="{{ old('phone') }}" required autocomplete="off">
+                                        <input type="text" name="city_name" placeholder="City Name"
+                                            class="nice-select @error('city_name') is-invalid @enderror"
+                                            value="{{ old('city_name') }}" required autocomplete="off">
                                     </div>
-                                    @error('phone')
+                                    @error('city_name')
                                         <span class="text-danger small">{{ $message }}</span>
                                     @enderror
                                 </div>
@@ -448,10 +540,64 @@
                     this.style.height = (this.scrollHeight) + 'px';
                 });
             }
+
+            // Toggle other service type input
+            const serviceTypeSelect = document.getElementById('service-type-select');
+            const otherServiceContainer = document.getElementById('other-service-container');
+            const otherServiceInput = document.getElementById('other-service-input');
+
+            // Function to handle service type change
+            function handleServiceTypeChange() {
+                const isOtherSelected = serviceTypeSelect.value === 'other';
+                if (isOtherSelected) {
+                    otherServiceContainer.style.display = 'block';
+                    otherServiceInput.required = true;
+                    otherServiceInput.focus();
+                } else {
+                    otherServiceContainer.style.display = 'none';
+                    otherServiceInput.required = false;
+                    otherServiceInput.value = '';
+                }
+            }
+
+            // Listen for changes on the select element
+            serviceTypeSelect.addEventListener('change', handleServiceTypeChange);
+
+            // Also trigger on page load if 'other' was previously selected (after form submission)
+            handleServiceTypeChange();
+
+            // Initialize intl-tel-input for mobile
+            const mobileInput = document.getElementById('corporate-mobile');
+            if (mobileInput) {
+                const iti = window.intlTelInput(mobileInput, {
+                    initialCountry: 'lk',
+                    preferredCountries: ['lk', 'us', 'gb', 'au'],
+                    separateDialCode: true,
+                    utilsScript: 'https://cdn.jsdelivr.net/npm/intl-tel-input@17/build/js/utils.js'
+                });
+
+                // Update the input value to include country code on form submit
+                form.addEventListener('submit', function() {
+                    if (iti.isValidNumber()) {
+                        mobileInput.value = iti.getNumber();
+                    }
+                });
+            }
+
+            // Initialize nice-select for selects if available
+            if (typeof $ !== 'undefined' && $.fn.niceSelect) {
+                $('select.form-select').niceSelect();
+
+                // Re-bind change event for nice-select
+                $(document).on('change.niceSelect', '#service-type-select', function() {
+                    handleServiceTypeChange();
+                });
+            }
         });
     </script>
 
     @push('styles')
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/intl-tel-input@17/build/css/intlTelInput.css">
         <style>
             .benefit-card {
                 padding: 2rem 1rem;
@@ -493,6 +639,30 @@
                 width: 100%;
                 margin-top: 1rem;
             }
+
+            /* Intl tel input styling */
+            .iti {
+                width: 100%;
+            }
+
+            .iti__selected-flag {
+                background: none;
+            }
+
+
+            /* Nice select styling */
+            .nice-select {
+                position: relative;
+                z-index: 10;
+            }
+
+            .nice-select .list {
+                z-index: 100;
+            }
         </style>
+    @endpush
+
+    @push('scripts')
+        <script src="https://cdn.jsdelivr.net/npm/intl-tel-input@17/build/js/intlTelInput.js"></script>
     @endpush
 @endsection

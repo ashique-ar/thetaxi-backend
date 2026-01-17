@@ -139,9 +139,22 @@
                                     <div class="col-md-6">
                                         <div class="form-inner">
                                             <label>{{ $settings['contact_form_destination_label'] ?? 'Country' }}</label>
-                                            <input type="text" name="country"
-                                                placeholder="{{ $settings['contact_form_destination_placeholder'] ?? 'Enter your Country' }}"
-                                                value="{{ old('country') }}">
+                                            <select name="country" class="form-select no-nice">
+                                                <option value="">
+                                                    {{ $settings['contact_form_destination_placeholder'] ?? 'Select your Country' }}
+                                                </option>
+                                                @forelse ($countries as $country)
+                                                    <option value="{{ $country->name }}"
+                                                        {{ old('country') === $country->name ? 'selected' : '' }}>
+                                                        {{ $country->name }}
+                                                        @if ($country->code)
+                                                            ({{ $country->code }})
+                                                        @endif
+                                                    </option>
+                                                @empty
+                                                    <option value="">No countries available</option>
+                                                @endforelse
+                                            </select>
                                             @error('country')
                                                 <span class="text-danger small">{{ $message }}</span>
                                             @enderror
@@ -201,6 +214,10 @@
     </div>
     <!--Contact Page End-->
 
+    @push('styles')
+        <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    @endpush
+
     <!--Contact Map Section Start-->
     <div class="contact-map-section">
         <iframe
@@ -208,4 +225,35 @@
             allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
     </div>
     <!--Contact Map Section End-->
+
+    @push('scripts')
+        <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+        <script>
+            document.addEventListener('DOMContentLoaded', function() {
+                // Initialize Select2 for country dropdown
+                if (typeof $ !== 'undefined') {
+                    const $country = $('select[name="country"]');
+
+                    // If the global niceSelect has already created a duplicate, remove it
+                    // and ensure the real select is visible and won't be converted again
+                    $country.next('.nice-select').remove();
+                    $country.show();
+                    $country.addClass('no-nice');
+
+                    $country.select2({
+                        placeholder: 'Search and select your country',
+                        allowClear: true,
+                        width: '100%',
+                        language: {
+                            noResults: function() {
+                                return 'No countries found';
+                            }
+                        }
+                    });
+                } else {
+                    console.warn('jQuery not loaded - Select2 will not be initialized');
+                }
+            });
+        </script>
+    @endpush
 @endsection
