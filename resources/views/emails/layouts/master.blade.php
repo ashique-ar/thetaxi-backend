@@ -518,7 +518,7 @@
                                 <a href="{{ config('app.url') }}">Website</a>
                                 <a href="mailto:{{ config('mail.from.address', 'info@casonsrentacar.lk') }}">Email
                                     Us</a>
-                                <a href="tel:+94112345678">Call Us</a>
+                                <a href="tel:+94711615615">Call Us</a>
                             </div>
 
                             <p class="copyright">

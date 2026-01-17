@@ -339,7 +339,7 @@
                     {{ $currencySymbol }}
                     {{ number_format($booking->total_estimated - ($booking->amount_to_pay ?? 0), 2) }}
                 </p>
-                <p style="margin-bottom: 8px;"><strong>Important Reminders:</strong></p>
+                {{-- <p style="margin-bottom: 8px;"><strong>Important Reminders:</strong></p>
                 <ul>
                     <li>Bring valid government-issued ID/Passport</li>
                     <li>Bring a valid driver's license</li>
@@ -348,7 +348,7 @@
                     <li><strong>Pay remaining balance at pickup: {{ $currencySymbol }}
                             {{ number_format($booking->total_estimated - ($booking->amount_to_pay ?? 0), 2) }}</strong>
                     </li>
-                </ul>
+                </ul> --}}
             </div>
         @elseif($booking->payment_type === 'checkin')
             <div class="highlight-box success">
@@ -356,13 +356,13 @@
                 <p>Your booking is confirmed. Please pay the full amount when you check-in to collect the vehicle.</p>
                 <p><strong>Amount Due at Check-in:</strong> {{ $currencySymbol }}
                     {{ number_format($booking->total_estimated, 2) }}</p>
-                <p style="margin-bottom: 8px;"><strong>Important Reminders:</strong></p>
+                {{-- <p style="margin-bottom: 8px;"><strong>Important Reminders:</strong></p>
                 <ul>
                     <li>Bring valid government-issued ID/Passport</li>
                     <li>Bring a valid driver's license</li>
                     <li>A credit card may be required for security deposit</li>
                     <li>Arrive 15 minutes before scheduled pickup time</li>
-                </ul>
+                </ul> --}}
             </div>
         @elseif($booking->payment_status === 'pending')
             @php
@@ -414,13 +414,13 @@
                 <p>Your payment has been successfully processed and your vehicle will be prepared and ready for pickup on
                     <strong>{{ \Carbon\Carbon::parse($booking->from_date)->format('F d, Y \a\t g:i A') }}</strong>.
                 </p>
-                <p style="margin-bottom: 8px;"><strong>Important Reminders:</strong></p>
+                {{-- <p style="margin-bottom: 8px;"><strong>Important Reminders:</strong></p>
                 <ul>
                     <li>Bring valid government-issued ID/Passport</li>
                     <li>Bring a valid driver's license</li>
                     <li>A credit card may be required for security deposit</li>
                     <li>Arrive 15 minutes before scheduled pickup time</li>
-                </ul>
+                </ul> --}}
             </div>
         @else
             <div class="highlight-box success">
@@ -428,13 +428,13 @@
                 <p>Your vehicle will be prepared and ready for pickup on
                     <strong>{{ \Carbon\Carbon::parse($booking->from_date)->format('F d, Y \a\t g:i A') }}</strong>.
                 </p>
-                <p style="margin-bottom: 8px;"><strong>Important Reminders:</strong></p>
+                {{-- <p style="margin-bottom: 8px;"><strong>Important Reminders:</strong></p>
                 <ul>
                     <li>Bring valid government-issued ID/Passport</li>
                     <li>Bring a valid driver's license</li>
                     <li>A credit card may be required for security deposit</li>
                     <li>Arrive 15 minutes before scheduled pickup time</li>
-                </ul>
+                </ul> --}}
             </div>
         @endif
     </div>
@@ -448,7 +448,7 @@
         <table class="info-table">
             <tr>
                 <td>📞 Phone</td>
-                <td><a href="tel:+94112345678" style="color: #BF2629; text-decoration: none;">+94 11 234 5678</a></td>
+                <td><a href="tel:+9471615615" style="color: #BF2629; text-decoration: none;">+94 71 1 615 615</a></td>
             </tr>
             <tr>
                 <td>📧 Email</td>
@@ -463,7 +463,7 @@
             </tr>
             <tr>
                 <td>💬 WhatsApp</td>
-                <td><a href="https://wa.me/94712345678" style="color: #BF2629; text-decoration: none;">+94 71 234 5678</a>
+                <td><a href="https://wa.me/9471615615" style="color: #BF2629; text-decoration: none;">+94 71 1 615 615</a>
                 </td>
             </tr>
         </table>

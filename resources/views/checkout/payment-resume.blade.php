@@ -397,7 +397,7 @@
                             <table class="info-table">
                                 <tr>
                                     <td>📞 Phone</td>
-                                    <td><a href="tel:+94112345678" style="color: #BF2629; text-decoration: none;">+94 11
+                                    <td><a href="tel:+94711615615" style="color: #BF2629; text-decoration: none;">+94 11
                                             234
                                             5678</a></td>
                                 </tr>
@@ -415,8 +415,8 @@
                                 </tr>
                                 <tr>
                                     <td>💬 WhatsApp</td>
-                                    <td><a href="https://wa.me/94712345678"
-                                            style="color: #BF2629; text-decoration: none;">+94 71 234 5678</a></td>
+                                    <td><a href="https://wa.me/9471615615"
+                                            style="color: #BF2629; text-decoration: none;">+94 71 1 615 615</a></td>
                                 </tr>
                             </table>
                             <p style="text-align: center; color: #717171; margin-top: 15px; font-size: 13px;">Our

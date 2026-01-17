@@ -449,13 +449,13 @@
                                             and ready for pickup on
                                             <strong>{{ \Carbon\Carbon::parse($booking->from_date)->format('F d, Y \a\t g:i A') }}</strong>.
                                         </p>
-                                        <p style="margin-bottom: 8px;"><strong>Important Reminders:</strong></p>
+                                        {{-- <p style="margin-bottom: 8px;"><strong>Important Reminders:</strong></p>
                                         <ul>
                                             <li>Bring valid government-issued ID/Passport</li>
                                             <li>Bring a valid driver's license</li>
                                             <li>A credit card may be required for security deposit</li>
                                             <li>Arrive 15 minutes before scheduled pickup time</li>
-                                        </ul>
+                                        </ul> --}}
                                     </div>
                                 @else
                                     <div class="highlight-box success">
@@ -463,13 +463,13 @@
                                         <p>Your vehicle will be prepared and ready for pickup on
                                             <strong>{{ \Carbon\Carbon::parse($booking->from_date)->format('F d, Y \a\t g:i A') }}</strong>.
                                         </p>
-                                        <p style="margin-bottom: 8px;"><strong>Important Reminders:</strong></p>
+                                        {{-- <p style="margin-bottom: 8px;"><strong>Important Reminders:</strong></p>
                                         <ul>
                                             <li>Bring valid government-issued ID/Passport</li>
                                             <li>Bring a valid driver's license</li>
                                             <li>A credit card may be required for security deposit</li>
                                             <li>Arrive 15 minutes before scheduled pickup time</li>
-                                        </ul>
+                                        </ul> --}}
                                     </div>
                                 @endif
                             </div>
@@ -484,9 +484,8 @@
                                 <table class="info-table">
                                     <tr>
                                         <td>📞 Phone</td>
-                                        <td><a href="tel:+94112345678" style="color: #BF2629; text-decoration: none;">+94 11
-                                                234
-                                                5678</a></td>
+                                        <td><a href="tel:+94711615615" style="color: #BF2629; text-decoration: none;">+94 71 1
+                                                615 615</a></td>
                                     </tr>
                                     <tr>
                                         <td>📧 Email</td>
@@ -502,8 +501,8 @@
                                     </tr>
                                     <tr>
                                         <td>💬 WhatsApp</td>
-                                        <td><a href="https://wa.me/94712345678"
-                                                style="color: #BF2629; text-decoration: none;">+94 71 234 5678</a></td>
+                                        <td><a href="https://wa.me/94711615615"
+                                                style="color: #BF2629; text-decoration: none;">+94 71 1 615 615</a></td>
                                     </tr>
                                 </table>
                                 <p style="text-align: center; color: #717171; margin-top: 15px; font-size: 13px;">Our

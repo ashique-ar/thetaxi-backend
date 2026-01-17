@@ -230,6 +230,15 @@
                                 <button type="submit" class="primary-btn1 corporate-submit-btn">
                                     <span>{{ $settings['corporate_form_submit_text'] ?? 'Submit Enquiry' }}</span>
                                 </button>
+                                <div class="or-separator text-center my-3">
+                                    <div class="d-flex align-items-center">
+                                        <hr class="flex-grow-1">
+                                        <span class="px-3 small text-muted">or</span>
+                                        <hr class="flex-grow-1">
+                                    </div>
+                                </div>
+                                <a href="tel:+94711615615" class="text-primary fw-bold">+94 71 1 615 615</a> /
+                                <a href="mailto:zufer@thetaxi.lk" class="text-primary fw-bold">zufer@thetaxi.lk</a>
                             </form>
                         </div>
                     </div>
