@@ -148,33 +148,6 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     /**
-     * Validate form before submission
-     */
-    function validateCheckoutForm(event) {
-        const selectedPaymentType = document.querySelector('input[name="payment_type"]:checked')?.value;
-        const paymentTypeConfig_current = paymentTypeConfig[selectedPaymentType];
-
-        console.log('%c=== FORM VALIDATION ===', 'color: #3498db; font-weight: bold; font-size: 14px;');
-        console.log(`%cSelected Payment Type: ${selectedPaymentType}`, 'color: #2ecc71;');
-
-        if (paymentTypeConfig_current?.requiresMethod) {
-            const selectedPaymentMethod = document.querySelector('input[name="payment_method"]:checked')?.value;
-            console.log(`%cSelected Payment Method: ${selectedPaymentMethod}`, 'color: #2ecc71;');
-
-            if (!selectedPaymentMethod) {
-                event.preventDefault();
-                console.error('%c✗ VALIDATION FAILED: No payment method selected', 'color: #c0392b; font-weight: bold;');
-                alert('Please select a payment method to proceed.');
-                return false;
-            }
-        }
-
-        console.log('%c✓ VALIDATION PASSED', 'color: #27ae60; font-weight: bold;');
-        console.log('%c======================', 'color: #3498db; font-weight: bold; font-size: 14px;');
-        return true;
-    }
-
-    /**
      * Initialize payment type handlers
      */
     function init() {
@@ -185,10 +158,6 @@ document.addEventListener('DOMContentLoaded', function () {
             radio.addEventListener('change', handlePaymentTypeChange);
         });
 
-        // Add form validation listener
-        if (checkoutForm) {
-            checkoutForm.addEventListener('submit', validateCheckoutForm);
-        }
 
         // Initialize with currently selected payment type
         const initialPaymentType = document.querySelector('input[name="payment_type"]:checked')?.value;
@@ -213,7 +182,6 @@ document.addEventListener('DOMContentLoaded', function () {
         updateFormValidation,
         getPaymentTypeConfig: () => paymentTypeConfig,
         getSelectedPaymentType: () => document.querySelector('input[name="payment_type"]:checked')?.value,
-        getSelectedPaymentMethod: () => document.querySelector('input[name="payment_method"]:checked')?.value
     };
 
     console.log('%c💡 Debug commands available at window.checkoutPaymentTypeDebug', 'color: #3498db; font-style: italic;');
