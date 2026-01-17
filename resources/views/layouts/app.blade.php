@@ -30,13 +30,13 @@
     <!-- AOS Animation CSS -->
     <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
     <!--  Style CSS  -->
-    <link rel="stylesheet" href="{{ asset('assets/css/style.css?v=1.0.5') }}">
+    <link rel="stylesheet" href="{{ assetVersion('assets/css/style.css') }}">
 
     <!-- Booking Form CSS -->
-    <link rel="stylesheet" href="{{ asset('assets/css/booking-form.css?v=1.0.06') }}">
+    <link rel="stylesheet" href="{{ assetVersion('assets/css/booking-form.css') }}">
 
     <!-- Popup Modal CSS -->
-    <link rel="stylesheet" href="{{ asset('assets/css/popup-modal.css?v=1.0') }}">
+    <link rel="stylesheet" href="{{ assetVersion('assets/css/popup-modal.css') }}">
 
     @php
         $pageTitle = trim($__env->yieldContent('title'));
@@ -288,8 +288,8 @@
     <script src="{{ asset('assets/js/jquery.fancybox.min.js') }}"></script>
 
     <script src="{{ asset('assets/js/select-dropdown.js') }}"></script>
-    <script src="{{ asset('assets/js/custom.js?v=1.0.01') }}"></script>
-    <script src="{{ asset('assets/js/booking-form.js?v=1.0.08') }}"></script>
+    <script src="{{ assetVersion('assets/js/custom.js') }}"></script>
+    <script src="{{ assetVersion('assets/js/booking-form.js') }}"></script>
 
     <!-- Currency Switching JavaScript -->
     <script>
@@ -469,7 +469,7 @@
     </script>
 
     <!-- Popup Display Engine JS -->
-    <script src="{{ asset('assets/js/popup-display.js?v=1.0.03') }}"></script>
+    <script src="{{ assetVersion('assets/js/popup-display.js') }}"></script>
     <script type="text/javascript">
         (function(c, l, a, r, i, t, y) {
             c[a] = c[a] || function() {
