@@ -162,7 +162,7 @@
                                         <path d="M9 1L2 4v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V4L9 1z" />
                                     </svg>
                                     <input type="text" id="other-service-input" name="other_service_type"
-                                        placeholder="Please specify the service type"
+                                        placeholder="Specify the service type"
                                         class="@error('other_service_type') is-invalid @enderror"
                                         value="{{ old('other_service_type') }}" autocomplete="off">
                                     @error('other_service_type')
@@ -548,57 +548,61 @@
 
             // Function to handle service type change
             function handleServiceTypeChange() {
+                if (!serviceTypeSelect || !otherServiceContainer || !otherServiceInput) return;
+
                 const isOtherSelected = serviceTypeSelect.value === 'other';
                 if (isOtherSelected) {
-                    otherServiceContainer.style.display = 'block';
+                    otherServiceContainer.style.setProperty('display', 'block', 'important');
                     otherServiceInput.required = true;
-                    otherServiceInput.disabled = false;
-                    otherServiceInput.focus();
+                    // Only focus if triggered by user interaction
+                    if (document.activeElement === serviceTypeSelect || (typeof $ !== 'undefined' && $(
+                            serviceTypeSelect).next('.nice-select').is(':focus'))) {
+                        otherServiceInput.focus();
+                    }
                 } else {
-                    otherServiceContainer.style.display = 'none';
+                    otherServiceContainer.style.setProperty('display', 'none', 'important');
                     otherServiceInput.required = false;
-                    otherServiceInput.disabled = true; // disable so HTML5 won't validate hidden field
                     otherServiceInput.value = '';
                 }
             }
 
-            // Listen for changes on the select element
-            serviceTypeSelect.addEventListener('change', handleServiceTypeChange);
+            // Listen for changes
+            if (serviceTypeSelect) {
+                serviceTypeSelect.addEventListener('change', handleServiceTypeChange);
+            }
 
-            // Also trigger on page load if 'other' was previously selected (after form submission)
+            // Initial trigger
             handleServiceTypeChange();
 
-            // Ensure before submit the other field is disabled when not needed
-            form.addEventListener('submit', function() {
-                if (serviceTypeSelect.value !== 'other') {
-                    otherServiceInput.disabled = true;
-                    otherServiceInput.value = '';
-                } else {
-                    otherServiceInput.disabled = false;
-                }
-            });
-            preferredCountries: ['lk', 'us', 'gb', 'au'],
-                separateDialCode: true,
-                utilsScript: 'https://cdn.jsdelivr.net/npm/intl-tel-input@17/build/js/utils.js'
-        });
+            // Initialize intl-tel-input for mobile
+            const mobileInput = document.getElementById('corporate-mobile');
+            if (mobileInput) {
+                const iti = window.intlTelInput(mobileInput, {
+                    initialCountry: 'lk',
+                    preferredCountries: ['lk', 'us', 'gb', 'au'],
+                    separateDialCode: true,
+                    utilsScript: 'https://cdn.jsdelivr.net/npm/intl-tel-input@17/build/js/utils.js'
+                });
 
-        // Update the input value to include country code on form submit
-        form.addEventListener('submit', function() {
-            if (iti.isValidNumber()) {
-                mobileInput.value = iti.getNumber();
+                // Update the input value to include country code on form submit
+                form.addEventListener('submit', function() {
+                    if (iti.isValidNumber()) {
+                        mobileInput.value = iti.getNumber();
+                    }
+                });
             }
-        });
-        }
 
-        // Initialize nice-select for selects if available
-        if (typeof $ !== 'undefined' && $.fn.niceSelect) {
-            $('select.form-select').niceSelect();
+            // Initialize nice-select for selects if available
+            if (typeof $ !== 'undefined' && $.fn.niceSelect) {
+                // Initialize all form-selects
+                $('select.form-select').niceSelect();
 
-            // Re-bind change event for nice-select
-            $(document).on('change.niceSelect', '#service-type-select', function() {
-                handleServiceTypeChange();
-            });
-        }
+                // niceSelect usually triggers 'change' on the original select, 
+                // but we'll bind specifically to make sure.
+                $(document).on('change', '#service-type-select', function() {
+                    handleServiceTypeChange();
+                });
+            }
         });
     </script>
 
