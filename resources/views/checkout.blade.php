@@ -1519,25 +1519,12 @@
             });
 
 
-            // Trigger change event on page load if a payment method is already selected
-            $('input[name="payment_method"]:checked').trigger('change');
+            // Trigger change event on page load if a payment type is already selected
             updatePaymentTerms($('input[name="payment_type"]:checked').val());
 
-            // Form validation
+            // Form submission - disable submit button to prevent double submission
             $('#checkout-form').on('submit', function(e) {
-                const paymentType = $('input[name="payment_type"]:checked').val();
-                const paymentMethod = $('input[name="payment_method"]:checked').val();
-
-                // Skip payment method validation for quotation and pay-on-checkin
-                if (!['quotation', 'checkin'].includes(paymentType)) {
-                    if (!paymentMethod) {
-                        e.preventDefault();
-                        alert('Please select a payment method');
-                        return false;
-                    }
-                }
-
-                // Disable submit button to prevent double submission
+                // Payment method is now set automatically, server validates
                 $('#checkout-submit-btn').prop('disabled', true).html('<span>Processing...</span>');
             });
 
