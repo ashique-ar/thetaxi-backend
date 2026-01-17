@@ -194,6 +194,8 @@ class Booking extends BaseModel
         'payment_method',
         'payment_status',
         'payment_reference',
+        'payment_type',
+        'amount_to_pay',
 
         // Corporate booking fields
         'is_corporate_booking',

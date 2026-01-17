@@ -249,10 +249,11 @@
                     $packageHours = $pricing['duration_info']['package_hours'] ?? null;
                     $serviceType = $pricing['service_type'] ?? 'point_to_point';
 
-                    // Determine if this is a package service (wedding, airport transfers)
+                    // Determine service type flags
                     $isPackageService = in_array($serviceType, ['wedding_hire', 'airport_transfers']);
                     $isWeddingPackage = $serviceType === 'wedding_hire' && $packageHours;
                     $isOneDay = $durationDays === 1;
+                    $isRideNow = $serviceType === 'ride_now';
 
                     // IMPORTANT: BookingFlowService returns TOTAL PACKAGE AMOUNT, not per-day rate
                     // Only calculate per-day rate for display purposes in multi-day non-package services
@@ -292,25 +293,38 @@
                         {{ $currencySymbol }}
                         <span class="price-value">{{ number_format($totalAmountConverted, 0) }}</span>
                     </h4>
-                    <div class="total-price-info mt-1 text-muted small">
-                        <span class="duration-label">1 day rental</span>
-                    </div>
+                    @if (!$isRideNow)
+                        <div class="total-price-info mt-1 text-muted small">
+                            <span class="duration-label">1 day rental</span>
+                        </div>
+                    @endif
                 @else
-                    <!-- Multi-day Pricing - Show calculated per-day rate for display -->
-                    <h4 class="price-amount" data-base-price-lkr="{{ $totalAmountLKR }}"
-                        data-per-day-lkr="{{ round($perDayRateLKR, 2) }}" data-duration="{{ $durationDays }}"
-                        data-currency="{{ $selectedCurrency }}" data-is-package="false">
-                        {{ $currencySymbol }}
-                        <span class="price-value">{{ number_format($perDayRateConverted, 0) }}</span>
-                        <span class="price-unit">/day</span>
-                    </h4>
+                    <!-- Multi-day Pricing -->
+                    @if ($isRideNow)
+                        <!-- Ride Now: display total price only (no /day, no Total label) -->
+                        <h4 class="price-amount" data-base-price-lkr="{{ $totalAmountLKR }}"
+                            data-duration="{{ $durationDays }}" data-currency="{{ $selectedCurrency }}"
+                            data-is-package="false">
+                            {{ $currencySymbol }}
+                            <span class="price-value">{{ number_format($totalAmountConverted, 0) }}</span>
+                        </h4>
+                    @else
+                        <!-- Show calculated per-day rate for multi-day rentals -->
+                        <h4 class="price-amount" data-base-price-lkr="{{ $totalAmountLKR }}"
+                            data-per-day-lkr="{{ round($perDayRateLKR, 2) }}" data-duration="{{ $durationDays }}"
+                            data-currency="{{ $selectedCurrency }}" data-is-package="false">
+                            {{ $currencySymbol }}
+                            <span class="price-value">{{ number_format($perDayRateConverted, 0) }}</span>
+                            <span class="price-unit">/day</span>
+                        </h4>
 
-                    <!-- Total Price as Secondary Info for multi-day -->
-                    <div class="total-price-info mt-2 text-muted small">
-                        <span class="total-label">Total:</span>
-                        <strong>{{ $currencySymbol }} {{ number_format($totalAmountConverted, 0) }}</strong>
-                        <span class="duration-label">({{ $durationDays }} days)</span>
-                    </div>
+                        <!-- Total Price as Secondary Info for multi-day -->
+                        <div class="total-price-info mt-2 text-muted small">
+                            <span class="total-label">Total:</span>
+                            <strong>{{ $currencySymbol }} {{ number_format($totalAmountConverted, 0) }}</strong>
+                            <span class="duration-label">({{ $durationDays }} days)</span>
+                        </div>
+                    @endif
                 @endif
 
                 @if (isset($enhancedPricing['savings']) && !empty($enhancedPricing['savings']))

@@ -52,9 +52,19 @@
                                 $durationText = $packageHours . ' Hour Package';
                                 $durationIcon = 'bi-clock';
                             } elseif ($serviceType === 'airport_transfers') {
-                                $durationText = 'One-way Transfer';
+                                // Show pickup → dropoff instead of generic "One-way Transfer"
+                                $pickup = $search->pickup_location ?? 'Pickup';
+                                $dropoff = $search->dropoff_location ?? '';
+                                $durationText = $pickup . ($dropoff && $dropoff !== $pickup ? ' → ' . $dropoff : '');
                                 $durationIcon = 'bi-airplane';
+                            } elseif ($serviceType === 'ride_now') {
+                                // Show pickup → dropoff for Ride Now as well
+                                $pickup = $search->pickup_location ?? 'Pickup';
+                                $dropoff = $search->dropoff_location ?? '';
+                                $durationText = $pickup . ($dropoff && $dropoff !== $pickup ? ' → ' . $dropoff : '');
+                                $durationIcon = 'bi-lightning-charge';
                             } else {
+                                // For rentals and others show number of days
                                 $durationText = $durationDays . ' Day' . ($durationDays !== 1 ? 's' : '');
                                 $durationIcon = 'bi-calendar-event';
                             }
@@ -86,9 +96,26 @@
                             @if ($search->pickup_location)
                                 <span class="location-info">
                                     <i class="bi bi-geo-alt"></i>
-                                    {{ $search->pickup_location }}
-                                    @if ($search->dropoff_location && $search->dropoff_location !== $search->pickup_location)
-                                        → {{ $search->dropoff_location }}
+                                    @if (in_array($serviceType, ['airport_transfers', 'ride_now']))
+                                        {{-- Show pickup/drop with times for transfers and ride now --}}
+                                        {{ $search->pickup_location }}
+                                        @if (!empty($search->from_time))
+                                            <small
+                                                class="ms-1">({{ \Carbon\Carbon::createFromFormat('H:i', $search->from_time)->format('h:i A') }})</small>
+                                        @endif
+
+                                        @if ($search->dropoff_location && $search->dropoff_location !== $search->pickup_location)
+                                            → {{ $search->dropoff_location }}
+                                            @if (!empty($search->to_time))
+                                                <small
+                                                    class="ms-1">({{ \Carbon\Carbon::createFromFormat('H:i', $search->to_time)->format('h:i A') }})</small>
+                                            @endif
+                                        @endif
+                                    @else
+                                        {{ $search->pickup_location }}
+                                        @if ($search->dropoff_location && $search->dropoff_location !== $search->pickup_location)
+                                            → {{ $search->dropoff_location }}
+                                        @endif
                                     @endif
                                 </span>
                             @endif
