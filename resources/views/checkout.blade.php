@@ -1462,7 +1462,6 @@
             $('input[name="payment_type"]').on('change', function() {
                 const paymentType = $(this).val();
                 const alertContent = $('#alert-content');
-                const paymentMethodSection = $('.choose-payment-method');
                 const submitBtn = $('#checkout-submit-btn span');
 
                 // Calculate payment amounts
@@ -1476,7 +1475,6 @@
                     <h6><i class="bi bi-info-circle"></i> Advance Payment (${advancePercentage}%)</h6>
                     <p class="mb-0">You are paying ${advancePercentage}% advance. The remaining amount will be collected at the time of vehicle pickup.</p>
                 `);
-                        paymentMethodSection.show();
                         submitBtn.html(
                             `Complete Booking - ${currencySymbol}${advanceAmount.toFixed(2)} <svg width="10" height="10" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg"><path d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z"></path></svg>`
                         );
@@ -1486,7 +1484,6 @@
                     <h6><i class="bi bi-file-text"></i> Request Quotation</h6>
                     <p class="mb-0">You are requesting a quotation. Our team will contact you with detailed pricing and booking information.</p>
                 `);
-                        paymentMethodSection.hide();
                         submitBtn.html(
                             'Submit Quotation Request <svg width="10" height="10" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg"><path d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z"></path></svg>'
                         );
@@ -1496,7 +1493,6 @@
                     <h6><i class="bi bi-cash-coin"></i> Pay on Check-in</h6>
                     <p class="mb-0">No payment is required now. You will pay the full amount when you check-in to collect the vehicle.</p>
                 `);
-                        paymentMethodSection.hide();
                         submitBtn.html(
                             `Confirm Booking - Pay on Check-in <svg width="10" height="10" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg"><path d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z"></path></svg>`
                         );
@@ -1506,7 +1502,6 @@
                     <h6><i class="bi bi-credit-card"></i> Full Payment</h6>
                     <p class="mb-0">You are making full payment for your booking.</p>
                 `);
-                        paymentMethodSection.show();
                         submitBtn.html(
                             `Complete Booking - ${currencySymbol}${fullAmount.toFixed(2)} <svg width="10" height="10" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg"><path d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z"></path></svg>`
                         );
@@ -1523,16 +1518,6 @@
             // Form validation
             $('#checkout-form').on('submit', function(e) {
                 const paymentType = $('input[name="payment_type"]:checked').val();
-                const paymentMethod = $('input[name="payment_method"]:checked').val();
-
-                // Skip payment method validation for quotation and pay-on-checkin
-                if (!['quotation', 'checkin'].includes(paymentType)) {
-                    if (!paymentMethod) {
-                        e.preventDefault();
-                        alert('Please select a payment method');
-                        return false;
-                    }
-                }
 
                 // Disable submit button to prevent double submission
                 $('#checkout-submit-btn').prop('disabled', true).html('<span>Processing...</span>');
