@@ -5,7 +5,9 @@
 @section('content')
     @php
         $isQuotation = $type === 'quotation';
-        $isPaid = $booking && $booking->payment_status === 'paid';
+        $isAdvancePayment = $booking && $booking->payment_type === 'advance' && $booking->payment_status === 'paid';
+        $isFullPayment = $booking && $booking->payment_type === 'full' && $booking->payment_status === 'paid';
+        $isPaid = $isAdvancePayment || $isFullPayment;
         $isPending = $booking && $booking->payment_status === 'pending';
         $isPayOnCheckin = $booking && $booking->payment_type === 'checkin';
         $currencySymbol = $booking ? getCurrencySymbol($booking->currency) : '$';
@@ -39,12 +41,18 @@
                     <h1>Quotation Request Submitted!</h1>
                     <p class="lead">Thank you for your interest. Our team will review your request and send you a detailed
                         quotation within 24 hours.</p>
-                @elseif($isPaid)
+                @elseif($isAdvancePayment)
+                    {{-- <div class="success-icon paid">
+                        <i class="bi bi-check-circle-fill"></i>
+                    </div> --}}
+                    <h1>Advance Payment Successful!</h1>
+                    <p class="lead">Your {{ $advancePercentage }}% advance payment has been confirmed. You will receive a confirmation email shortly.</p>
+                @elseif($isFullPayment)
                     {{-- <div class="success-icon paid">
                         <i class="bi bi-check-circle-fill"></i>
                     </div> --}}
                     <h1>Payment Successful!</h1>
-                    <p class="lead">Your booking has been confirmed. You will receive a confirmation email shortly.</p>
+                    <p class="lead">Your booking has been confirmed and fully paid. You will receive a confirmation email shortly.</p>
                 @elseif($isPayOnCheckin)
                     {{-- <div class="success-icon pending">
                         <i class="bi bi-clock-fill"></i>
@@ -82,10 +90,13 @@
                                 Thank you for your quotation request. Our team will review your requirements and get back to
                                 you
                                 within 24 hours.
-                            @elseif($isPaid)
+                            @elseif($isAdvancePayment)
+                                Thank you for your advance payment with {{ env('COMPANY_NAME', 'TheTaxi Company') }}! 
+                                Your {{ $advancePercentage }}% advance payment has been confirmed. The remaining balance 
+                                will be collected at pickup.
+                            @elseif($isFullPayment)
                                 Thank you for your booking with {{ env('COMPANY_NAME', 'TheTaxi Company') }}! Your
-                                reservation
-                                has been confirmed and we're excited to serve you.
+                                reservation has been confirmed and fully paid. We're excited to serve you.
                             @else
                                 Thank you for your booking with {{ env('COMPANY_NAME', 'TheTaxi Company') }}! We have
                                 received
@@ -349,9 +360,27 @@
                                             secure
                                             payment link to confirm your booking</p>
                                     </div>
+                                @elseif($isAdvancePayment)
+                                    <div class="highlight-box success">
+                                        <h3>✓ Advance Payment Confirmed!</h3>
+                                        <p>You have successfully paid {{ $advancePercentage }}% advance
+                                            ({{ $currencySymbol }}
+                                            {{ number_format($booking->amount_to_pay ?? 0, 2) }}).</p>
+                                        <p><strong>Balance Due at Pickup:</strong> {{ $currencySymbol }}
+                                            {{ number_format($booking->total_estimated - ($booking->amount_to_pay ?? 0), 2) }}
+                                        </p>
+                                        <p style="margin-bottom: 8px;"><strong>Important Reminders:</strong></p>
+                                        <ul>
+                                            <li>Bring valid government-issued ID/Passport</li>
+                                            <li>Bring a valid driver's license</li>
+                                            <li>A credit card may be required for security deposit</li>
+                                            <li>Arrive 15 minutes before scheduled pickup time</li>
+                                            <li><strong>Pay remaining balance at pickup: {{ $currencySymbol }} {{ number_format($booking->total_estimated - ($booking->amount_to_pay ?? 0), 2) }}</strong></li>
+                                        </ul>
+                                    </div>
                                 @elseif($isPayOnCheckin)
                                     <div class="highlight-box success">
-                                        <h3>ƒo" Pay on Check-in</h3>
+                                        <h3>✓ Pay on Check-in</h3>
                                         <p>Your booking is confirmed. Please pay the full amount when you check-in to
                                             collect the vehicle.</p>
                                         <p><strong>Amount Due at Check-in:</strong> {{ $currencySymbol }}
@@ -409,14 +438,11 @@
                                             by WebXPay. Your booking will be confirmed immediately after successful payment.
                                         </p>
                                     </div>
-                                @elseif($booking->payment_type === 'advance')
+                                @elseif($isFullPayment)
                                     <div class="highlight-box success">
-                                        <h3>✓ Payment Confirmed!</h3>
-                                        <p>You have successfully paid {{ $advancePercentage }}% advance
-                                            ({{ $currencySymbol }}
-                                            {{ number_format($booking->amount_to_pay ?? 0, 2) }}).</p>
-                                        <p><strong>Balance Due at Pickup:</strong> {{ $currencySymbol }}
-                                            {{ number_format($booking->total_estimated - ($booking->amount_to_pay ?? 0), 2) }}
+                                        <h3>✓ Your Booking is Fully Paid!</h3>
+                                        <p>Your payment has been successfully processed and your vehicle will be prepared and ready for pickup on
+                                            <strong>{{ \Carbon\Carbon::parse($booking->from_date)->format('F d, Y \a\t g:i A') }}</strong>.
                                         </p>
                                         <p style="margin-bottom: 8px;"><strong>Important Reminders:</strong></p>
                                         <ul>
