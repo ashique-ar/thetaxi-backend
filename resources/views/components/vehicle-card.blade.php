@@ -201,7 +201,7 @@
                 @if ($hasExtraKmPrice)
                     <small class="pricing-detail-item">
                         <i class="bi bi-lightning-fill"></i> Extra:
-                        {{ getCurrencySymbol() }}{{ number_format($distanceDetails['extra_km_price'], 0) }}/km
+                        {{ getCurrencySymbol() }}{{ number_format($distanceDetails['extra_km_price'], 2) }}/km
                     </small>
                 @endif
 
@@ -273,7 +273,7 @@
                         data-package-hours="{{ $packageHours }}" data-service-type="{{ $serviceType }}"
                         data-currency="{{ $selectedCurrency }}" data-is-package="true">
                         {{ $currencySymbol }}
-                        <span class="price-value">{{ number_format($totalAmountConverted, 0) }}</span>
+                        <span class="price-value">{{ number_format($totalAmountConverted, 2) }}</span>
                         <span class="price-unit">/ {{ $packageHours }}h package</span>
                     </h4>
                 @elseif($isPackageService)
@@ -282,7 +282,7 @@
                         data-service-type="{{ $serviceType }}" data-currency="{{ $selectedCurrency }}"
                         data-is-package="true">
                         {{ $currencySymbol }}
-                        <span class="price-value">{{ number_format($totalAmountConverted, 0) }}</span>
+                        <span class="price-value">{{ number_format($totalAmountConverted, 2) }}</span>
                         <span class="price-unit">/ transfer</span>
                     </h4>
                 @elseif($isOneDay)
@@ -291,7 +291,7 @@
                         data-duration="{{ $durationDays }}" data-currency="{{ $selectedCurrency }}"
                         data-is-package="false">
                         {{ $currencySymbol }}
-                        <span class="price-value">{{ number_format($totalAmountConverted, 0) }}</span>
+                        <span class="price-value">{{ number_format($totalAmountConverted, 2) }}</span>
                     </h4>
                     @if (!$isRideNow)
                         <div class="total-price-info mt-1 text-muted small">
@@ -306,7 +306,7 @@
                             data-duration="{{ $durationDays }}" data-currency="{{ $selectedCurrency }}"
                             data-is-package="false">
                             {{ $currencySymbol }}
-                            <span class="price-value">{{ number_format($totalAmountConverted, 0) }}</span>
+                            <span class="price-value">{{ number_format($totalAmountConverted, 2) }}</span>
                         </h4>
                     @else
                         <!-- Show calculated per-day rate for multi-day rentals -->
@@ -314,14 +314,14 @@
                             data-per-day-lkr="{{ round($perDayRateLKR, 2) }}" data-duration="{{ $durationDays }}"
                             data-currency="{{ $selectedCurrency }}" data-is-package="false">
                             {{ $currencySymbol }}
-                            <span class="price-value">{{ number_format($perDayRateConverted, 0) }}</span>
+                            <span class="price-value">{{ number_format($perDayRateConverted, 2) }}</span>
                             <span class="price-unit">/day</span>
                         </h4>
 
                         <!-- Total Price as Secondary Info for multi-day -->
                         <div class="total-price-info mt-2 text-muted small">
                             <span class="total-label">Total:</span>
-                            <strong>{{ $currencySymbol }} {{ number_format($totalAmountConverted, 0) }}</strong>
+                            <strong>{{ $currencySymbol }} {{ number_format($totalAmountConverted, 2) }}</strong>
                             <span class="duration-label">({{ $durationDays }} days)</span>
                         </div>
                     @endif

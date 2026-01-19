@@ -274,7 +274,7 @@
                                                                         <span class="ms-2 text-warning">
                                                                             <i class="bi bi-lightning-fill"></i>
                                                                             Extra:
-                                                                            {{ $currencySymbol }}{{ number_format($extraKmPrice, 0) }}/km
+                                                                            {{ $currencySymbol }}{{ number_format($extraKmPrice, 2) }}/km
                                                                         </span>
                                                                     @endif
                                                                 </p>
