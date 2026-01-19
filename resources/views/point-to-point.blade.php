@@ -55,12 +55,12 @@
                                     </svg>
                                     <div class="custom-select-dropdown">
                                         <input type="text" name="pickup" placeholder="Pick up location"
-                                            class="nice-select custom-location-search @error('from') is-invalid @enderror"
-                                            value="{{ old('from', 'Colombo, Sri Lanka') }}" required autocomplete="off">
+                                            class="nice-select custom-location-search @error('pickup') is-invalid @enderror"
+                                            value="{{ old('pickup', 'Colombo, Sri Lanka') }}" required autocomplete="off">
                                         <input type="hidden" name="pickup_lat" value="{{ old('pickup_lat', '6.9271') }}">
                                         <input type="hidden" name="pickup_lng" value="{{ old('pickup_lng', '79.8612') }}">
                                     </div>
-                                    @error('from')
+                                    @error('pickup')
                                         <span class="text-danger small">{{ $message }}</span>
                                     @enderror
                                 </div>
@@ -74,13 +74,13 @@
                                     </svg>
                                     <div class="custom-select-dropdown">
                                         <input type="text" name="dropoff" placeholder="Drop off location"
-                                            class="nice-select custom-location-search @error('to') is-invalid @enderror"
-                                            value="{{ old('to', 'Galle, Sri Lanka') }}" required autocomplete="off">
+                                            class="nice-select custom-location-search @error('dropoff') is-invalid @enderror"
+                                            value="{{ old('dropoff', 'Galle, Sri Lanka') }}" required autocomplete="off">
                                         <input type="hidden" name="dropoff_lat" value="{{ old('dropoff_lat', '6.0535') }}">
                                         <input type="hidden" name="dropoff_lng"
                                             value="{{ old('dropoff_lng', '80.221') }}">
                                     </div>
-                                    @error('to')
+                                    @error('dropoff')
                                         <span class="text-danger small">{{ $message }}</span>
                                     @enderror
                                 </div>
