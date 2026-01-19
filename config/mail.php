@@ -133,4 +133,29 @@ return [
     'bcc_all' => [
         'sales@thetaxi.lk',
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Inquiry Routing Rules
+    |--------------------------------------------------------------------------
+    |
+    | Define CC/BCC recipients per inquiry type. These rules apply to
+    | customer-facing inquiry confirmation emails and can be overridden per
+    | inquiry service page via settings.email_routing.
+    |
+    */
+    'inquiry_routing' => [
+        'default' => [
+            'cc' => ['info@thetaxi.lk', 'inquiry@thetaxi.lk'],
+            'bcc' => ['sales@thetaxi.lk'],
+            'include_default_cc' => true,
+            'include_default_bcc' => true,
+        ],
+        'corporate' => [
+            'cc' => [],
+            'bcc' => ['zufer@thetaxi.lk'],
+            'include_default_cc' => false,
+            'include_default_bcc' => false,
+        ],
+    ],
 ];

@@ -34,10 +34,6 @@ return new class extends Migration
             $table->softDeletes();
 
             $table->unique(['inquiry_form_id', 'name']);
-            $table->foreign('inquiry_form_id')
-                ->references('id')
-                ->on('inquiry_forms')
-                ->onDelete('cascade');
         });
     }
 

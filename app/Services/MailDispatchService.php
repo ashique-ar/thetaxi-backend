@@ -7,6 +7,8 @@ use Illuminate\Mail\PendingMail;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\InquiryConfirmationMail;
+use App\Models\Inquiry;
+use App\Models\InquiryServicePage;
 
 class MailDispatchService
 {
@@ -22,17 +24,14 @@ class MailDispatchService
             return;
         }
 
-        // Special-case corporate inquiry confirmation mails: send only to customer and zufer@thetaxi.lk
-        if ($mailable instanceof InquiryConfirmationMail && ($mailable->inquiry->inquiry_type ?? null) === 'corporate') {
-            $pending = Mail::to($email);
+        $pending = Mail::to($email);
+        $recipients = $this->resolveCustomerRecipients($mailable);
 
-            if (!app()->environment('local', 'testing')) {
-                $pending = $pending->bcc(['zufer@thetaxi.lk']);
-            }
-        } else {
-            $pending = Mail::to($email)
-                ->cc($this->customerCcRecipients())
-                ->bcc($this->globalBccRecipients());
+        if (!empty($recipients['cc'])) {
+            $pending->cc($recipients['cc']);
+        }
+        if (!empty($recipients['bcc'])) {
+            $pending->bcc($recipients['bcc']);
         }
 
         $this->dispatch($pending, $mailable);
@@ -58,6 +57,99 @@ class MailDispatchService
     }
 
     /**
+     * Resolve CC/BCC rules for customer-facing emails.
+     *
+     * @return array{cc: array<int,string>, bcc: array<int,string>}
+     */
+    protected function resolveCustomerRecipients(Mailable $mailable): array
+    {
+        if (app()->environment('local', 'testing')) {
+            return ['cc' => [], 'bcc' => []];
+        }
+
+        if ($mailable instanceof InquiryConfirmationMail) {
+            return $this->resolveInquiryRecipients($mailable->inquiry);
+        }
+
+        return [
+            'cc' => $this->customerCcRecipients(),
+            'bcc' => $this->globalBccRecipients(),
+        ];
+    }
+
+    /**
+     * Resolve inquiry-specific CC/BCC routing using config + page settings.
+     *
+     * @return array{cc: array<int,string>, bcc: array<int,string>}
+     */
+    protected function resolveInquiryRecipients(Inquiry $inquiry): array
+    {
+        $routingConfig = config('mail.inquiry_routing', []);
+        $defaults = [
+            'cc' => $this->normalizeRecipients($routingConfig['default']['cc'] ?? $this->customerCcRecipients()),
+            'bcc' => $this->normalizeRecipients($routingConfig['default']['bcc'] ?? $this->globalBccRecipients()),
+        ];
+
+        $cc = $defaults['cc'];
+        $bcc = $defaults['bcc'];
+
+        $typeRouting = $routingConfig[$inquiry->inquiry_type] ?? null;
+        $this->applyRoutingOverrides($typeRouting, $defaults, $cc, $bcc);
+
+        $pageRouting = $this->getInquiryPageRouting($inquiry);
+        $this->applyRoutingOverrides($pageRouting, $defaults, $cc, $bcc);
+
+        return [
+            'cc' => $cc,
+            'bcc' => $bcc,
+        ];
+    }
+
+    /**
+     * @return array<string,mixed>|null
+     */
+    protected function getInquiryPageRouting(Inquiry $inquiry): ?array
+    {
+        if (!$inquiry->inquiry_service_page_id) {
+            return null;
+        }
+
+        $page = InquiryServicePage::withInactive()->find($inquiry->inquiry_service_page_id);
+        if (!$page) {
+            return null;
+        }
+
+        return $page->settings['email_routing'] ?? null;
+    }
+
+    /**
+     * Apply routing overrides on top of defaults.
+     *
+     * @param array<string,mixed>|null $routing
+     * @param array{cc: array<int,string>, bcc: array<int,string>} $defaults
+     * @param array<int,string> $cc
+     * @param array<int,string> $bcc
+     */
+    protected function applyRoutingOverrides(?array $routing, array $defaults, array &$cc, array &$bcc): void
+    {
+        if (!$routing) {
+            return;
+        }
+
+        $includeDefaultCc = $routing['include_default_cc'] ?? true;
+        $includeDefaultBcc = $routing['include_default_bcc'] ?? true;
+
+        $ccOverride = $this->normalizeRecipients($routing['cc'] ?? []);
+        $bccOverride = $this->normalizeRecipients($routing['bcc'] ?? []);
+
+        $cc = $includeDefaultCc ? array_merge($defaults['cc'], $ccOverride) : $ccOverride;
+        $bcc = $includeDefaultBcc ? array_merge($defaults['bcc'], $bccOverride) : $bccOverride;
+
+        $cc = $this->normalizeRecipients($cc);
+        $bcc = $this->normalizeRecipients($bcc);
+    }
+
+    /**
      * @return array<int,string>
      */
     protected function customerCcRecipients(): array
@@ -77,5 +169,18 @@ class MailDispatchService
             return [];
         }
         return array_values(array_filter(config('mail.bcc_all', [])));
+    }
+
+    /**
+     * @param string|array<int,string> $recipients
+     * @return array<int,string>
+     */
+    protected function normalizeRecipients(string|array $recipients): array
+    {
+        if (is_string($recipients)) {
+            $recipients = array_filter(array_map('trim', explode(',', $recipients)));
+        }
+
+        return array_values(array_unique(array_filter($recipients)));
     }
 }

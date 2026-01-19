@@ -101,6 +101,7 @@ class InquiryController extends Controller
                 ->with('error', 'This inquiry form is not configured yet.');
         }
 
+        $this->normalizeDynamicFormInput($request, $form);
         $validated = $request->validate($form->buildValidationRules());
         $meta = $this->buildDynamicInquiryMeta($servicePage, $form, $validated);
 
@@ -415,6 +416,56 @@ class InquiryController extends Controller
         }
 
         return implode("\n", $lines);
+    }
+
+    /**
+     * Normalize dynamic form input values to strings when arrays are not expected.
+     */
+    protected function normalizeDynamicFormInput(Request $request, \App\Models\InquiryForm $form): void
+    {
+        $data = $request->all();
+
+        foreach ($form->fields as $field) {
+            if (!array_key_exists($field->name, $data)) {
+                continue;
+            }
+
+            $value = $data[$field->name];
+            if (!is_array($value)) {
+                continue;
+            }
+
+            if ($this->shouldKeepArrayValue($field)) {
+                continue;
+            }
+
+            $data[$field->name] = $this->stringifyArrayValue($value);
+        }
+
+        $request->merge($data);
+    }
+
+    protected function shouldKeepArrayValue(\App\Models\InquiryFormField $field): bool
+    {
+        if ($field->type === 'checkbox') {
+            return true;
+        }
+
+        $rawRules = $field->validation_rules;
+        return is_string($rawRules) && str_contains($rawRules, 'array');
+    }
+
+    /**
+     * Collapse an array value into a single string.
+     */
+    protected function stringifyArrayValue(array $value): string
+    {
+        $filtered = array_values(array_filter($value, fn ($item) => $item !== null && $item !== ''));
+        if (empty($filtered)) {
+            return '';
+        }
+
+        return implode(', ', array_map('strval', $filtered));
     }
 
     /**

@@ -164,23 +164,50 @@
                     return;
                 }
 
+                if (Array.isArray(condition)) {
+                    condition = condition[0] || null;
+                }
+
                 if (!condition || !condition.field) return;
 
-                const target = form.querySelector(`[name="${condition.field}"]`);
-                if (!target) return;
+                const targets = Array.from(form.querySelectorAll(`[name="${condition.field}"]`));
+                if (!targets.length) return;
 
-                const currentValue = target.value;
-                const shouldShow = condition.operator === 'equals'
-                    ? currentValue === condition.value
-                    : currentValue !== condition.value;
+                const currentValues = targets
+                    .map((target) => {
+                        if (target.type === 'checkbox' || target.type === 'radio') {
+                            return target.checked ? target.value : null;
+                        }
+                        return target.value;
+                    })
+                    .filter((value) => value !== null && value !== '');
 
-                wrapper.style.display = shouldShow ? '' : 'none';
+                const normalizedCurrent = (currentValues.length ? currentValues : ['']).map(String);
+                const conditionValues = Array.isArray(condition.value) ? condition.value : [condition.value];
+                const normalizedCondition = conditionValues.map((value) => value === null || value === undefined ? '' : String(value));
+                const matches = normalizedCurrent.some((value) => normalizedCondition.includes(value));
+                const shouldShow = condition.operator === 'not_equals' ? !matches : matches;
 
-                const input = wrapper.querySelector('input, select, textarea');
-                if (input) {
+                if (shouldShow) {
+                    wrapper.style.removeProperty('display');
+                } else {
+                    wrapper.style.setProperty('display', 'none', 'important');
+                }
+
+                const inputs = Array.from(wrapper.querySelectorAll('input, select, textarea'));
+                inputs.forEach((input) => {
                     const requiredFlag = input.getAttribute('data-required') === 'true';
                     input.required = shouldShow && requiredFlag;
-                }
+                    if (!shouldShow) {
+                        if (input.type === 'checkbox' || input.type === 'radio') {
+                            input.checked = false;
+                        } else if (input.tagName === 'SELECT') {
+                            input.selectedIndex = 0;
+                        } else {
+                            input.value = '';
+                        }
+                    }
+                });
             };
 
             conditionalFields.forEach((wrapper) => {
@@ -211,6 +238,9 @@
 
             if (typeof $ !== 'undefined' && $.fn.niceSelect) {
                 $('select.form-select').niceSelect();
+                $(document).on('change', 'select.form-select', function() {
+                    conditionalFields.forEach((wrapper) => updateConditionalVisibility(wrapper));
+                });
             }
         });
     </script>

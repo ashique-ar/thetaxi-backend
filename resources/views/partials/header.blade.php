@@ -146,7 +146,7 @@
         <div class="nav-right">
             <div class="contact-and-search-area">
                 <!-- Currency Selector -->
-                <div class="currency-selector d-xl-flex d-none align-items-center me-3">
+                <div class="currency-selector align-items-center me-3">
                     <div class="dropdown">
                         <button class="btn btn-link dropdown-toggle p-0 text-decoration-none" type="button" 
                                 id="currencyDropdown" data-bs-toggle="dropdown" aria-expanded="false"
@@ -160,7 +160,7 @@
                                     <a class="dropdown-item currency-option {{ getSelectedCurrency() === $currency['code'] ? 'active' : '' }}" 
                                        href="#" 
                                        data-currency="{{ $currency['code'] }}"
-                                       style="{{ getSelectedCurrency() === $currency['code'] ? 'background-color: #f8f9fa;' : '' }}">
+                                       style="{{ getSelectedCurrency() === $currency['code'] ? 'background-color: var(--primary-color1);' : '' }}">
                                         <span class="currency-symbol me-2">{{ $currency['symbol'] ?? $currency['code'] }}</span>
                                         <span class="currency-name">{{ $currency['name'] }}</span>
                                         <small class="text-muted ms-auto">({{ $currency['code'] }})</small>
@@ -195,7 +195,7 @@
                         <a href="tel:{{ preg_replace('/[^0-9+]/', '', $settings['company_phone'] ?? '+1234567890') }}">{{ $settings['company_phone'] ?? '+1 234 567 890' }}</a>
                     </div>
                 </div>
-                <div class="search-bar">
+                {{-- <div class="search-bar">
                     <div class="search-btn">
                         <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
                             <g>
@@ -224,7 +224,7 @@
                             </div>
                         </form>
                     </div>
-                </div>
+                </div> --}}
             </div>
             {{-- <a href="#" class="primary-btn1 black-bg d-xl-flex d-none">
                 <span>

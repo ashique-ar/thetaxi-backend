@@ -306,6 +306,12 @@ class CorporateTransferInquirySeeder extends Seeder
             'content' => $content,
             'settings' => [
                 'form_action' => 'booking.enquiry',
+                'email_routing' => [
+                    'cc' => [],
+                    'bcc' => ['zufer@thetaxi.lk'],
+                    'include_default_cc' => false,
+                    'include_default_bcc' => false,
+                ],
             ],
             'seo_title' => 'Corporate Transfers - TheTaxi',
             'seo_description' => 'Professional corporate transport solutions with tailored business services and dedicated account management.',

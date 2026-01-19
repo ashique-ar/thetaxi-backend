@@ -12,7 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('inquiries', function (Blueprint $table) {
-            $table->uuid('inquiry_service_page_id')->nullable()->index()->after('inquiry_type');
+            $table->string('service_type')->nullable()->after('inquiry_service_page_id');
         });
     }
 
@@ -22,8 +22,7 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('inquiries', function (Blueprint $table) {
-            $table->dropForeign(['inquiry_service_page_id']);
-            $table->dropColumn('inquiry_service_page_id');
+            $table->dropColumn('service_type');
         });
     }
 };

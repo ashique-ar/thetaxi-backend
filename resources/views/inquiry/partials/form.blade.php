@@ -48,11 +48,58 @@
             if ($field->width === 'full') {
                 $wrapperClasses .= ' inquiry-full-width';
             }
-            $conditional = $field->conditional_logic ? e(json_encode($field->conditional_logic)) : null;
+            $conditionalLogic = $field->conditional_logic;
+            if (is_array($conditionalLogic) && $conditionalLogic !== [] && array_keys($conditionalLogic) === range(0, count($conditionalLogic) - 1)) {
+                $conditionalLogic = $conditionalLogic[0] ?? null;
+            }
+            if (!is_array($conditionalLogic)) {
+                $conditionalLogic = null;
+            }
+            $isConditionalRequired = false;
+            $validationRules = $field->validation_rules ? explode('|', $field->validation_rules) : [];
+
+            foreach ($validationRules as $rule) {
+                if (str_starts_with($rule, 'required_if:')) {
+                    $parts = explode(':', $rule, 2);
+                    $conditions = isset($parts[1]) ? explode(',', $parts[1]) : [];
+                    if (count($conditions) >= 2 && (empty($conditionalLogic) || empty($conditionalLogic['field']))) {
+                        $conditionalLogic = [
+                            'field' => $conditions[0],
+                            'operator' => 'equals',
+                            'value' => $conditions[1],
+                        ];
+                    }
+                    $isConditionalRequired = true;
+                }
+            }
+
+            if ($field->is_required) {
+                $isConditionalRequired = true;
+            }
+
+            $conditional = $conditionalLogic && !empty($conditionalLogic['field']) ? $conditionalLogic : null;
+            $shouldShow = true;
+            if ($conditional) {
+                $conditionField = $conditional['field'];
+                $conditionOperator = $conditional['operator'] ?? 'equals';
+                $conditionValue = $conditional['value'] ?? null;
+                $conditionFieldModel = $form->fields->firstWhere('name', $conditionField);
+                $currentValue = old($conditionField, $conditionFieldModel?->default_value);
+
+                $conditionValues = is_array($conditionValue) ? $conditionValue : [$conditionValue];
+                $currentValues = is_array($currentValue) ? $currentValue : [$currentValue];
+                $conditionValues = array_map('strval', $conditionValues);
+                $currentValues = array_map('strval', $currentValues);
+                $matches = count(array_intersect($currentValues, $conditionValues)) > 0;
+
+                $shouldShow = $conditionOperator === 'not_equals' ? !$matches : $matches;
+            }
             $inputId = 'field-' . $field->id;
         @endphp
 
-        <div class="{{ $wrapperClasses }}" @if ($conditional) data-conditional="{{ $conditional }}" @endif>
+        <div class="{{ $wrapperClasses }}"
+            @if ($conditional) data-conditional='@json($conditional)' @endif
+            @if ($conditional && !$shouldShow) style="display:none !important;" @endif>
             @if (!empty($field->icon))
                 <i class="{{ $field->icon }}"></i>
             @endif
@@ -62,18 +109,22 @@
                     placeholder="{{ $field->placeholder ?? $field->label }}"
                     class="@error($field->name) is-invalid @enderror"
                     rows="4"
-                    data-required="{{ $field->is_required ? 'true' : 'false' }}"
+                    data-required="{{ $isConditionalRequired ? 'true' : 'false' }}"
                     @if ($field->is_required) required @endif>{{ old($field->name, $field->default_value) }}</textarea>
             @elseif ($isSelect)
                 <select id="{{ $inputId }}" name="{{ $field->name }}"
                     class="form-select @error($field->name) is-invalid @enderror"
-                    data-required="{{ $field->is_required ? 'true' : 'false' }}"
+                    data-required="{{ $isConditionalRequired ? 'true' : 'false' }}"
                     @if ($field->is_required) required @endif>
                     <option value="">Select {{ $field->label }}</option>
                     @foreach ($field->options ?? [] as $option)
-                        <option value="{{ $option['value'] ?? '' }}"
-                            {{ old($field->name, $field->default_value) == ($option['value'] ?? '') ? 'selected' : '' }}>
-                            {{ $option['label'] ?? $option['value'] ?? '' }}
+                        @php
+                            $optionValue = is_array($option) ? ($option['value'] ?? '') : $option;
+                            $optionLabel = is_array($option) ? ($option['label'] ?? $optionValue) : $option;
+                        @endphp
+                        <option value="{{ $optionValue }}"
+                            {{ old($field->name, $field->default_value) == $optionValue ? 'selected' : '' }}>
+                            {{ $optionLabel }}
                         </option>
                     @endforeach
                 </select>
@@ -81,14 +132,14 @@
                 <div class="inquiry-radio-group">
                     @foreach ($field->options ?? [] as $index => $option)
                         @php
-                            $optionValue = $option['value'] ?? '';
-                            $optionLabel = $option['label'] ?? $optionValue;
+                            $optionValue = is_array($option) ? ($option['value'] ?? '') : $option;
+                            $optionLabel = is_array($option) ? ($option['label'] ?? $optionValue) : $option;
                             $radioId = $inputId . '-' . $index;
                         @endphp
                         <label for="{{ $radioId }}" class="inquiry-radio-option">
                             <input id="{{ $radioId }}" type="radio" name="{{ $field->name }}"
                                 value="{{ $optionValue }}"
-                                data-required="{{ $field->is_required ? 'true' : 'false' }}"
+                                data-required="{{ $isConditionalRequired ? 'true' : 'false' }}"
                                 @if (old($field->name, $field->default_value) == $optionValue) checked @endif
                                 @if ($field->is_required) required @endif>
                             <span>{{ $optionLabel }}</span>
@@ -100,7 +151,7 @@
                     placeholder="{{ $field->placeholder ?? $field->label }}"
                     class="@error($field->name) is-invalid @enderror"
                     value="{{ old($field->name, $field->default_value) }}"
-                    data-required="{{ $field->is_required ? 'true' : 'false' }}"
+                    data-required="{{ $isConditionalRequired ? 'true' : 'false' }}"
                     @if ($field->is_required) required @endif autocomplete="off">
             @endif
 

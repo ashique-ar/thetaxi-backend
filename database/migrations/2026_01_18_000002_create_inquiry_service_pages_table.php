@@ -31,16 +31,6 @@ return new class extends Migration
             $table->uuid('updated_user_id')->nullable()->index();
             $table->timestamps();
             $table->softDeletes();
-
-            $table->foreign('service_type_id')
-                ->references('id')
-                ->on('service_types')
-                ->nullOnDelete();
-
-            $table->foreign('inquiry_form_id')
-                ->references('id')
-                ->on('inquiry_forms')
-                ->nullOnDelete();
         });
     }
 
