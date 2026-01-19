@@ -442,6 +442,64 @@
                 initializeBasicAutocomplete(input);
             }
         });
+
+        // Attach focus handlers to reset values and refresh autocomplete instances
+        attachLocationFocusReset();
+    }
+
+    /**
+     * Attach focus/click handlers to visible location inputs so user can clear and start fresh
+     */
+    function attachLocationFocusReset() {
+        try {
+            // Select common location inputs including airport-specific ones
+            const selector = '.location-search, #from-location-input, #to-location-input, input[name="pickup"], input[name="dropoff"]';
+            const inputs = document.querySelectorAll(selector);
+
+            inputs.forEach((input) => {
+                if (!input) return;
+
+                // Avoid adding handlers multiple times
+                if (input.__hasFocusReset) return;
+                input.__hasFocusReset = true;
+
+                // On focus: clear existing value and reset autocomplete so suggestions start fresh
+                input.addEventListener('focus', function () {
+                    try {
+                        // Only clear visible value when focus is user-initiated
+                        if (this.value && this.value.trim() !== '') {
+                            this.value = '';
+                        }
+
+                        // If Google Autocomplete instance exists, remove listeners and re-init
+                        if (this.googleAutocomplete && window.google && google.maps && google.maps.event) {
+                            try { google.maps.event.clearInstanceListeners(this.googleAutocomplete); } catch (e) {}
+                            try { delete this.googleAutocomplete; } catch (e) {}
+                            this.removeAttribute('data-autocomplete-initialized');
+
+                            // Reinitialize after a short delay to ensure clean state
+                            setTimeout(() => {
+                                initializeLocationInputAutocomplete(this);
+                            }, 50);
+                        }
+
+                        // For jQuery UI Autocomplete, close to reset suggestions
+                        if (typeof $ !== 'undefined' && $.fn.autocomplete && $(this).data('ui-autocomplete')) {
+                            try { $(this).autocomplete('close'); } catch (e) {}
+                        }
+                    } catch (e) {
+                        console.warn('attachLocationFocusReset focus handler error', e);
+                    }
+                });
+
+                // Also respond to click to support emptying via single click
+                input.addEventListener('click', function () {
+                    try { this.focus(); } catch (e) {}
+                });
+            });
+        } catch (e) {
+            console.warn('attachLocationFocusReset init error', e);
+        }
     }
 
     /**
