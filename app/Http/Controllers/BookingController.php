@@ -482,12 +482,22 @@ class BookingController extends Controller
                 $serviceType = $serviceTypeModel ? $serviceTypeModel->code : 'point_to_point';
             }
 
+            // Convert distance_details pricing to selected currency
+            $distanceDetails = $pricingInfo['distance_details'] ?? null;
+            if ($distanceDetails && isset($distanceDetails['extra_km_price'])) {
+                $selectedCurrency = $this->currencyService->getSelectedCurrency();
+                $distanceDetails['extra_km_price'] = $this->currencyService->convertFromLKR(
+                    (float) $distanceDetails['extra_km_price'],
+                    $selectedCurrency
+                );
+            }
+
             $formattedPricing = !empty($pricingInfo) ? [
                 'base_amount' => $pricingInfo['base_amount'] ?? 0,
                 'total_amount' => $pricingInfo['total_amount'] ?? $pricingInfo['base_amount'] ?? 0,
                 'currency' => $pricingInfo['currency'] ?? 'LKR',
                 'breakdown' => $pricingInfo['breakdown'] ?? [],
-                'distance_details' => $pricingInfo['distance_details'] ?? null,
+                'distance_details' => $distanceDetails,
                 'duration_info' => array_merge($pricingInfo['duration_info'] ?? [], [
                     'package_hours' => $searchParams['package_hours'] ?? null
                 ]),
@@ -513,7 +523,7 @@ class BookingController extends Controller
                 'no_of_doors' => $groupData['no_of_doors'] ?? null,
                 'air_conditioning' => $groupData['air_conditioning'] ?? null,
                 'refundable_deposit' => $groupData['refundable_deposit'] ?? null,
-                'luggage_capacity' => $groupData['luggage_capacity'] ?? null,
+                'hand_luggages' => $groupData['hand_luggages'] ?? null,
                 'category' => [
                     'name' => $groupData['category'] ?? null,
                 ],

@@ -495,6 +495,17 @@ class CartService
                 ];
             }
 
+            // Convert distance_details extra_km_price if present
+            if (
+                isset($item['distance_details']) && is_array($item['distance_details']) &&
+                isset($item['distance_details']['extra_km_price'])
+            ) {
+                $item['distance_details']['extra_km_price'] = $this->currencyService->convertFromLKR(
+                    (float) $item['distance_details']['extra_km_price'],
+                    $selectedCurrency
+                );
+            }
+
             // Add currency and package information
             $item['currency'] = $selectedCurrency;
             $item['is_package'] = $isPackage;

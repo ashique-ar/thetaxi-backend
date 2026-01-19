@@ -1212,10 +1212,22 @@ class CartController extends Controller
                     'has_slab_pricing' => $hasSlabPricing,
                 ]);
 
+                // Convert extra KM rate to selected currency
+                $convertedRate = null;
+                if ($extraKmRate && isset($extraKmRate['rate'])) {
+                    $selectedCurrency = getSelectedCurrency();
+                    $convertedRateValue = convertPrice((float) $extraKmRate['rate']);
+                    $convertedRate = array_merge($extraKmRate, [
+                        'rate' => $convertedRateValue,
+                        'original_rate_lkr' => (float) $extraKmRate['rate'],
+                        'currency' => $selectedCurrency
+                    ]);
+                }
+
                 return response()->json([
                     'success' => true,
                     'data' => [
-                        'rate' => $extraKmRate,
+                        'rate' => $convertedRate,
                         'current_extra_km' => $currentExtraKm,
                         'vehicle_group_id' => $vehicleGroupId,
                         'service_type_id' => $serviceTypeId,

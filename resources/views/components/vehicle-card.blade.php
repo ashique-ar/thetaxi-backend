@@ -98,7 +98,35 @@
         @endif
         <!-- Vehicle Specs Grid -->
         <div class="vehicle-specs">
-            @if (isset($vehicle['passengers_count']) && $vehicle['passengers_count'])
+            <div class="spec-item">
+                @if (isset($vehicle['passengers_count']) && $vehicle['passengers_count'])
+                    <i class="bi bi-people-fill"></i>
+                    <span>{{ $vehicle['passengers_count'] }}</span>
+                @elseif(isset($vehicle['seating_capacity']))
+                    <i class="bi bi-people-fill"></i>
+                    <span>{{ $vehicle['seating_capacity'] }} Seats</span>
+                @endif
+                @if (isset($vehicle['no_of_doors']) && $vehicle['no_of_doors'])
+                    <i class="bi bi-people-fill"></i>
+                    <span>{{ $vehicle['no_of_doors'] }} Doors</span>
+                @endif
+
+                @if (isset($vehicle['transmission']['name']))
+                    <i class="bi bi-gear-fill"></i>
+                    <span>{{ $vehicle['transmission']['name'] }}</span>
+                @endif
+
+                @if (isset($vehicle['fuel_type']['name']))
+                    <i class="bi bi-fuel-pump-fill"></i>
+                    <span>{{ $vehicle['fuel_type']['name'] }}</span>
+                @endif
+
+                @if (isset($vehicle['hand_luggages']) && $vehicle['hand_luggages'])
+                    <i class="bi bi-suitcase-fill"></i>
+                    <span>{{ $vehicle['hand_luggages'] }}</span>
+                @endif
+            </div>
+            {{-- @if (isset($vehicle['passengers_count']) && $vehicle['passengers_count'])
                 <div class="spec-item">
                     <i class="bi bi-people-fill"></i>
                     <span>{{ $vehicle['passengers_count'] }}</span>
@@ -133,9 +161,9 @@
             @if (isset($vehicle['hand_luggages']) && $vehicle['hand_luggages'])
                 <div class="spec-item">
                     <i class="bi bi-suitcase-fill"></i>
-                    <span>{{ $vehicle['hand_luggages'] }} Luggages</span>
+                    <span>{{ $vehicle['hand_luggages'] }}</span>
                 </div>
-            @endif
+            @endif --}}
         </div>
 
         <!-- Vehicle Amenities & Additional Info -->
