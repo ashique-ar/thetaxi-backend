@@ -192,7 +192,7 @@
                             $isRecommended = $result['recommended'] ?? false;
                         @endphp
 
-                        <div class="col-lg-3 col-md-4 col-sm-12 vehicle-card-wrapper"
+                        <div class="col-lg-3 col-md-4 col-sm-6 col-6 vehicle-card-wrapper"
                             data-vehicle-group="{{ $result['id'] }}" data-price="{{ $pricing['base_amount'] ?? 0 }}"
                             data-name="{{ $result['name'] ?? 'Unknown Vehicle' }}">
                             <x-vehicle-card :vehicle="$result" :pricing="$pricing" :enhancedPricing="$enhancedPricing" :serviceFeatures="$serviceFeatures"
@@ -551,7 +551,7 @@
 
         /* Vehicle Content */
         .vehicle-card-content {
-            padding: 20px;
+            padding: 10px 15px;
             display: flex;
             flex-direction: column;
             flex-grow: 1;
@@ -561,9 +561,9 @@
             font-size: 18px;
             font-weight: 700;
             color: #333;
-            margin-bottom: 16px;
-            line-height: 1.3;
-            min-height: 48px;
+            margin-bottom: 15px;
+            line-height: 1;
+            min-height: auto;
         }
 
         .spec-item {
@@ -841,32 +841,6 @@
             }
         }
 
-        /* Service Features */
-        .service-features {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 6px;
-            margin-bottom: 12px;
-        }
-
-        .feature-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            padding: 4px 8px;
-            background: #e8f5e8;
-            color: #2d5a2d;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: 600;
-            border: 1px solid #c3e6c3;
-        }
-
-        .feature-badge i {
-            font-size: 10px;
-            color: #28a745;
-        }
-
         /* Enhanced Pricing Display */
         .savings-info {
             padding: 4px 8px;
@@ -913,14 +887,6 @@
 
         /* Better mobile experience for service features */
         @media (max-width: 767px) {
-            .service-features {
-                margin-bottom: 8px;
-            }
-
-            .feature-badge {
-                font-size: 10px;
-                padding: 3px 6px;
-            }
 
             .recommended-badge {
                 font-size: 10px;
