@@ -102,7 +102,7 @@
                 <path
                     d="M17 5h-2v2h2v2h2V7h2V5h-2V3h-2v2zm-2 4V7H9.01L3 13.01V19c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-6h-6zM5 19v-4.99l4-4 4 4L9 18H5zm14 0h-6v-4l-2-2-4 4v2h12z" />
             </svg>
-            <span>Ride Now</span>
+            <span>Drop & Pickup</span>
         </li>
 
         <li class="single-item {{ $currentServiceType === 'day_rental' ? 'active' : '' }}" data-service="day_rental">
