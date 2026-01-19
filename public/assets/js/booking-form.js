@@ -473,8 +473,8 @@
 
                         // If Google Autocomplete instance exists, remove listeners and re-init
                         if (this.googleAutocomplete && window.google && google.maps && google.maps.event) {
-                            try { google.maps.event.clearInstanceListeners(this.googleAutocomplete); } catch (e) {}
-                            try { delete this.googleAutocomplete; } catch (e) {}
+                            try { google.maps.event.clearInstanceListeners(this.googleAutocomplete); } catch (e) { }
+                            try { delete this.googleAutocomplete; } catch (e) { }
                             this.removeAttribute('data-autocomplete-initialized');
 
                             // Reinitialize after a short delay to ensure clean state
@@ -485,7 +485,7 @@
 
                         // For jQuery UI Autocomplete, close to reset suggestions
                         if (typeof $ !== 'undefined' && $.fn.autocomplete && $(this).data('ui-autocomplete')) {
-                            try { $(this).autocomplete('close'); } catch (e) {}
+                            try { $(this).autocomplete('close'); } catch (e) { }
                         }
                     } catch (e) {
                         console.warn('attachLocationFocusReset focus handler error', e);
@@ -494,7 +494,7 @@
 
                 // Also respond to click to support emptying via single click
                 input.addEventListener('click', function () {
-                    try { this.focus(); } catch (e) {}
+                    try { this.focus(); } catch (e) { }
                 });
             });
         } catch (e) {
