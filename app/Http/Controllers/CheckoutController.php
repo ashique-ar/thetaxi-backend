@@ -139,10 +139,30 @@ class CheckoutController extends Controller
         $termsByPaymentType = [];
 
         foreach ($serviceCodes as $code) {
-            $mapped = $serviceMap[$code] ?? $code; // fallback to same code
-            $terms = TermsAndCondition::getServiceTerms($mapped);
-            if ($terms && $terms->count()) {
-                $termsByService[$mapped] = $terms;
+            // First, try to find ServiceType records that match the cart code
+            $serviceTypes = ServiceType::where('code', $code)->get();
+
+            // If this service code maps to a legacy grouping (eg. vehicle_rental), also try to find matching service types
+            $mapped = $serviceMap[$code] ?? null;
+            if ($mapped) {
+                $serviceTypes = $serviceTypes->merge(ServiceType::where('code', $mapped)->orWhere('type', $mapped)->get());
+            }
+
+            // Prefer fetching terms by service_type_id for discovered service types
+            if ($serviceTypes && $serviceTypes->count()) {
+                foreach ($serviceTypes->unique('id') as $st) {
+                    $terms = TermsAndCondition::getServiceTerms($st->id);
+                    if ($terms && $terms->count()) {
+                        $termsByService[$st->code] = $terms;
+                    }
+                }
+            } else {
+                // Fallback to legacy behaviour: use mapped code or the code itself
+                $mappedFallback = $mapped ?? $code;
+                $terms = TermsAndCondition::getServiceTerms($mappedFallback);
+                if ($terms && $terms->count()) {
+                    $termsByService[$mappedFallback] = $terms;
+                }
             }
         }
 
@@ -270,7 +290,7 @@ class CheckoutController extends Controller
         ];
 
         $validated = $request->validate($rules, $messages);
-        
+
         // Automatically set payment method based on payment type
         $paymentType = $validated['payment_type'] ?? 'full';
         switch ($paymentType) {

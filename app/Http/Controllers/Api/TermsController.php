@@ -13,20 +13,24 @@ class TermsController extends Controller
     public function index(Request $request)
     {
         $serviceType = $request->query('service_type');
+        $serviceTypeId = $request->query('service_type_id');
         $paymentType = $request->query('payment_type');
         $scope = $request->query('scope');
 
-        $query = TermsAndCondition::query();
+        $query = TermsAndCondition::with('serviceType');
 
         if ($scope === 'service') {
             $query->whereNull('payment_type');
         } elseif ($scope === 'payment') {
-            $query->whereNull('service_type');
+            $query->whereNull('service_type_id')->orWhereNull('service_type');
         }
 
-        if ($serviceType) {
+        if ($serviceTypeId) {
+            $query->where('service_type_id', $serviceTypeId);
+        } elseif ($serviceType) {
             $query->where('service_type', $serviceType);
         }
+
         if ($paymentType) {
             $query->where('payment_type', $paymentType);
         }
@@ -48,6 +52,7 @@ class TermsController extends Controller
             'title' => 'required|string|max:255',
             'slug' => 'required|string|max:255|unique:terms_and_conditions,slug',
             'content' => 'required|string',
+            'service_type_id' => 'nullable|uuid|exists:service_types,id',
             'service_type' => 'nullable|string|max:100',
             'payment_type' => 'nullable|string|in:full,advance,quotation,checkin',
             'version' => 'nullable|integer',
@@ -61,21 +66,27 @@ class TermsController extends Controller
         }
 
         $payload = $validator->validated();
-        $serviceType = $payload['service_type'] ?? null;
+        $serviceTypeId = $payload['service_type_id'] ?? null;
+        $legacyServiceType = $payload['service_type'] ?? null;
         $paymentType = $payload['payment_type'] ?? null;
 
-        if (empty($serviceType) && empty($paymentType)) {
+        $hasService = !empty($serviceTypeId) || !empty($legacyServiceType);
+        $hasPayment = !empty($paymentType);
+
+        if (!$hasService && !$hasPayment) {
             return response()->json([
                 'success' => false,
-                'errors' => ['scope' => ['Either service_type or payment_type is required.']]
+                'errors' => ['scope' => ['Either service_type_id/service_type or payment_type is required.']]
             ], 422);
         }
-        if (!empty($serviceType) && !empty($paymentType)) {
+        if ($hasService && $hasPayment) {
             return response()->json([
                 'success' => false,
-                'errors' => ['scope' => ['Only one of service_type or payment_type can be set.']]
+                'errors' => ['scope' => ['Only one of service_type_id/service_type or payment_type can be set.']]
             ], 422);
         }
+
+        // Prefer service_type_id when provided, but keep legacy service_type when present for compatibility
         $term = TermsAndCondition::create($payload);
 
         return response()->json(['success' => true, 'data' => $term]);
@@ -102,19 +113,23 @@ class TermsController extends Controller
         }
 
         $payload = $validator->validated();
-        $serviceType = array_key_exists('service_type', $payload) ? $payload['service_type'] : $term->service_type;
+        $serviceTypeId = array_key_exists('service_type_id', $payload) ? $payload['service_type_id'] : $term->service_type_id;
+        $legacyServiceType = array_key_exists('service_type', $payload) ? $payload['service_type'] : $term->service_type;
         $paymentType = array_key_exists('payment_type', $payload) ? $payload['payment_type'] : $term->payment_type;
 
-        if (empty($serviceType) && empty($paymentType)) {
+        $hasService = !empty($serviceTypeId) || !empty($legacyServiceType);
+        $hasPayment = !empty($paymentType);
+
+        if (!$hasService && !$hasPayment) {
             return response()->json([
                 'success' => false,
-                'errors' => ['scope' => ['Either service_type or payment_type is required.']]
+                'errors' => ['scope' => ['Either service_type_id/service_type or payment_type is required.']]
             ], 422);
         }
-        if (!empty($serviceType) && !empty($paymentType)) {
+        if ($hasService && $hasPayment) {
             return response()->json([
                 'success' => false,
-                'errors' => ['scope' => ['Only one of service_type or payment_type can be set.']]
+                'errors' => ['scope' => ['Only one of service_type_id/service_type or payment_type can be set.']]
             ], 422);
         }
 

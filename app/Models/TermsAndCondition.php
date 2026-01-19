@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\BaseModel;
+use App\Models\Service\ServiceType;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 class TermsAndCondition extends BaseModel
@@ -15,7 +16,7 @@ class TermsAndCondition extends BaseModel
         'title',
         'slug',
         'content',
-        'service_type',
+        'service_type_id',
         'payment_type',
         'version',
         'is_active',
@@ -28,6 +29,22 @@ class TermsAndCondition extends BaseModel
         'is_active' => 'boolean'
     ];
 
+    // Append transformed service type information for API responses
+    protected $appends = ['service_type_data'];
+
+    /**
+     * Relation to ServiceType model
+     */
+    public function serviceType()
+    {
+        return $this->belongsTo(ServiceType::class, 'service_type_id');
+    }
+
+    public function getServiceTypeDataAttribute()
+    {
+        return $this->serviceType ? $this->serviceType->toArray() : null;
+    }
+
     /**
      * Scope: Get active T&C only
      */
@@ -37,12 +54,18 @@ class TermsAndCondition extends BaseModel
     }
 
     /**
-     * Scope: Get T&C by service type
+     * Scope: Get T&C by service type (accepts either old code string or UUID id)
      */
     public function scopeByServiceType($query, $serviceType)
     {
+        // If a UUID is provided, prefer service_type_id; otherwise fallback to legacy service_type code
+        if (is_string($serviceType) && preg_match('/^[0-9a-fA-F-]{36}$/', $serviceType)) {
+            return $query->where('service_type_id', $serviceType)
+                ->orWhereNull('service_type_id');
+        }
+
         return $query->where('service_type', $serviceType)
-                     ->orWhereNull('service_type');
+            ->orWhereNull('service_type');
     }
 
     /**
@@ -51,7 +74,7 @@ class TermsAndCondition extends BaseModel
     public function scopeByPaymentType($query, $paymentType)
     {
         return $query->where('payment_type', $paymentType)
-                     ->orWhereNull('payment_type');
+            ->orWhereNull('payment_type');
     }
 
     /**
@@ -63,15 +86,18 @@ class TermsAndCondition extends BaseModel
 
         if ($serviceType) {
             $query->where(function ($q) use ($serviceType) {
-                $q->where('service_type', $serviceType)
-                  ->orWhereNull('service_type');
+                if (is_string($serviceType) && preg_match('/^[0-9a-fA-F-]{36}$/', $serviceType)) {
+                    $q->where('service_type_id', $serviceType)->orWhereNull('service_type_id');
+                } else {
+                    $q->where('service_type', $serviceType)->orWhereNull('service_type');
+                }
             });
         }
 
         if ($paymentType) {
             $query->where(function ($q) use ($paymentType) {
                 $q->where('payment_type', $paymentType)
-                  ->orWhereNull('payment_type');
+                    ->orWhereNull('payment_type');
             });
         }
 
@@ -83,6 +109,14 @@ class TermsAndCondition extends BaseModel
      */
     public static function getServiceTerms(string $serviceType)
     {
+        if (preg_match('/^[0-9a-fA-F-]{36}$/', $serviceType)) {
+            return self::active()
+                ->where('service_type_id', $serviceType)
+                ->whereNull('payment_type')
+                ->orderBy('display_order', 'asc')
+                ->get();
+        }
+
         return self::active()
             ->where('service_type', $serviceType)
             ->whereNull('payment_type')
@@ -98,8 +132,8 @@ class TermsAndCondition extends BaseModel
         return self::active()
             ->whereNull('payment_type')
             ->where(function ($q) {
-                $q->whereNull('service_type')
-                  ->orWhere('service_type', 'general');
+                $q->whereNull('service_type_id')
+                    ->orWhereNull('service_type');
             })
             ->orderBy('display_order', 'asc')
             ->get();
