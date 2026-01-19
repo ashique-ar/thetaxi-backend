@@ -1130,7 +1130,7 @@ class BookingController extends Controller
     {
         $features = [
             'airport_transfers' => [
-                'Professional Airport Transfers',
+                'Free Cancellations',
                 'Meet & Greet included',
                 'No Hidden Charges',
             ],
@@ -1142,13 +1142,12 @@ class BookingController extends Controller
                 'Competitive Pricing'
             ],
             'ride_now' => [
-                'Flexible Rental Packages',
-                'Long-Term Discounts',
+                'Free Cancellations',
                 'No Hidden Charges',
             ],
             'day_rental' => [
-                '24/7 Road Side Assistance',
-                'Long-Term Discounts',
+                'No Hidden Charges',
+                'Free Cancellations',
                 'Flexible Drop-off',
                 'Insurance Included'
             ],

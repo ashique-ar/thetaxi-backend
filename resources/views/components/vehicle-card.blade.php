@@ -362,7 +362,7 @@
         <!-- Service Features (if any) -->
         @if (!empty($serviceFeatures))
             <div class="service-features mb-2">
-                @foreach (array_slice($serviceFeatures, 0, 2) as $feature)
+                @foreach (array_slice($serviceFeatures, 0, 3) as $feature)
                     <span class="feature-badge">
                         <i class="bi bi-check-circle"></i> {{ $feature }}
                     </span>
