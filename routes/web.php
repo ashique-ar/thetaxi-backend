@@ -11,6 +11,7 @@ use App\Http\Controllers\InquiryController;
 use App\Http\Controllers\VehicleController;
 use App\Http\Controllers\Website\CmsController;
 use App\Http\Controllers\Website\HomeController;
+use App\Http\Controllers\Website\InquiryServicePageController;
 use App\Http\Controllers\TestController;
 use Illuminate\Support\Facades\Route;
 
@@ -103,7 +104,12 @@ Route::get('/checkout/webxpay/cancel', [CheckoutController::class, 'webxpayCance
 
 // Service-specific pages
 Route::get('/point-to-point', [BookingController::class, 'pointToPoint'])->name('point-to-point');
-Route::get('/corporate-transfers', [BookingController::class, 'corporateTransfers'])->name('corporate-transfers');
+Route::get('/corporate-transfers', [InquiryServicePageController::class, 'show'])
+    ->defaults('slug', 'corporate-transfers')
+    ->name('corporate-transfers');
+
+Route::get('/services/{slug}', [InquiryServicePageController::class, 'show'])
+    ->name('inquiry-services.show');
 
 // contact.store
 Route::post('/contact', [InquiryController::class, 'store'])->name('contact.store');

@@ -56,6 +56,7 @@ class Inquiry extends BaseModel
         'inquiry_number',
         // Additional fields for quotation requests
         'inquiry_type',
+        'inquiry_service_page_id',
         'vehicle_group_id',
         'service_type',
         'company_name',
@@ -87,6 +88,14 @@ class Inquiry extends BaseModel
     public function customer()
     {
         return $this->belongsTo(Customer::class);
+    }
+
+    /**
+     * Get the inquiry service page that generated this inquiry.
+     */
+    public function inquiryServicePage()
+    {
+        return $this->belongsTo(InquiryServicePage::class, 'inquiry_service_page_id');
     }
 
     /**

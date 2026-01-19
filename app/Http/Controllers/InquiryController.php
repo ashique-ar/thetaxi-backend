@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Mail\InquiryConfirmationMail;
 use App\Models\Inquiry;
+use App\Models\InquiryServicePage;
 use App\Services\MailDispatchService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Log;
 
 class InquiryController extends Controller
@@ -22,6 +24,17 @@ class InquiryController extends Controller
      */
     public function store(Request $request)
     {
+        $servicePage = $this->resolveInquiryServicePage($request);
+        if ($request->filled('inquiry_service_page_id') || $request->filled('service_slug')) {
+            if (!$servicePage) {
+                return back()
+                    ->withInput()
+                    ->with('error', 'This inquiry form could not be found.');
+            }
+
+            return $this->storeDynamicInquiry($request, $servicePage);
+        }
+
         $type = $this->resolveInquiryType($request);
         $validated = $request->validate($this->rulesForType($type));
         $meta = $this->buildInquiryMeta($type, $validated);
@@ -69,6 +82,81 @@ class InquiryController extends Controller
     }
 
     /**
+     * Store a dynamic inquiry submission tied to a service page.
+     */
+    protected function storeDynamicInquiry(Request $request, InquiryServicePage $servicePage)
+    {
+        if (!$servicePage->is_active || $servicePage->status !== 'published') {
+            return back()
+                ->withInput()
+                ->with('error', 'This inquiry form is not available at the moment.');
+        }
+
+        $servicePage->loadMissing(['form.fields']);
+        $form = $servicePage->form;
+
+        if (!$form) {
+            return back()
+                ->withInput()
+                ->with('error', 'This inquiry form is not configured yet.');
+        }
+
+        $validated = $request->validate($form->buildValidationRules());
+        $meta = $this->buildDynamicInquiryMeta($servicePage, $form, $validated);
+
+        if (empty($meta['email'])) {
+            return back()
+                ->withInput()
+                ->with('error', 'Please provide a valid email address to submit your inquiry.');
+        }
+
+        try {
+            $payload = [
+                'type' => $servicePage->inquiry_type ?? 'general',
+                'service_page_id' => $servicePage->id,
+                'service_code' => $servicePage->code,
+                'form_id' => $form->id,
+                'form' => $request->except('_token'),
+                'meta' => [
+                    'ip_address' => $request->ip(),
+                    'user_agent' => $request->userAgent(),
+                ],
+            ];
+
+            $inquiry = Inquiry::create([
+                'name' => $meta['name'],
+                'email' => $meta['email'],
+                'phone' => $meta['phone'],
+                'inquiry_type' => $servicePage->inquiry_type ?? 'general',
+                'inquiry_service_page_id' => $servicePage->id,
+                'service_type' => $servicePage->code,
+                'subject' => $meta['subject'],
+                'message' => $meta['message'],
+                'status' => 'open',
+                'source' => 'web',
+                'payload' => $payload,
+            ]);
+
+            $this->mailDispatchService->sendToCustomer(
+                $meta['email'],
+                new InquiryConfirmationMail($inquiry, $meta['label'], $meta['intro'])
+            );
+
+            return back()->with('success', $meta['success_message']);
+        } catch (\Exception $e) {
+            Log::error('Dynamic inquiry submission failed', [
+                'service_page_id' => $servicePage->id,
+                'error' => $e->getMessage(),
+                'payload' => $validated,
+            ]);
+
+            return back()
+                ->withInput()
+                ->with('error', 'An error occurred while submitting your inquiry. Please try again.');
+        }
+    }
+
+    /**
      * Resolve inquiry type from request payload.
      */
     protected function resolveInquiryType(Request $request): string
@@ -85,6 +173,24 @@ class InquiryController extends Controller
             'point_to_point', 'point-to-point' => 'point_to_point',
             default => 'general',
         };
+    }
+
+    /**
+     * Resolve inquiry service page by id or slug if provided.
+     */
+    protected function resolveInquiryServicePage(Request $request): ?InquiryServicePage
+    {
+        $pageId = $request->input('inquiry_service_page_id');
+        if ($pageId) {
+            return InquiryServicePage::withInactive()->where('id', $pageId)->first();
+        }
+
+        $slug = $request->input('service_slug');
+        if ($slug) {
+            return InquiryServicePage::withInactive()->where('slug', $slug)->first();
+        }
+
+        return null;
     }
 
     /**
@@ -171,6 +277,52 @@ class InquiryController extends Controller
     }
 
     /**
+     * Build meta for a dynamic inquiry submission.
+     *
+     * @return array<string, string|null>
+     */
+    protected function buildDynamicInquiryMeta(
+        InquiryServicePage $servicePage,
+        \App\Models\InquiryForm $form,
+        array $data
+    ): array {
+        $settings = $form->settings ?? [];
+        $nameField = $form->resolveContactField('contact_name_field', ['name', 'contact_person', 'full_name']);
+        $emailField = $form->resolveContactField('contact_email_field', ['email']);
+        $phoneField = $form->resolveContactField('contact_phone_field', ['phone']);
+
+        $name = $nameField ? ($data[$nameField] ?? null) : null;
+        $email = $emailField ? ($data[$emailField] ?? null) : null;
+        $phone = $phoneField ? ($data[$phoneField] ?? null) : null;
+
+        $label = Arr::get($settings, 'confirmation_label', $servicePage->name);
+        $intro = Arr::get(
+            $settings,
+            'confirmation_intro',
+            'Thank you for your inquiry. Our team will review your request and respond shortly.'
+        );
+        $successMessage = $form->success_message ?? 'Thank you for your inquiry! Our team will contact you soon.';
+
+        $subjectTemplate = Arr::get($settings, 'subject_template', '{service} Inquiry - {name}');
+        $subject = str_replace(
+            ['{service}', '{name}'],
+            [$servicePage->name, $name ?: 'Customer'],
+            $subjectTemplate
+        );
+
+        return [
+            'label' => $label,
+            'intro' => $intro,
+            'success_message' => $successMessage,
+            'subject' => $subject,
+            'message' => $this->buildDynamicMessage($servicePage, $form, $data),
+            'name' => $name,
+            'email' => $email,
+            'phone' => $phone,
+        ];
+    }
+
+    /**
      * Build an inquiry summary message for storage.
      *
      * @param array<string, mixed> $data
@@ -223,6 +375,44 @@ class InquiryController extends Controller
             $lines[] = 'Country: ' . $data['country'];
         }
         $lines[] = 'Message: ' . ($data['message'] ?? 'N/A');
+
+        return implode("\n", $lines);
+    }
+
+    /**
+     * Build a summary message for dynamic inquiry submissions.
+     */
+    protected function buildDynamicMessage(
+        InquiryServicePage $servicePage,
+        \App\Models\InquiryForm $form,
+        array $data
+    ): string {
+        $lines = [$servicePage->name . ' inquiry'];
+
+        foreach ($form->fields as $field) {
+            $value = $data[$field->name] ?? null;
+            if ($value === null || $value === '') {
+                continue;
+            }
+
+            if (is_array($value)) {
+                $value = implode(', ', array_filter($value));
+            }
+
+            if (!empty($field->options)) {
+                $option = collect($field->options)->first(function ($opt) use ($value) {
+                    if (is_array($opt)) {
+                        return ($opt['value'] ?? null) == $value;
+                    }
+                    return $opt == $value;
+                });
+                if (is_array($option) && !empty($option['label'])) {
+                    $value = $option['label'];
+                }
+            }
+
+            $lines[] = "{$field->label}: {$value}";
+        }
 
         return implode("\n", $lines);
     }

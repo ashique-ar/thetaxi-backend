@@ -128,6 +128,17 @@ class BookingController extends Controller
                 $params['to_time'] = $requestData['time'] ?? '00:00';
                 $params['pickup_location'] = $this->formatLocation($requestData, 'pickup');
                 $params['dropoff_location'] = $this->formatLocation($requestData, 'dropoff');
+
+                // Log mapping for airport transfers to help debug address field mismatches
+                Log::info('Airport search payload mapping', [
+                    'from' => $requestData['from'] ?? null,
+                    'to' => $requestData['to'] ?? null,
+                    'pickup' => $requestData['pickup'] ?? null,
+                    'dropoff' => $requestData['dropoff'] ?? null,
+                    'pickup_lat' => $requestData['pickup_lat'] ?? null,
+                    'dropoff_lat' => $requestData['dropoff_lat'] ?? null,
+                ]);
+
                 break;
 
             case 'point_to_point':
@@ -215,10 +226,65 @@ class BookingController extends Controller
      */
     protected function formatLocation(array $data, string $prefix): array
     {
+        // Support multiple possible field names coming from various frontend forms
+        // Primary keys: prefix (pickup/dropoff)
+        $addressKeys = [
+            $prefix,
+            "{$prefix}_location",
+            "{$prefix}_address",
+        ];
+
+        // Alternative keys used by airport transfers form: 'from' and 'to'
+        $alt = null;
+        if ($prefix === 'pickup') {
+            $alt = 'from';
+        } elseif ($prefix === 'dropoff') {
+            $alt = 'to';
+        }
+
+        if ($alt) {
+            $addressKeys[] = $alt;
+            $addressKeys[] = "{$alt}_location";
+            $addressKeys[] = "{$alt}_address";
+        }
+
+        $address = '';
+        foreach ($addressKeys as $k) {
+            if (isset($data[$k]) && $data[$k] !== '') {
+                $address = $data[$k];
+                break;
+            }
+        }
+
+        // Support multiple latitude/longitude field name conventions
+        $latKeys = ["{$prefix}_lat", "{$prefix}_latitude"];
+        $lngKeys = ["{$prefix}_lng", "{$prefix}_longitude"];
+        if ($alt) {
+            $latKeys[] = "{$alt}_lat";
+            $latKeys[] = "{$alt}_latitude";
+            $lngKeys[] = "{$alt}_lng";
+            $lngKeys[] = "{$alt}_longitude";
+        }
+
+        $latitude = null;
+        $longitude = null;
+        foreach ($latKeys as $k) {
+            if (isset($data[$k]) && $data[$k] !== '') {
+                $latitude = $data[$k];
+                break;
+            }
+        }
+        foreach ($lngKeys as $k) {
+            if (isset($data[$k]) && $data[$k] !== '') {
+                $longitude = $data[$k];
+                break;
+            }
+        }
+
         $location = [
-            'address' => $data[$prefix] ?? '',
-            'latitude' => $data["{$prefix}_lat"] ?? null,
-            'longitude' => $data["{$prefix}_lng"] ?? null,
+            'address' => $address,
+            'latitude' => $latitude,
+            'longitude' => $longitude,
         ];
 
         // Ensure numeric values and validate coordinates

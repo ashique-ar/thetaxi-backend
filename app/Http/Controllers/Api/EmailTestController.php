@@ -23,7 +23,7 @@ class EmailTestController
             'customer' => (object) [
                 'full_name' => 'John Doe',
                 'email' => 'john@example.com',
-                'phone' => '+94 71 234 5678',
+                'phone' => '+94 71 1 615 615',
             ],
             'from_date' => Carbon::now()->addDay()->setHour(9),
             'to_date' => Carbon::now()->addDays(4)->setHour(9),
@@ -108,7 +108,7 @@ class EmailTestController
             'typeLabel' => 'General Inquiry',
             'intro' => 'Thank you for contacting us. We have received your inquiry and our team will get back to you soon.',
             'supportEmail' => 'support@casonsrentacar.lk',
-            'supportPhone' => '+94 11 234 5678',
+            'supportPhone' => '+94 71 1 615 615',
             'inquiry' => $inquiry,
         ]);
     }
@@ -135,7 +135,7 @@ class EmailTestController
             'booking' => $booking,
             'amount' => 8975.00,
             'supportEmail' => 'payments@casonsrentacar.lk',
-            'supportPhone' => '+94 11 234 5678',
+            'supportPhone' => '+94 71 1 615 615',
         ]);
     }
 
@@ -160,7 +160,7 @@ class EmailTestController
             'inquiry' => $inquiry,
             'estimatedResponseTime' => 'Within 24 hours',
             'supportEmail' => 'quotations@casonsrentacar.lk',
-            'supportPhone' => '+94 11 234 5678',
+            'supportPhone' => '+94 71 1 615 615',
         ]);
     }
 

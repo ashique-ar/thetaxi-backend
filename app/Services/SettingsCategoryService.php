@@ -66,7 +66,7 @@ class SettingsCategoryService
                     'label' => 'Company Phone',
                     'type' => 'tel',
                     'required' => true,
-                    'placeholder' => '+94 11 234 5678',
+                    'placeholder' => '+94 71 1 615 615',
                     'description' => 'Main contact phone number'
                 ],
                 'company_email' => [
@@ -268,7 +268,7 @@ class SettingsCategoryService
                 'contact_address_1_phone' => [
                     'label' => 'Office 1 Phone',
                     'type' => 'tel',
-                    'placeholder' => '+94 11 234 5678',
+                    'placeholder' => '+94 71 1 615 615',
                     'description' => 'Phone number for first office'
                 ],
                 'contact_address_1_email' => [
