@@ -141,8 +141,6 @@ class BookingSearchRequest extends FormRequest
             'dropoff_time.required' => 'The drop-off time field is required.',
             'passengers.required' => 'The passengers field is required.',
             'passengers.max' => 'Maximum 15 passengers allowed per booking.',
-            'from.required' => 'The pickup location is required.',
-            'to.required' => 'The drop-off location is required.',
             'pickup.required' => 'The pickup location is required.',
             'dropoff.required' => 'The drop-off location is required.',
         ];
@@ -156,8 +154,8 @@ class BookingSearchRequest extends FormRequest
         return [
             'service_type' => 'required|string',
             'transfer_type' => 'required|in:from-airport,to-airport',
-            'from' => 'required|string|max:255',
-            'to' => 'required|string|max:255',
+            'pickup' => 'required|string|max:255',
+            'dropoff' => 'required|string|max:255',
             'pickup_lat' => 'nullable|numeric|between:-90,90',
             'pickup_lng' => 'nullable|numeric|between:-180,180',
             'dropoff_lat' => 'nullable|numeric|between:-90,90',

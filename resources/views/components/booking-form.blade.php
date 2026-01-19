@@ -200,12 +200,12 @@
                     </g>
                 </svg>
                 <div class="custom-select-dropdown">
-                    <!-- Airport Select (shown when from-airport is selected) -->
-                    <select name="from" id="from-airport-select"
-                        class="airport-select from-field hidden @error('from') is-invalid @enderror" disabled>
+                    <!-- Airport Select (shown when pickup-airport is selected) -->
+                    <select name="pickup" id="pickup-airport-select"
+                        class="airport-select pickup-field hidden @error('pickup') is-invalid @enderror" disabled>
                         <option value="">Select Airport</option>
                         <option value="Colombo BIA Airport" data-lat="7.1808" data-lng="79.8841"
-                            {{ old('from') == 'Colombo BIA Airport' || ($pickup['address'] ?? '') == 'Colombo BIA Airport' ? 'selected' : '' }}>
+                            {{ old('pickup') == 'Colombo BIA Airport' || ($pickup['address'] ?? '') == 'Colombo BIA Airport' ? 'selected' : '' }}>
                             Bandaranaike International Airport (BIA)
                         </option>
                         <option value="Mattala Rajapaksa Airport" data-lat="6.2847" data-lng="81.1242"
@@ -218,10 +218,10 @@
                         </option>
                     </select>
 
-                    <!-- Location Input (shown when to-airport is selected) -->
-                    <input type="text" name="from" id="from-location-input" placeholder="Enter pickup location"
-                        class="location-search from-field hidden @error('from') is-invalid @enderror"
-                        value="{{ $safeOldOr('from', $pickup['address'] ?? 'Colombo, Sri Lanka') }}" disabled>
+                    <!-- Location Input (shown when pickup is selected) -->
+                    <input type="text" name="pickup" id="pickup-location-input" placeholder="Enter pickup location"
+                        class="location-search pickup-field hidden @error('pickup') is-invalid @enderror"
+                        value="{{ $safeOldOr('pickup', $pickup['address'] ?? 'Colombo, Sri Lanka') }}" disabled>
 
                     <input type="hidden" name="pickup_lat" class="location-lat"
                         value="{{ $safeOldOr('pickup_lat', $pickup['lat'] ?? ($search->pickup_latitude ?? '7.1808')) }}">
@@ -245,17 +245,17 @@
                     </g>
                 </svg>
                 <div class="custom-select-dropdown">
-                    <!-- Location Input (shown when from-airport is selected) -->
-                    <input type="text" name="to" id="to-location-input" placeholder="Enter destination"
-                        class="location-search to-field hidden @error('to') is-invalid @enderror"
-                        value="{{ $safeOldOr('to', $dropoff['address'] ?? 'Colombo, Sri Lanka') }}" disabled>
+                    <!-- Location Input (shown when dropoff-airport is selected) -->
+                    <input type="text" name="dropoff" id="dropoff-location-input" placeholder="Enter destination"
+                        class="location-search dropoff-field hidden @error('dropoff') is-invalid @enderror"
+                        value="{{ $safeOldOr('dropoff', $dropoff['address'] ?? 'Colombo, Sri Lanka') }}" disabled>
 
-                    <!-- Airport Select (shown when to-airport is selected) -->
-                    <select name="to" id="to-airport-select"
-                        class="airport-select to-field hidden @error('to') is-invalid @enderror" disabled>
+                    <!-- Airport Select (shown when dropoff-airport is selected) -->
+                    <select name="dropoff" id="dropoff-airport-select"
+                        class="airport-select dropoff-field hidden @error('dropoff') is-invalid @enderror" disabled>
                         <option value="">Select Airport</option>
                         <option value="Colombo BIA Airport" data-lat="7.1808" data-lng="79.8841"
-                            {{ old('to') == 'Colombo BIA Airport' || ($dropoff['address'] ?? '') == 'Colombo BIA Airport' ? 'selected' : '' }}>
+                            {{ old('dropoff') == 'Colombo BIA Airport' || ($dropoff['address'] ?? '') == 'Colombo BIA Airport' ? 'selected' : '' }}>
                             Bandaranaike International Airport (BIA)
                         </option>
                         <option value="Mattala Rajapaksa Airport" data-lat="6.2847" data-lng="81.1242"
@@ -749,11 +749,10 @@
          * Fallback initialization if booking-form.js is not loaded
          */
         function initializeFallbackAirportForm(type) {
-            const fromAirportSelect = document.querySelector('#from-airport-select');
-            const fromLocationInput = document.querySelector('#from-location-input');
-            const toAirportSelect = document.querySelector('#to-airport-select');
-            const toLocationInput = document.querySelector('#to-location-input');
-
+            const fromAirportSelect = document.querySelector('#pickup-airport-select');
+            const fromLocationInput = document.querySelector('#pickup-location-input');
+            const toAirportSelect = document.querySelector('#dropoff-airport-select');
+            const toLocationInput = document.querySelector('#dropoff-location-input');
             if (!fromAirportSelect || !fromLocationInput || !toAirportSelect || !toLocationInput) return;
 
             console.log('Fallback initialization for type:', type);
@@ -838,8 +837,8 @@
          * Setup airport select change handlers
          */
         function setupAirportSelectChangeHandlers() {
-            const fromAirportSelect = document.querySelector('#from-airport-select');
-            const toAirportSelect = document.querySelector('#to-airport-select');
+            const fromAirportSelect = document.querySelector('#pickup-airport-select');
+            const toAirportSelect = document.querySelector('#dropoff-airport-select');
             const fromLat = document.querySelector('input[name="pickup_lat"]');
             const fromLng = document.querySelector('input[name="pickup_lng"]');
             const toLat = document.querySelector('input[name="dropoff_lat"]');
@@ -852,7 +851,7 @@
                         fromLat && fromLng) {
                         fromLat.value = selectedOption.dataset.lat;
                         fromLng.value = selectedOption.dataset.lng;
-                        console.log('Updated FROM coordinates:', fromLat.value, fromLng.value);
+                        console.log('Updated pickup coordinates:', fromLat.value, fromLng.value);
                     }
                 });
                 fromAirportSelect.hasChangeHandler = true;
@@ -865,7 +864,7 @@
                         toLat && toLng) {
                         toLat.value = selectedOption.dataset.lat;
                         toLng.value = selectedOption.dataset.lng;
-                        console.log('Updated TO coordinates:', toLat.value, toLng.value);
+                        console.log('Updated dropoff coordinates:', toLat.value, toLng.value);
                     }
                 });
                 toAirportSelect.hasChangeHandler = true;
@@ -933,9 +932,9 @@
                 return false;
             }
 
-            // Check if the visible from field has a value
-            const fromAirportSelect = form.querySelector('#from-airport-select');
-            const fromLocationInput = form.querySelector('#from-location-input');
+            // Check if the visible pickup field has a value
+            const fromAirportSelect = form.querySelector('#pickup-airport-select');
+            const fromLocationInput = form.querySelector('#pickup-location-input');
 
             if (transferType === 'from-airport') {
                 if (!fromAirportSelect.value) {
@@ -944,8 +943,8 @@
                     return false;
                 }
                 if (!fromLocationInput.value || fromLocationInput.style.display !== 'none') {
-                    // Make sure to location has a value
-                    const toInput = form.querySelector('#to-location-input');
+                    // Make sure dropoff location has a value
+                    const toInput = form.querySelector('#dropoff-location-input');
                     if (!toInput.value) {
                         alert('Please enter destination location');
                         toInput.focus();
@@ -958,7 +957,7 @@
                     fromLocationInput.focus();
                     return false;
                 }
-                const toAirportSelect = form.querySelector('#to-airport-select');
+                const toAirportSelect = form.querySelector('#dropoff-airport-select');
                 if (!toAirportSelect.value) {
                     alert('Please select destination airport');
                     toAirportSelect.focus();
@@ -973,10 +972,10 @@
          * Prepare airport form for submission by disabling hidden fields
          */
         function prepareAirportFormForSubmission(form) {
-            const fromAirportSelect = form.querySelector('#from-airport-select');
-            const fromLocationInput = form.querySelector('#from-location-input');
-            const toAirportSelect = form.querySelector('#to-airport-select');
-            const toLocationInput = form.querySelector('#to-location-input');
+            const fromAirportSelect = form.querySelector('#pickup-airport-select');
+            const fromLocationInput = form.querySelector('#pickup-location-input');
+            const toAirportSelect = form.querySelector('#dropoff-airport-select');
+            const toLocationInput = form.querySelector('#dropoff-location-input');
 
             // The fields should already be properly disabled/enabled by the initialization functions
             // Just make sure hidden fields are disabled and visible fields are enabled
@@ -997,149 +996,153 @@
             }
 
             console.log('Form prepared for submission:', {
-                fromAirportSelectVisible: fromAirportSelect.classList.contains('visible'),
-                fromLocationInputVisible: fromLocationInput.classList.contains('visible'),
-                toAirportSelectVisible: toAirportSelect.classList.contains('visible'),
-                toLocationInputVisible: toLocationInput.classList.contains('visible')
+                pickupAirportSelectVisible: fromAirportSelect.classList.contains('visible'),
+                pickupLocationInputVisible: fromLocationInput.classList.contains('visible'),
+                dropoffAirportSelectVisible: toAirportSelect.classList.contains('visible'),
+                dropoffLocationInputVisible: toLocationInput.classList.contains('visible')
             });
         }
+        toAirportSelectVisible: toAirportSelect.classList.contains('visible'),
+            toLocationInputVisible: toLocationInput.classList.contains('visible')
+    });
+    }
 
-        /**
-         * Initialize service package loading for all services
-         */
-        function initializeServicePackages() {
-            const serviceTypes = ['airport_transfers', 'ride_now', 'point_to_point', 'day_rental'];
+    /**
+     * Initialize service package loading for all services
+     */
+    function initializeServicePackages() {
+        const serviceTypes = ['airport_transfers', 'ride_now', 'point_to_point', 'day_rental'];
 
-            serviceTypes.forEach(serviceType => {
-                loadServicePackages(serviceType);
-            });
-        }
+        serviceTypes.forEach(serviceType => {
+            loadServicePackages(serviceType);
+        });
+    }
 
-        /**
-         * Load packages for a specific service type
-         */
-        function loadServicePackages(serviceType) {
-            const packageSelector = document.getElementById(`${serviceType}-packages`);
-            if (!packageSelector) return;
+    /**
+     * Load packages for a specific service type
+     */
+    function loadServicePackages(serviceType) {
+        const packageSelector = document.getElementById(`${serviceType}-packages`);
+        if (!packageSelector) return;
 
-            const loadingIndicator = packageSelector.querySelector('.loading-packages');
-            const packageOptions = packageSelector.querySelector('.package-options');
+        const loadingIndicator = packageSelector.querySelector('.loading-packages');
+        const packageOptions = packageSelector.querySelector('.package-options');
 
-            // Show loading and reveal selector
-            if (loadingIndicator) loadingIndicator.style.display = 'block';
-            packageSelector.style.display = 'block';
+        // Show loading and reveal selector
+        if (loadingIndicator) loadingIndicator.style.display = 'block';
+        packageSelector.style.display = 'block';
 
-            // Make API call to get packages
-            fetch(`/api/services/${serviceType}/packages`)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.status === 'success' && data.data.packages && data.data.packages.length > 0) {
-                        renderPackageOptions(packageSelector, data.data.packages, serviceType);
-                    } else {
-                        console.warn(`No packages found for service: ${serviceType}`);
-                        // Hide selector if no packages available
-                        packageSelector.style.display = 'none';
-                    }
-                })
-                .catch(error => {
-                    console.error(`Error loading packages for ${serviceType}:`, error);
-                    // Hide selector on error
+        // Make API call to get packages
+        fetch(`/api/services/${serviceType}/packages`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success' && data.data.packages && data.data.packages.length > 0) {
+                    renderPackageOptions(packageSelector, data.data.packages, serviceType);
+                } else {
+                    console.warn(`No packages found for service: ${serviceType}`);
+                    // Hide selector if no packages available
                     packageSelector.style.display = 'none';
-                })
-                .finally(() => {
-                    // Hide loading
-                    if (loadingIndicator) loadingIndicator.style.display = 'none';
-                });
+                }
+            })
+            .catch(error => {
+                console.error(`Error loading packages for ${serviceType}:`, error);
+                // Hide selector on error
+                packageSelector.style.display = 'none';
+            })
+            .finally(() => {
+                // Hide loading
+                if (loadingIndicator) loadingIndicator.style.display = 'none';
+            });
+    }
+
+    /**
+     * Render package options in the UI with the same toggle styling and markup as the transfer-type toggle
+     */
+    function renderPackageOptions(packageSelector, packages, serviceType) {
+        const packageToggle = packageSelector.querySelector('.package-selector-toggle');
+        const selected = packageSelector.dataset.selected || '';
+
+        if (!packageToggle || !packages || packages.length === 0) {
+            console.warn(`No valid packages to render for ${serviceType}`);
+            packageSelector.style.display = 'none';
+            return;
         }
 
-        /**
-         * Render package options in the UI with the same toggle styling and markup as the transfer-type toggle
-         */
-        function renderPackageOptions(packageSelector, packages, serviceType) {
-            const packageToggle = packageSelector.querySelector('.package-selector-toggle');
-            const selected = packageSelector.dataset.selected || '';
+        // Clear existing package options
+        packageToggle.innerHTML = '';
 
-            if (!packageToggle || !packages || packages.length === 0) {
-                console.warn(`No valid packages to render for ${serviceType}`);
-                packageSelector.style.display = 'none';
-                return;
+        // Add new packages using the transfer-type-option markup (hidden radio + span)
+        packages.forEach((pkg, index) => {
+            const label = document.createElement('label');
+            label.className = 'transfer-type-option package-option';
+
+            const input = document.createElement('input');
+            input.type = 'radio';
+            // Backend expects package_id
+            input.name = 'package_id';
+            input.value = pkg.id !== undefined ? pkg.id : (pkg.slug || pkg.code || pkg.name);
+            input.id = `${serviceType}-package-${index}`;
+
+            // If server or old input specified a selected package, mark it checked
+            if (String(input.value) === String(selected)) {
+                input.checked = true;
             }
 
-            // Clear existing package options
-            packageToggle.innerHTML = '';
+            // Default the first package if nothing selected
+            if (!selected && index === 0) {
+                input.checked = true;
+            }
 
-            // Add new packages using the transfer-type-option markup (hidden radio + span)
-            packages.forEach((pkg, index) => {
-                const label = document.createElement('label');
-                label.className = 'transfer-type-option package-option';
+            const span = document.createElement('span');
+            span.title = pkg.description || '';
+            span.textContent = pkg.name || pkg.title || pkg.label || (`Package ${index + 1}`);
 
-                const input = document.createElement('input');
-                input.type = 'radio';
-                // Backend expects package_id
-                input.name = 'package_id';
-                input.value = pkg.id !== undefined ? pkg.id : (pkg.slug || pkg.code || pkg.name);
-                input.id = `${serviceType}-package-${index}`;
+            // Append nodes and attach change handler for debug and included-km update
+            label.appendChild(input);
+            label.appendChild(span);
 
-                // If server or old input specified a selected package, mark it checked
-                if (String(input.value) === String(selected)) {
-                    input.checked = true;
-                }
+            // Ensure there's a hidden input to carry package_included_km to backend
+            let includedInput = document.getElementById(`${serviceType}-package-included-km`);
+            if (!includedInput) {
+                includedInput = document.createElement('input');
+                includedInput.type = 'hidden';
+                includedInput.name = 'package_included_km';
+                includedInput.id = `${serviceType}-package-included-km`;
+                packageSelector.appendChild(includedInput);
+            }
 
-                // Default the first package if nothing selected
-                if (!selected && index === 0) {
-                    input.checked = true;
-                }
+            // If this package is pre-checked, set included km now
+            if (input.checked) {
+                includedInput.value = pkg.included_km !== undefined ? pkg.included_km : '';
+            }
 
-                const span = document.createElement('span');
-                span.title = pkg.description || '';
-                span.textContent = pkg.name || pkg.title || pkg.label || (`Package ${index + 1}`);
-
-                // Append nodes and attach change handler for debug and included-km update
-                label.appendChild(input);
-                label.appendChild(span);
-
-                // Ensure there's a hidden input to carry package_included_km to backend
-                let includedInput = document.getElementById(`${serviceType}-package-included-km`);
-                if (!includedInput) {
-                    includedInput = document.createElement('input');
-                    includedInput.type = 'hidden';
-                    includedInput.name = 'package_included_km';
-                    includedInput.id = `${serviceType}-package-included-km`;
-                    packageSelector.appendChild(includedInput);
-                }
-
-                // If this package is pre-checked, set included km now
-                if (input.checked) {
-                    includedInput.value = pkg.included_km !== undefined ? pkg.included_km : '';
-                }
-
-                input.addEventListener('change', function() {
-                    console.log(`Package selected for ${serviceType}:`, this.value);
-                    // Update included km hidden input if available on pkg
-                    includedInput.value = pkg.included_km !== undefined ? pkg.included_km : '';
-                });
-
-                packageToggle.appendChild(label);
+            input.addEventListener('change', function() {
+                console.log(`Package selected for ${serviceType}:`, this.value);
+                // Update included km hidden input if available on pkg
+                includedInput.value = pkg.included_km !== undefined ? pkg.included_km : '';
             });
 
-            // Ensure selector is visible if packages were successfully rendered
-            packageSelector.style.display = 'block';
+            packageToggle.appendChild(label);
+        });
 
-            console.log(`Successfully rendered ${packages.length} packages for ${serviceType}`);
-        }
+        // Ensure selector is visible if packages were successfully rendered
+        packageSelector.style.display = 'block';
 
-        function formatDuration(hours) {
-            if (hours < 24) {
-                return `${hours}h`;
-            } else if (hours % 24 === 0) {
-                const days = hours / 24;
-                return days === 1 ? '1 day' : `${days} days`;
-            } else {
-                const days = Math.floor(hours / 24);
-                const remainingHours = hours % 24;
-                return `${days}d ${remainingHours}h`;
-            }
+        console.log(`Successfully rendered ${packages.length} packages for ${serviceType}`);
+    }
+
+    function formatDuration(hours) {
+        if (hours < 24) {
+            return `${hours}h`;
+        } else if (hours % 24 === 0) {
+            const days = hours / 24;
+            return days === 1 ? '1 day' : `${days} days`;
+        } else {
+            const days = Math.floor(hours / 24);
+            const remainingHours = hours % 24;
+            return `${days}d ${remainingHours}h`;
         }
+    }
     });
 </script>
 
@@ -1409,8 +1412,8 @@
 
                     // Check airport selects for airport transfer form
                     if (formId === 'airport_transfers-form') {
-                        const fromAirport = form.querySelector('#from-airport-select');
-                        const toAirport = form.querySelector('#to-airport-select');
+                        const fromAirport = form.querySelector('#pickup-airport-select');
+                        const toAirport = form.querySelector('#dropoff-airport-select');
 
                         if (fromAirport) {
                             const selectedFromOption = fromAirport.options[fromAirport.selectedIndex];

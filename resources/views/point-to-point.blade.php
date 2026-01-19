@@ -54,7 +54,7 @@
                                             d="M9 0C4.037 0 0 4.037 0 9c0 6.75 9 9 9 9s9-2.25 9-9c0-4.963-4.037-9-9-9zm0 12.75c-2.07 0-3.75-1.68-3.75-3.75S6.93 5.25 9 5.25s3.75 1.68 3.75 3.75-1.68 3.75-3.75 3.75z" />
                                     </svg>
                                     <div class="custom-select-dropdown">
-                                        <input type="text" name="from" placeholder="Pick up location"
+                                        <input type="text" name="pickup" placeholder="Pick up location"
                                             class="nice-select custom-location-search @error('from') is-invalid @enderror"
                                             value="{{ old('from', 'Colombo, Sri Lanka') }}" required autocomplete="off">
                                         <input type="hidden" name="pickup_lat" value="{{ old('pickup_lat', '6.9271') }}">
@@ -73,7 +73,7 @@
                                             d="M9 0C4.037 0 0 4.037 0 9c0 6.75 9 9 9 9s9-2.25 9-9c0-4.963-4.037-9-9-9zm0 12.75c-2.07 0-3.75-1.68-3.75-3.75S6.93 5.25 9 5.25s3.75 1.68 3.75 3.75-1.68 3.75-3.75 3.75z" />
                                     </svg>
                                     <div class="custom-select-dropdown">
-                                        <input type="text" name="to" placeholder="Drop off location"
+                                        <input type="text" name="dropoff" placeholder="Drop off location"
                                             class="nice-select custom-location-search @error('to') is-invalid @enderror"
                                             value="{{ old('to', 'Galle, Sri Lanka') }}" required autocomplete="off">
                                         <input type="hidden" name="dropoff_lat" value="{{ old('dropoff_lat', '6.0535') }}">
