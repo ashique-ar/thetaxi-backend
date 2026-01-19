@@ -18,6 +18,14 @@
     </div>
     <!-- End Breadcrumb section -->
 
+    <!-- Booking Form Section -->
+    <div class="filter-wrapper hotel mb-40">
+        <div class="container">
+            @include('components.booking-form')
+        </div>
+    </div>
+    <!-- End Booking Form Section -->
+
     <!-- Cart Page Start-->
     <div class="cart-page pt-100 mb-100">
         <div class="container">
@@ -1607,8 +1615,8 @@
                                         ${isSelected ? '<i class="bi bi-arrow-clockwise"></i> Update' : '<i class="bi bi-plus-lg"></i> Add'}
                                     </button>
                                     ${isSelected ? `<button class="btn-remove-addon-unified remove-addon-btn" data-addon-id="${addon.id}" data-cart-key="${cartKey}" title="Remove this addon">
-                                                                                            <i class="bi bi-trash"></i> Remove
-                                                                                        </button>` : ''}
+                                                                                                <i class="bi bi-trash"></i> Remove
+                                                                                            </button>` : ''}
                                 </div>
                             </div>
                         </div>
@@ -2502,8 +2510,8 @@
         }
 
         /* ==========================================
-                                                                       Extra KM Purchase Section Styles
-                                                                       ========================================== */
+                                                                           Extra KM Purchase Section Styles
+                                                                           ========================================== */
 
         /* Service type badge */
         .service-type-badge {

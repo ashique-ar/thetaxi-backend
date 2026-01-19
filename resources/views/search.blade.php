@@ -18,11 +18,13 @@
         </div>
     </div>
 
-    {{-- <div class="filter-wrapper hotel mb-40">
+    <!-- Booking Form Section -->
+    <div class="filter-wrapper hotel mb-40">
         <div class="container">
-            @include('components.booking-form')
+            @include('components.booking-form', ['search' => $search])
         </div>
-    </div> --}}
+    </div>
+    <!-- End Booking Form Section -->
 
     <!-- Vehicle Results Section -->
     <div class="package-standard-wrapper pt-5 mb-110">

@@ -22,6 +22,14 @@
     </div>
     <!-- End Breadcrumb section -->
 
+    <!-- Booking Form Section -->
+    <div class="filter-wrapper hotel mb-40">
+        <div class="container">
+            @include('components.booking-form')
+        </div>
+    </div>
+    <!-- End Booking Form Section -->
+
     @php
         // Cart data is passed from controller
         $cart = $cartData['items'] ?? [];

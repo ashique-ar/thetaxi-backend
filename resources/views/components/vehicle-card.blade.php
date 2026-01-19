@@ -101,7 +101,7 @@
             @if (isset($vehicle['passengers_count']) && $vehicle['passengers_count'])
                 <div class="spec-item">
                     <i class="bi bi-people-fill"></i>
-                    <span>{{ $vehicle['passengers_count'] }} Passengers</span>
+                    <span>{{ $vehicle['passengers_count'] }}</span>
                 </div>
             @elseif(isset($vehicle['seating_capacity']))
                 <div class="spec-item">

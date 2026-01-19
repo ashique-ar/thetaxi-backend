@@ -179,7 +179,7 @@
 
             <!-- Package Selection (uses same toggle design as transfer-type) -->
             {{-- <div class="package-selector" id="airport_transfers-packages" style="display: none;"
-                data-selected="{{ old('package_id', isset($search) && isset($search->package_id) ? $search->package_id : '') }}">
+                data-selected="{{ old('package_id', $getSearchProp('service_package_id', '')) }}">
                 <div class="transfer-type-toggle package-selector-toggle">
                     <!-- Packages will be dynamically loaded here as transfer-type-option labels -->
                 </div>
@@ -453,7 +453,7 @@
             </div> --}}
 
             <div class="package-selector" id="ride_now-packages" style="display: none;"
-                data-selected="{{ old('package_id', isset($search) && isset($search->package_id) ? $search->package_id : '') }}">
+                data-selected="{{ old('package_id', $getSearchProp('service_package_id', '')) }}">
                 <div class="transfer-type-toggle package-selector-toggle">
                     <!-- Packages will be dynamically loaded here as transfer-type-option labels -->
                 </div>
@@ -589,7 +589,7 @@
             </div>
 
             <div class="package-selector" id="day_rental-packages" style="display: none;"
-                data-selected="{{ old('package_id', isset($search) && isset($search->package_id) ? $search->package_id : '') }}">
+                data-selected="{{ old('package_id', $getSearchProp('service_package_id', '')) }}">
                 <div class="transfer-type-toggle package-selector-toggle">
                     <!-- Packages will be dynamically loaded here as transfer-type-option labels -->
                 </div>
