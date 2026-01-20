@@ -505,7 +505,9 @@
                                                                                     @if ($extraKmPrice)
                                                                                         <span style="color: #999;"> |
                                                                                             Extra:
-                                                                                            {{ $currencySymbol }}{{ number_format($extraKmPrice, 2) }}/km</span>
+                                                                                            <small
+                                                                                                class="currency-symbol">{{ $currencySymbol }}</small>
+                                                                                            {{ number_format($extraKmPrice, 2) }}/km</span>
                                                                                     @endif
                                                                                 </small></p>
                                                                         @endif
@@ -549,7 +551,9 @@
                                                                 </div>
                                                             </div>
                                                             <div class="item-total">
-                                                                {{ $currencySymbol }} {{ number_format($itemTotal, 2) }}
+                                                                <small
+                                                                    class="currency-symbol">{{ $currencySymbol }}</small>
+                                                                {{ number_format($itemTotal, 2) }}
                                                             </div>
                                                         </div>
                                                     </li>
@@ -845,7 +849,8 @@
                                                         Confirm Booking - Pay on Check-in
                                                     @else
                                                         Complete Booking -
-                                                        {{ $currencySymbol }} {{ number_format($paymentAmount, 2) }}
+                                                        <small class="currency-symbol">{{ $currencySymbol }}</small>
+                                                        {{ number_format($paymentAmount, 2) }}
                                                     @endif
                                                     <svg width="10" height="10" viewBox="0 0 10 10"
                                                         xmlns="http://www.w3.org/2000/svg">
@@ -870,6 +875,15 @@
 
 @push('styles')
     <style>
+        /* Currency Formatting */
+        .currency-symbol,
+        .currency-code {
+            font-size: 0.8em;
+            font-weight: normal;
+            opacity: 0.8;
+            margin-right: 0.25rem;
+        }
+
         /* Payment type selection styles */
         .payment-type-selection .payment-option {
             position: relative;

@@ -20,7 +20,7 @@
                     <h1>{{ $settings['banner_heading'] ?? 'All-in-one Travel Booking.' }}</h1>
                     <p>{{ $settings['banner_subheading'] ??
                         'Best travel agency in world-wide & achieve “World
-                                                                                        Travel Award”' }}
+                                                                                                            Travel Award”' }}
                     </p>
                     @include('components.booking-form')
                 </div>
@@ -488,6 +488,20 @@
 
 @push('styles')
     <style>
+        /* Currency Formatting */
+        .currency-symbol,
+        .currency-code {
+            font-size: 0.8em;
+            font-weight: normal;
+            opacity: 0.8;
+            margin-right: 0.25rem;
+        }
+
+        .cart-summary-float .currency-symbol {
+            font-size: 0.75em;
+            margin-right: 0.2rem;
+        }
+
         /* Featured Vehicles Section Styling */
         .featured-vehicles-section {
             background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
@@ -1162,11 +1176,12 @@
                 // Build pricing display based on service type
                 let pricingHtml = '';
                 if (fixedRate) {
-                    pricingHtml = `<span>${pricingLabel}: ${currencySymbol}${itemTotal.toFixed(2)}</span>`;
+                    pricingHtml =
+                        `<span>${pricingLabel}: <small class="currency-symbol">${currencySymbol}</small> ${itemTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>`;
                 } else {
                     pricingHtml = `
-                        <span>${pricingLabel}: ${currencySymbol}${price.toFixed(2)}</span>
-                        <strong>${currencySymbol}${itemTotal.toFixed(2)}</strong>
+                        <span>${pricingLabel}: <small class="currency-symbol">${currencySymbol}</small> ${price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                        <strong><small class="currency-symbol">${currencySymbol}</small> ${itemTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</strong>
                     `;
                 }
 
@@ -1192,10 +1207,16 @@
             });
 
             // For home page, we calculate from individual cart items
-            $('#cartTotalPrice .amount').text(total.toFixed(2));
+            $('#cartTotalPrice .amount').text(total.toLocaleString('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }));
 
             // Set subtotal to the calculated base total (before any server-side charges)
-            $('#cartSubtotalPrice .amount').text(total.toFixed(2));
+            $('#cartSubtotalPrice .amount').text(total.toLocaleString('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }));
 
             // Hide all breakdown items for now since we don't have the server data on home page
             $('.cart-addon-charges, .cart-extra-km-charges, .cart-service-fee, .cart-tax, .cart-vat').hide();

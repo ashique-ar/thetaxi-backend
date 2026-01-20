@@ -217,7 +217,7 @@
                     <h4 class="price-amount" data-base-price-lkr="{{ $totalAmountLKR }}"
                         data-package-hours="{{ $packageHours }}" data-service-type="{{ $serviceType }}"
                         data-currency="{{ $selectedCurrency }}" data-is-package="true">
-                        <span class="currency-code">{{ $currencySymbol }}</span>
+                        <small class="currency-code">{{ $currencySymbol }}</small>
                         <span class="price-value">{{ number_format($totalAmountConverted, 2) }}</span>
                         <span class="price-unit">/ {{ $packageHours }}h package</span>
                     </h4>
@@ -226,7 +226,7 @@
                     <h4 class="price-amount" data-base-price-lkr="{{ $totalAmountLKR }}"
                         data-service-type="{{ $serviceType }}" data-currency="{{ $selectedCurrency }}"
                         data-is-package="true">
-                        <span class="currency-code">{{ $currencySymbol }}</span>
+                        <small class="currency-code">{{ $currencySymbol }}</small>
                         <span class="price-value">{{ number_format($totalAmountConverted, 2) }}</span>
                         <span class="price-unit">/ transfer</span>
                     </h4>
@@ -235,7 +235,7 @@
                     <h4 class="price-amount" data-base-price-lkr="{{ $totalAmountLKR }}"
                         data-duration="{{ $durationDays }}" data-currency="{{ $selectedCurrency }}"
                         data-is-package="false">
-                        <span class="currency-code">{{ $currencySymbol }}</span>
+                        <small class="currency-code">{{ $currencySymbol }}</small>
                         <span class="price-value">{{ number_format($totalAmountConverted, 2) }}</span>
                     </h4>
                     @if (!$isRideNow)
@@ -250,7 +250,7 @@
                         <h4 class="price-amount" data-base-price-lkr="{{ $totalAmountLKR }}"
                             data-duration="{{ $durationDays }}" data-currency="{{ $selectedCurrency }}"
                             data-is-package="false">
-                            <span class="currency-code">{{ $currencySymbol }}</span>
+                            <small class="currency-code">{{ $currencySymbol }}</small>
                             <span class="price-value">{{ number_format($totalAmountConverted, 2) }}</span>
                         </h4>
                     @else
@@ -262,7 +262,7 @@
                             <h4 class="price-amount" data-base-price-lkr="{{ $totalAmountLKR }}"
                                 data-duration="{{ $durationDays }}" data-currency="{{ $selectedCurrency }}"
                                 data-is-package="false" data-service-type="{{ $serviceType }}">
-                                <span class="currency-code">{{ $currencySymbol }}</span>
+                                <small class="currency-code">{{ $currencySymbol }}</small>
                                 <span class="price-value">{{ number_format($totalAmountConverted, 2) }}</span>
                             </h4>
                             <div class="total-price-info mt-1 text-muted small">
@@ -274,7 +274,7 @@
                             <h4 class="price-amount" data-base-price-lkr="{{ $totalAmountLKR }}"
                                 data-per-day-lkr="{{ round($perDayRateLKR, 2) }}" data-duration="{{ $durationDays }}"
                                 data-currency="{{ $selectedCurrency }}" data-is-package="false">
-                                <span class="currency-code">{{ $currencySymbol }}</span>
+                                <small class="currency-code">{{ $currencySymbol }}</small>
                                 <span class="price-value">{{ number_format($perDayRateConverted, 2) }}</span>
                                 <span class="price-unit">/day</span>
                             </h4>
@@ -282,7 +282,7 @@
                             <!-- Total Price as Secondary Info for multi-day -->
                             <div class="total-price-info mt-2 text-muted small">
                                 <span class="total-label">Total:</span>
-                                <strong><span class="currency-code">{{ $currencySymbol }}</span>
+                                <strong><small class="currency-code">{{ $currencySymbol }}</small>
                                     {{ number_format($totalAmountConverted, 2) }}</strong>
                                 <span
                                     class="duration-label">({{ getServiceDurationLabel($serviceType, $durationDays) }})</span>

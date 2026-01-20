@@ -266,7 +266,9 @@
                                                                     <span class="ms-2 text-warning">
                                                                         <i class="bi bi-lightning-fill"></i>
                                                                         Extra:
-                                                                        {{ $currencySymbol }}{{ number_format($extraKmPrice, 2) }}/km
+                                                                        <small
+                                                                            class="currency-symbol">{{ $currencySymbol }}</small>
+                                                                        {{ number_format($extraKmPrice, 2) }}/km
                                                                     </span>
                                                                 @endif
                                                             </p>
@@ -283,14 +285,16 @@
                                                 @if (!$isFixedRate)
                                                     <div class="price-row">
                                                         <span class="price-label">{{ $pricingLabel }}:</span>
-                                                        <span class="price-value">{{ $currencySymbol }}
+                                                        <span class="price-value"><small
+                                                                class="currency-symbol">{{ $currencySymbol }}</small>
                                                             {{ number_format($item['price'] ?? 0, 2) }}</span>
                                                     </div>
                                                 @endif
                                                 <div class="price-row total-row">
                                                     <span
                                                         class="price-label">{{ $isFixedRate ? $pricingLabel : 'Total' }}:</span>
-                                                    <span class="price-value item-total">{{ $currencySymbol }}
+                                                    <span class="price-value item-total"><small
+                                                            class="currency-symbol">{{ $currencySymbol }}</small>
                                                         {{ number_format($itemTotal, 2) }}</span>
                                                 </div>
                                             </div>
@@ -419,7 +423,8 @@
                                     <li>
                                         <strong>Subtotal</strong>
                                         <strong class="cart-subtotal">
-                                            {{ $currencySymbol }} {{ number_format($cartTotals['subtotal'] ?? 0, 2) }}
+                                            <small class="currency-symbol">{{ $currencySymbol }}</small>
+                                            {{ number_format($cartTotals['subtotal'] ?? 0, 2) }}
                                         </strong>
                                     </li>
 
@@ -429,7 +434,7 @@
                                             <div class="order-info">
                                                 <p>Additional Services</p>
                                                 <span class="addon-charges-amount">
-                                                    {{ $currencySymbol }}
+                                                    <small class="currency-symbol">{{ $currencySymbol }}</small>
                                                     {{ number_format($cartTotals['addon_charges'] ?? 0, 2) }}
                                                 </span>
                                             </div>
@@ -441,7 +446,7 @@
                                             <div class="order-info">
                                                 <p>Additional Kilometers</p>
                                                 <span class="extra-km-charges-amount">
-                                                    {{ $currencySymbol }}
+                                                    <small class="currency-symbol">{{ $currencySymbol }}</small>
                                                     {{ number_format($cartTotals['extra_km_charges'] ?? 0, 2) }}
                                                 </span>
                                             </div>
@@ -452,7 +457,8 @@
                                             Service Charges
                                             <div class="order-info">
                                                 <p>Processing Fee</p>
-                                                <span class="service-fee">{{ $currencySymbol }}
+                                                <span class="service-fee"><small
+                                                        class="currency-symbol">{{ $currencySymbol }}</small>
                                                     {{ number_format($cartTotals['service_fee'] ?? 0, 2) }}</span>
                                             </div>
                                         </li>
@@ -463,7 +469,8 @@
                                             <div class="order-info">
                                                 <p>Government Tax</p>
                                                 <span class="tax-amount">
-                                                    {{ $currencySymbol }} {{ number_format($cartTotals['tax'] ?? 0, 2) }}
+                                                    <small class="currency-symbol">{{ $currencySymbol }}</small>
+                                                    {{ number_format($cartTotals['tax'] ?? 0, 2) }}
                                                 </span>
                                             </div>
                                         </li>
@@ -474,7 +481,8 @@
                                             <div class="order-info">
                                                 <p>Value Added Tax</p>
                                                 <span class="vat-amount">
-                                                    {{ $currencySymbol }} {{ number_format($cartTotals['vat'] ?? 0, 2) }}
+                                                    <small class="currency-symbol">{{ $currencySymbol }}</small>
+                                                    {{ number_format($cartTotals['vat'] ?? 0, 2) }}
                                                 </span>
                                             </div>
                                         </li>
@@ -524,14 +532,16 @@
                                     @if (($cartTotals['coupon_discount'] ?? 0) > 0)
                                         <li class="discount-row">
                                             <strong class="text-success"><i class="bi bi-tag-fill"></i> Discount</strong>
-                                            <strong class="discount-amount text-success">-{{ $currencySymbol }}
+                                            <strong class="discount-amount text-success">-<small
+                                                    class="currency-symbol">{{ $currencySymbol }}</small>
                                                 {{ number_format($cartTotals['coupon_discount'] ?? 0, 2) }}</strong>
                                         </li>
                                     @endif
                                     <li>
                                         <strong>Total</strong>
                                         <strong class="cart-total">
-                                            {{ $currencySymbol }} {{ number_format($cartTotals['total'] ?? 0, 2) }}
+                                            <small class="currency-symbol">{{ $currencySymbol }}</small>
+                                            {{ number_format($cartTotals['total'] ?? 0, 2) }}
                                         </strong>
                                     </li>
                                 </ul>
@@ -581,6 +591,15 @@
 
 @push('styles')
     <style>
+        /* Currency Formatting */
+        .currency-symbol,
+        .currency-code {
+            font-size: 0.8em;
+            font-weight: normal;
+            opacity: 0.8;
+            margin-right: 0.25rem;
+        }
+
         /* Cart Item Card Layout */
         .cart-item-card {
             background: #fff;
@@ -1722,8 +1741,8 @@
                                         ${isSelected ? '<i class="bi bi-arrow-clockwise"></i> Update' : '<i class="bi bi-plus-lg"></i> Add'}
                                     </button>
                                     ${isSelected ? `<button class="btn-remove-addon-unified remove-addon-btn" data-addon-id="${addon.id}" data-cart-key="${cartKey}" title="Remove this addon">
-                                                                                                        <i class="bi bi-trash"></i> Remove
-                                                                                                    </button>` : ''}
+                                                                                                            <i class="bi bi-trash"></i> Remove
+                                                                                                        </button>` : ''}
                                 </div>
                             </div>
                         </div>
@@ -2615,8 +2634,8 @@
         }
 
         /* ==========================================
-                                                                                   Extra KM Purchase Section Styles
-                                                                                   ========================================== */
+                                                                                       Extra KM Purchase Section Styles
+                                                                                       ========================================== */
 
         /* Service type badge */
         .service-type-badge {

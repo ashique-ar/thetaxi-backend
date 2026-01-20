@@ -66,8 +66,11 @@
                                 $durationText = $pickup . ($dropoff && $dropoff !== $pickup ? ' → ' . $dropoff : '');
                                 $durationIcon = 'bi-lightning-charge';
                             } else {
+                                $pickup = $search->pickup_location ?? 'Pickup';
+                                $dropoff = $search->dropoff_location ?? '';
+                                $durationText = $pickup . ($dropoff && $dropoff !== $pickup ? ' → ' . $dropoff : '');
                                 // For rentals and others show number of days
-                                $durationText = $durationDays . ' Day' . ($durationDays !== 1 ? 's' : '');
+                                $durationText .= ' (' . $durationDays . ' Day' . ($durationDays !== 1 ? 's' : '') . ')';
                                 $durationIcon = 'bi-calendar-event';
                             }
                         @endphp
@@ -94,33 +97,6 @@
                             </div>
                         </div>
                         <div class="search-details">
-
-                            @if ($search->pickup_location)
-                                <span class="location-info">
-                                    <i class="bi bi-geo-alt"></i>
-                                    @if (in_array($serviceType, ['airport_transfers', 'ride_now']))
-                                        {{-- Show pickup/drop with times for transfers and ride now --}}
-                                        {{ $search->pickup_location }}
-                                        @if (!empty($search->from_time))
-                                            <small
-                                                class="ms-1">({{ \Carbon\Carbon::createFromFormat('H:i', $search->from_time)->format('h:i A') }})</small>
-                                        @endif
-
-                                        @if ($search->dropoff_location && $search->dropoff_location !== $search->pickup_location)
-                                            → {{ $search->dropoff_location }}
-                                            @if (!empty($search->to_time))
-                                                <small
-                                                    class="ms-1">({{ \Carbon\Carbon::createFromFormat('H:i', $search->to_time)->format('h:i A') }})</small>
-                                            @endif
-                                        @endif
-                                    @else
-                                        {{ $search->pickup_location }}
-                                        @if ($search->dropoff_location && $search->dropoff_location !== $search->pickup_location)
-                                            → {{ $search->dropoff_location }}
-                                        @endif
-                                    @endif
-                                </span>
-                            @endif
                             @if (isset($search->total_distance_km) && $search->total_distance_km > 0)
                                 <span class="distance-info">
                                     <i class="bi bi-signpost-2"></i>
@@ -758,6 +734,7 @@
         .cart-float-item {
             padding: 12px 0;
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            line-height: 1.5
         }
 
         .cart-float-item:last-child {
@@ -798,6 +775,20 @@
 
         .cart-breakdown>div span:first-child {
             opacity: 0.9;
+        }
+
+        /* ==================== CURRENCY FORMATTING ==================== */
+        .currency-symbol,
+        .currency-code {
+            font-size: 0.8em;
+            font-weight: normal;
+            opacity: 0.8;
+            margin-right: 0.25rem;
+        }
+
+        .cart-summary-float .currency-symbol {
+            font-size: 0.75em;
+            margin-right: 0.2rem;
         }
 
         /* ==================== RESPONSIVE ==================== */
@@ -1268,7 +1259,11 @@
                 },
                 error: function(xhr) {
                     console.error('Error removing from cart:', xhr);
-                    alert('Error removing item. Please try again.');
+                    let errorMessage = 'Error removing item. Please try again.';
+                    if (xhr.responseJSON && xhr.responseJSON.message) {
+                        errorMessage = xhr.responseJSON.message;
+                    }
+                    showErrorNotification(errorMessage);
                 }
             });
         }
@@ -1324,11 +1319,11 @@
             function getDurationLabel(serviceType, days) {
                 const fixedRateServices = ['ride_now', 'airport_transfers', 'point_to_point'];
                 if (fixedRateServices.includes(serviceType)) {
-                    if (serviceType === 'ride_now') return 'One-time trip';
+                    if (serviceType === 'ride_now') return 'Drop';
                     if (serviceType === 'airport_transfers') return 'Airport transfer';
                     return 'Trip';
                 }
-                return days === 1 ? '1 day' : `${days} days`;
+                return days === 1 ? '1 day Package' : `${days} days Package`;
             }
 
             // Helper function to check if service is fixed-rate
@@ -1352,11 +1347,12 @@
                 // Build pricing display based on service type
                 let pricingHtml = '';
                 if (fixedRate) {
-                    pricingHtml = `<span>${pricingLabel}: ${cartCurrencySymbol}${itemTotal.toFixed(2)}</span>`;
+                    pricingHtml =
+                        `<span>${pricingLabel}: <small class="currency-symbol">${cartCurrencySymbol}</small> ${itemTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>`;
                 } else {
                     pricingHtml = `
-                        <span>${pricingLabel}: ${cartCurrencySymbol}${price.toFixed(2)}</span>
-                        <strong>${cartCurrencySymbol}${itemTotal.toFixed(2)}</strong>
+                        <span>${pricingLabel}: <small class="currency-symbol">${cartCurrencySymbol}</small> ${price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                        <strong><small class="currency-symbol">${cartCurrencySymbol}</small> ${itemTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</strong>
                     `;
                 }
 
@@ -1365,7 +1361,7 @@
                             <div class="d-flex justify-content-between align-items-start mb-2">
                                 <div class="flex-grow-1">
                                     <strong>${item.vehicle_name || item.name || 'Vehicle Rental'}</strong>
-                                    <div class="small">${durationLabel}</div>
+                                    <small class="small bg-success py-1 px-2 rounded">${durationLabel}</small>
                                     <div class="small">${item.pickup_date || ''} to ${item.return_date || ''}</div>
                                 </div>
                                 <button type="button" class="btn btn-sm btn-link text-white p-0 ms-2" onclick="removeFromCart('${key}')">
@@ -1384,12 +1380,18 @@
             const finalTotal = cartTotals.total || total;
 
             // Update subtotal (base amount before additional charges)
-            $('#cartSubtotalPrice .amount').text(subtotal.toFixed(2));
+            $('#cartSubtotalPrice .amount').text(subtotal.toLocaleString('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }));
 
             // Update breakdown items if they exist in cartTotals
             const updateBreakdownItem = (selector, value) => {
                 if (value && parseFloat(value) > 0) {
-                    $(selector + ' .amount').text(parseFloat(value).toFixed(2));
+                    $(selector + ' .amount').text(parseFloat(value).toLocaleString('en-US', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                    }));
                     $(selector).show();
                 } else {
                     $(selector).hide();
@@ -1403,7 +1405,10 @@
             updateBreakdownItem('.cart-vat', cartTotals.vat || 0);
 
             // Update final total (should be subtotal + all charges)
-            $('#cartTotalPrice .amount').text(finalTotal.toFixed(2));
+            $('#cartTotalPrice .amount').text(finalTotal.toLocaleString('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }));
         }
 
         function showCartFloat() {
