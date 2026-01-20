@@ -363,8 +363,9 @@
                                                 <div class="extra-km-form" style="display: none;">
                                                     <div class="extra-km-rate-info mb-3">
                                                         <span class="rate-label">Rate per km:</span>
-                                                        <span class="rate-value">{{ $currencySymbol }}<span
-                                                                class="extra-km-rate">0.00</span></span>
+                                                        <span class="rate-value"><small
+                                                                class="currency-symbol">{{ $currencySymbol }}</small>
+                                                            <span class="extra-km-rate">0.00</span></span>
                                                     </div>
                                                     <div class="extra-km-input-group">
                                                         <label for="extra-km-input-{{ $key }}">Extra
@@ -383,7 +384,9 @@
                                                     </div>
                                                     <div class="extra-km-total mt-3">
                                                         <span class="total-label">Extra KM Cost:</span>
-                                                        <span class="total-value">{{ $currencySymbol }}<span
+                                                        <span class="total-value"><small
+                                                                class="currency-symbol">{{ $currencySymbol }}</small>
+                                                            <span
                                                                 class="extra-km-total-amount">{{ number_format($item['extra_km']['total_cost'] ?? 0, 2) }}</span></span>
                                                     </div>
                                                     <div class="extra-km-actions mt-3">
@@ -1323,6 +1326,23 @@
                 }, duration);
             }
 
+            // Error notification helper function
+            function showErrorNotification(message, duration = 4000) {
+                const alert = $(` 
+                    <div class="alert alert-danger alert-dismissible fade show" role="alert" style="position: fixed; top: 20px; right: 20px; z-index: 1100; min-width: 300px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+                        <i class="bi bi-exclamation-circle-fill me-2"></i>
+                        ${message}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                `);
+                $('body').append(alert);
+                setTimeout(function() {
+                    alert.fadeOut(300, function() {
+                        $(this).remove();
+                    });
+                }, duration);
+            }
+
             // Update cart totals from server
             function updateCartTotals() {
                 $.ajax({
@@ -1399,7 +1419,7 @@
                             showSuccessNotification(response.message ||
                                 'Item removed from cart successfully!', 3000);
                         } else {
-                            alert('Error: ' + response.message);
+                            showErrorNotification(response.message || 'Error removing item');
                             // Restore button on error
                             btn.prop('disabled', false);
                             btn.html(originalHtml);
@@ -1407,7 +1427,7 @@
                     },
                     error: function(xhr) {
                         console.error('Error removing item:', xhr);
-                        alert('Error removing item. Please try again.');
+                        showErrorNotification('Error removing item. Please try again.');
                         // Restore button on error
                         btn.prop('disabled', false);
                         btn.html(originalHtml);
@@ -1435,7 +1455,7 @@
                             }
                         },
                         error: function() {
-                            alert('Error clearing cart. Please try again.');
+                            showErrorNotification('Error clearing cart. Please try again.');
                         }
                     });
                 }
@@ -1741,8 +1761,8 @@
                                         ${isSelected ? '<i class="bi bi-arrow-clockwise"></i> Update' : '<i class="bi bi-plus-lg"></i> Add'}
                                     </button>
                                     ${isSelected ? `<button class="btn-remove-addon-unified remove-addon-btn" data-addon-id="${addon.id}" data-cart-key="${cartKey}" title="Remove this addon">
-                                                                                                            <i class="bi bi-trash"></i> Remove
-                                                                                                        </button>` : ''}
+                                                                                                                <i class="bi bi-trash"></i> Remove
+                                                                                                            </button>` : ''}
                                 </div>
                             </div>
                         </div>
@@ -1752,6 +1772,11 @@
 
                 container.html(grid);
                 updateSelectedCount(cartKey, selectedCount);
+
+                // Initialize card statuses and button disabled states
+                container.find('.unified-addon-card').each(function() {
+                    updateAddonCardStatus($(this));
+                });
             }
 
             function displayUnifiedAddonsErrorForItem(cartKey, message) {
@@ -1799,6 +1824,7 @@
                 const icon = badge.find('i');
                 const text = badge.find('.badge-text');
 
+                const originalQty = parseInt(card.find('.qty-input-unified').attr('data-original-qty') || 0);
                 if (qty > 0) {
                     card.removeClass('addon-not-selected').addClass('addon-selected');
                     badge.removeClass('badge-available').addClass('badge-selected');
@@ -1806,6 +1832,7 @@
                     text.text('SELECTED');
                     button.removeClass('btn-addon-add').addClass('btn-addon-update')
                         .html('<i class="bi bi-arrow-clockwise"></i> Update');
+                    button.prop('disabled', false);
                 } else {
                     card.removeClass('addon-selected').addClass('addon-not-selected');
                     badge.removeClass('badge-selected').addClass('badge-available');
@@ -1813,6 +1840,12 @@
                     text.text('AVAILABLE');
                     button.removeClass('btn-addon-update').addClass('btn-addon-add')
                         .html('<i class="bi bi-plus-lg"></i> Add');
+                    // Disable the add button if it's unchanged (original was 0) to prevent remove error
+                    if (originalQty === 0) {
+                        button.prop('disabled', true);
+                    } else {
+                        button.prop('disabled', false);
+                    }
                 }
             }
 
@@ -1859,7 +1892,8 @@
                                 // On success, reload to show updated prices and states
                                 location.reload();
                             } else {
-                                alert(response.message || 'Error updating addons');
+                                showErrorNotification(response.message ||
+                                    'Error updating addons');
                                 btn.prop('disabled', false).html(btn.hasClass(
                                         'btn-addon-update') ?
                                     '<i class="bi bi-arrow-clockwise"></i> Update' :
@@ -1868,7 +1902,7 @@
                         },
                         error: function(xhr) {
                             const msg = xhr.responseJSON?.message || 'Error updating addons';
-                            alert(msg);
+                            showErrorNotification(msg);
                             btn.prop('disabled', false).html(btn.hasClass('btn-addon-update') ?
                                 '<i class="bi bi-arrow-clockwise"></i> Update' :
                                 '<i class="bi bi-plus-lg"></i> Add');
@@ -1876,7 +1910,15 @@
                     });
                 } else {
                     // Fallback to single-item behavior
+                    const originalQty = parseInt(btn.closest('.unified-addon-card').find(
+                        '.qty-input-unified').attr('data-original-qty') || 0);
                     if (qty === 0) {
+                        if (originalQty === 0) {
+                            // Nothing to do - disable the button to prevent unnecessary remove
+                            btn.prop('disabled', true);
+                            showErrorNotification('Quantity is zero. Change quantity to add this addon.');
+                            return;
+                        }
                         removeAddonFromCart(cartKey, addonId);
                     } else {
                         addOrUpdateAddonToCart(cartKey, addonId, qty);
@@ -1898,13 +1940,13 @@
                         if (response.success) {
                             location.reload();
                         } else {
-                            alert(response.message || 'Error updating addon');
+                            showErrorNotification(response.message || 'Error updating addon');
                         }
                     },
                     error: function(xhr) {
                         console.error('Error:', xhr);
                         const errorMsg = xhr.responseJSON?.message || 'Error updating addon';
-                        alert(errorMsg);
+                        showErrorNotification(errorMsg);
                     }
                 });
             }
@@ -1923,11 +1965,12 @@
                         if (response.success) {
                             location.reload();
                         } else {
-                            alert(response.message || 'Error removing addon');
+                            showErrorNotification(response.message || 'Error removing addon');
                         }
                     },
-                    error: function() {
-                        alert('Error removing addon');
+                    error: function(xhr) {
+                        const msg = xhr.responseJSON?.message || 'Error removing addon';
+                        showErrorNotification(msg);
                     }
                 });
             }
@@ -1961,7 +2004,7 @@
                 });
 
                 if (updates.length === 0) {
-                    alert('No addon changes detected.');
+                    showErrorNotification('No addon changes detected.');
                     return;
                 }
 
@@ -1982,12 +2025,13 @@
                                 location.reload();
                             }, 600);
                         } else {
-                            alert(response.message || 'Error updating addons');
+                            showErrorNotification(response.message || 'Error updating addons');
                             btn.prop('disabled', false).html('Update All Addons');
                         }
                     },
                     error: function(xhr) {
-                        alert(xhr.responseJSON?.message || 'Error updating addons');
+                        showErrorNotification(xhr.responseJSON?.message ||
+                            'Error updating addons');
                         btn.prop('disabled', false).html('Update All Addons');
                     }
                 });
@@ -2055,8 +2099,11 @@
 
                         // If rate info present, update rate display
                         if (rateObj && rateObj.rate) {
-                            const rate = rateObj.rate;
-                            container.find('.extra-km-rate').text(parseFloat(rate).toFixed(2));
+                            const rate = parseFloat(rateObj.rate);
+                            container.find('.extra-km-rate').text(rate.toLocaleString('en-US', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2
+                            }));
                             container.data('rate', rate);
                         }
 
@@ -2064,8 +2111,16 @@
                         if (currentExtraKm && currentExtraKm.km > 0) {
                             container.find('.extra-km-input').val(currentExtraKm.km);
                             container.find('.extra-km-total-amount').text(parseFloat(currentExtraKm
-                                .total_cost).toFixed(2));
+                                .total_cost).toLocaleString('en-US', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2
+                            }));
                             container.find('.remove-extra-km').show();
+                            // Enable apply button since there is a value
+                            container.find('.apply-extra-km').prop('disabled', false);
+                        } else {
+                            // Ensure apply button is disabled for empty values
+                            container.find('.apply-extra-km').prop('disabled', true);
                         }
 
                         // Show the form for slab-priced items
@@ -2124,7 +2179,18 @@
                 const rate = parseFloat(container.data('rate')) || 0;
                 const total = km * rate;
 
-                container.find('.extra-km-total-amount').text(total.toFixed(2));
+                container.find('.extra-km-total-amount').text(total.toLocaleString('en-US', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                }));
+
+                // Disable apply button when km is zero
+                const applyBtn = container.find('.apply-extra-km');
+                if (km === 0) {
+                    applyBtn.prop('disabled', true);
+                } else {
+                    applyBtn.prop('disabled', false);
+                }
             });
 
             // Apply extra km
@@ -2133,6 +2199,10 @@
                 const km = parseInt($(`.extra-km-input[data-cart-key="${cartKey}"]`).val()) || 0;
 
                 const btn = $(this);
+                if (km === 0) {
+                    showErrorNotification('Please select the number of extra kilometers to apply.');
+                    return;
+                }
                 btn.prop('disabled', true).html('<i class="bi bi-hourglass-split"></i> Applying...');
 
                 $.ajax({
@@ -2148,7 +2218,8 @@
                             showSuccessNotification(response.message, 3000);
                             location.reload();
                         } else {
-                            alert(response.message || 'Error applying extra km');
+                            showErrorNotification(response.message ||
+                            'Error applying extra km');
                             btn.prop('disabled', false).html(
                                 '<i class="bi bi-check-lg"></i> Apply Extra KM');
                         }
@@ -2156,7 +2227,7 @@
                     error: function(xhr) {
                         console.error('Error:', xhr);
                         const errorMsg = xhr.responseJSON?.message || 'Error applying extra km';
-                        alert(errorMsg);
+                        showErrorNotification(errorMsg);
                         btn.prop('disabled', false).html(
                             '<i class="bi bi-check-lg"></i> Apply Extra KM');
                     }
@@ -2186,13 +2257,14 @@
                             showSuccessNotification('Extra km removed', 3000);
                             location.reload();
                         } else {
-                            alert(response.message || 'Error removing extra km');
+                            showErrorNotification(response.message ||
+                            'Error removing extra km');
                             btn.prop('disabled', false);
                         }
                     },
                     error: function(xhr) {
                         console.error('Error:', xhr);
-                        alert('Error removing extra km');
+                        showErrorNotification('Error removing extra km');
                         btn.prop('disabled', false);
                     }
                 });
@@ -2499,6 +2571,12 @@
             gap: 4px;
         }
 
+        .btn-apply-addon-unified:disabled,
+        .apply-extra-km:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
         .btn-addon-add {
             background-color: #007bff;
             color: white;
@@ -2634,8 +2712,8 @@
         }
 
         /* ==========================================
-                                                                                       Extra KM Purchase Section Styles
-                                                                                       ========================================== */
+                                                                                           Extra KM Purchase Section Styles
+                                                                                           ========================================== */
 
         /* Service type badge */
         .service-type-badge {
