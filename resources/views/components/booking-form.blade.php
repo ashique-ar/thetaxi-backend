@@ -1,4 +1,7 @@
 @php
+    // Ensure $search exists to avoid undefined variable when included without search context
+    $search = $search ?? null;
+
     // Helper function to safely get search property
     $getSearchProp = function ($prop, $default = null) use ($search) {
         // First check old() helper for form resubmissions
