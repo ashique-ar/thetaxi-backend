@@ -2248,8 +2248,6 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 18px;
-            padding-bottom: 12px;
             border-bottom: 1px solid #ddd;
         }
 
