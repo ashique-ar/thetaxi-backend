@@ -1385,6 +1385,57 @@
                 const parts = dateString.split('/');
                 return new Date(parts[2], parts[1] - 1, parts[0]);
             }
+
+            // Format Date object to DD/MM/YYYY
+            function formatDate(date) {
+                const day = String(date.getDate()).padStart(2, '0');
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const year = date.getFullYear();
+                return `${day}/${month}/${year}`;
+            }
+
+            // Auto-update dropoff_date when pickup_date changes in day_rental form
+            $('#day_rental-form .custom-datepicker[name="pickup_date"]').on('changeDate change', function() {
+                const pickupDateStr = $(this).val();
+                if (!pickupDateStr || !isValidDDMMYYYY(pickupDateStr)) return;
+
+                const pickupDate = parseDate(pickupDateStr);
+                const dropoffInput = $('#day_rental-form .custom-datepicker[name="dropoff_date"]');
+                const dropoffDateStr = dropoffInput.val();
+
+                // If dropoff_date is empty or is before/equal to pickup_date, set it to pickup_date + 1 day
+                if (!dropoffDateStr || !isValidDDMMYYYY(dropoffDateStr)) {
+                    const newDropoffDate = new Date(pickupDate);
+                    newDropoffDate.setDate(newDropoffDate.getDate() + 1);
+                    dropoffInput.val(formatDate(newDropoffDate));
+                    dropoffInput.datepicker('update');
+                } else {
+                    const dropoffDate = parseDate(dropoffDateStr);
+                    if (dropoffDate <= pickupDate) {
+                        const newDropoffDate = new Date(pickupDate);
+                        newDropoffDate.setDate(newDropoffDate.getDate() + 1);
+                        dropoffInput.val(formatDate(newDropoffDate));
+                        dropoffInput.datepicker('update');
+                    }
+                }
+
+                // Update the minimum date for dropoff datepicker
+                const minDropoffDate = new Date(pickupDate);
+                minDropoffDate.setDate(minDropoffDate.getDate() + 1);
+                dropoffInput.datepicker('setStartDate', minDropoffDate);
+            });
+
+            // Initialize dropoff_date min date based on current pickup_date value
+            (function initDropoffMinDate() {
+                const pickupDateStr = $('#day_rental-form .custom-datepicker[name="pickup_date"]').val();
+                if (pickupDateStr && isValidDDMMYYYY(pickupDateStr)) {
+                    const pickupDate = parseDate(pickupDateStr);
+                    const minDropoffDate = new Date(pickupDate);
+                    minDropoffDate.setDate(minDropoffDate.getDate() + 1);
+                    $('#day_rental-form .custom-datepicker[name="dropoff_date"]').datepicker('setStartDate',
+                        minDropoffDate);
+                }
+            })();
         });
 
         // Debug coordinate values on page load and form interactions
