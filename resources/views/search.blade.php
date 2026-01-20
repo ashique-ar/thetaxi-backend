@@ -549,7 +549,7 @@
             position: absolute;
             top: 12px;
             left: 12px;
-            padding: 6px 14px;
+            padding: 0 10px;
             border-radius: 20px;
             font-size: 11px;
             font-weight: 700;
