@@ -128,6 +128,7 @@ class BookingController extends Controller
                 $params['to_time'] = $requestData['time'] ?? '00:00';
                 $params['pickup_location'] = $this->formatLocation($requestData, 'pickup');
                 $params['dropoff_location'] = $this->formatLocation($requestData, 'dropoff');
+                $params['transfer_type'] = $requestData['transfer_type'] ?? 'from-airport';
 
                 // Log mapping for airport transfers to help debug address field mismatches
                 Log::info('Airport search payload mapping', [
@@ -137,6 +138,7 @@ class BookingController extends Controller
                     'dropoff' => $requestData['dropoff'] ?? null,
                     'pickup_lat' => $requestData['pickup_lat'] ?? null,
                     'dropoff_lat' => $requestData['dropoff_lat'] ?? null,
+                    'transfer_type' => $requestData['transfer_type'] ?? null,
                 ]);
 
                 break;
@@ -406,7 +408,8 @@ class BookingController extends Controller
                     'package_type' => $searchParams['package_type'] ?? null,
                     'package_hours' => $searchParams['package_hours'] ?? null,
                     'contract_type' => $searchParams['contract_type'] ?? null,
-                    'service_package_id' => $searchParams['service_package_id'] ?? $searchParams['package_id'] ?? null
+                    'service_package_id' => $searchParams['service_package_id'] ?? $searchParams['package_id'] ?? null,
+                    'transfer_type' => $searchParams['transfer_type'] ?? null,
 
                 ]
             );

@@ -2417,9 +2417,9 @@
             display: inline-flex;
             align-items: center;
             gap: 4px;
-            padding: 4px 10px;
+            padding: 0 10px;
             border-radius: 20px;
-            font-size: 11px;
+            font-size: 10px;
             font-weight: 700;
             white-space: nowrap;
         }
@@ -2444,8 +2444,8 @@
         }
 
         .addon-card-img-unified {
-            width: 60px;
-            height: 60px;
+            width: 20px;
+            height: 20px;
             border-radius: 8px;
             object-fit: cover;
             flex-shrink: 0;

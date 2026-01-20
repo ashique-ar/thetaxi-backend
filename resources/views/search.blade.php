@@ -49,25 +49,35 @@
                             $packageHours = $search->package_hours ?? null;
                             // $isPackageService = in_array($serviceType, ['wedding_hire', 'airport_transfers', 'daily_rental',]);
 
+                            // Helper function to extract primary location name (first part before comma)
+                            $getPrimaryLocationName = function ($location) {
+                                if (empty($location)) {
+                                    return '';
+                                }
+                                // Split by comma and take first part
+                                $parts = explode(',', $location);
+                                return trim($parts[0]);
+                            };
+
                             // Format duration based on service type
                             if ($serviceType === 'wedding_hire' && $packageHours) {
                                 $durationText = $packageHours . ' Hour Package';
                                 $durationIcon = 'bi-clock';
                             } elseif ($serviceType === 'airport_transfers') {
                                 // Show pickup → dropoff instead of generic "One-way Transfer"
-                                $pickup = $search->pickup_location ?? 'Pickup';
-                                $dropoff = $search->dropoff_location ?? '';
+                                $pickup = $getPrimaryLocationName($search->pickup_location ?? 'Pickup');
+                                $dropoff = $getPrimaryLocationName($search->dropoff_location ?? '');
                                 $durationText = $pickup . ($dropoff && $dropoff !== $pickup ? ' → ' . $dropoff : '');
                                 $durationIcon = 'bi-airplane';
                             } elseif ($serviceType === 'ride_now') {
                                 // Show pickup → dropoff for Ride Now as well
-                                $pickup = $search->pickup_location ?? 'Pickup';
-                                $dropoff = $search->dropoff_location ?? '';
+                                $pickup = $getPrimaryLocationName($search->pickup_location ?? 'Pickup');
+                                $dropoff = $getPrimaryLocationName($search->dropoff_location ?? '');
                                 $durationText = $pickup . ($dropoff && $dropoff !== $pickup ? ' → ' . $dropoff : '');
                                 $durationIcon = 'bi-lightning-charge';
                             } else {
-                                $pickup = $search->pickup_location ?? 'Pickup';
-                                $dropoff = $search->dropoff_location ?? '';
+                                $pickup = $getPrimaryLocationName($search->pickup_location ?? 'Pickup');
+                                $dropoff = $getPrimaryLocationName($search->dropoff_location ?? '');
                                 $durationText = $pickup . ($dropoff && $dropoff !== $pickup ? ' → ' . $dropoff : '');
                                 // For rentals and others show number of days
                                 $durationText .= ' (' . $durationDays . ' Day' . ($durationDays !== 1 ? 's' : '') . ')';

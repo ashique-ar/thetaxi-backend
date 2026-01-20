@@ -1018,9 +1018,13 @@
             toLocationInput.disabled = false;
             toAirportSelect.disabled = true;
 
-            // Set default values
-            fromAirportSelect.value = defaultAirport;
-            toLocationInput.value = "Colombo, Sri Lanka";
+            // Set default values ONLY if empty
+            if (!fromAirportSelect.value || fromAirportSelect.value === '') {
+                fromAirportSelect.value = defaultAirport;
+            }
+            if (!toLocationInput.value || toLocationInput.value.trim() === '') {
+                toLocationInput.value = "Colombo, Sri Lanka";
+            }
 
             // Set coordinates with validation (only if not already set)
             if (defaultAirportCoords && defaultAirportCoords.lat && defaultAirportCoords.lng) {
@@ -1081,9 +1085,13 @@
             toAirportSelect.disabled = false;
             toLocationInput.disabled = true;
 
-            // Set default values
-            fromLocationInput.value = "Colombo, Sri Lanka";
-            toAirportSelect.value = defaultAirport;
+            // Set default values ONLY if empty
+            if (!fromLocationInput.value || fromLocationInput.value.trim() === '') {
+                fromLocationInput.value = "Colombo, Sri Lanka";
+            }
+            if (!toAirportSelect.value || toAirportSelect.value === '') {
+                toAirportSelect.value = defaultAirport;
+            }
 
             // Set coordinates with validation (only if not already set)
             if (colomboCoords && colomboCoords.lat && colomboCoords.lng) {
