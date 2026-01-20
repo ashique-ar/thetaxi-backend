@@ -782,11 +782,31 @@ class CartService
             $query->where('service_type_id', $serviceTypeId)->orWhereNull('service_type_id');
         }
 
-        return $query->whereNull('deleted_at') // Only active (not soft deleted)
+        // Convert addon amounts to the user's selected currency before returning
+        $selectedCurrency = $this->currencyService->getSelectedCurrency();
+
+        $addons = $query->whereNull('deleted_at') // Only active (not soft deleted)
             ->select('id', 'name', 'description', 'thumbnail', 'amount', 'rate_type', 'min_qty', 'max_qty')
             ->orderBy('name')
             ->get()
-            ->toArray();
+            ->map(function ($addon) use ($selectedCurrency) {
+                $amountLkr = (float) ($addon->amount ?? 0);
+                $converted = $this->currencyService->convertFromLKR($amountLkr, $selectedCurrency);
+                return [
+                    'id' => $addon->id,
+                    'name' => $addon->name,
+                    'description' => $addon->description,
+                    'thumbnail' => $addon->thumbnail,
+                    'amount' => (float) $converted,
+                    'amount_lkr' => $amountLkr,
+                    'rate_type' => $addon->rate_type,
+                    'min_qty' => $addon->min_qty,
+                    'max_qty' => $addon->max_qty,
+                    'currency' => $selectedCurrency
+                ];
+            })->toArray();
+
+        return $addons;
     }
 
     /**

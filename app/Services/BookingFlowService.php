@@ -818,15 +818,20 @@ class BookingFlowService
             ->take($perPage)
             ->get();
 
-        $data = $addons->map(function ($addon) {
+        $selectedCurrency = $this->currencyService->getSelectedCurrency();
+
+        $data = $addons->map(function ($addon) use ($selectedCurrency) {
+            $priceLkr = (float) ($addon->amount ?? 0);
+            $converted = $this->currencyService->convertFromLKR($priceLkr, $selectedCurrency);
             return [
                 'id' => $addon->id,
                 'name' => $addon->name,
                 'description' => $addon->description,
                 'category' => $addon->category,
                 'billing_type' => $addon->billing_type, // 'fixed', 'per_day', 'per_hour', 'percentage'
-                'price' => $addon->amount,
-                'original_price' => $addon->amount, // Store original for custom pricing comparison
+                'price' => (float) $converted,
+                'original_price' => (float) $priceLkr, // original LKR for comparison
+                'currency' => $selectedCurrency,
                 'is_required' => $addon->is_required ?? false,
                 'max_quantity' => $addon->max_quantity ?? 1,
                 'dependencies' => $addon->dependencies ?? [],

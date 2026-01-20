@@ -1746,8 +1746,8 @@
                                 <h6 class="addon-title-unified">${addon.name}</h6>
                                 <small class="addon-desc-unified">${addon.description || 'Service'}</small>
                                 <div class="addon-price-unified">
-                                    <strong>${parseFloat(addon.amount).toFixed(2)}</strong>
-                                    <span>${addon.rate_type === 'percentage' ? '%/day' : 'LKR/one-time'}</span>
+                                    <strong><small class="currency-symbol">${getCurrencySymbol()}</small> ${parseFloat(addon.amount).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</strong>
+                                    <span>${addon.rate_type === 'percentage' ? '%/day' : `${getCurrencySymbol()}/one-time`}</span>
                                 </div>
                             </div>
                             <div class="addon-controls-unified">
@@ -1761,8 +1761,8 @@
                                         ${isSelected ? '<i class="bi bi-arrow-clockwise"></i> Update' : '<i class="bi bi-plus-lg"></i> Add'}
                                     </button>
                                     ${isSelected ? `<button class="btn-remove-addon-unified remove-addon-btn" data-addon-id="${addon.id}" data-cart-key="${cartKey}" title="Remove this addon">
-                                                                                                                <i class="bi bi-trash"></i> Remove
-                                                                                                            </button>` : ''}
+                                                                                                                    <i class="bi bi-trash"></i> Remove
+                                                                                                                </button>` : ''}
                                 </div>
                             </div>
                         </div>
@@ -2219,7 +2219,7 @@
                             location.reload();
                         } else {
                             showErrorNotification(response.message ||
-                            'Error applying extra km');
+                                'Error applying extra km');
                             btn.prop('disabled', false).html(
                                 '<i class="bi bi-check-lg"></i> Apply Extra KM');
                         }
@@ -2258,7 +2258,7 @@
                             location.reload();
                         } else {
                             showErrorNotification(response.message ||
-                            'Error removing extra km');
+                                'Error removing extra km');
                             btn.prop('disabled', false);
                         }
                     },
@@ -2712,8 +2712,8 @@
         }
 
         /* ==========================================
-                                                                                           Extra KM Purchase Section Styles
-                                                                                           ========================================== */
+                                                                                               Extra KM Purchase Section Styles
+                                                                                               ========================================== */
 
         /* Service type badge */
         .service-type-badge {

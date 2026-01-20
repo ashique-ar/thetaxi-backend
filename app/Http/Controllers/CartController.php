@@ -935,6 +935,15 @@ class CartController extends Controller
                 }
             }
 
+            // Convert any stored calculated amounts from LKR to selected currency for frontend display
+            foreach ($addonsArray as &$a) {
+                if (isset($a['calculated_amount'])) {
+                    $a['calculated_amount_lkr'] = (float) $a['calculated_amount'];
+                    $a['calculated_amount'] = convertPrice((float) $a['calculated_amount']);
+                    $a['currency'] = getSelectedCurrency();
+                }
+            }
+
             return response()->json([
                 'success' => true,
                 'data' => $addonsArray,
