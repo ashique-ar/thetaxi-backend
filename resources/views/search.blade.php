@@ -19,7 +19,7 @@
     </div>
 
     <!-- Booking Form Section -->
-    <div class="filter-wrapper hotel mb-40">
+    <div class="filter-wrapper text-center hotel mb-40">
         <div class="container">
             @include('components.booking-form', ['search' => $search])
         </div>
@@ -138,7 +138,7 @@
                                     <i class="bi bi-speedometer2"></i>
                                     Max KM:
                                     {{ $search->max_km_per_day ? $search->max_km_per_day . ' km/day' : '' }}{{ $search->max_km_per_day && $search->max_km_per_package ? ' / ' : '' }}{{ $search->max_km_per_package ? $search->max_km_per_package . ' km total' : '' }}
-                                    <br><small class="text-white-75">Purchase extra km in cart after adding vehicle</small>
+                                    <br><small class="text-white">Purchase extra km in cart after adding vehicle</small>
                                 </span>
                             @endif
                         </div>
@@ -234,11 +234,45 @@
                 <!-- Cart items will be dynamically added here -->
             </div>
             <div class="cart-float-footer">
-                <div class="cart-total mb-2">
-                    <span>Total:</span>
-                    <strong id="cartTotalPrice">{{ getCurrencySymbol() }} 0.00</strong>
+                <div class="cart-breakdown">
+                    <div class="cart-subtotal mb-2">
+                        <span>Subtotal:</span>
+                        <span id="cartSubtotalPrice"><span class="currency-symbol">{{ getCurrencySymbol() }}</span> <span
+                                class="amount">0.00</span></span>
+                    </div>
+                    <div class="cart-addon-charges mb-1" style="display: none;">
+                        <span>Addon Charges:</span>
+                        <span id="cartAddonCharges"><span class="currency-symbol">{{ getCurrencySymbol() }}</span> <span
+                                class="amount">0.00</span></span>
+                    </div>
+                    <div class="cart-extra-km-charges mb-1" style="display: none;">
+                        <span>Extra KM Charges:</span>
+                        <span id="cartExtraKmCharges"><span class="currency-symbol">{{ getCurrencySymbol() }}</span> <span
+                                class="amount">0.00</span></span>
+                    </div>
+                    <div class="cart-service-fee mb-1" style="display: none;">
+                        <span>Service Fee:</span>
+                        <span id="cartServiceFee"><span class="currency-symbol">{{ getCurrencySymbol() }}</span> <span
+                                class="amount">0.00</span></span>
+                    </div>
+                    <div class="cart-tax mb-1" style="display: none;">
+                        <span>Tax:</span>
+                        <span id="cartTax"><span class="currency-symbol">{{ getCurrencySymbol() }}</span> <span
+                                class="amount">0.00</span></span>
+                    </div>
+                    <div class="cart-vat mb-1" style="display: none;">
+                        <span>VAT:</span>
+                        <span id="cartVat"><span class="currency-symbol">{{ getCurrencySymbol() }}</span> <span
+                                class="amount">0.00</span></span>
+                    </div>
+                    <div class="cart-total mb-2 mt-2"
+                        style="border-top: 1px solid rgba(255,255,255,0.2); padding-top: 8px;">
+                        <span><strong>Total:</strong></span>
+                        <strong id="cartTotalPrice"><span class="currency-symbol">{{ getCurrencySymbol() }}</span> <span
+                                class="amount">0.00</span></strong>
+                    </div>
                 </div>
-                <small class="text-white-75 d-block mb-2">Add extras & purchase extra km in cart</small>
+                <small class="text-white d-block mb-2">Add extras & purchase extra km in cart</small>
                 <a href="{{ route('cart') }}" class="btn btn-light w-100">
                     <i class="bi bi-cart-check"></i> View Cart & Checkout
                 </a>
@@ -746,6 +780,24 @@
         .cart-total strong {
             font-size: 20px;
             font-weight: 800;
+        }
+
+        .currency-symbol {
+            font-weight: 400 !important;
+            opacity: 0.9;
+        }
+
+        .cart-breakdown>div {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: white;
+            font-size: 14px;
+            margin-bottom: 4px;
+        }
+
+        .cart-breakdown>div span:first-child {
+            opacity: 0.9;
         }
 
         /* ==================== RESPONSIVE ==================== */
@@ -1256,6 +1308,34 @@
 
             $cartItems.empty();
 
+            // Helper function to get pricing label based on service type
+            function getPricingLabel(serviceType) {
+                const labels = {
+                    'ride_now': 'Rate',
+                    'airport_transfers': 'Transfer Rate',
+                    'point_to_point': 'Trip Rate',
+                    'corporate': 'Per Day',
+                    'day_rental': 'Per Day'
+                };
+                return labels[serviceType] || 'Rate';
+            }
+
+            // Helper function to get duration label based on service type
+            function getDurationLabel(serviceType, days) {
+                const fixedRateServices = ['ride_now', 'airport_transfers', 'point_to_point'];
+                if (fixedRateServices.includes(serviceType)) {
+                    if (serviceType === 'ride_now') return 'One-time trip';
+                    if (serviceType === 'airport_transfers') return 'Airport transfer';
+                    return 'Trip';
+                }
+                return days === 1 ? '1 day' : `${days} days`;
+            }
+
+            // Helper function to check if service is fixed-rate
+            function isFixedRate(serviceType) {
+                return ['ride_now', 'airport_transfers', 'point_to_point'].includes(serviceType);
+            }
+
             let total = 0;
             Object.keys(cart).forEach((key, index) => {
                 const item = cart[key];
@@ -1264,12 +1344,28 @@
                 const itemTotal = price * days;
                 total += itemTotal;
 
+                const serviceType = item.service_type || '';
+                const pricingLabel = getPricingLabel(serviceType);
+                const durationLabel = getDurationLabel(serviceType, days);
+                const fixedRate = isFixedRate(serviceType);
+
+                // Build pricing display based on service type
+                let pricingHtml = '';
+                if (fixedRate) {
+                    pricingHtml = `<span>${pricingLabel}: ${cartCurrencySymbol}${itemTotal.toFixed(2)}</span>`;
+                } else {
+                    pricingHtml = `
+                        <span>${pricingLabel}: ${cartCurrencySymbol}${price.toFixed(2)}</span>
+                        <strong>${cartCurrencySymbol}${itemTotal.toFixed(2)}</strong>
+                    `;
+                }
+
                 $cartItems.append(`
                         <div class="cart-float-item">
                             <div class="d-flex justify-content-between align-items-start mb-2">
                                 <div class="flex-grow-1">
                                     <strong>${item.vehicle_name || item.name || 'Vehicle Rental'}</strong>
-                                    <div class="small">${days} day(s)</div>
+                                    <div class="small">${durationLabel}</div>
                                     <div class="small">${item.pickup_date || ''} to ${item.return_date || ''}</div>
                                 </div>
                                 <button type="button" class="btn btn-sm btn-link text-white p-0 ms-2" onclick="removeFromCart('${key}')">
@@ -1277,16 +1373,37 @@
                                 </button>
                             </div>
                             <div class="d-flex justify-content-between">
-                                <span>Per day: ${cartCurrencySymbol}${price.toFixed(2)}</span>
-                                <strong>${cartCurrencySymbol}${itemTotal.toFixed(2)}</strong>
+                                ${pricingHtml}
                             </div>
                         </div>
                     `);
             });
 
-            // Use server-calculated total if available, otherwise use client-calculated total
-            const displayTotal = cartTotals.total || total;
-            $('#cartTotalPrice').text(cartCurrencySymbol + ' ' + displayTotal.toFixed(2));
+            // Use server-calculated subtotal if available, otherwise use client-calculated total as fallback
+            const subtotal = cartTotals.subtotal || total;
+            const finalTotal = cartTotals.total || total;
+
+            // Update subtotal (base amount before additional charges)
+            $('#cartSubtotalPrice .amount').text(subtotal.toFixed(2));
+
+            // Update breakdown items if they exist in cartTotals
+            const updateBreakdownItem = (selector, value) => {
+                if (value && parseFloat(value) > 0) {
+                    $(selector + ' .amount').text(parseFloat(value).toFixed(2));
+                    $(selector).show();
+                } else {
+                    $(selector).hide();
+                }
+            };
+
+            updateBreakdownItem('.cart-addon-charges', cartTotals.addon_charges || 0);
+            updateBreakdownItem('.cart-extra-km-charges', cartTotals.extra_km_charges || 0);
+            updateBreakdownItem('.cart-service-fee', cartTotals.service_fee || 0);
+            updateBreakdownItem('.cart-tax', cartTotals.tax || 0);
+            updateBreakdownItem('.cart-vat', cartTotals.vat || 0);
+
+            // Update final total (should be subtotal + all charges)
+            $('#cartTotalPrice .amount').text(finalTotal.toFixed(2));
         }
 
         function showCartFloat() {

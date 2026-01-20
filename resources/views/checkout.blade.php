@@ -23,7 +23,7 @@
     <!-- End Breadcrumb section -->
 
     <!-- Booking Form Section -->
-    <div class="filter-wrapper hotel mb-40">
+    <div class="filter-wrapper text-center hotel mb-40">
         <div class="container">
             @include('components.booking-form')
         </div>
@@ -406,10 +406,29 @@
                                                                 </div>
                                                                 <div class="content-and-quantity">
                                                                     <div class="content">
-                                                                        <span>{{ $currencySymbol }}
-                                                                            {{ number_format($item['price'] ?? 0, 2) }}/day
-                                                                            × {{ $calculatedDays }}
-                                                                            day{{ $calculatedDays !== 1 ? 's' : '' }}</span>
+                                                                        @php
+                                                                            $serviceType =
+                                                                                $item['service_type'] ?? null;
+                                                                            $isFixedRate = isServiceFixedRate(
+                                                                                $serviceType,
+                                                                            );
+                                                                            $pricingLabel = getServicePricingLabel(
+                                                                                $serviceType,
+                                                                            );
+                                                                            $durationLabel = getServiceDurationLabel(
+                                                                                $serviceType,
+                                                                                $calculatedDays,
+                                                                            );
+                                                                        @endphp
+                                                                        @if ($isFixedRate)
+                                                                            <span>{{ $pricingLabel }}:
+                                                                                {{ $currencySymbol }}
+                                                                                {{ number_format($itemTotal, 2) }}</span>
+                                                                        @else
+                                                                            <span>{{ $currencySymbol }}
+                                                                                {{ number_format($item['price'] ?? 0, 2) }}/day
+                                                                                × {{ $durationLabel }}</span>
+                                                                        @endif
                                                                         <h6>
                                                                             <a
                                                                                 href="#">{{ $item['name'] ?? '' }}</a>

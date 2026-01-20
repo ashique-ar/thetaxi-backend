@@ -8,7 +8,7 @@ if (!function_exists('getUserfromReq')) {
     {
         $primaryUser = auth()->user();
         $user = auth()->user();
-        
+
         return [
             'error' => false,
             'user' => $user,
@@ -74,19 +74,19 @@ if (!function_exists('s3_asset')) {
         // CRITICAL FIX: Build S3 URL directly without calling Storage::url() every time
         // Cache the URL for 24 hours to avoid 200ms+ overhead per call
         $cacheKey = 'asset_url_' . md5($path);
-        
-        return Cache::remember($cacheKey, 86400, function() use ($path) {
+
+        return Cache::remember($cacheKey, 86400, function () use ($path) {
             try {
                 // Build S3 URL directly using config
                 $bucket = config('filesystems.disks.s3.bucket');
                 $region = config('filesystems.disks.s3.region');
                 $url = config('filesystems.disks.s3.url');
-                
+
                 // Use environment-configured URL if available
                 if ($url) {
                     return rtrim($url, '/') . '/' . ltrim($path, '/');
                 }
-                
+
                 // Otherwise build standard S3 URL
                 return "https://{$bucket}.s3.{$region}.amazonaws.com/" . ltrim($path, '/');
             } catch (\Exception $e) {
@@ -109,5 +109,71 @@ if (!function_exists('static_asset')) {
     function static_asset($path, $secure = null)
     {
         return app('url')->asset('public/' . $path, $secure);
+    }
+}
+
+/**
+ * Get pricing label based on service type
+ * 
+ * @param string|null $serviceType The service type code
+ * @return string The appropriate pricing label
+ */
+if (!function_exists('getServicePricingLabel')) {
+    function getServicePricingLabel(?string $serviceType): string
+    {
+        return match ($serviceType) {
+            'ride_now' => 'Rate',
+            'airport_transfers' => 'Transfer Rate',
+            'point_to_point' => 'Trip Rate',
+            'corporate' => 'Per Day',
+            'day_rental' => 'Per Day',
+            default => 'Rate',
+        };
+    }
+}
+
+/**
+ * Get duration label based on service type
+ * 
+ * @param string|null $serviceType The service type code
+ * @param int $days Number of days/duration
+ * @return string The appropriate duration label
+ */
+if (!function_exists('getServiceDurationLabel')) {
+    function getServiceDurationLabel(?string $serviceType, int $days = 1): string
+    {
+        return match ($serviceType) {
+            'ride_now' => 'One-time trip',
+            'airport_transfers' => 'Airport transfer',
+            'point_to_point' => 'Trip',
+            'corporate', 'day_rental' => $days === 1 ? '1 day' : "{$days} days",
+            default => $days === 1 ? '1 day' : "{$days} days",
+        };
+    }
+}
+
+/**
+ * Check if service type uses duration-based pricing
+ * 
+ * @param string|null $serviceType The service type code
+ * @return bool Whether the service uses duration-based pricing
+ */
+if (!function_exists('isServiceDurationBased')) {
+    function isServiceDurationBased(?string $serviceType): bool
+    {
+        return in_array($serviceType, ['corporate', 'day_rental']);
+    }
+}
+
+/**
+ * Check if service type is a fixed-rate (trip-based) service
+ * 
+ * @param string|null $serviceType The service type code
+ * @return bool Whether the service is fixed-rate
+ */
+if (!function_exists('isServiceFixedRate')) {
+    function isServiceFixedRate(?string $serviceType): bool
+    {
+        return in_array($serviceType, ['ride_now', 'airport_transfers', 'point_to_point']);
     }
 }

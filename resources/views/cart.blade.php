@@ -19,7 +19,7 @@
     <!-- End Breadcrumb section -->
 
     <!-- Booking Form Section -->
-    <div class="filter-wrapper hotel mb-40">
+    <div class="filter-wrapper text-center hotel mb-40">
         <div class="container">
             @include('components.booking-form')
         </div>
@@ -101,324 +101,311 @@
                                     </button>
                                 </div>
                             </div>
-                            <table class="cart-table">
-                                <thead>
-                                    <tr>
-                                        <th>Vehicle Info</th>
-                                        <th>Price</th>
-                                        <th>Total</th>
-                                        <th>Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach ($cart as $key => $item)
-                                        @php
-                                            // Calculate days from pickup and return dates
-                                            $pickupDate = isset($item['pickup_date'])
-                                                ? \Carbon\Carbon::parse($item['pickup_date'])
-                                                : null;
-                                            $returnDate = isset($item['return_date'])
-                                                ? \Carbon\Carbon::parse($item['return_date'])
-                                                : null;
-                                            $calculatedDays =
-                                                $pickupDate && $returnDate
-                                                    ? max(1, $pickupDate->diffInDays($returnDate) + 1)
-                                                    : 1;
+                            {{-- Vehicle Items - Card Layout --}}
+                            @foreach ($cart as $key => $item)
+                                @php
+                                    // Calculate days from pickup and return dates
+                                    $pickupDate = isset($item['pickup_date'])
+                                        ? \Carbon\Carbon::parse($item['pickup_date'])
+                                        : null;
+                                    $returnDate = isset($item['return_date'])
+                                        ? \Carbon\Carbon::parse($item['return_date'])
+                                        : null;
+                                    $calculatedDays =
+                                        $pickupDate && $returnDate
+                                            ? max(1, $pickupDate->diffInDays($returnDate) + 1)
+                                            : 1;
 
-                                            // Use total_price if available (already calculated for all days in LKR)
-                                            // Otherwise calculate from per-day price and calculated days
-                                            $itemTotal = isset($item['total_price'])
-                                                ? $item['total_price']
-                                                : ($item['price'] ?? 0) * $calculatedDays;
-                                        @endphp
-                                        <tr data-cart-key="{{ $key }}">
-                                            <td data-label="Vehicle Info">
-                                                <div class="product-info-wrapper">
-                                                    <div class="product-info-img">
-                                                        @if (isset($item['image']) && $item['image'])
-                                                            <img src="{{ s3_asset($item['image']) }}"
-                                                                alt="{{ $item['name'] ?? 'Vehicle' }}">
-                                                        @else
-                                                            <img src="{{ asset('assets/img/innerpages/cart-img1.png') }}"
-                                                                alt="{{ $item['name'] ?? 'Vehicle' }}">
+                                    // Use total_price if available (already calculated for all days in LKR)
+                                    // Otherwise calculate from per-day price and calculated days
+                                    $itemTotal = isset($item['total_price'])
+                                        ? $item['total_price']
+                                        : ($item['price'] ?? 0) * $calculatedDays;
+                                @endphp
+                                <div class="cart-item-card" data-cart-key="{{ $key }}">
+                                    {{-- Vehicle Info Section --}}
+                                    <div class="cart-item-header">
+                                        <div class="cart-item-main">
+                                            <div class="product-info-wrapper">
+                                                <div class="product-info-img">
+                                                    @if (isset($item['image']) && $item['image'])
+                                                        <img src="{{ s3_asset($item['image']) }}"
+                                                            alt="{{ $item['name'] ?? 'Vehicle' }}">
+                                                    @else
+                                                        <img src="{{ asset('assets/img/innerpages/cart-img1.png') }}"
+                                                            alt="{{ $item['name'] ?? 'Vehicle' }}">
+                                                    @endif
+                                                </div>
+                                                <div class="product-info-content">
+                                                    <span class="service-type-badge"
+                                                        style="display: inline-block; background-color: #e8f4f8; color: #0066cc; padding: 4px 10px; border-radius: 12px; font-size: 14px; font-weight: 700; margin-bottom: 8px; border: 1px solid #0066cc;">
+                                                        <i class="bi bi-tag"></i>
+                                                        {{ $item['service_type_data']['name'] ?? ($item['service_type'] ?? 'Service') }}
+                                                    </span>
+                                                    <h6>
+                                                        {{ $item['name'] ?? 'Vehicle Rental' }}
+                                                    </h6>
+                                                    @php
+                                                        // Normalize pickup/dropoff display: support arrays and missing fields
+                                                        $pickupLoc = is_array($item['pickup_location'] ?? null)
+                                                            ? $item['pickup_location']['address'] ?? ''
+                                                            : $item['pickup_location'] ?? '';
+                                                        $dropoffLoc = is_array($item['dropoff_location'] ?? null)
+                                                            ? $item['dropoff_location']['address'] ?? ''
+                                                            : $item['dropoff_location'] ?? '';
+
+                                                        // For airport transfers, fallback to airport fields or flight details
+                                                        if (($item['service_type'] ?? '') === 'airport_transfers') {
+                                                            $pickupLoc =
+                                                                $pickupLoc ?:
+                                                                $item['pickup_airport'] ??
+                                                                    ($item['flight_details']['arrival_airport'] ?? '');
+                                                            $dropoffLoc =
+                                                                $dropoffLoc ?:
+                                                                $item['dropoff_airport'] ??
+                                                                    ($item['flight_details']['departure_airport'] ??
+                                                                        '');
+                                                        }
+                                                    @endphp
+
+                                                    <div class="booking-details">
+                                                        @if (isset($item['pickup_date']) && isset($item['return_date']))
+                                                            <!-- Pickup and Dropoff Locations - Always Displayed -->
+                                                            <p style="margin-bottom: 6px;">
+                                                                <i class="bi bi-geo-alt-fill" style="color: #0066cc;"></i>
+                                                                <strong>{{ $pickupLoc ?: 'Pickup Location' }}</strong>
+                                                                <i class="bi bi-arrow-right"
+                                                                    style="margin: 0 4px; color: #999;"></i>
+                                                                <strong>{{ $dropoffLoc ?: 'Dropoff Location' }}</strong>
+                                                            </p>
+
+                                                            <p style="margin-bottom: 6px;">
+                                                                <i class="bi bi-calendar-event" style="color: #666;"></i>
+                                                                {{ $pickupDate->format('M d, Y') }}
+                                                                @if (isset($item['from_time']))
+                                                                    <span class="text-muted">@
+                                                                        {{ $item['from_time'] }}</span>
+                                                                @endif
+                                                                <span style="margin: 0 4px; color: #999;">→</span>
+                                                                {{ $returnDate->format('M d, Y') }}
+                                                                @if (isset($item['to_time']))
+                                                                    <span class="text-muted">@
+                                                                        {{ $item['to_time'] }}</span>
+                                                                @endif
+                                                            </p>
+                                                            <p class="text-muted" style="margin-top: 8px;">
+                                                                <i class="bi bi-hourglass-split"></i>
+                                                                <strong>{{ getServiceDurationLabel($item['service_type'] ?? null, $calculatedDays) }}</strong>
+                                                            </p>
                                                         @endif
-                                                    </div>
-                                                    <div class="product-info-content">
-                                                        <span class="service-type-badge"
-                                                            style="display: inline-block; background-color: #e8f4f8; color: #0066cc; padding: 4px 10px; border-radius: 12px; font-size: 14px; font-weight: 700; margin-bottom: 8px; border: 1px solid #0066cc;">
-                                                            <i class="bi bi-tag"></i>
-                                                            {{ $item['service_type_data']['name'] ?? ($item['service_type'] ?? 'Service') }}
-                                                        </span>
-                                                        <h6>
-                                                            {{ $item['name'] ?? 'Vehicle Rental' }}
-                                                        </h6>
+
+                                                        {{-- Display included km information --}}
                                                         @php
-                                                            // Normalize pickup/dropoff display: support arrays and missing fields
-                                                            $pickupLoc = is_array($item['pickup_location'] ?? null)
-                                                                ? $item['pickup_location']['address'] ?? ''
-                                                                : $item['pickup_location'] ?? '';
-                                                            $dropoffLoc = is_array($item['dropoff_location'] ?? null)
-                                                                ? $item['dropoff_location']['address'] ?? ''
-                                                                : $item['dropoff_location'] ?? '';
+                                                            $distanceDetails = $item['distance_details'] ?? [];
 
-                                                            // For airport transfers, fallback to airport fields or flight details
-                                                            if (($item['service_type'] ?? '') === 'airport_transfers') {
-                                                                $pickupLoc =
-                                                                    $pickupLoc ?:
-                                                                    $item['pickup_airport'] ??
-                                                                        ($item['flight_details']['arrival_airport'] ??
-                                                                            '');
-                                                                $dropoffLoc =
-                                                                    $dropoffLoc ?:
-                                                                    $item['dropoff_airport'] ??
-                                                                        ($item['flight_details']['departure_airport'] ??
-                                                                            '');
-                                                            }
-                                                        @endphp
-
-                                                        <div class="booking-details">
-                                                            @if (isset($item['pickup_date']) && isset($item['return_date']))
-                                                                <!-- Pickup and Dropoff Locations - Always Displayed -->
-                                                                <p style="margin-bottom: 6px;">
-                                                                    <i class="bi bi-geo-alt-fill"
-                                                                        style="color: #0066cc;"></i>
-                                                                    <strong>{{ $pickupLoc ?: 'Pickup Location' }}</strong>
-                                                                    <i class="bi bi-arrow-right"
-                                                                        style="margin: 0 4px; color: #999;"></i>
-                                                                    <strong>{{ $dropoffLoc ?: 'Dropoff Location' }}</strong>
-                                                                </p>
-
-                                                                <p style="margin-bottom: 6px;">
-                                                                    <i class="bi bi-calendar-event"
-                                                                        style="color: #666;"></i>
-                                                                    {{ $pickupDate->format('M d, Y') }}
-                                                                    @if (isset($item['from_time']))
-                                                                        <span class="text-muted">@
-                                                                            {{ $item['from_time'] }}</span>
-                                                                    @endif
-                                                                    <span style="margin: 0 4px; color: #999;">→</span>
-                                                                    {{ $returnDate->format('M d, Y') }}
-                                                                    @if (isset($item['to_time']))
-                                                                        <span class="text-muted">@
-                                                                            {{ $item['to_time'] }}</span>
-                                                                    @endif
-                                                                </p>
-                                                                <p class="text-muted" style="margin-top: 8px;">
-                                                                    <i class="bi bi-hourglass-split"></i> <strong>Duration:
-                                                                        {{ $calculatedDays }}
-                                                                        day{{ $calculatedDays !== 1 ? 's' : '' }}</strong>
-                                                                </p>
-                                                            @endif
-
-                                                            {{-- Display included km information --}}
-                                                            @php
-                                                                $distanceDetails = $item['distance_details'] ?? [];
-
-                                                                // If distance_details is empty, try to get from service package info or calculate
-                                                                if (empty($distanceDetails)) {
-                                                                    $servicePackageInfo =
-                                                                        $item['service_package_info'] ?? [];
-                                                                    if (!empty($servicePackageInfo)) {
-                                                                        $distanceDetails = [
-                                                                            'free_km_per_day' =>
-                                                                                $servicePackageInfo['max_km_per_day'] ??
-                                                                                null,
-                                                                            'free_km_per_package' =>
-                                                                                $servicePackageInfo[
+                                                            // If distance_details is empty, try to get from service package info or calculate
+                                                            if (empty($distanceDetails)) {
+                                                                $servicePackageInfo =
+                                                                    $item['service_package_info'] ?? [];
+                                                                if (!empty($servicePackageInfo)) {
+                                                                    $distanceDetails = [
+                                                                        'free_km_per_day' =>
+                                                                            $servicePackageInfo['max_km_per_day'] ??
+                                                                            null,
+                                                                        'free_km_per_package' =>
+                                                                            $servicePackageInfo['max_km_per_package'] ??
+                                                                            null,
+                                                                        'allowed_total_km' => isset(
+                                                                            $servicePackageInfo['max_km_per_day'],
+                                                                        )
+                                                                            ? $servicePackageInfo['max_km_per_day'] *
+                                                                                $calculatedDays
+                                                                            : $servicePackageInfo[
                                                                                     'max_km_per_package'
                                                                                 ] ?? null,
-                                                                            'allowed_total_km' => isset(
-                                                                                $servicePackageInfo['max_km_per_day'],
-                                                                            )
-                                                                                ? $servicePackageInfo[
-                                                                                        'max_km_per_day'
-                                                                                    ] * $calculatedDays
-                                                                                : $servicePackageInfo[
-                                                                                        'max_km_per_package'
-                                                                                    ] ?? null,
-                                                                        ];
-                                                                    }
+                                                                    ];
                                                                 }
+                                                            }
 
-                                                                $freeKmPerDay =
-                                                                    $distanceDetails['free_km_per_day'] ?? null;
-                                                                $freeKmPerPackage =
-                                                                    $distanceDetails['free_km_per_package'] ?? null;
-                                                                $allowedTotalKm =
-                                                                    $distanceDetails['allowed_total_km'] ?? null;
-                                                                $extraKmPrice =
-                                                                    $distanceDetails['extra_km_price'] ?? null;
+                                                            $freeKmPerDay = $distanceDetails['free_km_per_day'] ?? null;
+                                                            $freeKmPerPackage =
+                                                                $distanceDetails['free_km_per_package'] ?? null;
+                                                            $allowedTotalKm =
+                                                                $distanceDetails['allowed_total_km'] ?? null;
+                                                            $extraKmPrice = $distanceDetails['extra_km_price'] ?? null;
 
-                                                                // Calculate per-day km if only total is available
-                                                                if (
-                                                                    !$freeKmPerDay &&
-                                                                    !$freeKmPerPackage &&
-                                                                    $allowedTotalKm &&
-                                                                    $calculatedDays > 0
-                                                                ) {
-                                                                    $freeKmPerDay = $allowedTotalKm / $calculatedDays;
-                                                                }
-                                                            @endphp
-                                                            @if ($freeKmPerDay || $freeKmPerPackage || $allowedTotalKm)
-                                                                <p class="text-muted" style="margin-top: 6px;">
-                                                                    <i class="bi bi-speedometer2"
-                                                                        style="color: #28a745;"></i>
-                                                                    @if ($freeKmPerDay)
-                                                                        <strong>{{ number_format($freeKmPerDay, 0) }}
-                                                                            km/day</strong> included
-                                                                        @if ($calculatedDays > 1)
-                                                                            <span
-                                                                                class="text-muted">({{ number_format($freeKmPerDay * $calculatedDays, 0) }}
-                                                                                km total)</span>
-                                                                        @endif
-                                                                    @elseif ($freeKmPerPackage)
-                                                                        <strong>{{ number_format($freeKmPerPackage, 0) }}
-                                                                            km</strong> included
-                                                                    @elseif ($allowedTotalKm)
-                                                                        <strong>{{ number_format($allowedTotalKm, 0) }}
-                                                                            km</strong> included
+                                                            // Calculate per-day km if only total is available
+                                                            if (
+                                                                !$freeKmPerDay &&
+                                                                !$freeKmPerPackage &&
+                                                                $allowedTotalKm &&
+                                                                $calculatedDays > 0
+                                                            ) {
+                                                                $freeKmPerDay = $allowedTotalKm / $calculatedDays;
+                                                            }
+                                                        @endphp
+                                                        @if ($freeKmPerDay || $freeKmPerPackage || $allowedTotalKm)
+                                                            <p class="text-muted" style="margin-top: 6px;">
+                                                                <i class="bi bi-speedometer2" style="color: #28a745;"></i>
+                                                                @if ($freeKmPerDay)
+                                                                    <strong>{{ number_format($freeKmPerDay, 0) }}
+                                                                        km/day</strong> included
+                                                                    @if ($calculatedDays > 1)
+                                                                        <span
+                                                                            class="text-muted">({{ number_format($freeKmPerDay * $calculatedDays, 0) }}
+                                                                            km total)</span>
                                                                     @endif
-                                                                    @if ($extraKmPrice)
-                                                                        <span class="ms-2 text-warning">
-                                                                            <i class="bi bi-lightning-fill"></i>
-                                                                            Extra:
-                                                                            {{ $currencySymbol }}{{ number_format($extraKmPrice, 2) }}/km
-                                                                        </span>
-                                                                    @endif
-                                                                </p>
-                                                            @endif
-                                                        </div>
+                                                                @elseif ($freeKmPerPackage)
+                                                                    <strong>{{ number_format($freeKmPerPackage, 0) }}
+                                                                        km</strong> included
+                                                                @elseif ($allowedTotalKm)
+                                                                    <strong>{{ number_format($allowedTotalKm, 0) }}
+                                                                        km</strong> included
+                                                                @endif
+                                                                @if ($extraKmPrice)
+                                                                    <span class="ms-2 text-warning">
+                                                                        <i class="bi bi-lightning-fill"></i>
+                                                                        Extra:
+                                                                        {{ $currencySymbol }}{{ number_format($extraKmPrice, 2) }}/km
+                                                                    </span>
+                                                                @endif
+                                                            </p>
+                                                        @endif
                                                     </div>
                                                 </div>
-                                            </td>
-                                            <td data-label="Price">
-                                                <span>{{ $currencySymbol }}
-                                                    {{ number_format($item['price'] ?? 0, 2) }}/day</span>
-                                            </td>
-                                            <td data-label="Total">
-                                                <span class="item-total">{{ $currencySymbol }}
-                                                    {{ number_format($itemTotal, 2) }}</span>
-                                            </td>
-                                            <td data-label="Action">
+                                            </div>
+                                            <div class="cart-item-pricing">
+                                                @php
+                                                    $serviceType = $item['service_type'] ?? null;
+                                                    $pricingLabel = getServicePricingLabel($serviceType);
+                                                    $isFixedRate = isServiceFixedRate($serviceType);
+                                                @endphp
+                                                @if (!$isFixedRate)
+                                                    <div class="price-row">
+                                                        <span class="price-label">{{ $pricingLabel }}:</span>
+                                                        <span class="price-value">{{ $currencySymbol }}
+                                                            {{ number_format($item['price'] ?? 0, 2) }}</span>
+                                                    </div>
+                                                @endif
+                                                <div class="price-row total-row">
+                                                    <span
+                                                        class="price-label">{{ $isFixedRate ? $pricingLabel : 'Total' }}:</span>
+                                                    <span class="price-value item-total">{{ $currencySymbol }}
+                                                        {{ number_format($itemTotal, 2) }}</span>
+                                                </div>
+                                            </div>
+                                            <div class="cart-item-actions">
                                                 <button class="remove-item btn btn-sm btn-outline-danger"
                                                     data-cart-key="{{ $key }}">
                                                     <i class="bi bi-trash"></i> Remove
                                                 </button>
-                                            </td>
-                                        </tr>
-                                        {{-- Unified Addon Management Section --}}
-                                        <tr class="unified-addons-row" data-cart-key="{{ $key }}">
-                                            <td colspan="5">
-                                                <div class="unified-addons-container">
-                                                    <div class="addons-header-unified">
-                                                        <div class="header-left">
-                                                            <h6 class="mb-0"><i class="bi bi-gift"></i> Customize with
-                                                                Services</h6>
-                                                            <small class="text-muted">Selected: <span
-                                                                    class="selected-count">0</span> service(s)</small>
-                                                        </div>
-                                                        <button type="button"
-                                                            class="btn btn-sm btn-outline-secondary toggle-addons-section collapsed"
-                                                            data-cart-key="{{ $key }}"
-                                                            title="Toggle addons section">
-                                                            <i class="bi bi-chevron-down"></i> Show
-                                                        </button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {{-- Addons Section - Outside table, below vehicle info --}}
+                                    <div class="cart-item-addons" data-cart-key="{{ $key }}">
+                                        <div class="unified-addons-container">
+                                            <div class="addons-header-unified">
+                                                <div class="header-left">
+                                                    <h6 class="mb-0"><i class="bi bi-gift"></i> Customize with
+                                                        Services</h6>
+                                                    <small class="text-muted">Selected: <span
+                                                            class="selected-count">0</span> service(s)</small>
+                                                </div>
+                                                <button type="button"
+                                                    class="btn btn-sm btn-outline-secondary toggle-addons-section collapsed"
+                                                    data-cart-key="{{ $key }}" title="Toggle addons section">
+                                                    <i class="bi bi-chevron-down"></i> Show
+                                                </button>
+                                            </div>
+                                            <div class="addons-grid-unified collapsed" data-cart-key="{{ $key }}"
+                                                data-service-type="{{ $item['service_type'] ?? '' }}">
+                                                <div class="text-center py-3">
+                                                    <div class="spinner-border spinner-border-sm" role="status">
+                                                        <span class="visually-hidden">Loading...</span>
                                                     </div>
-                                                    <div class="addons-grid-unified collapsed"
-                                                        data-cart-key="{{ $key }}"
-                                                        data-service-type="{{ $item['service_type'] ?? '' }}">
-                                                        <div class="text-center py-3">
-                                                            <div class="spinner-border spinner-border-sm" role="status">
-                                                                <span class="visually-hidden">Loading...</span>
-                                                            </div>
-                                                            <small class="d-block mt-2 text-muted">Loading
-                                                                services...</small>
+                                                    <small class="d-block mt-2 text-muted">Loading
+                                                        services...</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {{-- Extra KM Section - Outside table, below addons --}}
+                                    <div class="cart-item-extra-km" data-cart-key="{{ $key }}">
+                                        <div class="extra-km-container">
+                                            <div class="extra-km-header">
+                                                <div class="header-left">
+                                                    <h6 class="mb-0"><i class="bi bi-speedometer2"></i> Purchase
+                                                        Extra Kilometers</h6>
+                                                    <small class="text-muted">Add more km to your package
+                                                        allowance</small>
+                                                </div>
+                                                <button type="button"
+                                                    class="btn btn-sm btn-outline-secondary toggle-extra-km-section collapsed"
+                                                    data-cart-key="{{ $key }}" title="Toggle extra km section">
+                                                    <i class="bi bi-chevron-down"></i> Show
+                                                </button>
+                                            </div>
+                                            <div class="extra-km-content collapsed" data-cart-key="{{ $key }}">
+                                                <div class="extra-km-loading text-center py-3">
+                                                    <div class="spinner-border spinner-border-sm" role="status">
+                                                        <span class="visually-hidden">Loading...</span>
+                                                    </div>
+                                                    <small class="d-block mt-2 text-muted">Loading extra km
+                                                        rate...</small>
+                                                </div>
+                                                <div class="extra-km-form" style="display: none;">
+                                                    <div class="extra-km-rate-info mb-3">
+                                                        <span class="rate-label">Rate per km:</span>
+                                                        <span class="rate-value">{{ $currencySymbol }}<span
+                                                                class="extra-km-rate">0.00</span></span>
+                                                    </div>
+                                                    <div class="extra-km-input-group">
+                                                        <label for="extra-km-input-{{ $key }}">Extra
+                                                            Kilometers:</label>
+                                                        <div class="km-qty-control">
+                                                            <button type="button" class="km-qty-btn km-minus"
+                                                                data-cart-key="{{ $key }}">−</button>
+                                                            <input type="number" id="extra-km-input-{{ $key }}"
+                                                                class="extra-km-input"
+                                                                data-cart-key="{{ $key }}"
+                                                                value="{{ $item['extra_km']['km'] ?? 0 }}" min="0"
+                                                                max="10000" step="10" placeholder="0">
+                                                            <button type="button" class="km-qty-btn km-plus"
+                                                                data-cart-key="{{ $key }}">+</button>
                                                         </div>
+                                                    </div>
+                                                    <div class="extra-km-total mt-3">
+                                                        <span class="total-label">Extra KM Cost:</span>
+                                                        <span class="total-value">{{ $currencySymbol }}<span
+                                                                class="extra-km-total-amount">{{ number_format($item['extra_km']['total_cost'] ?? 0, 2) }}</span></span>
+                                                    </div>
+                                                    <div class="extra-km-actions mt-3">
+                                                        <button type="button"
+                                                            class="btn btn-sm btn-primary apply-extra-km"
+                                                            data-cart-key="{{ $key }}">
+                                                            <i class="bi bi-check-lg"></i> Apply Extra KM
+                                                        </button>
+                                                        @if (isset($item['extra_km']) && ($item['extra_km']['km'] ?? 0) > 0)
+                                                            <button type="button"
+                                                                class="btn btn-sm btn-outline-danger remove-extra-km"
+                                                                data-cart-key="{{ $key }}">
+                                                                <i class="bi bi-x-lg"></i> Remove
+                                                            </button>
+                                                        @endif
                                                     </div>
                                                 </div>
-                                            </td>
-                                        </tr>
-                                        {{-- Extra KM Purchase Section --}}
-                                        <tr class="extra-km-row" data-cart-key="{{ $key }}">
-                                            <td colspan="5">
-                                                <div class="extra-km-container">
-                                                    <div class="extra-km-header">
-                                                        <div class="header-left">
-                                                            <h6 class="mb-0"><i class="bi bi-speedometer2"></i> Purchase
-                                                                Extra Kilometers</h6>
-                                                            <small class="text-muted">Add more km to your package
-                                                                allowance</small>
-                                                        </div>
-                                                        <button type="button"
-                                                            class="btn btn-sm btn-outline-secondary toggle-extra-km-section collapsed"
-                                                            data-cart-key="{{ $key }}"
-                                                            title="Toggle extra km section">
-                                                            <i class="bi bi-chevron-down"></i> Show
-                                                        </button>
-                                                    </div>
-                                                    <div class="extra-km-content collapsed"
-                                                        data-cart-key="{{ $key }}">
-                                                        <div class="extra-km-loading text-center py-3">
-                                                            <div class="spinner-border spinner-border-sm" role="status">
-                                                                <span class="visually-hidden">Loading...</span>
-                                                            </div>
-                                                            <small class="d-block mt-2 text-muted">Loading extra km
-                                                                rate...</small>
-                                                        </div>
-                                                        <div class="extra-km-form" style="display: none;">
-                                                            <div class="extra-km-rate-info mb-3">
-                                                                <span class="rate-label">Rate per km:</span>
-                                                                <span class="rate-value">{{ $currencySymbol }}<span
-                                                                        class="extra-km-rate">0.00</span></span>
-                                                            </div>
-                                                            <div class="extra-km-input-group">
-                                                                <label for="extra-km-input-{{ $key }}">Extra
-                                                                    Kilometers:</label>
-                                                                <div class="km-qty-control">
-                                                                    <button type="button" class="km-qty-btn km-minus"
-                                                                        data-cart-key="{{ $key }}">−</button>
-                                                                    <input type="number"
-                                                                        id="extra-km-input-{{ $key }}"
-                                                                        class="extra-km-input"
-                                                                        data-cart-key="{{ $key }}"
-                                                                        value="{{ $item['extra_km']['km'] ?? 0 }}"
-                                                                        min="0" max="10000" step="10"
-                                                                        placeholder="0">
-                                                                    <button type="button" class="km-qty-btn km-plus"
-                                                                        data-cart-key="{{ $key }}">+</button>
-                                                                </div>
-                                                            </div>
-                                                            <div class="extra-km-total mt-3">
-                                                                <span class="total-label">Extra KM Cost:</span>
-                                                                <span class="total-value">{{ $currencySymbol }}<span
-                                                                        class="extra-km-total-amount">{{ number_format($item['extra_km']['total_cost'] ?? 0, 2) }}</span></span>
-                                                            </div>
-                                                            <div class="extra-km-actions mt-3">
-                                                                <button type="button"
-                                                                    class="btn btn-sm btn-primary apply-extra-km"
-                                                                    data-cart-key="{{ $key }}">
-                                                                    <i class="bi bi-check-lg"></i> Apply Extra KM
-                                                                </button>
-                                                                @if (isset($item['extra_km']) && ($item['extra_km']['km'] ?? 0) > 0)
-                                                                    <button type="button"
-                                                                        class="btn btn-sm btn-outline-danger remove-extra-km"
-                                                                        data-cart-key="{{ $key }}">
-                                                                        <i class="bi bi-x-lg"></i> Remove
-                                                                    </button>
-                                                                @endif
-                                                            </div>
-                                                        </div>
-                                                        <div class="extra-km-unavailable" style="display: none;">
-                                                            <p class="text-muted mb-0"><i class="bi bi-info-circle"></i>
-                                                                Extra km purchase is not available for this vehicle.</p>
-                                                        </div>
-                                                    </div>
+                                                <div class="extra-km-unavailable" style="display: none;">
+                                                    <p class="text-muted mb-0"><i class="bi bi-info-circle"></i>
+                                                        Extra km purchase is not available for this vehicle.</p>
                                                 </div>
-                                            </td>
-                                        </tr>
-                                    @endforeach
-                                </tbody>
-                            </table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            @endforeach
 
                         </div>
                     </div>
@@ -594,6 +581,80 @@
 
 @push('styles')
     <style>
+        /* Cart Item Card Layout */
+        .cart-item-card {
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+        }
+
+        .cart-item-header {
+            padding: 20px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .cart-item-main {
+            display: flex;
+            align-items: flex-start;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .cart-item-main .product-info-wrapper {
+            flex: 1;
+            min-width: 300px;
+        }
+
+        .cart-item-pricing {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            min-width: 150px;
+            text-align: right;
+        }
+
+        .cart-item-pricing .price-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 15px;
+        }
+
+        .cart-item-pricing .price-label {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .cart-item-pricing .price-value {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .cart-item-pricing .total-row .price-value {
+            font-size: 18px;
+            color: var(--primary-color1, #c91c23);
+            font-weight: 700;
+        }
+
+        .cart-item-actions {
+            display: flex;
+            align-items: flex-start;
+        }
+
+        /* Addons and Extra KM sections */
+        .cart-item-addons,
+        .cart-item-extra-km {
+            border-top: 1px solid #f0f0f0;
+        }
+
+        .cart-item-addons .unified-addons-container,
+        .cart-item-extra-km .extra-km-container {
+            padding: 15px 20px;
+            background: #fafbfc;
+        }
+
         .cart-table {
             width: 100%;
             margin-bottom: 30px;
@@ -956,7 +1017,50 @@
                 flex-basis: 100% !important;
             }
 
-            /* Cart Table Mobile */
+            /* Cart Item Card Mobile */
+            .cart-item-card {
+                margin-bottom: 15px;
+            }
+
+            .cart-item-header {
+                padding: 15px;
+            }
+
+            .cart-item-main {
+                flex-direction: column;
+                gap: 15px;
+            }
+
+            .cart-item-main .product-info-wrapper {
+                min-width: 100%;
+            }
+
+            .cart-item-pricing {
+                width: 100%;
+                flex-direction: row;
+                justify-content: space-between;
+                padding: 10px;
+                background: #f8f9fa;
+                border-radius: 8px;
+            }
+
+            .cart-item-pricing .price-row {
+                flex-direction: column;
+                gap: 2px;
+                text-align: center;
+            }
+
+            .cart-item-actions {
+                width: 100%;
+                justify-content: flex-end;
+            }
+
+            .cart-item-addons .unified-addons-container,
+            .cart-item-extra-km .extra-km-container {
+                padding: 12px 15px;
+            }
+
+            /* Cart Table Mobile (kept for backwards compatibility) */
             .cart-table {
                 display: block;
                 overflow-x: visible;
@@ -1256,8 +1360,18 @@
                     },
                     success: function(response) {
                         if (response.success) {
-                            // Remove all rows related to this cart item (item row, addons row, extra km row)
-                            $(`tr[data-cart-key="${cartKey}"]`).remove();
+                            // Remove the entire cart item card
+                            $(`.cart-item-card[data-cart-key="${cartKey}"]`).fadeOut(300,
+                                function() {
+                                    $(this).remove();
+
+                                    // If there are no more cart items, show empty state
+                                    if ($('.cart-item-card[data-cart-key]').length === 0) {
+                                        $('.cart-shopping-wrapper').html(
+                                            '<div class="text-center py-5"><em>Your cart is empty</em></div>'
+                                        );
+                                    }
+                                });
 
                             // Dispatch cart updated event and refresh totals
                             window.dispatchEvent(new CustomEvent('cartUpdated'));
@@ -1265,13 +1379,6 @@
 
                             showSuccessNotification(response.message ||
                                 'Item removed from cart successfully!', 3000);
-
-                            // If there are no more cart items, show empty state
-                            if ($('.cart-table tbody tr[data-cart-key]').length === 0) {
-                                $('.cart-table tbody').append(
-                                    '<tr><td colspan="5" class="text-center py-5"><em>Your cart is empty</em></td></tr>'
-                                );
-                            }
                         } else {
                             alert('Error: ' + response.message);
                             // Restore button on error
@@ -1431,7 +1538,7 @@
             });
 
             function loadAddonsForAllItems() {
-                $('.unified-addons-row').each(function() {
+                $('.cart-item-addons').each(function() {
                     const cartKey = $(this).data('cart-key');
                     const serviceType = $(this).find('.addons-grid-unified').data('service-type');
                     loadUnifiedAddonsForItem(cartKey, serviceType);
@@ -1497,7 +1604,7 @@
 
             // Preload addons in the background with limited concurrency to avoid hammering the API
             async function preloadAddonsInBackground(concurrency = 3, staggerMs = 150) {
-                const rows = $('.unified-addons-row').toArray();
+                const rows = $('.cart-item-addons').toArray();
                 let index = 0;
                 const errors = [];
 
@@ -1615,8 +1722,8 @@
                                         ${isSelected ? '<i class="bi bi-arrow-clockwise"></i> Update' : '<i class="bi bi-plus-lg"></i> Add'}
                                     </button>
                                     ${isSelected ? `<button class="btn-remove-addon-unified remove-addon-btn" data-addon-id="${addon.id}" data-cart-key="${cartKey}" title="Remove this addon">
-                                                                                                <i class="bi bi-trash"></i> Remove
-                                                                                            </button>` : ''}
+                                                                                                    <i class="bi bi-trash"></i> Remove
+                                                                                                </button>` : ''}
                                 </div>
                             </div>
                         </div>
@@ -1629,12 +1736,12 @@
             }
 
             function displayUnifiedAddonsErrorForItem(cartKey, message) {
-                const container = $(`.unified-addons-row[data-cart-key="${cartKey}"] .addons-grid-unified`);
+                const container = $(`.cart-item-addons[data-cart-key="${cartKey}"] .addons-grid-unified`);
                 container.html(`<p class="text-center text-muted py-3">${message}</p>`);
             }
 
             function updateSelectedCount(cartKey, count) {
-                const countElement = $(`.unified-addons-row[data-cart-key="${cartKey}"] .selected-count`);
+                const countElement = $(`.cart-item-addons[data-cart-key="${cartKey}"] .selected-count`);
                 countElement.text(count);
 
                 // Update the small text to indicate removal is possible
@@ -1894,18 +2001,18 @@
             });
 
             function loadExtraKmForAllItems() {
-                $('.extra-km-row').each(function() {
+                $('.cart-item-extra-km').each(function() {
                     const cartKey = $(this).data('cart-key');
                     loadExtraKmRateForItem(cartKey);
                 });
             }
 
             function loadExtraKmRateForItem(cartKey) {
-                const container = $(`.extra-km-row[data-cart-key="${cartKey}"] .extra-km-content`);
+                const container = $(`.cart-item-extra-km[data-cart-key="${cartKey}"] .extra-km-content`);
                 const loadingEl = container.find('.extra-km-loading');
                 const formEl = container.find('.extra-km-form');
                 const unavailableEl = container.find('.extra-km-unavailable');
-                $(`.extra-km-row[data-cart-key="${cartKey}"]`).hide();
+                $(`.cart-item-extra-km[data-cart-key="${cartKey}"]`).hide();
                 $.ajax({
                     url: '{{ url('/cart/extra-km') }}/' + cartKey,
                     method: 'GET',
@@ -1918,10 +2025,10 @@
 
                         if (!hasSlab) {
                             // Hide the entire extra-km section for this cart item when not available
-                            $(`.extra-km-row[data-cart-key="${cartKey}"]`).hide();
+                            $(`.cart-item-extra-km[data-cart-key="${cartKey}"]`).hide();
                             return;
                         } else {
-                            $(`.extra-km-row[data-cart-key="${cartKey}"]`).show();
+                            $(`.cart-item-extra-km[data-cart-key="${cartKey}"]`).show();
                         }
 
                         const rateObj = response.data.rate || null;
@@ -1950,7 +2057,7 @@
                         console.error('Error loading extra km rate:', xhr);
                         loadingEl.hide();
                         // Hide the extra-km section on error to avoid showing unavailable placeholder
-                        $(`.extra-km-row[data-cart-key="${cartKey}"]`).hide();
+                        $(`.cart-item-extra-km[data-cart-key="${cartKey}"]`).hide();
                     }
                 });
             }
@@ -2510,8 +2617,8 @@
         }
 
         /* ==========================================
-                                                                           Extra KM Purchase Section Styles
-                                                                           ========================================== */
+                                                                               Extra KM Purchase Section Styles
+                                                                               ========================================== */
 
         /* Service type badge */
         .service-type-badge {
