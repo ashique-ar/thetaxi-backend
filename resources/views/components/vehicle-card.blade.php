@@ -363,7 +363,8 @@
                 @if ($hasExtraKmPrice)
                     <small class="pricing-detail-item">
                         <i class="bi bi-lightning-fill"></i> Extra:
-                        {{ getCurrencySymbol() }}{{ number_format($distanceDetails['extra_km_price'], 2) }}/km
+                        <small class="currency-code">{{ getCurrencySymbol() }}</small>
+                        {{ number_format($distanceDetails['extra_km_price'], 2) }}/km
                     </small>
                 @endif
 
