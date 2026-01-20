@@ -1319,7 +1319,7 @@
             function getDurationLabel(serviceType, days) {
                 const fixedRateServices = ['ride_now', 'airport_transfers', 'point_to_point'];
                 if (fixedRateServices.includes(serviceType)) {
-                    if (serviceType === 'ride_now') return 'Drop';
+                    if (serviceType === 'ride_now') return 'Drop/Pickup';
                     if (serviceType === 'airport_transfers') return 'Airport transfer';
                     return 'Trip';
                 }
