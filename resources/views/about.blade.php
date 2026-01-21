@@ -1,5 +1,11 @@
 @extends('layouts.app')
 
+@section('title', $settings['about_page_title'] ?? 'About - TheTaxi')
+
+@push('meta')
+    @include('partials.seo')
+@endpush
+
 @section('content')
     <!-- Start Breadcrumb section -->
     <div class="breadcrumb-section"

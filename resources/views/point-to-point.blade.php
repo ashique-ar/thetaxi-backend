@@ -2,6 +2,10 @@
 
 @section('title', 'Point-to-Point Transfers - TheTaxi')
 
+@push('meta')
+    @include('partials.seo')
+@endpush
+
 @section('content')
     <!-- Point-to-Point Banner Section Start-->
     <div class="home4-banner-section mb-100">

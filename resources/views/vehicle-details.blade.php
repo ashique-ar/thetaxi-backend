@@ -2,6 +2,10 @@
 
 @section('title', ($vehicleGroup->name ?? 'Vehicle Details') . ' - TheTaxi')
 
+@push('meta')
+    @include('partials.seo', ['model' => $vehicleGroup])
+@endpush
+
 @section('content')
     <!-- Breadcrumb section Start-->
     <div class="breadcrumb-section three"
@@ -920,8 +924,8 @@
         /* ==================== FORM SECTION ORGANIZATION ==================== */
         .form-section {
             /* margin-bottom: 24px;
-                padding-bottom: 20px;
-                border-bottom: 1px solid #f0f0f0; */
+                    padding-bottom: 20px;
+                    border-bottom: 1px solid #f0f0f0; */
         }
 
         .form-section:last-of-type {

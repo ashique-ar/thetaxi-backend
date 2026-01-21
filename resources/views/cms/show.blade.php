@@ -3,17 +3,7 @@
 @section('title', $content->meta_title ?? $content->title . ' - TheTaxi')
 
 @push('meta')
-    @if ($content->meta_description)
-        <meta name="description" content="{{ $content->meta_description }}">
-    @endif
-    @if ($content->meta_tags)
-        <meta name="keywords" content="{{ $content->meta_tags }}">
-    @endif
-    <meta property="og:title" content="{{ $content->meta_title ?? $content->title }}">
-    <meta property="og:description"
-        content="{{ $content->meta_description ?? Str::limit(strip_tags($content->excerpt ?? $content->body), 150) }}">
-    <meta property="og:image"
-        content="{{ $content->thumbnail ? s3_asset($content->thumbnail) : asset('assets/img/default-blog.jpg') }}">
+    @include('partials.seo', ['model' => $content])
 @endpush
 
 @push('styles')

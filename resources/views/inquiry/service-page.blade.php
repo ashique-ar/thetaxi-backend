@@ -2,6 +2,10 @@
 
 @section('title', ($servicePage->seo_title ?: $servicePage->name) . ' - ' . config('app.name'))
 
+@push('meta')
+    @include('partials.seo', ['model' => $servicePage, 'sections' => $sections])
+@endpush
+
 @section('content')
     @foreach ($sections as $section)
         @php
@@ -153,6 +157,10 @@
                 textarea.addEventListener('input', function() {
                     this.style.height = 'auto';
                     this.style.height = this.scrollHeight + 'px';
+                    // adjust hero spacing when textarea grows/shrinks
+                    if (typeof adjustHeroSpacing === 'function') {
+                        adjustHeroSpacing();
+                    }
                 });
             });
 
@@ -248,6 +256,40 @@
                     conditionalFields.forEach((wrapper) => updateConditionalVisibility(wrapper));
                 });
             }
+
+            // Adjust hero spacing so content below moves below the dynamic form (no changes to hero/form CSS)
+            const adjustHeroSpacing = () => {
+                const hero = document.querySelector('.home4-banner-section');
+                if (!hero) return;
+                const wrapper = hero.querySelector('.filter-wrapper');
+                if (!wrapper) {
+                    // reset if previously set
+                    hero.style.removeProperty('padding-bottom');
+                    return;
+                }
+
+                const heroRect = hero.getBoundingClientRect();
+                const wrapperRect = wrapper.getBoundingClientRect();
+                // how much the wrapper extends beyond the hero's bottom
+                const extra = Math.max(0, wrapperRect.bottom - heroRect.bottom);
+                const buffer = 20; // small visual gap (px)
+                hero.style.paddingBottom = (extra + buffer) + 'px';
+            };
+
+            // Run initially and on events that can change form height
+            adjustHeroSpacing();
+            window.addEventListener('resize', () => adjustHeroSpacing());
+
+            // MutationObserver to detect dynamic DOM changes in the form (e.g., conditional fields)
+            const observer = new MutationObserver(() => {
+                adjustHeroSpacing();
+            });
+            observer.observe(form, {
+                subtree: true,
+                childList: true,
+                attributes: true,
+                characterData: true
+            });
         });
     </script>
 @endpush

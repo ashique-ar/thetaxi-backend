@@ -131,6 +131,7 @@ class InquiryServicePageController extends Controller
             'settings' => ['nullable', 'array'],
             'seo_title' => ['nullable', 'string', 'max:255'],
             'seo_description' => ['nullable', 'string', 'max:500'],
+            'seo_og_image' => ['nullable', 'string', 'max:255'],
             'seo_keywords' => ['nullable', 'string', 'max:255'],
             'sort_order' => ['nullable', 'integer'],
             'is_active' => ['nullable', 'boolean'],

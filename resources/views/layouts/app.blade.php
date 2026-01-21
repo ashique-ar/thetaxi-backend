@@ -42,11 +42,12 @@
         $pageTitle = trim($__env->yieldContent('title'));
         $siteName = $settings['site_name'] ?? 'TheTaxi - Your Reliable Taxi Service';
         $titleTemplate = $settings['seo_title_template'] ?? '';
+        // Prefer explicit page title when available
         $computedTitle = $pageTitle !== '' ? $pageTitle : $siteName;
-        if ($pageTitle !== '' && $titleTemplate) {
-            $computedTitle = str_contains($titleTemplate, '{page_title}')
-                ? str_replace('{page_title}', $pageTitle, $titleTemplate)
-                : $titleTemplate;
+        // Support templates with placeholders {page_title} and {year}
+        if ($titleTemplate) {
+            $computedTitle = str_replace('{page_title}', $pageTitle !== '' ? $pageTitle : $siteName, $titleTemplate);
+            $computedTitle = str_replace('{year}', date('Y'), $computedTitle);
         }
         $metaDescription = trim($settings['seo_meta_description'] ?? '');
         $metaKeywords = trim($settings['seo_keywords'] ?? '');
@@ -61,29 +62,14 @@
 
     <!-- Title -->
     <title>{{ $computedTitle }}</title>
-    @if ($metaDescription !== '')
+    @if (trim($metaStack) === '' && $metaDescription !== '')
         <meta name="description" content="{{ $metaDescription }}">
     @endif
-    @if ($metaKeywords !== '')
+    @if (trim($metaStack) === '' && $metaKeywords !== '')
         <meta name="keywords" content="{{ $metaKeywords }}">
     @endif
-    <meta property="og:title" content="{{ $computedTitle }}">
-    @if ($metaDescription !== '')
-        <meta property="og:description" content="{{ $metaDescription }}">
-    @endif
-    @if ($ogImageUrl !== '')
-        <meta property="og:image" content="{{ $ogImageUrl }}">
-    @endif
-    <meta property="og:type" content="website">
     <meta property="og:site_name" content="{{ $settings['site_name'] ?? config('app.name') }}">
     <meta name="twitter:card" content="{{ $twitterCard }}">
-    <meta name="twitter:title" content="{{ $computedTitle }}">
-    @if ($metaDescription !== '')
-        <meta name="twitter:description" content="{{ $metaDescription }}">
-    @endif
-    @if ($ogImageUrl !== '')
-        <meta name="twitter:image" content="{{ $ogImageUrl }}">
-    @endif
     <link rel="icon"
         href="{{ isset($settings['favicon']) ? s3_asset($settings['favicon']) : asset('assets/img/favicon.ico') }}"
         type="image/gif" sizes="20x20">

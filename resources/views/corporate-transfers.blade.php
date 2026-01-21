@@ -2,6 +2,10 @@
 
 @section('title', 'Corporate Transfers - TheTaxi')
 
+@push('meta')
+    @include('partials.seo')
+@endpush
+
 @section('content')
     <!-- Corporate Transport Banner Section Start-->
     <div class="home4-banner-section mb-100">

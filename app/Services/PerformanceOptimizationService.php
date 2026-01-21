@@ -29,12 +29,12 @@ class PerformanceOptimizationService
     public function getCachedPageContent(string $slug): ?array
     {
         $cacheKey = "page_content_{$slug}";
-        
+
         return Cache::remember($cacheKey, $this->defaultCacheTtl, function () use ($slug) {
             $page = Page::where('slug', $slug)
-                       ->where('status', 'published')
-                       ->where('is_active', true)
-                       ->first();
+                ->where('status', 'published')
+                ->where('is_active', true)
+                ->first();
 
             if (!$page) {
                 return null;
@@ -42,7 +42,7 @@ class PerformanceOptimizationService
 
             // Optimize content
             $optimizedContent = $this->optimizeContent($page->content);
-            
+
             return [
                 'id' => $page->id,
                 'title' => $page->title,
@@ -66,34 +66,36 @@ class PerformanceOptimizationService
     public function getCachedNavigation(string $location = 'header'): array
     {
         $cacheKey = "navigation_{$location}";
-        
+
         return Cache::remember($cacheKey, $this->defaultCacheTtl, function () use ($location) {
             return NavigationMenu::where('location', $location)
-                                ->where('is_active', true)
-                                ->orderBy('sort_order')
-                                ->with(['children' => function ($query) {
-                                    $query->where('is_active', true)->orderBy('sort_order');
-                                }])
-                                ->get()
-                                ->map(function ($menu) {
-                                    return [
-                                        'id' => $menu->id,
-                                        'title' => $menu->title,
-                                        'url' => $menu->url,
-                                        'icon' => $menu->icon,
-                                        'target' => $menu->target,
-                                        'children' => $menu->children->map(function ($child) {
-                                            return [
-                                                'id' => $child->id,
-                                                'title' => $child->title,
-                                                'url' => $child->url,
-                                                'icon' => $child->icon,
-                                                'target' => $child->target,
-                                            ];
-                                        })
-                                    ];
-                                })
-                                ->toArray();
+                ->where('is_active', true)
+                ->orderBy('sort_order')
+                ->with([
+                    'children' => function ($query) {
+                        $query->where('is_active', true)->orderBy('sort_order');
+                    }
+                ])
+                ->get()
+                ->map(function ($menu) {
+                    return [
+                        'id' => $menu->id,
+                        'title' => $menu->title,
+                        'url' => $menu->url,
+                        'icon' => $menu->icon,
+                        'target' => $menu->target,
+                        'children' => $menu->children->map(function ($child) {
+                            return [
+                                'id' => $child->id,
+                                'title' => $child->title,
+                                'url' => $child->url,
+                                'icon' => $child->icon,
+                                'target' => $child->target,
+                            ];
+                        })
+                    ];
+                })
+                ->toArray();
         });
     }
 
@@ -103,23 +105,23 @@ class PerformanceOptimizationService
     public function getCachedFooterLinks(string $section = 'main'): array
     {
         $cacheKey = "footer_links_{$section}";
-        
+
         return Cache::remember($cacheKey, $this->defaultCacheTtl, function () use ($section) {
             return FooterLink::where('section', $section)
-                            ->where('is_active', true)
-                            ->orderBy('sort_order')
-                            ->get()
-                            ->map(function ($link) {
-                                return [
-                                    'id' => $link->id,
-                                    'title' => $link->title,
-                                    'url' => $link->url,
-                                    'icon' => $link->icon,
-                                    'target' => $link->target,
-                                    'description' => $link->description,
-                                ];
-                            })
-                            ->toArray();
+                ->where('is_active', true)
+                ->orderBy('sort_order')
+                ->get()
+                ->map(function ($link) {
+                    return [
+                        'id' => $link->id,
+                        'title' => $link->title,
+                        'url' => $link->url,
+                        'icon' => $link->icon,
+                        'target' => $link->target,
+                        'description' => $link->description,
+                    ];
+                })
+                ->toArray();
         });
     }
 
@@ -133,19 +135,19 @@ class PerformanceOptimizationService
             '/<img([^>]+)>/i',
             function ($matches) {
                 $img = $matches[0];
-                
+
                 // Add lazy loading if not present
                 if (!strpos($img, 'loading=')) {
                     $img = str_replace('<img', '<img loading="lazy"', $img);
                 }
-                
+
                 // Add responsive class if not present
                 if (!strpos($img, 'class=')) {
                     $img = str_replace('<img', '<img class="img-responsive"', $img);
                 } elseif (!strpos($img, 'img-responsive')) {
                     $img = str_replace('class="', 'class="img-responsive ', $img);
                 }
-                
+
                 return $img;
             },
             $content
@@ -158,7 +160,7 @@ class PerformanceOptimizationService
                 $url = $matches[2];
                 $beforeHref = $matches[1];
                 $afterHref = $matches[3];
-                
+
                 // Add security attributes to external links
                 if ($this->isExternalUrl($url)) {
                     $securityAttrs = '';
@@ -168,10 +170,10 @@ class PerformanceOptimizationService
                     if (!strpos($afterHref, 'target=')) {
                         $securityAttrs .= ' target="_blank"';
                     }
-                    
+
                     return "<a{$beforeHref}href=\"{$url}\"{$afterHref}{$securityAttrs}>";
                 }
-                
+
                 return $matches[0];
             },
             $content
@@ -190,13 +192,13 @@ class PerformanceOptimizationService
         }
 
         $optimizedUrls = [];
-        
+
         foreach ($this->imageSizes as $sizeName => $dimensions) {
             foreach ($this->imageFormats as $format) {
                 $optimizedUrls[$sizeName][$format] = $this->generateImageVariant(
-                    $imageUrl, 
-                    $dimensions[0], 
-                    $dimensions[1], 
+                    $imageUrl,
+                    $dimensions[0],
+                    $dimensions[1],
                     $format
                 );
             }
@@ -215,14 +217,14 @@ class PerformanceOptimizationService
     protected function generateResponsiveSrcset(array $optimizedUrls): string
     {
         $srcsetParts = [];
-        
+
         foreach ($optimizedUrls as $sizeName => $formats) {
             if (isset($formats['webp'])) {
                 $width = $this->imageSizes[$sizeName][0];
                 $srcsetParts[] = "{$formats['webp']} {$width}w";
             }
         }
-        
+
         return implode(', ', $srcsetParts);
     }
 
@@ -236,7 +238,7 @@ class PerformanceOptimizationService
         $pathInfo = pathinfo($imageUrl);
         $filename = $pathInfo['filename'];
         $extension = strtolower($pathInfo['extension']);
-        
+
         return str_replace(
             ".{$extension}",
             "_{$width}x{$height}.{$format}",
@@ -250,11 +252,11 @@ class PerformanceOptimizationService
     protected function isExternalUrl(string $url): bool
     {
         $parsedUrl = parse_url($url);
-        
+
         if (!isset($parsedUrl['host'])) {
             return false; // Relative URL
         }
-        
+
         $currentHost = request()->getHost();
         return $parsedUrl['host'] !== $currentHost;
     }
@@ -273,7 +275,7 @@ class PerformanceOptimizationService
                 'faq_*',
                 'seo_*'
             ];
-            
+
             foreach ($patterns as $pattern) {
                 Cache::flush();
             }
@@ -282,7 +284,7 @@ class PerformanceOptimizationService
                 Cache::forget($key);
             }
         }
-        
+
         return true;
     }
 
@@ -312,7 +314,7 @@ class PerformanceOptimizationService
     public function optimizeQueries(): array
     {
         $optimizations = [];
-        
+
         // Add indexes if they don't exist
         $requiredIndexes = [
             'pages' => ['slug', 'status', 'is_active', 'published_at'],
@@ -321,14 +323,14 @@ class PerformanceOptimizationService
             'faqs' => ['faq_category_id', 'is_active', 'sort_order'],
             'faq_categories' => ['is_active', 'sort_order']
         ];
-        
+
         foreach ($requiredIndexes as $table => $columns) {
             foreach ($columns as $column) {
                 // Check if index exists and add if needed
                 $optimizations[] = "Index check for {$table}.{$column}";
             }
         }
-        
+
         return $optimizations;
     }
 
@@ -338,27 +340,72 @@ class PerformanceOptimizationService
     public function generateSitemap(): string
     {
         $urls = collect();
-        
+
         // Add pages
         $pages = Page::where('status', 'published')
-                    ->where('is_active', true)
-                    ->where('visibility', 'public')
-                    ->select('slug', 'updated_at', 'created_at')
-                    ->get();
-        
+            ->where('is_active', true)
+            ->where('visibility', 'public')
+            ->select('slug', 'updated_at', 'created_at')
+            ->get();
+
         foreach ($pages as $page) {
             $urls->push([
                 'loc' => url("/{$page->slug}"),
-                'lastmod' => $page->updated_at->toISOString(),
+                'lastmod' => optional($page->updated_at)->toISOString() ?? optional($page->created_at)->toISOString(),
                 'changefreq' => 'weekly',
                 'priority' => $page->slug === 'home' ? '1.0' : '0.8'
             ]);
         }
-        
+
+        // Add inquiry service pages (/services/{slug})
+        $servicePages = \App\Models\InquiryServicePage::where('status', 'published')
+            ->where('is_active', true)
+            ->select('slug', 'updated_at', 'created_at')
+            ->get();
+
+        foreach ($servicePages as $page) {
+            $urls->push([
+                'loc' => route('inquiry-services.show', $page->slug),
+                'lastmod' => optional($page->updated_at)->toISOString() ?? optional($page->created_at)->toISOString(),
+                'changefreq' => 'weekly',
+                'priority' => '0.8'
+            ]);
+        }
+
+        // Add CMS content (blog/articles) - include content type for correct URL
+        $cmsContents = \App\Models\Website\CmsContent::published()->with('contentType')->select('slug', 'published_at', 'updated_at', 'created_at', 'cms_content_type_id')->get();
+        foreach ($cmsContents as $content) {
+            $typeSlug = $content->contentType->slug ?? 'blog';
+            $loc = url("/{$typeSlug}/{$content->slug}");
+            $urls->push([
+                'loc' => $loc,
+                'lastmod' => optional($content->updated_at)->toISOString() ?? optional($content->published_at)->toISOString() ?? optional($content->created_at)->toISOString(),
+                'changefreq' => 'weekly',
+                'priority' => '0.7'
+            ]);
+        }
+
+        // Add vehicle detail pages
+        $vehicles = \App\Models\Vehicle\Vehicle::where('status', 'published')->where('is_active', true)->select('id', 'updated_at', 'created_at', 'slug')->get();
+        foreach ($vehicles as $vehicle) {
+            $loc = route('vehicle.details', $vehicle->id);
+            $urls->push([
+                'loc' => $loc,
+                'lastmod' => optional($vehicle->updated_at)->toISOString() ?? optional($vehicle->created_at)->toISOString(),
+                'changefreq' => 'monthly',
+                'priority' => '0.6'
+            ]);
+        }
+
+        // Deduplicate by loc
+        $urls = $urls->unique(function ($item) {
+            return $item['loc'];
+        })->values();
+
         // Generate XML
         $xml = '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
         $xml .= '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' . "\n";
-        
+
         foreach ($urls as $url) {
             $xml .= "  <url>\n";
             $xml .= "    <loc>{$url['loc']}</loc>\n";
@@ -367,12 +414,12 @@ class PerformanceOptimizationService
             $xml .= "    <priority>{$url['priority']}</priority>\n";
             $xml .= "  </url>\n";
         }
-        
+
         $xml .= '</urlset>';
-        
+
         // Cache the sitemap
         Cache::put('sitemap', $xml, 86400); // 24 hours
-        
+
         return $xml;
     }
 

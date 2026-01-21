@@ -2,6 +2,10 @@
 
 @section('title', 'TheTaxi - Your Reliable Taxi Service')
 
+@push('meta')
+    @include('partials.seo')
+@endpush
+
 @section('content')
     <!-- Popup Page Identifier for Popup Display Engine -->
     <div data-popup-page="homepage"></div>
@@ -20,7 +24,7 @@
                     <h1>{{ $settings['banner_heading'] ?? 'All-in-one Travel Booking.' }}</h1>
                     <p>{{ $settings['banner_subheading'] ??
                         'Best travel agency in world-wide & achieve “World
-                                                                                                            Travel Award”' }}
+                                                                                                                                Travel Award”' }}
                     </p>
                     @include('components.booking-form')
                 </div>

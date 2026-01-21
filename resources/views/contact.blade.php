@@ -2,6 +2,10 @@
 
 @section('title', $settings['contact_page_title'] ?? 'Contact Us - TheTaxi')
 
+@push('meta')
+    @include('partials.seo')
+@endpush
+
 @section('content')
 
     <!-- Start Breadcrumb section -->

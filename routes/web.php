@@ -12,6 +12,7 @@ use App\Http\Controllers\VehicleController;
 use App\Http\Controllers\Website\CmsController;
 use App\Http\Controllers\Website\HomeController;
 use App\Http\Controllers\Website\InquiryServicePageController;
+use App\Http\Controllers\Website\SitemapController;
 use App\Http\Controllers\TestController;
 use Illuminate\Support\Facades\Route;
 
@@ -146,6 +147,9 @@ Route::get('/{contentType}/{content}', [CmsController::class, 'show'])
     ->name('cms.show')
     ->where('contentType', '[a-zA-Z0-9-_]+') // Simple pattern for content types
     ->where('content', '[a-zA-Z0-9-_]+'); // Simple pattern for content slugs
+
+// Sitemap
+Route::get('/sitemap.xml', [SitemapController::class, 'index'])->name('sitemap');
 
 // File upload routes for admin system
 Route::controller(FileUploadController::class)->group(function () {
