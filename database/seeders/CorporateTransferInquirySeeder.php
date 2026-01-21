@@ -193,6 +193,34 @@ class CorporateTransferInquirySeeder extends Seeder
                     ],
                 ],
                 [
+                    'type' => 'contact_info',
+                    'data' => [
+                        'kicker' => 'Get In Touch',
+                        'heading' => 'Contact Our Corporate Team',
+                        'description' => 'Have questions or need immediate assistance? Our corporate transport specialists are here to help.',
+                        'contacts' => [
+                            [
+                                'name' => 'Zufer Ahamed',
+                                'title' => 'Managing Director',
+                                'email' => 'zufer@thetaxi.lk',
+                                'phone' => '+94715487487',
+                                'availability' => 'Monday - Friday, 9:00 AM - 6:00 PM',
+                            ],
+                        ],
+                        'office_hours' => [
+                            'weekdays' => '9:00 AM - 6:00 PM',
+                            'saturday' => '9:00 AM - 2:00 PM',
+                            'sunday' => 'Closed',
+                        ],
+                        'emergency_hotline' => '+94 11 234 5678',
+                        'show_location' => true,
+                        'location' => [
+                            'address' => 'TheTaxi Corporate Office, Colombo 03, Sri Lanka',
+                            'map_embed' => '',
+                        ],
+                    ],
+                ],
+                [
                     'type' => 'features',
                     'data' => [
                         'heading' => 'Why Choose Our Corporate Transport?',
@@ -292,6 +320,7 @@ class CorporateTransferInquirySeeder extends Seeder
                         ],
                     ],
                 ],
+
             ],
         ];
 

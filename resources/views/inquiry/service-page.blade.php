@@ -28,6 +28,10 @@
             @case('faq')
                 @include('inquiry.sections.faq', ['section' => $section])
             @break
+
+            @case('contact_info')
+                @include('inquiry.sections.contact_info', ['section' => $section])
+            @break
         @endswitch
     @endforeach
 @endsection
@@ -184,7 +188,8 @@
 
                 const normalizedCurrent = (currentValues.length ? currentValues : ['']).map(String);
                 const conditionValues = Array.isArray(condition.value) ? condition.value : [condition.value];
-                const normalizedCondition = conditionValues.map((value) => value === null || value === undefined ? '' : String(value));
+                const normalizedCondition = conditionValues.map((value) => value === null || value ===
+                    undefined ? '' : String(value));
                 const matches = normalizedCurrent.some((value) => normalizedCondition.includes(value));
                 const shouldShow = condition.operator === 'not_equals' ? !matches : matches;
 
@@ -221,7 +226,8 @@
             form.querySelectorAll('input[type="tel"]').forEach((input) => {
                 const iti = window.intlTelInput(input, {
                     initialCountry: form.getAttribute('data-phone-initial-country') || 'lk',
-                    preferredCountries: (form.getAttribute('data-phone-preferred-countries') || 'lk,us,gb,au')
+                    preferredCountries: (form.getAttribute('data-phone-preferred-countries') ||
+                            'lk,us,gb,au')
                         .split(',')
                         .map((country) => country.trim())
                         .filter(Boolean),
