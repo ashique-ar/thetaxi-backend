@@ -69,3 +69,26 @@ it('runs sitemap command and pings search engines', function () {
         return str_contains($request->url(), 'www.google.com/ping');
     });
 });
+
+it('retries ping on 4xx and succeeds on alternate', function () {
+    $calls = 0;
+    Http::fake(function ($request) use (&$calls) {
+        $calls++;
+        // First request => 404, second request => 200
+        if ($calls === 1) {
+            return Http::response('', 404);
+        }
+        return Http::response('', 200);
+    });
+
+    // Use a single Google endpoint so the command has a fallback opportunity
+    $settingsService = app(\App\Services\WebsiteSettingsService::class);
+    $settingsService->set('sitemap_auto_generate', true);
+    $settingsService->set('sitemap_auto_ping', true);
+    $settingsService->set('sitemap_ping_urls', "http://www.google.com/ping?sitemap={sitemap_url}");
+
+    Artisan::call('sitemap:generate-and-ping');
+
+    // Ensure it attempted at least the initial and retry call
+    Http::assertSentCount(2);
+});
