@@ -2,6 +2,7 @@
 
 use function Pest\Laravel\get;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Http;
 
 beforeAll(function () {
     // Ensure database seeded for known content like 'corporate-transfers'
@@ -35,4 +36,36 @@ it('serves sitemap.xml and contains key urls', function () {
     // The sitemap should contain the home page and at least the services permalink
     expect(strpos($content, url('/')))->toBeGreaterThanOrEqual(0);
     expect(strpos($content, route('inquiry-services.show', 'corporate-transfers')))->toBeGreaterThanOrEqual(0);
+});
+
+it('respects explicit canonical_url on inquiry pages', function () {
+    // Create a test page with canonical_url
+    $page = \App\Models\InquiryServicePage::create([
+        'name' => 'SEO Canonical Test',
+        'slug' => 'seo-canonical-test',
+        'status' => 'published',
+        'is_active' => true,
+        'canonical_url' => 'https://example.com/custom-canonical'
+    ]);
+
+    $response = get('/services/seo-canonical-test');
+    $response->assertStatus(200);
+    $response->assertSee('<link rel="canonical" href="https://example.com/custom-canonical"', false);
+});
+
+it('runs sitemap command and pings search engines', function () {
+    Http::fake();
+
+    // Ensure settings instruct the command to ping
+    $settingsService = app(\App\Services\WebsiteSettingsService::class);
+    $settingsService->set('sitemap_auto_generate', true);
+    $settingsService->set('sitemap_auto_ping', true);
+    $settingsService->set('sitemap_ping_urls', "http://www.google.com/ping?sitemap={sitemap_url}");
+
+    Artisan::call('sitemap:generate-and-ping');
+
+    // Assert an HTTP call was made to the Google ping endpoint
+    Http::assertSent(function ($request) {
+        return str_contains($request->url(), 'www.google.com/ping');
+    });
 });

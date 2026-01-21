@@ -30,6 +30,7 @@ class InquiryServicePageResource extends JsonResource
             'seo_title' => $this->seo_title,
             'seo_description' => $this->seo_description,
             'seo_og_image' => $this->seo_og_image,
+            'canonical_url' => $this->canonical_url,
             'seo_keywords' => $this->seo_keywords,
             'sort_order' => $this->sort_order,
             'is_active' => $this->is_active,

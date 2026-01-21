@@ -27,14 +27,21 @@
             }
         }
 
-        // Inquiry pages use a /services/{slug} route
-        if ($model instanceof \App\Models\InquiryServicePage) {
-            $canonical = route('inquiry-services.show', $model->slug);
-        }
+        // If model provides an explicit canonical_url, prefer it (accepts absolute or relative)
+        if (!empty($model->canonical_url)) {
+            $canonical = filter_var($model->canonical_url, FILTER_VALIDATE_URL)
+                ? $model->canonical_url
+                : url(ltrim($model->canonical_url, '/'));
+        } else {
+            // Inquiry pages use a /services/{slug} route
+            if ($model instanceof \App\Models\InquiryServicePage) {
+                $canonical = route('inquiry-services.show', $model->slug);
+            }
 
-        if ($model instanceof \App\Models\Vehicle\Vehicle) {
-            // vehicle details route by id
-            $canonical = route('vehicle.details', $model->id);
+            if ($model instanceof \App\Models\Vehicle\Vehicle) {
+                // vehicle details route by id
+                $canonical = route('vehicle.details', $model->id);
+            }
         }
     }
 

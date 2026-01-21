@@ -22,6 +22,7 @@ class InquiryServicePage extends BaseModel
         'seo_description',
         'seo_og_image',
         'seo_keywords',
+        'canonical_url',
         'sort_order',
         'is_active',
         'created_user_id',
