@@ -7,6 +7,7 @@ use App\Services\WebsiteSettingsService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 class GenerateSitemapAndPing extends Command
 {
@@ -129,7 +130,31 @@ class GenerateSitemapAndPing extends Command
 
                     if (!$succeeded) {
                         Log::warning('All ping attempts failed for original endpoint: ' . $endpoint, ['original_url' => $urlToCall, 'status' => $status]);
+
+                        // Prepare details for notification
+                        $failureDetails = [
+                            'endpoint' => $endpoint,
+                            'tried_url' => $urlToCall,
+                            'status' => $status,
+                            'sitemap' => $sitemapUrl,
+                            'generated_at' => now()->toIso8601String(),
+                        ];
+
                         $this->error("All ping attempts failed for {$urlToCall} (status: {$status})");
+
+                        // Notify admins if enabled
+                        $notify = filter_var($this->settings->get('sitemap_failure_notify', true), FILTER_VALIDATE_BOOLEAN);
+                        $notifyEmail = $this->settings->get('sitemap_failure_notify_email', $this->settings->get('company_email'));
+
+                        if ($notify && !empty($notifyEmail)) {
+                            try {
+                                Mail::to($notifyEmail)->send(new \App\Mail\SitemapPingFailed($failureDetails));
+                                $this->info("Notification sent to {$notifyEmail}");
+                            } catch (\Throwable $e) {
+                                Log::error('Failed to send sitemap failure notification: ' . $e->getMessage(), ['exception' => $e]);
+                                $this->error('Failed to send sitemap failure notification. See logs.');
+                            }
+                        }
                     }
                 }
 

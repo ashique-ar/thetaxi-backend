@@ -70,6 +70,26 @@ it('runs sitemap command and pings search engines', function () {
     });
 });
 
+it('sends a notification email when ping attempts fail and notification enabled', function () {
+    Mail::fake();
+    Http::fake(['*' => Http::response('', 404)]);
+
+    $settingsService = app(\App\Services\WebsiteSettingsService::class);
+    $settingsService->set('sitemap_auto_generate', true);
+    $settingsService->set('sitemap_auto_ping', true);
+    $settingsService->set('sitemap_ping_urls', "http://www.google.com/ping?sitemap={sitemap_url}");
+
+    // Set notification options
+    $settingsService->set('sitemap_failure_notify', true);
+    $settingsService->set('sitemap_failure_notify_email', 'seo-admin@thetaxi.lk');
+
+    Artisan::call('sitemap:generate-and-ping');
+
+    Mail::assertSent(\App\Mail\SitemapPingFailed::class, function ($mail) {
+        return $mail->hasTo('seo-admin@thetaxi.lk');
+    });
+});
+
 it('retries ping on 4xx and succeeds on alternate', function () {
     $calls = 0;
     Http::fake(function ($request) use (&$calls) {
