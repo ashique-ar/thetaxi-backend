@@ -29,6 +29,7 @@ class UpdateCmsContentRequest extends FormRequest
             'views_count' => ['sometimes', 'nullable', 'integer', 'min:0'],
             'is_featured' => ['sometimes', 'boolean'],
             'allow_comments' => ['sometimes', 'boolean'],
+            'is_ai_generated' => ['sometimes', 'boolean'],
             'meta_title' => ['sometimes', 'nullable', 'string', 'max:255'],
             'meta_description' => ['sometimes', 'nullable', 'string'],
             'meta_tags' => ['sometimes', 'nullable', 'string'],

@@ -40,7 +40,7 @@ class InquiryServicePageController extends Controller
 
     public function show(InquiryServicePage $inquiry_service_page): JsonResponse
     {
-        $inquiry_service_page->load(['form.fields', 'serviceType']);
+        $inquiry_service_page->load(['form.fields', 'serviceType', 'sections']);
 
         return response()->json([
             'status' => 'success',

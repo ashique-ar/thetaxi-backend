@@ -53,4 +53,9 @@ class InquiryServicePage extends BaseModel
     {
         return $this->hasMany(Inquiry::class, 'inquiry_service_page_id');
     }
+
+    public function sections(): HasMany
+    {
+        return $this->hasMany(\App\Models\InquiryServicePageSection::class, 'inquiry_service_page_id')->orderBy('sort_order');
+    }
 }

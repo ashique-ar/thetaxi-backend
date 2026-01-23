@@ -25,6 +25,7 @@ class CmsContentResource extends JsonResource
             'views_count' => $this->views_count,
             'is_featured' => $this->is_featured,
             'allow_comments' => $this->allow_comments,
+            'is_ai_generated' => $this->is_ai_generated,
             'meta_title' => $this->meta_title,
             'meta_description' => $this->meta_description,
             'meta_tags' => $this->meta_tags,

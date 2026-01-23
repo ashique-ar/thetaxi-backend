@@ -44,7 +44,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class CmsContent extends BaseModel
 {
-    
+
 
     /**
      * The attributes that are mass assignable.
@@ -67,6 +67,7 @@ class CmsContent extends BaseModel
         'views_count',
         'is_featured',
         'allow_comments',
+        'is_ai_generated',
         'meta_title',
         'meta_description',
         'meta_tags',
@@ -103,6 +104,7 @@ class CmsContent extends BaseModel
         'views_count' => 'integer',
         'is_featured' => 'boolean',
         'allow_comments' => 'boolean',
+        'is_ai_generated' => 'boolean',
         'is_active' => 'boolean',
         'display_order' => 'integer',
         'created_at' => 'datetime',
@@ -148,9 +150,9 @@ class CmsContent extends BaseModel
     public function scopePublished($query)
     {
         return $query->where('status', 'published')
-                    ->where('is_active', true)
-                    ->whereNotNull('published_at')
-                    ->where('published_at', '<=', now());
+            ->where('is_active', true)
+            ->whereNotNull('published_at')
+            ->where('published_at', '<=', now());
     }
 
     /**
@@ -193,7 +195,7 @@ class CmsContent extends BaseModel
     public function scopeSpecialOffers($query)
     {
         return $query->where('special_offer', true)
-                    ->where('discount_percentage', '>', 0);
+            ->where('discount_percentage', '>', 0);
     }
 
     /**
@@ -220,7 +222,7 @@ class CmsContent extends BaseModel
         if (!$this->price) {
             return null;
         }
-        
+
         return $this->price_currency . ' ' . number_format($this->price, 2);
     }
 

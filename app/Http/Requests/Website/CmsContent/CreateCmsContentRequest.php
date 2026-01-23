@@ -27,6 +27,7 @@ class CreateCmsContentRequest extends FormRequest
             'views_count' => ['nullable', 'integer', 'min:0'],
             'is_featured' => ['boolean'],
             'allow_comments' => ['boolean'],
+            'is_ai_generated' => ['boolean'],
             'meta_title' => ['nullable', 'string', 'max:255'],
             'meta_description' => ['nullable', 'string'],
             'meta_tags' => ['nullable', 'string'],

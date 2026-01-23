@@ -349,10 +349,37 @@ class CorporateTransferInquirySeeder extends Seeder
             'is_active' => true,
         ];
 
+        // Create or update page and ensure sections are mirrored into the new sections table
+        $page = InquiryServicePage::withTrashed()->where('slug', $pageData['slug'])->first();
         if ($page) {
             $page->update($pageData);
         } else {
-            InquiryServicePage::create($pageData);
+            $page = InquiryServicePage::create($pageData);
+        }
+
+        // Sync sections into inquiry_service_page_sections table (best-effort)
+        $desiredSections = $content['sections'] ?? [];
+        $existing = $page->sections()->withInactive()->get()->keyBy(function ($s) {
+            return $s->type . '|' . $s->sort_order;
+        });
+
+        foreach ($desiredSections as $index => $sectionData) {
+            $sort = $index + 1;
+            $key = ($sectionData['type'] ?? 'unknown') . '|' . $sort;
+
+            $payload = [
+                'type' => $sectionData['type'] ?? 'unknown',
+                'data' => $sectionData['data'] ?? [],
+                'sort_order' => $sort,
+                'is_active' => true,
+            ];
+
+            $existingSection = $existing->get($key);
+            if ($existingSection) {
+                $existingSection->update($payload);
+            } else {
+                $page->sections()->create($payload);
+            }
         }
     }
 }

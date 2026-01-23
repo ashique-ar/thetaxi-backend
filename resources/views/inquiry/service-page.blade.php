@@ -292,4 +292,31 @@
             });
         });
     </script>
+
+    {{-- FAQ JSON-LD generation (for SEO) --}}
+    @php
+        $faqSection = collect($sections)->first(fn($s) => ($s['type'] ?? '') === 'faq');
+        if ($faqSection && !empty($faqSection['data']['items'])) {
+            $faqItems = array_map(function ($item) {
+                return [
+                    '@type' => 'Question',
+                    'name' => $item['question'] ?? '',
+                    'acceptedAnswer' => [
+                        '@type' => 'Answer',
+                        'text' => $item['answer'] ?? '',
+                    ],
+                ];
+            }, $faqSection['data']['items']);
+
+            $faqJsonLd = [
+                '@context' => 'https://schema.org',
+                '@type' => 'FAQPage',
+                'mainEntity' => $faqItems,
+            ];
+        }
+    @endphp
+
+    @if (!empty($faqJsonLd))
+        <script type="application/ld+json">{!! json_encode($faqJsonLd, JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT) !!}</script>
+    @endif
 @endpush

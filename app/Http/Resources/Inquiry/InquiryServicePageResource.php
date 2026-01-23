@@ -26,6 +26,7 @@ class InquiryServicePageResource extends JsonResource
             'inquiry_type' => $this->inquiry_type,
             'status' => $this->status,
             'content' => $this->content,
+            'sections' => \App\Http\Resources\Inquiry\InquiryServicePageSectionResource::collection($this->whenLoaded('sections')),
             'settings' => $this->settings,
             'seo_title' => $this->seo_title,
             'seo_description' => $this->seo_description,

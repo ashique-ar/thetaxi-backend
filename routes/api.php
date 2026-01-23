@@ -66,6 +66,7 @@ use App\Http\Controllers\Api\Vehicle\VehiclePricing\PriceAdjustmentController;
 use App\Http\Controllers\Api\VipTypeController;
 use App\Http\Controllers\Api\Website\CmsContentController;
 use App\Http\Controllers\Api\Website\CmsContentTypeController;
+use App\Http\Controllers\Api\Website\AIContentController;
 use App\Http\Controllers\Api\Website\WebsiteSettingController;
 use App\Http\Controllers\Api\CMS\NavigationMenuController;
 use App\Http\Controllers\Api\CMS\FooterLinkController;
@@ -329,6 +330,9 @@ Route::middleware(['auth:api'])->group(function () {
         // Inquiry service pages & dynamic forms
         Route::apiResource('inquiry-forms', InquiryFormController::class);
         Route::apiResource('inquiry-service-pages', InquiryServicePageController::class);
+        // Manage sections for inquiry service pages (CRUD)
+        Route::apiResource('inquiry-service-pages.sections', \App\Http\Controllers\Api\InquiryServicePageSectionController::class);
+        Route::post('inquiry-service-pages/{inquiry_service_page}/sections/reorder', [\App\Http\Controllers\Api\InquiryServicePageSectionController::class, 'reorder']);
 
         // Service Configuration API routes for dynamic forms
         Route::get('services/configuration', [BookingController::class, 'getServiceConfiguration'])->name('api.services.configuration');
@@ -342,6 +346,14 @@ Route::middleware(['auth:api'])->group(function () {
     // CMS content management (protected by controller permissions)
     Route::apiResource('cms-content-types', CmsContentTypeController::class);
     Route::apiResource('cms-contents', CmsContentController::class);
+
+    // AI Content Generation Routes
+    Route::prefix('ai-content')->group(function () {
+        Route::post('generate', [AIContentController::class, 'generateFromTitle'])->name('api.ai-content.generate');
+        Route::post('generate-meta', [AIContentController::class, 'generateMeta'])->name('api.ai-content.generate-meta');
+        Route::post('improve', [AIContentController::class, 'improveContent'])->name('api.ai-content.improve');
+        Route::get('status', [AIContentController::class, 'status'])->name('api.ai-content.status');
+    });
 
 
     /*

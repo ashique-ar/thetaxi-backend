@@ -23,10 +23,33 @@ class InquiryServicePageController extends Controller
                 abort(404);
             }
 
-            $page->load(['form.fields']);
+            // Load both form fields and sections if available
+            $cacheKey = 'inquiry_service_page:' . $page->slug;
+            $cached = \Illuminate\Support\Facades\Cache::get($cacheKey);
+            if ($cached) {
+                $sections = $cached['sections'] ?? [];
+            } else {
+                $page->load(['form.fields', 'sections']);
 
-            $content = $page->content ?? [];
-            $sections = $content['sections'] ?? [];
+                // Prefer normalized sections from the DB relation, otherwise fallback to the legacy content JSON
+                if ($page->relationLoaded('sections') && $page->sections->isNotEmpty()) {
+                    $sections = $page->sections->map(function ($section) {
+                        return [
+                            'id' => $section->id,
+                            'type' => $section->type,
+                            'data' => $section->data,
+                            'sort_order' => $section->sort_order,
+                            'is_active' => $section->is_active,
+                        ];
+                    })->toArray();
+                } else {
+                    $content = $page->content ?? [];
+                    $sections = $content['sections'] ?? [];
+                }
+
+                // Cache the assembled sections (short TTL)
+                \Illuminate\Support\Facades\Cache::put($cacheKey, ['sections' => $sections], now()->addMinutes(60));
+            }
 
             return view('inquiry.service-page', [
                 'servicePage' => $page,
