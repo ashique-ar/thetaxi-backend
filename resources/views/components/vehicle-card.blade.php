@@ -210,7 +210,7 @@
                     @if ($hasDiscount && $originalAmountLKR > $totalAmountLKR)
                         <div class="original-price-display">
                             <del
-                                class="original-price-strike">{{ $currencySymbol }}{{ number_format($originalAmountConverted, 2) }}</del>
+                                class="original-price-strike">{{ $currencySymbol }} {{ number_format($originalAmountConverted, 2) }}</del>
                         </div>
                     @endif
                     <h4 class="price-amount{{ $hasDiscount ? ' discounted-price' : '' }}"
@@ -226,7 +226,7 @@
                     @if ($hasDiscount && $originalAmountLKR > $totalAmountLKR)
                         <div class="original-price-display">
                             <del
-                                class="original-price-strike">{{ $currencySymbol }}{{ number_format($originalAmountConverted, 2) }}</del>
+                                class="original-price-strike">{{ $currencySymbol }} {{ number_format($originalAmountConverted, 2) }}</del>
                         </div>
                     @endif
                     <h4 class="price-amount{{ $hasDiscount ? ' discounted-price' : '' }}"
@@ -248,7 +248,7 @@
                         @if ($hasDiscount && $originalAmountLKR > $totalAmountLKR)
                             <div class="original-price-display">
                                 <del
-                                    class="original-price-strike">{{ $currencySymbol }}{{ number_format($originalAmountConverted, 2) }}</del>
+                                    class="original-price-strike">{{ $currencySymbol }} {{ number_format($originalAmountConverted, 2) }}</del>
                             </div>
                         @endif
                         <h4 class="price-amount{{ $hasDiscount ? ' discounted-price' : '' }}"
@@ -268,7 +268,7 @@
                             @if ($hasDiscount && $originalAmountLKR > $totalAmountLKR)
                                 <div class="original-price-display">
                                     <del
-                                        class="original-price-strike">{{ $currencySymbol }}{{ number_format($originalAmountConverted, 2) }}</del>
+                                        class="original-price-strike">{{ $currencySymbol }} {{ number_format($originalAmountConverted, 2) }}</del>
                                 </div>
                             @endif
                             <h4 class="price-amount{{ $hasDiscount ? ' discounted-price' : '' }}"
@@ -289,7 +289,7 @@
                             @if ($hasDiscount && $originalPerDayRateLKR > $perDayRateLKR)
                                 <div class="original-price-display">
                                     <del
-                                        class="original-price-strike">{{ $currencySymbol }}{{ number_format($originalPerDayConverted, 2) }}/day</del>
+                                        class="original-price-strike">{{ $currencySymbol }} {{ number_format($originalPerDayConverted, 2) }}/day</del>
                                 </div>
                             @endif
                             <h4 class="price-amount{{ $hasDiscount ? ' discounted-price' : '' }}"
@@ -308,7 +308,7 @@
                                 <span class="total-label">Total:</span>
                                 @if ($hasDiscount && $originalAmountLKR > $totalAmountLKR)
                                     <del
-                                        class="original-total-strike me-1">{{ $currencySymbol }}{{ number_format($originalAmountConverted, 2) }}</del>
+                                        class="original-total-strike me-1">{{ $currencySymbol }} {{ number_format($originalAmountConverted, 2) }}</del>
                                 @endif
                                 <strong class="{{ $hasDiscount ? 'discounted-total' : '' }}"><small
                                         class="currency-code">{{ $currencySymbol }}</small>
@@ -324,7 +324,7 @@
                 @if ($hasDiscount && $discountAmountLKR > 0)
                     <small class="text-success fw-semibold">
                         <i class="bi bi-tag-fill"></i> You save
-                        {{ $currencySymbol }}{{ number_format($discountAmountConverted, 2) }}
+                        {{ $currencySymbol }} {{ number_format($discountAmountConverted, 2) }}
                     </small>
                 @endif
 
@@ -348,7 +348,7 @@
                 @if (isset($vehicle['refundable_deposit']) && $vehicle['refundable_deposit'] > 0)
                     <span class="amenity-badge">
                         <i class="bi bi-shield-check"></i> Deposit:
-                        {{ getCurrencySymbol() }}{{ number_format($vehicle['refundable_deposit'], 0) }}
+                        {{ getCurrencySymbol() }} {{ number_format($vehicle['refundable_deposit'], 0) }}
                     </span>
                 @endif
             </div>
