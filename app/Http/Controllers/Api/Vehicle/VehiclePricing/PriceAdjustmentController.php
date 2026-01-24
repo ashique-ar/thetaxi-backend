@@ -29,7 +29,7 @@ class PriceAdjustmentController extends Controller
             'vehicle_group_id' => 'uuid|exists:vehicle_groups,id',
             'adjustment_type' => 'in:percentage,fixed_amount',
             'applies_to' => 'in:base_price,total_price,km_charges',
-            'is_active' => 'boolean',
+            'is_active' => 'any',
             'is_cumulative' => 'boolean',
             'sort_by' => 'in:name,created_at,priority,valid_from,valid_to',
             'sort_direction' => 'in:asc,desc',
@@ -50,7 +50,7 @@ class PriceAdjustmentController extends Controller
                 $search = $request->search;
                 $query->where(function (Builder $q) use ($search) {
                     $q->where('name', 'like', "%{$search}%")
-                      ->orWhere('description', 'like', "%{$search}%");
+                        ->orWhere('description', 'like', "%{$search}%");
                 });
             }
 
@@ -503,10 +503,10 @@ class PriceAdjustmentController extends Controller
                 'name' => $adjustment->name,
                 'usage_count' => $adjustment->usage_count,
                 'usage_limit' => $adjustment->usage_limit,
-                'usage_percentage' => $adjustment->usage_limit 
+                'usage_percentage' => $adjustment->usage_limit
                     ? round(($adjustment->usage_count / $adjustment->usage_limit) * 100, 2)
                     : null,
-                'remaining_uses' => $adjustment->usage_limit 
+                'remaining_uses' => $adjustment->usage_limit
                     ? max(0, $adjustment->usage_limit - $adjustment->usage_count)
                     : null,
                 'is_unlimited' => $adjustment->usage_limit === null,
