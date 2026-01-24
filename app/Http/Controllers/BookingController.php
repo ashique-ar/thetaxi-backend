@@ -505,6 +505,13 @@ class BookingController extends Controller
                     'package_hours' => $searchParams['package_hours'] ?? null
                 ]),
                 'service_type' => $serviceType,
+                // Include discount/adjustment details for frontend display
+                'has_discount' => $pricingInfo['has_discount'] ?? false,
+                'original_amount' => $pricingInfo['original_amount'] ?? ($pricingInfo['base_amount'] ?? 0),
+                'discount_amount' => $pricingInfo['discount_amount'] ?? 0,
+                'discount_percentage' => $pricingInfo['discount_percentage'] ?? 0,
+                'savings_display' => $pricingInfo['savings_display'] ?? null,
+                'adjustment_details' => $pricingInfo['adjustment_details'] ?? null,
             ] : [];
 
             // Log pricing info for debugging

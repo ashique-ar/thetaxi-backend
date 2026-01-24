@@ -542,6 +542,15 @@ class CartController extends Controller
                 'service_package_id' => $servicePackageId,
                 'service_package_info' => $servicePackageInfo, // Store service package details
                 'distance_details' => $pricingInfo['distance_details'] ?? null, // Store km limits and extra km rate
+                // Store adjustment/discount details for frontend display
+                'adjustment_details' => $pricingInfo['adjustment_details'] ?? null,
+                'has_discount' => $pricingInfo['has_discount'] ?? false,
+                'original_amount' => $pricingInfo['original_amount'] ?? $totalPrice,
+                'original_amount_lkr' => $pricingInfo['original_amount'] ?? $totalPrice,
+                'discount_amount' => $pricingInfo['discount_amount'] ?? 0,
+                'discount_amount_lkr' => $pricingInfo['discount_amount'] ?? 0,
+                'discount_percentage' => $pricingInfo['discount_percentage'] ?? 0,
+                'savings_display' => $pricingInfo['savings_display'] ?? null,
                 'search_data' => $searchData,
                 'base_currency' => 'LKR', // Mark as LKR base pricing
                 'is_package' => $isPackageService, // Critical: Mark package services to prevent double multiplication

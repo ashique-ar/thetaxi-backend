@@ -352,6 +352,18 @@ class VehiclePricingCalculationDefinition extends Model
                 'additional_charges' => $totalAmount - ($resolvedVariables['slab_rate'] ?? 0) - $totalDeliveryCharge,
                 'variables_used' => array_keys($resolvedVariables)
             ],
+            // Include adjustment details for frontend discount display
+            'adjustment_details' => [
+                'original_amount' => $adjustmentResults['original_amount'] ?? $totalAmount,
+                'final_amount' => $adjustmentResults['final_amount'] ?? $totalAmount,
+                'total_discount' => $adjustmentResults['total_discount'] ?? 0,
+                'total_increase' => $adjustmentResults['total_increase'] ?? 0,
+                'has_discount' => $adjustmentResults['has_discount'] ?? false,
+                'has_increase' => $adjustmentResults['has_increase'] ?? false,
+                'savings_display' => $adjustmentResults['savings_display'] ?? null,
+                'discount_percentage' => $adjustmentResults['discount_percentage'] ?? 0,
+                'adjustments' => $adjustmentResults['adjustments'] ?? [],
+            ],
         ];
     }
 
@@ -969,6 +981,9 @@ class VehiclePricingCalculationDefinition extends Model
 
     /**
      * Apply KM range pricing rules and price adjustments.
+     * 
+     * Applies all applicable pricing rules and returns adjustment details
+     * including discount information for frontend display.
      */
     private function applyPricingAdjustments(
         float $baseAmount,
@@ -998,6 +1013,7 @@ class VehiclePricingCalculationDefinition extends Model
                         'name' => $rule['rule_info']['name'] ?? 'KM Range Pricing',
                         'amount' => $rule['adjustment_amount'] ?? 0,
                         'calculation' => $rule['calculation_details'] ?? null,
+                        'is_discount' => ($rule['adjustment_amount'] ?? 0) < 0,
                     ];
                 }
             }
@@ -1015,18 +1031,37 @@ class VehiclePricingCalculationDefinition extends Model
                 $adjustments[] = [
                     'type' => 'price_adjustment',
                     'name' => $adjustment['adjustment_info']['name'] ?? 'Price Adjustment',
+                    'description' => $adjustment['adjustment_info']['description'] ?? null,
                     'amount' => $adjustment['adjustment_amount'] ?? 0,
                     'calculation' => $adjustment['calculation_details'] ?? null,
                     'is_cumulative' => $adjustment['adjustment_info']['is_cumulative'] ?? false,
+                    'is_discount' => $adjustment['is_discount'] ?? false,
+                    'discount_amount' => $adjustment['discount_amount'] ?? 0,
+                    'adjustment_type' => $adjustment['adjustment_info']['adjustment_type'] ?? null,
                 ];
             }
             $currentAmount = $priceAdjustmentResult['final_amount'];
         }
 
+        // Calculate totals for frontend display
+        $totalDiscount = $priceAdjustmentResult['total_discount'] ?? 0;
+        $totalIncrease = $priceAdjustmentResult['total_increase'] ?? 0;
+        $hasDiscount = $priceAdjustmentResult['has_discount'] ?? false;
+        $hasIncrease = $priceAdjustmentResult['has_increase'] ?? false;
+
         return [
             'final_amount' => $currentAmount,
+            'original_amount' => $baseAmount,
             'adjustments' => $adjustments,
             'total_adjustment' => $currentAmount - $baseAmount,
+            'total_discount' => $totalDiscount,
+            'total_increase' => $totalIncrease,
+            'has_discount' => $hasDiscount,
+            'has_increase' => $hasIncrease,
+            'savings_display' => $hasDiscount ? 'LKR ' . number_format($totalDiscount, 2) : null,
+            'discount_percentage' => $hasDiscount && $baseAmount > 0
+                ? round(($totalDiscount / $baseAmount) * 100, 1)
+                : 0,
         ];
     }
 

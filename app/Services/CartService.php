@@ -288,6 +288,7 @@ class CartService
                 'tax' => 0,
                 'vat' => 0,
                 'coupon_discount' => 0,
+                'price_adjustment_discount' => 0,
                 'total' => 0
             ]);
             $cart->save();
@@ -324,6 +325,26 @@ class CartService
                 return (float) $lkrPrice * (int) $days;
             }
         });
+
+        // Calculate total price adjustment discount (from price adjustments, not coupons)
+        // Only count discounts (negative adjustments), not rate increases
+        $priceAdjustmentDiscount = 0;
+        foreach ($items as $item) {
+            if (is_array($item)) {
+                $hasDiscount = $item['has_discount'] ?? false;
+                $discountAmount = $item['discount_amount'] ?? 0;
+                if ($hasDiscount && $discountAmount > 0) {
+                    $priceAdjustmentDiscount += (float) $discountAmount;
+                }
+            } else if (is_object($item)) {
+                $hasDiscount = $item->has_discount ?? false;
+                $discountAmount = $item->discount_amount ?? 0;
+                if ($hasDiscount && $discountAmount > 0) {
+                    $priceAdjustmentDiscount += (float) $discountAmount;
+                }
+            }
+        }
+        $priceAdjustmentDiscount = round($priceAdjustmentDiscount, 2);
 
         // Calculate service fee dynamically from database settings
         $serviceFee = round($this->calculateServiceFee($subtotal), 2);
@@ -388,6 +409,7 @@ class CartService
             'vat' => round($vat, 2),
             'vat_label' => $this->getSettingValue('vat_label', config('booking.vat.label', 'VAT')),
             'coupon_discount' => round($couponDiscount, 2),
+            'price_adjustment_discount' => $priceAdjustmentDiscount,
             'total' => round($total, 2)
         ];
 
@@ -398,6 +420,7 @@ class CartService
             'service_fee_raw' => $serviceFee,
             'tax_raw' => $tax,
             'vat_raw' => $vat,
+            'price_adjustment_discount' => $priceAdjustmentDiscount,
             'total_raw' => $total,
             'calculated_totals' => $totalsArray
         ]);
@@ -504,6 +527,24 @@ class CartService
                     (float) $item['distance_details']['extra_km_price'],
                     $selectedCurrency
                 );
+            }
+
+            // Convert discount/adjustment amounts if present (only for discounts)
+            if (isset($item['has_discount']) && $item['has_discount']) {
+                if (isset($item['original_amount'])) {
+                    $item['original_amount_lkr'] = (float) ($item['original_amount_lkr'] ?? $item['original_amount']);
+                    $item['original_amount'] = $this->currencyService->convertFromLKR(
+                        (float) $item['original_amount'],
+                        $selectedCurrency
+                    );
+                }
+                if (isset($item['discount_amount'])) {
+                    $item['discount_amount_lkr'] = (float) ($item['discount_amount_lkr'] ?? $item['discount_amount']);
+                    $item['discount_amount'] = $this->currencyService->convertFromLKR(
+                        (float) $item['discount_amount'],
+                        $selectedCurrency
+                    );
+                }
             }
 
             // Add currency and package information

@@ -391,6 +391,12 @@
                                                         $itemTotal = isset($item['total_price'])
                                                             ? $item['total_price']
                                                             : ($item['price'] ?? 0) * $calculatedDays;
+
+                                                        // Get discount/adjustment details for this item
+                                                        $hasItemDiscount = $item['has_discount'] ?? false;
+                                                        $itemOriginalAmount = $item['original_amount'] ?? $itemTotal;
+                                                        $itemDiscountAmount = $item['discount_amount'] ?? 0;
+                                                        $itemDiscountPercentage = $item['discount_percentage'] ?? 0;
                                                     @endphp
                                                     <li class="single-item">
                                                         <div class="item-area">
@@ -551,9 +557,28 @@
                                                                 </div>
                                                             </div>
                                                             <div class="item-total">
-                                                                <small
-                                                                    class="currency-symbol">{{ $currencySymbol }}</small>
-                                                                {{ number_format($itemTotal, 2) }}
+                                                                @if ($hasItemDiscount && $itemOriginalAmount > $itemTotal)
+                                                                    {{-- Show discount badge --}}
+                                                                    <span class="checkout-item-discount-badge">
+                                                                        {{ round($itemDiscountPercentage) }}% OFF
+                                                                    </span>
+                                                                    {{-- Show original price with strikethrough --}}
+                                                                    <div class="checkout-original-price">
+                                                                        <del>{{ $currencySymbol }}{{ number_format($itemOriginalAmount, 2) }}</del>
+                                                                    </div>
+                                                                @endif
+                                                                <div
+                                                                    class="checkout-final-price {{ $hasItemDiscount ? 'discounted' : '' }}">
+                                                                    <small
+                                                                        class="currency-symbol">{{ $currencySymbol }}</small>
+                                                                    {{ number_format($itemTotal, 2) }}
+                                                                </div>
+                                                                @if ($hasItemDiscount && $itemDiscountAmount > 0)
+                                                                    <div class="checkout-savings">
+                                                                        <small>Save
+                                                                            {{ $currencySymbol }}{{ number_format($itemDiscountAmount, 2) }}</small>
+                                                                    </div>
+                                                                @endif
                                                             </div>
                                                         </div>
                                                     </li>
@@ -666,6 +691,21 @@
                                                         </div>
                                                     </li>
 
+                                                    @php
+                                                        $priceAdjustmentDiscount =
+                                                            $totals['price_adjustment_discount'] ?? 0;
+                                                    @endphp
+                                                    @if ($priceAdjustmentDiscount > 0)
+                                                        <li class="price-adjustment-discount-row">
+                                                            <span class="text-success">
+                                                                <i class="bi bi-percent"></i> Price Adjustment Discount
+                                                            </span>
+                                                            <div class="order-info text-success">
+                                                                <span>-{{ $currencySymbol }}
+                                                                    {{ number_format($priceAdjustmentDiscount, 2) }}</span>
+                                                            </div>
+                                                        </li>
+                                                    @endif
                                                     @if ($discount > 0)
                                                         <li class="discount-checkout-row">
                                                             <strong class="text-success"><i class="bi bi-tag-fill"></i>
@@ -875,6 +915,65 @@
 
 @push('styles')
     <style>
+        /* Checkout Item Discount Styles */
+        .item-total {
+            text-align: right;
+            min-width: 100px;
+        }
+
+        .checkout-item-discount-badge {
+            display: inline-block;
+            background: linear-gradient(135deg, #28a745, #20c997);
+            color: #fff;
+            font-size: 10px;
+            font-weight: 700;
+            padding: 3px 8px;
+            border-radius: 12px;
+            margin-bottom: 4px;
+        }
+
+        .checkout-original-price {
+            font-size: 12px;
+            margin-bottom: 2px;
+        }
+
+        .checkout-original-price del {
+            color: #888;
+            text-decoration: line-through;
+            text-decoration-color: #dc3545;
+            text-decoration-thickness: 1px;
+        }
+
+        .checkout-final-price {
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .checkout-final-price.discounted {
+            color: #28a745;
+        }
+
+        .checkout-savings {
+            margin-top: 2px;
+        }
+
+        .checkout-savings small {
+            color: #28a745;
+            font-size: 10px;
+            font-weight: 600;
+        }
+
+        .price-adjustment-discount-row {
+            background: rgba(40, 167, 69, 0.05);
+            padding: 8px 12px;
+            border-radius: 6px;
+            margin-bottom: 8px;
+        }
+
+        .price-adjustment-discount-row span:first-child {
+            font-weight: 500;
+        }
+
         /* Currency Formatting */
         .currency-symbol,
         .currency-code {

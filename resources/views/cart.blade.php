@@ -281,6 +281,12 @@
                                                     $serviceType = $item['service_type'] ?? null;
                                                     $pricingLabel = getServicePricingLabel($serviceType);
                                                     $isFixedRate = isServiceFixedRate($serviceType);
+                                                    // Discount information (only for negative adjustments)
+                                                    $hasDiscount = $item['has_discount'] ?? false;
+                                                    $originalAmount = $item['original_amount'] ?? $itemTotal;
+                                                    $discountAmount = $item['discount_amount'] ?? 0;
+                                                    $discountPercentage = $item['discount_percentage'] ?? 0;
+                                                    $savingsDisplay = $item['savings_display'] ?? null;
                                                 @endphp
                                                 @if (!$isFixedRate)
                                                     <div class="price-row">
@@ -288,6 +294,27 @@
                                                         <span class="price-value"><small
                                                                 class="currency-symbol">{{ $currencySymbol }}</small>
                                                             {{ number_format($item['price'] ?? 0, 2) }}</span>
+                                                    </div>
+                                                @endif
+                                                {{-- Show discount badge and original price only for discounts --}}
+                                                @if ($hasDiscount && $discountAmount > 0)
+                                                    <div class="price-row discount-info">
+                                                        <span class="cart-discount-badge">
+                                                            <i class="bi bi-tag-fill"></i>
+                                                            {{ $savingsDisplay ?: round($discountPercentage) . '% OFF' }}
+                                                        </span>
+                                                    </div>
+                                                    <div class="price-row original-price-row">
+                                                        <span class="price-label text-muted">Was:</span>
+                                                        <span class="price-value original-price"><small
+                                                                class="currency-symbol">{{ $currencySymbol }}</small>
+                                                            {{ number_format($originalAmount, 2) }}</span>
+                                                    </div>
+                                                    <div class="price-row savings-row">
+                                                        <span class="price-label text-success">You Save:</span>
+                                                        <span class="price-value text-success"><small
+                                                                class="currency-symbol">{{ $currencySymbol }}</small>
+                                                            {{ number_format($discountAmount, 2) }}</span>
                                                     </div>
                                                 @endif
                                                 <div class="price-row total-row">
@@ -430,6 +457,19 @@
                                             {{ number_format($cartTotals['subtotal'] ?? 0, 2) }}
                                         </strong>
                                     </li>
+
+                                    {{-- Show Price Adjustment Discount (discounts only, not rate increases) --}}
+                                    @if (($cartTotals['price_adjustment_discount'] ?? 0) > 0)
+                                        <li class="discount-row price-adjustment-discount-row">
+                                            <strong class="text-success">
+                                                <i class="bi bi-percent"></i> Special Discount
+                                            </strong>
+                                            <strong class="price-adjustment-discount-amount text-success">
+                                                -<small class="currency-symbol">{{ $currencySymbol }}</small>
+                                                {{ number_format($cartTotals['price_adjustment_discount'] ?? 0, 2) }}
+                                            </strong>
+                                        </li>
+                                    @endif
 
                                     @if (($cartTotals['addon_charges'] ?? 0) > 0)
                                         <li>
@@ -658,6 +698,47 @@
             font-size: 18px;
             color: var(--primary-color1, #c91c23);
             font-weight: 700;
+        }
+
+        /* Cart Discount Styles */
+        .cart-discount-badge {
+            display: inline-block;
+            background: linear-gradient(135deg, #28a745 0%, #218838 100%);
+            color: white;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 3px 8px;
+            border-radius: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .cart-discount-badge i {
+            margin-right: 3px;
+            font-size: 10px;
+        }
+
+        .cart-item-pricing .discount-info {
+            justify-content: flex-end;
+        }
+
+        .cart-item-pricing .original-price-row .original-price {
+            text-decoration: line-through;
+            color: #999;
+            font-weight: 400;
+        }
+
+        .cart-item-pricing .savings-row {
+            background: rgba(40, 167, 69, 0.08);
+            padding: 4px 8px;
+            border-radius: 4px;
+            margin-top: 2px;
+        }
+
+        .cart-item-pricing .savings-row .price-label,
+        .cart-item-pricing .savings-row .price-value {
+            color: #28a745 !important;
+            font-weight: 600;
         }
 
         .cart-item-actions {

@@ -42,6 +42,42 @@
         !$serviceRequiresInquiry;
 @endphp
 
+@php
+    // Get pricing data from BookingFlowService (already calculated final amounts)
+    $totalAmountLKR = $pricing['base_amount'] ?? 0; // This is the FINAL package amount (after adjustments)
+    $durationDays = $pricing['duration_info']['days'] ?? 1;
+    $packageHours = $pricing['duration_info']['package_hours'] ?? null;
+    $serviceType = $pricing['service_type'] ?? 'point_to_point';
+
+    // Get discount/adjustment details
+    $hasDiscount = $pricing['has_discount'] ?? false;
+    $originalAmountLKR = $pricing['original_amount'] ?? $totalAmountLKR;
+    $discountAmountLKR = $pricing['discount_amount'] ?? 0;
+    $discountPercentage = $pricing['discount_percentage'] ?? 0;
+    $savingsDisplay = $pricing['savings_display'] ?? null;
+
+    // Determine service type flags
+    $isPackageService = in_array($serviceType, ['wedding_hire', 'airport_transfers']);
+    $isWeddingPackage = $serviceType === 'wedding_hire' && $packageHours;
+    $isOneDay = $durationDays === 1;
+    $isRideNow = $serviceType === 'ride_now';
+
+    // IMPORTANT: BookingFlowService returns TOTAL PACKAGE AMOUNT, not per-day rate
+    // Only calculate per-day rate for display purposes in multi-day non-package services
+    $perDayRateLKR = !$isPackageService && $durationDays > 1 ? $totalAmountLKR / $durationDays : $totalAmountLKR;
+    $originalPerDayRateLKR =
+        !$isPackageService && $durationDays > 1 ? $originalAmountLKR / $durationDays : $originalAmountLKR;
+
+    // Convert to selected currency using helper functions
+    $selectedCurrency = getSelectedCurrency();
+    $totalAmountConverted = convertPrice($totalAmountLKR); // Final package amount
+    $originalAmountConverted = convertPrice($originalAmountLKR); // Original amount before discount
+    $perDayRateConverted = convertPrice($perDayRateLKR); // Per-day rate for display only
+    $originalPerDayConverted = convertPrice($originalPerDayRateLKR); // Original per-day rate
+    $discountAmountConverted = convertPrice($discountAmountLKR);
+    $currencySymbol = getCurrencySymbol();
+@endphp
+
 <!-- Vehicle Card -->
 <div class="vehicle-card modern-card h-100 {{ $isRecommended ? 'recommended-vehicle' : '' }}"
     data-vehicle-group="{{ $vehicle['id'] }}" data-price="{{ $pricing['base_amount'] ?? 0 }}"
@@ -74,7 +110,12 @@
                 <i class="bi bi-star-fill"></i> Recommended
             </span>
         @endif --}}
-
+        
+        @if ($hasDiscount && $discountPercentage > 0)
+            <span class="discount-badge">
+                {{ round($discountPercentage) }}% OFF
+            </span>
+        @endif
         <!-- Category Badge -->
         @if (isset($vehicle['category']['name']['name']))
             <span class="category-badge">{{ $vehicle['category']['name']['name'] }}</span>
@@ -117,49 +158,7 @@
                     <span>{{ $vehicle['hand_luggages'] }}</span>
                 @endif
             </div>
-            {{-- @if (isset($vehicle['passengers_count']) && $vehicle['passengers_count'])
-                <div class="spec-item">
-                    <i class="bi bi-people-fill"></i>
-                    <span>{{ $vehicle['passengers_count'] }}</span>
-                </div>
-            @elseif(isset($vehicle['seating_capacity']))
-                <div class="spec-item">
-                    <i class="bi bi-people-fill"></i>
-                    <span>{{ $vehicle['seating_capacity'] }} Seats</span>
-                </div>
-            @endif
-            @if (isset($vehicle['no_of_doors']) && $vehicle['no_of_doors'])
-                <div class="spec-item">
-                    <i class="bi bi-people-fill"></i>
-                    <span>{{ $vehicle['no_of_doors'] }} Doors</span>
-                </div>
-            @endif
-
-            @if (isset($vehicle['transmission']['name']))
-                <div class="spec-item">
-                    <i class="bi bi-gear-fill"></i>
-                    <span>{{ $vehicle['transmission']['name'] }}</span>
-                </div>
-            @endif
-
-            @if (isset($vehicle['fuel_type']['name']))
-                <div class="spec-item">
-                    <i class="bi bi-fuel-pump-fill"></i>
-                    <span>{{ $vehicle['fuel_type']['name'] }}</span>
-                </div>
-            @endif
-
-            @if (isset($vehicle['hand_luggages']) && $vehicle['hand_luggages'])
-                <div class="spec-item">
-                    <i class="bi bi-suitcase-fill"></i>
-                    <span>{{ $vehicle['hand_luggages'] }}</span>
-                </div>
-            @endif --}}
         </div>
-        {{-- Debug: Uncomment to see pricing data --}}
-        {{-- @dump($pricing) --}}
-
-
         {{-- <div class="availability-indicator">
             <small class="text-muted">
                 <i class="bi bi-car-front-fill"></i>
@@ -187,54 +186,53 @@
         <div class="vehicle-pricing mt-auto">
             <div class="price-display">
 
-                @php
-                    // Get pricing data from BookingFlowService (already calculated final amounts)
-                    $totalAmountLKR = $pricing['base_amount'] ?? 0; // This is the FINAL package amount, not per-day
-                    $durationDays = $pricing['duration_info']['days'] ?? 1;
-                    $packageHours = $pricing['duration_info']['package_hours'] ?? null;
-                    $serviceType = $pricing['service_type'] ?? 'point_to_point';
 
-                    // Determine service type flags
-                    $isPackageService = in_array($serviceType, ['wedding_hire', 'airport_transfers']);
-                    $isWeddingPackage = $serviceType === 'wedding_hire' && $packageHours;
-                    $isOneDay = $durationDays === 1;
-                    $isRideNow = $serviceType === 'ride_now';
-
-                    // IMPORTANT: BookingFlowService returns TOTAL PACKAGE AMOUNT, not per-day rate
-                    // Only calculate per-day rate for display purposes in multi-day non-package services
-                    $perDayRateLKR =
-                        !$isPackageService && $durationDays > 1 ? $totalAmountLKR / $durationDays : $totalAmountLKR;
-
-                    // Convert to selected currency using helper functions
-                    $selectedCurrency = getSelectedCurrency();
-                    $totalAmountConverted = convertPrice($totalAmountLKR); // Final package amount
-                    $perDayRateConverted = convertPrice($perDayRateLKR); // Per-day rate for display only
-                    $currencySymbol = getCurrencySymbol();
-                @endphp
 
                 @if ($isWeddingPackage)
                     <!-- Wedding Package Pricing - Use total amount directly -->
-                    <h4 class="price-amount" data-base-price-lkr="{{ $totalAmountLKR }}"
+                    @if ($hasDiscount && $originalAmountLKR > $totalAmountLKR)
+                        <div class="original-price-display">
+                            <del class="original-price-strike">{{ $currencySymbol }}
+                                {{ number_format($originalAmountConverted, 2) }}</del>
+                        </div>
+                    @endif
+                    <h4 class="price-amount{{ $hasDiscount ? ' discounted-price' : '' }}"
+                        data-base-price-lkr="{{ $totalAmountLKR }}" data-original-price-lkr="{{ $originalAmountLKR }}"
                         data-package-hours="{{ $packageHours }}" data-service-type="{{ $serviceType }}"
-                        data-currency="{{ $selectedCurrency }}" data-is-package="true">
-                        <small class="currency-code">{{ $currencySymbol }}</small>
+                        data-currency="{{ $selectedCurrency }}" data-is-package="true"
+                        data-has-discount="{{ $hasDiscount ? 'true' : 'false' }}">
+                        <small class="currency-code">{{ $currencySymbol }} </small>
                         <span class="price-value">{{ number_format($totalAmountConverted, 2) }}</span>
                         <span class="price-unit">/ {{ $packageHours }}h package</span>
                     </h4>
                 @elseif($isPackageService)
                     <!-- Airport Transfer Package Pricing - Use total amount directly -->
-                    <h4 class="price-amount" data-base-price-lkr="{{ $totalAmountLKR }}"
+                    @if ($hasDiscount && $originalAmountLKR > $totalAmountLKR)
+                        <div class="original-price-display">
+                            <del
+                                class="original-price-strike">{{ $currencySymbol }}{{ number_format($originalAmountConverted, 2) }}</del>
+                        </div>
+                    @endif
+                    <h4 class="price-amount{{ $hasDiscount ? ' discounted-price' : '' }}"
+                        data-base-price-lkr="{{ $totalAmountLKR }}" data-original-price-lkr="{{ $originalAmountLKR }}"
                         data-service-type="{{ $serviceType }}" data-currency="{{ $selectedCurrency }}"
-                        data-is-package="true">
+                        data-is-package="true" data-has-discount="{{ $hasDiscount ? 'true' : 'false' }}">
                         <small class="currency-code">{{ $currencySymbol }}</small>
                         <span class="price-value">{{ number_format($totalAmountConverted, 2) }}</span>
                         <span class="price-unit">/ transfer</span>
                     </h4>
                 @elseif($isOneDay)
                     <!-- One Day Pricing - Use total amount directly -->
-                    <h4 class="price-amount" data-base-price-lkr="{{ $totalAmountLKR }}"
+                    @if ($hasDiscount && $originalAmountLKR > $totalAmountLKR)
+                        <div class="original-price-display">
+                            <del
+                                class="original-price-strike">{{ $currencySymbol }}{{ number_format($originalAmountConverted, 2) }}</del>
+                        </div>
+                    @endif
+                    <h4 class="price-amount{{ $hasDiscount ? ' discounted-price' : '' }}"
+                        data-base-price-lkr="{{ $totalAmountLKR }}" data-original-price-lkr="{{ $originalAmountLKR }}"
                         data-duration="{{ $durationDays }}" data-currency="{{ $selectedCurrency }}"
-                        data-is-package="false">
+                        data-is-package="false" data-has-discount="{{ $hasDiscount ? 'true' : 'false' }}">
                         <small class="currency-code">{{ $currencySymbol }}</small>
                         <span class="price-value">{{ number_format($totalAmountConverted, 2) }}</span>
                     </h4>
@@ -247,9 +245,17 @@
                     <!-- Multi-day Pricing -->
                     @if ($isRideNow)
                         <!-- Ride Now: display total price only (no /day, no Total label) -->
-                        <h4 class="price-amount" data-base-price-lkr="{{ $totalAmountLKR }}"
-                            data-duration="{{ $durationDays }}" data-currency="{{ $selectedCurrency }}"
-                            data-is-package="false">
+                        @if ($hasDiscount && $originalAmountLKR > $totalAmountLKR)
+                            <div class="original-price-display">
+                                <del
+                                    class="original-price-strike">{{ $currencySymbol }}{{ number_format($originalAmountConverted, 2) }}</del>
+                            </div>
+                        @endif
+                        <h4 class="price-amount{{ $hasDiscount ? ' discounted-price' : '' }}"
+                            data-base-price-lkr="{{ $totalAmountLKR }}"
+                            data-original-price-lkr="{{ $originalAmountLKR }}" data-duration="{{ $durationDays }}"
+                            data-currency="{{ $selectedCurrency }}" data-is-package="false"
+                            data-has-discount="{{ $hasDiscount ? 'true' : 'false' }}">
                             <small class="currency-code">{{ $currencySymbol }}</small>
                             <span class="price-value">{{ number_format($totalAmountConverted, 2) }}</span>
                         </h4>
@@ -259,9 +265,18 @@
                         @endphp
                         @if ($isFixedRateService)
                             <!-- Fixed-rate service (trip-based) - show total only -->
-                            <h4 class="price-amount" data-base-price-lkr="{{ $totalAmountLKR }}"
-                                data-duration="{{ $durationDays }}" data-currency="{{ $selectedCurrency }}"
-                                data-is-package="false" data-service-type="{{ $serviceType }}">
+                            @if ($hasDiscount && $originalAmountLKR > $totalAmountLKR)
+                                <div class="original-price-display">
+                                    <del
+                                        class="original-price-strike">{{ $currencySymbol }}{{ number_format($originalAmountConverted, 2) }}</del>
+                                </div>
+                            @endif
+                            <h4 class="price-amount{{ $hasDiscount ? ' discounted-price' : '' }}"
+                                data-base-price-lkr="{{ $totalAmountLKR }}"
+                                data-original-price-lkr="{{ $originalAmountLKR }}" data-duration="{{ $durationDays }}"
+                                data-currency="{{ $selectedCurrency }}" data-is-package="false"
+                                data-service-type="{{ $serviceType }}"
+                                data-has-discount="{{ $hasDiscount ? 'true' : 'false' }}">
                                 <small class="currency-code">{{ $currencySymbol }}</small>
                                 <span class="price-value">{{ number_format($totalAmountConverted, 2) }}</span>
                             </h4>
@@ -271,9 +286,18 @@
                             </div>
                         @else
                             <!-- Show calculated per-day rate for multi-day rentals -->
-                            <h4 class="price-amount" data-base-price-lkr="{{ $totalAmountLKR }}"
+                            @if ($hasDiscount && $originalPerDayRateLKR > $perDayRateLKR)
+                                <div class="original-price-display">
+                                    <del
+                                        class="original-price-strike">{{ $currencySymbol }}{{ number_format($originalPerDayConverted, 2) }}/day</del>
+                                </div>
+                            @endif
+                            <h4 class="price-amount{{ $hasDiscount ? ' discounted-price' : '' }}"
+                                data-base-price-lkr="{{ $totalAmountLKR }}"
+                                data-original-price-lkr="{{ $originalAmountLKR }}"
                                 data-per-day-lkr="{{ round($perDayRateLKR, 2) }}" data-duration="{{ $durationDays }}"
-                                data-currency="{{ $selectedCurrency }}" data-is-package="false">
+                                data-currency="{{ $selectedCurrency }}" data-is-package="false"
+                                data-has-discount="{{ $hasDiscount ? 'true' : 'false' }}">
                                 <small class="currency-code">{{ $currencySymbol }}</small>
                                 <span class="price-value">{{ number_format($perDayRateConverted, 2) }}</span>
                                 <span class="price-unit">/day</span>
@@ -282,7 +306,12 @@
                             <!-- Total Price as Secondary Info for multi-day -->
                             <div class="total-price-info mt-2 text-muted small">
                                 <span class="total-label">Total:</span>
-                                <strong><small class="currency-code">{{ $currencySymbol }}</small>
+                                @if ($hasDiscount && $originalAmountLKR > $totalAmountLKR)
+                                    <del
+                                        class="original-total-strike me-1">{{ $currencySymbol }}{{ number_format($originalAmountConverted, 2) }}</del>
+                                @endif
+                                <strong class="{{ $hasDiscount ? 'discounted-total' : '' }}"><small
+                                        class="currency-code">{{ $currencySymbol }}</small>
                                     {{ number_format($totalAmountConverted, 2) }}</strong>
                                 <span
                                     class="duration-label">({{ getServiceDurationLabel($serviceType, $durationDays) }})</span>
@@ -291,12 +320,18 @@
                     @endif
                 @endif
 
-                @if (isset($enhancedPricing['savings']) && !empty($enhancedPricing['savings']))
-                    <div class="savings-info mt-1">
-                        <small class="text-success">
-                            <i class="bi bi-tag-fill"></i> Save {{ $enhancedPricing['savings']['amount'] ?? '0' }}
-                        </small>
-                    </div>
+                {{-- Show savings info only for actual discounts --}}
+                @if ($hasDiscount && $discountAmountLKR > 0)
+                    <small class="text-success fw-semibold">
+                        <i class="bi bi-tag-fill"></i> You save
+                        {{ $currencySymbol }}{{ number_format($discountAmountConverted, 2) }}
+                    </small>
+                @endif
+
+                @if (isset($enhancedPricing['savings']) && !empty($enhancedPricing['savings']) && !$hasDiscount)
+                    <small class="text-success">
+                        <i class="bi bi-tag-fill"></i> Save {{ $enhancedPricing['savings']['amount'] ?? '0' }}
+                    </small>
                 @endif
             </div>
         </div>
@@ -563,6 +598,20 @@
                 backdrop-filter: blur(10px);
             }
 
+            .discount-badge {
+                position: absolute;
+                top: 12px;
+                right: 12px;
+                padding: 6px 14px;
+                border-radius: 20px;
+                font-size: 11px;
+                font-weight: 700;
+                text-transform: uppercase;
+                background: #28a745;
+                color: white;
+                backdrop-filter: blur(10px);
+            }
+
             /* Vehicle Content */
             .vehicle-card-content {
                 padding: 20px;
@@ -815,6 +864,32 @@
             .savings-info small {
                 font-weight: 600;
                 letter-spacing: 0.3px;
+            }
+
+            .original-price {
+                text-align: center;
+                font-size: 14px;
+                margin-bottom: 4px;
+            }
+
+            .original-price s {
+                color: #999;
+                font-weight: 500;
+            }
+
+            /* Price with discount highlight */
+            .price-amount[data-has-discount="true"] {
+                color: var(--success-color);
+            }
+
+            .price-amount[data-has-discount="true"]::after {
+                content: '';
+                display: block;
+                width: 100%;
+                height: 3px;
+                background: linear-gradient(90deg, transparent, var(--success-color), transparent);
+                margin-top: 4px;
+                border-radius: 2px;
             }
 
             /* Enhanced Hover Effects for Service-Aware Cards */

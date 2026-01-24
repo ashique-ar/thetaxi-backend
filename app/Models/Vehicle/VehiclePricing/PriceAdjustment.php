@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Log;
 class PriceAdjustment extends BaseModel
 {
     protected $table = 'price_adjustments';
-    
+
     protected $fillable = [
         'name',
         'description',
@@ -82,16 +82,16 @@ class PriceAdjustment extends BaseModel
     public function scopeValid(Builder $query, Carbon $date = null): Builder
     {
         $date = $date ?? now();
-        
+
         return $query->where('valid_from', '<=', $date)
-                     ->where('valid_to', '>=', $date);
+            ->where('valid_to', '>=', $date);
     }
 
     public function scopeWithinUsageLimit(Builder $query): Builder
     {
         return $query->where(function (Builder $q) {
             $q->whereNull('usage_limit')
-              ->orWhereRaw('usage_count < usage_limit');
+                ->orWhereRaw('usage_count < usage_limit');
         });
     }
 
@@ -104,10 +104,10 @@ class PriceAdjustment extends BaseModel
     {
         return $query->where(function (Builder $q) use ($serviceTypeId) {
             $q->where('scope', 'global')
-              ->orWhere(function (Builder $q2) use ($serviceTypeId) {
-                  $q2->where('scope', 'service')
-                     ->where('service_type_id', $serviceTypeId);
-              });
+                ->orWhere(function (Builder $q2) use ($serviceTypeId) {
+                    $q2->where('scope', 'service')
+                        ->where('service_type_id', $serviceTypeId);
+                });
         });
     }
 
@@ -115,10 +115,10 @@ class PriceAdjustment extends BaseModel
     {
         return $query->where(function (Builder $q) use ($vehicleGroupId) {
             $q->where('scope', 'global')
-              ->orWhere(function (Builder $q2) use ($vehicleGroupId) {
-                  $q2->where('scope', 'vehicle_group')
-                     ->where('vehicle_group_id', $vehicleGroupId);
-              });
+                ->orWhere(function (Builder $q2) use ($vehicleGroupId) {
+                    $q2->where('scope', 'vehicle_group')
+                        ->where('vehicle_group_id', $vehicleGroupId);
+                });
         });
     }
 
@@ -126,7 +126,7 @@ class PriceAdjustment extends BaseModel
     {
         return $query->where(function (Builder $q) use ($amount) {
             $q->whereNull('minimum_booking_amount')
-              ->orWhere('minimum_booking_amount', '<=', $amount);
+                ->orWhere('minimum_booking_amount', '<=', $amount);
         });
     }
 
@@ -155,10 +155,10 @@ class PriceAdjustment extends BaseModel
     public function isValid(Carbon $date = null): bool
     {
         $date = $date ?? now();
-        
+
         $withinValidPeriod = $date->gte($this->valid_from) && $date->lte($this->valid_to);
         $withinUsageLimit = $this->usage_limit === null || $this->usage_count < $this->usage_limit;
-        
+
         return $this->is_active && $withinValidPeriod && $withinUsageLimit;
     }
 
@@ -170,12 +170,17 @@ class PriceAdjustment extends BaseModel
         if ($this->minimum_booking_amount !== null && $bookingAmount < $this->minimum_booking_amount) {
             return false;
         }
-        
+
         return $this->isValid();
     }
 
     /**
      * Calculate adjustment amount
+     * 
+     * Handles both percentage and fixed amount adjustments.
+     * For percentage: User enters value like -10 for 10% discount or 15 for 15% increase.
+     * For fixed_amount: User enters value like -500 for LKR 500 discount or 200 for LKR 200 increase.
+     * Negative values = discounts, Positive values = increases
      */
     public function calculateAdjustment(float $amount, string $priceComponent = null): array
     {
@@ -184,6 +189,8 @@ class PriceAdjustment extends BaseModel
                 'applicable' => false,
                 'adjustment_amount' => 0,
                 'final_amount' => $amount,
+                'original_amount' => $amount,
+                'is_discount' => false,
                 'calculation_details' => 'Adjustment does not apply to this booking',
             ];
         }
@@ -193,38 +200,46 @@ class PriceAdjustment extends BaseModel
 
         switch ($this->adjustment_type) {
             case 'percentage':
-                $adjustmentAmount = $amount * $this->percentage_change;
-                
-                // Apply maximum discount limit for negative adjustments
+                // User enters percentage as whole number (e.g., -10 for 10% discount, 15 for 15% increase)
+                // Convert to decimal for calculation: -10 becomes -0.10
+                $percentageDecimal = (float) $this->percentage_change / 100;
+                $adjustmentAmount = round($amount * $percentageDecimal, 2);
+
+                // Apply maximum discount limit for negative adjustments (discounts)
                 if ($adjustmentAmount < 0 && $this->maximum_discount_amount !== null) {
                     $maxDiscount = -abs($this->maximum_discount_amount);
                     $adjustmentAmount = max($adjustmentAmount, $maxDiscount);
                 }
-                
+
                 $calculationDetails = [
                     'type' => 'percentage',
                     'base_amount' => $amount,
-                    'percentage_change' => $this->percentage_change,
-                    'percentage_display' => ($this->percentage_change * 100) . '%',
-                    'calculation' => "{$amount} × {$this->percentage_change} = {$adjustmentAmount}",
+                    'percentage_value' => (float) $this->percentage_change,
+                    'percentage_decimal' => $percentageDecimal,
+                    'percentage_display' => ($this->percentage_change >= 0 ? '+' : '') . $this->percentage_change . '%',
+                    'calculation' => "{$amount} × {$percentageDecimal} = {$adjustmentAmount}",
                     'max_discount_applied' => $this->maximum_discount_amount !== null && $adjustmentAmount < 0,
+                    'max_discount_cap' => $this->maximum_discount_amount,
                 ];
                 break;
 
             case 'fixed_amount':
-                $adjustmentAmount = $this->fixed_amount_change;
-                
-                // Apply maximum discount limit for negative adjustments
+                // User enters fixed amount directly (e.g., -500 for LKR 500 discount, 200 for LKR 200 increase)
+                $adjustmentAmount = round((float) $this->fixed_amount_change, 2);
+
+                // Apply maximum discount limit for negative adjustments (discounts)
                 if ($adjustmentAmount < 0 && $this->maximum_discount_amount !== null) {
                     $maxDiscount = -abs($this->maximum_discount_amount);
                     $adjustmentAmount = max($adjustmentAmount, $maxDiscount);
                 }
-                
+
                 $calculationDetails = [
                     'type' => 'fixed_amount',
-                    'fixed_amount_change' => $this->fixed_amount_change,
+                    'fixed_amount_value' => (float) $this->fixed_amount_change,
+                    'adjustment_display' => ($this->fixed_amount_change >= 0 ? '+' : '') . 'LKR ' . abs($this->fixed_amount_change),
                     'calculation' => "Fixed adjustment: {$adjustmentAmount}",
                     'max_discount_applied' => $this->maximum_discount_amount !== null && $adjustmentAmount < 0,
+                    'max_discount_cap' => $this->maximum_discount_amount,
                 ];
                 break;
 
@@ -233,16 +248,25 @@ class PriceAdjustment extends BaseModel
                 break;
         }
 
+        $isDiscount = $adjustmentAmount < 0;
+        $finalAmount = max(0, $amount + $adjustmentAmount); // Ensure final amount doesn't go negative
+
         return [
             'applicable' => true,
             'adjustment_amount' => $adjustmentAmount,
-            'final_amount' => $amount + $adjustmentAmount,
+            'original_amount' => $amount,
+            'final_amount' => $finalAmount,
+            'is_discount' => $isDiscount,
+            'discount_amount' => $isDiscount ? abs($adjustmentAmount) : 0,
+            'savings_display' => $isDiscount ? 'LKR ' . number_format(abs($adjustmentAmount), 2) : null,
             'calculation_details' => $calculationDetails,
             'adjustment_info' => [
                 'id' => $this->id,
                 'name' => $this->name,
+                'description' => $this->description,
                 'scope' => $this->scope,
                 'applies_to' => $this->applies_to,
+                'adjustment_type' => $this->adjustment_type,
                 'priority' => $this->priority,
                 'is_cumulative' => $this->is_cumulative,
             ],
@@ -278,12 +302,12 @@ class PriceAdjustment extends BaseModel
             // Both service and vehicle group specified
             $query->where(function (Builder $q) use ($serviceTypeId, $vehicleGroupId) {
                 $q->where('scope', 'global')
-                  ->orWhere(function (Builder $q2) use ($serviceTypeId) {
-                      $q2->where('scope', 'service')->where('service_type_id', $serviceTypeId);
-                  })
-                  ->orWhere(function (Builder $q3) use ($vehicleGroupId) {
-                      $q3->where('scope', 'vehicle_group')->where('vehicle_group_id', $vehicleGroupId);
-                  });
+                    ->orWhere(function (Builder $q2) use ($serviceTypeId) {
+                        $q2->where('scope', 'service')->where('service_type_id', $serviceTypeId);
+                    })
+                    ->orWhere(function (Builder $q3) use ($vehicleGroupId) {
+                        $q3->where('scope', 'vehicle_group')->where('vehicle_group_id', $vehicleGroupId);
+                    });
             });
         } elseif ($serviceTypeId) {
             $query->forService($serviceTypeId);
@@ -298,6 +322,17 @@ class PriceAdjustment extends BaseModel
 
     /**
      * Apply multiple adjustments with cumulative logic
+     * 
+     * Applies all applicable price adjustments to the given amount.
+     * Non-cumulative adjustments: Only the highest priority one applies
+     * Cumulative adjustments: Stack on top of each other
+     * 
+     * @param float $amount The base amount to apply adjustments to
+     * @param string|null $serviceTypeId Service type for filtering
+     * @param string|null $vehicleGroupId Vehicle group for filtering
+     * @param string $priceComponent Which price component to apply to (base_price, total_price, km_charges)
+     * @param Carbon|null $date Date for validity check
+     * @return array Results including all adjustments applied and final amount
      */
     public static function applyAdjustments(
         float $amount,
@@ -306,11 +341,13 @@ class PriceAdjustment extends BaseModel
         string $priceComponent = 'total_price',
         Carbon $date = null
     ): array {
+        $originalAmount = $amount;
+
         $adjustments = static::getApplicableAdjustments(
-            $amount, 
-            $serviceTypeId, 
-            $vehicleGroupId, 
-            $priceComponent, 
+            $amount,
+            $serviceTypeId,
+            $vehicleGroupId,
+            $priceComponent,
             $date
         );
 
@@ -318,13 +355,21 @@ class PriceAdjustment extends BaseModel
             return [
                 'adjustments_applied' => [],
                 'total_adjustment' => 0,
+                'total_discount' => 0,
+                'total_increase' => 0,
+                'original_amount' => $originalAmount,
                 'final_amount' => $amount,
+                'has_discount' => false,
+                'has_increase' => false,
+                'savings_display' => null,
                 'calculation_summary' => 'No applicable price adjustments found',
             ];
         }
 
         $appliedAdjustments = [];
         $totalAdjustment = 0;
+        $totalDiscount = 0;
+        $totalIncrease = 0;
         $currentAmount = $amount;
 
         // Separate cumulative and non-cumulative adjustments
@@ -335,30 +380,55 @@ class PriceAdjustment extends BaseModel
         if ($nonCumulativeAdjustments->isNotEmpty()) {
             $bestAdjustment = $nonCumulativeAdjustments->first();
             $result = $bestAdjustment->calculateAdjustment($currentAmount, $priceComponent);
-            
+
             if ($result['applicable']) {
                 $appliedAdjustments[] = $result;
                 $totalAdjustment += $result['adjustment_amount'];
                 $currentAmount = $result['final_amount'];
+
+                if ($result['is_discount']) {
+                    $totalDiscount += abs($result['adjustment_amount']);
+                } else {
+                    $totalIncrease += $result['adjustment_amount'];
+                }
             }
         }
 
         // Apply cumulative adjustments
         foreach ($cumulativeAdjustments as $adjustment) {
             $result = $adjustment->calculateAdjustment($currentAmount, $priceComponent);
-            
+
             if ($result['applicable']) {
                 $appliedAdjustments[] = $result;
                 $totalAdjustment += $result['adjustment_amount'];
                 $currentAmount = $result['final_amount'];
+
+                if ($result['is_discount']) {
+                    $totalDiscount += abs($result['adjustment_amount']);
+                } else {
+                    $totalIncrease += $result['adjustment_amount'];
+                }
             }
         }
 
+        $hasDiscount = $totalDiscount > 0;
+        $hasIncrease = $totalIncrease > 0;
+        $finalAmount = max(0, $originalAmount + $totalAdjustment);
+
         return [
             'adjustments_applied' => $appliedAdjustments,
-            'total_adjustment' => $totalAdjustment,
-            'final_amount' => $amount + $totalAdjustment,
-            'calculation_summary' => count($appliedAdjustments) > 0 
+            'total_adjustment' => round($totalAdjustment, 2),
+            'total_discount' => round($totalDiscount, 2),
+            'total_increase' => round($totalIncrease, 2),
+            'original_amount' => $originalAmount,
+            'final_amount' => round($finalAmount, 2),
+            'has_discount' => $hasDiscount,
+            'has_increase' => $hasIncrease,
+            'savings_display' => $hasDiscount ? 'LKR ' . number_format($totalDiscount, 2) : null,
+            'discount_percentage' => $hasDiscount && $originalAmount > 0
+                ? round(($totalDiscount / $originalAmount) * 100, 1)
+                : 0,
+            'calculation_summary' => count($appliedAdjustments) > 0
                 ? "Applied " . count($appliedAdjustments) . " price adjustment(s)"
                 : "No price adjustments applied",
         ];

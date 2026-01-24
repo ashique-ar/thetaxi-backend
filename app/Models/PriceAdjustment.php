@@ -70,7 +70,7 @@ class PriceAdjustment extends BaseModel
     public function scopeValidForDate($query, $date = null)
     {
         $date = $date ?: now();
-        
+
         return $query->where(function ($q) use ($date) {
             $q->whereNull('valid_from')->orWhere('valid_from', '<=', $date);
         })->where(function ($q) use ($date) {
@@ -82,7 +82,7 @@ class PriceAdjustment extends BaseModel
     {
         return $query->where(function ($q) {
             $q->whereNull('usage_limit')
-              ->orWhereRaw('usage_count < usage_limit');
+                ->orWhereRaw('usage_count < usage_limit');
         });
     }
 
@@ -94,13 +94,13 @@ class PriceAdjustment extends BaseModel
     public function scopeForService($query, $serviceTypeId)
     {
         return $query->where('scope_type', 'service')
-                    ->where('service_type_id', $serviceTypeId);
+            ->where('service_type_id', $serviceTypeId);
     }
 
     public function scopeForVehicleGroup($query, $vehicleGroupId)
     {
         return $query->where('scope_type', 'vehicle_group')
-                    ->where('vehicle_group_id', $vehicleGroupId);
+            ->where('vehicle_group_id', $vehicleGroupId);
     }
 
     public function scopeDiscounts($query)
@@ -117,18 +117,18 @@ class PriceAdjustment extends BaseModel
     public function isValidForDate($date = null): bool
     {
         $date = $date ?: now();
-        
+
         $validFrom = $this->valid_from ? $this->valid_from->startOfDay() : null;
         $validTo = $this->valid_to ? $this->valid_to->endOfDay() : null;
-        
+
         if ($validFrom && $date < $validFrom) {
             return false;
         }
-        
+
         if ($validTo && $date > $validTo) {
             return false;
         }
-        
+
         return true;
     }
 
@@ -137,7 +137,7 @@ class PriceAdjustment extends BaseModel
         if (!$this->usage_limit) {
             return true; // No limit set
         }
-        
+
         return $this->usage_count < $this->usage_limit;
     }
 
@@ -158,9 +158,9 @@ class PriceAdjustment extends BaseModel
     public function canBeApplied($serviceTypeId = null, $vehicleGroupId = null, $date = null): bool
     {
         return $this->is_active &&
-               $this->isValidForDate($date) &&
-               $this->isWithinUsageLimit() &&
-               $this->isApplicableForScope($serviceTypeId, $vehicleGroupId);
+            $this->isValidForDate($date) &&
+            $this->isWithinUsageLimit() &&
+            $this->isApplicableForScope($serviceTypeId, $vehicleGroupId);
     }
 
     public function calculateAdjustment($originalAmount): array
@@ -173,7 +173,7 @@ class PriceAdjustment extends BaseModel
         }
 
         $adjustmentAmount = 0;
-        
+
         if ($this->value_type === 'percentage') {
             $adjustmentAmount = ($originalAmount * $this->value) / 100;
         } else {
@@ -181,7 +181,7 @@ class PriceAdjustment extends BaseModel
         }
 
         $finalAmount = $originalAmount;
-        
+
         if ($this->adjustment_type === 'discount') {
             $finalAmount = max(0, $originalAmount - $adjustmentAmount);
         } else { // markup
@@ -206,7 +206,7 @@ class PriceAdjustment extends BaseModel
     public function recordUsage($bookingId = null): void
     {
         $this->increment('usage_count');
-        
+
         if ($bookingId) {
             BookingPriceAdjustmentHistory::create([
                 'booking_id' => $bookingId,
@@ -223,32 +223,32 @@ class PriceAdjustment extends BaseModel
     public static function getApplicableAdjustments($serviceTypeId = null, $vehicleGroupId = null, $date = null): \Illuminate\Database\Eloquent\Collection
     {
         return self::active()
-                  ->validForDate($date)
-                  ->withinUsageLimit()
-                  ->where(function ($query) use ($serviceTypeId, $vehicleGroupId) {
-                      $query->where('scope_type', 'global')
-                            ->orWhere(function ($q) use ($serviceTypeId) {
-                                if ($serviceTypeId) {
-                                    $q->where('scope_type', 'service')
-                                      ->where('service_type_id', $serviceTypeId);
-                                }
-                            })
-                            ->orWhere(function ($q) use ($vehicleGroupId) {
-                                if ($vehicleGroupId) {
-                                    $q->where('scope_type', 'vehicle_group')
-                                      ->where('vehicle_group_id', $vehicleGroupId);
-                                }
-                            });
-                  })
-                  ->orderBy('adjustment_type', 'desc') // Markups first, then discounts
-                  ->orderBy('created_at', 'desc')
-                  ->get();
+            ->validForDate($date)
+            ->withinUsageLimit()
+            ->where(function ($query) use ($serviceTypeId, $vehicleGroupId) {
+                $query->where('scope_type', 'global')
+                    ->orWhere(function ($q) use ($serviceTypeId) {
+                        if ($serviceTypeId) {
+                            $q->where('scope_type', 'service')
+                                ->where('service_type_id', $serviceTypeId);
+                        }
+                    })
+                    ->orWhere(function ($q) use ($vehicleGroupId) {
+                        if ($vehicleGroupId) {
+                            $q->where('scope_type', 'vehicle_group')
+                                ->where('vehicle_group_id', $vehicleGroupId);
+                        }
+                    });
+            })
+            ->orderBy('adjustment_type', 'desc') // Markups first, then discounts
+            ->orderBy('created_at', 'desc')
+            ->get();
     }
 
     public static function applyAdjustments($originalAmount, $serviceTypeId = null, $vehicleGroupId = null, $date = null, $bookingId = null): array
     {
         $adjustments = self::getApplicableAdjustments($serviceTypeId, $vehicleGroupId, $date);
-        
+
         $currentAmount = $originalAmount;
         $appliedAdjustments = [];
         $totalSavings = 0;
@@ -257,26 +257,26 @@ class PriceAdjustment extends BaseModel
         foreach ($adjustments as $adjustment) {
             if ($adjustment->isApplicableForScope($serviceTypeId, $vehicleGroupId)) {
                 $result = $adjustment->calculateAdjustment($currentAmount);
-                
+
                 if ($result['applicable']) {
                     $appliedAdjustments[] = $result;
                     $currentAmount = $result['final_amount'];
-                    
+
                     if ($adjustment->adjustment_type === 'discount') {
                         $totalSavings += $result['adjustment_amount'];
                     } else {
                         $totalMarkup += $result['adjustment_amount'];
                     }
-                    
+
                     // Record usage if booking ID is provided
                     if ($bookingId) {
                         $adjustment->recordUsage($bookingId);
-                        
+
                         // Update the history record with the actual applied amount
                         $history = BookingPriceAdjustmentHistory::where('booking_id', $bookingId)
-                                                               ->where('price_adjustment_id', $adjustment->id)
-                                                               ->latest()
-                                                               ->first();
+                            ->where('price_adjustment_id', $adjustment->id)
+                            ->latest()
+                            ->first();
                         if ($history) {
                             $history->update(['applied_amount' => $result['adjustment_amount']]);
                         }
@@ -285,6 +285,14 @@ class PriceAdjustment extends BaseModel
             }
         }
 
+        // Calculate aggregate discount percentage for display
+        $discountPercentage = $originalAmount > 0 && $totalSavings > 0
+            ? ($totalSavings / $originalAmount) * 100
+            : 0;
+
+        // Determine if this is a discount (negative adjustment = savings)
+        $hasDiscount = $totalSavings > 0 && $currentAmount < $originalAmount;
+
         return [
             'original_amount' => $originalAmount,
             'final_amount' => $currentAmount,
@@ -292,7 +300,14 @@ class PriceAdjustment extends BaseModel
             'total_savings' => $totalSavings,
             'total_markup' => $totalMarkup,
             'adjustments_applied' => count($appliedAdjustments),
-            'adjustment_details' => $appliedAdjustments
+            'adjustment_details' => $appliedAdjustments,
+            // New fields for discount display
+            'has_discount' => $hasDiscount,
+            'discount_percentage' => $discountPercentage,
+            'total_discount' => $totalSavings,
+            'savings_display' => $hasDiscount
+                ? getCurrencySymbol() . number_format($totalSavings, 2)
+                : null
         ];
     }
 
@@ -300,12 +315,12 @@ class PriceAdjustment extends BaseModel
     {
         $totalBookings = $this->bookingHistory()->count();
         $recentBookings = $this->bookingHistory()
-                              ->where('created_at', '>=', now()->subMonth())
-                              ->count();
-        
-        $usagePercentage = $this->usage_limit ? 
-                          ($this->usage_count / $this->usage_limit * 100) : 
-                          null;
+            ->where('created_at', '>=', now()->subMonth())
+            ->count();
+
+        $usagePercentage = $this->usage_limit ?
+            ($this->usage_count / $this->usage_limit * 100) :
+            null;
 
         return [
             'total_usage' => $this->usage_count,
@@ -313,9 +328,9 @@ class PriceAdjustment extends BaseModel
             'usage_percentage' => $usagePercentage,
             'total_bookings' => $totalBookings,
             'recent_bookings' => $recentBookings,
-            'remaining_uses' => $this->usage_limit ? 
-                               max(0, $this->usage_limit - $this->usage_count) : 
-                               null
+            'remaining_uses' => $this->usage_limit ?
+                max(0, $this->usage_limit - $this->usage_count) :
+                null
         ];
     }
 
@@ -324,9 +339,19 @@ class PriceAdjustment extends BaseModel
     {
         return LogOptions::defaults()
             ->logOnly([
-                'name', 'description', 'adjustment_type', 'value_type', 'value',
-                'scope_type', 'service_type_id', 'vehicle_group_id',
-                'valid_from', 'valid_to', 'usage_limit', 'usage_count', 'is_active'
+                'name',
+                'description',
+                'adjustment_type',
+                'value_type',
+                'value',
+                'scope_type',
+                'service_type_id',
+                'vehicle_group_id',
+                'valid_from',
+                'valid_to',
+                'usage_limit',
+                'usage_count',
+                'is_active'
             ])
             ->logOnlyDirty()
             ->dontSubmitEmptyLogs();

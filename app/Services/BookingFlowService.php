@@ -237,20 +237,34 @@ class BookingFlowService
                     $basePricing = $this->calculateDynamicPricing($pricingParams);
                     if ($basePricing && isset($basePricing['total_amount']) && $basePricing['total_amount'] > 0) {
                         $isPricingConfigured = true;
+
+                        // Get adjustment details for discount display
+                        $adjustmentDetails = $basePricing['adjustment_details'] ?? null;
+
                         $pricingInfo = [
                             'base_amount' => $basePricing['total_amount'],
                             'currency' => 'LKR',
                             'breakdown' => $basePricing['breakdown'] ?? [],
                             'distance_details' => $basePricing['distance_details'] ?? null,
                             'duration_info' => $durationInfo,
-                            'pricing_note' => $this->generatePricingNote($basePricing, $durationInfo)
+                            'pricing_note' => $this->generatePricingNote($basePricing, $durationInfo),
+                            // Include adjustment details for discount display on frontend
+                            'adjustment_details' => $adjustmentDetails,
+                            'has_discount' => $adjustmentDetails['has_discount'] ?? false,
+                            'original_amount' => $adjustmentDetails['original_amount'] ?? $basePricing['total_amount'],
+                            'discount_amount' => $adjustmentDetails['total_discount'] ?? 0,
+                            'discount_percentage' => $adjustmentDetails['discount_percentage'] ?? 0,
+                            'savings_display' => $adjustmentDetails['savings_display'] ?? null,
                         ];
 
-                        // Log for debugging distance_details flow
+                        // Log for debugging distance_details and adjustment_details flow
                         Log::debug('GetAvailableVehicleGroups - Pricing info built', [
                             'vehicle_group_id' => $group->id,
                             'has_distance_details' => isset($basePricing['distance_details']),
                             'distance_details' => $basePricing['distance_details'] ?? 'NOT SET',
+                            'has_adjustment_details' => isset($adjustmentDetails),
+                            'has_discount' => $adjustmentDetails['has_discount'] ?? false,
+                            'discount_amount' => $adjustmentDetails['total_discount'] ?? 0,
                             'base_amount' => $basePricing['total_amount'],
                         ]);
                     }
@@ -2239,7 +2253,7 @@ class BookingFlowService
 
     /**
      * Transform calculation result to standard pricing structure
-     * Enhanced to properly extract distance_details for frontend consumption
+     * Enhanced to properly extract distance_details and adjustment_details for frontend consumption
      */
     private function transformCalculationResult(array $calculationResult, array $params, string $mode): array
     {
@@ -2248,6 +2262,7 @@ class BookingFlowService
         $breakdown = $calculationResult['breakdown'] ?? [];
         $kmCalculations = $calculationResult['km_calculations'] ?? [];
         $slabInfo = $calculationResult['slab_info'] ?? [];
+        $adjustmentDetails = $calculationResult['adjustment_details'] ?? [];
 
         // Build distance_details from km_calculations and slab_info
         $distanceDetails = $this->buildDistanceDetails(
@@ -2266,6 +2281,7 @@ class BookingFlowService
                 'max_km_per_package' => $slabInfo['max_km_per_package'] ?? null,
             ] : null,
             'distance_details' => $distanceDetails,
+            'adjustment_details' => $adjustmentDetails,
             'service_type_id' => $params['service_type_id'] ?? null,
             'vehicle_group_id' => $params['vehicle_group_id'] ?? null,
         ]);
@@ -2277,6 +2293,7 @@ class BookingFlowService
             'total_amount_without_customizations' => $totalAmountWithoutCustomizations,
             'breakdown' => $this->formatPricingBreakdown($breakdown),
             'distance_details' => $distanceDetails,
+            'adjustment_details' => $adjustmentDetails,
             'calculation_metadata' => [
                 'definition_used' => $calculationResult['definition_id'] ?? null,
                 'variables_used' => $calculationResult['variables_used'] ?? [],
