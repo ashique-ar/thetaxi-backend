@@ -596,20 +596,24 @@
                 $returnDate = old('return_date', $getSearchProp('return_date'));
                 $returnTime = old('return_time', $getSearchProp('return_time', '12:00'));
                 // Format return date to DD/MM/YYYY if it's in Y-m-d format
-                if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
-                    $returnDate = date('d/m/Y', strtotime($returnDate));
-                } elseif (!$returnDate) {
-                    $returnDate = date('d/m/Y'); // Default to today
+if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
+    $returnDate = date('d/m/Y', strtotime($returnDate));
+} elseif (!$returnDate) {
+    $returnDate = date('d/m/Y'); // Default to today
                 }
             @endphp
             <div class="return-trip-section " id="ride_now-return-trip-section">
                 <div class="return-trip-toggle">
                     <label class="return-trip-checkbox-label">
-                        <input type="checkbox" name="is_return_trip" id="ride_now-return-toggle"
-                            value="1" {{ $isReturnTrip ? 'checked' : '' }}>
+                        <input type="checkbox" name="is_return_trip" id="ride_now-return-toggle" value="1"
+                            {{ $isReturnTrip ? 'checked' : '' }}>
                         <span class="return-trip-text">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M7.5 21L3 16.5M3 16.5L7.5 12M3 16.5H16.5C18.9853 16.5 21 14.4853 21 12C21 9.51472 18.9853 7.5 16.5 7.5H15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                xmlns="http://www.w3.org/2000/svg">
+                                <path
+                                    d="M7.5 21L3 16.5M3 16.5L7.5 12M3 16.5H16.5C18.9853 16.5 21 14.4853 21 12C21 9.51472 18.9853 7.5 16.5 7.5H15"
+                                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                    stroke-linejoin="round" />
                             </svg>
                             Add Return Trip
                         </span>
@@ -617,16 +621,20 @@
                 </div>
 
                 <!-- Return Trip Details (shown if return trip enabled) -->
-                <div class="return-trip-details" id="ride_now-return-details" style="display: {{ $isReturnTrip ? 'grid' : 'none' }};">
+                <div class="return-trip-details" id="ride_now-return-details"
+                    style="display: {{ $isReturnTrip ? 'grid' : 'none' }};">
                     <!-- Return Route Summary -->
                     <div class="return-route-summary">
                         <div class="route-badge">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M9 5L16 12L9 19" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                xmlns="http://www.w3.org/2000/svg">
+                                <path d="M9 5L16 12L9 19" stroke="currentColor" stroke-width="2"
+                                    stroke-linecap="round" stroke-linejoin="round" />
                             </svg>
                             <span class="route-text">
                                 <strong>Return:</strong>
-                                <span id="return-dropoff-location">{{ $rideNowDropoff['address'] ?? 'Drop-off' }}</span>
+                                <span
+                                    id="return-dropoff-location">{{ $rideNowDropoff['address'] ?? 'Drop-off' }}</span>
                                 →
                                 <span id="return-pickup-location">{{ $rideNowPickup['address'] ?? 'Pickup' }}</span>
                             </span>
@@ -637,12 +645,12 @@
                     <div class="single-search-box date-field">
                         <label class="input-label">Return Date</label>
                         <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z" />
+                            <path
+                                d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z" />
                         </svg>
                         <input type="text" name="return_date" id="ride_now-return-date" placeholder="DD/MM/YYYY"
                             class="custom-datepicker @error('return_date') is-invalid @enderror"
-                            value="{{ $returnDate }}"
-                            autocomplete="off">
+                            value="{{ $returnDate }}" autocomplete="off">
                         @error('return_date')
                             <span class="text-danger small">{{ $message }}</span>
                         @enderror
@@ -652,12 +660,12 @@
                     <div class="single-search-box">
                         <label class="input-label">Return Time</label>
                         <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M9 0C4.03 0 0 4.03 0 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm.5-12H8v5l4.25 2.52.75-1.23-3.5-2.08V4z" />
+                            <path
+                                d="M9 0C4.03 0 0 4.03 0 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm.5-12H8v5l4.25 2.52.75-1.23-3.5-2.08V4z" />
                         </svg>
                         <div class="custom-select-dropdown">
                             <input type="time" name="return_time" id="ride_now-return-time"
-                                value="{{ $returnTime }}"
-                                class="@error('return_time') is-invalid @enderror">
+                                value="{{ $returnTime }}" class="@error('return_time') is-invalid @enderror">
                         </div>
                         @error('return_time')
                             <span class="text-danger small">{{ $message }}</span>
@@ -665,7 +673,8 @@
                     </div>
 
                     <!-- Return Pricing Info -->
-                    <div class="return-pricing-info" id="ride_now-return-pricing-info" style="display: {{ $isReturnTrip ? 'block' : 'none' }};">
+                    <div class="return-pricing-info" id="ride_now-return-pricing-info"
+                        style="display: {{ $isReturnTrip ? 'block' : 'none' }};">
                         <div class="text-success">
                             <span class="" id="ride_now-return-discount-label">Same Day Return</span>
                             <span class="fw-bold" id="ride_now-return-discount-value">50% off return</span>
@@ -1414,6 +1423,33 @@
         transition: all 0.2s ease-in-out;
     }
 
+    /* Google Places / Autocomplete dropdown styling (override inline widths) */
+    /* Make the suggestions wider than the input and responsive on small screens */
+    .pac-container {
+        width: auto !important;
+        min-width: 360px !important;
+        /* wider minimum so more text is visible */
+        max-width: 360px !important;
+        box-sizing: border-box !important;
+        /* z-index: 99999 !important; */
+        /* left: auto !important;
+        right: auto !important; */
+        overflow: hidden !important;
+        border-radius: 8px !important;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12) !important;
+    }
+
+    /* On small screens, use almost full width and keep it readable */
+    @media (max-width: 576px) {
+        .pac-container {
+            min-width: calc(100% - 24px) !important;
+            width: calc(100% - 24px) !important;
+            left: 12px !important;
+            right: 12px !important;
+            max-width: none !important;
+        }
+    }
+
     /* Field visibility classes */
     .from-field.hidden,
     .to-field.hidden {
@@ -1515,7 +1551,8 @@
         margin-top: 15px;
         padding-top: 15px;
         border-top: 1px dashed #e1e5e9;
-        grid-column: 1 / -1; /* Span full width of the grid */
+        grid-column: 1 / -1;
+        /* Span full width of the grid */
     }
 
     .return-trip-toggle {
@@ -1611,7 +1648,7 @@
 
     .discount-value {
         font-weight: 700;
-        background: rgba(255,255,255,0.2);
+        background: rgba(255, 255, 255, 0.2);
         padding: 2px 8px;
         border-radius: 10px;
     }
@@ -1624,7 +1661,8 @@
 
     /* Ride Now form specific button styling */
     #ride_now-form .primary-btn1 {
-        grid-column: 1 / span 1; /* Only take first column, not full width */
+        grid-column: 1 / span 1;
+        /* Only take first column, not full width */
         justify-self: start;
         width: auto;
         min-width: 200px;
@@ -1632,7 +1670,8 @@
 
     @media (max-width: 991px) {
         #ride_now-form .primary-btn1 {
-            grid-column: 1 / -1; /* Full width on smaller screens */
+            grid-column: 1 / -1;
+            /* Full width on smaller screens */
             width: 100%;
         }
     }
@@ -1650,15 +1689,18 @@
     }
 
     .return-trip-details .return-route-summary {
-        grid-column: 1 / span 2; /* First two columns */
+        grid-column: 1 / span 2;
+        /* First two columns */
     }
 
     .return-trip-details .single-search-box {
-        grid-column: auto; /* Each takes one column */
+        grid-column: auto;
+        /* Each takes one column */
     }
 
     .return-trip-details .return-pricing-info {
-        grid-column: 4 / span 1; /* Last column */
+        grid-column: 4 / span 1;
+        /* Last column */
         display: flex;
         align-items: center;
         margin-top: 0;
@@ -1668,9 +1710,11 @@
         .return-trip-details {
             grid-template-columns: repeat(2, 1fr);
         }
+
         .return-trip-details .return-route-summary {
             grid-column: 1 / -1;
         }
+
         .return-trip-details .return-pricing-info {
             grid-column: 1 / -1;
         }
@@ -1680,6 +1724,7 @@
         .return-trip-details {
             grid-template-columns: 1fr;
         }
+
         .return-trip-details .return-route-summary,
         .return-trip-details .single-search-box,
         .return-trip-details .return-pricing-info {
@@ -1895,6 +1940,54 @@
         $(document).ready(function() {
             setTimeout(debugCoordinates, 1000);
             setTimeout(debugCoordinates, 3000); // Run again after everything loads
+
+            // Adjust Google Places suggestion dropdown width when location inputs are focused
+            function adjustPacForInput(input) {
+                setTimeout(function() {
+                    const pac = document.querySelector('.pac-container');
+                    if (!pac) return;
+
+                    // Prefer aligning the dropdown with the main filter wrapper on wide viewports
+                    const container = document.querySelector('.filter-wrapper') || document.querySelector(
+                        '.container');
+                    let targetWidth = Math.min(container ? container.offsetWidth - 40 : window.innerWidth -
+                        24, 900);
+
+                    // On small screens, make it nearly full width
+                    if (window.innerWidth <= 576) {
+                        pac.style.left = '12px';
+                        pac.style.width = `calc(100% - 24px)`;
+                        pac.style.maxWidth = 'none';
+                    } else {
+                        // Position it horizontally centered under the filter wrapper
+                        if (container) {
+                            const rect = container.getBoundingClientRect();
+                            pac.style.left = (rect.left + 20) + 'px';
+                        } else {
+                            pac.style.left = (input.getBoundingClientRect().left) + 'px';
+                        }
+                        pac.style.width = targetWidth + 'px';
+                        pac.style.maxWidth = '900px';
+                    }
+
+                    pac.style.boxSizing = 'border-box';
+                    pac.style.zIndex = 99999;
+                }, 80);
+            }
+
+            // Bind to location inputs
+            document.querySelectorAll('input.location-search').forEach(function(el) {
+                el.addEventListener('focus', function() {
+                    adjustPacForInput(el);
+                });
+                el.addEventListener('input', function() {
+                    adjustPacForInput(el);
+                });
+                // When the window is resized, readjust
+                window.addEventListener('resize', function() {
+                    if (document.activeElement === el) adjustPacForInput(el);
+                });
+            });
         });
 
         // Add coordinate debugging to form submissions
