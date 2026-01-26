@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'TheTaxi - Your Reliable Taxi Service')
+@section('title', 'TheTaxi - Taxi Sri lanka | Airport Transfers | Book a Taxi Online')
 
 @push('meta')
     @include('partials.seo')
@@ -24,7 +24,7 @@
                     <h1>{{ $settings['banner_heading'] ?? 'All-in-one Travel Booking.' }}</h1>
                     <p>{{ $settings['banner_subheading'] ??
                         'Best travel agency in world-wide & achieve “World
-                                                                                                                                Travel Award”' }}
+                                                                                                                                                    Travel Award”' }}
                     </p>
                     @include('components.booking-form')
                 </div>
@@ -146,6 +146,12 @@
     @endif
     <!-- Featured Vehicles Section End -->
 
+    @if ($inspirations->count() > 0)
+        <x-cms-section :title="$settings['inspirations_section_title'] ?? 'Our Services'" :description="$settings['inspirations_section_description'] ??
+            'Professional transportation and travel services designed to meet your unique needs'" :items="$inspirations" type="services" :showPrice="true"
+            :showDuration="false" :showRating="false" viewAllText="View All Services" sectionId="services-section"
+            :limit="6" customTemplate="blog-card2" />
+    @endif
 
     @if ($destinations->count() > 0)
         <x-cms-section :title="$settings['destinations_section_title'] ?? 'Top Destinations'" :description="$settings['destinations_section_description'] ??
@@ -420,14 +426,6 @@
         </div>
     @endif
     <!-- home4 Testimonial Section End-->
-
-    @if ($inspirations->count() > 0)
-        <x-cms-section :title="$settings['inspirations_section_title'] ?? 'Our Services'" :description="$settings['inspirations_section_description'] ??
-            'Professional transportation and travel services designed to meet your unique needs'" :items="$inspirations" type="services" :showPrice="true"
-            :showDuration="false" :showRating="false" viewAllText="View All Services" sectionId="services-section"
-            :limit="3" customTemplate="blog-card2" />
-    @endif
-
     @if ($blogs->count() > 0)
         <x-cms-section :title="$settings['blog_section_title'] ?? 'Travel Stories & Inspiration'" :description="$settings['blog_section_description'] ??
             'Discover inspiring travel stories, destination guides, and insider tips for your next adventure'" :items="$blogs" type="blogs" :showPrice="false"

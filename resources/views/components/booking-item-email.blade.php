@@ -205,6 +205,64 @@
             </td>
         </tr>
 
+        @php
+            // Extract return trip pricing from multiple possible sources
+            $oneWayPrice = $item->one_way_price ?? ($item->metadata['one_way_price'] ?? null);
+            $returnPrice = $item->return_price ?? ($item->metadata['return_price'] ?? null);
+            $returnDiscountPct = $item->return_discount_percentage ?? ($item->metadata['return_discount_percentage'] ?? 0);
+
+            // Fallback: try workflow cart item (matching item_index or vehicle_group_id)
+            $cartItem = null;
+            $cartIndex = $item->metadata['item_index'] ?? null;
+            if (is_null($oneWayPrice) || is_null($returnPrice)) {
+                $workflow = is_string($item->booking->workflow_data ?? null)
+                    ? json_decode($item->booking->workflow_data, true)
+                    : $item->booking->workflow_data ?? [];
+                if (!is_null($cartIndex) && isset($workflow['cart_items'][$cartIndex])) {
+                    $cartItem = $workflow['cart_items'][$cartIndex];
+                } else {
+                    foreach ($workflow['cart_items'] ?? [] as $ci) {
+                        if (isset($ci['vehicle_group_id']) && $ci['vehicle_group_id'] == $item->vehicle_group_id) {
+                            $cartItem = $ci;
+                            break;
+                        }
+                    }
+                }
+
+                if ($cartItem) {
+                    $oneWayPrice = $oneWayPrice ?? ($cartItem['one_way_price'] ?? null);
+                    $returnPrice = $returnPrice ?? ($cartItem['return_price'] ?? null);
+                    $returnDiscountPct = $returnDiscountPct ?? ($cartItem['return_discount_percentage'] ?? 0);
+                }
+            }
+        @endphp
+
+        @if (!empty($oneWayPrice) || !empty($returnPrice))
+            <tr>
+                <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; width: 30%;">
+                    Outbound Trip
+                </td>
+                <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; color: #555;">
+                    {{ $currencySymbol }} {{ number_format((float) $oneWayPrice, 2) }}
+                </td>
+            </tr>
+            <tr>
+                <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; width: 30%;">
+                    Return Trip
+                </td>
+                <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; color: #555;">
+                    {{ $currencySymbol }} {{ number_format((float) $returnPrice, 2) }}
+                    @if (!empty($returnDiscountPct) && $returnDiscountPct > 0)
+                        <small class="text-success" style="margin-left:8px;">({{ $returnDiscountPct }}% off)</small>
+                    @endif
+                </td>
+            </tr>
+            <tr>
+                <td style="padding: 8px 0; font-weight: 700; color: #333; width: 30%;">Combined (Item Total)</td>
+                <td style="padding: 8px 0; color: #555; font-weight:700;">{{ $currencySymbol }} {{ number_format((float) $totalPrice, 2) }}</td>
+            </tr>
+        @endif
+
         @if (!empty($distanceDetails))
             @php
                 $allowedTotalKm = $distanceDetails['allowed_total_km'] ?? null;

@@ -149,6 +149,29 @@
                                             </div>
                                         </div>
 
+                                        @php
+                                            $oneWayPrice = $item['one_way_price'] ?? null;
+                                            $returnPrice = $item['return_price'] ?? null;
+                                            $returnDiscount = $item['return_discount_percentage'] ?? 0;
+                                        @endphp
+
+                                        @if (!empty($oneWayPrice) || !empty($returnPrice))
+                                            <div class="return-pricing" style="margin-top:12px; padding-top:10px; border-top:1px solid #eee;">
+                                                <div style="display:flex; justify-content:space-between; padding:4px 0;">
+                                                    <div>Outbound Trip</div>
+                                                    <div>{{ $currencySymbol }} {{ number_format((float) ($oneWayPrice ?? 0), 2) }}</div>
+                                                </div>
+                                                <div style="display:flex; justify-content:space-between; padding:4px 0;">
+                                                    <div>Return Trip @if(!empty($returnDiscount) && $returnDiscount > 0) <small class="text-success">({{ $returnDiscount }}% off)</small>@endif</div>
+                                                    <div>{{ $currencySymbol }} {{ number_format((float) ($returnPrice ?? 0), 2) }}</div>
+                                                </div>
+                                                <div style="display:flex; justify-content:space-between; font-weight:700; padding-top:6px; border-top:1px dashed #eee; margin-top:6px;">
+                                                    <div>Combined</div>
+                                                    <div>{{ $currencySymbol }} {{ number_format((float) (($oneWayPrice ?? 0) + ($returnPrice ?? 0)), 2) }}</div>
+                                                </div>
+                                            </div>
+                                        @endif
+
                                         {{-- Selected Addons & Extra KM for context items (arrays) --}}
                                         @if (!empty($addonsList))
                                             <div class="addons-section"
