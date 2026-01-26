@@ -1,6 +1,6 @@
 <?php
-// app/Http/Requests/Company/Company/UpdateCompanyRequest.php
-namespace App\Http\Requests\Company\Company;
+// app/Http/Requests/Company/UpdateCompanyRequest.php
+namespace App\Http\Requests\Company;
 
 use Illuminate\Foundation\Http\FormRequest;
 

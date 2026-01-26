@@ -200,24 +200,33 @@
 
                                                             {{-- Return Trip Info --}}
                                                             @if (!empty($item['is_return_trip']) && !empty($item['return_trip_date']))
-                                                                <div class="return-trip-info mt-2 p-2" style="background: linear-gradient(135deg, #e8f5e9, #c8e6c9); border-radius: 8px; border-left: 3px solid #28a745;">
+                                                                <div class="return-trip-info mt-2 p-2"
+                                                                    style="background: linear-gradient(135deg, #e8f5e9, #c8e6c9); border-radius: 8px; border-left: 3px solid #28a745;">
                                                                     <p style="margin: 0; font-weight: 600; color: #2e7d32;">
-                                                                        <i class="bi bi-arrow-left-right"></i> Return Trip Included
+                                                                        <i class="bi bi-arrow-left-right"></i> Return Trip
+                                                                        Included
                                                                     </p>
                                                                     <p style="margin: 4px 0 0 0; font-size: 13px;">
-                                                                        <i class="bi bi-calendar-check" style="color: #28a745;"></i>
-                                                                        Return: {{ \Carbon\Carbon::parse($item['return_trip_date'])->format('M d, Y') }}
+                                                                        <i class="bi bi-calendar-check"
+                                                                            style="color: #28a745;"></i>
+                                                                        Return:
+                                                                        {{ \Carbon\Carbon::parse($item['return_trip_date'])->format('M d, Y') }}
                                                                         @if (!empty($item['return_trip_time']))
                                                                             @ {{ $item['return_trip_time'] }}
                                                                         @endif
                                                                     </p>
                                                                     <p style="margin: 4px 0 0 0; font-size: 13px;">
-                                                                        <i class="bi bi-geo-alt" style="color: #28a745;"></i>
-                                                                        {{ $dropoffLoc ?: 'Drop-off' }} → {{ $pickupLoc ?: 'Pickup' }}
+                                                                        <i class="bi bi-geo-alt"
+                                                                            style="color: #28a745;"></i>
+                                                                        {{ $dropoffLoc ?: 'Drop-off' }} →
+                                                                        {{ $pickupLoc ?: 'Pickup' }}
                                                                     </p>
                                                                     @if (!empty($item['return_discount_percentage']) && $item['return_discount_percentage'] > 0)
-                                                                        <span class="badge bg-success mt-1" style="font-size: 11px;">
-                                                                            <i class="bi bi-tag-fill"></i> {{ $item['return_discount_percentage'] }}% off return trip
+                                                                        <span class="badge bg-success mt-1"
+                                                                            style="font-size: 11px;">
+                                                                            <i class="bi bi-tag-fill"></i>
+                                                                            {{ $item['return_discount_percentage'] }}% off
+                                                                            return trip
                                                                         </span>
                                                                     @endif
                                                                 </div>
@@ -321,20 +330,27 @@
 
                                                 {{-- Return Trip Pricing Breakdown --}}
                                                 @if ($isReturnTrip && $oneWayPrice && $returnPrice)
-                                                    <div class="return-trip-breakdown p-2 mb-2" style="background: #f8f9fa; border-radius: 6px; border-left: 3px solid #28a745;">
+                                                    <div class="return-trip-breakdown p-2 mb-2"
+                                                        style="background: #f8f9fa; border-radius: 6px; border-left: 3px solid #28a745;">
                                                         <div class="price-row">
-                                                            <span class="price-label"><i class="bi bi-arrow-right-circle text-primary"></i> Outbound:</span>
-                                                            <span class="price-value"><small class="currency-symbol">{{ $currencySymbol }}</small>
+                                                            <span class="price-label"><i
+                                                                    class="bi bi-arrow-right-circle text-primary"></i>
+                                                                Outbound:</span>
+                                                            <span class="price-value"><small
+                                                                    class="currency-symbol">{{ $currencySymbol }}</small>
                                                                 {{ number_format($oneWayPrice, 2) }}</span>
                                                         </div>
                                                         <div class="price-row">
                                                             <span class="price-label">
                                                                 <i class="bi bi-arrow-left-circle text-success"></i> Return:
                                                                 @if ($returnDiscountPct > 0)
-                                                                    <span class="badge bg-success" style="font-size: 10px;">{{ $returnDiscountPct }}% off</span>
+                                                                    <span class="badge bg-success"
+                                                                        style="font-size: 10px;">{{ $returnDiscountPct }}%
+                                                                        off</span>
                                                                 @endif
                                                             </span>
-                                                            <span class="price-value"><small class="currency-symbol">{{ $currencySymbol }}</small>
+                                                            <span class="price-value"><small
+                                                                    class="currency-symbol">{{ $currencySymbol }}</small>
                                                                 {{ number_format($returnPrice, 2) }}</span>
                                                         </div>
                                                     </div>
@@ -400,7 +416,8 @@
                                                     <i class="bi bi-chevron-down"></i> Show
                                                 </button>
                                             </div>
-                                            <div class="addons-grid-unified collapsed" data-cart-key="{{ $key }}"
+                                            <div class="addons-grid-unified collapsed"
+                                                data-cart-key="{{ $key }}"
                                                 data-service-type="{{ $item['service_type'] ?? '' }}">
                                                 <div class="text-center py-3">
                                                     <div class="spinner-border spinner-border-sm" role="status">
@@ -1892,8 +1909,8 @@
                                         ${isSelected ? '<i class="bi bi-arrow-clockwise"></i> Update' : '<i class="bi bi-plus-lg"></i> Add'}
                                     </button>
                                     ${isSelected ? `<button class="btn-remove-addon-unified remove-addon-btn" data-addon-id="${addon.id}" data-cart-key="${cartKey}" title="Remove this addon">
-                                                                                                                    <i class="bi bi-trash"></i> Remove
-                                                                                                                </button>` : ''}
+                                                                                                                        <i class="bi bi-trash"></i> Remove
+                                                                                                                    </button>` : ''}
                                 </div>
                             </div>
                         </div>
@@ -2756,6 +2773,10 @@
             background-color: #c82333;
         }
 
+        .booking-details p {
+            line-height: 16px;
+        }
+
         /* Responsive */
         @media (max-width: 768px) {
             .unified-addons-grid {
@@ -2843,8 +2864,8 @@
         }
 
         /* ==========================================
-                                                                                               Extra KM Purchase Section Styles
-                                                                                               ========================================== */
+                                                                                                   Extra KM Purchase Section Styles
+                                                                                                   ========================================== */
 
         /* Service type badge */
         .service-type-badge {

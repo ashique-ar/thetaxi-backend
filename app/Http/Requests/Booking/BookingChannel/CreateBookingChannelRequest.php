@@ -1,7 +1,7 @@
 <?php
-// app/Http/Requests/Booking/CreateBookingChannelRequest.php
+// app/Http/Requests/Booking/BookingChannel/CreateBookingChannelRequest.php
 
-namespace App\Http\Requests\Booking;
+namespace App\Http\Requests\Booking\BookingChannel;
 
 use Illuminate\Foundation\Http\FormRequest;
 

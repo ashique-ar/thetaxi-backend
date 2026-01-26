@@ -4,8 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Company;
-use App\Http\Requests\Company\Company\CreateCompanyRequest;
-use App\Http\Requests\Company\Company\UpdateCompanyRequest;
+use App\Http\Requests\Company\CreateCompanyRequest;
+use App\Http\Requests\Company\UpdateCompanyRequest;
 use App\Http\Resources\Company\CompanyResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;

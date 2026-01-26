@@ -1,6 +1,6 @@
 <?php
-// app/Http/Requests/DriverLog/CreateDriverLogRequest.php
-namespace App\Http\Requests\DriverLog;
+// app/Http/Requests/Driver/DriverLog/CreateDriverLogRequest.php
+namespace App\Http\Requests\Driver\DriverLog;
 
 use Illuminate\Foundation\Http\FormRequest;
 

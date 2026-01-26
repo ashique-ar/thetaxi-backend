@@ -5,8 +5,8 @@ namespace App\Http\Controllers\Api\Booking;
 
 use App\Http\Controllers\Controller;
 use App\Models\Booking\BookingStatus;
-use App\Http\Requests\Booking\CreateBookingStatusRequest;
-use App\Http\Requests\Booking\UpdateBookingStatusRequest;
+use App\Http\Requests\Booking\BookingStatus\CreateBookingStatusRequest;
+use App\Http\Requests\Booking\BookingStatus\UpdateBookingStatusRequest;
 use App\Http\Resources\Booking\BookingStatusResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -16,7 +16,7 @@ class BookingStatusController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('permission:booking-statuses.view')->only(['index','show']);
+        $this->middleware('permission:booking-statuses.view')->only(['index', 'show']);
         $this->middleware('permission:booking-statuses.create')->only(['store']);
         $this->middleware('permission:booking-statuses.edit')->only(['update']);
         $this->middleware('permission:booking-statuses.delete')->only(['destroy']);
@@ -35,17 +35,17 @@ class BookingStatusController extends Controller
         $st = BookingStatus::create($data);
 
         return response()->json([
-            'status'=>'success',
-            'message'=>'Booking status recorded',
-            'data'=>['status'=>new BookingStatusResource($st)]
-        ],201);
+            'status' => 'success',
+            'message' => 'Booking status recorded',
+            'data' => ['status' => new BookingStatusResource($st)]
+        ], 201);
     }
 
     public function show(BookingStatus $bookingStatus): JsonResponse
     {
         return response()->json([
-            'status'=>'success',
-            'data'=>['status'=>new BookingStatusResource($bookingStatus)]
+            'status' => 'success',
+            'data' => ['status' => new BookingStatusResource($bookingStatus)]
         ]);
     }
 
@@ -56,9 +56,9 @@ class BookingStatusController extends Controller
         $bookingStatus->update($data);
 
         return response()->json([
-            'status'=>'success',
-            'message'=>'Booking status updated',
-            'data'=>['status'=>new BookingStatusResource($bookingStatus)]
+            'status' => 'success',
+            'message' => 'Booking status updated',
+            'data' => ['status' => new BookingStatusResource($bookingStatus)]
         ]);
     }
 
@@ -66,8 +66,8 @@ class BookingStatusController extends Controller
     {
         $bookingStatus->delete();
         return response()->json([
-            'status'=>'success',
-            'message'=>'Booking status deleted'
+            'status' => 'success',
+            'message' => 'Booking status deleted'
         ]);
     }
 }

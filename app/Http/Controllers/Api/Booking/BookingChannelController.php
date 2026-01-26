@@ -5,8 +5,8 @@ namespace App\Http\Controllers\Api\Booking;
 
 use App\Http\Controllers\Controller;
 use App\Models\Booking\BookingChannel;
-use App\Http\Requests\Booking\CreateBookingChannelRequest;
-use App\Http\Requests\Booking\UpdateBookingChannelRequest;
+use App\Http\Requests\Booking\BookingChannel\CreateBookingChannelRequest;
+use App\Http\Requests\Booking\BookingChannel\UpdateBookingChannelRequest;
 use App\Http\Resources\BookingChannelResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;

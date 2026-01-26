@@ -1,7 +1,7 @@
 <?php
-// app/Http/Requests/Booking/UpdateBookingStatusRequest.php
+// app/Http/Requests/Booking/BookingStatus/UpdateBookingStatusRequest.php
 
-namespace App\Http\Requests\Booking;
+namespace App\Http\Requests\Booking\BookingStatus;
 
 use Illuminate\Foundation\Http\FormRequest;
 
