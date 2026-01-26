@@ -7,7 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\NotificationTemplate;
 use App\Http\Requests\NotificationTemplate\CreateNotificationTemplateRequest;
 use App\Http\Requests\NotificationTemplate\UpdateNotificationTemplateRequest;
-use App\Http\Resources\NotificationTemplateResource;
+use App\Http\Resources\NotificationTemplate\NotificationTemplateResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;

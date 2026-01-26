@@ -1,7 +1,7 @@
 <?php
 // app/Http/Resources/PhoneCallResource.php
 
-namespace App\Http\Resources;
+namespace App\Http\Resources\PhoneCall;
 
 use Illuminate\Http\Resources\Json\JsonResource;
 

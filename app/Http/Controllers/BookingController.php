@@ -65,8 +65,27 @@ class BookingController extends Controller
 
             // Transform frontend request data to BookingFlowService format
             $searchParams = $this->transformSearchParams($request->all(), $serviceType);
-            $searchParams['package_type'] = $request->input('package_id') ? $serviceType->packages()->find($request->input('package_id'))?->toArray() : null;
-            $searchParams['service_package_id'] = $searchParams['package_type'] ? $searchParams['package_type']['id'] : null;
+            
+            // Get package - either from request or default to first active package for service type
+            $packageId = $request->input('package_id');
+            if ($packageId) {
+                $searchParams['package_type'] = $serviceType->packages()->find($packageId)?->toArray();
+            } else {
+                // Fallback to first active package for service type (important for ride_now with return trip)
+                $defaultPackage = $serviceType->packages()->where('is_active', true)->first();
+                $searchParams['package_type'] = $defaultPackage?->toArray();
+            }
+            $searchParams['service_package_id'] = $searchParams['package_type']['id'] ?? null;
+            
+            Log::debug('Search - Package setup for service type', [
+                'frontend_service' => $frontendService,
+                'package_id_from_request' => $packageId,
+                'package_type' => $searchParams['package_type'] ?? null,
+                'service_package_id' => $searchParams['service_package_id'],
+                'is_return_trip' => $searchParams['is_return_trip'] ?? false,
+                'return_date' => $searchParams['return_date'] ?? null,
+            ]);
+            
             // Store search params and context in session for results page
             session()->put('current_search_params', $searchParams);
             session()->put('search_timestamp', now());
@@ -171,6 +190,23 @@ class BookingController extends Controller
                 $params['pickup_location'] = $this->formatLocation($requestData, 'pickup');
                 $params['dropoff_location'] = $this->formatLocation($requestData, 'dropoff');
                 $params['package_type'] = $requestData['package_type'] ?? 'multi-day';
+
+                // Handle return trip data
+                if (!empty($requestData['is_return_trip'])) {
+                    $params['is_return_trip'] = true;
+                    // Parse return date (handle both DD/MM/YYYY and Y-m-d formats)
+                    $returnDateStr = $requestData['return_date'] ?? null;
+                    if ($returnDateStr) {
+                        if (preg_match('/^\\d{2}\\/\\d{2}\\/\\d{4}$/', $returnDateStr)) {
+                            $params['return_date'] = Carbon::createFromFormat('d/m/Y', $returnDateStr)->format('Y-m-d');
+                        } else {
+                            $params['return_date'] = Carbon::parse($returnDateStr)->format('Y-m-d');
+                        }
+                    } else {
+                        $params['return_date'] = $pickupDate->format('Y-m-d');
+                    }
+                    $params['return_time'] = $requestData['return_time'] ?? '12:00';
+                }
                 break;
             case 'day_rental':
                 $pickupDate = Carbon::parse($requestData['pickup_date'] ?? $requestData['date']);
@@ -410,6 +446,10 @@ class BookingController extends Controller
                     'contract_type' => $searchParams['contract_type'] ?? null,
                     'service_package_id' => $searchParams['service_package_id'] ?? $searchParams['package_id'] ?? null,
                     'transfer_type' => $searchParams['transfer_type'] ?? null,
+                    // Return trip data
+                    'is_return_trip' => $searchParams['is_return_trip'] ?? false,
+                    'return_date' => $searchParams['return_date'] ?? null,
+                    'return_time' => $searchParams['return_time'] ?? null,
 
                 ]
             );
@@ -467,6 +507,21 @@ class BookingController extends Controller
         // Ensure vehicleGroups is an array
         $vehicleGroups = $vehicleGroups ?? [];
 
+        // Check if this is a return trip search
+        $isReturnTrip = !empty($searchParams['is_return_trip']);
+        $returnDate = $searchParams['return_date'] ?? null;
+        $outboundDate = $searchParams['from_date'] ?? null;
+        $packageId = $searchParams['service_package_id'] ?? $searchParams['package_id'] ?? null;
+
+        // Log return trip params for debugging
+        Log::debug('TransformResultsForPublicView - Return trip params', [
+            'is_return_trip' => $isReturnTrip,
+            'return_date' => $returnDate,
+            'outbound_date' => $outboundDate,
+            'package_id' => $packageId,
+            'has_package' => !empty($packageId),
+        ]);
+
         foreach ($vehicleGroups as $index => $groupData) {
             // Check if we have minimum required data
             if (!isset($groupData['id']) || !isset($groupData['name'])) {
@@ -476,6 +531,7 @@ class BookingController extends Controller
 
             // Format pricing from the structure returned by BookingFlowService
             $pricingInfo = $groupData['pricing_info'] ?? [];
+            $oneWayFare = $pricingInfo['base_amount'] ?? 0;
 
             // Get service type information
             $serviceType = null;
@@ -514,12 +570,57 @@ class BookingController extends Controller
                 'adjustment_details' => $pricingInfo['adjustment_details'] ?? null,
             ] : [];
 
+            // Calculate return trip pricing if this is a return trip search
+            $returnTripPricing = null;
+            if ($isReturnTrip && $oneWayFare > 0 && $outboundDate && $returnDate) {
+                try {
+                    $returnTripPricing = $this->bookingFlowService->calculateReturnTripPricing([
+                        'package_id' => $packageId,
+                        'vehicle_group_id' => $groupData['id'],
+                        'outbound_date' => $outboundDate,
+                        'return_date' => $returnDate,
+                        'one_way_fare' => $oneWayFare,
+                    ]);
+
+                    // Update total amount to include return trip
+                    if ($returnTripPricing && isset($returnTripPricing['total_fare'])) {
+                        $formattedPricing['one_way_amount'] = $oneWayFare;
+                        $formattedPricing['return_amount'] = $returnTripPricing['return_fare'];
+                        $formattedPricing['total_amount'] = $returnTripPricing['total_fare'];
+                        $formattedPricing['base_amount'] = $returnTripPricing['total_fare']; // Show combined price
+                        $formattedPricing['is_return_trip'] = true;
+                        $formattedPricing['return_trip_details'] = $returnTripPricing;
+
+                        // Add to breakdown
+                        $formattedPricing['breakdown']['outbound_trip'] = $oneWayFare;
+                        $formattedPricing['breakdown']['return_trip'] = $returnTripPricing['return_fare'];
+                        if ($returnTripPricing['discount_amount'] > 0) {
+                            $formattedPricing['breakdown']['return_discount'] = -$returnTripPricing['discount_amount'];
+                        }
+                    }
+
+                    Log::debug('Return trip pricing calculated', [
+                        'vehicle_group_id' => $groupData['id'],
+                        'one_way_fare' => $oneWayFare,
+                        'return_fare' => $returnTripPricing['return_fare'] ?? 0,
+                        'total_fare' => $returnTripPricing['total_fare'] ?? 0,
+                        'discount_percentage' => $returnTripPricing['discount_percentage'] ?? 0,
+                    ]);
+                } catch (\Exception $e) {
+                    Log::warning('Failed to calculate return trip pricing', [
+                        'vehicle_group_id' => $groupData['id'],
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+
             // Log pricing info for debugging
             Log::debug('TransformResultsForPublicView - Pricing formatted', [
                 'vehicle_group_id' => $groupData['id'],
                 'pricing_info_has_distance_details' => isset($pricingInfo['distance_details']),
                 'distance_details' => $pricingInfo['distance_details'] ?? null,
                 'base_amount' => $formattedPricing['base_amount'] ?? 0,
+                'is_return_trip' => $isReturnTrip,
             ]);
 
             // Build result using the ACTUAL structure from BookingFlowService

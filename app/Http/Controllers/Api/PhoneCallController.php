@@ -7,7 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\PhoneCall;
 use App\Http\Requests\PhoneCall\CreatePhoneCallRequest;
 use App\Http\Requests\PhoneCall\UpdatePhoneCallRequest;
-use App\Http\Resources\PhoneCallResource;
+use App\Http\Resources\PhoneCall\PhoneCallResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;

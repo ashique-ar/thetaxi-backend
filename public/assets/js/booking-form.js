@@ -3149,11 +3149,306 @@
         }
     }
 
+    /**
+     * Initialize Return Trip functionality for Ride Now form
+     */
+    function initReturnTrip() {
+        const returnToggle = document.getElementById('ride_now-return-toggle');
+        const returnDetails = document.getElementById('ride_now-return-details');
+        const returnDateInput = document.getElementById('ride_now-return-date');
+        const pricingInfo = document.getElementById('ride_now-return-pricing-info');
+
+        if (!returnToggle || !returnDetails) {
+            console.log('Return trip elements not found');
+            return;
+        }
+
+        // If return toggle is already checked (from search params), initialize everything
+        if (returnToggle.checked) {
+            initReturnDatePicker();
+            updateReturnRouteLocations();
+            calculateReturnPricing();
+        }
+
+        // Toggle return trip details visibility
+        returnToggle.addEventListener('change', function() {
+            if (this.checked) {
+                returnDetails.style.display = 'grid';
+                // Initialize return date picker if needed
+                initReturnDatePicker();
+                // Set default return date to pickup date
+                syncReturnDateWithPickup();
+                // Update return route locations
+                updateReturnRouteLocations();
+                // Calculate initial pricing
+                calculateReturnPricing();
+            } else {
+                returnDetails.style.display = 'none';
+                if (pricingInfo) {
+                    pricingInfo.style.display = 'none';
+                }
+            }
+        });
+
+        // Listen for return date changes
+        if (returnDateInput) {
+            returnDateInput.addEventListener('change', calculateReturnPricing);
+        }
+
+        // Listen for pickup date changes to update return pricing
+        const pickupDateInput = document.querySelector('#ride_now-form input[name="pickup_date"]');
+        if (pickupDateInput) {
+            pickupDateInput.addEventListener('change', function() {
+                if (returnToggle.checked) {
+                    syncReturnDateWithPickup();
+                    calculateReturnPricing();
+                }
+            });
+        }
+
+        // Listen for pickup/dropoff location changes to update return route display
+        const rideNowForm = document.getElementById('ride_now-form');
+        if (rideNowForm) {
+            const pickupInput = rideNowForm.querySelector('input[name="pickup"]');
+            const dropoffInput = rideNowForm.querySelector('input[name="dropoff"]');
+
+            if (pickupInput) {
+                pickupInput.addEventListener('change', updateReturnRouteLocations);
+                pickupInput.addEventListener('blur', updateReturnRouteLocations);
+            }
+            if (dropoffInput) {
+                dropoffInput.addEventListener('change', updateReturnRouteLocations);
+                dropoffInput.addEventListener('blur', updateReturnRouteLocations);
+            }
+        }
+
+        console.log('Return trip functionality initialized');
+    }
+
+    /**
+     * Update return route location display (shows dropoff → pickup for return)
+     */
+    function updateReturnRouteLocations() {
+        const rideNowForm = document.getElementById('ride_now-form');
+        if (!rideNowForm) return;
+
+        const pickupInput = rideNowForm.querySelector('input[name="pickup"]');
+        const dropoffInput = rideNowForm.querySelector('input[name="dropoff"]');
+        const returnPickupEl = document.getElementById('return-pickup-location');
+        const returnDropoffEl = document.getElementById('return-dropoff-location');
+
+        if (returnPickupEl && pickupInput) {
+            returnPickupEl.textContent = pickupInput.value || 'Pickup';
+        }
+        if (returnDropoffEl && dropoffInput) {
+            returnDropoffEl.textContent = dropoffInput.value || 'Drop-off';
+        }
+    }
+
+    /**
+     * Initialize Bootstrap Datepicker for return date
+     */
+    function initReturnDatePicker() {
+        const returnDateInput = document.getElementById('ride_now-return-date');
+        if (returnDateInput && typeof $ !== 'undefined' && $.fn.datepicker) {
+            // Destroy existing datepicker if any to prevent duplicates
+            if ($(returnDateInput).data('datepicker')) {
+                $(returnDateInput).datepicker('destroy');
+            }
+            
+            // Get minimum date from pickup date
+            const pickupDateInput = document.querySelector('#ride_now-form input[name="pickup_date"]');
+            let startDate = new Date();
+            if (pickupDateInput && pickupDateInput.value) {
+                const parsed = parseDDMMYYYY(pickupDateInput.value);
+                if (parsed) startDate = parsed;
+            }
+            
+            $(returnDateInput).datepicker({
+                format: 'dd/mm/yyyy',
+                autoclose: true,
+                todayHighlight: true,
+                startDate: startDate,
+                orientation: 'bottom auto',
+                container: 'body', // Append to body to avoid z-index issues
+                zIndexOffset: 9999
+            }).on('changeDate', function() {
+                calculateReturnPricing();
+            });
+            
+            console.log('Return date picker initialized');
+        }
+    }
+
+    /**
+     * Sync return date with pickup date (set return date = pickup date by default)
+     */
+    function syncReturnDateWithPickup() {
+        const pickupDateInput = document.querySelector('#ride_now-form input[name="pickup_date"]');
+        const returnDateInput = document.getElementById('ride_now-return-date');
+
+        if (pickupDateInput && returnDateInput) {
+            returnDateInput.value = pickupDateInput.value;
+            // Update datepicker
+            if (typeof $ !== 'undefined' && $.fn.datepicker) {
+                $(returnDateInput).datepicker('update', pickupDateInput.value);
+            }
+        }
+    }
+
+    /**
+     * Calculate return trip pricing via API
+     */
+    function calculateReturnPricing() {
+        const returnToggle = document.getElementById('ride_now-return-toggle');
+        if (!returnToggle || !returnToggle.checked) {
+            return;
+        }
+
+        const rideNowForm = document.getElementById('ride_now-form');
+        if (!rideNowForm) return;
+
+        // Get selected package
+        const packageInput = rideNowForm.querySelector('input[name="package_id"]:checked');
+        const pickupDateInput = rideNowForm.querySelector('input[name="pickup_date"]');
+        const returnDateInput = document.getElementById('ride_now-return-date');
+
+        if (!packageInput || !pickupDateInput || !returnDateInput) {
+            console.log('Missing inputs for return pricing calculation');
+            return;
+        }
+
+        const packageId = packageInput.value;
+        const pickupDate = parseDDMMYYYY(pickupDateInput.value);
+        const returnDate = parseDDMMYYYY(returnDateInput.value);
+
+        if (!packageId || !pickupDate || !returnDate) {
+            return;
+        }
+
+        // Calculate day offset locally for immediate UI feedback
+        const dayOffset = Math.floor((returnDate - pickupDate) / (1000 * 60 * 60 * 24));
+        updateReturnPricingUI(dayOffset);
+
+        // Optionally call API for exact pricing (if one-way fare is known)
+        // This would typically be called after vehicle selection
+    }
+
+    /**
+     * Update return pricing UI based on day offset
+     */
+    function updateReturnPricingUI(dayOffset) {
+        const pricingInfo = document.getElementById('ride_now-return-pricing-info');
+        const discountLabel = document.getElementById('ride_now-return-discount-label');
+        const discountValue = document.getElementById('ride_now-return-discount-value');
+
+        if (!pricingInfo || !discountLabel || !discountValue) {
+            return;
+        }
+
+        let label = '';
+        let discount = 0;
+
+        if (dayOffset === 0) {
+            label = 'Same Day Return';
+            discount = 50;
+        } else if (dayOffset === 1) {
+            label = 'Next Day Return';
+            discount = 10;
+        } else {
+            label = `${dayOffset}+ Days Return`;
+            discount = 0;
+        }
+
+        discountLabel.textContent = label;
+
+        if (discount > 0) {
+            discountValue.textContent = `${discount}% off`;
+            pricingInfo.style.display = 'flex';
+        } else {
+            discountValue.textContent = 'Standard fare';
+            pricingInfo.style.display = 'flex';
+        }
+    }
+
+    /**
+     * Parse DD/MM/YYYY date string to Date object
+     */
+    function parseDDMMYYYY(dateString) {
+        if (!dateString) return null;
+        const parts = dateString.split('/');
+        if (parts.length !== 3) return null;
+        const day = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10) - 1; // JS months are 0-indexed
+        const year = parseInt(parts[2], 10);
+        return new Date(year, month, day);
+    }
+
+    /**
+     * Fetch return trip rules for a package (for advanced pricing display)
+     */
+    async function fetchReturnRules(packageId) {
+        try {
+            const response = await fetch(`/api/service-packages/${packageId}/return-rules`);
+            if (!response.ok) {
+                throw new Error('Failed to fetch return rules');
+            }
+            const data = await response.json();
+            return data.data;
+        } catch (error) {
+            console.error('Error fetching return rules:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Calculate return price with actual fare via API
+     */
+    async function calculateReturnPriceWithFare(packageId, outboundDate, returnDate, oneWayFare, vehicleGroupId = null) {
+        try {
+            const response = await fetch('/api/public/return-trip/calculate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({
+                    service_package_id: packageId,
+                    vehicle_group_id: vehicleGroupId,
+                    outbound_date: outboundDate,
+                    return_date: returnDate,
+                    one_way_fare: oneWayFare,
+                }),
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to calculate return price');
+            }
+
+            const data = await response.json();
+            return data.data;
+        } catch (error) {
+            console.error('Error calculating return price:', error);
+            return null;
+        }
+    }
+
+    // Expose return trip functions globally
+    window.calculateReturnPriceWithFare = calculateReturnPriceWithFare;
+    window.fetchReturnRules = fetchReturnRules;
+
     // Initialize when DOM is ready
     if (document.readyState === "loading") {
         document.addEventListener("DOMContentLoaded", init);
     } else {
         init();
+    }
+
+    // Initialize return trip after main init
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", initReturnTrip);
+    } else {
+        initReturnTrip();
     }
 
     setTimeout(() => {

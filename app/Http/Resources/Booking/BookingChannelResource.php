@@ -1,7 +1,7 @@
 <?php
 // app/Http/Resources/BookingChannelResource.php
 
-namespace App\Http\Resources;
+namespace App\Http\Resources\Booking;
 
 use Illuminate\Http\Resources\Json\JsonResource;
 

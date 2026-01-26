@@ -6,6 +6,7 @@ use App\Models\BaseModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Builder;
+use Carbon\Carbon;
 
 class ServicePackage extends BaseModel
 {
@@ -44,6 +45,53 @@ class ServicePackage extends BaseModel
     public function districtAdjustments(): HasMany
     {
         return $this->hasMany(DistrictPricingAdjustment::class, 'service_package_id');
+    }
+
+    /**
+     * Get return trip pricing rules for this package.
+     */
+    public function returnRules(): HasMany
+    {
+        return $this->hasMany(ServicePackageReturnRule::class, 'service_package_id');
+    }
+
+    /**
+     * Get active return rules ordered by priority.
+     */
+    public function activeReturnRules(): HasMany
+    {
+        return $this->returnRules()
+            ->where('is_active', true)
+            ->orderBy('day_offset_min')
+            ->orderByDesc('priority');
+    }
+
+    /**
+     * Find the applicable return trip rule for a given day offset.
+     *
+     * @param int $dayOffset Days between outbound and return trip
+     * @param string|null $vehicleGroupId Optional vehicle group for specific rules
+     * @param Carbon|null $effectiveDate Date to check effectiveness
+     * @return ServicePackageReturnRule|null
+     */
+    public function findReturnRule(int $dayOffset, ?string $vehicleGroupId = null, ?Carbon $effectiveDate = null): ?ServicePackageReturnRule
+    {
+        return ServicePackageReturnRule::findMatchingRule(
+            $this->id,
+            $dayOffset,
+            $vehicleGroupId,
+            $effectiveDate
+        );
+    }
+
+    /**
+     * Check if this package supports return trips.
+     *
+     * @return bool
+     */
+    public function supportsReturnTrip(): bool
+    {
+        return $this->returnRules()->active()->exists();
     }
 
     public function scopeActive(Builder $query): Builder

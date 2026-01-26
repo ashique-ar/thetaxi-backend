@@ -56,6 +56,15 @@
     $discountPercentage = $pricing['discount_percentage'] ?? 0;
     $savingsDisplay = $pricing['savings_display'] ?? null;
 
+    // Get return trip pricing details (for ride_now with return)
+    $isReturnTrip = $pricing['is_return_trip'] ?? false;
+    $returnTripDetails = $pricing['return_trip_details'] ?? null;
+    $oneWayAmountLKR = $pricing['one_way_amount'] ?? null;
+    $returnAmountLKR = $pricing['return_amount'] ?? null;
+    $returnDiscountPercentage = $returnTripDetails['discount_percentage'] ?? 0;
+    $returnDiscountAmountLKR = $returnTripDetails['discount_amount'] ?? 0;
+    $returnRuleLabel = $returnTripDetails['rule_label'] ?? null;
+
     // Determine service type flags
     $isPackageService = in_array($serviceType, ['wedding_hire', 'airport_transfers']);
     $isWeddingPackage = $serviceType === 'wedding_hire' && $packageHours;
@@ -76,6 +85,11 @@
     $originalPerDayConverted = convertPrice($originalPerDayRateLKR); // Original per-day rate
     $discountAmountConverted = convertPrice($discountAmountLKR);
     $currencySymbol = getCurrencySymbol();
+    
+    // Convert return trip amounts if applicable
+    $oneWayAmountConverted = $oneWayAmountLKR ? convertPrice($oneWayAmountLKR) : null;
+    $returnAmountConverted = $returnAmountLKR ? convertPrice($returnAmountLKR) : null;
+    $returnDiscountAmountConverted = $returnDiscountAmountLKR ? convertPrice($returnDiscountAmountLKR) : null;
 @endphp
 
 <!-- Vehicle Card -->
@@ -244,21 +258,61 @@
                 @else
                     <!-- Multi-day Pricing -->
                     @if ($isRideNow)
-                        <!-- Ride Now: display total price only (no /day, no Total label) -->
-                        @if ($hasDiscount && $originalAmountLKR > $totalAmountLKR)
-                            <div class="original-price-display">
-                                <del
-                                    class="original-price-strike">{{ $currencySymbol }} {{ number_format($originalAmountConverted, 2) }}</del>
+                        <!-- Ride Now: display total price with return trip breakdown if applicable -->
+                        @if ($isReturnTrip && $returnTripDetails)
+                            <!-- Return Trip Pricing Breakdown -->
+                            <div class="return-trip-pricing">
+                                <div class="trip-breakdown">
+                                    <div class="trip-item outbound">
+                                        <span class="trip-label"><i class="bi bi-arrow-right-circle"></i> Outbound</span>
+                                        <span class="trip-amount">{{ $currencySymbol }} {{ number_format($oneWayAmountConverted, 2) }}</span>
+                                    </div>
+                                    <div class="trip-item return">
+                                        <span class="trip-label">
+                                            <i class="bi bi-arrow-left-circle"></i> Return
+                                            @if ($returnDiscountPercentage > 0)
+                                                <span class="text-success fw-semibold">{{ $returnDiscountPercentage }}% off</span>
+                                            @endif
+                                        </span>
+                                        <span class="trip-amount">{{ $currencySymbol }} {{ number_format($returnAmountConverted, 2) }}</span>
+                                    </div>
+                                </div>
+                                <div class="total-combined-price">
+                                    {{-- <span class="total-label">Total:</span> --}}
+                                    <h4 class="price-amount discounted-price"
+                                        data-base-price-lkr="{{ $totalAmountLKR }}"
+                                        data-one-way-lkr="{{ $oneWayAmountLKR }}"
+                                        data-return-lkr="{{ $returnAmountLKR }}"
+                                        data-is-return-trip="true"
+                                        data-return-discount="{{ $returnDiscountPercentage }}"
+                                        data-currency="{{ $selectedCurrency }}">
+                                        <small class="currency-code">{{ $currencySymbol }}</small>
+                                        <span class="price-value">{{ number_format($totalAmountConverted, 2) }}</span>
+                                    </h4>
+                                </div>
+                                @if ($returnDiscountAmountLKR > 0)
+                                    <small class="text-success fw-semibold return-savings">
+                                        <i class="bi bi-tag-fill"></i> You save {{ $currencySymbol }} {{ number_format($returnDiscountAmountConverted, 2) }} on return!
+                                    </small>
+                                @endif
                             </div>
+                        @else
+                            <!-- Standard Ride Now: display total price only -->
+                            @if ($hasDiscount && $originalAmountLKR > $totalAmountLKR)
+                                <div class="original-price-display">
+                                    <del
+                                        class="original-price-strike">{{ $currencySymbol }} {{ number_format($originalAmountConverted, 2) }}</del>
+                                </div>
+                            @endif
+                            <h4 class="price-amount{{ $hasDiscount ? ' discounted-price' : '' }}"
+                                data-base-price-lkr="{{ $totalAmountLKR }}"
+                                data-original-price-lkr="{{ $originalAmountLKR }}" data-duration="{{ $durationDays }}"
+                                data-currency="{{ $selectedCurrency }}" data-is-package="false"
+                                data-has-discount="{{ $hasDiscount ? 'true' : 'false' }}">
+                                <small class="currency-code">{{ $currencySymbol }}</small>
+                                <span class="price-value">{{ number_format($totalAmountConverted, 2) }}</span>
+                            </h4>
                         @endif
-                        <h4 class="price-amount{{ $hasDiscount ? ' discounted-price' : '' }}"
-                            data-base-price-lkr="{{ $totalAmountLKR }}"
-                            data-original-price-lkr="{{ $originalAmountLKR }}" data-duration="{{ $durationDays }}"
-                            data-currency="{{ $selectedCurrency }}" data-is-package="false"
-                            data-has-discount="{{ $hasDiscount ? 'true' : 'false' }}">
-                            <small class="currency-code">{{ $currencySymbol }}</small>
-                            <span class="price-value">{{ number_format($totalAmountConverted, 2) }}</span>
-                        </h4>
                     @else
                         @php
                             $isFixedRateService = isServiceFixedRate($serviceType);
@@ -289,7 +343,9 @@
                             @if ($hasDiscount && $originalPerDayRateLKR > $perDayRateLKR)
                                 <div class="original-price-display">
                                     <del
-                                        class="original-price-strike">{{ $currencySymbol }} {{ number_format($originalPerDayConverted, 2) }}/day</del>
+                                        class="original-total-strike me-1">{{ $currencySymbol }} {{ number_format($originalAmountConverted, 2) }}</del>
+                                    {{-- <del
+                                        class="original-price-strike">{{ $currencySymbol }} {{ number_format($originalPerDayConverted, 2) }}/day</del> --}}
                                 </div>
                             @endif
                             <h4 class="price-amount{{ $hasDiscount ? ' discounted-price' : '' }}"
@@ -299,12 +355,14 @@
                                 data-currency="{{ $selectedCurrency }}" data-is-package="false"
                                 data-has-discount="{{ $hasDiscount ? 'true' : 'false' }}">
                                 <small class="currency-code">{{ $currencySymbol }}</small>
-                                <span class="price-value">{{ number_format($perDayRateConverted, 2) }}</span>
-                                <span class="price-unit">/day</span>
+                                <span class="price-value">{{ number_format($totalAmountConverted, 2) }}</span>
+                                <span class="price-unit">({{ getServiceDurationLabel($serviceType, $durationDays) }})</span>
+                                {{-- <span class="price-value">{{ number_format($perDayRateConverted, 2) }}</span> --}}
+                                {{-- <span class="price-unit">/day</span> --}}
                             </h4>
 
                             <!-- Total Price as Secondary Info for multi-day -->
-                            <div class="total-price-info mt-2 text-muted small">
+                            {{-- <div class="total-price-info mt-2 text-muted small">
                                 <span class="total-label">Total:</span>
                                 @if ($hasDiscount && $originalAmountLKR > $totalAmountLKR)
                                     <del
@@ -315,7 +373,7 @@
                                     {{ number_format($totalAmountConverted, 2) }}</strong>
                                 <span
                                     class="duration-label">({{ getServiceDurationLabel($serviceType, $durationDays) }})</span>
-                            </div>
+                            </div> --}}
                         @endif
                     @endif
                 @endif
@@ -985,6 +1043,98 @@
             .availability-indicator i {
                 color: var(--primary-color);
                 margin-right: 4px;
+            }
+
+            /* Return Trip Pricing Styles */
+            .return-trip-pricing {
+                background: linear-gradient(135deg, #f8f9fa 0%, #e9f5f2 100%);
+                border-radius: 12px;
+                padding: 12px;
+                margin-top: 8px;
+            }
+
+            .trip-breakdown {
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+                margin-bottom: 12px;
+            }
+
+            .trip-item {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 6px 8px;
+                background: white;
+                border-radius: 6px;
+                font-size: 13px;
+            }
+
+            .trip-item.outbound {
+                border-left: 3px solid var(--primary-color);
+            }
+
+            .trip-item.return {
+                border-left: 3px solid #28a745;
+            }
+
+            .trip-label {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                color: #555;
+                font-weight: 500;
+            }
+
+            .trip-label i {
+                font-size: 14px;
+            }
+
+            .trip-item.outbound .trip-label i {
+                color: var(--primary-color);
+            }
+
+            .trip-item.return .trip-label i {
+                color: #28a745;
+            }
+
+            .trip-amount {
+                font-weight: 600;
+                color: #333;
+            }
+
+            .return-discount-badge {
+                background: #28a745;
+                color: white;
+                font-size: 10px;
+                padding: 2px 6px;
+                border-radius: 10px;
+                font-weight: 600;
+            }
+
+            .total-combined-price {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding-top: 10px;
+                border-top: 1px dashed #ddd;
+            }
+
+            .total-combined-price .total-label {
+                font-size: 13px;
+                color: #666;
+                font-weight: 500;
+            }
+
+            .total-combined-price .price-amount {
+                margin: 0;
+            }
+
+            .return-savings {
+                display: block;
+                text-align: center;
+                margin-top: 8px;
+                font-size: 12px;
             }
         </style>
     @endpush

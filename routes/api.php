@@ -147,6 +147,9 @@ Route::prefix('auth')->group(function () {
 Route::prefix('public')->group(function () {
     Route::get('inquiry-services', [PublicInquiryServiceController::class, 'index']);
     Route::get('inquiry-services/{slug}', [PublicInquiryServiceController::class, 'show']);
+
+    // Return trip pricing calculator (public)
+    Route::post('return-trip/calculate', [ServicePackageController::class, 'calculateReturnPrice']);
 });
 
 /*
@@ -326,6 +329,12 @@ Route::middleware(['auth:api'])->group(function () {
         Route::apiResource('vip-types', VipTypeController::class);
         Route::apiResource('service-types', ServiceTypeController::class);
         Route::apiResource('service-packages', ServicePackageController::class);
+
+        // Service Package Return Rules
+        Route::get('service-packages/{servicePackage}/return-rules', [ServicePackageController::class, 'getReturnRules']);
+        Route::post('service-packages/{servicePackage}/return-rules', [ServicePackageController::class, 'storeReturnRule']);
+        Route::put('service-packages/{servicePackage}/return-rules/{returnRule}', [ServicePackageController::class, 'updateReturnRule']);
+        Route::delete('service-packages/{servicePackage}/return-rules/{returnRule}', [ServicePackageController::class, 'destroyReturnRule']);
 
         // Inquiry service pages & dynamic forms
         Route::apiResource('inquiry-forms', InquiryFormController::class);

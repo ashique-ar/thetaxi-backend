@@ -7,7 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\NotificationLog;
 use App\Http\Requests\NotificationLog\CreateNotificationLogRequest;
 use App\Http\Requests\NotificationLog\UpdateNotificationLogRequest;
-use App\Http\Resources\NotificationLogResource;
+use App\Http\Resources\NotificationLog\NotificationLogResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;

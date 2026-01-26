@@ -1,7 +1,7 @@
 <?php
-// app/Http/Resources/InquiryResource.php
+// app/Http/Resources/Inquiry/InquiryResource.php
 
-namespace App\Http\Resources;
+namespace App\Http\Resources\Inquiry;
 
 use Illuminate\Http\Resources\Json\JsonResource;
 

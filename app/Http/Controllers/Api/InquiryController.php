@@ -7,7 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Inquiry;
 use App\Http\Requests\Inquiry\CreateInquiryRequest;
 use App\Http\Requests\Inquiry\UpdateInquiryRequest;
-use App\Http\Resources\InquiryResource;
+use App\Http\Resources\Inquiry\InquiryResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;

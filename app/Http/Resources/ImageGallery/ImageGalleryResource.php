@@ -1,6 +1,6 @@
 <?php
 // app/Http/Resources/ImageGalleryResource.php
-namespace App\Http\Resources;
+namespace App\Http\Resources\ImageGallery;
 
 use Illuminate\Http\Resources\Json\JsonResource;
 

@@ -6,7 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ImageGallery;
 use App\Http\Requests\ImageGallery\CreateImageGalleryRequest;
 use App\Http\Requests\ImageGallery\UpdateImageGalleryRequest;
-use App\Http\Resources\ImageGalleryResource;
+use App\Http\Resources\ImageGallery\ImageGalleryResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;

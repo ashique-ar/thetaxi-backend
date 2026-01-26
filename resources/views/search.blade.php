@@ -94,7 +94,7 @@
                                 </div>
                                 @if ($search->from_date && $search->to_date)
                                     <span class="date-range"
-                                        style="display: block; font-size: 14px; font-weight: 400; margin-top: 4px;">
+                                        style="display: block; font-size: 16px; font-weight: 400; margin-top: 4px;">
                                         {{ \Carbon\Carbon::parse($search->from_date)->format('M d') }} -
                                         {{ \Carbon\Carbon::parse($search->to_date)->format('M d, Y') }}
                                     </span>
@@ -119,14 +119,14 @@
                                     {{ gmdate('H:i', $search->total_duration_seconds) }} estimated
                                 </span>
                             @endif
-                            @if ($search->max_km_per_day || $search->max_km_per_package)
+                            {{-- @if ($search->max_km_per_day || $search->max_km_per_package)
                                 <span class="package-info">
                                     <i class="bi bi-speedometer2"></i>
                                     Max KM:
                                     {{ $search->max_km_per_day ? $search->max_km_per_day . ' km/day' : '' }}{{ $search->max_km_per_day && $search->max_km_per_package ? ' / ' : '' }}{{ $search->max_km_per_package ? $search->max_km_per_package . ' km total' : '' }}
                                     <br><small class="text-white">Purchase extra km in cart after adding vehicle</small>
                                 </span>
-                            @endif
+                            @endif --}}
                         </div>
 
 
@@ -1127,6 +1127,10 @@
                     duration_days: durationDays,
                     service_package_id: '{{ $search->service_package_id ?? ($search->package_id ?? '') }}',
                     package_id: '{{ $search->service_package_id ?? ($search->package_id ?? '') }}',
+                    // Return trip data
+                    is_return_trip: {{ ($search->is_return_trip ?? false) ? 'true' : 'false' }},
+                    return_trip_date: '{{ $search->return_date ?? '' }}',
+                    return_trip_time: '{{ $search->return_time ?? '' }}',
                 };
 
                 const item = {
@@ -1188,6 +1192,13 @@
 
         function addToCart(item, callback) {
             // Add to cart via AJAX - let backend recalculate pricing
+            console.log('Adding to cart with return trip data:', {
+                is_return_trip: item.is_return_trip,
+                return_trip_date: item.return_trip_date,
+                service_package_id: item.service_package_id,
+                package_id: item.package_id
+            });
+            
             return $.ajax({
                 url: '{{ route('cart.add') }}',
                 method: 'POST',
@@ -1206,6 +1217,13 @@
                     dropoff_lat: item.dropoff_lat,
                     dropoff_lng: item.dropoff_lng,
                     service_type: item.service_type,
+                    // Service package for pricing
+                    service_package_id: item.service_package_id || item.package_id || '',
+                    package_id: item.package_id || item.service_package_id || '',
+                    // Return trip data
+                    is_return_trip: item.is_return_trip || false,
+                    return_trip_date: item.return_trip_date || '',
+                    return_trip_time: item.return_trip_time || '',
                     search_data: item
                 },
                 success: function(response) {
@@ -1346,7 +1364,8 @@
                 const item = cart[key];
                 const price = parseFloat(item.price || 0);
                 const days = parseInt(item.days || 1);
-                const itemTotal = price * days;
+                // Prefer server-calculated total_price when available (ensures return trip totals used)
+                const itemTotal = parseFloat((item.total_price !== undefined && item.total_price !== null) ? item.total_price : (price * days));
                 total += itemTotal;
 
                 const serviceType = item.service_type || '';
@@ -1356,7 +1375,27 @@
 
                 // Build pricing display based on service type
                 let pricingHtml = '';
-                if (fixedRate) {
+
+                // If fixed-rate and return trip info available, show outbound/return breakdown
+                if (fixedRate && item.is_return_trip && (item.one_way_price || item.return_price)) {
+                    const oneWay = parseFloat(item.one_way_price || 0);
+                    const returnPrice = parseFloat(item.return_price || 0);
+                    const returnPct = parseFloat(item.return_discount_percentage || 0);
+
+                    pricingHtml = `
+                        <div class="return-trip-breakdown text-white-0">
+                            <div style="color: #fff; font-size: 13px;">
+                                <i class="bi bi-arrow-right-circle"></i> Outbound: <small class="currency-symbol">${cartCurrencySymbol}</small> ${oneWay.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                            </div>
+                            <div style="color: #fff; font-size: 13px;">
+                                <i class="bi bi-arrow-left-circle"></i> Return: ${returnPct > 0 ? '<span class="badge bg-success" style="font-size: 11px; margin-left: 6px;">' + returnPct + '% off</span>' : ''} <small class="currency-symbol">${cartCurrencySymbol}</small> ${returnPrice.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                            </div>
+                            <div style="margin-top:6px; font-weight:700;">
+                                <small class="currency-symbol">${cartCurrencySymbol}</small> ${itemTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                            </div>
+                        </div>
+                    `;
+                } else if (fixedRate) {
                     pricingHtml =
                         `<span>${pricingLabel}: <small class="currency-symbol">${cartCurrencySymbol}</small> ${itemTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>`;
                 } else {
@@ -1675,8 +1714,21 @@
                 dropoff_lng: {{ $search->dropoff_longitude ?? 'null' }},
                 duration_days: durationDays,
                 service_package_id: '{{ $search->service_package_id ?? ($search->package_id ?? '') }}',
-                package_id: '{{ $search->service_package_id ?? ($search->package_id ?? '') }}'
+                package_id: '{{ $search->service_package_id ?? ($search->package_id ?? '') }}',
+                // Return trip data (ensure Book Now sends same return payload as Add to Cart)
+                is_return_trip: {{ ($search->is_return_trip ?? false) ? 'true' : 'false' }},
+                return_trip_date: '{{ $search->return_date ?? '' }}',
+                return_trip_time: '{{ $search->return_time ?? '' }}'
             };
+
+            // Debug: log Book Now payload
+            console.log('Book Now payload', {
+                group_id: groupId,
+                group_name: groupName,
+                service_package_id: searchData.service_package_id,
+                is_return_trip: searchData.is_return_trip,
+                return_trip_date: searchData.return_trip_date
+            });
 
             // Create proper item object for addToCart
             const item = {

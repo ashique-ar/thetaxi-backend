@@ -218,6 +218,8 @@ class CartController extends Controller
             $input['return_time'] = $this->normalizeTimeInput($input['return_time'] ?? null);
             $input['time'] = $this->normalizeTimeInput($input['time'] ?? null);
             $input['service_package_id'] = $this->normalizeTimeInput($input['package_id'] ?? null);
+            $input['return_trip_date'] = $this->normalizeDateInput($input['return_trip_date'] ?? null);
+            $input['return_trip_time'] = $this->normalizeTimeInput($input['return_trip_time'] ?? null);
 
             // Allow flexible field mapping from frontend
             $validator = Validator::make($input, [
@@ -247,7 +249,11 @@ class CartController extends Controller
                 'dropoff_lat' => 'sometimes|nullable|numeric',
                 'dropoff_lng' => 'sometimes|nullable|numeric',
                 'search_data' => 'sometimes|array',
-                'service_type' => 'sometimes|string'
+                'service_type' => 'sometimes|string',
+                // Return trip fields
+                'is_return_trip' => 'sometimes|nullable',
+                'return_trip_date' => 'sometimes|nullable|date',
+                'return_trip_time' => 'sometimes|nullable|string',
             ]);
             $validated = $validator->validate();
 
@@ -329,6 +335,24 @@ class CartController extends Controller
                 $returnDate = $pickupDate;
             }
 
+            // Extract return trip data
+            $isReturnTrip = filter_var($input['is_return_trip'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $returnTripDate = $input['return_trip_date'] ?? ($searchData['return_trip_date'] ?? null);
+            $returnTripTime = $input['return_trip_time'] ?? ($searchData['return_trip_time'] ?? '12:00');
+
+            // Extract service_package_id directly from input or search_data
+            $directPackageId = $input['service_package_id'] ?? $input['package_id'] ?? null;
+
+            Log::debug('Cart add - Return trip raw data extraction', [
+                'input_is_return_trip' => $input['is_return_trip'] ?? null,
+                'isReturnTrip_parsed' => $isReturnTrip,
+                'input_return_trip_date' => $input['return_trip_date'] ?? null,
+                'searchData_return_trip_date' => $searchData['return_trip_date'] ?? null,
+                'returnTripDate_final' => $returnTripDate,
+                'direct_package_id' => $directPackageId,
+                'searchData_package_id' => $searchData['service_package_id'] ?? $searchData['package_id'] ?? null,
+            ]);
+
             // Get vehicle details if it exists
             $vehicleGroup = null;
             if ($vehicleId) {
@@ -346,6 +370,7 @@ class CartController extends Controller
             $totalPrice = 0;
             $perDayPrice = 0;
             $pricingInfo = null; // Store full pricing info including distance_details
+            $returnTripPricing = null; // Store return trip pricing details
 
             Log::info(
                 'Adding item to cart',
@@ -358,8 +383,9 @@ class CartController extends Controller
                     'pickup_location' => $pickupLocation,
                     'dropoff_location' => $returnLocation,
                     'days' => $days,
-                    'vehicleGroup' => $vehicleGroup
-
+                    'vehicleGroup' => $vehicleGroup,
+                    'is_return_trip' => $isReturnTrip,
+                    'return_trip_date' => $returnTripDate,
                 ]
             );
             try {
@@ -388,7 +414,21 @@ class CartController extends Controller
                     ];
 
                     // Extract service package ID from search_data if available
-                    $servicePackageIdForPricing = $searchData['service_package_id'] ?? $request->input('service_package_id');
+                    $servicePackageIdForPricing = $searchData['service_package_id'] 
+                        ?? $searchData['package_id']
+                        ?? $directPackageId
+                        ?? $request->input('service_package_id')
+                        ?? $request->input('package_id');
+
+                    Log::debug('Cart add - extracting service package ID', [
+                        'from_search_data_service_package_id' => $searchData['service_package_id'] ?? null,
+                        'from_search_data_package_id' => $searchData['package_id'] ?? null,
+                        'direct_package_id' => $directPackageId,
+                        'from_request' => $request->input('service_package_id') ?? $request->input('package_id') ?? null,
+                        'final_package_id' => $servicePackageIdForPricing,
+                        'is_return_trip' => $isReturnTrip,
+                        'return_trip_date' => $returnTripDate,
+                    ]);
 
                     $pricingParams = [
                         'service_type' => $serviceTypeModel->id,
@@ -437,14 +477,52 @@ class CartController extends Controller
 
                             if (isset($vehicleData['pricing_info']['base_amount'])) {
                                 $pricingInfo = $vehicleData['pricing_info'];
-                                $totalPrice = (float) $pricingInfo['base_amount']; // This is TOTAL for all days in LKR
+                                $oneWayPrice = (float) $pricingInfo['base_amount']; // This is TOTAL for one-way trip in LKR
+                                $totalPrice = $oneWayPrice;
+
+                                // Default per-day price based on current total (may be updated after return trip calc)
                                 $perDayPrice = $days > 0 ? $totalPrice / $days : 0; // Calculate per-day in LKR
+
+                                // Calculate return trip pricing if this is a return trip
+                                if ($isReturnTrip && $returnTripDate && $servicePackageIdForPricing) {
+                                    try {
+                                        $returnTripPricing = $this->bookingFlowService->calculateReturnTripPricing([
+                                            'package_id' => $servicePackageIdForPricing,
+                                            'vehicle_group_id' => $vehicleId,
+                                            'outbound_date' => $pickupDate,
+                                            'return_date' => $returnTripDate,
+                                            'one_way_fare' => $oneWayPrice,
+                                        ]);
+
+                                        if ($returnTripPricing && isset($returnTripPricing['total_fare'])) {
+                                            $totalPrice = (float) $returnTripPricing['total_fare'];
+
+                                            // Recompute per-day price using final total price (important for accurate cart subtotal)
+                                            $perDayPrice = $days > 0 ? $totalPrice / $days : 0;
+
+                                            Log::info('Return trip pricing calculated for cart', [
+                                                'one_way_price' => $oneWayPrice,
+                                                'return_fare' => $returnTripPricing['return_fare'],
+                                                'total_price' => $totalPrice,
+                                                'discount_percentage' => $returnTripPricing['discount_percentage'],
+                                            ]);
+                                        }
+                                    } catch (\Exception $e) {
+                                        Log::warning('Failed to calculate return trip pricing for cart', [
+                                            'error' => $e->getMessage(),
+                                        ]);
+                                        // Fall back to 2x one-way price
+                                        $totalPrice = $oneWayPrice * 2;
+                                        $perDayPrice = $days > 0 ? $totalPrice / $days : 0;
+                                    }
+                                }
 
                                 Log::info('Pricing calculated for cart item', [
                                     'service_package_id' => $servicePackageIdForPricing,
                                     'total_price' => $totalPrice,
                                     'per_day_price' => $perDayPrice,
                                     'days' => $days,
+                                    'is_return_trip' => $isReturnTrip,
                                     'pricing_info' => $pricingInfo
                                 ]);
 
@@ -554,6 +632,14 @@ class CartController extends Controller
                 'search_data' => $searchData,
                 'base_currency' => 'LKR', // Mark as LKR base pricing
                 'is_package' => $isPackageService, // Critical: Mark package services to prevent double multiplication
+                // Return trip data
+                'is_return_trip' => $isReturnTrip,
+                'return_trip_date' => $returnTripDate,
+                'return_trip_time' => $returnTripTime,
+                'return_trip_pricing' => $returnTripPricing, // Store return trip pricing breakdown
+                'one_way_price' => $isReturnTrip ? ($returnTripPricing['one_way_fare'] ?? $totalPrice / 2) : null,
+                'return_price' => $isReturnTrip ? ($returnTripPricing['return_fare'] ?? null) : null,
+                'return_discount_percentage' => $isReturnTrip ? ($returnTripPricing['discount_percentage'] ?? 0) : null,
                 'added_at' => now()
             ];
 

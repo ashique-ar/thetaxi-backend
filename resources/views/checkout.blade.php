@@ -553,10 +553,60 @@
                                                                         @endphp
                                                                         <p><small><i class="bi bi-geo-alt"></i>
                                                                                 {{ $pickupLoc ?: 'N/A' }}</small></p>
+
+                                                                        {{-- Return Trip Info --}}
+                                                                        @if (!empty($item['is_return_trip']) && !empty($item['return_trip_date']))
+                                                                            <div class="return-trip-info mt-2 p-2" style="background: linear-gradient(135deg, #e8f5e9, #c8e6c9); border-radius: 8px; border-left: 3px solid #28a745;">
+                                                                                <p style="margin: 0; font-weight: 600; color: #2e7d32; font-size: 12px;">
+                                                                                    <i class="bi bi-arrow-left-right"></i> Return Trip Included
+                                                                                </p>
+                                                                                <p style="margin: 4px 0 0 0; font-size: 11px;">
+                                                                                    <i class="bi bi-calendar-check" style="color: #28a745;"></i>
+                                                                                    Return: {{ \Carbon\Carbon::parse($item['return_trip_date'])->format('M d, Y') }}
+                                                                                    @if (!empty($item['return_trip_time']))
+                                                                                        @ {{ $item['return_trip_time'] }}
+                                                                                    @endif
+                                                                                </p>
+                                                                                <p style="margin: 4px 0 0 0; font-size: 11px;">
+                                                                                    <i class="bi bi-geo-alt" style="color: #28a745;"></i>
+                                                                                    {{ $dropoffLoc ?: 'Drop-off' }} → {{ $pickupLoc ?: 'Pickup' }}
+                                                                                </p>
+                                                                                @if (!empty($item['return_discount_percentage']) && $item['return_discount_percentage'] > 0)
+                                                                                    <span class="badge bg-success mt-1" style="font-size: 10px;">
+                                                                                        <i class="bi bi-tag-fill"></i> {{ $item['return_discount_percentage'] }}% off return trip
+                                                                                    </span>
+                                                                                @endif
+                                                                            </div>
+                                                                        @endif
                                                                     </div>
                                                                 </div>
                                                             </div>
                                                             <div class="item-total">
+                                                                @php
+                                                                    // Return trip pricing variables
+                                                                    $isReturnTrip = $item['is_return_trip'] ?? false;
+                                                                    $oneWayPrice = $item['one_way_price'] ?? null;
+                                                                    $returnPrice = $item['return_price'] ?? null;
+                                                                    $returnDiscountPct = $item['return_discount_percentage'] ?? 0;
+                                                                @endphp
+
+                                                                {{-- Return Trip Pricing Breakdown --}}
+                                                                @if ($isReturnTrip && $oneWayPrice && $returnPrice)
+                                                                    <div class="return-trip-breakdown mb-2" style="font-size: 11px; text-align: right;">
+                                                                        <div style="color: #0d6efd;">
+                                                                            <i class="bi bi-arrow-right-circle"></i> Outbound: 
+                                                                            <small class="currency-symbol">{{ $currencySymbol }}</small>{{ number_format($oneWayPrice, 2) }}
+                                                                        </div>
+                                                                        <div style="color: #198754;">
+                                                                            <i class="bi bi-arrow-left-circle"></i> Return: 
+                                                                            <small class="currency-symbol">{{ $currencySymbol }}</small>{{ number_format($returnPrice, 2) }}
+                                                                            @if ($returnDiscountPct > 0)
+                                                                                <span class="badge bg-success" style="font-size: 9px;">{{ $returnDiscountPct }}% off</span>
+                                                                            @endif
+                                                                        </div>
+                                                                    </div>
+                                                                @endif
+
                                                                 @if ($hasItemDiscount && $itemOriginalAmount > $itemTotal)
                                                                     {{-- Show discount badge --}}
                                                                     <span class="checkout-item-discount-badge">

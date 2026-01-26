@@ -453,7 +453,7 @@
         </form>
 
         <!-- Rental Packages Form -->
-        <form id="ride_nows-form" class="filter-input {{ $currentServiceType === 'ride_now' ? 'show' : '' }}"
+        <form id="ride_now-form" class="filter-input {{ $currentServiceType === 'ride_now' ? 'show' : '' }}"
             data-service="ride_now" action="{{ route('booking.search') }}" method="GET">
             <input type="hidden" name="service_type" value="ride_now">
 
@@ -580,13 +580,97 @@
                 @enderror
             </div> --}}
 
-            <div class="package-selector" id="ride_now-packages" style="display: none;"
+            {{-- <div class="package-selector" id="ride_now-packages" style="display: none;" class="d-none"
                 data-selected="{{ old('package_id', $getSearchProp('service_package_id', '')) }}">
                 <div class="transfer-type-toggle package-selector-toggle">
                     <!-- Packages will be dynamically loaded here as transfer-type-option labels -->
                 </div>
                 <div class="loading-packages" style="display: none;">
                     <span>Loading packages...</span>
+                </div>
+            </div> --}}
+
+            <!-- Return Trip Toggle -->
+            @php
+                $isReturnTrip = old('is_return_trip', $getSearchProp('is_return_trip', false));
+                $returnDate = old('return_date', $getSearchProp('return_date'));
+                $returnTime = old('return_time', $getSearchProp('return_time', '12:00'));
+                // Format return date to DD/MM/YYYY if it's in Y-m-d format
+                if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
+                    $returnDate = date('d/m/Y', strtotime($returnDate));
+                } elseif (!$returnDate) {
+                    $returnDate = date('d/m/Y'); // Default to today
+                }
+            @endphp
+            <div class="return-trip-section " id="ride_now-return-trip-section">
+                <div class="return-trip-toggle">
+                    <label class="return-trip-checkbox-label">
+                        <input type="checkbox" name="is_return_trip" id="ride_now-return-toggle"
+                            value="1" {{ $isReturnTrip ? 'checked' : '' }}>
+                        <span class="return-trip-text">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M7.5 21L3 16.5M3 16.5L7.5 12M3 16.5H16.5C18.9853 16.5 21 14.4853 21 12C21 9.51472 18.9853 7.5 16.5 7.5H15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            Add Return Trip
+                        </span>
+                    </label>
+                </div>
+
+                <!-- Return Trip Details (shown if return trip enabled) -->
+                <div class="return-trip-details" id="ride_now-return-details" style="display: {{ $isReturnTrip ? 'grid' : 'none' }};">
+                    <!-- Return Route Summary -->
+                    <div class="return-route-summary">
+                        <div class="route-badge">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M9 5L16 12L9 19" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            <span class="route-text">
+                                <strong>Return:</strong>
+                                <span id="return-dropoff-location">{{ $rideNowDropoff['address'] ?? 'Drop-off' }}</span>
+                                →
+                                <span id="return-pickup-location">{{ $rideNowPickup['address'] ?? 'Pickup' }}</span>
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Return Date -->
+                    <div class="single-search-box date-field">
+                        <label class="input-label">Return Date</label>
+                        <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z" />
+                        </svg>
+                        <input type="text" name="return_date" id="ride_now-return-date" placeholder="DD/MM/YYYY"
+                            class="custom-datepicker @error('return_date') is-invalid @enderror"
+                            value="{{ $returnDate }}"
+                            autocomplete="off">
+                        @error('return_date')
+                            <span class="text-danger small">{{ $message }}</span>
+                        @enderror
+                    </div>
+
+                    <!-- Return Time -->
+                    <div class="single-search-box">
+                        <label class="input-label">Return Time</label>
+                        <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M9 0C4.03 0 0 4.03 0 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm.5-12H8v5l4.25 2.52.75-1.23-3.5-2.08V4z" />
+                        </svg>
+                        <div class="custom-select-dropdown">
+                            <input type="time" name="return_time" id="ride_now-return-time"
+                                value="{{ $returnTime }}"
+                                class="@error('return_time') is-invalid @enderror">
+                        </div>
+                        @error('return_time')
+                            <span class="text-danger small">{{ $message }}</span>
+                        @enderror
+                    </div>
+
+                    <!-- Return Pricing Info -->
+                    <div class="return-pricing-info" id="ride_now-return-pricing-info" style="display: {{ $isReturnTrip ? 'block' : 'none' }};">
+                        <div class="text-success">
+                            <span class="" id="ride_now-return-discount-label">Same Day Return</span>
+                            <span class="fw-bold" id="ride_now-return-discount-value">50% off return</span>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -1423,6 +1507,184 @@
         padding: 10px;
         color: #666;
         font-style: italic;
+    }
+
+    /* Return Trip Section Styles */
+    .return-trip-section {
+        width: 100%;
+        margin-top: 15px;
+        padding-top: 15px;
+        border-top: 1px dashed #e1e5e9;
+        grid-column: 1 / -1; /* Span full width of the grid */
+    }
+
+    .return-trip-toggle {
+        display: flex;
+        align-items: center;
+    }
+
+    .return-trip-checkbox-label {
+        display: flex;
+        align-items: center;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        color: #333;
+        user-select: none;
+    }
+
+    .return-trip-checkbox-label input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+        margin-right: 10px;
+        accent-color: #c91c23;
+        cursor: pointer;
+    }
+
+    .return-trip-text {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .return-trip-text svg {
+        color: #c91c23;
+    }
+
+    .return-trip-details {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 15px;
+        margin-top: 15px;
+        padding: 15px;
+        background-color: #f8f9fa;
+        border-radius: 8px;
+        border: 1px solid #e1e5e9;
+    }
+
+    .return-route-summary {
+        background: linear-gradient(135deg, #c91c23, #a01620);
+        border-radius: 8px;
+        padding: 12px 16px;
+        margin-bottom: 10px;
+    }
+
+    .route-badge {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: #fff;
+    }
+
+    .route-badge svg {
+        flex-shrink: 0;
+    }
+
+    .route-text {
+        font-size: 14px;
+        line-height: 1.4;
+    }
+
+    .route-text strong {
+        font-weight: 600;
+    }
+
+    .return-pricing-info {
+        grid-column: 1 / -1;
+        margin-top: 10px;
+    }
+
+    .return-discount-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 16px;
+        background: linear-gradient(135deg, #28a745, #20c997);
+        border-radius: 20px;
+        color: #fff;
+        font-size: 13px;
+    }
+
+    .discount-label {
+        font-weight: 500;
+    }
+
+    .discount-value {
+        font-weight: 700;
+        background: rgba(255,255,255,0.2);
+        padding: 2px 8px;
+        border-radius: 10px;
+    }
+
+    @media (max-width: 576px) {
+        .return-trip-details {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    /* Ride Now form specific button styling */
+    #ride_now-form .primary-btn1 {
+        grid-column: 1 / span 1; /* Only take first column, not full width */
+        justify-self: start;
+        width: auto;
+        min-width: 200px;
+    }
+
+    @media (max-width: 991px) {
+        #ride_now-form .primary-btn1 {
+            grid-column: 1 / -1; /* Full width on smaller screens */
+            width: 100%;
+        }
+    }
+
+    /* Return trip details - 4 column layout to match form */
+    .return-trip-details {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 15px;
+        margin-top: 15px;
+        padding: 15px;
+        background-color: #f8f9fa;
+        border-radius: 8px;
+        border: 1px solid #e1e5e9;
+    }
+
+    .return-trip-details .return-route-summary {
+        grid-column: 1 / span 2; /* First two columns */
+    }
+
+    .return-trip-details .single-search-box {
+        grid-column: auto; /* Each takes one column */
+    }
+
+    .return-trip-details .return-pricing-info {
+        grid-column: 4 / span 1; /* Last column */
+        display: flex;
+        align-items: center;
+        margin-top: 0;
+    }
+
+    @media (max-width: 991px) {
+        .return-trip-details {
+            grid-template-columns: repeat(2, 1fr);
+        }
+        .return-trip-details .return-route-summary {
+            grid-column: 1 / -1;
+        }
+        .return-trip-details .return-pricing-info {
+            grid-column: 1 / -1;
+        }
+    }
+
+    @media (max-width: 576px) {
+        .return-trip-details {
+            grid-template-columns: 1fr;
+        }
+        .return-trip-details .return-route-summary,
+        .return-trip-details .single-search-box,
+        .return-trip-details .return-pricing-info {
+            grid-column: 1 / -1;
+        }
     }
 </style>
 

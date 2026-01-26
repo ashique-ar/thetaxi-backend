@@ -16,6 +16,7 @@ use App\Models\DriverAssignment;
 use App\Models\Customer;
 use App\Models\Service\ServiceType;
 use App\Models\Service\ServicePackage;
+use App\Models\Service\ServicePackageReturnRule;
 use App\Models\Company;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCalculationDefinition;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCommonRateDefinition;
@@ -980,6 +981,170 @@ class BookingFlowService
             'price_multiplier' => $servicePackage->price_multiplier,
             'rate_type' => $servicePackage->rate_type,
             'default_duration_hours' => $servicePackage->default_duration_hours,
+        ];
+    }
+
+    /**
+     * Calculate return trip pricing based on service package return rules.
+     *
+     * This method calculates the fare for a return trip based on:
+     * - The one-way fare
+     * - The day offset between outbound and return trip
+     * - Applicable return rules for the service package
+     *
+     * @param array $params Parameters including:
+     *   - package_id: Service package ID
+     *   - vehicle_group_id: Optional vehicle group for specific rules
+     *   - outbound_date: Date of outbound trip (Y-m-d or Carbon)
+     *   - return_date: Date of return trip (Y-m-d or Carbon)
+     *   - one_way_fare: The calculated fare for the outbound trip
+     *
+     * @return array Return trip pricing details
+     */
+    public function calculateReturnTripPricing(array $params): array
+    {
+        $packageId = $params['package_id'] ?? null;
+        $vehicleGroupId = $params['vehicle_group_id'] ?? null;
+        $oneWayFare = (float)($params['one_way_fare'] ?? 0);
+
+        // Parse dates
+        $outboundDate = $params['outbound_date'] instanceof Carbon
+            ? $params['outbound_date']->startOfDay()
+            : Carbon::parse($params['outbound_date'])->startOfDay();
+
+        $returnDate = $params['return_date'] instanceof Carbon
+            ? $params['return_date']->startOfDay()
+            : Carbon::parse($params['return_date'])->startOfDay();
+
+        // Calculate day offset
+        $dayOffset = $outboundDate->diffInDays($returnDate);
+
+        // Default response (no discount)
+        $result = [
+            'has_return_rule' => false,
+            'day_offset' => $dayOffset,
+            'charge_percentage' => 100,
+            'discount_percentage' => 0,
+            'one_way_fare' => round($oneWayFare, 2),
+            'return_fare' => round($oneWayFare, 2),
+            'total_fare' => round($oneWayFare * 2, 2),
+            'discount_amount' => 0,
+            'rule_label' => null,
+            'message' => null,
+        ];
+
+        if (!$packageId) {
+            $result['message'] = 'No service package specified for return trip calculation';
+            return $result;
+        }
+
+        $servicePackage = ServicePackage::find($packageId);
+        if (!$servicePackage) {
+            $result['message'] = 'Service package not found';
+            return $result;
+        }
+
+        // Find matching return rule
+        $rule = $servicePackage->findReturnRule($dayOffset, $vehicleGroupId);
+
+        if (!$rule) {
+            $result['message'] = 'No return discount available';
+            Log::debug('Return trip pricing - no matching rule', [
+                'package_id' => $packageId,
+                'day_offset' => $dayOffset,
+                'vehicle_group_id' => $vehicleGroupId,
+            ]);
+            return $result;
+        }
+
+        // Calculate return fare with rule
+        $returnFare = $rule->calculateReturnFare($oneWayFare);
+        $discountAmount = $oneWayFare - $returnFare;
+
+        $result = [
+            'has_return_rule' => true,
+            'day_offset' => $dayOffset,
+            'charge_percentage' => $rule->charge_percentage,
+            'discount_percentage' => $rule->discount_percentage,
+            'one_way_fare' => round($oneWayFare, 2),
+            'return_fare' => round($returnFare, 2),
+            'total_fare' => round($oneWayFare + $returnFare, 2),
+            'discount_amount' => round($discountAmount, 2),
+            'rule_id' => $rule->id,
+            'rule_label' => $rule->label ?? $rule->day_range_description,
+            'same_vehicle_required' => $rule->same_vehicle_required,
+            'same_driver_required' => $rule->same_driver_required,
+            'message' => $rule->label
+                ? "{$rule->label}: {$rule->discount_percentage}% off return trip"
+                : "{$rule->day_range_description}: {$rule->discount_percentage}% off return trip",
+        ];
+
+        Log::info('Return trip pricing calculated', [
+            'package_id' => $packageId,
+            'day_offset' => $dayOffset,
+            'rule_id' => $rule->id,
+            'charge_percentage' => $rule->charge_percentage,
+            'one_way_fare' => $oneWayFare,
+            'return_fare' => $returnFare,
+            'total_fare' => $result['total_fare'],
+        ]);
+
+        return $result;
+    }
+
+    /**
+     * Get available return rules for a service package.
+     * Used for frontend to display return options to users.
+     *
+     * @param string $packageId
+     * @param string|null $vehicleGroupId
+     * @return array
+     */
+    public function getAvailableReturnRules(string $packageId, ?string $vehicleGroupId = null): array
+    {
+        $servicePackage = ServicePackage::find($packageId);
+
+        if (!$servicePackage) {
+            return [
+                'supports_return_trip' => false,
+                'rules' => [],
+            ];
+        }
+
+        $rulesQuery = $servicePackage->returnRules()
+            ->active()
+            ->effectiveOn()
+            ->orderBy('day_offset_min')
+            ->orderByDesc('priority');
+
+        if ($vehicleGroupId) {
+            $rulesQuery->where(function ($q) use ($vehicleGroupId) {
+                $q->where('vehicle_group_id', $vehicleGroupId)
+                    ->orWhereNull('vehicle_group_id');
+            });
+        } else {
+            $rulesQuery->whereNull('vehicle_group_id');
+        }
+
+        $rules = $rulesQuery->get()->map(function ($rule) {
+            return [
+                'id' => $rule->id,
+                'label' => $rule->label ?? $rule->day_range_description,
+                'description' => $rule->description,
+                'day_offset_min' => $rule->day_offset_min,
+                'day_offset_max' => $rule->day_offset_max,
+                'charge_percentage' => $rule->charge_percentage,
+                'discount_percentage' => $rule->discount_percentage,
+                'same_vehicle_required' => $rule->same_vehicle_required,
+                'same_driver_required' => $rule->same_driver_required,
+            ];
+        });
+
+        return [
+            'supports_return_trip' => $rules->isNotEmpty(),
+            'package_id' => $packageId,
+            'package_name' => $servicePackage->name,
+            'rules' => $rules,
         ];
     }
 

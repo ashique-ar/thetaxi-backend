@@ -197,6 +197,31 @@
                                                                 <i class="bi bi-hourglass-split"></i>
                                                                 <strong>{{ getServiceDurationLabel($item['service_type'] ?? null, $calculatedDays) }}</strong>
                                                             </p>
+
+                                                            {{-- Return Trip Info --}}
+                                                            @if (!empty($item['is_return_trip']) && !empty($item['return_trip_date']))
+                                                                <div class="return-trip-info mt-2 p-2" style="background: linear-gradient(135deg, #e8f5e9, #c8e6c9); border-radius: 8px; border-left: 3px solid #28a745;">
+                                                                    <p style="margin: 0; font-weight: 600; color: #2e7d32;">
+                                                                        <i class="bi bi-arrow-left-right"></i> Return Trip Included
+                                                                    </p>
+                                                                    <p style="margin: 4px 0 0 0; font-size: 13px;">
+                                                                        <i class="bi bi-calendar-check" style="color: #28a745;"></i>
+                                                                        Return: {{ \Carbon\Carbon::parse($item['return_trip_date'])->format('M d, Y') }}
+                                                                        @if (!empty($item['return_trip_time']))
+                                                                            @ {{ $item['return_trip_time'] }}
+                                                                        @endif
+                                                                    </p>
+                                                                    <p style="margin: 4px 0 0 0; font-size: 13px;">
+                                                                        <i class="bi bi-geo-alt" style="color: #28a745;"></i>
+                                                                        {{ $dropoffLoc ?: 'Drop-off' }} → {{ $pickupLoc ?: 'Pickup' }}
+                                                                    </p>
+                                                                    @if (!empty($item['return_discount_percentage']) && $item['return_discount_percentage'] > 0)
+                                                                        <span class="badge bg-success mt-1" style="font-size: 11px;">
+                                                                            <i class="bi bi-tag-fill"></i> {{ $item['return_discount_percentage'] }}% off return trip
+                                                                        </span>
+                                                                    @endif
+                                                                </div>
+                                                            @endif
                                                         @endif
 
                                                         {{-- Display included km information --}}
@@ -287,8 +312,33 @@
                                                     $discountAmount = $item['discount_amount'] ?? 0;
                                                     $discountPercentage = $item['discount_percentage'] ?? 0;
                                                     $savingsDisplay = $item['savings_display'] ?? null;
+                                                    // Return trip pricing
+                                                    $isReturnTrip = $item['is_return_trip'] ?? false;
+                                                    $oneWayPrice = $item['one_way_price'] ?? null;
+                                                    $returnPrice = $item['return_price'] ?? null;
+                                                    $returnDiscountPct = $item['return_discount_percentage'] ?? 0;
                                                 @endphp
-                                                @if (!$isFixedRate)
+
+                                                {{-- Return Trip Pricing Breakdown --}}
+                                                @if ($isReturnTrip && $oneWayPrice && $returnPrice)
+                                                    <div class="return-trip-breakdown p-2 mb-2" style="background: #f8f9fa; border-radius: 6px; border-left: 3px solid #28a745;">
+                                                        <div class="price-row">
+                                                            <span class="price-label"><i class="bi bi-arrow-right-circle text-primary"></i> Outbound:</span>
+                                                            <span class="price-value"><small class="currency-symbol">{{ $currencySymbol }}</small>
+                                                                {{ number_format($oneWayPrice, 2) }}</span>
+                                                        </div>
+                                                        <div class="price-row">
+                                                            <span class="price-label">
+                                                                <i class="bi bi-arrow-left-circle text-success"></i> Return:
+                                                                @if ($returnDiscountPct > 0)
+                                                                    <span class="badge bg-success" style="font-size: 10px;">{{ $returnDiscountPct }}% off</span>
+                                                                @endif
+                                                            </span>
+                                                            <span class="price-value"><small class="currency-symbol">{{ $currencySymbol }}</small>
+                                                                {{ number_format($returnPrice, 2) }}</span>
+                                                        </div>
+                                                    </div>
+                                                @elseif (!$isFixedRate)
                                                     <div class="price-row">
                                                         <span class="price-label">{{ $pricingLabel }}:</span>
                                                         <span class="price-value"><small

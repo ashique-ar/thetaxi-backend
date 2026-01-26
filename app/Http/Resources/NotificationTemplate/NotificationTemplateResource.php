@@ -1,7 +1,7 @@
 <?php
 // app/Http/Resources/NotificationTemplateResource.php
 
-namespace App\Http\Resources;
+namespace App\Http\Resources\NotificationTemplate;
 
 use Illuminate\Http\Resources\Json\JsonResource;
 

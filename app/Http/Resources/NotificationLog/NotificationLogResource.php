@@ -1,7 +1,7 @@
 <?php
 // app/Http/Resources/NotificationLogResource.php
 
-namespace App\Http\Resources;
+namespace App\Http\Resources\NotificationLog;
 
 use Illuminate\Http\Resources\Json\JsonResource;
 
