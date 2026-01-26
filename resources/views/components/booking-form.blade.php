@@ -1731,6 +1731,86 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
             grid-column: 1 / -1;
         }
     }
+
+    /* Mobile tab single-line layout and wrapping fixes */
+    @media (max-width: 576px) {
+        .filter-item-list {
+            display: flex;
+            gap: 8px;
+            padding: 6px 8px;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            box-sizing: border-box;
+            overflow-x: auto;
+            /* allow horizontal scroll if there are more items */
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .filter-item-list .single-item {
+            padding: 6px 6px;
+            min-height: auto;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            gap: 6px;
+            flex: 1 1 0;
+            /* allow items to shrink equally */
+            min-width: 0;
+            /* allow text to wrap and not force overflow */
+            box-sizing: border-box;
+        }
+
+        .filter-item-list .single-item svg {
+            width: 20px;
+            height: 20px;
+            flex-shrink: 0;
+        }
+
+        .filter-item-list .single-item span {
+            white-space: normal !important;
+            display: block !important;
+            word-break: break-word !important;
+            hyphens: auto !important;
+            line-height: 1.05;
+            font-size: 13px;
+            padding: 0 4px;
+        }
+
+        /* Ensure transfer type / package toggles also wrap nicely */
+        .transfer-type-toggle,
+        .package-selector-toggle {
+            gap: 8px;
+        }
+
+        .transfer-type-option span,
+        .package-option span {
+            white-space: normal;
+        }
+    }
+
+    .filter-item-list .single-item span {
+        white-space: normal !important;
+        display: block !important;
+        word-break: break-word !important;
+        hyphens: auto !important;
+        line-height: 1.1;
+        font-size: 13px;
+    }
+
+    /* Ensure transfer type / package toggles also wrap nicely */
+    .transfer-type-toggle,
+    .package-selector-toggle {
+        gap: 8px;
+    }
+
+    .transfer-type-option span,
+    .package-option span {
+        white-space: normal;
+    }
+    }
 </style>
 
 @push('scripts')
