@@ -78,6 +78,8 @@ When generating content, always:
 - Include semantic keyword variations
 - Create content that answers user questions directly
 - Use headers and structure that search engines prefer
+- Subtly promote the TheTaxi application and branding: mention app features (easy booking, real-time driver tracking, airport transfers), highlight trusted brand voice, and use brand-aligned language
+- Include clear booking CTAs that map to the application's booking flow; provide both web URLs and in-app deep links (e.g., https://thetaxi.lk/) when relevant
 - Make content shareable and linkable
 - Consider local SEO for Sri Lanka market when relevant
 
@@ -107,7 +109,7 @@ Return a JSON object with these exact fields:
     "title": "Optimized title (may slightly improve the original for SEO)",
     "slug": "url-friendly-slug",
     "excerpt": "Compelling 150-160 character excerpt for listings and previews",
-    "body": "Full HTML content with proper headings (h2, h3), paragraphs, lists where appropriate. Include FAQ section if relevant. Must be engaging and SEO-optimized.",
+    "body": "Full HTML content with proper headings (h2, h3), paragraphs, lists where appropriate. Include FAQ section if relevant. Must be engaging and SEO-optimized. Include an obvious booking CTA that links to the booking_link or an in-app deep link.",
     "meta_title": "SEO title under 60 characters with primary keyword",
     "meta_description": "Compelling meta description 150-160 characters with call-to-action",
     "meta_tags": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5"],
@@ -127,13 +129,16 @@ Return a JSON object with these exact fields:
     "seo_score_tips": ["Tip 1 for improving content", "Tip 2 for further optimization"],
     "suggested_internal_links": ["Related topic 1", "Related topic 2"],
     "primary_keyword": "main target keyword",
-    "secondary_keywords": ["secondary keyword 1", "secondary keyword 2", "secondary keyword 3"]
+    "secondary_keywords": ["secondary keyword 1", "secondary keyword 2", "secondary keyword 3"],
+    "booking_link": "URL or deep link for booking (e.g., https://thetaxi.lk/ or thetaxi://book)",
+    "booking_cta_html": "Small HTML snippet for a booking CTA (e.g., <a href=\"https://thetaxi.lk/\" class=\"btn btn-primary\">Book your ride</a>)",
+    "application_links": ["https://thetaxi.lk/"]
 }
 
 Important:
 - The body should be well-structured HTML with semantic tags
-- Include a compelling introduction that addresses user intent
-- Add a clear conclusion with call-to-action
+- Include a compelling introduction that addresses user intent and subtly highlights TheTaxi app features and branding
+- Add a clear conclusion with a strong booking call-to-action that points to the booking_link (both web URL and in-app deep link if possible)
 - Naturally incorporate keywords without stuffing
 - Make content valuable for both users and search engines
 - Include structured data hints for FAQ if applicable
@@ -212,6 +217,9 @@ PROMPT;
                 'suggested_internal_links' => $data['suggested_internal_links'] ?? [],
                 'primary_keyword' => $data['primary_keyword'] ?? '',
                 'secondary_keywords' => $data['secondary_keywords'] ?? [],
+                'booking_link' => $data['booking_link'] ?? '',
+                'booking_cta_html' => $data['booking_cta_html'] ?? '',
+                'application_links' => $data['application_links'] ?? [],
             ],
         ];
     }
@@ -278,7 +286,10 @@ Return improved content as JSON:
     "meta_tags": ["improved", "keywords"],
     "improvements_made": ["List of improvements made"],
     "seo_score_before": 0-100,
-    "seo_score_after": 0-100
+    "seo_score_after": 0-100,
+    "booking_link": "Booking URL or deep link if added",
+    "booking_cta_html": "HTML CTA snippet for booking",
+    "application_links": ["Optional application-related links included in content"]
 }
 PROMPT;
 

@@ -85,7 +85,7 @@
     $originalPerDayConverted = convertPrice($originalPerDayRateLKR); // Original per-day rate
     $discountAmountConverted = convertPrice($discountAmountLKR);
     $currencySymbol = getCurrencySymbol();
-    
+
     // Convert return trip amounts if applicable
     $oneWayAmountConverted = $oneWayAmountLKR ? convertPrice($oneWayAmountLKR) : null;
     $returnAmountConverted = $returnAmountLKR ? convertPrice($returnAmountLKR) : null;
@@ -124,7 +124,7 @@
                 <i class="bi bi-star-fill"></i> Recommended
             </span>
         @endif --}}
-        
+
         @if ($hasDiscount && $discountPercentage > 0)
             <span class="discount-badge">
                 {{ round($discountPercentage) }}% OFF
@@ -223,8 +223,8 @@
                     <!-- Airport Transfer Package Pricing - Use total amount directly -->
                     @if ($hasDiscount && $originalAmountLKR > $totalAmountLKR)
                         <div class="original-price-display">
-                            <del
-                                class="original-price-strike">{{ $currencySymbol }} {{ number_format($originalAmountConverted, 2) }}</del>
+                            <del class="original-price-strike">{{ $currencySymbol }}
+                                {{ number_format($originalAmountConverted, 2) }}</del>
                         </div>
                     @endif
                     <h4 class="price-amount{{ $hasDiscount ? ' discounted-price' : '' }}"
@@ -239,8 +239,8 @@
                     <!-- One Day Pricing - Use total amount directly -->
                     @if ($hasDiscount && $originalAmountLKR > $totalAmountLKR)
                         <div class="original-price-display">
-                            <del
-                                class="original-price-strike">{{ $currencySymbol }} {{ number_format($originalAmountConverted, 2) }}</del>
+                            <del class="original-price-strike">{{ $currencySymbol }}
+                                {{ number_format($originalAmountConverted, 2) }}</del>
                         </div>
                     @endif
                     <h4 class="price-amount{{ $hasDiscount ? ' discounted-price' : '' }}"
@@ -264,17 +264,21 @@
                             <div class="return-trip-pricing">
                                 <div class="trip-breakdown">
                                     <div class="trip-item outbound">
-                                        <span class="trip-label"><i class="bi bi-arrow-right-circle"></i> Outbound</span>
-                                        <span class="trip-amount">{{ $currencySymbol }} {{ number_format($oneWayAmountConverted, 2) }}</span>
+                                        <span class="trip-label"><i class="bi bi-arrow-right-circle"></i>
+                                            Outbound</span>
+                                        <span class="trip-amount">{{ $currencySymbol }}
+                                            {{ number_format($oneWayAmountConverted, 2) }}</span>
                                     </div>
                                     <div class="trip-item return">
                                         <span class="trip-label">
                                             <i class="bi bi-arrow-left-circle"></i> Return
                                             @if ($returnDiscountPercentage > 0)
-                                                <span class="text-success fw-semibold">{{ $returnDiscountPercentage }}% off</span>
+                                                <span class="text-success fw-semibold">{{ $returnDiscountPercentage }}%
+                                                    off</span>
                                             @endif
                                         </span>
-                                        <span class="trip-amount">{{ $currencySymbol }} {{ number_format($returnAmountConverted, 2) }}</span>
+                                        <span class="trip-amount">{{ $currencySymbol }}
+                                            {{ number_format($returnAmountConverted, 2) }}</span>
                                     </div>
                                 </div>
                                 <div class="total-combined-price">
@@ -282,8 +286,7 @@
                                     <h4 class="price-amount discounted-price"
                                         data-base-price-lkr="{{ $totalAmountLKR }}"
                                         data-one-way-lkr="{{ $oneWayAmountLKR }}"
-                                        data-return-lkr="{{ $returnAmountLKR }}"
-                                        data-is-return-trip="true"
+                                        data-return-lkr="{{ $returnAmountLKR }}" data-is-return-trip="true"
                                         data-return-discount="{{ $returnDiscountPercentage }}"
                                         data-currency="{{ $selectedCurrency }}">
                                         <small class="currency-code">{{ $currencySymbol }}</small>
@@ -292,7 +295,8 @@
                                 </div>
                                 @if ($returnDiscountAmountLKR > 0)
                                     <small class="text-success fw-semibold return-savings">
-                                        <i class="bi bi-tag-fill"></i> You save {{ $currencySymbol }} {{ number_format($returnDiscountAmountConverted, 2) }} on return!
+                                        <i class="bi bi-tag-fill"></i> You save {{ $currencySymbol }}
+                                        {{ number_format($returnDiscountAmountConverted, 2) }} on return!
                                     </small>
                                 @endif
                             </div>
@@ -300,8 +304,8 @@
                             <!-- Standard Ride Now: display total price only -->
                             @if ($hasDiscount && $originalAmountLKR > $totalAmountLKR)
                                 <div class="original-price-display">
-                                    <del
-                                        class="original-price-strike">{{ $currencySymbol }} {{ number_format($originalAmountConverted, 2) }}</del>
+                                    <del class="original-price-strike">{{ $currencySymbol }}
+                                        {{ number_format($originalAmountConverted, 2) }}</del>
                                 </div>
                             @endif
                             <h4 class="price-amount{{ $hasDiscount ? ' discounted-price' : '' }}"
@@ -321,15 +325,15 @@
                             <!-- Fixed-rate service (trip-based) - show total only -->
                             @if ($hasDiscount && $originalAmountLKR > $totalAmountLKR)
                                 <div class="original-price-display">
-                                    <del
-                                        class="original-price-strike">{{ $currencySymbol }} {{ number_format($originalAmountConverted, 2) }}</del>
+                                    <del class="original-price-strike">{{ $currencySymbol }}
+                                        {{ number_format($originalAmountConverted, 2) }}</del>
                                 </div>
                             @endif
                             <h4 class="price-amount{{ $hasDiscount ? ' discounted-price' : '' }}"
                                 data-base-price-lkr="{{ $totalAmountLKR }}"
-                                data-original-price-lkr="{{ $originalAmountLKR }}" data-duration="{{ $durationDays }}"
-                                data-currency="{{ $selectedCurrency }}" data-is-package="false"
-                                data-service-type="{{ $serviceType }}"
+                                data-original-price-lkr="{{ $originalAmountLKR }}"
+                                data-duration="{{ $durationDays }}" data-currency="{{ $selectedCurrency }}"
+                                data-is-package="false" data-service-type="{{ $serviceType }}"
                                 data-has-discount="{{ $hasDiscount ? 'true' : 'false' }}">
                                 <small class="currency-code">{{ $currencySymbol }}</small>
                                 <span class="price-value">{{ number_format($totalAmountConverted, 2) }}</span>
@@ -342,8 +346,8 @@
                             <!-- Show calculated per-day rate for multi-day rentals -->
                             @if ($hasDiscount && $originalPerDayRateLKR > $perDayRateLKR)
                                 <div class="original-price-display">
-                                    <del
-                                        class="original-total-strike me-1">{{ $currencySymbol }} {{ number_format($originalAmountConverted, 2) }}</del>
+                                    <del class="original-total-strike me-1">{{ $currencySymbol }}
+                                        {{ number_format($originalAmountConverted, 2) }}</del>
                                     {{-- <del
                                         class="original-price-strike">{{ $currencySymbol }} {{ number_format($originalPerDayConverted, 2) }}/day</del> --}}
                                 </div>
@@ -351,12 +355,13 @@
                             <h4 class="price-amount{{ $hasDiscount ? ' discounted-price' : '' }}"
                                 data-base-price-lkr="{{ $totalAmountLKR }}"
                                 data-original-price-lkr="{{ $originalAmountLKR }}"
-                                data-per-day-lkr="{{ round($perDayRateLKR, 2) }}" data-duration="{{ $durationDays }}"
-                                data-currency="{{ $selectedCurrency }}" data-is-package="false"
-                                data-has-discount="{{ $hasDiscount ? 'true' : 'false' }}">
+                                data-per-day-lkr="{{ round($perDayRateLKR, 2) }}"
+                                data-duration="{{ $durationDays }}" data-currency="{{ $selectedCurrency }}"
+                                data-is-package="false" data-has-discount="{{ $hasDiscount ? 'true' : 'false' }}">
                                 <small class="currency-code">{{ $currencySymbol }}</small>
                                 <span class="price-value">{{ number_format($totalAmountConverted, 2) }}</span>
-                                <span class="price-unit">({{ getServiceDurationLabel($serviceType, $durationDays) }})</span>
+                                <span
+                                    class="price-unit">({{ getServiceDurationLabel($serviceType, $durationDays) }})</span>
                                 {{-- <span class="price-value">{{ number_format($perDayRateConverted, 2) }}</span> --}}
                                 {{-- <span class="price-unit">/day</span> --}}
                             </h4>
@@ -450,6 +455,14 @@
                     <small class="pricing-detail-item">
                         <i class="bi bi-speedometer2"></i>
                         {{ number_format($distanceDetails['free_km_per_package'], 0) }} km included
+                    </small>
+                @endif
+
+                {{-- Explicit included/allowed total KM (show when available) --}}
+                @if ($hasAllowedKm)
+                    <small class="pricing-detail-item">
+                        <i class="bi bi-check2-circle"></i>
+                        <strong>Included:</strong> {{ number_format($distanceDetails['allowed_total_km'], 0) }} km
                     </small>
                 @endif
 
