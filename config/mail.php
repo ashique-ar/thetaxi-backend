@@ -127,11 +127,11 @@ return [
 
     'customer_cc' => [
         'info@thetaxi.lk',
-        'inquiry@thetaxi.lk',
+        // 'inquiry@thetaxi.lk',
     ],
 
     'bcc_all' => [
-        'sales@thetaxi.lk',
+        // 'sales@thetaxi.lk',
     ],
 
     /*
