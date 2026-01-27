@@ -109,8 +109,7 @@ Route::get('/corporate-transfers', [InquiryServicePageController::class, 'show']
     ->defaults('slug', 'corporate-transfers')
     ->name('corporate-transfers');
 
-Route::get('/services/{slug}', [InquiryServicePageController::class, 'show'])
-    ->name('inquiry-services.show');
+
 
 // contact.store
 Route::post('/contact', [InquiryController::class, 'store'])->name('contact.store');
@@ -148,6 +147,8 @@ Route::get('/{contentType}/{content}', [CmsController::class, 'show'])
     ->where('contentType', '[a-zA-Z0-9-_]+') // Simple pattern for content types
     ->where('content', '[a-zA-Z0-9-_]+'); // Simple pattern for content slugs
 
+Route::get('/services/{slug}', [InquiryServicePageController::class, 'show'])
+    ->name('inquiry-services.show');
 // Sitemap
 Route::get('/sitemap.xml', [SitemapController::class, 'index'])->name('sitemap');
 

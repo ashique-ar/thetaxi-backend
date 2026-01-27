@@ -102,6 +102,22 @@
             margin: 25px 0;
         }
 
+        /* Ensure article content wraps and long words / non-breaking spaces don't force horizontal scrolling */
+        .content-body {
+            white-space: normal !important;
+            word-wrap: break-word !important;
+            overflow-wrap: anywhere !important;
+            word-break: break-word !important;
+            hyphens: auto !important;
+        }
+
+        .content-body img {
+            max-width: 100% !important;
+            height: auto !important;
+            display: block;
+            margin: 12px 0;
+        }
+
         @media (max-width:991px) {
             .article-sidebar {
                 position: static;
@@ -142,8 +158,16 @@
                             <p class="lead text-muted">{{ $content->excerpt }}</p>
                         @endif
 
+                        @php
+                            $rawBody = $content->body ?? '';
+                            // Replace HTML entity non-breaking spaces and unicode NBSP with regular spaces
+                            $body = str_replace('&nbsp;', ' ', $rawBody);
+                            $body = preg_replace('/\x{00A0}/u', ' ', $body);
+                            // Collapse sequences of multiple spaces into a single space (avoid runaway spacing)
+                            $body = preg_replace('/[ \t]{2,}/', ' ', $body);
+                        @endphp
                         <div class="content-body" id="articleBody">
-                            {!! $content->body !!}
+                            {!! $body !!}
                         </div>
 
                         @if ($content->gallery_images && count($content->gallery_images) > 0)
