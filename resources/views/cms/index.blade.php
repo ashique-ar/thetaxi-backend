@@ -781,196 +781,200 @@
                 <a href="#" class="back-to-top" id="backToTop">
                     <i class="bi bi-arrow-up"></i>
                 </a>
-            @endsection
+            </div>
+        </div>
+    </div>
 
-            @push('scripts')
-                <script>
-                    // Add page loading state
-                    document.body.classList.add('loading');
+@endsection
 
-                    document.addEventListener('DOMContentLoaded', function() {
-                        // Remove loading state once page is ready
-                        setTimeout(() => {
-                            document.body.classList.remove('loading');
-                        }, 100);
-                        // View toggle functionality
-                        const viewButtons = document.querySelectorAll('.view-btn');
-                        const contentContainer = document.getElementById('contentContainer');
-                        const contentGrid = document.getElementById('contentGrid');
+@push('scripts')
+    <script>
+        // Add page loading state
+        document.body.classList.add('loading');
 
-                        // Set initial view
-                        let currentView = localStorage.getItem('cms-view') || 'grid';
-                        setView(currentView);
+        document.addEventListener('DOMContentLoaded', function() {
+            // Remove loading state once page is ready
+            setTimeout(() => {
+                document.body.classList.remove('loading');
+            }, 100);
+            // View toggle functionality
+            const viewButtons = document.querySelectorAll('.view-btn');
+            const contentContainer = document.getElementById('contentContainer');
+            const contentGrid = document.getElementById('contentGrid');
 
-                        viewButtons.forEach(btn => {
-                            btn.addEventListener('click', function() {
-                                const view = this.getAttribute('data-view');
-                                setView(view);
-                                localStorage.setItem('cms-view', view);
-                            });
-                        });
+            // Set initial view
+            let currentView = localStorage.getItem('cms-view') || 'grid';
+            setView(currentView);
 
-                        function setView(view) {
-                            viewButtons.forEach(btn => {
-                                btn.classList.toggle('active', btn.getAttribute('data-view') === view);
-                            });
+            viewButtons.forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const view = this.getAttribute('data-view');
+                    setView(view);
+                    localStorage.setItem('cms-view', view);
+                });
+            });
 
-                            if (view === 'list') {
-                                contentContainer.classList.add('list-view');
-                                contentGrid.classList.remove('row');
-                            } else {
-                                contentContainer.classList.remove('list-view');
-                                contentGrid.classList.add('row');
-                            }
+            function setView(view) {
+                viewButtons.forEach(btn => {
+                    btn.classList.toggle('active', btn.getAttribute('data-view') === view);
+                });
+
+                if (view === 'list') {
+                    contentContainer.classList.add('list-view');
+                    contentGrid.classList.remove('row');
+                } else {
+                    contentContainer.classList.remove('list-view');
+                    contentGrid.classList.add('row');
+                }
+            }
+
+            // Back to top functionality
+            const backToTop = document.getElementById('backToTop');
+
+            window.addEventListener('scroll', function() {
+                if (window.pageYOffset > 300) {
+                    backToTop.classList.add('show');
+                } else {
+                    backToTop.classList.remove('show');
+                }
+            });
+
+            backToTop.addEventListener('click', function(e) {
+                e.preventDefault();
+                window.scrollTo({
+                    top: 0,
+                    behavior: 'smooth'
+                });
+            });
+
+            // Search form enhancement
+            const searchForm = document.getElementById('filterForm');
+            const searchInput = searchForm.querySelector('input[name="search"]');
+
+            // Auto-submit search on Enter
+            searchInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    searchForm.submit();
+                }
+            });
+
+            // Add loading states
+            const filterLinks = document.querySelectorAll('.filter-tag');
+            filterLinks.forEach(link => {
+                link.addEventListener('click', function() {
+                    // Add loading state
+                    const originalText = this.innerHTML;
+                    this.classList.add('loading');
+                    this.innerHTML = '<i class="bi bi-hourglass-split"></i> Loading...';
+
+                    // Restore original text if navigation fails
+                    setTimeout(() => {
+                        this.classList.remove('loading');
+                        this.innerHTML = originalText;
+                    }, 5000);
+                });
+            });
+
+            // Enhanced search functionality
+            const searchInput = searchForm.querySelector('input[name="search"]');
+            let searchTimeout;
+
+            // Add search suggestions (mock data - replace with actual API call)
+            searchInput.addEventListener('input', function() {
+                clearTimeout(searchTimeout);
+                const query = this.value.trim();
+
+                if (query.length > 2) {
+                    searchTimeout = setTimeout(() => {
+                        // Add visual feedback
+                        this.style.borderColor = '#BF2629';
+                        this.style.boxShadow = '0 0 0 3px rgba(191, 38, 41, 0.1)';
+                    }, 300);
+                } else {
+                    this.style.borderColor = '#e0e0e0';
+                    this.style.boxShadow = 'none';
+                }
+            });
+
+            // Add keyboard navigation for accessibility
+            document.addEventListener('keydown', function(e) {
+                // Press 'S' to focus search
+                if (e.key === 's' || e.key === 'S') {
+                    if (document.activeElement !== searchInput) {
+                        e.preventDefault();
+                        searchInput.focus();
+                    }
+                }
+
+                // Press 'Escape' to clear search
+                if (e.key === 'Escape') {
+                    if (document.activeElement === searchInput) {
+                        searchInput.value = '';
+                        searchInput.blur();
+                    }
+                }
+            });
+
+            // Smooth scrolling for pagination
+            const paginationLinks = document.querySelectorAll('.paginations a');
+            paginationLinks.forEach(link => {
+                link.addEventListener('click', function() {
+                    // Add loading state to clicked pagination link
+                    this.style.opacity = '0.6';
+                    this.style.pointerEvents = 'none';
+                });
+            });
+
+            // Add hover effects for cards
+            const cards = document.querySelectorAll('.enhanced-blog-card');
+            cards.forEach(card => {
+                card.addEventListener('mouseenter', function() {
+                    this.style.zIndex = '10';
+                });
+
+                card.addEventListener('mouseleave', function() {
+                    this.style.zIndex = '1';
+                });
+            });
+
+            // Add intersection observer for lazy loading
+            if ('IntersectionObserver' in window) {
+                const imageObserver = new IntersectionObserver((entries, observer) => {
+                    entries.forEach(entry => {
+                        if (entry.isIntersecting) {
+                            const img = entry.target;
+                            img.src = img.dataset.src || img.src;
+                            img.classList.remove('lazy');
+                            observer.unobserve(img);
                         }
-
-                        // Back to top functionality
-                        const backToTop = document.getElementById('backToTop');
-
-                        window.addEventListener('scroll', function() {
-                            if (window.pageYOffset > 300) {
-                                backToTop.classList.add('show');
-                            } else {
-                                backToTop.classList.remove('show');
-                            }
-                        });
-
-                        backToTop.addEventListener('click', function(e) {
-                            e.preventDefault();
-                            window.scrollTo({
-                                top: 0,
-                                behavior: 'smooth'
-                            });
-                        });
-
-                        // Search form enhancement
-                        const searchForm = document.getElementById('filterForm');
-                        const searchInput = searchForm.querySelector('input[name="search"]');
-
-                        // Auto-submit search on Enter
-                        searchInput.addEventListener('keypress', function(e) {
-                            if (e.key === 'Enter') {
-                                searchForm.submit();
-                            }
-                        });
-
-                        // Add loading states
-                        const filterLinks = document.querySelectorAll('.filter-tag');
-                        filterLinks.forEach(link => {
-                            link.addEventListener('click', function() {
-                                // Add loading state
-                                const originalText = this.innerHTML;
-                                this.classList.add('loading');
-                                this.innerHTML = '<i class="bi bi-hourglass-split"></i> Loading...';
-
-                                // Restore original text if navigation fails
-                                setTimeout(() => {
-                                    this.classList.remove('loading');
-                                    this.innerHTML = originalText;
-                                }, 5000);
-                            });
-                        });
-
-                        // Enhanced search functionality
-                        const searchInput = searchForm.querySelector('input[name="search"]');
-                        let searchTimeout;
-
-                        // Add search suggestions (mock data - replace with actual API call)
-                        searchInput.addEventListener('input', function() {
-                            clearTimeout(searchTimeout);
-                            const query = this.value.trim();
-
-                            if (query.length > 2) {
-                                searchTimeout = setTimeout(() => {
-                                    // Add visual feedback
-                                    this.style.borderColor = '#BF2629';
-                                    this.style.boxShadow = '0 0 0 3px rgba(191, 38, 41, 0.1)';
-                                }, 300);
-                            } else {
-                                this.style.borderColor = '#e0e0e0';
-                                this.style.boxShadow = 'none';
-                            }
-                        });
-
-                        // Add keyboard navigation for accessibility
-                        document.addEventListener('keydown', function(e) {
-                            // Press 'S' to focus search
-                            if (e.key === 's' || e.key === 'S') {
-                                if (document.activeElement !== searchInput) {
-                                    e.preventDefault();
-                                    searchInput.focus();
-                                }
-                            }
-
-                            // Press 'Escape' to clear search
-                            if (e.key === 'Escape') {
-                                if (document.activeElement === searchInput) {
-                                    searchInput.value = '';
-                                    searchInput.blur();
-                                }
-                            }
-                        });
-
-                        // Smooth scrolling for pagination
-                        const paginationLinks = document.querySelectorAll('.paginations a');
-                        paginationLinks.forEach(link => {
-                            link.addEventListener('click', function() {
-                                // Add loading state to clicked pagination link
-                                this.style.opacity = '0.6';
-                                this.style.pointerEvents = 'none';
-                            });
-                        });
-
-                        // Add hover effects for cards
-                        const cards = document.querySelectorAll('.enhanced-blog-card');
-                        cards.forEach(card => {
-                            card.addEventListener('mouseenter', function() {
-                                this.style.zIndex = '10';
-                            });
-
-                            card.addEventListener('mouseleave', function() {
-                                this.style.zIndex = '1';
-                            });
-                        });
-
-                        // Add intersection observer for lazy loading
-                        if ('IntersectionObserver' in window) {
-                            const imageObserver = new IntersectionObserver((entries, observer) => {
-                                entries.forEach(entry => {
-                                    if (entry.isIntersecting) {
-                                        const img = entry.target;
-                                        img.src = img.dataset.src || img.src;
-                                        img.classList.remove('lazy');
-                                        observer.unobserve(img);
-                                    }
-                                });
-                            });
-
-                            document.querySelectorAll('.enhanced-blog-card img').forEach(img => {
-                                imageObserver.observe(img);
-                            });
-                        }
-
-                        // Add performance optimization for scroll events
-                        let ticking = false;
-
-                        function updateOnScroll() {
-                            // Back to top visibility
-                            if (window.pageYOffset > 300) {
-                                backToTop.classList.add('show');
-                            } else {
-                                backToTop.classList.remove('show');
-                            }
-
-                            ticking = false;
-                        }
-
-                        window.addEventListener('scroll', function() {
-                            if (!ticking) {
-                                requestAnimationFrame(updateOnScroll);
-                                ticking = true;
-                            }
-                        });
                     });
-                </script>
-            @endpush
+                });
+
+                document.querySelectorAll('.enhanced-blog-card img').forEach(img => {
+                    imageObserver.observe(img);
+                });
+            }
+
+            // Add performance optimization for scroll events
+            let ticking = false;
+
+            function updateOnScroll() {
+                // Back to top visibility
+                if (window.pageYOffset > 300) {
+                    backToTop.classList.add('show');
+                } else {
+                    backToTop.classList.remove('show');
+                }
+
+                ticking = false;
+            }
+
+            window.addEventListener('scroll', function() {
+                if (!ticking) {
+                    requestAnimationFrame(updateOnScroll);
+                    ticking = true;
+                }
+            });
+        });
+    </script>
+@endpush
