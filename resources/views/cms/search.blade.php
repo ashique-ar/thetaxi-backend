@@ -88,7 +88,7 @@
             @endif
 
             @if ($contents->count() > 0)
-                <div class="row gy-md-5 gy-4 mb-60">
+                <div class="row gy-md-5 gy-4 mb-60 align-items-stretch">
                     @foreach ($contents as $index => $content)
                         <div class="col-lg-4 col-md-6 wow animate fadeInDown" data-wow-delay="{{ 200 + $index * 200 }}ms"
                             data-wow-duration="1500ms">
@@ -243,7 +243,7 @@
     </div>
 @endif
 
-<div class="row gy-md-5 gy-4 mb-60">
+<div class="row gy-md-5 gy-4 mb-60 align-items-stretch">
     @forelse($contents as $content)
         <div class="col-lg-4 col-md-6 wow animate fadeInDown" data-wow-delay="{{ ($loop->index % 3) * 200 + 200 }}ms"
             data-wow-duration="1500ms">

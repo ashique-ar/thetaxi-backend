@@ -170,6 +170,8 @@
             overflow: hidden;
             height: 100%;
             position: relative;
+            display: flex;
+            flex-direction: column;
         }
 
         .enhanced-blog-card:hover {
@@ -237,6 +239,9 @@
 
         .enhanced-blog-card .card-content {
             padding: 25px;
+            display: flex;
+            flex-direction: column;
+            flex: 1;
         }
 
         .enhanced-blog-card .card-meta {
@@ -286,15 +291,16 @@
             align-items: center;
             padding-top: 15px;
             border-top: 1px solid #f0f0f0;
+            margin-top: auto;
         }
 
         .enhanced-blog-card .read-more {
             background: linear-gradient(135deg, #BF2629, #8B1A1C);
             color: white;
-            padding: 10px 20px;
+            padding: 8px 16px;
             border-radius: 25px;
             text-decoration: none;
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 600;
             transition: all 0.3s ease;
             display: inline-flex;
@@ -309,6 +315,7 @@
 
         .list-view .enhanced-blog-card {
             display: flex;
+            flex-direction: row;
             margin-bottom: 2rem;
         }
 

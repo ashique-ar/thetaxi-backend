@@ -14992,6 +14992,9 @@ header.style-3 {
   padding: 10px;
   border: 1px solid var(--borders-color);
   border-radius: 20px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 
   @include lg-device() {
     padding: 8px;
@@ -15004,6 +15007,7 @@ header.style-3 {
 
   .blog-img-wrap {
     position: relative;
+    flex-shrink: 0;
 
     .blog-img {
       position: relative;
@@ -15117,6 +15121,9 @@ header.style-3 {
 
   .blog-content {
     padding: 40px 20px 20px;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
 
     @include xxl-down-device() {
       padding: 35px 12px 20px;

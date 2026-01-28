@@ -15875,6 +15875,9 @@ header.style-3.two .main-menu>ul>li.active>a i {
   padding: 10px;
   border: 1px solid var(--borders-color);
   border-radius: 20px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
 @media (min-width: 992px) and (max-width: 1199px) {
@@ -15892,6 +15895,7 @@ header.style-3.two .main-menu>ul>li.active>a i {
 
 .blog-card2 .blog-img-wrap {
   position: relative;
+  flex-shrink: 0;
 }
 
 .blog-card2 .blog-img-wrap .blog-img {
@@ -16012,6 +16016,9 @@ header.style-3.two .main-menu>ul>li.active>a i {
 
 .blog-card2 .blog-content {
   padding: 40px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
 }
 
 @media (max-width: 1399px) {

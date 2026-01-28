@@ -33,7 +33,7 @@
             </div>
         </div>
         
-        <div class="row g-4 mb-40">
+        <div class="row g-4 mb-40 align-items-stretch">
             @if($displayItems->count() > 0)
                 @foreach($displayItems as $index => $item)
                     <x-cms-card 
