@@ -24,7 +24,7 @@
                     <h1>{{ $settings['banner_heading'] ?? 'All-in-one Travel Booking.' }}</h1>
                     <p>{{ $settings['banner_subheading'] ??
                         'Best travel agency in world-wide & achieve “World
-                                                                                                                                                                        Travel Award”' }}
+                                                                                                                                                                                                                Travel Award”' }}
                     </p>
                     @include('components.booking-form')
                 </div>
@@ -167,34 +167,37 @@
             :limit="6" />
     @endif
 
-    <!-- home4 Offer Slider Section Start-->
-    <div class="home4-offer-slider-section mb-100">
-        <div class="container">
-            <div class="row mb-40">
-                <div class="col-lg-12">
-                    <div class="swiper home4-offer-slider">
-                        <div class="swiper-wrapper">
-                            <div class="swiper-slide">
-                                <a href="travel-package-details.html"><img
-                                        src="{{ s3_asset($settings['offer_slider_img_1'] ?? 'assets/img/home4/home4-offer-slider-img1.jpg') }}"
-                                        alt=""></a>
-                            </div>
-                            <div class="swiper-slide">
-                                <a href="travel-package-details.html"><img
-                                        src="{{ s3_asset($settings['offer_slider_img_2'] ?? 'assets/img/home4/home4-offer-slider-img2.jpg') }}"
-                                        alt=""></a>
+    @if ($settings['offer_slider_img_1'])
+        <div class="home4-offer-slider-section mb-100">
+            <div class="container">
+                <div class="row mb-40">
+                    <div class="col-lg-12">
+                        <div class="swiper home4-offer-slider">
+                            <div class="swiper-wrapper">
+                                <div class="swiper-slide">
+                                    <a href="travel-package-details.html"><img
+                                            src="{{ s3_asset($settings['offer_slider_img_1'] ?? 'assets/img/home4/home4-offer-slider-img1.jpg') }}"
+                                            alt=""></a>
+                                </div>
+                                <div class="swiper-slide">
+                                    <a href="travel-package-details.html"><img
+                                            src="{{ s3_asset($settings['offer_slider_img_2'] ?? 'assets/img/home4/home4-offer-slider-img2.jpg') }}"
+                                            alt=""></a>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
-            <div class="row">
-                <div class="col-lg-12 d-flex justify-content-center">
-                    <div class="swiper-pagination2 paginations two"></div>
+                <div class="row">
+                    <div class="col-lg-12 d-flex justify-content-center">
+                        <div class="swiper-pagination2 paginations two"></div>
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
+    @endif
+    <!-- home4 Offer Slider Section Start-->
+
     <!-- home4 Offer Slider Section End-->
 
     @if ($settings['why_video_image'])
