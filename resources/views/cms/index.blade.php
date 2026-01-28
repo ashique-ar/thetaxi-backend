@@ -348,6 +348,100 @@
             padding: 2rem 0;
         }
 
+        /* CMS pagination refinement */
+        .pagination-enhanced .pagination-area {
+            justify-content: center;
+            gap: 12px;
+            padding: 14px 18px;
+            /* border: 1px solid #eee;
+            border-radius: 18px;
+            background: #fff;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06); */
+        }
+
+        .pagination-enhanced .paginations {
+            gap: 8px;
+        }
+
+        .pagination-enhanced .paginations .page-item a {
+            width: auto;
+            min-width: 40px;
+            height: 40px;
+            padding: 0 12px;
+            border-radius: 10px;
+            font-weight: 600;
+            border-color: #e5e7eb;
+        }
+
+        .pagination-enhanced .paginations .page-item.disabled span {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 40px;
+            height: 40px;
+            padding: 0 12px;
+            border-radius: 10px;
+            color: #9ca3af;
+            border: 1px solid #e5e7eb;
+            font-weight: 600;
+            background: #f9fafb;
+        }
+
+        .pagination-enhanced .paginations .page-item a:hover {
+            background-color: #BF2629;
+            color: #fff;
+            border-color: #BF2629;
+            transform: translateY(-1px);
+        }
+
+        .pagination-enhanced .paginations .page-item.active a {
+            background-color: #BF2629;
+            color: #fff;
+            border-color: #BF2629;
+            box-shadow: 0 6px 14px rgba(191, 38, 41, 0.25);
+        }
+
+        .pagination-enhanced .paginations-button a {
+            min-width: 96px;
+            max-width: none;
+            height: 40px;
+            border-radius: 10px;
+            font-size: 14px;
+            gap: 6px;
+            border-color: #e5e7eb;
+        }
+
+        .pagination-enhanced .paginations-button a:hover {
+            box-shadow: inset 0 0 0 10em #BF2629, 0 6px 14px rgba(191, 38, 41, 0.25);
+        }
+
+        @media (max-width: 576px) {
+            .pagination-enhanced .pagination-area {
+                padding: 12px;
+                gap: 10px;
+            }
+
+            .pagination-enhanced .paginations .page-item a {
+                min-width: 34px;
+                height: 34px;
+                padding: 0 10px;
+                font-size: 12px;
+            }
+
+            .pagination-enhanced .paginations .page-item.disabled span {
+                min-width: 34px;
+                height: 34px;
+                padding: 0 10px;
+                font-size: 12px;
+            }
+
+            .pagination-enhanced .paginations-button a {
+                min-width: 80px;
+                height: 34px;
+                font-size: 12px;
+            }
+        }
+
         .back-to-top {
             position: fixed;
             bottom: 30px;
@@ -754,11 +848,43 @@
                                     @endif
                                 </div>
                                 <ul class="paginations">
-                                    @foreach ($contents->getUrlRange(1, $contents->lastPage()) as $page => $url)
-                                        <li class="page-item {{ $page == $contents->currentPage() ? 'active' : '' }}">
-                                            <a href="{{ $url }}">{{ sprintf('%02d', $page) }}</a>
+                                    @php
+                                        $currentPage = $contents->currentPage();
+                                        $lastPage = $contents->lastPage();
+                                        $range = 2;
+                                        $start = max(2, $currentPage - $range);
+                                        $end = min($lastPage - 1, $currentPage + $range);
+                                    @endphp
+
+                                    @if ($lastPage >= 1)
+                                        <li class="page-item {{ $currentPage === 1 ? 'active' : '' }}">
+                                            <a href="{{ $contents->url(1) }}">{{ sprintf('%02d', 1) }}</a>
                                         </li>
-                                    @endforeach
+                                    @endif
+
+                                    @if ($start > 2)
+                                        <li class="page-item disabled">
+                                            <span>…</span>
+                                        </li>
+                                    @endif
+
+                                    @for ($page = $start; $page <= $end; $page++)
+                                        <li class="page-item {{ $page === $currentPage ? 'active' : '' }}">
+                                            <a href="{{ $contents->url($page) }}">{{ sprintf('%02d', $page) }}</a>
+                                        </li>
+                                    @endfor
+
+                                    @if ($end < $lastPage - 1)
+                                        <li class="page-item disabled">
+                                            <span>…</span>
+                                        </li>
+                                    @endif
+
+                                    @if ($lastPage > 1)
+                                        <li class="page-item {{ $currentPage === $lastPage ? 'active' : '' }}">
+                                            <a href="{{ $contents->url($lastPage) }}">{{ sprintf('%02d', $lastPage) }}</a>
+                                        </li>
+                                    @endif
                                 </ul>
                                 <div class="paginations-button">
                                     @if ($contents->nextPageUrl())
