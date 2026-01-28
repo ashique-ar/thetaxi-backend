@@ -15903,11 +15903,25 @@ header.style-3.two .main-menu>ul>li.active>a i {
   overflow: hidden;
   display: block;
   border-radius: 10px;
+  height: 240px;
+}
+
+@media (max-width: 1199px) {
+  .blog-card2 .blog-img-wrap .blog-img {
+    height: 220px;
+  }
+}
+
+@media (max-width: 576px) {
+  .blog-card2 .blog-img-wrap .blog-img {
+    height: 200px;
+  }
 }
 
 .blog-card2 .blog-img-wrap .blog-img img {
   border-radius: 10px;
-  min-height: 200px;
+  height: 100%;
+  width: 100%;
   -o-object-fit: cover;
   object-fit: cover;
   transition: all 0.5s ease-out;

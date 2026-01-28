@@ -15014,10 +15014,20 @@ header.style-3 {
       overflow: hidden;
       display: block;
       border-radius: 10px;
+      height: 240px;
+
+      @include xl-down-device() {
+        height: 220px;
+      }
+
+      @include sm-down-device() {
+        height: 200px;
+      }
 
       img {
         border-radius: 10px;
-        min-height: 200px;
+        height: 100%;
+        width: 100%;
         object-fit: cover;
         transition: all 0.5s ease-out;
       }
