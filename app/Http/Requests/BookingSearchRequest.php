@@ -133,7 +133,7 @@ class BookingSearchRequest extends FormRequest
             'return_date.after_or_equal' => 'Return date must be on or after the pickup date.',
             'pickup_date.after_or_equal' => 'Pickup date must be today or in the future.',
             'pickup_date.required' => 'The pickup date field is required.',
-            'dropoff_date.after' => 'Drop-off date must be after pickup date.',
+            'dropoff_date.after_or_equal' => 'Drop-off date must be on or after pickup date (same-day rental allowed).',
             'dropoff_date.required' => 'The drop-off date field is required.',
             'time.date_format' => 'Please enter a valid time format (HH:MM).',
             'time.required' => 'The time field is required.',
@@ -233,7 +233,7 @@ class BookingSearchRequest extends FormRequest
             'pickup_lng' => 'nullable|numeric|between:-180,180',
             'pickup_date' => 'required|date|after_or_equal:today',
             'pickup_time' => 'required|date_format:H:i',
-            'dropoff_date' => 'required|date|after:pickup_date',
+            'dropoff_date' => 'required|date|after_or_equal:pickup_date', // Changed from 'after' to 'after_or_equal' to allow same-day
             'dropoff_time' => 'required|date_format:H:i',
             'package_type' => 'nullable|string|in:half-day,full-day,multi-day,hourly,daily',
             'package_id' => 'nullable|uuid|exists:service_packages,id',

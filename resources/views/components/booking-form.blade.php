@@ -103,12 +103,12 @@
     $otherServicesPickupDate = $searchDropoffDate ?? $searchPickupDate;
     $otherServicesPickupTime = $searchDropoffTime ?? $searchPickupTime;
 
-    // For drop-off date on other services, add 3 days to the pickup date if available
+    // For drop-off date on other services, default to same day as pickup (same-day rental)
     $otherServicesDropoffDate = null;
     if ($otherServicesPickupDate) {
         try {
             $dateObj = new DateTime($otherServicesPickupDate);
-            $dateObj->modify('+3 days');
+            // Same day rental - no need to add days
             $otherServicesDropoffDate = $dateObj->format('Y-m-d');
         } catch (Exception $e) {
             $otherServicesDropoffDate = null;
@@ -557,7 +557,7 @@
                 </svg>
                 <input type="text" name="dropoff_date" placeholder="DD/MM/YYYY"
                     class="custom-datepicker @error('dropoff_date') is-invalid @enderror"
-                    value="{{ old('dropoff_date', isset($search) && isset($search->to_date) && $search->to_date ? date('d/m/Y', strtotime($search->to_date)) : date('d/m/Y', strtotime('+3 days'))) }}"
+                    value="{{ old('dropoff_date', isset($search) && isset($search->to_date) && $search->to_date ? date('d/m/Y', strtotime($search->to_date)) : date('d/m/Y')) }}"
                     required autocomplete="off">
                 @error('dropoff_date')
                     <span class="text-danger small">{{ $message }}</span>
@@ -797,7 +797,7 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
                 </svg>
                 <input type="text" name="dropoff_date" placeholder="DD/MM/YYYY"
                     class="custom-datepicker @error('dropoff_date') is-invalid @enderror"
-                    value="{{ old('dropoff_date', $dayRentalDropoffDate ? date('d/m/Y', strtotime($dayRentalDropoffDate)) : date('d/m/Y', strtotime('+3 days'))) }}"
+                    value="{{ old('dropoff_date', $dayRentalDropoffDate ? date('d/m/Y', strtotime($dayRentalDropoffDate)) : date('d/m/Y')) }}"
                     required autocomplete="off">
                 @error('dropoff_date')
                     <span class="text-danger small">{{ $message }}</span>
@@ -1887,11 +1887,12 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
                     const pickup = parseDate(pickupDate);
                     const dropoff = parseDate(dropoffDate);
 
+                    // Allow same day rental - dropoff can be same as or after pickup
                     if (dropoff < pickup) {
                         $(this).addClass('is-invalid');
                         $(this).siblings('.invalid-feedback').remove();
                         $(this).after(
-                            '<div class="invalid-feedback">Drop-off date must be on or after pickup date</div>'
+                            '<div class="invalid-feedback">Drop-off date must be on or after pickup date (same-day rental allowed)</div>'
                         );
                     } else {
                         $(this).removeClass('is-invalid');
@@ -1923,26 +1924,22 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
                 const dropoffInput = $('#day_rental-form .custom-datepicker[name="dropoff_date"]');
                 const dropoffDateStr = dropoffInput.val();
 
-                // If dropoff_date is empty or is before/equal to pickup_date, set it to pickup_date + 1 day
+                // If dropoff_date is empty or is before pickup_date, set it to same day (same-day rental)
                 if (!dropoffDateStr || !isValidDDMMYYYY(dropoffDateStr)) {
-                    const newDropoffDate = new Date(pickupDate);
-                    newDropoffDate.setDate(newDropoffDate.getDate() + 1);
-                    dropoffInput.val(formatDate(newDropoffDate));
+                    // Default to same day for same-day rental
+                    dropoffInput.val(formatDate(pickupDate));
                     dropoffInput.datepicker('update');
                 } else {
                     const dropoffDate = parseDate(dropoffDateStr);
-                    if (dropoffDate <= pickupDate) {
-                        const newDropoffDate = new Date(pickupDate);
-                        newDropoffDate.setDate(newDropoffDate.getDate() + 1);
-                        dropoffInput.val(formatDate(newDropoffDate));
+                    // Only update if dropoff is before pickup (allow same day)
+                    if (dropoffDate < pickupDate) {
+                        dropoffInput.val(formatDate(pickupDate));
                         dropoffInput.datepicker('update');
                     }
                 }
 
-                // Update the minimum date for dropoff datepicker
-                const minDropoffDate = new Date(pickupDate);
-                minDropoffDate.setDate(minDropoffDate.getDate() + 1);
-                dropoffInput.datepicker('setStartDate', minDropoffDate);
+                // Update the minimum date for dropoff datepicker to allow same day
+                dropoffInput.datepicker('setStartDate', pickupDate);
             });
 
             // Initialize dropoff_date min date based on current pickup_date value
@@ -1950,10 +1947,9 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
                 const pickupDateStr = $('#day_rental-form .custom-datepicker[name="pickup_date"]').val();
                 if (pickupDateStr && isValidDDMMYYYY(pickupDateStr)) {
                     const pickupDate = parseDate(pickupDateStr);
-                    const minDropoffDate = new Date(pickupDate);
-                    minDropoffDate.setDate(minDropoffDate.getDate() + 1);
+                    // Allow same day rental
                     $('#day_rental-form .custom-datepicker[name="dropoff_date"]').datepicker('setStartDate',
-                        minDropoffDate);
+                        pickupDate);
                 }
             })();
         });
