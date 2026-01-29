@@ -106,6 +106,22 @@
                 <x-booking-item-email :item="$item" :index="$index" :currencySymbol="$currencySymbol" />
             @endforeach
         @endif
+
+        @php
+            $serviceType = $booking->serviceType?->id ?? ($booking->service_type ?? 'vehicle_rental');
+            $paymentType = 'quotation';
+            $applicableTerms = \App\Models\TermsAndCondition::getForCheckout($serviceType, $paymentType);
+        @endphp
+
+        @if ($applicableTerms->count())
+            <div class="section">
+                <h2 class="section-title"><span class="icon">📜</span> Terms & Conditions</h2>
+                @foreach ($applicableTerms as $t)
+                    <h4 style="margin-top:8px;">{{ $t->title }}</h4>
+                    <div style="color:#555;">{!! $t->content !!}</div>
+                @endforeach
+            </div>
+        @endif
     </div>
 
     <div class="divider"></div>

@@ -71,12 +71,12 @@
         /* Header */
         .email-header {
             background: linear-gradient(135deg, #BF2629 0%, #8f1d1f 100%);
-            padding: 40px 30px;
+            padding: 15px 30px;
             text-align: center;
         }
 
         .logo-container {
-            margin-bottom: 20px;
+            margin-bottom: 0;
         }
 
         .logo-container img {
@@ -95,12 +95,12 @@
         .email-header .subtitle {
             color: rgba(255, 255, 255, 0.85);
             font-size: 14px;
-            margin-top: 8px;
+            margin-top: 0;
         }
 
         /* Content */
         .email-content {
-            padding: 40px 35px;
+            padding: 5px 35px;
         }
 
         .greeting {
@@ -127,7 +127,7 @@
             border: 1px solid rgba(191, 38, 41, 0.15);
             border-left: 4px solid #BF2629;
             border-radius: 8px;
-            padding: 20px 24px;
+            padding: 10px 24px;
             margin: 25px 0;
         }
 
@@ -155,7 +155,7 @@
             font-size: 17px;
             font-weight: 600;
             color: #BF2629;
-            margin-bottom: 16px;
+            margin-bottom: 10px;
             padding-bottom: 10px;
             border-bottom: 2px solid #BF2629;
             display: flex;
@@ -181,7 +181,7 @@
         }
 
         .info-table td {
-            padding: 12px 0;
+            padding: 1px 0;
             font-size: 14px;
             vertical-align: top;
         }
@@ -441,7 +441,7 @@
             }
 
             .email-header {
-                padding: 30px 20px;
+                padding: 15px 20px;
             }
 
             .email-header h1 {
@@ -449,7 +449,7 @@
             }
 
             .email-content {
-                padding: 25px 20px;
+                padding: 5px 20px;
             }
 
             .email-footer {

@@ -320,15 +320,11 @@
                                                                 $pTypes = $meta['payment_types'];
                                                             @endphp
                                                             <div class="term-item mb-3"
-                                                                data-payment-types="{{ implode(',', $pTypes) }}">
-                                                                <div class="form-check">
-                                                                    <input class="form-check-input" type="checkbox"
-                                                                        name="terms_accepted[{{ $tc->id }}]"
-                                                                        value="{{ $tc->version }}"
-                                                                        id="tc_{{ $tc->id }}"
-                                                                        {{ old('terms_accepted.' . $tc->id) ? 'checked' : '' }}>
-                                                                    <label class="form-check-label"
-                                                                        for="tc_{{ $tc->id }}">
+                                                                data-payment-types="{{ implode(',', $pTypes) }}"
+                                                                data-term-id="{{ $tc->id }}"
+                                                                data-term-version="{{ $tc->version }}">
+                                                                <div class="term-header">
+                                                                    <div class="term-meta">
                                                                         <strong>{{ $tc->title }}</strong>
                                                                         @if (!empty($services))
                                                                             <small class="text-muted"> — Applies to:
@@ -339,7 +335,9 @@
                                                                                 <em>(Payment-specific:
                                                                                     {{ implode(', ', $pTypes) }})</em></small>
                                                                         @endif
-                                                                    </label>
+                                                                    </div>
+                                                                    <button type="button" class="term-toggle"
+                                                                        aria-expanded="true">Hide</button>
                                                                 </div>
                                                                 <div class="term-body mt-2">
                                                                     {!! $tc->content !!}
@@ -347,670 +345,621 @@
                                                             </div>
                                                         @endforeach
                                                     </div>
+
+                                                    <div class="terms-accept-all-container mt-3">
+                                                        <div class="form-check">
+                                                            <input class="form-check-input" type="checkbox"
+                                                                id="accept_all_terms">
+                                                            <label class="form-check-label" for="accept_all_terms">
+                                                                I agree to the above <strong>Terms & Conditions</strong>
+                                                            </label>
+                                                        </div>
+                                                        <div id="termsAcceptedHiddenInputs"></div>
+                                                    </div>
+
                                                 </div>
                                             </div>
-                                        @endif
+                                    </div>
+            @endif
 
-                                        <div class="col-md-12">
-                                            <div class="form-inner2">
-                                                <div class="form-check">
-                                                    <input class="form-check-input" type="checkbox" name="save_info"
-                                                        value="1" id="saveInfo"
-                                                        {{ old('save_info') ? 'checked' : '' }}>
-                                                    <label class="form-check-label" for="saveInfo">
-                                                        Save my information for future bookings
+            <div class="col-md-12">
+                <div class="form-inner2">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="save_info" value="1" id="saveInfo"
+                            {{ old('save_info') ? 'checked' : '' }}>
+                        <label class="form-check-label" for="saveInfo">
+                            Save my information for future bookings
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+    </div>
+    </div>
+
+    <div class="col-lg-5">
+        <div class="checkout-form-wrapper">
+            <div class="checkout-form-title">
+                <h4>Order Summary</h4>
+            </div>
+            <div class="order-sum-area">
+                <div class="cart-menu">
+                    <div class="cart-body">
+                        <ul>
+                            @foreach ($cart as $key => $item)
+                                @php
+                                    // Calculate days from pickup and return dates - day-based calculation
+                                    $pickupDate = isset($item['pickup_date'])
+                                        ? \Carbon\Carbon::parse($item['pickup_date'])
+                                        : null;
+                                    $returnDate = isset($item['return_date'])
+                                        ? \Carbon\Carbon::parse($item['return_date'])
+                                        : null;
+                                    $calculatedDays =
+                                        $pickupDate && $returnDate
+                                            ? max(1, $pickupDate->diffInDays($returnDate) + 1)
+                                            : 1;
+
+                                    // Use total_price if available (already calculated for all days in LKR)
+                                    // Otherwise calculate from per-day price and calculated days
+                                    $itemTotal = isset($item['total_price'])
+                                        ? $item['total_price']
+                                        : ($item['price'] ?? 0) * $calculatedDays;
+
+                                    // Get discount/adjustment details for this item
+                                    $hasItemDiscount = $item['has_discount'] ?? false;
+                                    $itemOriginalAmount = $item['original_amount'] ?? $itemTotal;
+                                    $itemDiscountAmount = $item['discount_amount'] ?? 0;
+                                    $itemDiscountPercentage = $item['discount_percentage'] ?? 0;
+                                @endphp
+                                <li class="single-item">
+                                    <div class="item-area">
+                                        <div class="main-item">
+                                            <div class="item-img">
+                                                @if (isset($item['image']) && $item['image'])
+                                                    <img src="{{ s3_asset($item['image']) }}"
+                                                        alt="{{ $item['name'] ?? 'Vehicle' }}">
+                                                @else
+                                                    <img src="{{ asset('assets/img/innerpages/cart-img1.png') }}"
+                                                        alt="{{ $item['name'] ?? 'Vehicle' }}">
+                                                @endif
+                                            </div>
+                                            <div class="content-and-quantity">
+                                                <div class="content">
+                                                    @php
+                                                        $serviceType = $item['service_type'] ?? null;
+                                                        $isFixedRate = isServiceFixedRate($serviceType);
+                                                        $pricingLabel = getServicePricingLabel($serviceType);
+                                                        $durationLabel = getServiceDurationLabel(
+                                                            $serviceType,
+                                                            $calculatedDays,
+                                                        );
+                                                    @endphp
+                                                    @if ($isFixedRate)
+                                                        <span>{{ $pricingLabel }}:
+                                                            {{ $currencySymbol }}
+                                                            {{ number_format($itemTotal, 2) }}</span>
+                                                    @else
+                                                        <span>{{ $currencySymbol }}
+                                                            {{ number_format($item['price'] ?? 0, 2) }}/day
+                                                            × {{ $durationLabel }}</span>
+                                                    @endif
+                                                    <h6>
+                                                        <a href="#">{{ $item['name'] ?? '' }}</a>
+                                                        <span
+                                                            class="service-type-badge">{{ $item['service_type_data']['name'] ?? ($item['service_type'] ?? 'Service') }}</span>
+                                                    </h6>
+                                                    <p><small>{{ $pickupDate ? $pickupDate->format('M d') : '' }}
+                                                            -
+                                                            {{ $returnDate ? $returnDate->format('M d, Y') : '' }}</small>
+                                                    </p>
+
+                                                    @php
+                                                        // Distance details for km information display
+                                                        $distanceDetails = $item['distance_details'] ?? [];
+
+                                                        // If distance_details is empty, try to get from service package info or calculate
+                                                        if (
+                                                            empty($distanceDetails) &&
+                                                            isset($item['service_package_info'])
+                                                        ) {
+                                                            $servicePackageInfo = $item['service_package_info'];
+                                                            // Build fallback distance_details from service package
+                                                            $distanceDetails = [
+                                                                'allowed_total_km' => isset(
+                                                                    $servicePackageInfo['max_km_per_day'],
+                                                                )
+                                                                    ? $servicePackageInfo['max_km_per_day'] *
+                                                                        $calculatedDays
+                                                                    : null,
+                                                                'free_km_per_day' =>
+                                                                    $servicePackageInfo['max_km_per_day'] ?? null,
+                                                                'extra_km_price' => null, // Will be fetched from service separately
+                                                                'free_km_per_package' =>
+                                                                    $servicePackageInfo['max_km_per_package'] ?? null,
+                                                            ];
+                                                        }
+
+                                                        $allowedTotalKm = $distanceDetails['allowed_total_km'] ?? null;
+                                                        $extraKmPrice = $distanceDetails['extra_km_price'] ?? null;
+                                                        $freeKmPerDay = $distanceDetails['free_km_per_day'] ?? null;
+
+                                                        // Minimum KM charge info
+                                                        $minimumKm = $distanceDetails['minimum_km'] ?? null;
+                                                        $minimumKmApplied =
+                                                            $distanceDetails['minimum_km_applied'] ?? false;
+                                                        $actualJourneyDistance =
+                                                            $distanceDetails['actual_journey_distance'] ??
+                                                            ($distanceDetails['journey_distance'] ?? null);
+                                                    @endphp
+
+                                                    @if ($minimumKmApplied && $minimumKm)
+                                                        <p><small
+                                                                style="color: #92400e; background: #fef3c7; padding: 2px 6px; border-radius: 4px;">
+                                                                <i class="bi bi-info-circle"></i>
+                                                                <strong>Minimum
+                                                                    {{ number_format($minimumKm, 0) }}
+                                                                    km</strong>
+                                                                (Actual:
+                                                                {{ number_format($actualJourneyDistance, 1) }}
+                                                                km)
+                                                            </small></p>
+                                                    @endif
+
+                                                    @if ($allowedTotalKm || $freeKmPerDay)
+                                                        <p><small style="color: #0066cc;">
+                                                                <i class="bi bi-speedometer2"></i>
+                                                                @if ($freeKmPerDay && $calculatedDays > 1)
+                                                                    {{ number_format($freeKmPerDay, 0) }}
+                                                                    km/day
+                                                                    ({{ number_format($allowedTotalKm ?? $freeKmPerDay * $calculatedDays, 0) }}
+                                                                    km total)
+                                                                @elseif($allowedTotalKm)
+                                                                    {{ number_format($allowedTotalKm, 0) }}
+                                                                    km included
+                                                                @else
+                                                                    {{ number_format($freeKmPerDay, 0) }}
+                                                                    km included
+                                                                @endif
+
+                                                                @if ($extraKmPrice)
+                                                                    <span style="color: #999;"> |
+                                                                        Extra:
+                                                                        <small
+                                                                            class="currency-symbol">{{ $currencySymbol }}</small>
+                                                                        {{ number_format($extraKmPrice, 2) }}/km</span>
+                                                                @endif
+                                                            </small></p>
+                                                    @endif
+                                                    @php
+                                                        $pickupLoc = is_array($item['pickup_location'] ?? null)
+                                                            ? $item['pickup_location']['address'] ?? ''
+                                                            : $item['pickup_location'] ?? '';
+                                                        $dropoffLoc = is_array($item['dropoff_location'] ?? null)
+                                                            ? $item['dropoff_location']['address'] ?? ''
+                                                            : $item['dropoff_location'] ?? '';
+                                                        if (($item['service_type'] ?? '') === 'airport_transfers') {
+                                                            $pickupLoc =
+                                                                $pickupLoc ?:
+                                                                $item['pickup_airport'] ??
+                                                                    ($item['flight_details']['arrival_airport'] ?? '');
+                                                            $dropoffLoc =
+                                                                $dropoffLoc ?:
+                                                                $item['dropoff_airport'] ??
+                                                                    ($item['flight_details']['departure_airport'] ??
+                                                                        '');
+                                                        }
+                                                    @endphp
+                                                    <p><small><i class="bi bi-geo-alt"></i>
+                                                            {{ $pickupLoc ?: 'N/A' }}</small></p>
+
+                                                    {{-- Return Trip Info --}}
+                                                    @if (!empty($item['is_return_trip']) && !empty($item['return_trip_date']))
+                                                        <div class="return-trip-info mt-2 p-2"
+                                                            style="background: linear-gradient(135deg, #e8f5e9, #c8e6c9); border-radius: 8px; border-left: 3px solid #28a745;">
+                                                            <p
+                                                                style="margin: 0; font-weight: 600; color: #2e7d32; font-size: 12px;">
+                                                                <i class="bi bi-arrow-left-right"></i>
+                                                                Return Trip Included
+                                                            </p>
+                                                            <p style="margin: 4px 0 0 0; font-size: 11px;">
+                                                                <i class="bi bi-calendar-check"
+                                                                    style="color: #28a745;"></i>
+                                                                Return:
+                                                                {{ \Carbon\Carbon::parse($item['return_trip_date'])->format('M d, Y') }}
+                                                                @if (!empty($item['return_trip_time']))
+                                                                    @ {{ $item['return_trip_time'] }}
+                                                                @endif
+                                                            </p>
+                                                            <p style="margin: 4px 0 0 0; font-size: 11px;">
+                                                                <i class="bi bi-geo-alt" style="color: #28a745;"></i>
+                                                                {{ $dropoffLoc ?: 'Drop-off' }} →
+                                                                {{ $pickupLoc ?: 'Pickup' }}
+                                                            </p>
+                                                            @if (!empty($item['return_discount_percentage']) && $item['return_discount_percentage'] > 0)
+                                                                <span class="badge bg-success mt-1"
+                                                                    style="font-size: 10px;">
+                                                                    <i class="bi bi-tag-fill"></i>
+                                                                    {{ $item['return_discount_percentage'] }}%
+                                                                    off return trip
+                                                                </span>
+                                                            @endif
+                                                        </div>
+                                                    @endif
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="item-total">
+                                            @php
+                                                // Return trip pricing variables
+                                                $isReturnTrip = $item['is_return_trip'] ?? false;
+                                                $oneWayPrice = $item['one_way_price'] ?? null;
+                                                $returnPrice = $item['return_price'] ?? null;
+                                                $returnDiscountPct = $item['return_discount_percentage'] ?? 0;
+                                            @endphp
+
+                                            {{-- Return Trip Pricing Breakdown --}}
+                                            @if ($isReturnTrip && $oneWayPrice && $returnPrice)
+                                                <div class="return-trip-breakdown mb-2"
+                                                    style="font-size: 11px; text-align: right;">
+                                                    <div style="color: #0d6efd;">
+                                                        <i class="bi bi-arrow-right-circle"></i>
+                                                        Outbound:
+                                                        <small
+                                                            class="currency-symbol">{{ $currencySymbol }}</small>{{ number_format($oneWayPrice, 2) }}
+                                                    </div>
+                                                    <div style="color: #198754;">
+                                                        <i class="bi bi-arrow-left-circle"></i> Return:
+                                                        <small
+                                                            class="currency-symbol">{{ $currencySymbol }}</small>{{ number_format($returnPrice, 2) }}
+                                                        @if ($returnDiscountPct > 0)
+                                                            <span class="badge bg-success"
+                                                                style="font-size: 9px;">{{ $returnDiscountPct }}%
+                                                                off</span>
+                                                        @endif
+                                                    </div>
+                                                </div>
+                                            @endif
+
+                                            @if ($hasItemDiscount && $itemOriginalAmount > $itemTotal)
+                                                {{-- Show discount badge --}}
+                                                <span class="checkout-item-discount-badge">
+                                                    {{ round($itemDiscountPercentage) }}% OFF
+                                                </span>
+                                                {{-- Show original price with strikethrough --}}
+                                                <div class="checkout-original-price">
+                                                    <del>{{ $currencySymbol }}{{ number_format($itemOriginalAmount, 2) }}</del>
+                                                </div>
+                                            @endif
+                                            <div class="checkout-final-price {{ $hasItemDiscount ? 'discounted' : '' }}">
+                                                <small class="currency-symbol">{{ $currencySymbol }}</small>
+                                                {{ number_format($itemTotal, 2) }}
+                                            </div>
+                                            @if ($hasItemDiscount && $itemDiscountAmount > 0)
+                                                <div class="checkout-savings">
+                                                    <small>Save
+                                                        {{ $currencySymbol }}{{ number_format($itemDiscountAmount, 2) }}</small>
+                                                </div>
+                                            @endif
+                                        </div>
+                                    </div>
+                                </li>
+                            @endforeach
+                        </ul>
+                    </div>
+
+                    <div class="cart-footer">
+                        <div class="pricing-area mb-40">
+                            <ul>
+                                <li>
+                                    <strong>Subtotal</strong>
+                                    <strong>{{ $currencySymbol }}
+                                        {{ number_format($subtotal, 2) }}</strong>
+                                </li>
+                                @php
+                                    $addonCharges = $totals['addon_charges'] ?? 0;
+                                    $extraKmCharges = $totals['extra_km_charges'] ?? 0;
+                                @endphp
+                                @if ($addonCharges > 0)
+                                    <li>
+                                        Addon Charges
+                                        <div class="order-info text-success">
+                                            <span>{{ $currencySymbol }}
+                                                {{ number_format($addonCharges, 2) }}</span>
+                                        </div>
+                                    </li>
+                                @endif
+                                @if ($extraKmCharges > 0)
+                                    <li>
+                                        Extra KM Charges
+                                        <div class="order-info text-info">
+                                            <span>{{ $currencySymbol }}
+                                                {{ number_format($extraKmCharges, 2) }}</span>
+                                        </div>
+                                    </li>
+                                @endif
+                                @if ($serviceFee > 0)
+                                    <li>
+                                        Service Fee
+                                        <div class="order-info">
+                                            <span>{{ $currencySymbol }}
+                                                {{ number_format($serviceFee, 2) }}</span>
+                                        </div>
+                                    </li>
+                                @endif
+                                @if ($tax > 0)
+                                    <li>
+                                        {{ $taxLabel }}
+                                        ({{ $taxPercentageLabel }}%)
+                                        <div class="order-info">
+                                            <span>{{ $currencySymbol }}
+                                                {{ number_format($tax, 2) }}</span>
+                                        </div>
+                                    </li>
+                                @endif
+                                @if ($vatPercentage > 0 && $vat > 0)
+                                    <li>
+                                        {{ $vatLabel }}
+                                        ({{ $vatPercentageLabel }}%)
+                                        <div class="order-info">
+                                            <span>{{ $currencySymbol }}
+                                                {{ number_format($vat, 2) }}</span>
+                                        </div>
+                                    </li>
+                                @endif
+
+                                {{-- Promo Code Section --}}
+                                <li class="promo-code-checkout-section">
+                                    <div class="promo-code-checkout-wrapper">
+                                        <div class="promo-code-header">
+                                            <i class="bi bi-tag"></i>
+                                            <span>Promo Code</span>
+                                        </div>
+                                        @php
+                                            $appliedPromoCode = $cartData['coupon_code'] ?? null;
+                                            $promoDiscount = $cartData['coupon_discount'] ?? 0;
+                                        @endphp
+                                        @if ($appliedPromoCode)
+                                            {{-- Promo code is applied --}}
+                                            <div class="applied-promo-checkout">
+                                                <div class="promo-badge-checkout">
+                                                    <i class="bi bi-check-circle-fill text-success"></i>
+                                                    <span class="promo-code-value">{{ $appliedPromoCode }}</span>
+                                                    <button type="button" class="remove-promo-checkout-btn"
+                                                        title="Remove promo code">
+                                                        <i class="bi bi-x-lg"></i>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        @else
+                                            {{-- No promo code - show input --}}
+                                            <div class="promo-input-checkout">
+                                                <input type="text" id="checkout-promo-input" placeholder="Enter code"
+                                                    autocomplete="off">
+                                                <button type="button" id="apply-promo-checkout-btn"
+                                                    class="apply-promo-checkout-btn">
+                                                    <span class="btn-text">Apply</span>
+                                                    <span class="btn-loading" style="display: none;"><i
+                                                            class="bi bi-hourglass-split"></i></span>
+                                                </button>
+                                            </div>
+                                        @endif
+                                        <div id="checkout-promo-message" class="promo-message-checkout"></div>
+                                    </div>
+                                </li>
+
+                                @php
+                                    $priceAdjustmentDiscount = $totals['price_adjustment_discount'] ?? 0;
+                                @endphp
+                                @if ($priceAdjustmentDiscount > 0)
+                                    <li class="price-adjustment-discount-row">
+                                        <span class="text-success">
+                                            <i class="bi bi-percent"></i> Price Adjustment Discount
+                                        </span>
+                                        <div class="order-info text-success">
+                                            <span>-{{ $currencySymbol }}
+                                                {{ number_format($priceAdjustmentDiscount, 2) }}</span>
+                                        </div>
+                                    </li>
+                                @endif
+                                @if ($discount > 0)
+                                    <li class="discount-checkout-row">
+                                        <strong class="text-success"><i class="bi bi-tag-fill"></i>
+                                            Discount</strong>
+                                        <div class="order-info text-success">
+                                            <span>-{{ $currencySymbol }}
+                                                {{ number_format($discount, 2) }}</span>
+                                        </div>
+                                    </li>
+                                @endif
+                                <li class="total-row">
+                                    <strong>Total</strong>
+                                    <strong>{{ $currencySymbol }}
+                                        {{ number_format($total, 2) }}</strong>
+                                </li>
+                                @if ($paymentType !== 'full')
+                                    <li class="payment-amount-row">
+                                        <strong>
+                                            @if ($paymentType === 'advance')
+                                                Amount to Pay
+                                                ({{ $advancePercentage }}%)
+                                            @elseif($paymentType === 'checkin')
+                                                Pay on Check-in
+                                            @elseif($paymentType === 'quotation')
+                                                Quotation Request
+                                            @endif
+                                        </strong>
+                                        <strong class="text-primary">
+                                            @if ($paymentType === 'quotation')
+                                                No Payment Required
+                                            @elseif($paymentType === 'checkin')
+                                                {{ $currencySymbol }}
+                                                {{ number_format($total, 2) }}
+                                            @else
+                                                {{ $currencySymbol }}
+                                                {{ number_format($paymentAmount, 2) }}
+                                            @endif
+                                        </strong>
+                                    </li>
+                                @endif
+                            </ul>
+                        </div>
+
+                        <!-- Payment Type Selection Section -->
+                        <div class="payment-type-selection mb-4">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="mb-0"><i class="bi bi-credit-card"></i> Payment
+                                        Option
+                                    </h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row g-3">
+                                        <div class="col-6">
+                                            <div class="payment-option">
+                                                <input type="radio" name="payment_type" value="full"
+                                                    id="payment_full" {{ $paymentType === 'full' ? 'checked' : '' }}
+                                                    class="payment-radio">
+                                                <label for="payment_full" class="payment-label">
+                                                    <div class="payment-card">
+                                                        <i class="bi bi-credit-card-fill text-success"></i>
+                                                        <h6>Pay Full Amount</h6>
+                                                        <p class="mb-0">Complete payment now</p>
+                                                        <small class="text-muted">Total:
+                                                            {{ $currencySymbol }}
+                                                            {{ number_format($total, 2) }}</small>
+                                                    </div>
+                                                </label>
+                                            </div>
+                                        </div>
+                                        @if ($advancePaymentEnabled)
+                                            <div class="col-6">
+                                                <div class="payment-option">
+                                                    <input type="radio" name="payment_type" value="advance"
+                                                        id="payment_advance"
+                                                        {{ $paymentType === 'advance' ? 'checked' : '' }}
+                                                        class="payment-radio">
+                                                    <label for="payment_advance" class="payment-label">
+                                                        <div class="payment-card">
+                                                            <i class="bi bi-credit-card text-warning"></i>
+                                                            <h6>Pay {{ $advancePercentage }}% Advance
+                                                            </h6>
+                                                            <p class="mb-0">Pay remaining on pickup
+                                                            </p>
+                                                            <small class="text-muted">Now:
+                                                                {{ $currencySymbol }}
+                                                                {{ number_format($total * ($advancePercentage / 100), 2) }}</small>
+                                                        </div>
                                                     </label>
                                                 </div>
                                             </div>
+                                        @endif
+                                        @if ($offlinePaymentEnabled)
+                                            <div class="col-6">
+                                                <div class="payment-option">
+                                                    <input type="radio" name="payment_type" value="checkin"
+                                                        id="payment_checkin"
+                                                        {{ $paymentType === 'checkin' ? 'checked' : '' }}
+                                                        class="payment-radio">
+                                                    <label for="payment_checkin" class="payment-label">
+                                                        <div class="payment-card">
+                                                            <i class="bi bi-cash-coin text-primary"></i>
+                                                            <h6>Pay on Check-in</h6>
+                                                            <p class="mb-0">Pay when you collect</p>
+                                                            <small class="text-muted">Due:
+                                                                {{ $currencySymbol }}
+                                                                {{ number_format($total, 2) }}</small>
+                                                        </div>
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        @endif
+                                        <div class="col-6">
+                                            <div class="payment-option">
+                                                <input type="radio" name="payment_type" value="quotation"
+                                                    id="payment_quotation"
+                                                    {{ $paymentType === 'quotation' ? 'checked' : '' }}
+                                                    class="payment-radio">
+                                                <label for="payment_quotation" class="payment-label">
+                                                    <div class="payment-card">
+                                                        <i class="bi bi-file-text text-info"></i>
+                                                        <h6>Request Quotation</h6>
+                                                        <p class="mb-0">Get detailed pricing</p>
+                                                        <small class="text-muted">No payment
+                                                            now</small>
+                                                    </div>
+                                                </label>
+                                            </div>
                                         </div>
-
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        <div class="col-lg-5">
-                            <div class="checkout-form-wrapper">
-                                <div class="checkout-form-title">
-                                    <h4>Order Summary</h4>
-                                </div>
-                                <div class="order-sum-area">
-                                    <div class="cart-menu">
-                                        <div class="cart-body">
-                                            <ul>
-                                                @foreach ($cart as $key => $item)
-                                                    @php
-                                                        // Calculate days from pickup and return dates - day-based calculation
-                                                        $pickupDate = isset($item['pickup_date'])
-                                                            ? \Carbon\Carbon::parse($item['pickup_date'])
-                                                            : null;
-                                                        $returnDate = isset($item['return_date'])
-                                                            ? \Carbon\Carbon::parse($item['return_date'])
-                                                            : null;
-                                                        $calculatedDays =
-                                                            $pickupDate && $returnDate
-                                                                ? max(1, $pickupDate->diffInDays($returnDate) + 1)
-                                                                : 1;
+                        <!-- Payment Type Alert -->
+                        <div class="alert alert-info mb-4" id="payment-type-alert">
+                            <div id="alert-content">
+                                @switch($paymentType)
+                                    @case('advance')
+                                        <h6><i class="bi bi-info-circle"></i> Advance Payment
+                                            ({{ $advancePercentage }}%)</h6>
+                                        <p class="mb-0">You are paying {{ $advancePercentage }}%
+                                            advance. The remaining amount will be collected at the time
+                                            of vehicle pickup.</p>
+                                    @break
 
-                                                        // Use total_price if available (already calculated for all days in LKR)
-                                                        // Otherwise calculate from per-day price and calculated days
-                                                        $itemTotal = isset($item['total_price'])
-                                                            ? $item['total_price']
-                                                            : ($item['price'] ?? 0) * $calculatedDays;
+                                    @case('checkin')
+                                        <h6><i class="bi bi-cash-coin"></i> Pay on Check-in</h6>
+                                        <p class="mb-0">No payment is required now. You will pay the full
+                                            amount when you check-in to collect the vehicle.</p>
+                                    @break
 
-                                                        // Get discount/adjustment details for this item
-                                                        $hasItemDiscount = $item['has_discount'] ?? false;
-                                                        $itemOriginalAmount = $item['original_amount'] ?? $itemTotal;
-                                                        $itemDiscountAmount = $item['discount_amount'] ?? 0;
-                                                        $itemDiscountPercentage = $item['discount_percentage'] ?? 0;
-                                                    @endphp
-                                                    <li class="single-item">
-                                                        <div class="item-area">
-                                                            <div class="main-item">
-                                                                <div class="item-img">
-                                                                    @if (isset($item['image']) && $item['image'])
-                                                                        <img src="{{ s3_asset($item['image']) }}"
-                                                                            alt="{{ $item['name'] ?? 'Vehicle' }}">
-                                                                    @else
-                                                                        <img src="{{ asset('assets/img/innerpages/cart-img1.png') }}"
-                                                                            alt="{{ $item['name'] ?? 'Vehicle' }}">
-                                                                    @endif
-                                                                </div>
-                                                                <div class="content-and-quantity">
-                                                                    <div class="content">
-                                                                        @php
-                                                                            $serviceType =
-                                                                                $item['service_type'] ?? null;
-                                                                            $isFixedRate = isServiceFixedRate(
-                                                                                $serviceType,
-                                                                            );
-                                                                            $pricingLabel = getServicePricingLabel(
-                                                                                $serviceType,
-                                                                            );
-                                                                            $durationLabel = getServiceDurationLabel(
-                                                                                $serviceType,
-                                                                                $calculatedDays,
-                                                                            );
-                                                                        @endphp
-                                                                        @if ($isFixedRate)
-                                                                            <span>{{ $pricingLabel }}:
-                                                                                {{ $currencySymbol }}
-                                                                                {{ number_format($itemTotal, 2) }}</span>
-                                                                        @else
-                                                                            <span>{{ $currencySymbol }}
-                                                                                {{ number_format($item['price'] ?? 0, 2) }}/day
-                                                                                × {{ $durationLabel }}</span>
-                                                                        @endif
-                                                                        <h6>
-                                                                            <a
-                                                                                href="#">{{ $item['name'] ?? '' }}</a>
-                                                                            <span
-                                                                                class="service-type-badge">{{ $item['service_type_data']['name'] ?? ($item['service_type'] ?? 'Service') }}</span>
-                                                                        </h6>
-                                                                        <p><small>{{ $pickupDate ? $pickupDate->format('M d') : '' }}
-                                                                                -
-                                                                                {{ $returnDate ? $returnDate->format('M d, Y') : '' }}</small>
-                                                                        </p>
+                                    @case('quotation')
+                                        <h6><i class="bi bi-file-text"></i> Request Quotation</h6>
+                                        <p class="mb-0">You are requesting a quotation. Our team will
+                                            contact you with detailed pricing and booking information.</p>
+                                    @break
 
-                                                                        @php
-                                                                            // Distance details for km information display
-                                                                            $distanceDetails =
-                                                                                $item['distance_details'] ?? [];
-
-                                                                            // If distance_details is empty, try to get from service package info or calculate
-                                                                            if (
-                                                                                empty($distanceDetails) &&
-                                                                                isset($item['service_package_info'])
-                                                                            ) {
-                                                                                $servicePackageInfo =
-                                                                                    $item['service_package_info'];
-                                                                                // Build fallback distance_details from service package
-                                                                                $distanceDetails = [
-                                                                                    'allowed_total_km' => isset(
-                                                                                        $servicePackageInfo[
-                                                                                            'max_km_per_day'
-                                                                                        ],
-                                                                                    )
-                                                                                        ? $servicePackageInfo[
-                                                                                                'max_km_per_day'
-                                                                                            ] * $calculatedDays
-                                                                                        : null,
-                                                                                    'free_km_per_day' =>
-                                                                                        $servicePackageInfo[
-                                                                                            'max_km_per_day'
-                                                                                        ] ?? null,
-                                                                                    'extra_km_price' => null, // Will be fetched from service separately
-                                                                                    'free_km_per_package' =>
-                                                                                        $servicePackageInfo[
-                                                                                            'max_km_per_package'
-                                                                                        ] ?? null,
-                                                                                ];
-                                                                            }
-
-                                                                            $allowedTotalKm =
-                                                                                $distanceDetails['allowed_total_km'] ??
-                                                                                null;
-                                                                            $extraKmPrice =
-                                                                                $distanceDetails['extra_km_price'] ??
-                                                                                null;
-                                                                            $freeKmPerDay =
-                                                                                $distanceDetails['free_km_per_day'] ??
-                                                                                null;
-
-                                                                            // Minimum KM charge info
-                                                                            $minimumKm =
-                                                                                $distanceDetails['minimum_km'] ?? null;
-                                                                            $minimumKmApplied =
-                                                                                $distanceDetails[
-                                                                                    'minimum_km_applied'
-                                                                                ] ?? false;
-                                                                            $actualJourneyDistance =
-                                                                                $distanceDetails[
-                                                                                    'actual_journey_distance'
-                                                                                ] ??
-                                                                                ($distanceDetails['journey_distance'] ??
-                                                                                    null);
-                                                                        @endphp
-
-                                                                        @if ($minimumKmApplied && $minimumKm)
-                                                                            <p><small
-                                                                                    style="color: #92400e; background: #fef3c7; padding: 2px 6px; border-radius: 4px;">
-                                                                                    <i class="bi bi-info-circle"></i>
-                                                                                    <strong>Minimum
-                                                                                        {{ number_format($minimumKm, 0) }}
-                                                                                        km</strong>
-                                                                                    (Actual:
-                                                                                    {{ number_format($actualJourneyDistance, 1) }}
-                                                                                    km)
-                                                                                </small></p>
-                                                                        @endif
-
-                                                                        @if ($allowedTotalKm || $freeKmPerDay)
-                                                                            <p><small style="color: #0066cc;">
-                                                                                    <i class="bi bi-speedometer2"></i>
-                                                                                    @if ($freeKmPerDay && $calculatedDays > 1)
-                                                                                        {{ number_format($freeKmPerDay, 0) }}
-                                                                                        km/day
-                                                                                        ({{ number_format($allowedTotalKm ?? $freeKmPerDay * $calculatedDays, 0) }}
-                                                                                        km total)
-                                                                                    @elseif($allowedTotalKm)
-                                                                                        {{ number_format($allowedTotalKm, 0) }}
-                                                                                        km included
-                                                                                    @else
-                                                                                        {{ number_format($freeKmPerDay, 0) }}
-                                                                                        km included
-                                                                                    @endif
-
-                                                                                    @if ($extraKmPrice)
-                                                                                        <span style="color: #999;"> |
-                                                                                            Extra:
-                                                                                            <small
-                                                                                                class="currency-symbol">{{ $currencySymbol }}</small>
-                                                                                            {{ number_format($extraKmPrice, 2) }}/km</span>
-                                                                                    @endif
-                                                                                </small></p>
-                                                                        @endif
-                                                                        @php
-                                                                            $pickupLoc = is_array(
-                                                                                $item['pickup_location'] ?? null,
-                                                                            )
-                                                                                ? $item['pickup_location']['address'] ??
-                                                                                    ''
-                                                                                : $item['pickup_location'] ?? '';
-                                                                            $dropoffLoc = is_array(
-                                                                                $item['dropoff_location'] ?? null,
-                                                                            )
-                                                                                ? $item['dropoff_location'][
-                                                                                        'address'
-                                                                                    ] ?? ''
-                                                                                : $item['dropoff_location'] ?? '';
-                                                                            if (
-                                                                                ($item['service_type'] ?? '') ===
-                                                                                'airport_transfers'
-                                                                            ) {
-                                                                                $pickupLoc =
-                                                                                    $pickupLoc ?:
-                                                                                    $item['pickup_airport'] ??
-                                                                                        ($item['flight_details'][
-                                                                                            'arrival_airport'
-                                                                                        ] ??
-                                                                                            '');
-                                                                                $dropoffLoc =
-                                                                                    $dropoffLoc ?:
-                                                                                    $item['dropoff_airport'] ??
-                                                                                        ($item['flight_details'][
-                                                                                            'departure_airport'
-                                                                                        ] ??
-                                                                                            '');
-                                                                            }
-                                                                        @endphp
-                                                                        <p><small><i class="bi bi-geo-alt"></i>
-                                                                                {{ $pickupLoc ?: 'N/A' }}</small></p>
-
-                                                                        {{-- Return Trip Info --}}
-                                                                        @if (!empty($item['is_return_trip']) && !empty($item['return_trip_date']))
-                                                                            <div class="return-trip-info mt-2 p-2"
-                                                                                style="background: linear-gradient(135deg, #e8f5e9, #c8e6c9); border-radius: 8px; border-left: 3px solid #28a745;">
-                                                                                <p
-                                                                                    style="margin: 0; font-weight: 600; color: #2e7d32; font-size: 12px;">
-                                                                                    <i class="bi bi-arrow-left-right"></i>
-                                                                                    Return Trip Included
-                                                                                </p>
-                                                                                <p
-                                                                                    style="margin: 4px 0 0 0; font-size: 11px;">
-                                                                                    <i class="bi bi-calendar-check"
-                                                                                        style="color: #28a745;"></i>
-                                                                                    Return:
-                                                                                    {{ \Carbon\Carbon::parse($item['return_trip_date'])->format('M d, Y') }}
-                                                                                    @if (!empty($item['return_trip_time']))
-                                                                                        @ {{ $item['return_trip_time'] }}
-                                                                                    @endif
-                                                                                </p>
-                                                                                <p
-                                                                                    style="margin: 4px 0 0 0; font-size: 11px;">
-                                                                                    <i class="bi bi-geo-alt"
-                                                                                        style="color: #28a745;"></i>
-                                                                                    {{ $dropoffLoc ?: 'Drop-off' }} →
-                                                                                    {{ $pickupLoc ?: 'Pickup' }}
-                                                                                </p>
-                                                                                @if (!empty($item['return_discount_percentage']) && $item['return_discount_percentage'] > 0)
-                                                                                    <span class="badge bg-success mt-1"
-                                                                                        style="font-size: 10px;">
-                                                                                        <i class="bi bi-tag-fill"></i>
-                                                                                        {{ $item['return_discount_percentage'] }}%
-                                                                                        off return trip
-                                                                                    </span>
-                                                                                @endif
-                                                                            </div>
-                                                                        @endif
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                            <div class="item-total">
-                                                                @php
-                                                                    // Return trip pricing variables
-                                                                    $isReturnTrip = $item['is_return_trip'] ?? false;
-                                                                    $oneWayPrice = $item['one_way_price'] ?? null;
-                                                                    $returnPrice = $item['return_price'] ?? null;
-                                                                    $returnDiscountPct =
-                                                                        $item['return_discount_percentage'] ?? 0;
-                                                                @endphp
-
-                                                                {{-- Return Trip Pricing Breakdown --}}
-                                                                @if ($isReturnTrip && $oneWayPrice && $returnPrice)
-                                                                    <div class="return-trip-breakdown mb-2"
-                                                                        style="font-size: 11px; text-align: right;">
-                                                                        <div style="color: #0d6efd;">
-                                                                            <i class="bi bi-arrow-right-circle"></i>
-                                                                            Outbound:
-                                                                            <small
-                                                                                class="currency-symbol">{{ $currencySymbol }}</small>{{ number_format($oneWayPrice, 2) }}
-                                                                        </div>
-                                                                        <div style="color: #198754;">
-                                                                            <i class="bi bi-arrow-left-circle"></i> Return:
-                                                                            <small
-                                                                                class="currency-symbol">{{ $currencySymbol }}</small>{{ number_format($returnPrice, 2) }}
-                                                                            @if ($returnDiscountPct > 0)
-                                                                                <span class="badge bg-success"
-                                                                                    style="font-size: 9px;">{{ $returnDiscountPct }}%
-                                                                                    off</span>
-                                                                            @endif
-                                                                        </div>
-                                                                    </div>
-                                                                @endif
-
-                                                                @if ($hasItemDiscount && $itemOriginalAmount > $itemTotal)
-                                                                    {{-- Show discount badge --}}
-                                                                    <span class="checkout-item-discount-badge">
-                                                                        {{ round($itemDiscountPercentage) }}% OFF
-                                                                    </span>
-                                                                    {{-- Show original price with strikethrough --}}
-                                                                    <div class="checkout-original-price">
-                                                                        <del>{{ $currencySymbol }}{{ number_format($itemOriginalAmount, 2) }}</del>
-                                                                    </div>
-                                                                @endif
-                                                                <div
-                                                                    class="checkout-final-price {{ $hasItemDiscount ? 'discounted' : '' }}">
-                                                                    <small
-                                                                        class="currency-symbol">{{ $currencySymbol }}</small>
-                                                                    {{ number_format($itemTotal, 2) }}
-                                                                </div>
-                                                                @if ($hasItemDiscount && $itemDiscountAmount > 0)
-                                                                    <div class="checkout-savings">
-                                                                        <small>Save
-                                                                            {{ $currencySymbol }}{{ number_format($itemDiscountAmount, 2) }}</small>
-                                                                    </div>
-                                                                @endif
-                                                            </div>
-                                                        </div>
-                                                    </li>
-                                                @endforeach
-                                            </ul>
-                                        </div>
-
-                                        <div class="cart-footer">
-                                            <div class="pricing-area mb-40">
-                                                <ul>
-                                                    <li>
-                                                        <strong>Subtotal</strong>
-                                                        <strong>{{ $currencySymbol }}
-                                                            {{ number_format($subtotal, 2) }}</strong>
-                                                    </li>
-                                                    @php
-                                                        $addonCharges = $totals['addon_charges'] ?? 0;
-                                                        $extraKmCharges = $totals['extra_km_charges'] ?? 0;
-                                                    @endphp
-                                                    @if ($addonCharges > 0)
-                                                        <li>
-                                                            Addon Charges
-                                                            <div class="order-info text-success">
-                                                                <span>{{ $currencySymbol }}
-                                                                    {{ number_format($addonCharges, 2) }}</span>
-                                                            </div>
-                                                        </li>
-                                                    @endif
-                                                    @if ($extraKmCharges > 0)
-                                                        <li>
-                                                            Extra KM Charges
-                                                            <div class="order-info text-info">
-                                                                <span>{{ $currencySymbol }}
-                                                                    {{ number_format($extraKmCharges, 2) }}</span>
-                                                            </div>
-                                                        </li>
-                                                    @endif
-                                                    @if ($serviceFee > 0)
-                                                        <li>
-                                                            Service Fee
-                                                            <div class="order-info">
-                                                                <span>{{ $currencySymbol }}
-                                                                    {{ number_format($serviceFee, 2) }}</span>
-                                                            </div>
-                                                        </li>
-                                                    @endif
-                                                    @if ($tax > 0)
-                                                        <li>
-                                                            {{ $taxLabel }}
-                                                            ({{ $taxPercentageLabel }}%)
-                                                            <div class="order-info">
-                                                                <span>{{ $currencySymbol }}
-                                                                    {{ number_format($tax, 2) }}</span>
-                                                            </div>
-                                                        </li>
-                                                    @endif
-                                                    @if ($vatPercentage > 0 && $vat > 0)
-                                                        <li>
-                                                            {{ $vatLabel }}
-                                                            ({{ $vatPercentageLabel }}%)
-                                                            <div class="order-info">
-                                                                <span>{{ $currencySymbol }}
-                                                                    {{ number_format($vat, 2) }}</span>
-                                                            </div>
-                                                        </li>
-                                                    @endif
-
-                                                    {{-- Promo Code Section --}}
-                                                    <li class="promo-code-checkout-section">
-                                                        <div class="promo-code-checkout-wrapper">
-                                                            <div class="promo-code-header">
-                                                                <i class="bi bi-tag"></i>
-                                                                <span>Promo Code</span>
-                                                            </div>
-                                                            @php
-                                                                $appliedPromoCode = $cartData['coupon_code'] ?? null;
-                                                                $promoDiscount = $cartData['coupon_discount'] ?? 0;
-                                                            @endphp
-                                                            @if ($appliedPromoCode)
-                                                                {{-- Promo code is applied --}}
-                                                                <div class="applied-promo-checkout">
-                                                                    <div class="promo-badge-checkout">
-                                                                        <i
-                                                                            class="bi bi-check-circle-fill text-success"></i>
-                                                                        <span
-                                                                            class="promo-code-value">{{ $appliedPromoCode }}</span>
-                                                                        <button type="button"
-                                                                            class="remove-promo-checkout-btn"
-                                                                            title="Remove promo code">
-                                                                            <i class="bi bi-x-lg"></i>
-                                                                        </button>
-                                                                    </div>
-                                                                </div>
-                                                            @else
-                                                                {{-- No promo code - show input --}}
-                                                                <div class="promo-input-checkout">
-                                                                    <input type="text" id="checkout-promo-input"
-                                                                        placeholder="Enter code" autocomplete="off">
-                                                                    <button type="button" id="apply-promo-checkout-btn"
-                                                                        class="apply-promo-checkout-btn">
-                                                                        <span class="btn-text">Apply</span>
-                                                                        <span class="btn-loading"
-                                                                            style="display: none;"><i
-                                                                                class="bi bi-hourglass-split"></i></span>
-                                                                    </button>
-                                                                </div>
-                                                            @endif
-                                                            <div id="checkout-promo-message"
-                                                                class="promo-message-checkout"></div>
-                                                        </div>
-                                                    </li>
-
-                                                    @php
-                                                        $priceAdjustmentDiscount =
-                                                            $totals['price_adjustment_discount'] ?? 0;
-                                                    @endphp
-                                                    @if ($priceAdjustmentDiscount > 0)
-                                                        <li class="price-adjustment-discount-row">
-                                                            <span class="text-success">
-                                                                <i class="bi bi-percent"></i> Price Adjustment Discount
-                                                            </span>
-                                                            <div class="order-info text-success">
-                                                                <span>-{{ $currencySymbol }}
-                                                                    {{ number_format($priceAdjustmentDiscount, 2) }}</span>
-                                                            </div>
-                                                        </li>
-                                                    @endif
-                                                    @if ($discount > 0)
-                                                        <li class="discount-checkout-row">
-                                                            <strong class="text-success"><i class="bi bi-tag-fill"></i>
-                                                                Discount</strong>
-                                                            <div class="order-info text-success">
-                                                                <span>-{{ $currencySymbol }}
-                                                                    {{ number_format($discount, 2) }}</span>
-                                                            </div>
-                                                        </li>
-                                                    @endif
-                                                    <li class="total-row">
-                                                        <strong>Total</strong>
-                                                        <strong>{{ $currencySymbol }}
-                                                            {{ number_format($total, 2) }}</strong>
-                                                    </li>
-                                                    @if ($paymentType !== 'full')
-                                                        <li class="payment-amount-row">
-                                                            <strong>
-                                                                @if ($paymentType === 'advance')
-                                                                    Amount to Pay
-                                                                    ({{ $advancePercentage }}%)
-                                                                @elseif($paymentType === 'checkin')
-                                                                    Pay on Check-in
-                                                                @elseif($paymentType === 'quotation')
-                                                                    Quotation Request
-                                                                @endif
-                                                            </strong>
-                                                            <strong class="text-primary">
-                                                                @if ($paymentType === 'quotation')
-                                                                    No Payment Required
-                                                                @elseif($paymentType === 'checkin')
-                                                                    {{ $currencySymbol }}
-                                                                    {{ number_format($total, 2) }}
-                                                                @else
-                                                                    {{ $currencySymbol }}
-                                                                    {{ number_format($paymentAmount, 2) }}
-                                                                @endif
-                                                            </strong>
-                                                        </li>
-                                                    @endif
-                                                </ul>
-                                            </div>
-
-                                            <!-- Payment Type Selection Section -->
-                                            <div class="payment-type-selection mb-4">
-                                                <div class="card">
-                                                    <div class="card-header">
-                                                        <h6 class="mb-0"><i class="bi bi-credit-card"></i> Payment
-                                                            Option
-                                                        </h6>
-                                                    </div>
-                                                    <div class="card-body">
-                                                        <div class="row g-3">
-                                                            <div class="col-6">
-                                                                <div class="payment-option">
-                                                                    <input type="radio" name="payment_type"
-                                                                        value="full" id="payment_full"
-                                                                        {{ $paymentType === 'full' ? 'checked' : '' }}
-                                                                        class="payment-radio">
-                                                                    <label for="payment_full" class="payment-label">
-                                                                        <div class="payment-card">
-                                                                            <i
-                                                                                class="bi bi-credit-card-fill text-success"></i>
-                                                                            <h6>Pay Full Amount</h6>
-                                                                            <p class="mb-0">Complete payment now</p>
-                                                                            <small class="text-muted">Total:
-                                                                                {{ $currencySymbol }}
-                                                                                {{ number_format($total, 2) }}</small>
-                                                                        </div>
-                                                                    </label>
-                                                                </div>
-                                                            </div>
-                                                            @if ($advancePaymentEnabled)
-                                                                <div class="col-6">
-                                                                    <div class="payment-option">
-                                                                        <input type="radio" name="payment_type"
-                                                                            value="advance" id="payment_advance"
-                                                                            {{ $paymentType === 'advance' ? 'checked' : '' }}
-                                                                            class="payment-radio">
-                                                                        <label for="payment_advance"
-                                                                            class="payment-label">
-                                                                            <div class="payment-card">
-                                                                                <i
-                                                                                    class="bi bi-credit-card text-warning"></i>
-                                                                                <h6>Pay {{ $advancePercentage }}% Advance
-                                                                                </h6>
-                                                                                <p class="mb-0">Pay remaining on pickup
-                                                                                </p>
-                                                                                <small class="text-muted">Now:
-                                                                                    {{ $currencySymbol }}
-                                                                                    {{ number_format($total * ($advancePercentage / 100), 2) }}</small>
-                                                                            </div>
-                                                                        </label>
-                                                                    </div>
-                                                                </div>
-                                                            @endif
-                                                            @if ($offlinePaymentEnabled)
-                                                                <div class="col-6">
-                                                                    <div class="payment-option">
-                                                                        <input type="radio" name="payment_type"
-                                                                            value="checkin" id="payment_checkin"
-                                                                            {{ $paymentType === 'checkin' ? 'checked' : '' }}
-                                                                            class="payment-radio">
-                                                                        <label for="payment_checkin"
-                                                                            class="payment-label">
-                                                                            <div class="payment-card">
-                                                                                <i
-                                                                                    class="bi bi-cash-coin text-primary"></i>
-                                                                                <h6>Pay on Check-in</h6>
-                                                                                <p class="mb-0">Pay when you collect</p>
-                                                                                <small class="text-muted">Due:
-                                                                                    {{ $currencySymbol }}
-                                                                                    {{ number_format($total, 2) }}</small>
-                                                                            </div>
-                                                                        </label>
-                                                                    </div>
-                                                                </div>
-                                                            @endif
-                                                            <div class="col-6">
-                                                                <div class="payment-option">
-                                                                    <input type="radio" name="payment_type"
-                                                                        value="quotation" id="payment_quotation"
-                                                                        {{ $paymentType === 'quotation' ? 'checked' : '' }}
-                                                                        class="payment-radio">
-                                                                    <label for="payment_quotation" class="payment-label">
-                                                                        <div class="payment-card">
-                                                                            <i class="bi bi-file-text text-info"></i>
-                                                                            <h6>Request Quotation</h6>
-                                                                            <p class="mb-0">Get detailed pricing</p>
-                                                                            <small class="text-muted">No payment
-                                                                                now</small>
-                                                                        </div>
-                                                                    </label>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <!-- Payment Type Alert -->
-                                            <div class="alert alert-info mb-4" id="payment-type-alert">
-                                                <div id="alert-content">
-                                                    @switch($paymentType)
-                                                        @case('advance')
-                                                            <h6><i class="bi bi-info-circle"></i> Advance Payment
-                                                                ({{ $advancePercentage }}%)</h6>
-                                                            <p class="mb-0">You are paying {{ $advancePercentage }}%
-                                                                advance. The remaining amount will be collected at the time
-                                                                of vehicle pickup.</p>
-                                                        @break
-
-                                                        @case('checkin')
-                                                            <h6><i class="bi bi-cash-coin"></i> Pay on Check-in</h6>
-                                                            <p class="mb-0">No payment is required now. You will pay the full
-                                                                amount when you check-in to collect the vehicle.</p>
-                                                        @break
-
-                                                        @case('quotation')
-                                                            <h6><i class="bi bi-file-text"></i> Request Quotation</h6>
-                                                            <p class="mb-0">You are requesting a quotation. Our team will
-                                                                contact you with detailed pricing and booking information.</p>
-                                                        @break
-
-                                                        @default
-                                                            <h6><i class="bi bi-credit-card"></i> Full Payment</h6>
-                                                            <p class="mb-0">You are making full payment for your booking.</p>
-                                                    @endswitch
-                                                </div>
-                                            </div>
-
-                                            <!-- Hidden payment method field - set automatically based on payment type -->
-                                            <input type="hidden" name="payment_method" id="payment_method_field"
-                                                value="">
-
-                                            <button type="submit" class="primary-btn1 w-100" id="checkout-submit-btn">
-                                                <span>
-                                                    @if ($paymentType === 'quotation')
-                                                        Submit Quotation Request
-                                                    @elseif ($paymentType === 'checkin')
-                                                        Confirm Booking - Pay on Check-in
-                                                    @else
-                                                        Complete Booking -
-                                                        <small class="currency-symbol">{{ $currencySymbol }}</small>
-                                                        {{ number_format($paymentAmount, 2) }}
-                                                    @endif
-                                                    <svg width="10" height="10" viewBox="0 0 10 10"
-                                                        xmlns="http://www.w3.org/2000/svg">
-                                                        <path
-                                                            d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z">
-                                                        </path>
-                                                    </svg>
-                                                </span>
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
+                                    @default
+                                        <h6><i class="bi bi-credit-card"></i> Full Payment</h6>
+                                        <p class="mb-0">You are making full payment for your booking.</p>
+                                @endswitch
                             </div>
                         </div>
+
+                        <!-- Hidden payment method field - set automatically based on payment type -->
+                        <input type="hidden" name="payment_method" id="payment_method_field" value="">
+
+                        <button type="submit" class="primary-btn1 w-100" id="checkout-submit-btn">
+                            <span>
+                                @if ($paymentType === 'quotation')
+                                    Submit Quotation Request
+                                @elseif ($paymentType === 'checkin')
+                                    Confirm Booking - Pay on Check-in
+                                @else
+                                    Complete Booking -
+                                    <small class="currency-symbol">{{ $currencySymbol }}</small>
+                                    {{ number_format($paymentAmount, 2) }}
+                                @endif
+                                <svg width="10" height="10" viewBox="0 0 10 10"
+                                    xmlns="http://www.w3.org/2000/svg">
+                                    <path
+                                        d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z">
+                                    </path>
+                                </svg>
+                            </span>
+                        </button>
                     </div>
-                </form>
-            @endif
+                </div>
+            </div>
         </div>
+    </div>
+    </div>
+    </form>
+    @endif
+    </div>
     </div>
     <!--Checkout Page End-->
 @endsection
@@ -1674,6 +1623,31 @@
             background-color: var(--primary-color1);
             color: white;
         }
+
+        /* Terms collapse styles */
+        .term-header {
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .term-toggle {
+            cursor: pointer;
+            font-size: .95rem;
+            color: #6c757d;
+            border: none;
+            background: transparent;
+            padding: 0;
+        }
+
+        .term-body {
+            transition: all .2s ease;
+        }
+
+        .term-body.collapsed {
+            display: none !important;
+        }
     </style>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/intl-tel-input@17/build/css/intlTelInput.css">
     <!-- Select2 CSS for searchable country dropdown -->
@@ -1795,8 +1769,99 @@
                 $('#checkout-submit-btn').prop('disabled', true).html('<span>Processing...</span>');
             });
 
-            // ==========================================
-            // Promo Code Management for Checkout
+            // Terms acceptance sync - single checkbox controls hidden per-term inputs expected by server
+            function syncAcceptedTerms() {
+                const $container = $('#termsAcceptedHiddenInputs').empty();
+                const checked = $('#accept_all_terms').is(':checked');
+                if (!checked) return;
+                // find visible term items and create hidden inputs
+                $('[data-term-id]').each(function() {
+                    const $item = $(this);
+                    if ($item.is(':visible')) {
+                        const id = $item.data('termId');
+                        const version = $item.data('termVersion');
+                        if (id) {
+                            const input = $('<input>').attr({
+                                type: 'hidden',
+                                name: `terms_accepted[${id}]`,
+                                value: version || '1',
+                                id: `terms_accepted_${id}`
+                            });
+                            $container.append(input);
+
+                            // Collapse the term body to keep UI compact
+                            const $body = $item.find('.term-body');
+                            if ($body.is(':visible')) {
+                                $body.slideUp(150);
+                                $item.find('.term-toggle').text('Show').attr('aria-expanded', 'false');
+                            }
+                        }
+                    }
+                });
+            }
+
+            $('#accept_all_terms').on('change', function() {
+                syncAcceptedTerms();
+                // Collapse or expand visible terms depending on checked state
+                if ($(this).is(':checked')) {
+                    $('[data-term-id]:visible').each(function() {
+                        const $item = $(this);
+                        const $body = $item.find('.term-body');
+                        if ($body.is(':visible')) {
+                            $body.slideUp(150);
+                        }
+                        $item.find('.term-toggle').text('Show').attr('aria-expanded', 'false');
+                    });
+                } else {
+                    $('[data-term-id]:visible').each(function() {
+                        const $item = $(this);
+                        const $body = $item.find('.term-body');
+                        if ($body.is(':hidden')) {
+                            $body.slideDown(150);
+                        }
+                        $item.find('.term-toggle').text('Hide').attr('aria-expanded', 'true');
+                    });
+                }
+            });
+
+            // Re-sync when payment type changes (terms visibility updated elsewhere)
+            $('input[name="payment_type"]').on('change', function() {
+                if ($('#accept_all_terms').is(':checked')) {
+                    // small debounce
+                    setTimeout(syncAcceptedTerms, 50);
+                }
+            });
+
+            // Term toggle handlers (allow clicking the header or button to show/hide body)
+            $(document).on('click', '.term-toggle', function(e) {
+                e.preventDefault();
+                const $btn = $(this);
+                const $item = $btn.closest('.term-item');
+                const $body = $item.find('.term-body');
+                if ($body.is(':visible')) {
+                    $body.slideUp(150);
+                    $btn.text('Show').attr('aria-expanded', 'false');
+                } else {
+                    $body.slideDown(150);
+                    $btn.text('Hide').attr('aria-expanded', 'true');
+                }
+            });
+
+            $(document).on('click', '.term-header', function(e) {
+                if ($(e.target).closest('.term-toggle').length) return; // avoid double handling
+                const $item = $(this).closest('.term-item');
+                $item.find('.term-toggle').trigger('click');
+            });
+
+            // On page load ensure state if old inputs were present
+            if ($('#accept_all_terms').length) {
+                // if server-side old inputs indicate prior acceptance, check global box
+                const hasPreviouslyAccepted = Object.keys(@json(old('terms_accepted', []))).length > 0;
+                if (hasPreviouslyAccepted) {
+                    $('#accept_all_terms').prop('checked', true);
+                    syncAcceptedTerms();
+                }
+            }
             // ==========================================
 
             // Apply promo code button click

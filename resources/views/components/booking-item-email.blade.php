@@ -159,7 +159,8 @@
 
 <!-- Email Booking Item Card -->
 <div
-    style="background-color: #f8f9fa; border: 1px solid #eef0f2; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
+    style="background-color: #f8f9fa; border: 1px solid #eef0f2; border-radius: 8px
+    ; padding: 15px; margin-bottom: 20px;">
     <div style="display: flex; align-items: flex-start; gap: 15px;">
         @if ($defaultImage)
             <div style="flex-shrink: 0;">

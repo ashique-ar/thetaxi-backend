@@ -122,6 +122,22 @@
         </div>
     @endif
 
+    @php
+        $serviceTypeId = $booking->serviceType?->id ?? ($booking->service_type ?? ($serviceType ?? null));
+        $paymentType = 'quotation';
+        $applicableTerms = \App\Models\TermsAndCondition::getForCheckout($serviceTypeId, $paymentType);
+    @endphp
+
+    @if ($applicableTerms->count())
+        <div class="section">
+            <h2 class="section-title"><span class="icon">📜</span> Terms & Conditions</h2>
+            @foreach ($applicableTerms as $t)
+                <h4 style="margin-top:8px;">{{ $t->title }}</h4>
+                <div style="color:#555;">{!! $t->content !!}</div>
+            @endforeach
+        </div>
+    @endif
+
     <div class="divider"></div>
 
     <!-- Technical Issue Section -->
