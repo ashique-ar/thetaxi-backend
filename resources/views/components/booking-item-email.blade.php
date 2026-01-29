@@ -346,12 +346,6 @@
                 $displayDistance = $actualJourneyDistance ?? ($journeyDistance ?? ($totalDistance ?? null));
             @endphp
 
-            <tr>
-                <td colspan="2" style="background: #f8fafc; font-weight: bold; color: #374151;">
-                    📏 Distance & Kilometer Information
-                </td>
-            </tr>
-
             @if ($minimumKmApplied && $minimumKm)
                 <tr>
                     <td
@@ -367,7 +361,7 @@
             @elseif($displayDistance)
                 <tr>
                     <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333;">
-                        Estimated Distance
+                        Ride
                     </td>
                     <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
                         <strong>{{ number_format($displayDistance, 1) }} km</strong>
