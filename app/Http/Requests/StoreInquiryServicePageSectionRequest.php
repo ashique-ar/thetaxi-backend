@@ -81,6 +81,25 @@ class StoreInquiryServicePageSectionRequest extends FormRequest
                 $base['data.location.address'] = ['nullable', 'string', 'max:255'];
                 $base['data.location.map_embed'] = ['nullable', 'string'];
                 break;
+            case 'form_block':
+                $base['data.kicker'] = ['nullable', 'string', 'max:255'];
+                $base['data.heading'] = ['required', 'string', 'max:255'];
+                $base['data.description'] = ['nullable', 'string', 'max:1000'];
+                $base['data.note_title'] = ['nullable', 'string', 'max:255'];
+                $base['data.note_body'] = ['nullable', 'string', 'max:1000'];
+                $base['data.form_id'] = ['nullable', 'uuid', 'exists:inquiry_forms,id'];
+                $base['data.show_form'] = ['nullable', 'boolean'];
+                $base['data.steps'] = ['nullable', 'array'];
+                $base['data.steps.*.title'] = ['required_with:data.steps', 'string', 'max:255'];
+                $base['data.steps.*.description'] = ['nullable', 'string', 'max:500'];
+                break;
+            case 'content_block':
+                $base['data.kicker'] = ['nullable', 'string', 'max:255'];
+                $base['data.heading'] = ['required', 'string', 'max:255'];
+                $base['data.body'] = ['nullable', 'string'];
+                $base['data.image'] = ['nullable', 'string', 'max:255'];
+                $base['data.image_position'] = ['nullable', 'string', 'in:left,right'];
+                break;
             case 'services':
             case 'benefits':
                 $base['data.heading'] = ['nullable', 'string', 'max:255'];

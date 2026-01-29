@@ -7,6 +7,10 @@
 @endpush
 
 @section('content')
+@php
+$hasFormBlock = collect($sections)->contains(fn($s) => ($s['type'] ?? '') === 'form_block');
+@endphp
+
 @foreach ($sections as $section)
 @php
 $type = $section['type'] ?? '';
@@ -14,7 +18,15 @@ $type = $section['type'] ?? '';
 
 @switch($type)
 @case('hero')
-@include('inquiry.sections.hero', ['section' => $section, 'servicePage' => $servicePage])
+@include('inquiry.sections.hero', ['section' => $section, 'servicePage' => $servicePage, 'hasFormBlock' => $hasFormBlock])
+@break
+
+@case('form_block')
+@include('inquiry.sections.form_block', ['section' => $section, 'servicePage' => $servicePage])
+@break
+
+@case('content_block')
+@include('inquiry.sections.content_block', ['section' => $section])
 @break
 
 @case('features')
@@ -154,6 +166,108 @@ $type = $section['type'] ?? '';
         gap: 6px;
         font-size: 14px;
         color: #333;
+    }
+
+    .inquiry-form-block {
+        margin-top: 40px;
+        margin-bottom: 80px;
+    }
+
+    .inquiry-form-card {
+        background: #fff;
+        border-radius: 16px;
+        padding: 32px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+    }
+
+    .inquiry-form-intro {
+        text-align: left;
+        margin-bottom: 24px;
+        grid-column: 1 / -1;
+    }
+
+    .inquiry-form-intro h3 {
+        margin-bottom: 8px;
+        font-size: 24px;
+        font-weight: 600;
+    }
+
+    .inquiry-form-intro p {
+        margin-bottom: 0;
+        color: #6c757d;
+    }
+
+    .inquiry-steps {
+        display: grid;
+        gap: 16px;
+        margin-top: 24px;
+    }
+
+    .inquiry-step {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+    }
+
+    .inquiry-step-number {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background: var(--primary-color1);
+        color: #fff;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+        flex-shrink: 0;
+    }
+
+    .inquiry-step-content h5 {
+        margin-bottom: 4px;
+        font-size: 16px;
+    }
+
+    .inquiry-form-note {
+        margin-top: 20px;
+        padding: 16px;
+        border-radius: 12px;
+        background: #f8f9fb;
+        border-left: 4px solid var(--primary-color1);
+    }
+
+    .inquiry-form-note strong {
+        display: block;
+        margin-bottom: 4px;
+    }
+
+    .inquiry-help-text {
+        display: block;
+        margin-top: 6px;
+        font-size: 13px;
+        color: #6c757d;
+    }
+
+    .inquiry-content-section {
+        margin-bottom: 100px;
+    }
+
+    .inquiry-content-body p {
+        margin-bottom: 12px;
+    }
+
+    .inquiry-content-body ul {
+        padding-left: 18px;
+        margin-bottom: 0;
+    }
+
+    .inquiry-content-body li {
+        margin-bottom: 6px;
+    }
+
+    @media (max-width: 991px) {
+        .inquiry-form-card {
+            padding: 24px;
+        }
     }
 </style>
 @endpush

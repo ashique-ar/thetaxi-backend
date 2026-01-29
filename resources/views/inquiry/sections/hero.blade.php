@@ -9,10 +9,15 @@
                 : s3_asset($bannerImage)))
         : asset('assets/img/home4/home4-banner-img.jpg');
     $showForm = false;
+    $hasFormBlock = $hasFormBlock ?? false;
     if (!empty($data['form_id']) && !empty($servicePage->form)) {
         $showForm = $servicePage->form->id === $data['form_id'];
     } elseif (!empty($data['show_form']) && !empty($servicePage->form)) {
         $showForm = (bool) $data['show_form'];
+    }
+
+    if ($hasFormBlock) {
+        $showForm = false;
     }
 @endphp
 
@@ -39,7 +44,7 @@
         <div class="container">
             <div class="filter-wrapper">
                 <div class="filter-input-wrap">
-                    @include('inquiry.partials.form', ['form' => $servicePage->form, 'servicePage' => $servicePage])
+                    @include('inquiry.partials.form', ['form' => $servicePage->form, 'servicePage' => $servicePage, 'showIntro' => false])
                 </div>
             </div>
         </div>

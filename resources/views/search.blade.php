@@ -120,8 +120,8 @@
                                     style="background: rgba(251, 191, 36, 0.3); border: 1px solid rgba(251, 191, 36, 0.5);">
                                     <i class="bi bi-info-circle"></i>
                                     Minimum {{ number_format($minimumKm, 0) }} km
-                                    <small class="text-white-50">(Actual: {{ number_format($actualDistance, 1) }}
-                                        km)</small>
+                                    {{-- <small class="text-white-50">(Actual: {{ number_format($actualDistance, 1) }}
+                                        km)</small> --}}
                                 </span>
                             @elseif (isset($search->total_distance_km) && $search->total_distance_km > 0)
                                 <span class="distance-info">

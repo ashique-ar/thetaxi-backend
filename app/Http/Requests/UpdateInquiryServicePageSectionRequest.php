@@ -81,6 +81,25 @@ class UpdateInquiryServicePageSectionRequest extends FormRequest
                 $base['data.location.address'] = ['sometimes', 'nullable', 'string', 'max:255'];
                 $base['data.location.map_embed'] = ['sometimes', 'nullable', 'string'];
                 break;
+            case 'form_block':
+                $base['data.kicker'] = ['sometimes', 'nullable', 'string', 'max:255'];
+                $base['data.heading'] = ['sometimes', 'required', 'string', 'max:255'];
+                $base['data.description'] = ['sometimes', 'nullable', 'string', 'max:1000'];
+                $base['data.note_title'] = ['sometimes', 'nullable', 'string', 'max:255'];
+                $base['data.note_body'] = ['sometimes', 'nullable', 'string', 'max:1000'];
+                $base['data.form_id'] = ['sometimes', 'nullable', 'uuid', 'exists:inquiry_forms,id'];
+                $base['data.show_form'] = ['sometimes', 'nullable', 'boolean'];
+                $base['data.steps'] = ['sometimes', 'nullable', 'array'];
+                $base['data.steps.*.title'] = ['sometimes', 'required_with:data.steps', 'string', 'max:255'];
+                $base['data.steps.*.description'] = ['sometimes', 'nullable', 'string', 'max:500'];
+                break;
+            case 'content_block':
+                $base['data.kicker'] = ['sometimes', 'nullable', 'string', 'max:255'];
+                $base['data.heading'] = ['sometimes', 'required', 'string', 'max:255'];
+                $base['data.body'] = ['sometimes', 'nullable', 'string'];
+                $base['data.image'] = ['sometimes', 'nullable', 'string', 'max:255'];
+                $base['data.image_position'] = ['sometimes', 'nullable', 'string', 'in:left,right'];
+                break;
             default:
                 break;
         }

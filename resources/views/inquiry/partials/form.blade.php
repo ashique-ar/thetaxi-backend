@@ -6,6 +6,7 @@
         $phonePreferredCountries = array_filter(array_map('trim', explode(',', $phonePreferredCountries)));
     }
     $formAction = ($servicePage->settings ?? [])['form_action'] ?? 'booking.enquiry';
+    $showIntro = $showIntro ?? true;
 @endphp
 
 @if ($errors->any())
@@ -38,6 +39,17 @@
         <input type="hidden" name="inquiry_type" value="{{ $servicePage->inquiry_type }}">
     @endif
     <input type="hidden" name="service_type" value="{{ $servicePage->code }}">
+
+    @if ($showIntro && (!empty($form->name) || !empty($form->description)))
+        <div class="inquiry-form-intro">
+            @if (!empty($form->name))
+                <h3>{{ $form->name }}</h3>
+            @endif
+            @if (!empty($form->description))
+                <p>{{ $form->description }}</p>
+            @endif
+        </div>
+    @endif
 
     @foreach ($form->fields as $field)
         @php
@@ -158,6 +170,9 @@
             @error($field->name)
                 <span class="text-danger small">{{ $message }}</span>
             @enderror
+            @if (!empty($field->help_text))
+                <small class="inquiry-help-text">{{ $field->help_text }}</small>
+            @endif
         </div>
     @endforeach
 

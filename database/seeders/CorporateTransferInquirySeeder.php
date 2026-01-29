@@ -62,6 +62,7 @@ class CorporateTransferInquirySeeder extends Seeder
                 'type' => 'text',
                 'icon' => 'bi bi-building',
                 'placeholder' => 'Company Name',
+                'help_text' => 'Use your registered business name for billing.',
                 'is_required' => true,
                 'validation_rules' => 'string|max:255',
                 'width' => 'half',
@@ -72,6 +73,7 @@ class CorporateTransferInquirySeeder extends Seeder
                 'type' => 'text',
                 'icon' => 'bi bi-person',
                 'placeholder' => 'Contact Person',
+                'help_text' => 'Who should we coordinate with?',
                 'is_required' => true,
                 'validation_rules' => 'string|max:255',
                 'width' => 'half',
@@ -82,6 +84,7 @@ class CorporateTransferInquirySeeder extends Seeder
                 'type' => 'email',
                 'icon' => 'bi bi-envelope',
                 'placeholder' => 'Email Address',
+                'help_text' => 'We will send the proposal to this address.',
                 'is_required' => true,
                 'validation_rules' => 'email|max:255',
                 'width' => 'half',
@@ -92,6 +95,7 @@ class CorporateTransferInquirySeeder extends Seeder
                 'type' => 'tel',
                 'icon' => 'bi bi-telephone',
                 'placeholder' => 'Mobile Number',
+                'help_text' => 'Include country code for faster contact.',
                 'is_required' => true,
                 'validation_rules' => 'string|max:20',
                 'width' => 'half',
@@ -101,6 +105,7 @@ class CorporateTransferInquirySeeder extends Seeder
                 'label' => 'Type of Services',
                 'type' => 'select',
                 'icon' => 'bi bi-briefcase',
+                'help_text' => 'Pick the service type that best matches your needs.',
                 'is_required' => true,
                 'validation_rules' => 'string|in:airport_transfer,corporate_event,employee_shuttle,client_meeting,other',
                 'options' => [
@@ -118,6 +123,7 @@ class CorporateTransferInquirySeeder extends Seeder
                 'type' => 'text',
                 'icon' => 'bi bi-briefcase',
                 'placeholder' => 'Specify the service type',
+                'help_text' => 'Add a short description so we can tailor the plan.',
                 'is_required' => false,
                 'validation_rules' => 'required_if:service_type_select,other|string|max:255',
                 'conditional_logic' => [
@@ -132,6 +138,7 @@ class CorporateTransferInquirySeeder extends Seeder
                 'label' => 'Employee Strength',
                 'type' => 'select',
                 'icon' => 'bi bi-people',
+                'help_text' => 'Approximate number of employees using the service.',
                 'is_required' => true,
                 'validation_rules' => 'string|in:1-10,11-50,51-100,101-500,500+',
                 'options' => [
@@ -149,6 +156,7 @@ class CorporateTransferInquirySeeder extends Seeder
                 'type' => 'text',
                 'icon' => 'bi bi-geo-alt',
                 'placeholder' => 'City Name',
+                'help_text' => 'Primary city where transport is required.',
                 'is_required' => true,
                 'validation_rules' => 'string|max:255',
                 'width' => 'half',
@@ -159,6 +167,7 @@ class CorporateTransferInquirySeeder extends Seeder
                 'type' => 'textarea',
                 'icon' => 'bi bi-chat-left-text',
                 'placeholder' => 'Describe your corporate transport requirements...',
+                'help_text' => 'Include schedules, routes, and any special requirements.',
                 'is_required' => true,
                 'validation_rules' => 'string|max:1000',
                 'width' => 'full',
@@ -189,35 +198,50 @@ class CorporateTransferInquirySeeder extends Seeder
                         'banner_image' => 'assets/img/home4/home4-banner-img.jpg',
                         'heading' => 'Corporate Transport Solutions',
                         'subheading' => 'Professional transportation services tailored for your business needs',
-                        'form_id' => $form->id,
+                        'show_form' => false,
                     ],
                 ],
                 [
-                    'type' => 'contact_info',
+                    'type' => 'form_block',
                     'data' => [
-                        'kicker' => 'Get In Touch',
-                        'heading' => 'Contact Our Corporate Team',
-                        'description' => 'Have questions or need immediate assistance? Our corporate transport specialists are here to help.',
-                        'contacts' => [
+                        'kicker' => 'Start Your Corporate Plan',
+                        'heading' => 'Tell us about your transport needs',
+                        'description' => 'Share your company details and requirements. Our corporate team will review your request and respond within 24 hours.',
+                        'steps' => [
                             [
-                                'name' => 'Zufer Ahamed',
-                                'title' => 'Managing Director',
-                                'email' => 'zufer@thetaxi.lk',
-                                'phone' => '+94715487487',
-                                'availability' => 'Monday - Friday, 9:00 AM - 6:00 PM',
+                                'title' => 'Share your requirements',
+                                'description' => 'Tell us the service type, city, and passenger volume.',
+                            ],
+                            [
+                                'title' => 'We review and optimize',
+                                'description' => 'Our team recommends the best fleet and scheduling plan.',
+                            ],
+                            [
+                                'title' => 'Confirm and onboard',
+                                'description' => 'Receive a tailored proposal and onboarding timeline.',
                             ],
                         ],
-                        'office_hours' => [
-                            'weekdays' => '9:00 AM - 6:00 PM',
-                            'saturday' => '9:00 AM - 2:00 PM',
-                            'sunday' => 'Closed',
-                        ],
-                        'emergency_hotline' => '+94 11 234 5678',
-                        'show_location' => true,
-                        'location' => [
-                            'address' => 'TheTaxi Corporate Office, Colombo 03, Sri Lanka',
-                            'map_embed' => '',
-                        ],
+                        'note_title' => 'Need help right now?',
+                        'note_body' => 'Call +94 11 234 5678 or email zufer@thetaxi.lk for urgent coordination.',
+                        'form_id' => $form->id,
+                        'show_form' => true,
+                    ],
+                ],
+                [
+                    'type' => 'content_block',
+                    'data' => [
+                        'kicker' => 'Corporate Transport, Simplified',
+                        'heading' => 'A reliable fleet with accountable reporting',
+                        'body' => <<<'HTML'
+<p>We partner with corporate teams to deliver safe, punctual, and fully-managed transport. From executive travel to employee shuttles, you get consistent service standards and transparent reporting.</p>
+<ul>
+    <li>Dedicated account manager and priority support.</li>
+    <li>Real-time coordination with professional chauffeurs.</li>
+    <li>Monthly billing and trip reporting for easy reconciliation.</li>
+</ul>
+HTML,
+                        'image' => 'assets/img/home4/package-img.jpg',
+                        'image_position' => 'left',
                     ],
                 ],
                 [
@@ -320,7 +344,34 @@ class CorporateTransferInquirySeeder extends Seeder
                         ],
                     ],
                 ],
-
+                [
+                    'type' => 'contact_info',
+                    'data' => [
+                        'kicker' => 'Get In Touch',
+                        'heading' => 'Contact Our Corporate Team',
+                        'description' => 'Have questions or need immediate assistance? Our corporate transport specialists are here to help.',
+                        'contacts' => [
+                            [
+                                'name' => 'Zufer Ahamed',
+                                'title' => 'Managing Director',
+                                'email' => 'zufer@thetaxi.lk',
+                                'phone' => '+94715487487',
+                                'availability' => 'Monday - Friday, 9:00 AM - 6:00 PM',
+                            ],
+                        ],
+                        'office_hours' => [
+                            'weekdays' => '9:00 AM - 6:00 PM',
+                            'saturday' => '9:00 AM - 2:00 PM',
+                            'sunday' => 'Closed',
+                        ],
+                        'emergency_hotline' => '+94 11 234 5678',
+                        'show_location' => true,
+                        'location' => [
+                            'address' => 'TheTaxi Corporate Office, Colombo 03, Sri Lanka',
+                            'map_embed' => '',
+                        ],
+                    ],
+                ],
             ],
         ];
 
