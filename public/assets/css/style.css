@@ -8493,8 +8493,8 @@ header.style-3.two .main-menu>ul>li.active>a i {
 
 @media (max-width: 767px) {
   .filter-wrapper .filter-item-list {
-    margin-left: 20px;
-    gap: 10px;
+    margin-left: 3px;
+    gap: 5px;
   }
 }
 

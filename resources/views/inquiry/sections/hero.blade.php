@@ -16,7 +16,8 @@
     }
 @endphp
 
-<div class="home4-banner-section mb-100">
+<!-- Hero Section (No form inside) -->
+<div class="home4-banner-section">
     <div class="banner-video-area">
         <img src="{{ $bannerUrl }}" alt="{{ $data['heading'] ?? 'Service' }}" loading="lazy">
     </div>
@@ -27,15 +28,20 @@
                 @if (!empty($data['subheading']))
                     <p>{{ $data['subheading'] }}</p>
                 @endif
-
-                @if ($showForm)
-                    <div class="filter-wrapper">
-                        <div class="filter-input-wrap">
-                            @include('inquiry.partials.form', ['form' => $servicePage->form, 'servicePage' => $servicePage])
-                        </div>
-                    </div>
-                @endif
             </div>
         </div>
     </div>
 </div>
+
+<!-- Form Section (Separate, in normal flow) -->
+@if ($showForm)
+    <div class="inquiry-form-section mb-5 text-center">
+        <div class="container">
+            <div class="filter-wrapper">
+                <div class="filter-input-wrap">
+                    @include('inquiry.partials.form', ['form' => $servicePage->form, 'servicePage' => $servicePage])
+                </div>
+            </div>
+        </div>
+    </div>
+@endif
