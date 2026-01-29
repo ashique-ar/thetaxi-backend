@@ -2708,6 +2708,67 @@
     }
 
     /**
+     * Ensure canonical search field names exist in the form before submission.
+     * Copies visible/alternate inputs into canonical names the backend expects.
+     */
+    function ensureCanonicalSearchFields(form) {
+        function getFirstValue(names) {
+            for (let i = 0; i < names.length; i++) {
+                const el = form.querySelector('[name="' + names[i] + '"]');
+                if (el && typeof el.value !== 'undefined' && el.value !== null && String(el.value).trim() !== '') {
+                    return String(el.value).trim();
+                }
+            }
+            return '';
+        }
+
+        function ensureHidden(name, value) {
+            let input = form.querySelector('[name="' + name + '"]');
+            if (!input) {
+                input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = name;
+                form.appendChild(input);
+            }
+            input.value = value || '';
+        }
+
+        // Pickup address and coords
+        const pickupAddress = getFirstValue(['pickup_location', 'pickup', 'from', 'from_location', 'pickup_address']);
+        const pickupLat = getFirstValue(['pickup_lat', 'pickup_latitude', 'from_lat', 'from_latitude']);
+        const pickupLng = getFirstValue(['pickup_lng', 'pickup_longitude', 'from_lng', 'from_longitude']);
+        ensureHidden('pickup_location', pickupAddress);
+        ensureHidden('pickup_lat', pickupLat);
+        ensureHidden('pickup_lng', pickupLng);
+
+        // Dropoff address and coords
+        const dropoffAddress = getFirstValue(['dropoff_location', 'dropoff', 'to', 'to_location', 'dropoff_address']);
+        const dropoffLat = getFirstValue(['dropoff_lat', 'dropoff_latitude', 'to_lat', 'to_latitude']);
+        const dropoffLng = getFirstValue(['dropoff_lng', 'dropoff_longitude', 'to_lng', 'to_longitude']);
+        ensureHidden('dropoff_location', dropoffAddress);
+        ensureHidden('dropoff_lat', dropoffLat);
+        ensureHidden('dropoff_lng', dropoffLng);
+
+        // Dates / times - normalize to keys backend expects
+        const date = getFirstValue(['date', 'from_date', 'pickup_date']);
+        const toDate = getFirstValue(['to_date', 'return_date', 'dropoff_date']);
+        ensureHidden('date', date);
+        ensureHidden('from_date', date);
+        ensureHidden('pickup_date', date);
+        ensureHidden('to_date', toDate);
+        ensureHidden('return_date', toDate);
+
+        // Service type
+        const svc = getFirstValue(['service_type']) || form.getAttribute('data-service') || '';
+        ensureHidden('service_type', svc);
+
+        // Package selection
+        const packageId = getFirstValue(['package_id', 'service_package_id']);
+        ensureHidden('package_id', packageId);
+        ensureHidden('service_package_id', packageId);
+    }
+
+    /**
      * Setup form validation
      */
     function setupFormValidation() {
@@ -2733,6 +2794,15 @@
                     dropoff_lat: formData.get("dropoff_lat"),
                     dropoff_lng: formData.get("dropoff_lng"),
                 });
+
+                // Ensure canonical fields exist and contain values before the form is submitted.
+                // This prevents disabled inputs (e.g. airport selects) or alternate field names from
+                // being omitted from the request and causing the backend to fall back to defaults.
+                try {
+                    ensureCanonicalSearchFields(form);
+                } catch (err) {
+                    console.warn('ensureCanonicalSearchFields failed', err);
+                }
 
                 if (!validateForm(form)) {
                     e.preventDefault();
@@ -3171,7 +3241,7 @@
         }
 
         // Toggle return trip details visibility
-        returnToggle.addEventListener('change', function() {
+        returnToggle.addEventListener('change', function () {
             if (this.checked) {
                 returnDetails.style.display = 'grid';
                 // Initialize return date picker if needed
@@ -3198,7 +3268,7 @@
         // Listen for pickup date changes to update return pricing
         const pickupDateInput = document.querySelector('#ride_now-form input[name="pickup_date"]');
         if (pickupDateInput) {
-            pickupDateInput.addEventListener('change', function() {
+            pickupDateInput.addEventListener('change', function () {
                 if (returnToggle.checked) {
                     syncReturnDateWithPickup();
                     calculateReturnPricing();
@@ -3255,7 +3325,7 @@
             if ($(returnDateInput).data('datepicker')) {
                 $(returnDateInput).datepicker('destroy');
             }
-            
+
             // Get minimum date from pickup date
             const pickupDateInput = document.querySelector('#ride_now-form input[name="pickup_date"]');
             let startDate = new Date();
@@ -3263,7 +3333,7 @@
                 const parsed = parseDDMMYYYY(pickupDateInput.value);
                 if (parsed) startDate = parsed;
             }
-            
+
             $(returnDateInput).datepicker({
                 format: 'dd/mm/yyyy',
                 autoclose: true,
@@ -3272,10 +3342,10 @@
                 orientation: 'bottom auto',
                 container: 'body', // Append to body to avoid z-index issues
                 zIndexOffset: 9999
-            }).on('changeDate', function() {
+            }).on('changeDate', function () {
                 calculateReturnPricing();
             });
-            
+
             console.log('Return date picker initialized');
         }
     }
