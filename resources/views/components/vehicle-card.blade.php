@@ -438,9 +438,11 @@
             $hasExtraKmPrice = isset($distanceDetails['extra_km_price']) && $distanceDetails['extra_km_price'] > 0;
             $showDistanceDetails = $hasFreeKmPerDay || $hasFreeKmPerPackage || $hasAllowedKm || $hasExtraKmPrice;
 
-            // Check if we have journey duration
+            // Check if we have journey duration and the service supports time-based durations
             $journeyDurationSeconds = $distanceDetails['journey_duration_seconds'] ?? null;
-            $showDurationDetails = $journeyDurationSeconds && $journeyDurationSeconds > 0;
+            $servicePricingMode = $serviceType->pricing_mode ?? ($serviceType['pricing_mode'] ?? null);
+            $showDurationDetails =
+                $journeyDurationSeconds && $journeyDurationSeconds > 0 && $servicePricingMode !== 'day';
 
             // Define perDayKm from distance details
             $perDayKm = $distanceDetails['free_km_per_day'] ?? null;

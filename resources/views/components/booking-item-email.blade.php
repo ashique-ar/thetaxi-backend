@@ -194,45 +194,52 @@
 
     <table class="info-table" style="width: 100%; border-collapse: collapse; margin-top: 15px;">
         <tr>
-            <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; width: 30%;">
+            <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; width: 30%;">
                 Pickup Location
             </td>
-            <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; color: #555;">
+            <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
                 {{ $pickupAddress }}
             </td>
         </tr>
         <tr>
-            <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; width: 30%;">
+            <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; width: 30%;">
                 Dropoff Location
             </td>
-            <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; color: #555;">
+            <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
                 {{ $dropoffAddress }}
             </td>
         </tr>
         <tr>
-            <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; width: 30%;">
+            <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; width: 30%;">
                 Pickup Date & Time
             </td>
-            <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; color: #555;">
+            <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
                 {{ $fromDate }} at {{ $fromTime }}
             </td>
         </tr>
+        @if ($item->serviceType?->uses_dropoff_time ?? true)
+            <tr>
+                <td
+                    style="padding: 4px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; width: 30%;">
+                    Return Date & Time
+                </td>
+                <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
+                    {{ $toDate }} at {{ $toTime }}
+                </td>
+            </tr>
+        @endif
         <tr>
-            <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; width: 30%;">
-                Return Date & Time
-            </td>
-            <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; color: #555;">
-                {{ $toDate }} at {{ $toTime }}
-            </td>
-        </tr>
-        <tr>
-            <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; width: 30%;">
+            <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; width: 30%;">
                 Duration
             </td>
-            <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; color: #555;">
+            <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
                 {{-- Prefer showing journey duration when available (dynamic) for time-based services; fall back to days --}}
 
-                @if (!empty($journeyDurationReadable))
+                @php
+                    $servicePricingMode = $item->serviceType?->pricing_mode ?? null;
+                @endphp
+
+                @if (!empty($journeyDurationReadable) && $servicePricingMode !== 'day')
                     {{ $journeyDurationReadable }} estimated
                 @else
                     {{ $durationDays }} Day{{ $durationDays != 1 ? 's' : '' }}
@@ -240,10 +247,10 @@
             </td>
         </tr>
         <tr>
-            <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; width: 30%;">
+            <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; width: 30%;">
                 Rate per Day
             </td>
-            <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; color: #555;">
+            <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
                 {{ $currencySymbol }} {{ number_format($unitPrice, 2) }}
             </td>
         </tr>
@@ -284,19 +291,19 @@
         @if (!empty($oneWayPrice) || !empty($returnPrice))
             <tr>
                 <td
-                    style="padding: 8px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; width: 30%;">
+                    style="padding: 4px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; width: 30%;">
                     Outbound Trip
                 </td>
-                <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; color: #555;">
+                <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
                     {{ $currencySymbol }} {{ number_format((float) $oneWayPrice, 2) }}
                 </td>
             </tr>
             <tr>
                 <td
-                    style="padding: 8px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; width: 30%;">
+                    style="padding: 4px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; width: 30%;">
                     Return Trip
                 </td>
-                <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; color: #555;">
+                <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
                     {{ $currencySymbol }} {{ number_format((float) $returnPrice, 2) }}
                     @if (!empty($returnDiscountPct) && $returnDiscountPct > 0)
                         <small class="text-success" style="margin-left:8px;">({{ $returnDiscountPct }}% off)</small>
@@ -304,8 +311,8 @@
                 </td>
             </tr>
             <tr>
-                <td style="padding: 8px 0; font-weight: 700; color: #333; width: 30%;">Combined (Item Total)</td>
-                <td style="padding: 8px 0; color: #555; font-weight:700;">{{ $currencySymbol }}
+                <td style="padding: 4px 0; font-weight: 700; color: #333; width: 30%;">Combined (Item Total)</td>
+                <td style="padding: 4px 0; color: #555; font-weight:700;">{{ $currencySymbol }}
                     {{ number_format((float) $totalPrice, 2) }}</td>
             </tr>
         @endif
@@ -362,10 +369,10 @@
             @if ($minimumKmApplied && $minimumKm)
                 <tr>
                     <td
-                        style="padding: 8px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #92400e; background: #fef3c7;">
+                        style="padding: 4px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #92400e; background: #fef3c7;">
                         Minimum KM Charge
                     </td>
-                    <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; color: #92400e; background: #fef3c7;">
+                    <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #92400e; background: #fef3c7;">
                         <strong>{{ number_format($minimumKm, 0) }} km</strong>
                         <small style="color: #92400e;">(Actual distance: {{ number_format($actualJourneyDistance, 1) }}
                             km)</small>
@@ -373,10 +380,10 @@
                 </tr>
             @elseif($displayDistance)
                 <tr>
-                    <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333;">
+                    <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333;">
                         Estimated Distance (charged)
                     </td>
-                    <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; color: #555;">
+                    <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
                         <strong>{{ number_format($displayDistance, 1) }} km</strong>
                         @if ($journeyDurationReadable)
                             <small style="display:block;color:#777; margin-top:4px;">Duration:
@@ -388,9 +395,9 @@
 
             @if ($pickupDistance || $deliveryDistance)
                 <tr>
-                    <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333;">Pickup
+                    <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333;">Pickup
                         / Delivery KM</td>
-                    <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; color: #555;">
+                    <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
                         @if ($pickupDistance)
                             <div>Pickup distance: <strong>{{ number_format($pickupDistance, 1) }} km</strong></div>
                         @endif
@@ -400,19 +407,6 @@
                         @if ($totalDistance)
                             <div>Total billable distance: <strong>{{ number_format($totalDistance, 1) }} km</strong>
                             </div>
-                        @endif
-                    </td>
-                </tr>
-            @endif
-
-            @if ($effectiveDays || $calculationType)
-                <tr>
-                    <td>
-                        @if ($calculationType)
-                            <div><strong>Type:</strong> {{ ucfirst($calculationType) }}</div>
-                        @endif
-                        @if ($effectiveDays)
-                            <div><strong>Effective days:</strong> {{ $effectiveDays }}</div>
                         @endif
                     </td>
                 </tr>
@@ -448,10 +442,10 @@
 
             @if ($extraKilometers > 0)
                 <tr>
-                    <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333;">
+                    <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333;">
                         Extra Kilometers
                     </td>
-                    <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; color: #555;">
+                    <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
                         {{ number_format($extraKilometers) }} km
                         @if ($extraKmPrice > 0)
                             @ {{ $currencySymbol }}{{ number_format($extraKmPrice, 2) }}/km
@@ -482,10 +476,10 @@
         @if (!empty($addonsList))
             <tr>
                 <td
-                    style="padding: 8px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; vertical-align: top;">
+                    style="padding: 4px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; vertical-align: top;">
                     Selected Add-ons
                 </td>
-                <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; color: #555;">
+                <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
                     @foreach ($addonsList as $addon)
                         <div
                             style="margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center;">
@@ -510,10 +504,10 @@
 
         @if ($extraKilometers > 0)
             <tr>
-                <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333;">
+                <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333;">
                     Extra Kilometers
                 </td>
-                <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; color: #555;">
+                <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
                     {{ number_format($extraKilometers) }} km
                     @if ($extraKmRate > 0)
                         @ {{ $currencySymbol }}{{ number_format($extraKmRate, 2) }}/km
@@ -527,10 +521,10 @@
         @endif
 
         <tr>
-            <td style="padding: 8px 0; font-weight: 600; color: #333; width: 30%;">
+            <td style="padding: 4px 0; font-weight: 600; color: #333; width: 30%;">
                 Item Total
             </td>
-            <td style="padding: 8px 0; color: #555; font-weight: 600;">
+            <td style="padding: 4px 0; color: #555; font-weight: 600;">
                 {{ $currencySymbol }} {{ number_format($totalPrice, 2) }}
             </td>
         </tr>

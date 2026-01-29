@@ -31,7 +31,7 @@ use App\Traits\UUID;
  */
 class ServiceType extends BaseModel
 {
-    
+
 
     /**
      * The attributes that are mass assignable.
@@ -45,6 +45,10 @@ class ServiceType extends BaseModel
         'type', // self_drive or with_driver
         'slug',
         'thumbnail',
+        'pricing_mode',
+        'uses_dropoff_time',
+        'allow_return_trip',
+        'frontend_category',
         'priority',
         'minimum_km',
         'is_internal',
@@ -62,6 +66,10 @@ class ServiceType extends BaseModel
         'is_internal' => 'boolean',
         'priority' => 'integer',
         'minimum_km' => 'decimal:2',
+        'uses_dropoff_time' => 'boolean',
+        'allow_return_trip' => 'boolean',
+        'pricing_mode' => 'string',
+        'frontend_category' => 'string',
     ];
 
     // Relations

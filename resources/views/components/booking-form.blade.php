@@ -190,6 +190,17 @@
         $oldValue = old($field);
         return $oldValue !== null ? $oldValue : $value;
     };
+
+    // Load service type model and flags to drive form behavior
+    try {
+        $serviceTypeModel = \App\Models\Service\ServiceType::where('code', $currentServiceType)->first();
+    } catch (Exception $e) {
+        $serviceTypeModel = null;
+    }
+
+    $usesDropoffTime = $serviceTypeModel?->uses_dropoff_time ?? true;
+    $allowReturnTrip = $serviceTypeModel?->allow_return_trip ?? false;
+    $pricingMode = $serviceTypeModel?->pricing_mode ?? 'day';
 @endphp
 
 <div class="filter-wrapper">
@@ -590,98 +601,104 @@
                 </div>
             </div> --}}
 
-            <!-- Return Trip Toggle -->
-            @php
-                $isReturnTrip = old('is_return_trip', $getSearchProp('is_return_trip', false));
-                $returnDate = old('return_date', $getSearchProp('return_date'));
-                $returnTime = old('return_time', $getSearchProp('return_time', '12:00'));
-                // Format return date to DD/MM/YYYY if it's in Y-m-d format
+            @if ($allowReturnTrip || $pricingMode === 'day')
+                <!-- Return Trip Toggle -->
+                @php
+                    $isReturnTrip = old('is_return_trip', $getSearchProp('is_return_trip', false));
+                    $returnDate = old('return_date', $getSearchProp('return_date'));
+                    $returnTime = old('return_time', $getSearchProp('return_time', '12:00'));
+                    // Format return date to DD/MM/YYYY if it's in Y-m-d format
 if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
     $returnDate = date('d/m/Y', strtotime($returnDate));
 } elseif (!$returnDate) {
     $returnDate = date('d/m/Y'); // Default to today
-                }
-            @endphp
-            <div class="return-trip-section " id="ride_now-return-trip-section">
-                <div class="return-trip-toggle">
-                    <label class="return-trip-checkbox-label">
-                        <input type="checkbox" name="is_return_trip" id="ride_now-return-toggle" value="1"
-                            {{ $isReturnTrip ? 'checked' : '' }}>
-                        <span class="return-trip-text">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                    }
+                @endphp
+                <div class="return-trip-section " id="ride_now-return-trip-section">
+                    <div class="return-trip-toggle">
+                        <label class="return-trip-checkbox-label">
+                            <input type="checkbox" name="is_return_trip" id="ride_now-return-toggle" value="1"
+                                {{ $isReturnTrip ? 'checked' : '' }}>
+                            <span class="return-trip-text">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                    xmlns="http://www.w3.org/2000/svg">
+                                    <path
+                                        d="M7.5 21L3 16.5M3 16.5L7.5 12M3 16.5H16.5C18.9853 16.5 21 14.4853 21 12C21 9.51472 18.9853 7.5 16.5 7.5H15"
+                                        stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                        stroke-linejoin="round" />
+                                </svg>
+                                Add Return Trip
+                            </span>
+                        </label>
+                    </div>
+
+                    <!-- Return Trip Details (shown if return trip enabled) -->
+                    <div class="return-trip-details" id="ride_now-return-details"
+                        style="display: {{ $isReturnTrip ? 'grid' : 'none' }};">
+                        <!-- Return Route Summary -->
+                        <div class="return-route-summary">
+                            <div class="route-badge">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                    xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M9 5L16 12L9 19" stroke="currentColor" stroke-width="2"
+                                        stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                                <span class="route-text">
+                                    <strong>Return:</strong>
+                                    <span
+                                        id="return-dropoff-location">{{ $rideNowDropoff['address'] ?? 'Drop-off' }}</span>
+                                    →
+                                    <span
+                                        id="return-pickup-location">{{ $rideNowPickup['address'] ?? 'Pickup' }}</span>
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Return Date -->
+                        <div class="single-search-box date-field">
+                            <label class="input-label">Return Date</label>
+                            <svg width="18" height="18" viewBox="0 0 18 18"
                                 xmlns="http://www.w3.org/2000/svg">
                                 <path
-                                    d="M7.5 21L3 16.5M3 16.5L7.5 12M3 16.5H16.5C18.9853 16.5 21 14.4853 21 12C21 9.51472 18.9853 7.5 16.5 7.5H15"
-                                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                    stroke-linejoin="round" />
+                                    d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z" />
                             </svg>
-                            Add Return Trip
-                        </span>
-                    </label>
-                </div>
+                            <input type="text" name="return_date" id="ride_now-return-date"
+                                placeholder="DD/MM/YYYY"
+                                class="custom-datepicker @error('return_date') is-invalid @enderror"
+                                value="{{ $returnDate }}" autocomplete="off">
+                            @error('return_date')
+                                <span class="text-danger small">{{ $message }}</span>
+                            @enderror
+                        </div>
 
-                <!-- Return Trip Details (shown if return trip enabled) -->
-                <div class="return-trip-details" id="ride_now-return-details"
-                    style="display: {{ $isReturnTrip ? 'grid' : 'none' }};">
-                    <!-- Return Route Summary -->
-                    <div class="return-route-summary">
-                        <div class="route-badge">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                        <!-- Return Time -->
+                        <div class="single-search-box">
+                            <label class="input-label">Return Time</label>
+                            <svg width="18" height="18" viewBox="0 0 18 18"
                                 xmlns="http://www.w3.org/2000/svg">
-                                <path d="M9 5L16 12L9 19" stroke="currentColor" stroke-width="2"
-                                    stroke-linecap="round" stroke-linejoin="round" />
+                                <path
+                                    d="M9 0C4.03 0 0 4.03 0 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm.5-12H8v5l4.25 2.52.75-1.23-3.5-2.08V4z" />
                             </svg>
-                            <span class="route-text">
-                                <strong>Return:</strong>
-                                <span
-                                    id="return-dropoff-location">{{ $rideNowDropoff['address'] ?? 'Drop-off' }}</span>
-                                →
-                                <span id="return-pickup-location">{{ $rideNowPickup['address'] ?? 'Pickup' }}</span>
-                            </span>
+                            <div class="custom-select-dropdown">
+                                <input type="time" name="return_time" id="ride_now-return-time"
+                                    value="{{ $returnTime }}" class="@error('return_time') is-invalid @enderror">
+                            </div>
+                            @error('return_time')
+                                <span class="text-danger small">{{ $message }}</span>
+                            @enderror
                         </div>
-                    </div>
 
-                    <!-- Return Date -->
-                    <div class="single-search-box date-field">
-                        <label class="input-label">Return Date</label>
-                        <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                            <path
-                                d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z" />
-                        </svg>
-                        <input type="text" name="return_date" id="ride_now-return-date" placeholder="DD/MM/YYYY"
-                            class="custom-datepicker @error('return_date') is-invalid @enderror"
-                            value="{{ $returnDate }}" autocomplete="off">
-                        @error('return_date')
-                            <span class="text-danger small">{{ $message }}</span>
-                        @enderror
-                    </div>
-
-                    <!-- Return Time -->
-                    <div class="single-search-box">
-                        <label class="input-label">Return Time</label>
-                        <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                            <path
-                                d="M9 0C4.03 0 0 4.03 0 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm.5-12H8v5l4.25 2.52.75-1.23-3.5-2.08V4z" />
-                        </svg>
-                        <div class="custom-select-dropdown">
-                            <input type="time" name="return_time" id="ride_now-return-time"
-                                value="{{ $returnTime }}" class="@error('return_time') is-invalid @enderror">
-                        </div>
-                        @error('return_time')
-                            <span class="text-danger small">{{ $message }}</span>
-                        @enderror
-                    </div>
-
-                    <!-- Return Pricing Info -->
-                    <div class="return-pricing-info" id="ride_now-return-pricing-info"
-                        style="display: {{ $isReturnTrip ? 'block' : 'none' }};">
-                        <div class="text-success">
-                            <span class="" id="ride_now-return-discount-label">Same Day Return</span>
-                            <span class="fw-bold" id="ride_now-return-discount-value">50% off return</span>
+                        <!-- Return Pricing Info -->
+                        <div class="return-pricing-info" id="ride_now-return-pricing-info"
+                            style="display: {{ $isReturnTrip ? 'block' : 'none' }};">
+                            <div class="text-success">
+                                <span class="" id="ride_now-return-discount-label">Same Day Return</span>
+                                <span class="fw-bold" id="ride_now-return-discount-value">50% off return</span>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
+            @endif
 
             <button type="submit" class="primary-btn1">
                 <span>Search For Vehicles</span>
@@ -805,21 +822,23 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
             </div>
 
             <!-- Drop Off Time -->
-            <div class="single-search-box">
-                <label class="input-label">Return Time</label>
-                <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                    <path
-                        d="M9 0C4.03 0 0 4.03 0 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm.5-12H8v5l4.25 2.52.75-1.23-3.5-2.08V4z" />
-                </svg>
-                <div class="custom-select-dropdown">
-                    <input type="time" name="dropoff_time"
-                        value="{{ old('dropoff_time', $dayRentalDropoffTime ?? '12:00') }}"
-                        class="@error('dropoff_time') is-invalid @enderror" required>
+            @if ($usesDropoffTime)
+                <div class="single-search-box">
+                    <label class="input-label">Return Time</label>
+                    <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+                        <path
+                            d="M9 0C4.03 0 0 4.03 0 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm.5-12H8v5l4.25 2.52.75-1.23-3.5-2.08V4z" />
+                    </svg>
+                    <div class="custom-select-dropdown">
+                        <input type="time" name="dropoff_time"
+                            value="{{ old('dropoff_time', $dayRentalDropoffTime ?? '12:00') }}"
+                            class="@error('dropoff_time') is-invalid @enderror" required>
+                    </div>
+                    @error('dropoff_time')
+                        <span class="text-danger small">{{ $message }}</span>
+                    @enderror
                 </div>
-                @error('dropoff_time')
-                    <span class="text-danger small">{{ $message }}</span>
-                @enderror
-            </div>
+            @endif
 
             <div class="package-selector" id="day_rental-packages" style="display: none;"
                 data-selected="{{ old('package_id', $getSearchProp('service_package_id', '')) }}">
@@ -1376,7 +1395,7 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
     /* Airport select dropdown styles */
     .airport-select {
         width: 100%;
-        padding: 12px 15px;
+        padding: 5px;
         border: 1px solid #e1e5e9;
         border-radius: 6px;
         background-color: #fff;
@@ -1384,10 +1403,6 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
         font-family: inherit;
         color: #333;
         appearance: none;
-        background-image: url('data:image/svg+xml;charset=US-ASCII,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 5"><path fill="%23666" d="M2 0L0 2h4zm0 5L0 3h4z"/></svg>');
-        background-repeat: no-repeat;
-        background-position: right 12px center;
-        background-size: 12px;
         transition: border-color 0.3s ease;
     }
 

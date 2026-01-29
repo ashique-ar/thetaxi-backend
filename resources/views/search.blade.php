@@ -27,7 +27,7 @@
     <!-- End Booking Form Section -->
 
     <!-- Vehicle Results Section -->
-    <div class="package-standard-wrapper pt-5 mb-110">
+    <div class="package-standard-wrapper">
         <div class="container">
             <!-- Search Summary & Duration Display -->
             <div class="row mb-4">

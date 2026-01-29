@@ -76,7 +76,7 @@
 
 
     <!-- Email-style Success Page -->
-    <div class="checkout-success pt-100 mb-100">
+    <div class="checkout-success py-5">
         <div class="container">
             <div class="row justify-content-center">
                 <div class="col-lg-10 card p-4">
@@ -545,7 +545,7 @@
         .greeting {
             font-size: 16px;
             color: #333333;
-            margin-bottom: 20px;
+            margin-bottom: 0;
             line-height: 1.6;
         }
 
@@ -566,7 +566,7 @@
             border: 1px solid rgba(191, 38, 41, 0.15);
             border-left: 4px solid #BF2629;
             border-radius: 8px;
-            padding: 20px 24px;
+            padding: 10px 15px;
             margin: 25px 0;
         }
 
@@ -575,7 +575,7 @@
             color: #717171;
             text-transform: uppercase;
             letter-spacing: 1px;
-            margin-bottom: 8px;
+            margin-bottom: 0;
         }
 
         .reference-number {
@@ -620,7 +620,7 @@
         }
 
         .info-table td {
-            padding: 12px 0;
+            padding: 2px 0;
             font-size: 14px;
             vertical-align: top;
         }

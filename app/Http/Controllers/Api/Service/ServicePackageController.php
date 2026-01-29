@@ -8,6 +8,7 @@ use App\Models\Service\ServicePackageReturnRule;
 use App\Models\Service\ServiceType;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use App\Services\DynamicServiceConfigurationService;
 
 class ServicePackageController extends Controller
 {
@@ -56,6 +57,9 @@ class ServicePackageController extends Controller
                     ];
                 });
 
+            $dynamicService = new DynamicServiceConfigurationService();
+            $formConfig = $dynamicService->getServiceFormConfiguration($serviceType->code);
+
             return response()->json([
                 'status' => 'success',
                 'data' => [
@@ -63,8 +67,15 @@ class ServicePackageController extends Controller
                         'id' => $serviceType->id,
                         'code' => $serviceType->code,
                         'name' => $serviceType->name,
+                        'pricing_mode' => $serviceType->pricing_mode,
+                        'uses_dropoff_time' => (bool) $serviceType->uses_dropoff_time,
+                        'allow_return_trip' => (bool) $serviceType->allow_return_trip,
+                        'frontend_category' => $serviceType->frontend_category,
                     ],
                     'packages' => $packages,
+                    'configuration' => [
+                        'form' => $formConfig,
+                    ],
                 ],
             ]);
 

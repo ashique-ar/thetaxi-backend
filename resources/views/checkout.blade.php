@@ -91,7 +91,7 @@
     @endphp
 
     <!-- Checkout Page Start-->
-    <div class="checkout-page pt-100 mb-100">
+    <div class="checkout-page">
         <div class="container">
             @if (empty($cart))
                 <div class="alert alert-warning text-center">
@@ -1506,7 +1506,7 @@
         }
 
         .form-section-divider {
-            padding: 20px 0 15px 0;
+            padding: 20px 0 0 0;
             border-top: 2px solid #eee;
             margin-bottom: 15px;
         }

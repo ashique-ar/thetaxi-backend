@@ -51,9 +51,21 @@
                 </div>
             </div>
             <div class="col-md-5 text-md-end">
-                <span class="badge bg-white text-dark border">
-                    {{ $durationDays }} Days
-                </span>
+                @php
+                    $servicePricingMode = $item->serviceType?->pricing_mode ?? null;
+                    $itemJourneyDuration = $item->journey_duration_seconds ?? null;
+                @endphp
+                @if ($itemJourneyDuration && $servicePricingMode !== 'day')
+                    @php
+                        $hours = floor($itemJourneyDuration / 3600);
+                        $minutes = floor(($itemJourneyDuration % 3600) / 60);
+                        $readable = trim(($hours > 0 ? "{$hours}h" : '') . ($minutes > 0 ? " {$minutes}m" : ''));
+                    @endphp
+                    <span class="badge bg-white text-dark border">{{ $readable }} estimated</span>
+                @else
+                    <span class="badge bg-white text-dark border">{{ $durationDays }}
+                        Day{{ $durationDays != 1 ? 's' : '' }}</span>
+                @endif
             </div>
         </div>
 
@@ -109,9 +121,21 @@
                 </div>
             </div>
             <div class="col-md-4 text-md-end">
-                <span class="badge bg-light text-dark border">
-                    {{ $durationDays }} Days
-                </span>
+                @php
+                    $servicePricingMode = $item->serviceType?->pricing_mode ?? null;
+                    $itemJourneyDuration = $item->journey_duration_seconds ?? null;
+                @endphp
+                @if ($itemJourneyDuration && $servicePricingMode !== 'day')
+                    @php
+                        $hours = floor($itemJourneyDuration / 3600);
+                        $minutes = floor(($itemJourneyDuration % 3600) / 60);
+                        $readable = trim(($hours > 0 ? "{$hours}h" : '') . ($minutes > 0 ? " {$minutes}m" : ''));
+                    @endphp
+                    <span class="badge bg-white text-dark border">{{ $readable }} estimated</span>
+                @else
+                    <span class="badge bg-white text-dark border">{{ $durationDays }}
+                        Day{{ $durationDays != 1 ? 's' : '' }}</span>
+                @endif
             </div>
         </div>
 
@@ -147,7 +171,11 @@
                             {{ $dropoffAddress }}
                         </div>
                         <div class="small text-muted">
-                            {{ $toDate }} at {{ $toTime }}
+                            @if ($item->serviceType?->uses_dropoff_time ?? true)
+                                {{ $toDate }} at {{ $toTime }}
+                            @else
+                                {{ $toDate }}
+                            @endif
                         </div>
                     </div>
                 </div>

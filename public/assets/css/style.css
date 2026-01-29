@@ -1929,7 +1929,7 @@ body.tt-magic-cursor #magic-cursor {
   font-size: 16px;
   font-weight: 500;
   padding: 10px 20px;
-  height: 56px;
+  height: 40px;
   border: 1px solid var(--borders-color);
   border-radius: 10px;
 }
@@ -1938,7 +1938,7 @@ body.tt-magic-cursor #magic-cursor {
   .form-inner input {
     font-size: 15px;
     border-radius: 5px;
-    height: 52px;
+    height: 40px;
   }
 }
 
@@ -37306,7 +37306,7 @@ header.style-3.two .main-menu>ul>li.active>a i {
 }
 
 .cart-page .cart-order-sum-area .order-summary-wrap {
-  padding: 40px 30px;
+  padding: 10px 15px;
   border: 1px solid var(--borders-color);
   border-radius: 10px;
 }
@@ -37334,7 +37334,7 @@ header.style-3.two .main-menu>ul>li.active>a i {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  margin-bottom: 30px;
+  margin-bottom: 15px;
   line-height: 1;
   color: var(--title-color);
   font-family: var(--font-roboto);
@@ -37523,30 +37523,30 @@ header.style-3.two .main-menu>ul>li.active>a i {
 
 .checkout-page .order-sum-area {
   border: 1px solid var(--borders-color);
-  padding: 45px 40px;
+  padding: 15px 15px;
 }
 
 @media (max-width: 1399px) {
   .checkout-page .order-sum-area {
-    padding: 35px 30px;
+    padding: 15px 15px;
   }
 }
 
 @media (min-width: 992px) and (max-width: 1199px) {
   .checkout-page .order-sum-area {
-    padding: 30px 20px;
+    padding: 15px 15px;
   }
 }
 
 @media (max-width: 767px) {
   .checkout-page .order-sum-area {
-    padding: 30px 20px;
+    padding: 15px 15px;
   }
 }
 
 @media (max-width: 576px) {
   .checkout-page .order-sum-area {
-    padding: 25px 15px;
+    padding: 15px 15px;
   }
 }
 
@@ -37554,7 +37554,7 @@ header.style-3.two .main-menu>ul>li.active>a i {
   padding: 0;
   margin: 0;
   list-style: none;
-  margin-bottom: 50px;
+  margin-bottom: 10px;
 }
 
 .checkout-page .order-sum-area .cart-body ul .single-item {
@@ -37624,9 +37624,8 @@ header.style-3.two .main-menu>ul>li.active>a i {
 }
 
 .checkout-page .order-sum-area .cart-body ul .single-item .item-area .main-item .item-img img {
-  height: 80px;
-  max-width: 77px;
-  min-width: 77px;
+  height: 75px;
+  width: auto;
 }
 
 @media (max-width: 767px) {
