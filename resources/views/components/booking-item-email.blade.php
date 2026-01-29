@@ -25,17 +25,7 @@
 
     // Get vehicle group images
     $vehicleGroupImages = $item->vehicleGroup?->images ?? [];
-    $vehicleGroupThumbnail = $item->vehicleGroup?->thumbnail ?? null;
-    $defaultImage = $vehicleGroupThumbnail
-        ? (is_array($vehicleGroupThumbnail)
-            ? $vehicleGroupThumbnail[0] ?? null
-            : $vehicleGroupThumbnail)
-        : null;
-    if (!$defaultImage && !empty($vehicleGroupImages)) {
-        $defaultImage = is_array($vehicleGroupImages[0])
-            ? $vehicleGroupImages[0]['url'] ?? ($vehicleGroupImages[0]['path'] ?? null)
-            : $vehicleGroupImages[0];
-    }
+    $defaultImage = $item->vehicleGroup?->thumbnail ?? null;
 
     // Get addon data - check multiple sources
     $itemAddons = $item->addons ?? [];
