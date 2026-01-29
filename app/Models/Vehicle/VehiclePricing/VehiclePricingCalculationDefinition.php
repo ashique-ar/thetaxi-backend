@@ -1002,7 +1002,7 @@ class VehiclePricingCalculationDefinition extends Model
         if ($vehicleGroupId && $totalDistance > 0) {
             $kmRangeResult = KmRangePricingRule::calculateBestPricing(
                 $totalDistance,
-                0,
+                $baseAmount,
                 $this->service_type_id,
                 $vehicleGroupId
             );
