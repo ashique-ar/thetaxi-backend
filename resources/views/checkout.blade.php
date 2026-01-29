@@ -263,81 +263,71 @@
                                             </div>
                                         </div>
 
-                                        <!-- Dynamic Terms and Conditions grouped by service type -->
-                                        @if (!empty($termsByService))
+                                        @php
+                                            // Build a deduplicated map of applicable terms with metadata
+                                            $uniqueTerms = [];
+
+                                            // Terms grouped by service
+                                            foreach ($termsByService as $service => $terms) {
+                                                foreach ($terms as $tc) {
+                                                    if (!isset($uniqueTerms[$tc->id])) {
+                                                        $uniqueTerms[$tc->id] = [
+                                                            'term' => $tc,
+                                                            'services' => [],
+                                                            'payment_types' => []
+                                                        ];
+                                                    }
+                                                    $uniqueTerms[$tc->id]['services'][] = ucfirst(str_replace('_', ' ', $service));
+                                                }
+                                            }
+
+                                            // Merge payment-type terms, record which payment types each term applies to
+                                            foreach ($termsByPaymentType as $ptype => $terms) {
+                                                foreach ($terms as $tc) {
+                                                    if (!isset($uniqueTerms[$tc->id])) {
+                                                        $uniqueTerms[$tc->id] = [
+                                                            'term' => $tc,
+                                                            'services' => [],
+                                                            'payment_types' => []
+                                                        ];
+                                                    }
+                                                    $uniqueTerms[$tc->id]['payment_types'][] = $ptype;
+                                                }
+                                            }
+
+                                            // Convert service and payment type arrays to unique lists
+                                            foreach ($uniqueTerms as $id => $meta) {
+                                                $uniqueTerms[$id]['services'] = array_values(array_unique($meta['services']));
+                                                $uniqueTerms[$id]['payment_types'] = array_values(array_unique($meta['payment_types']));
+                                            }
+                                        @endphp
+
+                                        @if (!empty($uniqueTerms))
                                             <div class="col-md-12">
                                                 <div class="terms-conditions-section">
-                                                    <h6>Service Terms & Conditions</h6>
+                                                    <h6>Applicable Terms & Conditions</h6>
                                                     <div class="terms-content">
-                                                        @foreach ($termsByService as $service => $terms)
-                                                            <div class="terms-group mb-4">
-                                                                <h6 class="service-heading mb-2">
-                                                                    {{ ucfirst(str_replace('_', ' ', $service)) }}</h6>
-                                                                @foreach ($terms as $tc)
-                                                                    <div class="term-item mb-3">
-                                                                        <div class="form-check">
-                                                                            <input class="form-check-input"
-                                                                                type="checkbox"
-                                                                                name="terms_accepted[{{ $tc->id }}]"
-                                                                                value="{{ $tc->version }}"
-                                                                                id="tc_{{ $tc->id }}"
-                                                                                {{ old('terms_accepted.' . $tc->id) ? 'checked' : '' }}>
-                                                                            <label class="form-check-label"
-                                                                                for="tc_{{ $tc->id }}">
-                                                                                <strong>{{ $tc->title }}</strong>
-                                                                            </label>
-                                                                        </div>
-                                                                        <div class="term-body mt-2">
-                                                                            {!! $tc->content !!}
-                                                                        </div>
-                                                                    </div>
-                                                                @endforeach
-                                                            </div>
-                                                        @endforeach
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        @endif
-
-                                        <!-- Payment Type Terms -->
-                                        @if (!empty($termsByPaymentType))
-                                            @php
-                                                $paymentTypeLabels = [
-                                                    'full' => 'Full Payment',
-                                                    'advance' => 'Advance Payment',
-                                                    'checkin' => 'Pay on Check-in',
-                                                    'quotation' => 'Quotation Request',
-                                                ];
-                                            @endphp
-                                            <div class="col-md-12">
-                                                <div class="terms-conditions-section payment-terms-section">
-                                                    <h6>Payment Terms & Conditions</h6>
-                                                    <div class="terms-content">
-                                                        @foreach ($termsByPaymentType as $type => $terms)
-                                                            <div class="terms-group mb-4 payment-terms-group"
-                                                                data-payment-type="{{ $type }}"
-                                                                style="{{ $paymentType === $type ? '' : 'display:none;' }}">
-                                                                <h6 class="service-heading mb-2">
-                                                                    {{ $paymentTypeLabels[$type] ?? ucfirst($type) }}</h6>
-                                                                @foreach ($terms as $tc)
-                                                                    <div class="term-item mb-3">
-                                                                        <div class="form-check">
-                                                                            <input class="form-check-input"
-                                                                                type="checkbox"
-                                                                                name="terms_accepted[{{ $tc->id }}]"
-                                                                                value="{{ $tc->version }}"
-                                                                                id="tc_{{ $tc->id }}"
-                                                                                {{ old('terms_accepted.' . $tc->id) ? 'checked' : '' }}>
-                                                                            <label class="form-check-label"
-                                                                                for="tc_{{ $tc->id }}">
-                                                                                <strong>{{ $tc->title }}</strong>
-                                                                            </label>
-                                                                        </div>
-                                                                        <div class="term-body mt-2">
-                                                                            {!! $tc->content !!}
-                                                                        </div>
-                                                                    </div>
-                                                                @endforeach
+                                                        @foreach ($uniqueTerms as $meta)
+                                                            @php $tc = $meta['term']; $services = $meta['services']; $pTypes = $meta['payment_types']; @endphp
+                                                            <div class="term-item mb-3" data-payment-types="{{ implode(',', $pTypes) }}">
+                                                                <div class="form-check">
+                                                                    <input class="form-check-input" type="checkbox"
+                                                                        name="terms_accepted[{{ $tc->id }}]"
+                                                                        value="{{ $tc->version }}" id="tc_{{ $tc->id }}"
+                                                                        {{ old('terms_accepted.' . $tc->id) ? 'checked' : '' }}>
+                                                                    <label class="form-check-label" for="tc_{{ $tc->id }}">
+                                                                        <strong>{{ $tc->title }}</strong>
+                                                                        @if (!empty($services))
+                                                                            <small class="text-muted"> — Applies to: {{ implode(', ', $services) }}</small>
+                                                                        @endif
+                                                                        @if (!empty($pTypes))
+                                                                            <small class="text-muted"> <em>(Payment-specific: {{ implode(', ', $pTypes) }})</em></small>
+                                                                        @endif
+                                                                    </label>
+                                                                </div>
+                                                                <div class="term-body mt-2">
+                                                                    {!! $tc->content !!}
+                                                                </div>
                                                             </div>
                                                         @endforeach
                                                     </div>
@@ -1677,14 +1667,35 @@
             });
 
             function updatePaymentTerms(type) {
-                if (!paymentTermsGroups.length) {
+                if (!paymentTermsGroups.length && $('[data-payment-types]').length === 0) {
                     return;
                 }
-                paymentTermsGroups.hide();
-                const match = paymentTermsGroups.filter(`[data-payment-type="${type}"]`);
-                if (match.length) {
-                    match.show();
+
+                // Hide/Show legacy payment-specific groups
+                if (paymentTermsGroups.length) {
+                    paymentTermsGroups.hide();
+                    const match = paymentTermsGroups.filter(`[data-payment-type="${type}"]`);
+                    if (match.length) {
+                        match.show();
+                    }
                 }
+
+                // Additionally, show/hide individual term items that declare payment-type applicability
+                $('[data-payment-types]').each(function() {
+                    const $el = $(this);
+                    const allowed = ($el.data('paymentTypes') || '').toString();
+                    if (!allowed || allowed === '') {
+                        // No payment-type restriction; always visible
+                        $el.show();
+                        return;
+                    }
+                    const list = allowed.split(',').map(x => x.trim()).filter(Boolean);
+                    if (list.indexOf(type) !== -1) {
+                        $el.show();
+                    } else {
+                        $el.hide();
+                    }
+                });
             }
 
             // Payment type selection handling
