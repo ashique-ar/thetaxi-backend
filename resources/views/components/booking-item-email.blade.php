@@ -131,6 +131,25 @@
 
     // Get service package info from metadata
     $servicePackageInfo = $item->metadata['service_package_info'] ?? null;
+
+    // Determine service code (robust for arrays or objects), prefer explicit service_type field or relation code
+    $serviceCode = null;
+    if (is_object($item)) {
+        $serviceCode = $item->serviceType?->code ?? ($item->service_type ?? null);
+    } elseif (is_array($item)) {
+        $serviceCode = $item['service_type'] ?? null;
+    }
+    if (empty($serviceCode)) {
+        $serviceCode = strtolower(str_replace(' ', '_', $serviceTypeName ?? ''));
+    }
+
+    $journeyDurationSeconds = $distanceDetails['journey_duration_seconds'] ?? $distanceDetails['total_duration_seconds'] ?? ($item->journey_duration_seconds ?? ($item['journey_duration_seconds'] ?? null)) ?? ($item->total_duration_seconds ?? ($item['total_duration_seconds'] ?? null)) ?? null;
+    $journeyDurationReadable = null;
+    if ($journeyDurationSeconds && is_numeric($journeyDurationSeconds)) {
+        $hours = floor($journeyDurationSeconds / 3600);
+        $minutes = floor(($journeyDurationSeconds % 3600) / 60);
+        $journeyDurationReadable = trim((($hours > 0) ? "{$hours}h" : '') . (($minutes > 0) ? " {$minutes}m" : ''));
+    }
 @endphp
 
 <!-- Email Booking Item Card -->
@@ -193,7 +212,13 @@
                 Duration
             </td>
             <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; color: #555;">
-                {{ $durationDays }} Days
+                {{-- Prefer showing journey duration when available (dynamic) for time-based services; fall back to days --}}
+
+                @if (!empty($journeyDurationReadable))
+                    {{ $journeyDurationReadable }} estimated
+                @else
+                    {{ $durationDays }} Day{{ $durationDays != 1 ? 's' : '' }}
+                @endif
             </td>
         </tr>
         <tr>
@@ -364,7 +389,6 @@
 
             @if ($effectiveDays || $calculationType)
                 <tr>
-                    <td>Calculation</td>
                     <td>
                         @if ($calculationType)
                             <div><strong>Type:</strong> {{ ucfirst($calculationType) }}</div>
