@@ -245,7 +245,12 @@
                 @if ($servicePricingMode !== 'day')
                     @if (!empty($displayDistance))
                         <strong>{{ number_format($displayDistance, 1) }} km</strong>
-                        @if (!empty($journeyDurationReadable))
+
+                        {{-- Prefer exact HH:MM if duration seconds are saved (align with search page) --}}
+                        @if (!empty($journeyDurationSeconds) && is_numeric($journeyDurationSeconds) && (int) $journeyDurationSeconds > 0)
+                            <div style="color:#777; font-size:12px; margin-top:4px;">Duration:
+                                {{ gmdate('H:i', (int) $journeyDurationSeconds) }} estimated</div>
+                        @elseif (!empty($journeyDurationReadable))
                             <div style="color:#777; font-size:12px; margin-top:4px;">Duration:
                                 {{ $journeyDurationReadable }}</div>
                         @endif
