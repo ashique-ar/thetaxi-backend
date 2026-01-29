@@ -2349,6 +2349,13 @@ class BookingFlowService
             // Prepare calculation inputs
             $calculationInputs = $this->prepareCalculationInputs($params);
 
+            // Ensure journey duration seconds flow through to distance_details
+            // (used later for email/cart displays)
+            if (!isset($params['duration_seconds'])) {
+                $params['duration_seconds'] =
+                    $params['journey_duration_seconds'] ?? ($calculationInputs['journey_duration_seconds'] ?? null);
+            }
+
             // Resolve Service Package information
             $servicePackageInfo = $this->getServicePackageInformation($calculationInputs);
 

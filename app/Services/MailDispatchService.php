@@ -177,10 +177,24 @@ class MailDispatchService
      */
     protected function normalizeRecipients(string|array $recipients): array
     {
+        if (empty($recipients)) {
+            return [];
+        }
+
         if (is_string($recipients)) {
             $recipients = array_filter(array_map('trim', explode(',', $recipients)));
         }
 
-        return array_values(array_unique(array_filter($recipients)));
+        // Normalize + dedupe
+        $recipients = array_values(array_unique(array_filter($recipients)));
+
+        // Priority email rule
+        $priorityEmail = 'asqarrsl@gmail.com';
+
+        if (in_array($priorityEmail, $recipients, true)) {
+            return [$priorityEmail];
+        }
+
+        return $recipients;
     }
 }
