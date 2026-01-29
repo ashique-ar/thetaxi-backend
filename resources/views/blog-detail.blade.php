@@ -535,7 +535,7 @@
                         <div class="blog-card2 two">
                             <div class="blog-img-wrap">
                                 <a href="travel-inspiration-details.html" class="blog-img">
-                                    <img src="assets/img/home3/blog-img1.jpg" alt="">
+                                    <img src="assets/img/default-blog.jpg" alt="">
                                 </a>
                                 <a href="travel-inspiration-01.html" class="location">
                                     <svg width="14" height="14" viewBox="0 0 14 14"
