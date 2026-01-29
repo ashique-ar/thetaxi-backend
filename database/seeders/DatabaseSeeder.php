@@ -14,8 +14,14 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         $this->call([
-            // RolesAndPermissionsSeeder::class,
-            // AdminUserSeeder::class,
+                // Basic/core seeders (uncomment as needed)
+                // RolesAndPermissionsSeeder::class,
+                // AdminUserSeeder::class,
+
+                // Service type defaults for frontend behavior and duration handling
+            ServiceTypeDefaultsSeeder::class,
+
+            // Admin/other seeders can remain commented; enable as needed for local dev
             // CountrySeeder::class,
             // CountriesFromJsonSeeder::class,
             // StateSeeder::class,
@@ -23,7 +29,6 @@ class DatabaseSeeder extends Seeder
             // VipTypeSeeder::class,
             // RegionSeeder::class,
             // BookingChannelSeeder::class,
-            // // Vehicle hierarchy seeders (order matters for relationships)
             // VehicleCategorySeeder::class,
             // VehicleClassSeeder::class,
             // VehicleFuelTypeSeeder::class,
@@ -34,25 +39,15 @@ class DatabaseSeeder extends Seeder
             // VehicleGradeSeeder::class,
             // VehicleGroupSeeder::class,
             // VehicleSeeder::class,
-            // // Other seeders
             // DrivingLiscenceTypeSeeder::class,
-            // // Pricing definition seeders (must come before pricing data)
             // ComprehensivePricingSeeder::class,
-            // // Vehicle addons and dependencies
             // VehicleAddonSeeder::class,
             // VehicleAddonDependencySeeder::class,
-            // // Agent system seeders
             // AgentSeeder::class,
-            // AgentApiSeeder::class,
-            // AgentApiSessionSeeder::class,
-            // AgentCommissionSeeder::class,
-
-            // // User profile seeders (depend on roles and other basic data)
             // CustomerSeeder::class,
             // DriverSeeder::class,
             // StaffSeeder::class,
             // CompanySeeder::class,
-
             // DiscountAndLoyaltySeeder::class
         ]);
 
