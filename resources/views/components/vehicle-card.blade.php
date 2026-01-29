@@ -496,7 +496,7 @@
         @endif
 
         <!-- Action Buttons -->
-        <div class="vehicle-actions mt-3">
+        <div class="vehicle-actions mt-1">
             @if ($canAddToCart)
                 @if ($showBookNow && $searchId)
                     <!-- Book Now Button (Primary in Search Results) -->
@@ -673,7 +673,7 @@
                 position: absolute;
                 top: 12px;
                 right: 12px;
-                padding: 6px 14px;
+                padding: 0 10px;
                 border-radius: 20px;
                 font-size: 11px;
                 font-weight: 700;
@@ -737,7 +737,7 @@
             /* Pricing */
             .vehicle-pricing {
                 margin-top: auto;
-                padding-top: 16px;
+                padding-top:5px;
                 border-top: 2px solid #f0f0f0;
             }
 
@@ -758,7 +758,7 @@
                 font-size: 28px;
                 font-weight: 800;
                 color: var(--primary-color);
-                margin: 8px 0;
+                margin: 0;
                 line-height: 1;
             }
 
@@ -1022,11 +1022,11 @@
             .pricing-details {
                 display: flex;
                 flex-wrap: wrap;
-                gap: 10px;
-                margin: 10px 0;
-                padding: 8px;
+                gap: 0;
+                margin: 0;
+                padding: 0 8px;
                 background: #f9f9f9;
-                border-radius: 6px;
+                border-radius: 10px;
             }
 
             .pricing-detail-item {

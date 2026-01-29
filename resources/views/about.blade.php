@@ -159,7 +159,7 @@
                         </div>
                     </li>
                 </ul>
-                <div class="bottom-area d-flex justify-content-center wow animate fadeInUp" data-wow-delay="200ms"
+                {{-- <div class="bottom-area d-flex justify-content-center wow animate fadeInUp" data-wow-delay="200ms"
                     data-wow-duration="1500ms">
                     <div class="batch">
                         <span>Flat 30% Discounts All Packages</span>
@@ -170,7 +170,7 @@
                             </svg>
                         </a>
                     </div>
-                </div>
+                </div> --}}
             </div>
         </div>
     </div>
