@@ -44,7 +44,11 @@
         <div class="container">
             <div class="filter-wrapper">
                 <div class="filter-input-wrap">
-                    @include('inquiry.partials.form', ['form' => $servicePage->form, 'servicePage' => $servicePage, 'showIntro' => false])
+                    @include('inquiry.partials.form', [
+                        'form' => $servicePage->form,
+                        'servicePage' => $servicePage,
+                        'showIntro' => false,
+                    ])
                 </div>
             </div>
         </div>
