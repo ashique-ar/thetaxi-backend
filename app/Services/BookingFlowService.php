@@ -408,17 +408,17 @@ class BookingFlowService
         $minimumKmApplied = false;
         $minimumKm = null;
         $actualDistanceKm = null;
-        
+
         if ($pickupLocation && $dropoffLocation) {
             $distanceData = $this->calculateCompanyDistances($pickupLocation, $dropoffLocation, $serviceType);
             $totalJourneyDistance = $distanceData['journey_distance'] ?? null;
             $totalJourneyDuration = $distanceData['journey_duration_seconds'] ?? null;
-            
+
             // Check if minimum KM was applied
             $minimumKmApplied = $distanceData['minimum_km_applied'] ?? false;
             $minimumKm = $distanceData['minimum_km'] ?? null;
             $actualDistanceKm = $distanceData['actual_journey_distance'] ?? $totalJourneyDistance;
-            
+
             // Apply minimum KM rule if service type has it configured
             $serviceTypeId = $params['service_type_id'] ?? $params['service_type'] ?? null;
             if ($serviceTypeId && !$minimumKmApplied) {
@@ -1432,7 +1432,12 @@ class BookingFlowService
                         'group_info' => $groupPricing['group_info'] ?? [],
                         'vehicle_details' => $availableVehicles[$i] ?? null,
                         'driver_details' => $assignedDriverId ? collect($groupDrivers)->firstWhere('id', $assignedDriverId) : null,
-                        'assignment_index' => $i
+                        'assignment_index' => $i,
+                        // Persist distance/duration details so emails and audits have canonical data
+                        'distance_details' => $groupPricing['distance_details'] ?? $groupPricing['base_pricing']['distance_details'] ?? null,
+                        'calculation_type' => $groupPricing['distance_details']['calculation_type'] ?? null,
+                        'effective_days' => $groupPricing['distance_details']['effective_days'] ?? null,
+                        'journey_duration_seconds' => $groupPricing['distance_details']['journey_duration_seconds'] ?? null
                     ]
                 ]);
 

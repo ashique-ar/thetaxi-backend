@@ -621,6 +621,11 @@ class CheckoutController extends Controller
                         'item_index' => array_search($cartKey, array_keys($cart)),
                         'service_package_id' => $item['service_package_id'] ?? null,
                         'service_package_info' => $item['service_package_info'] ?? null,
+                        // Persist distance and duration details for later communication
+                        'distance_details' => $item['distance_details'] ?? null,
+                        'calculation_type' => $item['distance_details']['calculation_type'] ?? null,
+                        'effective_days' => $item['distance_details']['effective_days'] ?? null,
+                        'journey_duration_seconds' => $item['distance_details']['journey_duration_seconds'] ?? null,
                     ]
                 ]);
 

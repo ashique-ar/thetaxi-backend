@@ -209,7 +209,8 @@
             // Extract return trip pricing from multiple possible sources
             $oneWayPrice = $item->one_way_price ?? ($item->metadata['one_way_price'] ?? null);
             $returnPrice = $item->return_price ?? ($item->metadata['return_price'] ?? null);
-            $returnDiscountPct = $item->return_discount_percentage ?? ($item->metadata['return_discount_percentage'] ?? 0);
+            $returnDiscountPct =
+                $item->return_discount_percentage ?? ($item->metadata['return_discount_percentage'] ?? 0);
 
             // Fallback: try workflow cart item (matching item_index or vehicle_group_id)
             $cartItem = null;
@@ -239,7 +240,8 @@
 
         @if (!empty($oneWayPrice) || !empty($returnPrice))
             <tr>
-                <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; width: 30%;">
+                <td
+                    style="padding: 8px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; width: 30%;">
                     Outbound Trip
                 </td>
                 <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; color: #555;">
@@ -247,7 +249,8 @@
                 </td>
             </tr>
             <tr>
-                <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; width: 30%;">
+                <td
+                    style="padding: 8px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; width: 30%;">
                     Return Trip
                 </td>
                 <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; color: #555;">
@@ -259,7 +262,8 @@
             </tr>
             <tr>
                 <td style="padding: 8px 0; font-weight: 700; color: #333; width: 30%;">Combined (Item Total)</td>
-                <td style="padding: 8px 0; color: #555; font-weight:700;">{{ $currencySymbol }} {{ number_format((float) $totalPrice, 2) }}</td>
+                <td style="padding: 8px 0; color: #555; font-weight:700;">{{ $currencySymbol }}
+                    {{ number_format((float) $totalPrice, 2) }}</td>
             </tr>
         @endif
 
@@ -271,8 +275,39 @@
                 $extraKmPrice = $distanceDetails['extra_km_price'] ?? null;
                 $minimumKm = $distanceDetails['minimum_km'] ?? null;
                 $minimumKmApplied = $distanceDetails['minimum_km_applied'] ?? false;
-                $actualJourneyDistance = $distanceDetails['actual_journey_distance'] ?? ($distanceDetails['journey_distance'] ?? null);
+                $actualJourneyDistance =
+                    $distanceDetails['actual_journey_distance'] ?? ($distanceDetails['journey_distance'] ?? null);
                 $journeyDistance = $distanceDetails['journey_distance'] ?? null;
+                // Additional fields
+                $pickupDistance = $distanceDetails['pickup_distance'] ?? null;
+                $deliveryDistance = $distanceDetails['delivery_distance'] ?? null;
+                $totalDistance = $distanceDetails['total_distance'] ?? null;
+                $calculationType = $distanceDetails['calculation_type'] ?? null;
+                $effectiveDays = $distanceDetails['effective_days'] ?? null;
+                $journeyDurationSeconds = $distanceDetails['journey_duration_seconds'] ?? null;
+
+                // Determine extra KM from multiple sources (customizations/metadata/distanceDetails)
+                if (empty($extraKilometers)) {
+                    $extraKilometers = $distanceDetails['extra_km'] ?? 0;
+                }
+
+                // Calculate extra KM total if not already present
+                if (empty($extraKmTotal) && $extraKilometers > 0 && $extraKmPrice) {
+                    $extraKmTotal = $extraKilometers * $extraKmPrice;
+                }
+
+                // Human readable duration
+                $journeyDurationReadable = null;
+                if ($journeyDurationSeconds && is_numeric($journeyDurationSeconds)) {
+                    $hours = floor($journeyDurationSeconds / 3600);
+                    $minutes = floor(($journeyDurationSeconds % 3600) / 60);
+                    $journeyDurationReadable = trim(
+                        ($hours > 0 ? "{$hours}h" : '') . ($minutes > 0 ? " {$minutes}m" : ''),
+                    );
+                }
+
+                // Fallbacks for display ordering
+                $displayDistance = $actualJourneyDistance ?? ($journeyDistance ?? ($totalDistance ?? null));
             @endphp
 
             <tr>
@@ -283,21 +318,60 @@
 
             @if ($minimumKmApplied && $minimumKm)
                 <tr>
-                    <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #92400e; background: #fef3c7;">
+                    <td
+                        style="padding: 8px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #92400e; background: #fef3c7;">
                         Minimum KM Charge
                     </td>
                     <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; color: #92400e; background: #fef3c7;">
                         <strong>{{ number_format($minimumKm, 0) }} km</strong>
-                        <small style="color: #92400e;">(Actual distance: {{ number_format($actualJourneyDistance, 1) }} km)</small>
+                        <small style="color: #92400e;">(Actual distance: {{ number_format($actualJourneyDistance, 1) }}
+                            km)</small>
                     </td>
                 </tr>
-            @elseif($journeyDistance)
+            @elseif($displayDistance)
                 <tr>
                     <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333;">
-                        Estimated Distance
+                        Estimated Distance (charged)
                     </td>
                     <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; color: #555;">
-                        <strong>{{ number_format($journeyDistance, 1) }} km</strong>
+                        <strong>{{ number_format($displayDistance, 1) }} km</strong>
+                        @if ($journeyDurationReadable)
+                            <small style="display:block;color:#777; margin-top:4px;">Duration:
+                                {{ $journeyDurationReadable }}</small>
+                        @endif
+                    </td>
+                </tr>
+            @endif
+
+            @if ($pickupDistance || $deliveryDistance)
+                <tr>
+                    <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333;">Pickup
+                        / Delivery KM</td>
+                    <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; color: #555;">
+                        @if ($pickupDistance)
+                            <div>Pickup distance: <strong>{{ number_format($pickupDistance, 1) }} km</strong></div>
+                        @endif
+                        @if ($deliveryDistance)
+                            <div>Delivery distance: <strong>{{ number_format($deliveryDistance, 1) }} km</strong></div>
+                        @endif
+                        @if ($totalDistance)
+                            <div>Total billable distance: <strong>{{ number_format($totalDistance, 1) }} km</strong>
+                            </div>
+                        @endif
+                    </td>
+                </tr>
+            @endif
+
+            @if ($effectiveDays || $calculationType)
+                <tr>
+                    <td>Calculation</td>
+                    <td>
+                        @if ($calculationType)
+                            <div><strong>Type:</strong> {{ ucfirst($calculationType) }}</div>
+                        @endif
+                        @if ($effectiveDays)
+                            <div><strong>Effective days:</strong> {{ $effectiveDays }}</div>
+                        @endif
                     </td>
                 </tr>
             @endif
@@ -330,7 +404,31 @@
                 </tr>
             @endif
 
-            @if ($extraKmPrice)
+            @if ($extraKilometers > 0)
+                <tr>
+                    <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333;">
+                        Extra Kilometers
+                    </td>
+                    <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; color: #555;">
+                        {{ number_format($extraKilometers) }} km
+                        @if ($extraKmPrice > 0)
+                            @ {{ $currencySymbol }}{{ number_format($extraKmPrice, 2) }}/km
+                        @endif
+                        @if ($extraKmTotal > 0)
+                            <span
+                                style="float: right; color: #BF2629;">{{ $currencySymbol }}{{ number_format($extraKmTotal, 2) }}</span>
+                        @endif
+                    </td>
+                </tr>
+            @endif
+
+            @if ($extraKmPrice && empty($extraKilometers) && isset($distanceDetails['extra_km']) && $distanceDetails['extra_km'] > 0)
+                <tr>
+                    <td>Extra KM Rate</td>
+                    <td><strong>{{ $currencySymbol }}{{ number_format($extraKmPrice, 2) }}</strong>
+                        per km</td>
+                </tr>
+            @elseif ($extraKmPrice)
                 <tr>
                     <td>Extra KM Rate</td>
                     <td><strong>{{ $currencySymbol }}{{ number_format($extraKmPrice, 2) }}</strong>
