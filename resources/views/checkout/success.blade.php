@@ -481,7 +481,8 @@
                                 <table class="info-table">
                                     <tr>
                                         <td>📞 Phone</td>
-                                        <td><a href="tel:+94711615615" style="color: #BF2629; text-decoration: none;">+94 71 1
+                                        <td><a href="tel:+94711615615" style="color: #BF2629; text-decoration: none;">+94 71
+                                                1
                                                 615 615</a></td>
                                     </tr>
                                     <tr>
