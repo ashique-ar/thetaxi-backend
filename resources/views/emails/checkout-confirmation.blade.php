@@ -256,9 +256,29 @@
     </div>
 
     @php
-        $bookingServiceType = $booking->serviceType?->id ?? ($booking->service_type ?? null);
-        $bookingPaymentType = $booking->payment_type ?? null;
-        $applicableTerms = \App\Models\TermsAndCondition::getForCheckout($bookingServiceType, $bookingPaymentType);
+        $paymentType = $booking->payment_type ?? null;
+        // Collect service identifiers from booking items (supports code or serviceType id)
+        $serviceParams = collect();
+        foreach ($booking->bookingItems as $bi) {
+            $serviceParams->push($bi->service_type ?? ($bi->serviceType?->id ?? null));
+        }
+        if ($booking->serviceType?->id) {
+            $serviceParams->push($booking->serviceType->id);
+        }
+        $serviceParams = $serviceParams->filter()->unique()->values();
+
+        $applicableTerms = collect();
+        if ($serviceParams->count()) {
+            foreach ($serviceParams as $s) {
+                $applicableTerms = $applicableTerms->merge(
+                    \App\Models\TermsAndCondition::getForCheckout($s, $paymentType),
+                );
+            }
+        } else {
+            // Fallback to generic terms filtered by payment type
+            $applicableTerms = \App\Models\TermsAndCondition::getForCheckout(null, $paymentType);
+        }
+        $applicableTerms = $applicableTerms->unique('id')->values();
     @endphp
 
     @if ($applicableTerms->count())

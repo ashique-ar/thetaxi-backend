@@ -150,9 +150,27 @@
     @endif
 
     @php
-        $serviceType = $booking->serviceType?->id ?? ($booking->service_type ?? 'vehicle_rental');
         $paymentType = 'quotation';
-        $applicableTerms = \App\Models\TermsAndCondition::getForCheckout($serviceType, $paymentType);
+        $serviceParams = collect();
+        foreach ($booking->bookingItems as $bi) {
+            $serviceParams->push($bi->service_type ?? ($bi->serviceType?->id ?? null));
+        }
+        if ($booking->serviceType?->id) {
+            $serviceParams->push($booking->serviceType->id);
+        }
+        $serviceParams = $serviceParams->filter()->unique()->values();
+
+        $applicableTerms = collect();
+        if ($serviceParams->count()) {
+            foreach ($serviceParams as $s) {
+                $applicableTerms = $applicableTerms->merge(
+                    \App\Models\TermsAndCondition::getForCheckout($s, $paymentType),
+                );
+            }
+        } else {
+            $applicableTerms = \App\Models\TermsAndCondition::getForCheckout(null, $paymentType);
+        }
+        $applicableTerms = $applicableTerms->unique('id')->values();
     @endphp
 
     @if ($applicableTerms->count())

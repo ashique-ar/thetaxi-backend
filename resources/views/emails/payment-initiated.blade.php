@@ -105,6 +105,40 @@
         </table>
     </div>
 
+    @php
+        $paymentType = $booking->payment_type ?? null;
+        $serviceParams = collect();
+        foreach ($booking->bookingItems as $bi) {
+            $serviceParams->push($bi->service_type ?? ($bi->serviceType?->id ?? null));
+        }
+        if ($booking->serviceType?->id) {
+            $serviceParams->push($booking->serviceType->id);
+        }
+        $serviceParams = $serviceParams->filter()->unique()->values();
+
+        $applicableTerms = collect();
+        if ($serviceParams->count()) {
+            foreach ($serviceParams as $s) {
+                $applicableTerms = $applicableTerms->merge(
+                    \App\Models\TermsAndCondition::getForCheckout($s, $paymentType),
+                );
+            }
+        } else {
+            $applicableTerms = \App\Models\TermsAndCondition::getForCheckout(null, $paymentType);
+        }
+        $applicableTerms = $applicableTerms->unique('id')->values();
+    @endphp
+
+    @if ($applicableTerms->count())
+        <div class="section">
+            <h2 class="section-title"><span class="icon">📜</span> Terms & Conditions</h2>
+            @foreach ($applicableTerms as $t)
+                <h4 style="margin-top:8px;">{{ $t->title }}</h4>
+                <div style="color:#555;">{!! $t->content !!}</div>
+            @endforeach
+        </div>
+    @endif
+
     <div class="divider"></div>
 
     <!-- Action Required Section with Payment Button -->
