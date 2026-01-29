@@ -17,6 +17,7 @@ class ServiceTypeResource extends JsonResource
             'thumbnail'      => $this->thumbnail,
             'type'           => $this->type,
             'priority'       => $this->priority,
+            'minimum_km'     => $this->minimum_km,
             'is_internal'    => $this->is_internal,
             'is_active'      => $this->is_active,
             'terms'          => $this->terms,

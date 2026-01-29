@@ -65,7 +65,7 @@ class BookingController extends Controller
 
             // Transform frontend request data to BookingFlowService format
             $searchParams = $this->transformSearchParams($request->all(), $serviceType);
-            
+
             // Get package - either from request or default to first active package for service type
             $packageId = $request->input('package_id');
             if ($packageId) {
@@ -76,7 +76,7 @@ class BookingController extends Controller
                 $searchParams['package_type'] = $defaultPackage?->toArray();
             }
             $searchParams['service_package_id'] = $searchParams['package_type']['id'] ?? null;
-            
+
             Log::debug('Search - Package setup for service type', [
                 'frontend_service' => $frontendService,
                 'package_id_from_request' => $packageId,
@@ -85,7 +85,7 @@ class BookingController extends Controller
                 'is_return_trip' => $searchParams['is_return_trip'] ?? false,
                 'return_date' => $searchParams['return_date'] ?? null,
             ]);
-            
+
             // Store search params and context in session for results page
             session()->put('current_search_params', $searchParams);
             session()->put('search_timestamp', now());
@@ -476,6 +476,12 @@ class BookingController extends Controller
                     $search->max_km_per_package = $maxKmPerPackage;
                 }
             }
+
+            // Check for minimum KM applied from availability data
+            $search->minimum_km_applied = $availabilityData['minimum_km_applied'] ?? false;
+            $search->minimum_km = $availabilityData['minimum_km'] ?? null;
+            $search->actual_distance_km = $availabilityData['actual_distance_km'] ?? $totalJourneyDistance;
+
             // Get additional data for enhanced UI
             $additionalData = [
                 'popular_destinations' => $this->getPopularDestinations(),

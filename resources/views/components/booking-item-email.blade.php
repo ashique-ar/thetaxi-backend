@@ -269,6 +269,10 @@
                 $freeKmPerDay = $distanceDetails['free_km_per_day'] ?? null;
                 $freeKmPerPackage = $distanceDetails['free_km_per_package'] ?? null;
                 $extraKmPrice = $distanceDetails['extra_km_price'] ?? null;
+                $minimumKm = $distanceDetails['minimum_km'] ?? null;
+                $minimumKmApplied = $distanceDetails['minimum_km_applied'] ?? false;
+                $actualJourneyDistance = $distanceDetails['actual_journey_distance'] ?? ($distanceDetails['journey_distance'] ?? null);
+                $journeyDistance = $distanceDetails['journey_distance'] ?? null;
             @endphp
 
             <tr>
@@ -276,6 +280,27 @@
                     📏 Distance & Kilometer Information
                 </td>
             </tr>
+
+            @if ($minimumKmApplied && $minimumKm)
+                <tr>
+                    <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #92400e; background: #fef3c7;">
+                        Minimum KM Charge
+                    </td>
+                    <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; color: #92400e; background: #fef3c7;">
+                        <strong>{{ number_format($minimumKm, 0) }} km</strong>
+                        <small style="color: #92400e;">(Actual distance: {{ number_format($actualJourneyDistance, 1) }} km)</small>
+                    </td>
+                </tr>
+            @elseif($journeyDistance)
+                <tr>
+                    <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333;">
+                        Estimated Distance
+                    </td>
+                    <td style="padding: 8px 0; border-bottom: 1px solid #eef0f2; color: #555;">
+                        <strong>{{ number_format($journeyDistance, 1) }} km</strong>
+                    </td>
+                </tr>
+            @endif
 
             @if ($freeKmPerDay && $durationDays > 1)
                 <tr>

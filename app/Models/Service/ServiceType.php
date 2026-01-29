@@ -46,6 +46,7 @@ class ServiceType extends BaseModel
         'slug',
         'thumbnail',
         'priority',
+        'minimum_km',
         'is_internal',
         'terms',
         'created_user_id',
@@ -60,6 +61,7 @@ class ServiceType extends BaseModel
     protected $casts = [
         'is_internal' => 'boolean',
         'priority' => 'integer',
+        'minimum_km' => 'decimal:2',
     ];
 
     // Relations

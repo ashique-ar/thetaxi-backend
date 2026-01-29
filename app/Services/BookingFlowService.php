@@ -405,10 +405,33 @@ class BookingFlowService
         // Calculate total journey distance if locations are provided
         $totalJourneyDistance = null;
         $totalJourneyDuration = null;
+        $minimumKmApplied = false;
+        $minimumKm = null;
+        $actualDistanceKm = null;
+        
         if ($pickupLocation && $dropoffLocation) {
             $distanceData = $this->calculateCompanyDistances($pickupLocation, $dropoffLocation, $serviceType);
             $totalJourneyDistance = $distanceData['journey_distance'] ?? null;
             $totalJourneyDuration = $distanceData['journey_duration_seconds'] ?? null;
+            
+            // Check if minimum KM was applied
+            $minimumKmApplied = $distanceData['minimum_km_applied'] ?? false;
+            $minimumKm = $distanceData['minimum_km'] ?? null;
+            $actualDistanceKm = $distanceData['actual_journey_distance'] ?? $totalJourneyDistance;
+            
+            // Apply minimum KM rule if service type has it configured
+            $serviceTypeId = $params['service_type_id'] ?? $params['service_type'] ?? null;
+            if ($serviceTypeId && !$minimumKmApplied) {
+                $serviceTypeModel = ServiceType::find($serviceTypeId);
+                if ($serviceTypeModel && $serviceTypeModel->minimum_km > 0) {
+                    $minimumKm = (float) $serviceTypeModel->minimum_km;
+                    if ($totalJourneyDistance !== null && $totalJourneyDistance > 0 && $totalJourneyDistance < $minimumKm) {
+                        $actualDistanceKm = $totalJourneyDistance;
+                        $totalJourneyDistance = $minimumKm;
+                        $minimumKmApplied = true;
+                    }
+                }
+            }
         }
 
         // Return with pagination if requested
@@ -425,6 +448,9 @@ class BookingFlowService
                 ],
                 'total_journey_distance_km' => $totalJourneyDistance,
                 'total_journey_duration_seconds' => $totalJourneyDuration,
+                'minimum_km_applied' => $minimumKmApplied,
+                'minimum_km' => $minimumKm,
+                'actual_distance_km' => $actualDistanceKm,
             ];
         }
 
@@ -432,6 +458,9 @@ class BookingFlowService
             'data' => $availability,
             'total_journey_distance_km' => $totalJourneyDistance,
             'total_journey_duration_seconds' => $totalJourneyDuration,
+            'minimum_km_applied' => $minimumKmApplied,
+            'minimum_km' => $minimumKm,
+            'actual_distance_km' => $actualDistanceKm,
         ];
     }
 
@@ -1005,7 +1034,7 @@ class BookingFlowService
     {
         $packageId = $params['package_id'] ?? null;
         $vehicleGroupId = $params['vehicle_group_id'] ?? null;
-        $oneWayFare = (float)($params['one_way_fare'] ?? 0);
+        $oneWayFare = (float) ($params['one_way_fare'] ?? 0);
 
         // Parse dates
         $outboundDate = $params['outbound_date'] instanceof Carbon
@@ -2364,6 +2393,17 @@ class BookingFlowService
         $pickupIsAirport = false;
         $dropoffIsAirport = false;
 
+        // Get service type for minimum KM lookup
+        $serviceTypeId = $params['service_type_id'] ?? $params['service_type'] ?? null;
+        $minimumKm = null;
+
+        if ($serviceTypeId) {
+            $serviceType = ServiceType::find($serviceTypeId);
+            if ($serviceType && $serviceType->minimum_km > 0) {
+                $minimumKm = (float) $serviceType->minimum_km;
+                $inputs['minimum_km'] = $minimumKm;
+            }
+        }
 
         if (isset($params['district_id'])) {
             $inputs['district_id'] = $params['district_id'];
@@ -2392,6 +2432,31 @@ class BookingFlowService
                 $serviceType,
                 $params['vehicle_id'] ?? null,
             );
+
+            // Apply minimum KM rule: if journey distance is below minimum, use minimum for pricing
+            if ($minimumKm !== null && isset($distanceCalculations['journey_distance'])) {
+                $actualDistance = (float) $distanceCalculations['journey_distance'];
+                if ($actualDistance > 0 && $actualDistance < $minimumKm) {
+                    // Store original distance for display purposes
+                    $distanceCalculations['actual_journey_distance'] = $actualDistance;
+                    $distanceCalculations['minimum_km_applied'] = true;
+                    $distanceCalculations['minimum_km'] = $minimumKm;
+                    // Use minimum KM for pricing calculations
+                    $distanceCalculations['journey_distance'] = $minimumKm;
+
+                    Log::info('Minimum KM rule applied', [
+                        'actual_distance' => $actualDistance,
+                        'minimum_km' => $minimumKm,
+                        'charged_distance' => $minimumKm,
+                        'service_type_id' => $serviceTypeId,
+                    ]);
+                } else {
+                    $distanceCalculations['minimum_km_applied'] = false;
+                    $distanceCalculations['minimum_km'] = $minimumKm;
+                    $distanceCalculations['actual_journey_distance'] = $actualDistance;
+                }
+            }
+
             $inputs = array_merge($inputs, $distanceCalculations);
         }
 
@@ -2501,6 +2566,9 @@ class BookingFlowService
     ): array {
         $distanceDetails = [
             'journey_distance' => $kmCalculations['journey_distance'] ?? 0,
+            'actual_journey_distance' => $kmCalculations['actual_journey_distance'] ?? ($kmCalculations['journey_distance'] ?? 0),
+            'minimum_km' => $kmCalculations['minimum_km'] ?? null,
+            'minimum_km_applied' => $kmCalculations['minimum_km_applied'] ?? false,
             'allowed_total_km' => $kmCalculations['allowed_km'] ?? 0,
             'extra_km' => $kmCalculations['extra_km'] ?? 0,
             'extra_km_price' => null,

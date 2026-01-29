@@ -107,7 +107,23 @@
                             </div>
                         </div>
                         <div class="search-details">
-                            @if (isset($search->total_distance_km) && $search->total_distance_km > 0)
+                            @php
+                                // Check if minimum KM was applied to the search
+                                $minimumKmApplied = $search->minimum_km_applied ?? false;
+                                $minimumKm = $search->minimum_km ?? null;
+                                $actualDistance = $search->actual_distance_km ?? ($search->total_distance_km ?? 0);
+                                $displayDistance =
+                                    $minimumKmApplied && $minimumKm ? $minimumKm : $search->total_distance_km ?? 0;
+                            @endphp
+                            @if ($minimumKmApplied && $minimumKm)
+                                <span class="distance-info"
+                                    style="background: rgba(251, 191, 36, 0.3); border: 1px solid rgba(251, 191, 36, 0.5);">
+                                    <i class="bi bi-info-circle"></i>
+                                    Minimum {{ number_format($minimumKm, 0) }} km
+                                    <small class="text-white-50">(Actual: {{ number_format($actualDistance, 1) }}
+                                        km)</small>
+                                </span>
+                            @elseif (isset($search->total_distance_km) && $search->total_distance_km > 0)
                                 <span class="distance-info">
                                     <i class="bi bi-signpost-2"></i>
                                     {{ number_format($search->total_distance_km, 2) }} km
@@ -1128,7 +1144,7 @@
                     service_package_id: '{{ $search->service_package_id ?? ($search->package_id ?? '') }}',
                     package_id: '{{ $search->service_package_id ?? ($search->package_id ?? '') }}',
                     // Return trip data
-                    is_return_trip: {{ ($search->is_return_trip ?? false) ? 'true' : 'false' }},
+                    is_return_trip: {{ $search->is_return_trip ?? false ? 'true' : 'false' }},
                     return_trip_date: '{{ $search->return_date ?? '' }}',
                     return_trip_time: '{{ $search->return_time ?? '' }}',
                 };
@@ -1198,7 +1214,7 @@
                 service_package_id: item.service_package_id,
                 package_id: item.package_id
             });
-            
+
             return $.ajax({
                 url: '{{ route('cart.add') }}',
                 method: 'POST',
@@ -1365,7 +1381,8 @@
                 const price = parseFloat(item.price || 0);
                 const days = parseInt(item.days || 1);
                 // Prefer server-calculated total_price when available (ensures return trip totals used)
-                const itemTotal = parseFloat((item.total_price !== undefined && item.total_price !== null) ? item.total_price : (price * days));
+                const itemTotal = parseFloat((item.total_price !== undefined && item.total_price !== null) ? item
+                    .total_price : (price * days));
                 total += itemTotal;
 
                 const serviceType = item.service_type || '';
@@ -1716,7 +1733,7 @@
                 service_package_id: '{{ $search->service_package_id ?? ($search->package_id ?? '') }}',
                 package_id: '{{ $search->service_package_id ?? ($search->package_id ?? '') }}',
                 // Return trip data (ensure Book Now sends same return payload as Add to Cart)
-                is_return_trip: {{ ($search->is_return_trip ?? false) ? 'true' : 'false' }},
+                is_return_trip: {{ $search->is_return_trip ?? false ? 'true' : 'false' }},
                 return_trip_date: '{{ $search->return_date ?? '' }}',
                 return_trip_time: '{{ $search->return_time ?? '' }}'
             };

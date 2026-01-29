@@ -6,10 +6,13 @@
     $freeKmPerPackage = $distanceDetails['free_km_per_package'] ?? null;
     $extraKmPrice = $distanceDetails['extra_km_price'] ?? null;
     $journeyDistance = $distanceDetails['journey_distance'] ?? null;
+    $actualJourneyDistance = $distanceDetails['actual_journey_distance'] ?? $journeyDistance;
+    $minimumKm = $distanceDetails['minimum_km'] ?? null;
+    $minimumKmApplied = $distanceDetails['minimum_km_applied'] ?? false;
     $extraKm = $distanceDetails['extra_km'] ?? null;
 
     // Don't display if no relevant data
-    $hasData = $allowedTotalKm || $freeKmPerDay || $freeKmPerPackage || $extraKmPrice || $journeyDistance || $extraKm;
+    $hasData = $allowedTotalKm || $freeKmPerDay || $freeKmPerPackage || $extraKmPrice || $journeyDistance || $extraKm || $minimumKmApplied;
 
     if (!$hasData) {
         return;
@@ -57,7 +60,17 @@
         </div>
     @endif
 
-    @if ($journeyDistance)
+    @if ($minimumKmApplied && $minimumKm)
+        {{-- Show minimum KM applied notice --}}
+        <div style="display: flex; justify-content: space-between; margin-bottom: {{ $compact ? '3px' : '5px' }}; background: #fef3c7; padding: 4px 8px; border-radius: 4px;">
+            <small style="color: #92400e; font-size: {{ $compact ? '10px' : '12px' }}; font-weight: 600;">
+                <i class="bi bi-info-circle"></i> Minimum {{ number_format($minimumKm, 0) }} KM
+            </small>
+            <span style="font-size: {{ $compact ? '10px' : '12px' }}; color: #92400e;">
+                (Actual: {{ number_format($actualJourneyDistance, 1) }} km)
+            </span>
+        </div>
+    @elseif($journeyDistance)
         <div style="display: flex; justify-content: space-between; margin-bottom: {{ $compact ? '3px' : '5px' }};">
             <small style="color: #6b7280; font-size: {{ $compact ? '10px' : '12px' }};">Estimated Distance:</small>
             <span style="font-size: {{ $compact ? '10px' : '12px' }};">{{ number_format($journeyDistance, 1) }}
