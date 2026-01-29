@@ -998,6 +998,7 @@ class VehiclePricingCalculationDefinition extends Model
         $vehicleGroupId = $inputs['vehicle_group_id'] ?? null;
         $totalDistance = $kmCalculations['journey_distance'] ?? 0;
 
+        $totalKmAdjustment = 0;
         if ($vehicleGroupId && $totalDistance > 0) {
             $kmRangeResult = KmRangePricingRule::calculateBestPricing(
                 $totalDistance,
@@ -1008,14 +1009,35 @@ class VehiclePricingCalculationDefinition extends Model
 
             if (!empty($kmRangeResult['rules_applied'])) {
                 foreach ($kmRangeResult['rules_applied'] as $rule) {
+                    $adjustmentAmount = $rule['adjustment_amount'] ?? 0;
                     $adjustments[] = [
                         'type' => 'km_range_pricing',
                         'name' => $rule['rule_info']['name'] ?? 'KM Range Pricing',
-                        'amount' => $rule['adjustment_amount'] ?? 0,
+                        'amount' => $adjustmentAmount,
                         'calculation' => $rule['calculation_details'] ?? null,
-                        'is_discount' => ($rule['adjustment_amount'] ?? 0) < 0,
+                        'is_discount' => $adjustmentAmount < 0,
                     ];
+                    $totalKmAdjustment += $adjustmentAmount;
                 }
+
+                // Apply KM-range adjustment to the current amount so subsequent price adjustments are stacked on top
+                $currentAmount += $totalKmAdjustment;
+
+                // Add a summary entry for frontend convenience
+                $adjustments[] = [
+                    'type' => 'km_range_pricing_summary',
+                    'name' => 'KM Range Adjustment',
+                    'amount' => $totalKmAdjustment,
+                    'calculation' => $kmRangeResult['calculation_summary'] ?? null,
+                    'is_discount' => $totalKmAdjustment < 0,
+                ];
+
+                Log::info('KM range pricing applied', [
+                    'vehicle_group_id' => $vehicleGroupId,
+                    'distance' => $totalDistance,
+                    'total_km_adjustment' => $totalKmAdjustment,
+                    'current_amount' => $currentAmount,
+                ]);
             }
         }
 
@@ -1048,6 +1070,15 @@ class VehiclePricingCalculationDefinition extends Model
         $totalIncrease = $priceAdjustmentResult['total_increase'] ?? 0;
         $hasDiscount = $priceAdjustmentResult['has_discount'] ?? false;
         $hasIncrease = $priceAdjustmentResult['has_increase'] ?? false;
+
+        // Merge KM range totals into the final display totals
+        $kmDiscount = $totalKmAdjustment < 0 ? abs($totalKmAdjustment) : 0;
+        $kmIncrease = $totalKmAdjustment > 0 ? $totalKmAdjustment : 0;
+
+        $totalDiscount += $kmDiscount;
+        $totalIncrease += $kmIncrease;
+        $hasDiscount = $hasDiscount || $kmDiscount > 0;
+        $hasIncrease = $hasIncrease || $kmIncrease > 0;
 
         return [
             'final_amount' => $currentAmount,

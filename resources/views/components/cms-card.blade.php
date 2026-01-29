@@ -17,11 +17,11 @@
         $itemPrice = $item->price ?? null;
         $currency = $item->price_currency ?? 'USD';
         $duration = $item->duration ?? null;
-        $rating = (int)($item->rating ?? 0);
-        $reviewsCount = (int)($item->reviews_count ?? 0);
-        $isSpecialOffer = (bool)($item->special_offer ?? false);
-        $discount = (int)($item->discount_percentage ?? 0);
-        $publishedDate = $item->published_at ?? $item->created_at ?? null;
+        $rating = (int) ($item->rating ?? 0);
+        $reviewsCount = (int) ($item->reviews_count ?? 0);
+        $isSpecialOffer = (bool) ($item->special_offer ?? false);
+        $discount = (int) ($item->discount_percentage ?? 0);
+        $publishedDate = $item->published_at ?? ($item->created_at ?? null);
         $thumbnail = $item->thumbnail ?? null;
         $slug = $item->slug ?? '#';
     } else {
@@ -33,27 +33,31 @@
         $itemPrice = $item['price'] ?? null;
         $currency = $item['price_currency'] ?? 'USD';
         $duration = $item['duration'] ?? null;
-        $rating = (int)($item['rating'] ?? 0);
-        $reviewsCount = (int)($item['reviews_count'] ?? 0);
-        $isSpecialOffer = (bool)($item['special_offer'] ?? false);
-        $discount = (int)($item['discount_percentage'] ?? 0);
-        $publishedDate = $item['published_at'] ?? $item['created_at'] ?? null;
+        $rating = (int) ($item['rating'] ?? 0);
+        $reviewsCount = (int) ($item['reviews_count'] ?? 0);
+        $isSpecialOffer = (bool) ($item['special_offer'] ?? false);
+        $discount = (int) ($item['discount_percentage'] ?? 0);
+        $publishedDate = $item['published_at'] ?? ($item['created_at'] ?? null);
         $thumbnail = $item['thumbnail'] ?? null;
         $slug = $item['slug'] ?? '#';
     }
-    
+
     // Format price
     $price = $itemPrice ? number_format($itemPrice, 2) : null;
-    
+
     // Format date
-    $date = $publishedDate ? 
-        (is_object($publishedDate) ? $publishedDate->format('d F, Y') : \Carbon\Carbon::parse($publishedDate)->format('d F, Y')) : 
-        'N/A';
-    
+    $date = $publishedDate
+        ? (is_object($publishedDate)
+            ? $publishedDate->format('d F, Y')
+            : \Carbon\Carbon::parse($publishedDate)->format('d F, Y'))
+        : 'N/A';
+
     // Generate URLs
-    $imageUrl = $thumbnail ? s3_asset($thumbnail) : asset('assets/img/home3/blog-img1.jpg');
+    $imageUrl = $thumbnail && s3_asset($thumbnail) ? s3_asset($thumbnail) : asset('assets/img/default-blog.jpg');
     $detailLink = route('cms.show', ['contentType' => $type, 'content' => $slug]);
-    $categoryLink = $category ? route('cms.index', ['contentType' => $type]) . '?category=' . urlencode($category) : '#';
+    $categoryLink = $category
+        ? route('cms.index', ['contentType' => $type]) . '?category=' . urlencode($category)
+        : '#';
 @endphp
 
 <div class="col-lg-4 col-md-6 wow animate fadeInDown" data-wow-delay="{{ $delayMs }}ms" data-wow-duration="1500ms">

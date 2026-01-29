@@ -150,7 +150,7 @@
                     </div>
                     <article class="mb-4" data-aos="fade-up">
                         <div class="article-image mb-4">
-                            <img src="{{ $content->thumbnail ? s3_asset($content->thumbnail) : asset('assets/img/default-blog.jpg') }}"
+                            <img src="{{ $content->thumbnail && s3_asset($content->thumbnail) ? s3_asset($content->thumbnail) : asset('assets/img/default-blog.jpg') }}"
                                 alt="{{ $content->title }}">
                         </div>
 

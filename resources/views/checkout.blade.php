@@ -490,7 +490,20 @@
                                                                             $freeKmPerDay =
                                                                                 $distanceDetails['free_km_per_day'] ??
                                                                                 null;
+                                                                            
+                                                                            // Minimum KM charge info
+                                                                            $minimumKm = $distanceDetails['minimum_km'] ?? null;
+                                                                            $minimumKmApplied = $distanceDetails['minimum_km_applied'] ?? false;
+                                                                            $actualJourneyDistance = $distanceDetails['actual_journey_distance'] ?? ($distanceDetails['journey_distance'] ?? null);
                                                                         @endphp
+
+                                                                        @if ($minimumKmApplied && $minimumKm)
+                                                                            <p><small style="color: #92400e; background: #fef3c7; padding: 2px 6px; border-radius: 4px;">
+                                                                                <i class="bi bi-info-circle"></i>
+                                                                                <strong>Minimum {{ number_format($minimumKm, 0) }} km</strong>
+                                                                                (Actual: {{ number_format($actualJourneyDistance, 1) }} km)
+                                                                            </small></p>
+                                                                        @endif
 
                                                                         @if ($allowedTotalKm || $freeKmPerDay)
                                                                             <p><small style="color: #0066cc;">

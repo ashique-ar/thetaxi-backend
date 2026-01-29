@@ -267,6 +267,11 @@
                                                             $allowedTotalKm =
                                                                 $distanceDetails['allowed_total_km'] ?? null;
                                                             $extraKmPrice = $distanceDetails['extra_km_price'] ?? null;
+                                                            
+                                                            // Minimum KM charge info
+                                                            $minimumKm = $distanceDetails['minimum_km'] ?? null;
+                                                            $minimumKmApplied = $distanceDetails['minimum_km_applied'] ?? false;
+                                                            $actualJourneyDistance = $distanceDetails['actual_journey_distance'] ?? ($distanceDetails['journey_distance'] ?? null);
 
                                                             // Calculate per-day km if only total is available
                                                             if (
@@ -278,6 +283,14 @@
                                                                 $freeKmPerDay = $allowedTotalKm / $calculatedDays;
                                                             }
                                                         @endphp
+                                                        {{-- Display minimum KM charge notice --}}
+                                                        @if ($minimumKmApplied && $minimumKm)
+                                                            <p class="text-warning" style="margin-top: 6px; background: #fef3c7; padding: 4px 8px; border-radius: 4px; display: inline-block;">
+                                                                <i class="bi bi-info-circle" style="color: #92400e;"></i>
+                                                                <strong style="color: #92400e;">Minimum {{ number_format($minimumKm, 0) }} km</strong>
+                                                                <small style="color: #92400e;">(Actual: {{ number_format($actualJourneyDistance, 1) }} km)</small>
+                                                            </p>
+                                                        @endif
                                                         @if ($freeKmPerDay || $freeKmPerPackage || $allowedTotalKm)
                                                             <p class="text-muted" style="margin-top: 6px;">
                                                                 <i class="bi bi-speedometer2" style="color: #28a745;"></i>
