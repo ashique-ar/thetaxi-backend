@@ -25,7 +25,16 @@
 
     // Get vehicle group images
     $vehicleGroupImages = $item->vehicleGroup?->images ?? [];
-    $defaultImage = $item->vehicleGroup?->thumbnail ?? null;
+    $vehicleThumbnail = $item->vehicleGroup?->thumbnail ?? null;
+    if (isset($vehicleThumbnail)) {
+        $thumbRaw = $vehicleThumbnail;
+        if (is_array($thumbRaw)) {
+            $thumb = $thumbRaw['path'] ?? ($thumbRaw[0] ?? null);
+        } else {
+            $thumb = $thumbRaw;
+        }
+    }
+    $defaultImage = $thumb ? s3_asset($thumb) : asset('assets/img/default-vehicle.jpg');
 
     // Get addon data - check multiple sources
     $itemAddons = $item->addons ?? [];
@@ -138,8 +147,7 @@
         ($distanceDetails['total_duration_seconds'] ??
             ($item->journey_duration_seconds ??
                 ($item['journey_duration_seconds'] ??
-                    null ??
-                    ($item->total_duration_seconds ?? ($item['total_duration_seconds'] ?? null ?? null)))));
+                    (null ?? ($item->total_duration_seconds ?? ($item['total_duration_seconds'] ?? (null ?? null)))))));
     $journeyDurationReadable = null;
     if ($journeyDurationSeconds && is_numeric($journeyDurationSeconds)) {
         $hours = floor($journeyDurationSeconds / 3600);

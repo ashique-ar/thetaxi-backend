@@ -17,7 +17,6 @@
     if (isset($vehicle['thumbnail'])) {
         $thumbRaw = $vehicle['thumbnail'];
         if (is_array($thumbRaw)) {
-            // Common shapes: ['path' => '...', 0 => '...']
             $thumb = $thumbRaw['path'] ?? ($thumbRaw[0] ?? null);
         } else {
             $thumb = $thumbRaw;
