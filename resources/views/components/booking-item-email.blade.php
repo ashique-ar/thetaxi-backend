@@ -147,8 +147,9 @@
         $distanceDetails['journey_duration_seconds'] ??
         ($distanceDetails['total_duration_seconds'] ??
             ($item->journey_duration_seconds ??
-                ($item['journey_duration_seconds'] ?? null) ??
-                ($item->total_duration_seconds ?? ($item['total_duration_seconds'] ?? null) ?? null)));
+                ($item['journey_duration_seconds'] ??
+                    null ??
+                    ($item->total_duration_seconds ?? ($item['total_duration_seconds'] ?? null ?? null)))));
     $journeyDurationReadable = null;
     if ($journeyDurationSeconds && is_numeric($journeyDurationSeconds)) {
         $hours = floor($journeyDurationSeconds / 3600);
@@ -159,12 +160,25 @@
 
 <!-- Email Booking Item Card -->
 <div
-    style="background-color: #f8f9fa; border: 1px solid #eef0f2; border-radius: 8px
-    ; padding: 15px; margin-bottom: 20px;">
+    style="background-color: #f8f9fa; border: 1px solid #eef0f2; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
     <div style="display: flex; align-items: flex-start; gap: 15px;">
-        @if ($defaultImage)
+        @php
+            // Resolve image URL for email: support full URLs, local assets and S3 stored paths
+            if ($defaultImage) {
+                if (preg_match('/^https?:\/\//', $defaultImage)) {
+                    $imageUrl = $defaultImage;
+                } else {
+                    // Prefer s3_asset which now smartly falls back to local assets when needed
+                    $imageUrl = s3_asset($defaultImage) ?? app('url')->asset(ltrim($defaultImage, '/'));
+                }
+            } else {
+                $imageUrl = asset('assets/img/default-vehicle.jpg');
+            }
+        @endphp
+
+        @if ($imageUrl)
             <div style="flex-shrink: 0;">
-                <img src="{{ asset($defaultImage) }}" alt="{{ $vehicleGroupName }}"
+                <img src="{{ $imageUrl }}" alt="{{ $vehicleGroupName }}"
                     style="width: 120px; height: 80px; object-fit: cover; border-radius: 6px; border: 1px solid #ddd;">
             </div>
         @endif

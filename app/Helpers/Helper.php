@@ -71,11 +71,24 @@ if (!function_exists('file_upload')) {
 if (!function_exists('s3_asset')) {
     function s3_asset($path, $secure = null)
     {
-        // CRITICAL FIX: Build S3 URL directly without calling Storage::url() every time
-        // Cache the URL for 24 hours to avoid 200ms+ overhead per call
-        $cacheKey = 'asset_url_' . md5($path);
+        // Return early for empty paths
+        if (!$path) {
+            return null;
+        }
 
-        return Cache::remember($cacheKey, 86400, function () use ($path) {
+        // If already a full URL, return as-is
+        if (preg_match('/^https?:\/\//', $path)) {
+            return $path;
+        }
+
+        // If path points to local assets folder, use asset() helper
+        if (str_starts_with($path, 'assets/') || str_starts_with($path, '/assets/')) {
+            return app('url')->asset(ltrim($path, '/'), $secure);
+        }
+
+        // Cache built S3 URLs to reduce repeated overhead
+        $cacheKey = 'asset_url_' . md5($path);
+        return Cache::remember($cacheKey, 86400, function () use ($path, $secure) {
             try {
                 // Build S3 URL directly using config
                 $bucket = config('filesystems.disks.s3.bucket');
@@ -92,7 +105,7 @@ if (!function_exists('s3_asset')) {
             } catch (\Exception $e) {
                 // Fallback to local asset if anything fails
                 \Log::warning("S3 asset failed for: {$path}", ['error' => $e->getMessage()]);
-                return asset('assets/' . $path);
+                return app('url')->asset(ltrim($path, '/'), $secure);
             }
         });
     }
@@ -101,7 +114,10 @@ if (!function_exists('s3_asset')) {
 if (!function_exists('check_s3_asset')) {
     function check_s3_asset($path, $secure = null)
     {
-        return Storage::disk('s3')->exists($path);
+        if (!$path) {
+            return false;
+        }
+        return Storage::disk('s3')->exists(ltrim($path, '/'));
     }
 }
 

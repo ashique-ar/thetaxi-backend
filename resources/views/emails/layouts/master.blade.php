@@ -56,7 +56,7 @@
         .email-wrapper {
             width: 100%;
             background-color: #f4f5f7;
-            padding: 40px 20px;
+            padding: 0;
         }
 
         .email-container {
@@ -437,7 +437,7 @@
         /* Responsive */
         @media only screen and (max-width: 600px) {
             .email-wrapper {
-                padding: 20px 15px;
+                padding: 0;
             }
 
             .email-header {

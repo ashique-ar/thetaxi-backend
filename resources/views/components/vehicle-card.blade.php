@@ -12,9 +12,18 @@
 
 @php
     $pricing = $pricing ?: ['base_amount' => 0, 'currency' => 'LKR'];
-    $mainImage = isset($vehicle['thumbnail'])
-        ? s3_asset($vehicle['thumbnail']['path'] ?? '')
-        : asset('assets/img/default-vehicle.jpg');
+    // Normalize thumbnail which may be stored as an array or string in different places
+    $thumb = null;
+    if (isset($vehicle['thumbnail'])) {
+        $thumbRaw = $vehicle['thumbnail'];
+        if (is_array($thumbRaw)) {
+            // Common shapes: ['path' => '...', 0 => '...']
+            $thumb = $thumbRaw['path'] ?? ($thumbRaw[0] ?? null);
+        } else {
+            $thumb = $thumbRaw;
+        }
+    }
+    $mainImage = $thumb ? s3_asset($thumb) : asset('assets/img/default-vehicle.jpg');
 
     // Determine if this vehicle is quotation-only
     $isQuotationOnly = $vehicle['quotation_only'] ?? false;
@@ -737,7 +746,7 @@
             /* Pricing */
             .vehicle-pricing {
                 margin-top: auto;
-                padding-top:5px;
+                padding-top: 5px;
                 border-top: 2px solid #f0f0f0;
             }
 
