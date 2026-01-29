@@ -41,6 +41,19 @@ class CheckoutConfirmationMail extends Mailable
      */
     public function content(): Content
     {
+        // Reload booking with relations required for email rendering (robust for queued mails)
+        try {
+            $this->booking = \App\Models\Booking\Booking::with([
+                'customer.user',
+                'bookingItems.vehicleGroup',
+                'bookingItems.serviceType',
+                'acceptedTerms.terms'
+            ])->find($this->booking->id);
+        } catch (\Exception $e) {
+            // If reload fails, continue with the provided booking instance
+            \Log::warning('CheckoutConfirmationMail: failed to reload booking for email', ['booking_id' => $this->booking->id, 'error' => $e->getMessage()]);
+        }
+
         return new Content(
             view: 'emails.checkout-confirmation',
             with: [

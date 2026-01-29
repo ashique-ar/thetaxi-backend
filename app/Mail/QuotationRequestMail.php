@@ -40,6 +40,16 @@ class QuotationRequestMail extends Mailable
      */
     public function content(): Content
     {
+        try {
+            $this->booking = \App\Models\Booking\Booking::with([
+                'customer.user',
+                'bookingItems.vehicleGroup',
+                'bookingItems.serviceType',
+            ])->find($this->booking->id);
+        } catch (\Exception $e) {
+            \Log::warning('QuotationRequestMail: failed to reload booking for email', ['booking_id' => $this->booking->id ?? null, 'error' => $e->getMessage()]);
+        }
+
         return new Content(
             view: 'emails.quotation-request',
             with: [

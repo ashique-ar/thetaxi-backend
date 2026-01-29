@@ -1058,11 +1058,12 @@ class CheckoutController extends Controller
             return redirect()->route('home')->with('error', 'Invalid booking reference.');
         }
 
-        // Fetch booking for display with eager loaded relationships
+        // Fetch booking for display with eager loaded relationships (include terms & customer user)
         $booking = Booking::with([
-            'customer',
+            'customer.user',
             'bookingItems.vehicleGroup',
-            'bookingItems.serviceType'
+            'bookingItems.serviceType',
+            'acceptedTerms.terms'
         ])->where('booking_number', $reference)->first();
 
         if (!$booking) {
