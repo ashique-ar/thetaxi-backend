@@ -353,7 +353,11 @@
                 $totalDistance = $distanceDetails['total_distance'] ?? null;
                 $calculationType = $distanceDetails['calculation_type'] ?? null;
                 $effectiveDays = $distanceDetails['effective_days'] ?? null;
-                $journeyDurationSeconds = $distanceDetails['journey_duration_seconds'] ?? null;
+                // Ensure we use any previously-determined journey duration (preserve earlier fallbacks)
+                $journeyDurationSeconds =
+                    $journeyDurationSeconds ??
+                    ($distanceDetails['journey_duration_seconds'] ??
+                        ($distanceDetails['total_duration_seconds'] ?? null));
 
                 // Determine extra KM from multiple sources (customizations/metadata/distanceDetails)
                 if (empty($extraKilometers)) {
@@ -365,9 +369,9 @@
                     $extraKmTotal = $extraKilometers * $extraKmPrice;
                 }
 
-                // Human readable duration
+                // Human readable duration (kept as fallback)
                 $journeyDurationReadable = null;
-                if ($journeyDurationSeconds && is_numeric($journeyDurationSeconds)) {
+                if (!empty($journeyDurationSeconds) && is_numeric($journeyDurationSeconds)) {
                     $hours = floor($journeyDurationSeconds / 3600);
                     $minutes = floor(($journeyDurationSeconds % 3600) / 60);
                     $journeyDurationReadable = trim(
@@ -404,7 +408,10 @@
                     </td>
                     <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
                         <strong>{{ number_format($displayDistance, 1) }} km</strong>
-                        @if ($journeyDurationReadable)
+                        @if (!empty($journeyDurationSeconds) && is_numeric($journeyDurationSeconds))
+                            <small style="display:block;color:#777; margin-top:4px;">Duration:
+                                {{ gmdate('H:i', (int) $journeyDurationSeconds) }} estimated</small>
+                        @elseif ($journeyDurationReadable)
                             <small style="display:block;color:#777; margin-top:4px;">Duration:
                                 {{ $journeyDurationReadable }}</small>
                         @endif
