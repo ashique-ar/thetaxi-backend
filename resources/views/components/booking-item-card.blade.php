@@ -53,15 +53,37 @@
             <div class="col-md-5 text-md-end">
                 @php
                     $servicePricingMode = $item->serviceType?->pricing_mode ?? null;
-                    $itemJourneyDuration = $item->journey_duration_seconds ?? null;
+                    $distanceDetails = isset($item->distance_details)
+                        ? (is_string($item->distance_details)
+                            ? json_decode($item->distance_details, true)
+                            : $item->distance_details)
+                        : [];
+                    $displayDistance =
+                        $distanceDetails['actual_journey_distance'] ??
+                        ($distanceDetails['journey_distance'] ?? ($distanceDetails['total_distance'] ?? null));
+                    $itemJourneyDuration =
+                        $item->journey_duration_seconds ?? ($distanceDetails['journey_duration_seconds'] ?? null);
                 @endphp
-                @if ($itemJourneyDuration && $servicePricingMode !== 'day')
-                    @php
-                        $hours = floor($itemJourneyDuration / 3600);
-                        $minutes = floor(($itemJourneyDuration % 3600) / 60);
-                        $readable = trim(($hours > 0 ? "{$hours}h" : '') . ($minutes > 0 ? " {$minutes}m" : ''));
-                    @endphp
-                    <span class="badge bg-white text-dark border">{{ $readable }} estimated</span>
+
+                @if ($servicePricingMode !== 'day')
+                    @if (!empty($displayDistance))
+                        <span class="badge bg-white text-dark border"><strong>{{ number_format($displayDistance, 1) }}
+                                km</strong>
+                            @if (!empty($itemJourneyDuration))
+                                <div class="small text-muted">{{ gmdate('H:i', $itemJourneyDuration) }} estimated</div>
+                            @endif
+                        </span>
+                    @elseif (!empty($itemJourneyDuration))
+                        @php
+                            $hours = floor($itemJourneyDuration / 3600);
+                            $minutes = floor(($itemJourneyDuration % 3600) / 60);
+                            $readable = trim(($hours > 0 ? "{$hours}h" : '') . ($minutes > 0 ? " {$minutes}m" : ''));
+                        @endphp
+                        <span class="badge bg-white text-dark border">{{ $readable }} estimated</span>
+                    @else
+                        <span class="badge bg-white text-dark border">{{ $durationDays }}
+                            Day{{ $durationDays != 1 ? 's' : '' }}</span>
+                    @endif
                 @else
                     <span class="badge bg-white text-dark border">{{ $durationDays }}
                         Day{{ $durationDays != 1 ? 's' : '' }}</span>
@@ -123,15 +145,37 @@
             <div class="col-md-4 text-md-end">
                 @php
                     $servicePricingMode = $item->serviceType?->pricing_mode ?? null;
-                    $itemJourneyDuration = $item->journey_duration_seconds ?? null;
+                    $distanceDetails = isset($item->distance_details)
+                        ? (is_string($item->distance_details)
+                            ? json_decode($item->distance_details, true)
+                            : $item->distance_details)
+                        : [];
+                    $displayDistance =
+                        $distanceDetails['actual_journey_distance'] ??
+                        ($distanceDetails['journey_distance'] ?? ($distanceDetails['total_distance'] ?? null));
+                    $itemJourneyDuration =
+                        $item->journey_duration_seconds ?? ($distanceDetails['journey_duration_seconds'] ?? null);
                 @endphp
-                @if ($itemJourneyDuration && $servicePricingMode !== 'day')
-                    @php
-                        $hours = floor($itemJourneyDuration / 3600);
-                        $minutes = floor(($itemJourneyDuration % 3600) / 60);
-                        $readable = trim(($hours > 0 ? "{$hours}h" : '') . ($minutes > 0 ? " {$minutes}m" : ''));
-                    @endphp
-                    <span class="badge bg-white text-dark border">{{ $readable }} estimated</span>
+
+                @if ($servicePricingMode !== 'day')
+                    @if (!empty($displayDistance))
+                        <span class="badge bg-white text-dark border"><strong>{{ number_format($displayDistance, 1) }}
+                                km</strong>
+                            @if (!empty($itemJourneyDuration))
+                                <div class="small text-muted">{{ gmdate('H:i', $itemJourneyDuration) }} estimated</div>
+                            @endif
+                        </span>
+                    @elseif (!empty($itemJourneyDuration))
+                        @php
+                            $hours = floor($itemJourneyDuration / 3600);
+                            $minutes = floor(($itemJourneyDuration % 3600) / 60);
+                            $readable = trim(($hours > 0 ? "{$hours}h" : '') . ($minutes > 0 ? " {$minutes}m" : ''));
+                        @endphp
+                        <span class="badge bg-white text-dark border">{{ $readable }} estimated</span>
+                    @else
+                        <span class="badge bg-white text-dark border">{{ $durationDays }}
+                            Day{{ $durationDays != 1 ? 's' : '' }}</span>
+                    @endif
                 @else
                     <span class="badge bg-white text-dark border">{{ $durationDays }}
                         Day{{ $durationDays != 1 ? 's' : '' }}</span>

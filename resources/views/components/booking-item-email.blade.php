@@ -375,7 +375,7 @@
             @endphp
 
             <tr>
-                <td colspan="2" style="background: #f8fafc; font-weight: bold; color: #374151; padding: 12px;">
+                <td colspan="2" style="background: #f8fafc; font-weight: bold; color: #374151;">
                     📏 Distance & Kilometer Information
                 </td>
             </tr>
