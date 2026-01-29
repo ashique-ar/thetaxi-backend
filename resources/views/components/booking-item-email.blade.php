@@ -233,14 +233,28 @@
                 Duration
             </td>
             <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
-                {{-- Prefer showing journey duration when available (dynamic) for time-based services; fall back to days --}}
+                {{-- For day-based pricing show number of days; for trip/hourly show estimated distance (preferred) and duration --}}
 
                 @php
                     $servicePricingMode = $item->serviceType?->pricing_mode ?? null;
+                    $displayDistance =
+                        $distanceDetails['actual_journey_distance'] ??
+                        ($distanceDetails['journey_distance'] ?? ($distanceDetails['total_distance'] ?? null));
                 @endphp
 
-                @if (!empty($journeyDurationReadable) && $servicePricingMode !== 'day')
-                    {{ $journeyDurationReadable }} estimated
+                @if ($servicePricingMode !== 'day')
+                    @if (!empty($displayDistance))
+                        <strong>{{ number_format($displayDistance, 1) }} km</strong>
+                        @if (!empty($journeyDurationReadable))
+                            <div style="color:#777; font-size:12px; margin-top:4px;">Duration:
+                                {{ $journeyDurationReadable }}</div>
+                        @endif
+                    @elseif (!empty($journeyDurationReadable))
+                        {{ $journeyDurationReadable }} estimated
+                    @else
+                        {{-- Fallback to days if no distance or duration info available --}}
+                        {{ $durationDays }} Day{{ $durationDays != 1 ? 's' : '' }}
+                    @endif
                 @else
                     {{ $durationDays }} Day{{ $durationDays != 1 ? 's' : '' }}
                 @endif
