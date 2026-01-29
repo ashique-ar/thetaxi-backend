@@ -143,12 +143,17 @@
         $serviceCode = strtolower(str_replace(' ', '_', $serviceTypeName ?? ''));
     }
 
-    $journeyDurationSeconds = $distanceDetails['journey_duration_seconds'] ?? $distanceDetails['total_duration_seconds'] ?? ($item->journey_duration_seconds ?? ($item['journey_duration_seconds'] ?? null)) ?? ($item->total_duration_seconds ?? ($item['total_duration_seconds'] ?? null)) ?? null;
+    $journeyDurationSeconds =
+        $distanceDetails['journey_duration_seconds'] ??
+        ($distanceDetails['total_duration_seconds'] ??
+            ($item->journey_duration_seconds ??
+                ($item['journey_duration_seconds'] ?? null) ??
+                ($item->total_duration_seconds ?? ($item['total_duration_seconds'] ?? null) ?? null)));
     $journeyDurationReadable = null;
     if ($journeyDurationSeconds && is_numeric($journeyDurationSeconds)) {
         $hours = floor($journeyDurationSeconds / 3600);
         $minutes = floor(($journeyDurationSeconds % 3600) / 60);
-        $journeyDurationReadable = trim((($hours > 0) ? "{$hours}h" : '') . (($minutes > 0) ? " {$minutes}m" : ''));
+        $journeyDurationReadable = trim(($hours > 0 ? "{$hours}h" : '') . ($minutes > 0 ? " {$minutes}m" : ''));
     }
 @endphp
 
