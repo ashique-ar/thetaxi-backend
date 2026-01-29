@@ -131,11 +131,9 @@ class TermsAndCondition extends BaseModel
     {
         return self::active()
             ->whereNull('payment_type')
-            ->where(function ($q) {
-                $q->whereNull('service_type_id')
-                    ->orWhereNull('service_type');
-            })
+            ->whereNull('service_type_id')
             ->orderBy('display_order', 'asc')
+            ->active()
             ->get();
     }
 
