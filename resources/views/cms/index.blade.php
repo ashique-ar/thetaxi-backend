@@ -217,9 +217,9 @@
             left: 15px;
             background: #BF2629;
             color: white;
-            padding: 5px 12px;
+            padding: 0 12px;
             border-radius: 20px;
-            font-size: 12px;
+            font-size: 10px;
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.5px;
