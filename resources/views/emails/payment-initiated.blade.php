@@ -134,7 +134,7 @@
             <h2 class="section-title"><span class="icon">📜</span> Terms & Conditions</h2>
             @foreach ($applicableTerms as $t)
                 <h4 style="margin-top:8px;">{{ $t->title }}</h4>
-                <div style="color:#555;">{!! $t->content !!}</div>
+                <div style="color:#555;text-align: left;">{!! $t->content !!}</div>
             @endforeach
         </div>
     @endif
