@@ -230,43 +230,6 @@
         @endif
         <tr>
             <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; width: 30%;">
-                Duration
-            </td>
-            <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
-                {{-- For day-based pricing show number of days; for trip/hourly show estimated distance (preferred) and duration --}}
-
-                @php
-                    $servicePricingMode = $item->serviceType?->pricing_mode ?? null;
-                    $displayDistance =
-                        $distanceDetails['actual_journey_distance'] ??
-                        ($distanceDetails['journey_distance'] ?? ($distanceDetails['total_distance'] ?? null));
-                @endphp
-
-                @if ($servicePricingMode !== 'day')
-                    @if (!empty($displayDistance))
-                        <strong>{{ number_format($displayDistance, 1) }} km</strong>
-
-                        {{-- Prefer exact HH:MM if duration seconds are saved (align with search page) --}}
-                        @if (!empty($journeyDurationSeconds) && is_numeric($journeyDurationSeconds) && (int) $journeyDurationSeconds > 0)
-                            <div style="color:#777; font-size:12px; margin-top:4px;">Duration:
-                                {{ gmdate('H:i', (int) $journeyDurationSeconds) }} estimated</div>
-                        @elseif (!empty($journeyDurationReadable))
-                            <div style="color:#777; font-size:12px; margin-top:4px;">Duration:
-                                {{ $journeyDurationReadable }}</div>
-                        @endif
-                    @elseif (!empty($journeyDurationReadable))
-                        {{ $journeyDurationReadable }} estimated
-                    @else
-                        {{-- Fallback to days if no distance or duration info available --}}
-                        {{ $durationDays }} Day{{ $durationDays != 1 ? 's' : '' }}
-                    @endif
-                @else
-                    {{ $durationDays }} Day{{ $durationDays != 1 ? 's' : '' }}
-                @endif
-            </td>
-        </tr>
-        <tr>
-            <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; width: 30%;">
                 Rate per Day
             </td>
             <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
@@ -404,7 +367,7 @@
             @elseif($displayDistance)
                 <tr>
                     <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333;">
-                        Estimated Distance (charged)
+                        Estimated Distance
                     </td>
                     <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
                         <strong>{{ number_format($displayDistance, 1) }} km</strong>
