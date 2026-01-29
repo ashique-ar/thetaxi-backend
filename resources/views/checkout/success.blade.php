@@ -332,10 +332,7 @@
                                             <h6 style="margin:0; font-weight:700">{{ $tc->title ?? 'Terms' }} <small
                                                     style="font-weight:400; font-size:12px">v{{ $bt->terms_version ?? ($tc->version ?? '1') }}</small>
                                             </h6>
-                                            <div style="color:#555; margin-top:6px">{!! \Illuminate\Support\Str::limit($tc->content ?? '', 400) !!} @if (!empty($tc->slug))
-                                                    <a href="#" target="_blank">Read full</a>
-                                                @endif
-                                            </div>
+                                            <div style="color:#555; margin-top:6px">{!! $tc->content ?? '' !!}</div>
                                         </div>
                                     @endforeach
                                 </div>
