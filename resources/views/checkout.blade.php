@@ -274,10 +274,12 @@
                                                         $uniqueTerms[$tc->id] = [
                                                             'term' => $tc,
                                                             'services' => [],
-                                                            'payment_types' => []
+                                                            'payment_types' => [],
                                                         ];
                                                     }
-                                                    $uniqueTerms[$tc->id]['services'][] = ucfirst(str_replace('_', ' ', $service));
+                                                    $uniqueTerms[$tc->id]['services'][] = ucfirst(
+                                                        str_replace('_', ' ', $service),
+                                                    );
                                                 }
                                             }
 
@@ -288,7 +290,7 @@
                                                         $uniqueTerms[$tc->id] = [
                                                             'term' => $tc,
                                                             'services' => [],
-                                                            'payment_types' => []
+                                                            'payment_types' => [],
                                                         ];
                                                     }
                                                     $uniqueTerms[$tc->id]['payment_types'][] = $ptype;
@@ -297,8 +299,12 @@
 
                                             // Convert service and payment type arrays to unique lists
                                             foreach ($uniqueTerms as $id => $meta) {
-                                                $uniqueTerms[$id]['services'] = array_values(array_unique($meta['services']));
-                                                $uniqueTerms[$id]['payment_types'] = array_values(array_unique($meta['payment_types']));
+                                                $uniqueTerms[$id]['services'] = array_values(
+                                                    array_unique($meta['services']),
+                                                );
+                                                $uniqueTerms[$id]['payment_types'] = array_values(
+                                                    array_unique($meta['payment_types']),
+                                                );
                                             }
                                         @endphp
 
@@ -308,20 +314,30 @@
                                                     <h6>Applicable Terms & Conditions</h6>
                                                     <div class="terms-content">
                                                         @foreach ($uniqueTerms as $meta)
-                                                            @php $tc = $meta['term']; $services = $meta['services']; $pTypes = $meta['payment_types']; @endphp
-                                                            <div class="term-item mb-3" data-payment-types="{{ implode(',', $pTypes) }}">
+                                                            @php
+                                                                $tc = $meta['term'];
+                                                                $services = $meta['services'];
+                                                                $pTypes = $meta['payment_types'];
+                                                            @endphp
+                                                            <div class="term-item mb-3"
+                                                                data-payment-types="{{ implode(',', $pTypes) }}">
                                                                 <div class="form-check">
                                                                     <input class="form-check-input" type="checkbox"
                                                                         name="terms_accepted[{{ $tc->id }}]"
-                                                                        value="{{ $tc->version }}" id="tc_{{ $tc->id }}"
+                                                                        value="{{ $tc->version }}"
+                                                                        id="tc_{{ $tc->id }}"
                                                                         {{ old('terms_accepted.' . $tc->id) ? 'checked' : '' }}>
-                                                                    <label class="form-check-label" for="tc_{{ $tc->id }}">
+                                                                    <label class="form-check-label"
+                                                                        for="tc_{{ $tc->id }}">
                                                                         <strong>{{ $tc->title }}</strong>
                                                                         @if (!empty($services))
-                                                                            <small class="text-muted"> — Applies to: {{ implode(', ', $services) }}</small>
+                                                                            <small class="text-muted"> — Applies to:
+                                                                                {{ implode(', ', $services) }}</small>
                                                                         @endif
                                                                         @if (!empty($pTypes))
-                                                                            <small class="text-muted"> <em>(Payment-specific: {{ implode(', ', $pTypes) }})</em></small>
+                                                                            <small class="text-muted">
+                                                                                <em>(Payment-specific:
+                                                                                    {{ implode(', ', $pTypes) }})</em></small>
                                                                         @endif
                                                                     </label>
                                                                 </div>
@@ -480,19 +496,33 @@
                                                                             $freeKmPerDay =
                                                                                 $distanceDetails['free_km_per_day'] ??
                                                                                 null;
-                                                                            
+
                                                                             // Minimum KM charge info
-                                                                            $minimumKm = $distanceDetails['minimum_km'] ?? null;
-                                                                            $minimumKmApplied = $distanceDetails['minimum_km_applied'] ?? false;
-                                                                            $actualJourneyDistance = $distanceDetails['actual_journey_distance'] ?? ($distanceDetails['journey_distance'] ?? null);
+                                                                            $minimumKm =
+                                                                                $distanceDetails['minimum_km'] ?? null;
+                                                                            $minimumKmApplied =
+                                                                                $distanceDetails[
+                                                                                    'minimum_km_applied'
+                                                                                ] ?? false;
+                                                                            $actualJourneyDistance =
+                                                                                $distanceDetails[
+                                                                                    'actual_journey_distance'
+                                                                                ] ??
+                                                                                ($distanceDetails['journey_distance'] ??
+                                                                                    null);
                                                                         @endphp
 
                                                                         @if ($minimumKmApplied && $minimumKm)
-                                                                            <p><small style="color: #92400e; background: #fef3c7; padding: 2px 6px; border-radius: 4px;">
-                                                                                <i class="bi bi-info-circle"></i>
-                                                                                <strong>Minimum {{ number_format($minimumKm, 0) }} km</strong>
-                                                                                (Actual: {{ number_format($actualJourneyDistance, 1) }} km)
-                                                                            </small></p>
+                                                                            <p><small
+                                                                                    style="color: #92400e; background: #fef3c7; padding: 2px 6px; border-radius: 4px;">
+                                                                                    <i class="bi bi-info-circle"></i>
+                                                                                    <strong>Minimum
+                                                                                        {{ number_format($minimumKm, 0) }}
+                                                                                        km</strong>
+                                                                                    (Actual:
+                                                                                    {{ number_format($actualJourneyDistance, 1) }}
+                                                                                    km)
+                                                                                </small></p>
                                                                         @endif
 
                                                                         @if ($allowedTotalKm || $freeKmPerDay)
