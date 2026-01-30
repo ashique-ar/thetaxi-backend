@@ -817,8 +817,6 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
                 @enderror
             </div>
 
-            <!-- Drop Off Time -->
-            @if ($usesDropoffTime)
                 <div class="single-search-box">
                     <label class="input-label">Return Time</label>
                     <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
@@ -834,7 +832,6 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
                         <span class="text-danger small">{{ $message }}</span>
                     @enderror
                 </div>
-            @endif
 
             <div class="package-selector" id="day_rental-packages" style="display: none;"
                 data-selected="{{ old('package_id', $getSearchProp('service_package_id', '')) }}">
