@@ -52,13 +52,48 @@ class PermissionController extends Controller
     public function store(CreatePermissionRequest $request): JsonResponse
     {
         try {
-            $permission = Permission::create($request->validated());
+            $data = $request->validated();
+
+            // Always create permission for both guards (web and api) if not explicitly provided
+            $guardProvided = isset($data['guard_name']) && !empty($data['guard_name']);
+            $created = [];
+
+            \DB::beginTransaction();
+            try {
+                // Create the primary permission as requested
+                $permission = Permission::firstOrCreate([
+                    'name' => $data['name'],
+                    'guard_name' => $data['guard_name'] ?? 'web'
+                ], [
+                    'display_name' => $data['display_name'] ?? null,
+                    'description' => $data['description'] ?? null,
+                ]);
+                $created[] = $permission;
+
+                // If guard not explicitly provided, mirror for 'api' (if different)
+                if (!$guardProvided) {
+                    $mirror = Permission::firstOrCreate([
+                        'name' => $data['name'],
+                        'guard_name' => 'api'
+                    ], [
+                        'display_name' => $data['display_name'] ?? null,
+                        'description' => ($data['description'] ?? null) . ' (api guard)'
+                    ]);
+                    $created[] = $mirror;
+                }
+
+                \DB::commit();
+            } catch (\Exception $e) {
+                \DB::rollBack();
+                throw $e;
+            }
 
             return response()->json([
                 'status' => 'success',
                 'message' => 'Permission created successfully',
                 'data' => [
-                    'permission' => new PermissionResource($permission)
+                    'permission' => new PermissionResource($permission),
+                    'mirrors' => array_map(fn($p) => new PermissionResource($p), $created)
                 ]
             ], 201);
         } catch (\Exception $e) {
