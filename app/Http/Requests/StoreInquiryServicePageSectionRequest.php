@@ -6,12 +6,6 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class StoreInquiryServicePageSectionRequest extends FormRequest
 {
-    public function authorize(): bool
-    {
-        // TODO: add permission check if needed
-        return $this->user()?->can('website.manage') ?? true;
-    }
-
     public function rules(): array
     {
         $base = [
