@@ -572,10 +572,10 @@ class DynamicServiceConfigurationService
     public function getServiceFormConfiguration(string $serviceCode): array
     {
         $cacheKey = "service_form_config_{$serviceCode}";
-        
+
         return Cache::remember($cacheKey, self::CACHE_TIMEOUT, function () use ($serviceCode) {
             $serviceType = ServiceType::where('code', $serviceCode)->first();
-            
+
             if (!$serviceType) {
                 return [
                     'error' => 'Service type not found',
@@ -593,7 +593,7 @@ class DynamicServiceConfigurationService
 
             // Get pricing slabs for duration fields
             $slabs = $this->getServicePricingSlabs($serviceType->id);
-            
+
             // Get common rates for additional field options
             $commonRates = $this->getServiceCommonRates($serviceType->id);
 
@@ -624,7 +624,7 @@ class DynamicServiceConfigurationService
         ];
 
         $serviceSpecificRules = $config['base_fields']['validation_rules'] ?? [];
-        
+
         return array_merge($baseRules, $serviceSpecificRules);
     }
 
@@ -666,7 +666,7 @@ class DynamicServiceConfigurationService
     {
         $slabs = $this->getServicePricingSlabs($serviceType->id);
         $commonRates = $this->getServiceCommonRates($serviceType->id);
-        
+
         return [
             'id' => $serviceType->id,
             'code' => $serviceType->code,
@@ -734,8 +734,10 @@ class DynamicServiceConfigurationService
      */
     private function getServiceCalculationFormula($serviceTypeId): ?string
     {
+        // Calculation definitions use 'status' enum (active/inactive/draft)
         $calculation = VehiclePricingCalculationDefinition::where('service_type_id', $serviceTypeId)
-            ->where('is_active', true)
+            ->where('status', 'active')
+            ->orderBy('created_at', 'desc')
             ->first();
 
         return $calculation?->formula;
@@ -751,7 +753,7 @@ class DynamicServiceConfigurationService
         }
 
         $types = $slabs->pluck('type')->unique();
-        
+
         if ($types->contains('flat_rate')) {
             return 'flat_rate';
         } elseif ($types->contains('per_day')) {
@@ -768,8 +770,8 @@ class DynamicServiceConfigurationService
      */
     private function isDurationBased($slabs): bool
     {
-        return $slabs->where('type', 'per_day')->isNotEmpty() || 
-               $slabs->where('type', 'flat_rate')->isNotEmpty();
+        return $slabs->where('type', 'per_day')->isNotEmpty() ||
+            $slabs->where('type', 'flat_rate')->isNotEmpty();
     }
 
     /**
