@@ -73,10 +73,10 @@ class VehicleGroupPricingController extends Controller
                 ->with(['grade:id,name', 'make:id,name', 'model:id,name'])
                 ->when($vehicleGroupId, fn($q) => $q->where('id', $vehicleGroupId))
                 ->when(!$includeInactive, fn($q) => $q->where('is_active', true))
-                ->when($search, function($q) use ($search) {
-                    $q->where(function($query) use ($search) {
+                ->when($search, function ($q) use ($search) {
+                    $q->where(function ($query) use ($search) {
                         $query->where('name', 'like', "%{$search}%")
-                              ->orWhere('description', 'like', "%{$search}%");
+                            ->orWhere('description', 'like', "%{$search}%");
                     });
                 })
                 ->select(['id', 'name', 'description', 'is_active', 'grade_id', 'make_id', 'model_id'])
@@ -282,25 +282,56 @@ class VehicleGroupPricingController extends Controller
     public function saveVehicleGroupPricing(Request $request, string $vehicleGroupId): JsonResponse
     {
         $validator = Validator::make($request->all(), [
-            'service_pricing' => 'required|array',
-            'service_pricing.*.service_type_id' => 'required|uuid|exists:service_types,id',
-            'service_pricing.*.slabs' => 'required|array',
-            'service_pricing.*.slabs.*.slab_definition_id' => 'required|uuid|exists:vehicle_pricing_slab_definitions,id',
-            'service_pricing.*.slabs.*.rate' => 'required|numeric|min:0',
+            // Allow service_pricing to be nullable so single-rate saves or common-rate-only saves succeed.
+            // We enforce presence of at least one of 'service_pricing' or 'common_rates' below.
+            'service_pricing' => 'nullable|array',
+            'service_pricing.*.service_type_id' => 'required_with:service_pricing|uuid|exists:service_types,id',
+            'service_pricing.*.slabs' => 'required_with:service_pricing|array',
+            'service_pricing.*.slabs.*.slab_definition_id' => 'required_with:service_pricing|uuid|exists:vehicle_pricing_slab_definitions,id',
+            'service_pricing.*.slabs.*.rate' => 'required_with:service_pricing|numeric|min:0',
             'service_pricing.*.slabs.*.rate_type' => 'nullable|in:per_hour,per_day,flat_rate',
             'service_pricing.*.slabs.*.minimum_charge' => 'nullable|numeric|min:0',
             'service_pricing.*.slabs.*.includes_fuel' => 'boolean',
             'service_pricing.*.slabs.*.includes_driver' => 'boolean',
             'service_pricing.*.slabs.*.is_active' => 'boolean',
             'common_rates' => 'nullable|array',
-            'common_rates.*.common_rate_definition_id' => 'required|uuid|exists:vehicle_pricing_common_rate_definitions,id',
+            'common_rates.*.common_rate_definition_id' => 'required_with:common_rates|uuid|exists:vehicle_pricing_common_rate_definitions,id',
             'common_rates.*.value' => 'nullable|numeric|min:0',
             'common_rates.*.is_active' => 'boolean',
             'common_rates.*.service_type_id' => 'nullable|uuid|exists:service_types,id',
             'change_reason' => 'nullable|string|max:500',
         ]);
 
+        // Require at least one of the two arrays to be present and non-empty
+        $hasServicePricing = (is_array($request->service_pricing) && count($request->service_pricing) > 0);
+        $hasCommonRates = (is_array($request->common_rates) && count($request->common_rates) > 0);
+
+        // If service_pricing exists, ensure at least one entry has slabs with at least one slab
+        $servicePricingHasSlabs = false;
+        if ($hasServicePricing) {
+            foreach ($request->service_pricing as $sp) {
+                if (isset($sp['slabs']) && is_array($sp['slabs']) && count($sp['slabs']) > 0) {
+                    $servicePricingHasSlabs = true;
+                    break;
+                }
+            }
+        }
+
+        if ((!$hasServicePricing || !$servicePricingHasSlabs) && !$hasCommonRates) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => ['service_pricing' => ['Either service_pricing with at least one slab or common_rates must be provided.']]
+            ], 422);
+        }
+
         if ($validator->fails()) {
+            Log::info('Vehicle group pricing validation failed', [
+                'errors' => $validator->errors()->toArray(),
+                'request' => $request->all(),
+                'vehicle_group_id' => $vehicleGroupId
+            ]);
+
             return response()->json([
                 'success' => false,
                 'message' => 'Validation failed',
@@ -496,7 +527,7 @@ class VehicleGroupPricingController extends Controller
         }
     }
 
-    
+
 
     /**
      * Optimized completion percentage calculation
@@ -539,19 +570,19 @@ class VehicleGroupPricingController extends Controller
             if (config('cache.default') === 'redis' && extension_loaded('redis')) {
                 $redis = \Illuminate\Support\Facades\Redis::connection();
                 $keys = $redis->keys('*unified_pricing_*');
-                
+
                 if (!empty($keys)) {
                     $redis->del($keys);
                 }
             } else {
-                cache()->flush(); 
+                cache()->flush();
             }
         } catch (\Exception $e) {
             Log::error('Failed to clear unified pricing caches', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
-            
+
             // Last resort - try to clear individual cache entries
             try {
                 cache()->forget('unified_pricing');
@@ -848,7 +879,7 @@ class VehicleGroupPricingController extends Controller
                         $results['common_rate_pricing']['updated']++;
                     } else {
                         $newCommonRate = VehicleGroupCommonRatePricing::create($commonRateData);
-                        
+
                         // Get common rate definition for service type
                         $commonRateDefinition = VehiclePricingCommonRateDefinition::find($commonRateData['common_rate_definition_id']);
                         $serviceTypeId = $commonRateDefinition ? $commonRateDefinition->service_type_id : null;
