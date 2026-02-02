@@ -817,21 +817,21 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
                 @enderror
             </div>
 
-                <div class="single-search-box">
-                    <label class="input-label">Return Time</label>
-                    <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                        <path
-                            d="M9 0C4.03 0 0 4.03 0 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm.5-12H8v5l4.25 2.52.75-1.23-3.5-2.08V4z" />
-                    </svg>
-                    <div class="custom-select-dropdown">
-                        <input type="time" name="dropoff_time"
-                            value="{{ old('dropoff_time', $dayRentalDropoffTime ?? '12:00') }}"
-                            class="@error('dropoff_time') is-invalid @enderror" required>
-                    </div>
-                    @error('dropoff_time')
-                        <span class="text-danger small">{{ $message }}</span>
-                    @enderror
+            <div class="single-search-box">
+                <label class="input-label">Return Time</label>
+                <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+                    <path
+                        d="M9 0C4.03 0 0 4.03 0 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm.5-12H8v5l4.25 2.52.75-1.23-3.5-2.08V4z" />
+                </svg>
+                <div class="custom-select-dropdown">
+                    <input type="time" name="dropoff_time"
+                        value="{{ old('dropoff_time', $dayRentalDropoffTime ?? '12:00') }}"
+                        class="@error('dropoff_time') is-invalid @enderror" required>
                 </div>
+                @error('dropoff_time')
+                    <span class="text-danger small">{{ $message }}</span>
+                @enderror
+            </div>
 
             <div class="package-selector" id="day_rental-packages" style="display: none;"
                 data-selected="{{ old('package_id', $getSearchProp('service_package_id', '')) }}">
@@ -1510,9 +1510,9 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
     /* Reuse transfer-type markup styling to make packages look exactly like the transfer-type toggle */
     .transfer-type-toggle {
         display: flex;
-        display: grid;
+        /* display: grid; */
         gap: 10px;
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
         align-items: center;
     }
 
@@ -1817,7 +1817,6 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
     .transfer-type-option span,
     .package-option span {
         white-space: normal;
-    }
     }
 </style>
 

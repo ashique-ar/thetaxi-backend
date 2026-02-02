@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class HomeController extends Controller
 {
@@ -48,6 +49,10 @@ class HomeController extends Controller
                     'cms_contents.category',
                     'cms_contents.published_at',
                     'cms_contents.is_featured',
+                    'cms_contents.pickup_location',
+                    'cms_contents.dropoff_location',
+                    'cms_contents.service_type',
+                    'cms_contents.pickup_date',
                     'cms_content_types.slug as content_type'
                 ])
                 ->where('cms_content_types.is_active', true)

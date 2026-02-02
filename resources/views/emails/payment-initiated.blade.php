@@ -133,7 +133,10 @@
         <div class="section">
             <h2 class="section-title"><span class="icon">📜</span> Terms & Conditions</h2>
             @foreach ($applicableTerms as $t)
-                <h4 style="margin-top:8px;">{{ $t->title }}</h4>
+                <h4 style="margin-top:8px;">{{ $t->title }} @if ($t->service_name)
+                        <small class="text-muted">({{ $t->service_name }})</small>
+                    @endif
+                </h4>
                 <div style="color:#555;text-align: left;">{!! $t->content !!}</div>
             @endforeach
         </div>

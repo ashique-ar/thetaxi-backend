@@ -46,6 +46,23 @@ class TermsAndCondition extends BaseModel
     }
 
     /**
+     * Get the friendly service name (e.g. "Airport Transfer")
+     */
+    public function getServiceNameAttribute()
+    {
+        if ($this->serviceType) {
+            return $this->serviceType->name;
+        }
+        
+        // Fallback for legacy string codes
+        if ($this->service_type) {
+            return ucwords(str_replace('_', ' ', $this->service_type));
+        }
+        
+        return null;
+    }
+
+    /**
      * Scope: Get active T&C only
      */
     public function scopeActive($query)

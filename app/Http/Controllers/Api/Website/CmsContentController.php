@@ -187,6 +187,11 @@ class CmsContentController extends Controller
             $data['availability_status'] = 'available';
         }
 
+        // Ensure min_days has a sensible default (1)
+        if (!isset($data['min_days'])) {
+            $data['min_days'] = $existing?->min_days ?? 1;
+        }
+
         // Clean up helper-only fields
         unset($data['read_time']);
 

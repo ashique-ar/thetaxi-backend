@@ -3343,13 +3343,24 @@ class BookingFlowService
      * Check if a location is an airport
      * Used to apply airport-specific pricing rules
      */
-    private function isAirportLocation(?array $location): bool
+    private function isAirportLocation($location): bool
     {
-        if (!$location || !isset($location['address'])) {
+        if (!$location) {
             return false;
         }
 
-        $address = strtolower($location['address']);
+        $address = '';
+        if (is_array($location)) {
+            $address = $location['address'] ?? '';
+        } elseif (is_string($location)) {
+            $address = $location;
+        }
+
+        if (empty($address)) {
+            return false;
+        }
+
+        $address = strtolower($address);
 
         // Comprehensive list of Sri Lankan airports and related keywords (case-insensitive matching)
         $airportKeywords = [

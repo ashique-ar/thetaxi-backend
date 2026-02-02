@@ -90,6 +90,15 @@ class CmsContent extends BaseModel
         'availability_status',
         'special_offer',
         'discount_percentage',
+        // Booking fields
+        'pickup_location',
+        'dropoff_location',
+        'service_type',
+        'min_days',
+        'pickup_lat',
+        'pickup_lng',
+        'dropoff_lat',
+        'dropoff_lng',
     ];
 
     /**
@@ -118,6 +127,11 @@ class CmsContent extends BaseModel
         'tags' => 'array',
         'special_offer' => 'boolean',
         'discount_percentage' => 'integer',
+        'min_days' => 'integer',
+        'pickup_lat' => 'decimal:8',
+        'pickup_lng' => 'decimal:8',
+        'dropoff_lat' => 'decimal:8',
+        'dropoff_lng' => 'decimal:8',
     ];
 
     /**

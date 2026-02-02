@@ -142,6 +142,14 @@
         $serviceCode = strtolower(str_replace(' ', '_', $serviceTypeName ?? ''));
     }
 
+    // enhance service type name with transfer direction
+    $transferType = $item->metadata['transfer_type'] ?? ($item['transfer_type'] ?? null);
+    if ($transferType === 'from-airport') {
+        $serviceTypeName .= ' (From Airport)';
+    } elseif ($transferType === 'to-airport') {
+        $serviceTypeName .= ' (To Airport)';
+    }
+
     $journeyDurationSeconds =
         $distanceDetails['journey_duration_seconds'] ??
         ($distanceDetails['total_duration_seconds'] ??
@@ -152,7 +160,10 @@
     if ($journeyDurationSeconds && is_numeric($journeyDurationSeconds)) {
         $hours = floor($journeyDurationSeconds / 3600);
         $minutes = floor(($journeyDurationSeconds % 3600) / 60);
-        $journeyDurationReadable = trim(($hours > 0 ? "{$hours}h" : '') . ($minutes > 0 ? " {$minutes}m" : ''));
+        // Explicit duration format as requested
+        $hoursStr = $hours > 0 ? "{$hours} " . Str::plural('Hour', $hours) : '';
+        $minutesStr = $minutes > 0 ? "{$minutes} " . Str::plural('Minute', $minutes) : '';
+        $journeyDurationReadable = trim($hoursStr . ($minutes > 0 ? " {$minutesStr}" : ''));
     }
 @endphp
 
@@ -198,7 +209,12 @@
                 Pickup Location
             </td>
             <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
-                {{ $pickupAddress }}
+                {{-- Highlight (Airport) if present --}}
+                {!! str_replace(
+                    '(Airport)',
+                    '<strong style="color: #BF2629;">(Airport)</strong>',
+                    htmlspecialchars($pickupAddress),
+                ) !!}
             </td>
         </tr>
         <tr>
@@ -206,7 +222,12 @@
                 Dropoff Location
             </td>
             <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
-                {{ $dropoffAddress }}
+                {{-- Highlight (Airport) if present --}}
+                {!! str_replace(
+                    '(Airport)',
+                    '<strong style="color: #BF2629;">(Airport)</strong>',
+                    htmlspecialchars($dropoffAddress),
+                ) !!}
             </td>
         </tr>
         <tr>
@@ -236,6 +257,64 @@
                 {{ $currencySymbol }} {{ number_format($unitPrice, 2) }}
             </td>
         </tr>
+
+        @php
+            // Check for return trip locations in metadata (passed from BookingController)
+            $returnPickup = $item->metadata['return_pickup_location'] ?? ($item['return_pickup_location'] ?? null);
+            $returnDropoff = $item->metadata['return_dropoff_location'] ?? ($item['return_dropoff_location'] ?? null);
+            $isReturnTrip = $item->metadata['is_return_trip'] ?? ($item['is_return_trip'] ?? false);
+
+            // Should we show return locations?
+            // Yes if explicitly set, OR if it's a return trip and we want to be explicit (swapping main pickup/dropoff)
+$showReturnLocations = !empty($returnPickup) || !empty($returnDropoff) || $isReturnTrip;
+
+if ($showReturnLocations && empty($returnPickup)) {
+    // Infer return pickup from main dropoff if not explicit
+    $returnPickup = $dropoffLoc;
+}
+if ($showReturnLocations && empty($returnDropoff)) {
+    // Infer return dropoff from main pickup if not explicit
+    $returnDropoff = $pickupLoc;
+}
+
+$returnPickupAddress = is_array($returnPickup)
+    ? $returnPickup['address'] ?? 'Same as Dropoff'
+    : $returnPickup ?? 'Same as Dropoff';
+$returnDropoffAddress = is_array($returnDropoff)
+    ? $returnDropoff['address'] ?? 'Same as Pickup'
+    : $returnDropoff ?? 'Same as Pickup';
+        @endphp
+
+        @if ($showReturnLocations)
+            <tr>
+                <td
+                    style="padding: 4px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; width: 30%;">
+                    Return Pickup
+                </td>
+                <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
+                    {{-- Highlight (Airport) if present --}}
+                    {!! str_replace(
+                        '(Airport)',
+                        '<strong style="color: #BF2629;">(Airport)</strong>',
+                        htmlspecialchars($returnPickupAddress),
+                    ) !!}
+                </td>
+            </tr>
+            <tr>
+                <td
+                    style="padding: 4px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; width: 30%;">
+                    Return Dropoff
+                </td>
+                <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
+                    {{-- Highlight (Airport) if present --}}
+                    {!! str_replace(
+                        '(Airport)',
+                        '<strong style="color: #BF2629;">(Airport)</strong>',
+                        htmlspecialchars($returnDropoffAddress),
+                    ) !!}
+                </td>
+            </tr>
+        @endif
 
         @php
             // Extract return trip pricing from multiple possible sources
@@ -332,14 +411,14 @@
                     $extraKmTotal = $extraKilometers * $extraKmPrice;
                 }
 
-                // Human readable duration (kept as fallback)
+                // User-friendly duration format
                 $journeyDurationReadable = null;
                 if (!empty($journeyDurationSeconds) && is_numeric($journeyDurationSeconds)) {
                     $hours = floor($journeyDurationSeconds / 3600);
                     $minutes = floor(($journeyDurationSeconds % 3600) / 60);
-                    $journeyDurationReadable = trim(
-                        ($hours > 0 ? "{$hours}h" : '') . ($minutes > 0 ? " {$minutes}m" : ''),
-                    );
+                    $hoursStr = $hours > 0 ? "{$hours} " . Str::plural('Hour', $hours) : '';
+                    $minutesStr = $minutes > 0 ? "{$minutes} " . Str::plural('Minute', $minutes) : '';
+                    $journeyDurationReadable = trim($hoursStr . ($minutes > 0 ? " {$minutesStr}" : ''));
                 }
 
                 // Fallbacks for display ordering
@@ -365,12 +444,14 @@
                     </td>
                     <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
                         <strong>{{ number_format($displayDistance, 1) }} km</strong>
-                        @if (!empty($journeyDurationSeconds) && is_numeric($journeyDurationSeconds))
-                            <small style="display:block;color:#777; margin-top:4px;">Duration:
-                                {{ gmdate('H:i', (int) $journeyDurationSeconds) }} estimated</small>
-                        @elseif ($journeyDurationReadable)
+                        @if ($journeyDurationReadable)
                             <small style="display:block;color:#777; margin-top:4px;">Duration:
                                 {{ $journeyDurationReadable }}</small>
+                        @elseif (!empty($journeyDurationSeconds) && is_numeric($journeyDurationSeconds))
+                            {{-- Fallback if readable generation failed but seconds exist --}}
+                            <small style="display:block;color:#777; margin-top:4px;">Duration:
+                                {{ floor($journeyDurationSeconds / 60) }} Minutes
+                            </small>
                         @endif
                     </td>
                 </tr>

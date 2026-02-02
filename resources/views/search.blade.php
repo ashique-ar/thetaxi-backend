@@ -225,62 +225,8 @@
         </div>
     </div>
 
-    <!-- Cart Summary Float (Hidden by default, shown when items added) -->
-    <div id="cartSummaryFloat" class="cart-summary-float" style="display: none;">
-        <div class="cart-float-content">
-            <div class="cart-float-header">
-                <h6><i class="bi bi-cart-fill"></i> Cart</h6>
-                <button type="button" class="btn-close btn-close-white" id="closeCartFloat"></button>
-            </div>
-            <div class="cart-float-body" id="cartFloatItems">
-                <!-- Cart items will be dynamically added here -->
-            </div>
-            <div class="cart-float-footer">
-                <div class="cart-breakdown">
-                    <div class="cart-subtotal mb-2">
-                        <span>Subtotal:</span>
-                        <span id="cartSubtotalPrice"><span class="currency-symbol">{{ getCurrencySymbol() }}</span> <span
-                                class="amount">0.00</span></span>
-                    </div>
-                    <div class="cart-addon-charges mb-1" style="display: none;">
-                        <span>Addon Charges:</span>
-                        <span id="cartAddonCharges"><span class="currency-symbol">{{ getCurrencySymbol() }}</span> <span
-                                class="amount">0.00</span></span>
-                    </div>
-                    <div class="cart-extra-km-charges mb-1" style="display: none;">
-                        <span>Extra KM Charges:</span>
-                        <span id="cartExtraKmCharges"><span class="currency-symbol">{{ getCurrencySymbol() }}</span> <span
-                                class="amount">0.00</span></span>
-                    </div>
-                    <div class="cart-service-fee mb-1" style="display: none;">
-                        <span>Service Fee:</span>
-                        <span id="cartServiceFee"><span class="currency-symbol">{{ getCurrencySymbol() }}</span> <span
-                                class="amount">0.00</span></span>
-                    </div>
-                    <div class="cart-tax mb-1" style="display: none;">
-                        <span>Tax:</span>
-                        <span id="cartTax"><span class="currency-symbol">{{ getCurrencySymbol() }}</span> <span
-                                class="amount">0.00</span></span>
-                    </div>
-                    <div class="cart-vat mb-1" style="display: none;">
-                        <span>VAT:</span>
-                        <span id="cartVat"><span class="currency-symbol">{{ getCurrencySymbol() }}</span> <span
-                                class="amount">0.00</span></span>
-                    </div>
-                    <div class="cart-total mb-2 mt-2"
-                        style="border-top: 1px solid rgba(255,255,255,0.2); padding-top: 8px;">
-                        <span><strong>Total:</strong></span>
-                        <strong id="cartTotalPrice"><span class="currency-symbol">{{ getCurrencySymbol() }}</span> <span
-                                class="amount">0.00</span></strong>
-                    </div>
-                </div>
-                <small class="text-white d-block mb-2">Add extras & purchase extra km in cart</small>
-                <a href="{{ route('cart') }}" class="btn btn-light w-100">
-                    <i class="bi bi-cart-check"></i> View Cart & Checkout
-                </a>
-            </div>
-        </div>
-    </div>
+    <!-- Cart Summary Float Component (Requirements: 3.1, 3.2) -->
+    <x-cart-summary-float />
 
     <!-- Request Quotation Modal -->
     <div class="modal fade" id="requestQuotationModal" tabindex="-1" aria-labelledby="requestQuotationModalLabel"
@@ -710,98 +656,7 @@
             font-weight: 700;
         }
 
-        /* ==================== CART FLOAT ==================== */
-        .cart-summary-float {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            width: 350px;
-            background: var(--primary-color);
-            border-radius: 16px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-            z-index: 1050;
-            animation: slideInUp 0.4s ease-out;
-        }
-
-        @keyframes slideInUp {
-            from {
-                transform: translateY(100px);
-                opacity: 0;
-            }
-
-            to {
-                transform: translateY(0);
-                opacity: 1;
-            }
-        }
-
-        .cart-float-header {
-            padding: 16px 20px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            color: white;
-        }
-
-        .cart-float-header h6 {
-            margin: 0;
-            font-weight: 700;
-            color: white;
-        }
-
-        .cart-float-body {
-            padding: 16px 20px;
-            max-height: 300px;
-            overflow-y: auto;
-            color: white;
-        }
-
-        .cart-float-item {
-            padding: 12px 0;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            line-height: 1.5
-        }
-
-        .cart-float-item:last-child {
-            border-bottom: none;
-        }
-
-        .cart-float-footer {
-            padding: 16px 20px;
-            border-top: 1px solid rgba(255, 255, 255, 0.2);
-        }
-
-        .cart-total {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            color: white;
-            font-size: 16px;
-        }
-
-        .cart-total strong {
-            font-size: 20px;
-            font-weight: 800;
-        }
-
-        .currency-symbol {
-            font-weight: 400 !important;
-            opacity: 0.9;
-        }
-
-        .cart-breakdown>div {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            color: white;
-            font-size: 14px;
-            margin-bottom: 4px;
-        }
-
-        .cart-breakdown>div span:first-child {
-            opacity: 0.9;
-        }
+        /* Cart float styles are now in the cart-summary-float component (Requirement 3.3) */
 
         /* ==================== CURRENCY FORMATTING ==================== */
         .currency-symbol,
@@ -810,11 +665,6 @@
             font-weight: normal;
             opacity: 0.8;
             margin-right: 0.25rem;
-        }
-
-        .cart-summary-float .currency-symbol {
-            font-size: 0.75em;
-            margin-right: 0.2rem;
         }
 
         /* ==================== RESPONSIVE ==================== */
@@ -827,19 +677,9 @@
             .price-amount {
                 font-size: 24px;
             }
-
-            .cart-summary-float {
-                width: 300px;
-            }
         }
 
         @media (max-width: 767px) {
-            .cart-summary-float {
-                width: calc(100% - 40px);
-                right: 20px;
-                left: 20px;
-            }
-
             .vehicle-image-container {
                 height: 180px;
             }
@@ -1057,16 +897,30 @@
 
 @push('scripts')
     <script>
-        // Cart management (Session-based)
-        let cart = [];
-        let cartTotals = {};
-        let cartCurrency = '{{ getSelectedCurrency() }}';
-        let cartCurrencySymbol = '{{ getCurrencySymbol() }}';
+        // Search-specific JavaScript (Requirements: 3.4, 3.5)
+        // Cart management functions are now in cart-summary-float and vehicle-card-scripts components
+        
+        // Expose search data globally for vehicle-card-scripts component to use
+        window.bookingSearchData = {
+            from_date: '{{ $search->from_date ?? '' }}',
+            to_date: '{{ $search->to_date ?? '' }}',
+            from_time: '{{ $search->from_time ?? '' }}',
+            to_time: '{{ $search->to_time ?? '' }}',
+            service_type: '{{ $search->service_type ?? '' }}',
+            pickup_location: '{{ $search->pickup_location ?? '' }}',
+            pickup_lat: {{ $search->pickup_latitude ?? 'null' }},
+            pickup_lng: {{ $search->pickup_longitude ?? 'null' }},
+            dropoff_location: '{{ $search->dropoff_location ?? '' }}',
+            dropoff_lat: {{ $search->dropoff_latitude ?? 'null' }},
+            dropoff_lng: {{ $search->dropoff_longitude ?? 'null' }},
+            service_package_id: '{{ $search->service_package_id ?? ($search->package_id ?? '') }}',
+            package_id: '{{ $search->service_package_id ?? ($search->package_id ?? '') }}',
+            is_return_trip: {{ $search->is_return_trip ?? false ? 'true' : 'false' }},
+            return_trip_date: '{{ $search->return_date ?? '' }}',
+            return_trip_time: '{{ $search->return_time ?? '' }}'
+        };
 
         $(document).ready(function() {
-            // Load cart from session storage
-            loadCart();
-
             // Sort functionality
             $('#sortResults').on('change', function() {
                 sortVehicleResults($(this).val());
@@ -1104,408 +958,11 @@
                 });
             }
 
-            // Add to cart functionality
-            $('.add-to-cart-btn').on('click', function() {
-                const btn = $(this);
-                const groupId = btn.data('group-id');
-                const searchId = btn.data('search-id');
-                const groupName = btn.data('group-name');
-                const totalPrice = parseFloat(btn.data('base-price')); // This is the TOTAL price
-                const currency = btn.data('currency');
-
-                // Get booking dates from the search
-                const fromDate = '{{ $search->from_date ?? '' }}';
-                const toDate = '{{ $search->to_date ?? '' }}';
-
-                // Calculate duration days from dates
-                let durationDays = 1;
-                if (fromDate && toDate) {
-                    const from = new Date(fromDate);
-                    const to = new Date(toDate);
-                    const diffTime = Math.abs(to - from);
-                    durationDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1 ||
-                        1; // +1 for calendar days
-                }
-
-                const searchData = {
-                    search_id: searchId,
-                    from_date: fromDate,
-                    to_date: toDate,
-                    from_time: '{{ $search->from_time ?? '' }}',
-                    to_time: '{{ $search->to_time ?? '' }}',
-                    service_type: '{{ $search->service_type ?? '' }}',
-                    pickup_location: '{{ $search->pickup_location ?? '' }}',
-                    pickup_lat: {{ $search->pickup_latitude ?? 'null' }},
-                    pickup_lng: {{ $search->pickup_longitude ?? 'null' }},
-                    dropoff_location: '{{ $search->dropoff_location ?? '' }}',
-                    dropoff_lat: {{ $search->dropoff_latitude ?? 'null' }},
-                    dropoff_lng: {{ $search->dropoff_longitude ?? 'null' }},
-                    duration_days: durationDays,
-                    service_package_id: '{{ $search->service_package_id ?? ($search->package_id ?? '') }}',
-                    package_id: '{{ $search->service_package_id ?? ($search->package_id ?? '') }}',
-                    // Return trip data
-                    is_return_trip: {{ $search->is_return_trip ?? false ? 'true' : 'false' }},
-                    return_trip_date: '{{ $search->return_date ?? '' }}',
-                    return_trip_time: '{{ $search->return_time ?? '' }}',
-                };
-
-                const item = {
-                    group_id: groupId,
-                    group_name: groupName,
-                    currency: currency,
-                    quantity: 1,
-                    ...searchData
-                };
-
-                // UX: show loading state on button and prevent double clicks
-                const spinner =
-                    '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>';
-                if (!btn.data('original-html')) {
-                    btn.data('original-html', btn.html());
-                }
-                btn.prop('disabled', true).addClass('loading');
-                btn.html(spinner + 'Adding...');
-
-                // Safety timeout in case callback never fires
-                const safetyTimer = setTimeout(() => {
-                    console.error('Add to cart safety timeout');
-                    btn.prop('disabled', false).removeClass('loading');
-                    btn.html(btn.data('original-html'));
-                    showErrorNotification(
-                        'Timed out adding to cart. Please check your network and try again.');
-                }, 15000); // 15s
-
-                // Send to cart with callback to restore button state
-                addToCart(item, function(response) {
-                    clearTimeout(safetyTimer);
-                    if (response && response.success !== false) {
-                        // Show success state briefly
-                        btn.html('<i class="bi bi-check-circle-fill"></i> Added!');
-                        setTimeout(() => {
-                            btn.prop('disabled', false).removeClass('loading');
-                            btn.html(btn.data('original-html'));
-                        }, 2000);
-                    } else {
-                        // If adding to cart failed, restore button state and show error
-                        console.error('Add to cart failed.', response);
-                        btn.prop('disabled', false).removeClass('loading');
-                        btn.html(btn.data('original-html'));
-                        showErrorNotification('Failed to add to cart. Please try again.');
-                    }
-                });
-            });
-
-            // Close cart float
-            $('#closeCartFloat').on('click', function() {
-                $('#cartSummaryFloat').fadeOut();
-            });
-
             // Booking form date change - update prices
             $(document).on('change', 'input[name="from_date"], input[name="to_date"]', function() {
                 updateAllPrices();
             });
         });
-
-        function addToCart(item, callback) {
-            // Add to cart via AJAX - let backend recalculate pricing
-            console.log('Adding to cart with return trip data:', {
-                is_return_trip: item.is_return_trip,
-                return_trip_date: item.return_trip_date,
-                service_package_id: item.service_package_id,
-                package_id: item.package_id
-            });
-
-            return $.ajax({
-                url: '{{ route('cart.add') }}',
-                method: 'POST',
-                data: {
-                    _token: '{{ csrf_token() }}',
-                    vehicle_group_id: item.group_id,
-                    name: item.group_name,
-                    pickup_date: item.from_date,
-                    return_date: item.to_date,
-                    from_time: item.from_time,
-                    to_time: item.to_time,
-                    pickup_location: item.pickup_location,
-                    pickup_lat: item.pickup_lat,
-                    pickup_lng: item.pickup_lng,
-                    dropoff_location: item.dropoff_location,
-                    dropoff_lat: item.dropoff_lat,
-                    dropoff_lng: item.dropoff_lng,
-                    service_type: item.service_type,
-                    // Service package for pricing
-                    service_package_id: item.service_package_id || item.package_id || '',
-                    package_id: item.package_id || item.service_package_id || '',
-                    // Return trip data
-                    is_return_trip: item.is_return_trip || false,
-                    return_trip_date: item.return_trip_date || '',
-                    return_trip_time: item.return_trip_time || '',
-                    search_data: item
-                },
-                success: function(response) {
-                    if (response.success) {
-                        // Load updated cart from server
-                        loadCartFromServer();
-                        showCartFloat();
-                        // Dispatch cart updated event
-                        window.dispatchEvent(new CustomEvent('cartUpdated'));
-                        // Show success message
-                        showSuccessNotification('Vehicle added to cart successfully!');
-
-                        // Invoke callback if provided
-                        if (typeof callback === 'function') {
-                            callback(response);
-                        }
-                    } else {
-                        showErrorNotification('Error: ' + response.message);
-                        if (typeof callback === 'function') {
-                            callback({
-                                success: false,
-                                error: response
-                            });
-                        }
-                    }
-                },
-                error: function(xhr) {
-                    console.error('Error adding to cart:', xhr);
-                    const errorMsg = xhr.responseJSON?.message ||
-                        'Error adding item to cart. Please try again.';
-                    showErrorNotification(errorMsg);
-                    if (typeof callback === 'function') {
-                        callback({
-                            success: false,
-                            error: xhr
-                        });
-                    }
-                }
-            });
-        }
-
-        function removeFromCart(cartKey) {
-            $.ajax({
-                url: '{{ route('cart.remove') }}',
-                method: 'POST',
-                data: {
-                    _token: '{{ csrf_token() }}',
-                    cart_key: cartKey
-                },
-                success: function(response) {
-                    if (response.success) {
-                        loadCartFromServer();
-                        // Dispatch cart updated event
-                        window.dispatchEvent(new CustomEvent('cartUpdated'));
-                        if (Object.keys(cart).length === 0) {
-                            $('#cartSummaryFloat').fadeOut();
-                        }
-                    } else {
-                        alert('Error: ' + response.message);
-                    }
-                },
-                error: function(xhr) {
-                    console.error('Error removing from cart:', xhr);
-                    let errorMessage = 'Error removing item. Please try again.';
-                    if (xhr.responseJSON && xhr.responseJSON.message) {
-                        errorMessage = xhr.responseJSON.message;
-                    }
-                    showErrorNotification(errorMessage);
-                }
-            });
-        }
-
-        function loadCartFromServer() {
-            $.ajax({
-                url: '{{ route('cart.get') }}',
-                method: 'GET',
-                success: function(response) {
-                    if (response.success) {
-                        cart = response.items || [];
-                        cartTotals = response.totals || {};
-                        cartCurrency = Object.keys(cart).length > 0 ? Object.values(cart)[0].currency :
-                            '{{ getSelectedCurrency() }}';
-                        cartCurrencySymbol = Object.keys(cart).length > 0 ? Object.values(cart)[0]
-                            .currency_symbol : '{{ getCurrencySymbol() }}';
-                        updateCartDisplay();
-                        if (Object.keys(cart).length > 0) {
-                            showCartFloat();
-                        }
-                    }
-                },
-                error: function(xhr) {
-                    console.error('Error loading cart:', xhr);
-                }
-            });
-        }
-
-        function loadCart() {
-            // Load cart from server instead of localStorage
-            loadCartFromServer();
-        }
-
-        function updateCartDisplay() {
-            const $cartItems = $('#cartFloatItems');
-            const $cartTotal = $('#cartTotalPrice');
-
-            $cartItems.empty();
-
-            // Helper function to get pricing label based on service type
-            function getPricingLabel(serviceType) {
-                const labels = {
-                    'ride_now': 'Rate',
-                    'airport_transfers': 'Transfer Rate',
-                    'point_to_point': 'Trip Rate',
-                    'corporate': 'Per Day',
-                    'day_rental': 'Per Day'
-                };
-                return labels[serviceType] || 'Rate';
-            }
-
-            // Helper function to get duration label based on service type
-            function getDurationLabel(serviceType, days) {
-                const fixedRateServices = ['ride_now', 'airport_transfers', 'point_to_point'];
-                if (fixedRateServices.includes(serviceType)) {
-                    if (serviceType === 'ride_now') return 'Drop/Pickup';
-                    if (serviceType === 'airport_transfers') return 'Airport transfer';
-                    return 'Trip';
-                }
-                return days === 1 ? '1 day Package' : `${days} days Package`;
-            }
-
-            // Helper function to check if service is fixed-rate
-            function isFixedRate(serviceType) {
-                return ['ride_now', 'airport_transfers', 'point_to_point'].includes(serviceType);
-            }
-
-            let total = 0;
-            Object.keys(cart).forEach((key, index) => {
-                const item = cart[key];
-                const price = parseFloat(item.price || 0);
-                const days = parseInt(item.days || 1);
-                // Prefer server-calculated total_price when available (ensures return trip totals used)
-                const itemTotal = parseFloat((item.total_price !== undefined && item.total_price !== null) ? item
-                    .total_price : (price * days));
-                total += itemTotal;
-
-                const serviceType = item.service_type || '';
-                const pricingLabel = getPricingLabel(serviceType);
-                const durationLabel = getDurationLabel(serviceType, days);
-                const fixedRate = isFixedRate(serviceType);
-
-                // Build pricing display based on service type
-                let pricingHtml = '';
-
-                // If fixed-rate and return trip info available, show outbound/return breakdown
-                if (fixedRate && item.is_return_trip && (item.one_way_price || item.return_price)) {
-                    const oneWay = parseFloat(item.one_way_price || 0);
-                    const returnPrice = parseFloat(item.return_price || 0);
-                    const returnPct = parseFloat(item.return_discount_percentage || 0);
-
-                    pricingHtml = `
-                        <div class="return-trip-breakdown text-white-0">
-                            <div style="color: #fff; font-size: 13px;">
-                                <i class="bi bi-arrow-right-circle"></i> Outbound: <small class="currency-symbol">${cartCurrencySymbol}</small> ${oneWay.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                            </div>
-                            <div style="color: #fff; font-size: 13px;">
-                                <i class="bi bi-arrow-left-circle"></i> Return: ${returnPct > 0 ? '<span class="badge bg-success" style="font-size: 11px; margin-left: 6px;">' + returnPct + '% off</span>' : ''} <small class="currency-symbol">${cartCurrencySymbol}</small> ${returnPrice.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                            </div>
-                            <div style="margin-top:6px; font-weight:700;">
-                                <small class="currency-symbol">${cartCurrencySymbol}</small> ${itemTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                            </div>
-                        </div>
-                    `;
-                } else if (fixedRate) {
-                    pricingHtml =
-                        `<span>${pricingLabel}: <small class="currency-symbol">${cartCurrencySymbol}</small> ${itemTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>`;
-                } else {
-                    pricingHtml = `
-                        <span>${pricingLabel}: <small class="currency-symbol">${cartCurrencySymbol}</small> ${price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
-                        <strong><small class="currency-symbol">${cartCurrencySymbol}</small> ${itemTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</strong>
-                    `;
-                }
-
-                $cartItems.append(`
-                        <div class="cart-float-item">
-                            <div class="d-flex justify-content-between align-items-start mb-2">
-                                <div class="flex-grow-1">
-                                    <strong>${item.vehicle_name || item.name || 'Vehicle Rental'}</strong>
-                                    <small class="small bg-success py-1 px-2 rounded">${durationLabel}</small>
-                                    <div class="small">${item.pickup_date || ''} to ${item.return_date || ''}</div>
-                                </div>
-                                <button type="button" class="btn btn-sm btn-link text-white p-0 ms-2" onclick="removeFromCart('${key}')">
-                                    <i class="bi bi-x-lg"></i>
-                                </button>
-                            </div>
-                            <div class="d-flex justify-content-between">
-                                ${pricingHtml}
-                            </div>
-                        </div>
-                    `);
-            });
-
-            // Use server-calculated subtotal if available, otherwise use client-calculated total as fallback
-            const subtotal = cartTotals.subtotal || total;
-            const finalTotal = cartTotals.total || total;
-
-            // Update subtotal (base amount before additional charges)
-            $('#cartSubtotalPrice .amount').text(subtotal.toLocaleString('en-US', {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-            }));
-
-            // Update breakdown items if they exist in cartTotals
-            const updateBreakdownItem = (selector, value) => {
-                if (value && parseFloat(value) > 0) {
-                    $(selector + ' .amount').text(parseFloat(value).toLocaleString('en-US', {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2
-                    }));
-                    $(selector).show();
-                } else {
-                    $(selector).hide();
-                }
-            };
-
-            updateBreakdownItem('.cart-addon-charges', cartTotals.addon_charges || 0);
-            updateBreakdownItem('.cart-extra-km-charges', cartTotals.extra_km_charges || 0);
-            updateBreakdownItem('.cart-service-fee', cartTotals.service_fee || 0);
-            updateBreakdownItem('.cart-tax', cartTotals.tax || 0);
-            updateBreakdownItem('.cart-vat', cartTotals.vat || 0);
-
-            // Update final total (should be subtotal + all charges)
-            $('#cartTotalPrice .amount').text(finalTotal.toLocaleString('en-US', {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-            }));
-        }
-
-        function showCartFloat() {
-            $('#cartSummaryFloat').fadeIn();
-        }
-
-        function showSuccessNotification(message) {
-            // Create bootstrap alert
-            const alert = $(`
-                        <div class="alert alert-success alert-dismissible fade show" role="alert" style="position: fixed; top: 20px; right: 20px; z-index: 1100; min-width: 300px;">
-                            <i class="bi bi-check-circle-fill me-2"></i>
-                            ${message}
-                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                        </div>
-                    `);
-            $('body').append(alert);
-            setTimeout(() => alert.alert('close'), 4000);
-        }
-
-        function showErrorNotification(message) {
-            // Create bootstrap alert
-            const alert = $(`
-                        <div class="alert alert-danger alert-dismissible fade show" role="alert" style="position: fixed; top: 20px; right: 20px; z-index: 1100; min-width: 300px;">
-                            <i class="bi bi-exclamation-circle-fill me-2"></i>
-                            ${message}
-                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                        </div>
-                    `);
-            $('body').append(alert);
-            setTimeout(() => alert.alert('close'), 5000);
-        }
 
         function updateAllPrices() {
             // This function will be called when booking dates change

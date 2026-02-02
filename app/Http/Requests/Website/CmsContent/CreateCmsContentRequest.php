@@ -36,6 +36,14 @@ class CreateCmsContentRequest extends FormRequest
             'url' => ['nullable', 'url'],
             'availability_status' => ['nullable', 'in:available,scheduled,unavailable'],
             'read_time' => ['nullable', 'string', 'max:50'],
+            'pickup_location' => ['nullable', 'string', 'max:255'],
+            'dropoff_location' => ['nullable', 'string', 'max:255'],
+            'service_type' => ['nullable', 'string', 'exists:service_types,id'],
+            'min_days' => ['nullable', 'integer', 'min:1', 'max:365'],
+            'pickup_lat' => ['nullable', 'numeric', 'between:-90,90'],
+            'pickup_lng' => ['nullable', 'numeric', 'between:-180,180'],
+            'dropoff_lat' => ['nullable', 'numeric', 'between:-90,90'],
+            'dropoff_lng' => ['nullable', 'numeric', 'between:-180,180'],
         ];
     }
 }

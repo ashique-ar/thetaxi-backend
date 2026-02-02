@@ -38,6 +38,14 @@ class UpdateCmsContentRequest extends FormRequest
             'url' => ['sometimes', 'nullable', 'url'],
             'availability_status' => ['sometimes', 'nullable', 'in:available,scheduled,unavailable'],
             'read_time' => ['sometimes', 'nullable', 'string', 'max:50'],
+            'pickup_location' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'dropoff_location' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'service_type' => ['sometimes', 'nullable', 'string', 'exists:service_types,id'],
+            'min_days' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:365'],
+            'pickup_lat' => ['sometimes', 'nullable', 'numeric', 'between:-90,90'],
+            'pickup_lng' => ['sometimes', 'nullable', 'numeric', 'between:-180,180'],
+            'dropoff_lat' => ['sometimes', 'nullable', 'numeric', 'between:-90,90'],
+            'dropoff_lng' => ['sometimes', 'nullable', 'numeric', 'between:-180,180'],
         ];
     }
 }

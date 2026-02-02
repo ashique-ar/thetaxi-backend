@@ -87,12 +87,12 @@ class GooglePlacesController extends Controller
             }
 
             $data = $response->json();
- 
+
             if (($data['status'] ?? '') !== 'OK') {
                 // Handle specific Google API statuses
                 $message = 'No suggestions found';
                 $statusCode = 404;
-                
+
                 switch ($data['status'] ?? '') {
                     case 'ZERO_RESULTS':
                         $message = 'No places found for your search';
@@ -116,7 +116,7 @@ class GooglePlacesController extends Controller
                         $statusCode = 403;
                         break;
                 }
-                
+
                 return response()->json([
                     'status' => 'error',
                     'message' => $message,
@@ -202,8 +202,8 @@ class GooglePlacesController extends Controller
         // Filter airports based on query
         $filteredAirports = array_filter($airports, function ($airport) use ($query) {
             return stripos($airport['description'], $query) !== false ||
-                   stripos($airport['code'], $query) !== false ||
-                   stripos($airport['name'], $query) !== false;
+                stripos($airport['code'], $query) !== false ||
+                stripos($airport['name'], $query) !== false;
         });
 
         return response()->json([

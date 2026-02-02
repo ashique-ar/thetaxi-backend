@@ -203,7 +203,9 @@
                             </div>
                         @endif --}}
 
+
                     </article>
+
                 </main>
 
                 <aside class="col-xl-4 col-lg-4">
@@ -264,9 +266,152 @@
 
                     </div>
                 </aside>
+
             </div>
+
+            {{-- Booking Integration --}}
+            @if ($content->pickup_location)
+
+                <!-- Booking header styled like search page (breadcrumb + hero) -->
+                <div class="breadcrumb-section three"
+                    style="background-image:linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url('{{ $content->thumbnail ? s3_asset($content->thumbnail) : asset('assets/img/innerpages/breadcrumb-bg.jpg') }}'); margin-bottom: 20px;">
+                    <div class="container">
+                        <div class="banner-content text-center">
+                            <h1>Book Your Ride</h1>
+                            <ul class="breadcrumb-list">
+                                <li><a href="{{ route('home') }}">Home</a></li>
+                                <li><a href="{{ route('cms.index', [$contentType->slug]) }}">{{ $contentType->title }}</a>
+                                </li>
+                                <li>{{ $content->title }}</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="booking-section pt-5 mb-5" id="booking-section">
+
+                    {{-- Prepare search object from content if not provided --}}
+                    @php
+                        if (!isset($search) && isset($content)) {
+                            $search = new \stdClass();
+                            $search->service_type = $content->service_type;
+
+                            // Pickup
+                            $search->pickup_location = [
+                                'address' => $content->pickup_location,
+                                'lat' => $content->pickup_lat,
+                                'lng' => $content->pickup_lng,
+                            ];
+
+                            // Dropoff
+                            $search->dropoff_location = [
+                                'address' => $content->dropoff_location,
+                                'lat' => $content->dropoff_lat,
+                                'lng' => $content->dropoff_lng,
+                            ];
+
+                            // Dates: default pickup to today and compute dropoff from min_days
+                            $search->pickup_date = now()->format('Y-m-d');
+                            $minDays = $content->min_days ?? 1;
+                            if ((int) $minDays > 1) {
+                                $search->dropoff_date = now()
+                                    ->addDays($minDays - 1)
+                                    ->format('Y-m-d');
+                            } else {
+                                $search->dropoff_date = $search->pickup_date;
+                            }
+
+                            // No default pickup/dropoff time stored on content
+                            $search->pickup_time = null;
+                            $search->dropoff_time = null;
+                        }
+                    @endphp
+                    {{-- Booking Form Component --}}
+
+                    <div class="filter-wrapper text-center hotel mb-40">
+                        <div class="container">
+                            @include('components.booking-form', ['search' => $search ?? null])
+                        </div>
+                    </div>
+
+
+                    {{-- Suggested Vehicles --}}
+                    @if (isset($suggestedVehicles) && count($suggestedVehicles) > 0)
+                        <div class="suggested-vehicles mt-5">
+                            <h4 class="mb-4">Recommended Vehicles for Your Journey</h4>
+                            <div class="row g-4">
+                                @foreach ($suggestedVehicles as $index => $vehicleData)
+                                    <div class="col-lg-3 col-md-4 col-sm-6">
+                                        <x-vehicle-card :vehicle="$vehicleData" :pricing="$vehicleData['pricing_info'] ?? ($vehicleData['pricing'] ?? [])" :enhancedPricing="$vehicleData['enhanced_pricing'] ?? []"
+                                            :serviceFeatures="$vehicleData['service_features'] ?? []" :availability="[
+                                                'available' =>
+                                                    $vehicleData['available_count'] ??
+                                                    ($vehicleData['availability']['available'] ?? 0),
+                                                'total' =>
+                                                    $vehicleData['total_count'] ??
+                                                    ($vehicleData['availability']['total'] ?? 0),
+                                            ]" :searchId="session('current_search_id')" :showBookNow="true"
+                                            :showViewDetails="false" />
+                                    </div>
+                                @endforeach
+                            </div>
+                        </div>
+                    @elseif(isset($search) && !empty($search->from_date))
+                        <div class="suggested-vehicles mt-5">
+                            <div class="alert alert-info">
+                                <i class="bi bi-info-circle me-2"></i>
+                                No vehicles found matching the criteria from this content. Please adjust the search
+                                above.
+                            </div>
+                        </div>
+                    @endif
+                </div>
+            @endif
         </div>
     </section>
+
+    <!-- Cart Summary Float Component -->
+    <x-cart-summary-float />
+
+    <!-- Request Quotation Modal (used by vehicle-card) -->
+    <div class="modal fade" id="requestQuotationModal" tabindex="-1" aria-labelledby="requestQuotationModalLabel"
+        aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-warning text-dark">
+                    <h5 class="modal-title" id="requestQuotationModalLabel"><i class="bi bi-calculator"></i> Request
+                        Quotation</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form id="quotationRequestForm" method="POST" action="{{ route('quotation.request') }}">
+                    @csrf
+                    <div class="modal-body">
+                        <input type="hidden" name="vehicle_group_id" id="quotation_vehicle_group_id" value="">
+                        <input type="hidden" name="search_id" id="quotation_search_id"
+                            value="{{ session('current_search_id') ?? '' }}">
+                        <div class="mb-3">
+                            <label for="quotation_customer_name" class="form-label">Your Name</label>
+                            <input type="text" class="form-control" id="quotation_customer_name" name="customer_name"
+                                required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="quotation_customer_email" class="form-label">Email</label>
+                            <input type="email" class="form-control" id="quotation_customer_email"
+                                name="customer_email" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="quotation_message" class="form-label">Message</label>
+                            <textarea class="form-control" id="quotation_message" name="message" rows="4"></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="submit" class="btn btn-warning">Submit Request</button>
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
 
 @endsection
 
@@ -303,5 +448,28 @@
         if (typeof AOS !== 'undefined') {
             AOS.refresh();
         }
+
+        // Expose search data globally for vehicle-card-scripts component to use
+        // This allows the component to get booking parameters when adding to cart
+        @if (isset($search))
+            window.bookingSearchData = {
+                from_date: '{{ $search->from_date ?? ($search->pickup_date ?? '') }}',
+                to_date: '{{ $search->to_date ?? ($search->dropoff_date ?? '') }}',
+                from_time: '{{ $search->from_time ?? ($search->pickup_time ?? '') }}',
+                to_time: '{{ $search->to_time ?? ($search->dropoff_time ?? '') }}',
+                service_type: '{{ $search->service_type ?? '' }}',
+                pickup_location: '{{ is_object($search) && isset($search->pickup_location['address']) ? $search->pickup_location['address'] : (is_string($search->pickup_location ?? '') ? $search->pickup_location ?? '' : '') }}',
+                pickup_lat: {{ is_array($search->pickup_location ?? null) && isset($search->pickup_location['lat']) ? $search->pickup_location['lat'] : 'null' }},
+                pickup_lng: {{ is_array($search->pickup_location ?? null) && isset($search->pickup_location['lng']) ? $search->pickup_location['lng'] : 'null' }},
+                dropoff_location: '{{ is_object($search) && isset($search->dropoff_location['address']) ? $search->dropoff_location['address'] : (is_string($search->dropoff_location ?? '') ? $search->dropoff_location ?? '' : '') }}',
+                dropoff_lat: {{ is_array($search->dropoff_location ?? null) && isset($search->dropoff_location['lat']) ? $search->dropoff_location['lat'] : 'null' }},
+                dropoff_lng: {{ is_array($search->dropoff_location ?? null) && isset($search->dropoff_location['lng']) ? $search->dropoff_location['lng'] : 'null' }},
+                service_package_id: '{{ $search->service_package_id ?? ($search->package_id ?? '') }}',
+                package_id: '{{ $search->service_package_id ?? ($search->package_id ?? '') }}',
+                is_return_trip: {{ isset($search->is_return_trip) && $search->is_return_trip ? 'true' : 'false' }},
+                return_trip_date: '{{ $search->return_date ?? '' }}',
+                return_trip_time: '{{ $search->return_time ?? '' }}'
+            };
+        @endif
     </script>
 @endpush

@@ -24,6 +24,10 @@
         $publishedDate = $item->published_at ?? ($item->created_at ?? null);
         $thumbnail = $item->thumbnail ?? null;
         $slug = $item->slug ?? '#';
+        $pickupLocation = $item->pickup_location ?? null;
+        $dropoffLocation = $item->dropoff_location ?? null;
+        $minDays = $item->min_days ?? null;
+        $serviceType = $item->service_type ?? null;
     } else {
         // Array fallback
         $title = $item['title'] ?? 'No title';
@@ -40,6 +44,10 @@
         $publishedDate = $item['published_at'] ?? ($item['created_at'] ?? null);
         $thumbnail = $item['thumbnail'] ?? null;
         $slug = $item['slug'] ?? '#';
+        $pickupLocation = $item['pickup_location'] ?? null;
+        $dropoffLocation = $item['dropoff_location'] ?? null;
+        $minDays = $item['min_days'] ?? null;
+        $serviceType = $item['service_type'] ?? null;
     }
 
     // Format price
@@ -112,6 +120,19 @@
             @if ($category)
                 <div class="category-tag">
                     <a href="{{ $categoryLink }}" class="category">{{ $category }}</a>
+                </div>
+            @endif
+
+            @if ($pickupLocation || (!empty($item->min_days) && $type !== 'blog'))
+                <div class="booking-info-mini mt-3 pt-2 border-top">
+                    @if ($pickupLocation)
+                        <small class="d-block text-muted mb-1"><i class="bi bi-geo-alt"></i> Pickup:
+                            {{ Str::limit($pickupLocation, 20) }}</small>
+                    @endif
+                    @if (!empty($item->min_days))
+                        <small class="d-block text-muted"><i class="bi bi-calendar-event"></i> Min Duration:
+                            {{ $item->min_days }} day{{ $item->min_days != 1 ? 's' : '' }}</small>
+                    @endif
                 </div>
             @endif
         </div>

@@ -149,6 +149,13 @@ class BookingController extends Controller
                 $params['dropoff_location'] = $this->formatLocation($requestData, 'dropoff');
                 $params['transfer_type'] = $requestData['transfer_type'] ?? 'from-airport';
 
+                // Append (Airport) label based on transfer direction
+                if ($params['transfer_type'] === 'from-airport' && !empty($params['pickup_location']['address'])) {
+                    $params['pickup_location']['address'] .= ' (Airport)';
+                } elseif ($params['transfer_type'] === 'to-airport' && !empty($params['dropoff_location']['address'])) {
+                    $params['dropoff_location']['address'] .= ' (Airport)';
+                }
+
                 // Log mapping for airport transfers to help debug address field mismatches
                 Log::info('Airport search payload mapping', [
                     'from' => $requestData['from'] ?? null,
@@ -1100,7 +1107,14 @@ class BookingController extends Controller
             'from_date' => $search->from_date?->format('Y-m-d'),
             'to_date' => $search->to_date?->format('Y-m-d'),
             'quantity' => $data['quantity'] ?? 1,
-            'selected_addons' => $data['selected_addons'] ?? []
+            'quantity' => $data['quantity'] ?? 1,
+            'selected_addons' => $data['selected_addons'] ?? [],
+            'transfer_type' => $search->search_params['transfer_type'] ?? null,
+            'is_return_trip' => $search->search_params['is_return_trip'] ?? false,
+            'return_date' => $search->search_params['return_date'] ?? null,
+            'return_time' => $search->search_params['return_time'] ?? null,
+            'return_pickup_location' => $search->search_params['dropoff_location'] ?? null, // Implicit swap for return
+            'return_dropoff_location' => $search->search_params['pickup_location'] ?? null, // Implicit swap for return
         ];
 
         $pricing = $this->bookingFlowService->calculatePricing($params);

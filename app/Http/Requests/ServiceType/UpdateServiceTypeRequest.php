@@ -26,6 +26,7 @@ class UpdateServiceTypeRequest extends FormRequest
             'priority' => ['sometimes', 'nullable', 'integer'],
             'is_internal' => ['sometimes', 'boolean'],
             'terms' => ['sometimes', 'nullable', 'string'],
+            'minimum_km' => ['sometimes', 'nullable', 'string'],
         ];
     }
 }

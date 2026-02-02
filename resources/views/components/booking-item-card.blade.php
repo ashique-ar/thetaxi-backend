@@ -6,18 +6,38 @@
 ])
 
 @php
+    // Backwards-compat: allow the caller to pass either 'item' or 'group' (CMS passes 'group')
+    if (!isset($item) && isset($group)) {
+        $item = $group;
+    }
+
+    // Normalize arrays into objects for predictable property access
+    if (isset($item) && is_array($item)) {
+        $item = (object) $item;
+    }
+
+    // Normalize nested arrays for common nested objects
+    if (isset($item->serviceType) && is_array($item->serviceType)) {
+        $item->serviceType = (object) $item->serviceType;
+    }
+    if (isset($item->vehicleGroup) && is_array($item->vehicleGroup)) {
+        $item->vehicleGroup = (object) $item->vehicleGroup;
+    }
+
+    // Ensure optional props have sensible defaults
+    $index = $index ?? 0;
+    $currencySymbol = $currencySymbol ?? 'LKR';
+
     // Safely decode location data
-    $pickupLoc = is_string($item->pickup_location ?? null)
-        ? json_decode($item->pickup_location, true)
-        : $item->pickup_location ?? [];
+    $pickupLocRaw = $item->pickup_location ?? null;
+    $pickupLoc = is_string($pickupLocRaw) ? json_decode($pickupLocRaw, true) : $pickupLocRaw ?? [];
 
-    $dropoffLoc = is_string($item->dropoff_location ?? null)
-        ? json_decode($item->dropoff_location, true)
-        : $item->dropoff_location ?? [];
+    $dropoffLocRaw = $item->dropoff_location ?? null;
+    $dropoffLoc = is_string($dropoffLocRaw) ? json_decode($dropoffLocRaw, true) : $dropoffLocRaw ?? [];
 
-    // Format dates safely
-    $fromDate = \Carbon\Carbon::parse($item->from_date)->format('M d, Y');
-    $toDate = \Carbon\Carbon::parse($item->to_date)->format('M d, Y');
+    // Format dates safely (guard when dates may be missing)
+    $fromDate = isset($item->from_date) ? \Carbon\Carbon::parse($item->from_date)->format('M d, Y') : 'N/A';
+    $toDate = isset($item->to_date) ? \Carbon\Carbon::parse($item->to_date)->format('M d, Y') : 'N/A';
     $fromTime = $item->from_time ?? '00:00';
     $toTime = $item->to_time ?? '00:00';
 

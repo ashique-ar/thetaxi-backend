@@ -1162,3 +1162,7 @@
         </style>
     @endpush
 @endonce
+
+{{-- Include vehicle card scripts (Add to Cart, Book Now, Request Quotation handlers) --}}
+{{-- Uses @once directive internally to ensure scripts are loaded only once even with multiple cards --}}
+@include('components.vehicle-card-scripts')
