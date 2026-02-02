@@ -266,12 +266,10 @@
 
                     </div>
                 </aside>
-
             </div>
 
             {{-- Booking Integration --}}
             @if ($content->pickup_location)
-
                 <!-- Booking header styled like search page (breadcrumb + hero) -->
                 <div class="breadcrumb-section three"
                     style="background-image:linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url('{{ $content->thumbnail ? s3_asset($content->thumbnail) : asset('assets/img/innerpages/breadcrumb-bg.jpg') }}'); margin-bottom: 20px;">
