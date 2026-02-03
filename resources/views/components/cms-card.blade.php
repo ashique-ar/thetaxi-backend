@@ -123,7 +123,7 @@
                 </div>
             @endif
 
-            @if ($pickupLocation || (!empty($item->min_days) && $type !== 'blog'))
+            @if ($pickupLocation)
                 <div class="booking-info-mini mt-3 pt-2 border-top">
                     @if ($pickupLocation)
                         <small class="d-block text-muted mb-1"><i class="bi bi-geo-alt"></i> Pickup:
