@@ -25,7 +25,7 @@
                     </div>
                 </div>
             </div>
-            @if ($settings['banner_image_2'])
+            @if (isset($settings['banner_image_2']) && !empty($settings['banner_image_2']))
                 <div class="swiper-slide">
                     <div class="banner-wrapper">
                         <div class="banner-img-area">
