@@ -667,14 +667,6 @@ class BookingController extends Controller
                 'service_features' => $this->getServiceFeatures($serviceType ?? 'airport_transfers'),
                 'savings_info' => [],
                 'payment_options' => $this->getAvailablePaymentOptions($formattedPricing),
-                // CRITICAL: Pass through booking/quotation flags from BookingFlowService
-                // These determine whether to show "Add to Cart" or "Request Quotation" button
-                'quotation_only' => $groupData['quotation_only'] ?? false,
-                'quotation_only_reasons' => $groupData['quotation_only_reasons'] ?? [],
-                'allow_booking' => $groupData['allow_booking'] ?? true,
-                'is_inquiry_only' => $groupData['is_inquiry_only'] ?? false,
-                'service_requires_inquiry' => $groupData['service_requires_inquiry'] ?? false,
-                'is_group_active' => $groupData['is_group_active'] ?? true,
             ];
         }
         return $results;

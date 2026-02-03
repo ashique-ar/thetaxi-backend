@@ -596,8 +596,12 @@ class VehiclePricingCalculationDefinition extends Model
                 $value = $kmCalculations['extra_km'] ?? 0;
             } elseif ($varName === 'allowed_km') {
                 $value = $kmCalculations['allowed_km'] ?? 0;
-            } elseif ($varName === 'journey_distance' || $varName === 'total_distance') {
-                $value = $kmCalculations['journey_distance'] ?? ($inputs[$varName] ?? $defaultValue);
+            } elseif ($varName === 'journey_distance') {
+                // journey_distance comes from kmCalculations first, then inputs
+                $value = $kmCalculations['journey_distance'] ?? ($inputs['journey_distance'] ?? $defaultValue);
+            } elseif ($varName === 'total_distance') {
+                // total_distance should come from inputs (includes pickup+journey+delivery), NOT kmCalculations
+                $value = $inputs['total_distance'] ?? ($kmCalculations['total_distance'] ?? $defaultValue);
             } else {
                 $value = $this->resolveVariable($varName, $varType, $inputs, $defaultValue, $slabInfo, $appliedCustomizations, $servicePackageInfo, $districtInfo);
             }

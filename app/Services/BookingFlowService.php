@@ -234,8 +234,27 @@ class BookingFlowService
                         'mode' => 'preview'
                     ];
 
+                    // Debug logging for pricing params
+                    Log::debug('BookingFlowService: About to calculate pricing', [
+                        'vehicle_group_id' => $group->id,
+                        'vehicle_group_name' => $group->name,
+                        'service_type_id' => $serviceTypeModel->id,
+                        'service_type_code' => $serviceTypeModel->code,
+                        'pricing_params' => $pricingParams,
+                        'pickup_location' => $pickupLocation,
+                        'dropoff_location' => $dropoffLocation,
+                    ]);
 
                     $basePricing = $this->calculateDynamicPricing($pricingParams);
+                    
+                    // Debug logging for pricing result
+                    Log::debug('BookingFlowService: Pricing calculation result', [
+                        'vehicle_group_id' => $group->id,
+                        'vehicle_group_name' => $group->name,
+                        'pricing_result' => $basePricing,
+                        'has_total_amount' => isset($basePricing['total_amount']),
+                        'total_amount' => $basePricing['total_amount'] ?? 0,
+                    ]);
                     if ($basePricing && isset($basePricing['total_amount']) && $basePricing['total_amount'] > 0) {
                         $isPricingConfigured = true;
 
@@ -314,6 +333,25 @@ class BookingFlowService
             // Check if vehicle group is inquiry-only (force quotation)
             $isInquiryOnly = $group->is_inquiry_only ?? false;
 
+            // Debug logging to trace inquiry flag issue (after all variables are defined)
+            if ($serviceTypeModel) {
+                Log::debug('BookingFlowService: Service type inquiry check', [
+                    'vehicle_group_id' => $group->id,
+                    'vehicle_group_name' => $group->name,
+                    'service_type_id' => $serviceTypeModel->id,
+                    'service_type_code' => $serviceTypeModel->code,
+                    'service_type_name' => $serviceTypeModel->name,
+                    'is_inquiry' => $serviceTypeModel->is_inquiry,
+                    'service_requires_inquiry' => $serviceTypeRequiresInquiry,
+                    'is_group_active' => $isGroupActive,
+                    'is_inquiry_only' => $isInquiryOnly,
+                    'has_pricing' => $hasPricing,
+                    'pricing_amount' => $pricingInfo['base_amount'] ?? 0,
+                    'has_available_vehicles' => $hasAvailableVehicles,
+                    'available_count' => $availableCount,
+                ]);
+            }
+
             // Determine if this vehicle group should show Request Quotation instead of Add to Cart/Book Now
             // Conditions for quotation-only mode:
             // 1. Price is 0 or not configured
@@ -348,6 +386,23 @@ class BookingFlowService
             }
 
             $isQuotationOnly = !empty($quotationOnlyReasons);
+            
+            // Debug logging for quotation decision
+            if ($isQuotationOnly) {
+                Log::info('BookingFlowService: Vehicle marked as quotation-only', [
+                    'vehicle_group_id' => $group->id,
+                    'vehicle_group_name' => $group->name,
+                    'reasons' => $quotationOnlyReasons,
+                    'has_pricing' => $hasPricing,
+                    'pricing_amount' => $pricingInfo['base_amount'] ?? 0,
+                    'is_group_active' => $isGroupActive,
+                    'has_available_vehicles' => $hasAvailableVehicles,
+                    'available_count' => $availableCount,
+                    'is_inquiry_only' => $isInquiryOnly,
+                    'service_requires_inquiry' => $serviceTypeRequiresInquiry,
+                    'service_type_code' => $serviceTypeModel->code ?? 'unknown',
+                ]);
+            }
             $allowRequestQuotation = $isQuotationOnly;
 
             // Determine if booking/cart is allowed (opposite of quotation-only)
@@ -2331,6 +2386,15 @@ class BookingFlowService
             $serviceTypeId = $params['service_type_id'];
             $mode = $params['mode'] ?? 'full_calculation';
             $appliedCustomizations = $params['applied_customizations'] ?? [];
+            
+            Log::debug('calculateDynamicPricing: START', [
+                'service_type_id' => $serviceTypeId,
+                'vehicle_group_id' => $params['vehicle_group_id'] ?? null,
+                'mode' => $mode,
+                'pickup_location' => $params['pickup_location'] ?? null,
+                'dropoff_location' => $params['dropoff_location'] ?? null,
+            ]);
+            
             if (!$serviceTypeId) {
                 Log::warning("No service type ID provided for dynamic pricing calculation");
                 return $this->getDefaultPricingStructure();
@@ -2343,8 +2407,18 @@ class BookingFlowService
                 ->first();
 
             if (!$calculationDefinition) {
+                Log::warning("No active calculation definition found for service type", [
+                    'service_type_id' => $serviceTypeId
+                ]);
                 return $this->calculateFallbackPricing($params);
             }
+            
+            Log::debug('calculateDynamicPricing: Found calculation definition', [
+                'definition_id' => $calculationDefinition->id,
+                'definition_name' => $calculationDefinition->name,
+                'formula' => $calculationDefinition->formula,
+                'conditions' => $calculationDefinition->conditions,
+            ]);
 
             // Prepare calculation inputs
             $calculationInputs = $this->prepareCalculationInputs($params);
@@ -2436,6 +2510,13 @@ class BookingFlowService
             $inputs['pickup_is_airport'] = $pickupIsAirport;
             $inputs['dropoff_is_airport'] = $dropoffIsAirport;
 
+            Log::debug('prepareCalculationInputs: Airport detection', [
+                'pickup_location' => $params['pickup_location'],
+                'dropoff_location' => $params['dropoff_location'],
+                'pickup_is_airport' => $pickupIsAirport,
+                'dropoff_is_airport' => $dropoffIsAirport,
+            ]);
+
             $serviceType = $params['service_type'] ?? null;
 
             $distanceCalculations = $this->calculateCompanyDistances(
@@ -2489,6 +2570,14 @@ class BookingFlowService
             $inputs['month'] = $fromDate->month;
             $inputs['day_of_week'] = $fromDate->dayOfWeek;
         }
+
+        Log::debug('prepareCalculationInputs: Final inputs prepared', [
+            'inputs' => $inputs,
+            'has_journey_distance' => isset($inputs['journey_distance']),
+            'journey_distance' => $inputs['journey_distance'] ?? null,
+            'has_total_distance' => isset($inputs['total_distance']),
+            'total_distance' => $inputs['total_distance'] ?? null,
+        ]);
 
         return $inputs;
     }
