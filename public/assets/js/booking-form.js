@@ -366,8 +366,9 @@
                     const lng = parseFloat(lngInput.value);
                     if (!isFinite(lat) || !isFinite(lng)) return;
 
-                    // Do not synthesize friendly labels from coordinates; always show formatted coords
-                    input.value = lat.toFixed(4) + ', ' + lng.toFixed(4);
+                    // Do not set coordinates as visible value - leave empty so user can enter location name
+                    // The coordinates are already stored in hidden fields (pickup_lat/pickup_lng)
+                    // input.value = lat.toFixed(4) + ', ' + lng.toFixed(4);
                 } catch (e) {
                     console.warn('populateAddressFromCoords error', e);
                 }
@@ -794,7 +795,7 @@
                 latInput.value = lat;
                 lngInput.value = lng;
 
-                // Only update input value if empty AND we have a formatted address (never show coordinates)
+                // Always prefer formatted_address over coordinates for user-visible input
                 if ((!input.value || input.value.trim() === '') && place.formatted_address) {
                     input.value = place.formatted_address;
                 }
@@ -810,7 +811,7 @@
                 latInput.value = lat;
                 lngInput.value = lng;
 
-                // Only update input value if empty AND we have a formatted address (never show coordinates)
+                // Always prefer formatted_address over coordinates for user-visible input
                 if ((!input.value || input.value.trim() === '') && place.formatted_address) {
                     input.value = place.formatted_address;
                 }
@@ -827,7 +828,7 @@
                 lngInput.value = lng;
                 console.log('Updated pickup coordinates via Google Places:', latInput.value, lngInput.value);
 
-                // Only update input value if empty AND we have a formatted address (never show coordinates)
+                // Always prefer formatted_address over coordinates for user-visible input
                 if ((!input.value || input.value.trim() === '') && place.formatted_address) {
                     input.value = place.formatted_address;
                 }
@@ -846,7 +847,7 @@
                 lngInput.value = lng;
                 console.log('Updated dropoff coordinates via Google Places:', latInput.value, lngInput.value);
 
-                // Only update input value if empty AND we have a formatted address (never show coordinates)
+                // Always prefer formatted_address over coordinates for user-visible input
                 if ((!input.value || input.value.trim() === '') && place.formatted_address) {
                     input.value = place.formatted_address;
                 }
