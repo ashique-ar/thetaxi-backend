@@ -1,0 +1,10 @@
+.filter-wrapper .filter-input-wrap {
+    padding: 40px 30px 25px !important;
+    border-radius: 16px !important;
+}
+
+@media (max-width: 767px) {
+    .filter-wrapper .filter-input-wrap {
+        padding: 30px 15px 20px !important;
+    }
+}

@@ -35,6 +35,8 @@
     <!-- Theme-specific CSS (loaded conditionally) -->
     @if(is_theme('theme-02'))
     <link rel="stylesheet" href="{{ assetVersion('assets/css/theme-02.css') }}">
+    @else
+    <link rel="stylesheet" href="{{ assetVersion('assets/css/theme-01.css') }}">
     @endif
 
     <!-- Booking Form CSS -->

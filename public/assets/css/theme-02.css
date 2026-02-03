@@ -35,13 +35,13 @@ header.style-3:hover .header-logo img {
 }
 
 /* Menu styling enhancements */
-header.style-3 .menu-list > li > a {
+header.style-3 .menu-list>li>a {
     letter-spacing: 0.5px;
     text-transform: uppercase;
     font-size: 13px;
 }
 
-header.style-3 .menu-list > li > a:hover {
+header.style-3 .menu-list>li>a:hover {
     color: var(--primary-color1);
 }
 
@@ -96,12 +96,10 @@ header.style-3 .currency-selector .btn-link:hover {
     left: 0;
     width: 100%;
     height: 100%;
-    background: linear-gradient(
-        180deg,
-        rgba(0, 0, 0, 0.3) 0%,
-        rgba(0, 0, 0, 0.1) 50%,
-        rgba(0, 0, 0, 0.4) 100%
-    );
+    background: linear-gradient(180deg,
+            rgba(0, 0, 0, 0.3) 0%,
+            rgba(0, 0, 0, 0.1) 50%,
+            rgba(0, 0, 0, 0.4) 100%);
     pointer-events: none;
 }
 
@@ -113,12 +111,10 @@ header.style-3 .currency-selector .btn-link:hover {
     left: 0;
     width: 100%;
     height: 100%;
-    background: linear-gradient(
-        180deg,
-        rgba(0, 0, 0, 0.3) 0%,
-        rgba(0, 0, 0, 0.1) 50%,
-        rgba(0, 0, 0, 0.4) 100%
-    );
+    background: linear-gradient(180deg,
+            rgba(0, 0, 0, 0.3) 0%,
+            rgba(0, 0, 0, 0.1) 50%,
+            rgba(0, 0, 0, 0.4) 100%);
     pointer-events: none;
 }
 
@@ -197,7 +193,7 @@ header.style-3 .currency-selector .btn-link:hover {
     .home3-banner-section .banner-pagination {
         bottom: 20px;
     }
-    
+
     .home3-banner-section .banner-pagination .swiper-pagination-bullet {
         width: 10px;
         height: 10px;
@@ -210,6 +206,7 @@ header.style-3 .currency-selector .btn-link:hover {
         opacity: 0;
         transform: translateY(30px);
     }
+
     to {
         opacity: 1;
         transform: translateY(0);
@@ -390,7 +387,7 @@ header.style-3 .currency-selector .btn-link:hover {
     .footer-section.two .newsletter-section {
         padding: 25px;
     }
-    
+
     .footer-section.two .newsletter-section .newsletter-content {
         margin-bottom: 20px;
     }
@@ -400,7 +397,7 @@ header.style-3 .currency-selector .btn-link:hover {
     .footer-section.two .newsletter-section {
         padding: 20px;
     }
-    
+
     .footer-section.two .newsletter-section .newsletter-content h4 {
         font-size: 18px;
     }
@@ -417,19 +414,14 @@ header.style-3 .currency-selector .btn-link:hover {
    Requirements: 5.2, 5.4
    ----------------------------------------- */
 
-.filter-wrapper--theme-02 {
-    background: rgba(255, 255, 255, 0.98);
-    border-radius: 16px;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.12);
-    border: 1px solid rgba(0, 0, 0, 0.05);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-}
 
 .filter-wrapper--theme-02 .filter-item-list {
     border-bottom: 2px solid rgba(0, 0, 0, 0.06);
+    padding-bottom: 5px;
+    margin-bottom: 0;
+    /* border-bottom: 2px solid rgba(0, 0, 0, 0.06);
     padding-bottom: 15px;
-    margin-bottom: 20px;
+    margin-bottom: 20px; */
 }
 
 .filter-wrapper--theme-02 .filter-item-list .single-item {
@@ -453,6 +445,11 @@ header.style-3 .currency-selector .btn-link:hover {
 
 .filter-wrapper--theme-02 .filter-item-list .single-item:hover svg {
     transform: scale(1.1);
+}
+
+.filter-wrapper--theme-02 .filter-input-wrap {
+    padding: 0px 10px 5px !important;
+    border-radius: 16px !important;
 }
 
 /* Filter input styling */
@@ -490,6 +487,7 @@ header.style-3 .currency-selector .btn-link:hover {
     transform: translateY(-2px);
     box-shadow: 0 6px 20px rgba(var(--primary-color1-rgb, 255, 102, 0), 0.4);
 }
+
 
 /* -----------------------------------------
    4.2 Vehicle Card Overrides
@@ -649,7 +647,7 @@ header.style-3 .currency-selector .btn-link:hover {
     .filter-wrapper--theme-02 {
         border-radius: 12px;
     }
-    
+
     .vehicle-card--theme-02 {
         border-radius: 12px;
     }
@@ -659,13 +657,12 @@ header.style-3 .currency-selector .btn-link:hover {
     .filter-wrapper--theme-02 .filter-item-list .single-item {
         padding: 10px 15px;
     }
-    
+
     .vehicle-card--theme-02 .card-content-area {
         padding: 15px;
     }
-    
+
     .vehicle-card--theme-02 .price-area .price {
         font-size: 20px;
     }
 }
-
