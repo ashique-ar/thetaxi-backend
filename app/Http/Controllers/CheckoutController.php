@@ -1099,23 +1099,28 @@ class CheckoutController extends Controller
                     try {
                         $decoded = base64_decode($customFieldsRaw);
                         Log::info('WebXPay callback custom_fields decoded', ['decoded' => $decoded]);
-                        // record custom fields
-                        $this->paymentEventService->recordEvent('callback_custom_fields_decoded', [
-                            'payload' => ['decoded' => $decoded],
-                            'source' => 'webxpay',
-                            'booking_id' => $possibleBookingId ?? null,
-                            'booking_number' => $possibleBookingNumber ?? null,
-                        ]);
+
                         $parts = explode('|', $decoded);
                         $possibleBookingId = $parts[0] ?? null;
                         $possibleBookingNumber = $parts[2] ?? null;
 
-                        if ($possibleBookingId) {
-                            $booking = Booking::find($possibleBookingId);
+                        // record custom fields with extracted values
+                        $this->paymentEventService->recordEvent('callback_custom_fields_decoded', [
+                            'payload' => ['decoded' => $decoded],
+                            'source' => 'webxpay',
+                            'booking_id' => null, // Don't use possibleBookingId as it might not be UUID
+                            'booking_number' => $possibleBookingNumber ?? null,
+                        ]);
+
+                        // Try booking_number FIRST since it's more reliable
+                        // (booking_id might be non-UUID in old/test data)
+                        if ($possibleBookingNumber) {
+                            $booking = Booking::where('booking_number', $possibleBookingNumber)->first();
                         }
 
-                        if (!$booking && $possibleBookingNumber) {
-                            $booking = Booking::where('booking_number', $possibleBookingNumber)->first();
+                        // Fallback to booking_id only if it looks like a UUID
+                        if (!$booking && $possibleBookingId && preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $possibleBookingId)) {
+                            $booking = Booking::find($possibleBookingId);
                         }
                     } catch (\Exception $e) {
                         Log::warning('Failed to parse custom_fields from callback', ['error' => $e->getMessage()]);
@@ -1129,21 +1134,32 @@ class CheckoutController extends Controller
                 $callbackData = $request->all();
                 $verificationResult = $this->webxPayService->verifyPayment($callbackData);
                 Log::info('WebXPay verification result', $verificationResult);
-                // Store verification result to DB for audit
+
+                // Try to find booking before recording event (prioritize booking_number)
+                $verifiedBooking = null;
+                if (!empty($verificationResult['booking_number'])) {
+                    $verifiedBooking = Booking::where('booking_number', $verificationResult['booking_number'])->first();
+                }
+                // Only use booking_id if it looks like a valid UUID
+                if (
+                    !$verifiedBooking && !empty($verificationResult['booking_id']) &&
+                    preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $verificationResult['booking_id'])
+                ) {
+                    $verifiedBooking = Booking::find($verificationResult['booking_id']);
+                }
+
+                // Store verification result to DB for audit (use actual booking UUID if found)
                 $this->paymentEventService->recordEvent('verification_result', [
                     'payload' => $verificationResult,
                     'source' => 'webxpay',
-                    'booking_id' => $verificationResult['booking_id'] ?? null,
+                    'booking_id' => $verifiedBooking?->id ?? null, // Use actual UUID from found booking
                     'booking_number' => $verificationResult['booking_number'] ?? null,
                     'transaction_id' => $verificationResult['transaction_id'] ?? null,
                     'status' => $verificationResult['status'] ?? null,
                 ]);
 
-                if (!empty($verificationResult['booking_id'])) {
-                    $booking = Booking::find($verificationResult['booking_id']);
-                }
-                if (!$booking && !empty($verificationResult['booking_number'])) {
-                    $booking = Booking::where('booking_number', $verificationResult['booking_number'])->first();
+                if ($verifiedBooking) {
+                    $booking = $verifiedBooking;
                 }
             }
 
