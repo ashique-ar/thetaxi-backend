@@ -284,6 +284,14 @@
             data-service="airport_transfers" action="{{ route('booking.search') }}" method="GET">
             <input type="hidden" name="service_type" value="airport_transfers">
 
+            @if ($bookingAdvanceHours && $bookingAdvanceHours > 0)
+                <div class="alert alert-warning booking-advance-banner my-2" role="alert">
+                    <strong>Note:</strong>
+                    Bookings must be made at least <strong>{{ $bookingAdvanceHours }}
+                        hour{{ $bookingAdvanceHours > 1 ? 's' : '' }}</strong> in advance.
+                </div>
+            @endif
+
             <!-- Transfer Type Selection - Compact Toggle Style -->
             <div class="transfer-type-selector">
                 <div class="transfer-type-toggle">
@@ -431,11 +439,6 @@
                     class="custom-datepicker @error('date') is-invalid @enderror"
                     value="{{ old('date', $airportTransfersPickupDate ? date('d/m/Y', strtotime($airportTransfersPickupDate)) : date('d/m/Y')) }}"
                     required autocomplete="off">
-                @if ($bookingAdvanceHours && $bookingAdvanceHours > 0)
-                    <small class="text-muted d-block mt-1">Bookings must be made at least
-                        <strong>{{ $bookingAdvanceHours }} hour{{ $bookingAdvanceHours > 1 ? 's' : '' }}</strong> in
-                        advance.</small>
-                @endif
                 @error('date')
                     <span class="text-danger small">{{ $message }}</span>
                 @enderror
@@ -489,6 +492,14 @@
         <form id="ride_now-form" class="filter-input {{ $currentServiceType === 'ride_now' ? 'show' : '' }}"
             data-service="ride_now" action="{{ route('booking.search') }}" method="GET">
             <input type="hidden" name="service_type" value="ride_now">
+
+            @if ($bookingAdvanceHours && $bookingAdvanceHours > 0)
+                <div class="alert alert-warning booking-advance-banner my-2" role="alert">
+                    <strong>Note:</strong>
+                    Bookings must be made at least <strong>{{ $bookingAdvanceHours }}
+                        hour{{ $bookingAdvanceHours > 1 ? 's' : '' }}</strong> in advance.
+                </div>
+            @endif
 
             <!-- Pickup Location -->
             @php
@@ -570,11 +581,6 @@
                     class="custom-datepicker @error('pickup_date') is-invalid @enderror"
                     value="{{ old('pickup_date', $rideNowPickupDate ? date('d/m/Y', strtotime($rideNowPickupDate)) : date('d/m/Y')) }}"
                     required autocomplete="off">
-                @if ($bookingAdvanceHours && $bookingAdvanceHours > 0)
-                    <small class="text-muted d-block mt-1">Bookings must be made at least
-                        <strong>{{ $bookingAdvanceHours }} hour{{ $bookingAdvanceHours > 1 ? 's' : '' }}</strong> in
-                        advance.</small>
-                @endif
                 @error('pickup_date')
                     <span class="text-danger small">{{ $message }}</span>
                 @enderror
@@ -751,6 +757,14 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
             data-service="day_rental" action="{{ route('booking.search') }}" method="GET">
 
             <input type="hidden" name="service_type" value="day_rental">
+
+            @if ($bookingAdvanceHours && $bookingAdvanceHours > 0)
+                <div class="alert alert-warning booking-advance-banner my-2" role="alert">
+                    <strong>Note:</strong>
+                    Bookings must be made at least <strong>{{ $bookingAdvanceHours }}
+                        hour{{ $bookingAdvanceHours > 1 ? 's' : '' }}</strong> in advance.
+                </div>
+            @endif
             <!-- Pickup Location -->
             @php
                 $dayRentalPickup = $getLocationForService('day_rental', true);
@@ -824,11 +838,6 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
                     class="custom-datepicker @error('pickup_date') is-invalid @enderror"
                     value="{{ old('pickup_date', $dayRentalPickupDate ? date('d/m/Y', strtotime($dayRentalPickupDate)) : date('d/m/Y')) }}"
                     required autocomplete="off">
-                @if ($bookingAdvanceHours && $bookingAdvanceHours > 0)
-                    <small class="text-muted d-block mt-1">Bookings must be made at least
-                        <strong>{{ $bookingAdvanceHours }} hour{{ $bookingAdvanceHours > 1 ? 's' : '' }}</strong> in
-                        advance.</small>
-                @endif
                 @error('pickup_date')
                     <span class="text-danger small">{{ $message }}</span>
                 @enderror
@@ -1221,7 +1230,8 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
                         if (d < minAllowed) {
                             e.preventDefault();
                             alert(
-                                `Bookings must be made at least ${bookingAdvanceHours} hours in advance. Please select a later date/time.`);
+                                `Bookings must be made at least ${bookingAdvanceHours} hours in advance. Please select a later date/time.`
+                                );
                             return;
                         }
                     }
@@ -2061,7 +2071,7 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
             $(document).on('show', '.custom-datepicker', function() {
                 const min = computeMinAllowedDate();
                 $(this).datepicker('setStartDate', new Date(min.getFullYear(), min.getMonth(), min
-                .getDate()));
+                    .getDate()));
             });
 
             $('.custom-datepicker').on('input', function() {
