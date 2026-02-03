@@ -163,8 +163,12 @@ class BookingController extends Controller
                     'pickup' => $requestData['pickup'] ?? null,
                     'dropoff' => $requestData['dropoff'] ?? null,
                     'pickup_lat' => $requestData['pickup_lat'] ?? null,
+                    'pickup_lng' => $requestData['pickup_lng'] ?? null,
                     'dropoff_lat' => $requestData['dropoff_lat'] ?? null,
+                    'dropoff_lng' => $requestData['dropoff_lng'] ?? null,
                     'transfer_type' => $requestData['transfer_type'] ?? null,
+                    'formatted_pickup_location' => $params['pickup_location'],
+                    'formatted_dropoff_location' => $params['dropoff_location'],
                 ]);
 
                 break;

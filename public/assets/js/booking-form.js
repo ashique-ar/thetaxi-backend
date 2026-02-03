@@ -794,8 +794,9 @@
                 latInput.value = lat;
                 lngInput.value = lng;
 
-                if ((!input.value || input.value.trim() === '') && (place.formatted_address || (!isNaN(lat) && !isNaN(lng)))) {
-                    input.value = place.formatted_address || (lat.toFixed(4) + ', ' + lng.toFixed(4));
+                // Only update input value if empty AND we have a formatted address (never show coordinates)
+                if ((!input.value || input.value.trim() === '') && place.formatted_address) {
+                    input.value = place.formatted_address;
                 }
             }
         } else if (input.name === "to") {
@@ -809,8 +810,9 @@
                 latInput.value = lat;
                 lngInput.value = lng;
 
-                if ((!input.value || input.value.trim() === '') && (place.formatted_address || (!isNaN(lat) && !isNaN(lng)))) {
-                    input.value = place.formatted_address || (lat.toFixed(4) + ', ' + lng.toFixed(4));
+                // Only update input value if empty AND we have a formatted address (never show coordinates)
+                if ((!input.value || input.value.trim() === '') && place.formatted_address) {
+                    input.value = place.formatted_address;
                 }
             }
         } else if (input.name === "pickup") {
@@ -825,8 +827,9 @@
                 lngInput.value = lng;
                 console.log('Updated pickup coordinates via Google Places:', latInput.value, lngInput.value);
 
-                if ((!input.value || input.value.trim() === '') && (place.formatted_address || (!isNaN(lat) && !isNaN(lng)))) {
-                    input.value = place.formatted_address || (lat.toFixed(4) + ', ' + lng.toFixed(4));
+                // Only update input value if empty AND we have a formatted address (never show coordinates)
+                if ((!input.value || input.value.trim() === '') && place.formatted_address) {
+                    input.value = place.formatted_address;
                 }
             } else {
                 console.error('Could not find pickup coordinate fields or place geometry');
@@ -843,8 +846,9 @@
                 lngInput.value = lng;
                 console.log('Updated dropoff coordinates via Google Places:', latInput.value, lngInput.value);
 
-                if ((!input.value || input.value.trim() === '') && (place.formatted_address || (!isNaN(lat) && !isNaN(lng)))) {
-                    input.value = place.formatted_address || (lat.toFixed(4) + ', ' + lng.toFixed(4));
+                // Only update input value if empty AND we have a formatted address (never show coordinates)
+                if ((!input.value || input.value.trim() === '') && place.formatted_address) {
+                    input.value = place.formatted_address;
                 }
             } else {
                 console.error('Could not find dropoff coordinate fields or place geometry');
