@@ -21,6 +21,7 @@ class AppServiceProvider extends ServiceProvider
         // Register currency helper functions
         require_once app_path('Helpers/Helper.php');
         require_once app_path('Helpers/CurrencyHelpers.php');
+        require_once app_path('Helpers/theme_helpers.php');
     }
 
     /**

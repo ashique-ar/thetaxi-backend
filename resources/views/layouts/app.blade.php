@@ -32,6 +32,11 @@
     <!--  Style CSS  -->
     <link rel="stylesheet" href="{{ assetVersion('assets/css/style.css') }}">
 
+    <!-- Theme-specific CSS (loaded conditionally) -->
+    @if(is_theme('theme-02'))
+    <link rel="stylesheet" href="{{ assetVersion('assets/css/theme-02.css') }}">
+    @endif
+
     <!-- Booking Form CSS -->
     <link rel="stylesheet" href="{{ assetVersion('assets/css/booking-form.css') }}">
 
@@ -245,11 +250,11 @@
         </svg>
     </div>
 
-    @include('partials.header')
+    @include(theme_partial('header'))
 
     @yield('content')
 
-    @include('partials.footer')
+    @include(theme_partial('footer'))
 
     <script src="{{ asset('assets/js/jquery-3.7.1.min.js') }}"></script>
     <script src="{{ asset('assets/js/jquery-ui.js') }}"></script>

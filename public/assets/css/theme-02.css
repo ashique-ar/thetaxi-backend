@@ -1,0 +1,671 @@
+/**
+ * Theme-02 CSS Overrides
+ * Based on travel-agency-02.html (GoFly Theme)
+ * 
+ * This file contains ONLY style overrides for Theme-02.
+ * Base styles are in style.css - do not duplicate them here.
+ * 
+ * Requirements: 7.1, 7.3, 7.4
+ */
+
+/* ===========================================
+   1. Header Style-3 Overrides
+   Requirements: 7.1, 7.3, 7.4
+   =========================================== */
+
+/* Theme-02 header uses a darker, more prominent style */
+header.style-3 {
+    background: linear-gradient(180deg, rgba(0, 0, 0, 0.6) 0%, transparent 100%);
+}
+
+header.style-3.sticky {
+    background-color: var(--primary-color1);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+
+/* Logo adjustments for theme-02 */
+header.style-3 .header-logo img {
+    filter: brightness(1.1);
+    transition: filter 0.3s ease;
+}
+
+header.style-3:hover .header-logo img {
+    filter: brightness(1.2);
+}
+
+/* Menu styling enhancements */
+header.style-3 .menu-list > li > a {
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    font-size: 13px;
+}
+
+header.style-3 .menu-list > li > a:hover {
+    color: var(--primary-color1);
+}
+
+/* Contact area styling */
+header.style-3 .contact-area .content a {
+    transition: color 0.3s ease, transform 0.3s ease;
+}
+
+header.style-3 .contact-area .content a:hover {
+    transform: translateY(-1px);
+}
+
+/* Nav right area adjustments */
+header.style-3 .nav-right .cart-icon-link {
+    color: var(--white-color);
+    transition: color 0.3s ease;
+}
+
+header.style-3 .nav-right .cart-icon-link:hover {
+    color: var(--primary-color1);
+}
+
+header.style-3 .nav-right .cart-icon-link svg {
+    fill: currentColor;
+}
+
+/* Currency selector styling for theme-02 */
+header.style-3 .currency-selector .btn-link {
+    color: var(--white-color) !important;
+}
+
+header.style-3 .currency-selector .btn-link:hover {
+    color: var(--primary-color1) !important;
+}
+
+
+/* ===========================================
+   2. Hero Section (home3-banner-section) Overrides
+   Requirements: 7.3, 7.4
+   =========================================== */
+
+/* Banner slider enhancements */
+.home3-banner-section .home2-banner-slider {
+    overflow: hidden;
+}
+
+/* Video area overlay enhancement */
+.home3-banner-section .banner-wrapper .banner-video-area::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+        180deg,
+        rgba(0, 0, 0, 0.3) 0%,
+        rgba(0, 0, 0, 0.1) 50%,
+        rgba(0, 0, 0, 0.4) 100%
+    );
+    pointer-events: none;
+}
+
+/* Image area overlay enhancement */
+.home3-banner-section .banner-wrapper .banner-img-area::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+        180deg,
+        rgba(0, 0, 0, 0.3) 0%,
+        rgba(0, 0, 0, 0.1) 50%,
+        rgba(0, 0, 0, 0.4) 100%
+    );
+    pointer-events: none;
+}
+
+.home3-banner-section .banner-wrapper .banner-img-area {
+    position: relative;
+}
+
+/* Award badge styling */
+.home3-banner-section .award-rating-area {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    animation: fadeInUp 0.8s ease-out;
+}
+
+.home3-banner-section .award-rating-area img {
+    filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
+    transition: transform 0.3s ease;
+}
+
+.home3-banner-section .award-rating-area img:hover {
+    transform: scale(1.05);
+}
+
+.home3-banner-section .award-rating-area h4 {
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.home3-banner-section .award-rating-area .rating ul li i {
+    text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+}
+
+/* Banner content animations */
+.home3-banner-section .banner-content h1,
+.home3-banner-section .banner-content h2 {
+    text-shadow: 2px 4px 8px rgba(0, 0, 0, 0.4);
+    animation: fadeInUp 0.8s ease-out 0.2s both;
+}
+
+.home3-banner-section .banner-content p {
+    text-shadow: 1px 2px 4px rgba(0, 0, 0, 0.3);
+    animation: fadeInUp 0.8s ease-out 0.4s both;
+}
+
+/* Banner pagination styling */
+.home3-banner-section .banner-pagination {
+    position: absolute;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    display: flex;
+    gap: 10px;
+}
+
+.home3-banner-section .banner-pagination .swiper-pagination-bullet {
+    width: 12px;
+    height: 12px;
+    background: rgba(255, 255, 255, 0.5);
+    border-radius: 50%;
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.home3-banner-section .banner-pagination .swiper-pagination-bullet-active {
+    background: var(--primary-color1);
+    transform: scale(1.2);
+}
+
+.home3-banner-section .banner-pagination .swiper-pagination-bullet:hover {
+    background: rgba(255, 255, 255, 0.8);
+}
+
+/* Responsive adjustments for hero */
+@media (max-width: 767px) {
+    .home3-banner-section .banner-pagination {
+        bottom: 20px;
+    }
+    
+    .home3-banner-section .banner-pagination .swiper-pagination-bullet {
+        width: 10px;
+        height: 10px;
+    }
+}
+
+/* Animation keyframes */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+
+/* ===========================================
+   3. Footer Style Overrides
+   Requirements: 7.3, 7.4
+   =========================================== */
+
+/* Theme-02 footer uses "two" class for subtle differences */
+.footer-section.two {
+    background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
+}
+
+/* Newsletter section styling */
+.footer-section.two .newsletter-section {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    padding: 30px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.footer-section.two .newsletter-section .newsletter-content h4 {
+    color: var(--white-color);
+    font-family: var(--font-poppins);
+    font-weight: 600;
+    font-size: 22px;
+    margin-bottom: 8px;
+}
+
+.footer-section.two .newsletter-section .newsletter-content p {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 14px;
+    margin-bottom: 0;
+}
+
+.footer-section.two .newsletter-form .input-group {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.footer-section.two .newsletter-form .form-control {
+    background: transparent;
+    border: none;
+    color: var(--white-color);
+    padding: 15px 20px;
+}
+
+.footer-section.two .newsletter-form .form-control::placeholder {
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.footer-section.two .newsletter-form .form-control:focus {
+    box-shadow: none;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.footer-section.two .newsletter-form .btn-primary {
+    background: var(--primary-color1);
+    border: none;
+    padding: 15px 30px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.footer-section.two .newsletter-form .btn-primary:hover {
+    background: var(--primary-color2, #e65c00);
+    transform: translateX(3px);
+}
+
+/* Footer logo area enhancements */
+.footer-section.two .footer-logo-and-addition-info .footer-logo img {
+    filter: brightness(1.1);
+    transition: filter 0.3s ease;
+}
+
+.footer-section.two .footer-logo-and-addition-info .footer-logo:hover img {
+    filter: brightness(1.3);
+}
+
+/* Social links styling */
+.footer-section.two .social-list li a {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 50%;
+    transition: all 0.3s ease;
+}
+
+.footer-section.two .social-list li a:hover {
+    background: var(--primary-color1);
+    transform: translateY(-3px);
+}
+
+/* Widget styling */
+.footer-section.two .footer-widget .widget-title h5 {
+    position: relative;
+    padding-bottom: 12px;
+}
+
+.footer-section.two .footer-widget .widget-title h5::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 40px;
+    height: 2px;
+    background: var(--primary-color1);
+}
+
+.footer-section.two .footer-widget .widget-list li a {
+    transition: all 0.3s ease;
+    padding-left: 0;
+}
+
+.footer-section.two .footer-widget .widget-list li a:hover {
+    color: var(--primary-color1);
+    padding-left: 8px;
+}
+
+/* Contact list styling */
+.footer-section.two .contact-list .single-contact {
+    display: flex;
+    align-items: flex-start;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.footer-section.two .contact-list .single-contact .icon {
+    min-width: 40px;
+    height: 40px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+}
+
+.footer-section.two .contact-list .single-contact:hover .icon {
+    background: var(--primary-color1);
+}
+
+.footer-section.two .contact-list .single-contact .icon img {
+    width: 20px;
+    height: 20px;
+    filter: brightness(0) invert(1);
+}
+
+.footer-section.two .contact-list .single-contact .content span {
+    display: block;
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 12px;
+    margin-bottom: 4px;
+}
+
+.footer-section.two .contact-list .single-contact .content a {
+    color: var(--white-color);
+    font-weight: 500;
+    transition: color 0.3s ease;
+}
+
+.footer-section.two .contact-list .single-contact .content a:hover {
+    color: var(--primary-color1);
+}
+
+/* Footer bottom styling */
+.footer-section.two .footer-bottom {
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    margin-top: 40px;
+    padding-top: 25px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 991px) {
+    .footer-section.two .newsletter-section {
+        padding: 25px;
+    }
+    
+    .footer-section.two .newsletter-section .newsletter-content {
+        margin-bottom: 20px;
+    }
+}
+
+@media (max-width: 767px) {
+    .footer-section.two .newsletter-section {
+        padding: 20px;
+    }
+    
+    .footer-section.two .newsletter-section .newsletter-content h4 {
+        font-size: 18px;
+    }
+}
+
+
+/* ===========================================
+   4. Component Style Overrides
+   Requirements: 5.2, 5.4, 6.2, 7.3, 7.4
+   =========================================== */
+
+/* -----------------------------------------
+   4.1 Filter Wrapper / Booking Form Overrides
+   Requirements: 5.2, 5.4
+   ----------------------------------------- */
+
+.filter-wrapper--theme-02 {
+    background: rgba(255, 255, 255, 0.98);
+    border-radius: 16px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.12);
+    border: 1px solid rgba(0, 0, 0, 0.05);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+
+.filter-wrapper--theme-02 .filter-item-list {
+    border-bottom: 2px solid rgba(0, 0, 0, 0.06);
+    padding-bottom: 15px;
+    margin-bottom: 20px;
+}
+
+.filter-wrapper--theme-02 .filter-item-list .single-item {
+    border-radius: 10px;
+    transition: all 0.3s ease;
+    padding: 12px 20px;
+}
+
+.filter-wrapper--theme-02 .filter-item-list .single-item:hover {
+    background: rgba(var(--primary-color1-rgb, 255, 102, 0), 0.08);
+}
+
+.filter-wrapper--theme-02 .filter-item-list .single-item.active {
+    background: var(--primary-color1);
+    box-shadow: 0 4px 15px rgba(var(--primary-color1-rgb, 255, 102, 0), 0.3);
+}
+
+.filter-wrapper--theme-02 .filter-item-list .single-item svg {
+    transition: transform 0.3s ease;
+}
+
+.filter-wrapper--theme-02 .filter-item-list .single-item:hover svg {
+    transform: scale(1.1);
+}
+
+/* Filter input styling */
+.filter-wrapper--theme-02 .filter-input {
+    padding: 20px;
+}
+
+.filter-wrapper--theme-02 .single-search-box {
+    background: #f8f9fa;
+    border-radius: 12px;
+    border: 1px solid #e9ecef;
+    transition: all 0.3s ease;
+}
+
+.filter-wrapper--theme-02 .single-search-box:hover,
+.filter-wrapper--theme-02 .single-search-box:focus-within {
+    border-color: var(--primary-color1);
+    box-shadow: 0 0 0 3px rgba(var(--primary-color1-rgb, 255, 102, 0), 0.1);
+}
+
+.filter-wrapper--theme-02 .single-search-box svg {
+    fill: var(--primary-color1);
+}
+
+/* Search button styling */
+.filter-wrapper--theme-02 .search-btn {
+    border-radius: 12px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(var(--primary-color1-rgb, 255, 102, 0), 0.3);
+}
+
+.filter-wrapper--theme-02 .search-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(var(--primary-color1-rgb, 255, 102, 0), 0.4);
+}
+
+/* -----------------------------------------
+   4.2 Vehicle Card Overrides
+   Requirements: 6.2
+   ----------------------------------------- */
+
+.vehicle-card--theme-02 {
+    border-radius: 16px;
+    border: none;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+}
+
+.vehicle-card--theme-02:hover {
+    transform: translateY(-8px);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+}
+
+/* Card image area */
+.vehicle-card--theme-02 .card-img-area {
+    position: relative;
+    overflow: hidden;
+    border-radius: 16px 16px 0 0;
+}
+
+.vehicle-card--theme-02 .card-img-area img {
+    transition: transform 0.5s ease;
+}
+
+.vehicle-card--theme-02:hover .card-img-area img {
+    transform: scale(1.08);
+}
+
+.vehicle-card--theme-02 .card-img-area::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 60px;
+    background: linear-gradient(transparent, rgba(0, 0, 0, 0.3));
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.vehicle-card--theme-02:hover .card-img-area::after {
+    opacity: 1;
+}
+
+/* Card content area */
+.vehicle-card--theme-02 .card-content-area {
+    padding: 20px;
+}
+
+.vehicle-card--theme-02 .card-content-area .title {
+    font-weight: 600;
+    transition: color 0.3s ease;
+}
+
+.vehicle-card--theme-02:hover .card-content-area .title {
+    color: var(--primary-color1);
+}
+
+/* Price styling */
+.vehicle-card--theme-02 .price-area {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin-top: 15px;
+}
+
+.vehicle-card--theme-02 .price-area .price {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--primary-color1);
+}
+
+.vehicle-card--theme-02 .price-area .price-label {
+    font-size: 12px;
+    color: #6c757d;
+}
+
+/* Features/specs styling */
+.vehicle-card--theme-02 .vehicle-specs {
+    display: flex;
+    gap: 15px;
+    flex-wrap: wrap;
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid #e9ecef;
+}
+
+.vehicle-card--theme-02 .vehicle-specs .spec-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: #6c757d;
+}
+
+.vehicle-card--theme-02 .vehicle-specs .spec-item svg,
+.vehicle-card--theme-02 .vehicle-specs .spec-item i {
+    color: var(--primary-color1);
+    font-size: 16px;
+}
+
+/* Book button styling */
+.vehicle-card--theme-02 .book-btn {
+    width: 100%;
+    border-radius: 10px;
+    padding: 12px 20px;
+    font-weight: 600;
+    margin-top: 15px;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.vehicle-card--theme-02 .book-btn::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: left 0.5s ease;
+}
+
+.vehicle-card--theme-02 .book-btn:hover::before {
+    left: 100%;
+}
+
+/* Recommended badge styling */
+.vehicle-card--theme-02.recommended-vehicle {
+    border: 2px solid var(--primary-color1);
+}
+
+.vehicle-card--theme-02.recommended-vehicle::before {
+    content: "Recommended";
+    position: absolute;
+    top: 15px;
+    right: -30px;
+    background: var(--primary-color1);
+    color: white;
+    padding: 5px 40px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    transform: rotate(45deg);
+    z-index: 10;
+}
+
+/* Responsive adjustments */
+@media (max-width: 991px) {
+    .filter-wrapper--theme-02 {
+        border-radius: 12px;
+    }
+    
+    .vehicle-card--theme-02 {
+        border-radius: 12px;
+    }
+}
+
+@media (max-width: 767px) {
+    .filter-wrapper--theme-02 .filter-item-list .single-item {
+        padding: 10px 15px;
+    }
+    
+    .vehicle-card--theme-02 .card-content-area {
+        padding: 15px;
+    }
+    
+    .vehicle-card--theme-02 .price-area .price {
+        font-size: 20px;
+    }
+}
+

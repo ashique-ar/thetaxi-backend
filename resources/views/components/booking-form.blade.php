@@ -203,7 +203,7 @@
     $pricingMode = $serviceTypeModel?->pricing_mode ?? 'day';
 @endphp
 
-<div class="filter-wrapper">
+<div class="filter-wrapper {{ theme_class('filter-wrapper') }}">
     <ul class="filter-item-list">
         <li class="single-item {{ $currentServiceType === 'airport_transfers' ? 'active' : '' }}"
             data-service="airport_transfers">
