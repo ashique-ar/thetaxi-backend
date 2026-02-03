@@ -487,7 +487,9 @@ header.style-3 .currency-selector .btn-link:hover {
     transform: translateY(-2px);
     box-shadow: 0 6px 20px rgba(var(--primary-color1-rgb, 255, 102, 0), 0.4);
 }
-
+.filter-wrapper .filter-input-wrap .filter-input .single-search-box{
+    display: block !important;
+}
 
 /* -----------------------------------------
    4.2 Vehicle Card Overrides
