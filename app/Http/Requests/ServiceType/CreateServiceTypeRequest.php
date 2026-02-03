@@ -24,7 +24,7 @@ class CreateServiceTypeRequest extends FormRequest
             'priority' => ['nullable', 'integer'],
             'is_internal' => ['nullable', 'boolean'],
             'terms' => ['nullable', 'string'],
-            'minimum_km' => ['sometimes', 'nullable', 'string'],
+            'minimum_km' => ['sometimes', 'nullable'],
         ];
     }
 }
