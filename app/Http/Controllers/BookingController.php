@@ -163,12 +163,8 @@ class BookingController extends Controller
                     'pickup' => $requestData['pickup'] ?? null,
                     'dropoff' => $requestData['dropoff'] ?? null,
                     'pickup_lat' => $requestData['pickup_lat'] ?? null,
-                    'pickup_lng' => $requestData['pickup_lng'] ?? null,
                     'dropoff_lat' => $requestData['dropoff_lat'] ?? null,
-                    'dropoff_lng' => $requestData['dropoff_lng'] ?? null,
                     'transfer_type' => $requestData['transfer_type'] ?? null,
-                    'formatted_pickup_location' => $params['pickup_location'],
-                    'formatted_dropoff_location' => $params['dropoff_location'],
                 ]);
 
                 break;
@@ -671,6 +667,14 @@ class BookingController extends Controller
                 'service_features' => $this->getServiceFeatures($serviceType ?? 'airport_transfers'),
                 'savings_info' => [],
                 'payment_options' => $this->getAvailablePaymentOptions($formattedPricing),
+                // CRITICAL: Pass through booking/quotation flags from BookingFlowService
+                // These determine whether to show "Add to Cart" or "Request Quotation" button
+                'quotation_only' => $groupData['quotation_only'] ?? false,
+                'quotation_only_reasons' => $groupData['quotation_only_reasons'] ?? [],
+                'allow_booking' => $groupData['allow_booking'] ?? true,
+                'is_inquiry_only' => $groupData['is_inquiry_only'] ?? false,
+                'service_requires_inquiry' => $groupData['service_requires_inquiry'] ?? false,
+                'is_group_active' => $groupData['is_group_active'] ?? true,
             ];
         }
         return $results;
