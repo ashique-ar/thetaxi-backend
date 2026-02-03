@@ -27,7 +27,7 @@
     <!-- End Booking Form Section -->
 
     <!-- Cart Page Start-->
-    <div class="cart-page pt-100 mb-100">
+    <div class="cart-page">
         <div class="container">
             @php
                 // Get cart items from database via CartService with currency conversion

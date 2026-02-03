@@ -201,6 +201,14 @@
     $usesDropoffTime = $serviceTypeModel?->uses_dropoff_time ?? true;
     $allowReturnTrip = $serviceTypeModel?->allow_return_trip ?? false;
     $pricingMode = $serviceTypeModel?->pricing_mode ?? 'day';
+
+    // Booking advance time configured in admin (hours). Used by blade/js to set minimum booking date/time.
+    try {
+        $bookingSettings = app(\App\Services\WebsiteSettingsService::class)->getBookingSettings();
+        $bookingAdvanceHours = (int) ($bookingSettings['booking_advance_hours'] ?? 4);
+    } catch (Exception $e) {
+        $bookingAdvanceHours = 0;
+    }
 @endphp
 
 <div class="filter-wrapper {{ theme_class('filter-wrapper') }}">
@@ -423,6 +431,11 @@
                     class="custom-datepicker @error('date') is-invalid @enderror"
                     value="{{ old('date', $airportTransfersPickupDate ? date('d/m/Y', strtotime($airportTransfersPickupDate)) : date('d/m/Y')) }}"
                     required autocomplete="off">
+                @if ($bookingAdvanceHours && $bookingAdvanceHours > 0)
+                    <small class="text-muted d-block mt-1">Bookings must be made at least
+                        <strong>{{ $bookingAdvanceHours }} hour{{ $bookingAdvanceHours > 1 ? 's' : '' }}</strong> in
+                        advance.</small>
+                @endif
                 @error('date')
                     <span class="text-danger small">{{ $message }}</span>
                 @enderror
@@ -557,6 +570,11 @@
                     class="custom-datepicker @error('pickup_date') is-invalid @enderror"
                     value="{{ old('pickup_date', $rideNowPickupDate ? date('d/m/Y', strtotime($rideNowPickupDate)) : date('d/m/Y')) }}"
                     required autocomplete="off">
+                @if ($bookingAdvanceHours && $bookingAdvanceHours > 0)
+                    <small class="text-muted d-block mt-1">Bookings must be made at least
+                        <strong>{{ $bookingAdvanceHours }} hour{{ $bookingAdvanceHours > 1 ? 's' : '' }}</strong> in
+                        advance.</small>
+                @endif
                 @error('pickup_date')
                     <span class="text-danger small">{{ $message }}</span>
                 @enderror
@@ -806,6 +824,11 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
                     class="custom-datepicker @error('pickup_date') is-invalid @enderror"
                     value="{{ old('pickup_date', $dayRentalPickupDate ? date('d/m/Y', strtotime($dayRentalPickupDate)) : date('d/m/Y')) }}"
                     required autocomplete="off">
+                @if ($bookingAdvanceHours && $bookingAdvanceHours > 0)
+                    <small class="text-muted d-block mt-1">Bookings must be made at least
+                        <strong>{{ $bookingAdvanceHours }} hour{{ $bookingAdvanceHours > 1 ? 's' : '' }}</strong> in
+                        advance.</small>
+                @endif
                 @error('pickup_date')
                     <span class="text-danger small">{{ $message }}</span>
                 @enderror
@@ -1167,6 +1190,45 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
 
         forms.forEach(form => {
             form.addEventListener('submit', function(e) {
+                // Generic client-side enforcement of booking advance hours
+                try {
+                    const minAllowed = computeMinAllowedDate();
+                    let selectedDate = null;
+                    let selectedTime = null;
+
+                    if (form.id === 'airport_transfers-form') {
+                        selectedDate = form.querySelector('input[name="date"]')?.value || null;
+                        selectedTime = form.querySelector('input[name="time"]')?.value || null;
+                    } else if (form.id === 'ride_now-form' || form.id === 'day_rental-form') {
+                        selectedDate = form.querySelector(
+                            '.custom-datepicker[name="pickup_date"]')?.value || null;
+                        selectedTime = form.querySelector('input[name="pickup_time"]')?.value ||
+                            null;
+                    } else if (form.querySelector('.custom-datepicker[name="date"]')) {
+                        selectedDate = form.querySelector('.custom-datepicker[name="date"]')
+                            ?.value || null;
+                        selectedTime = form.querySelector('input[name="time"]')?.value || null;
+                    }
+
+                    if (selectedDate && selectedTime && bookingAdvanceHours > 0) {
+                        // Parse DD/MM/YYYY and HH:MM
+                        const dateParts = selectedDate.split('/');
+                        const d = new Date(Number(dateParts[2]), Number(dateParts[1]) - 1,
+                            Number(dateParts[0]));
+                        const timeParts = selectedTime.split(':');
+                        d.setHours(Number(timeParts[0]), Number(timeParts[1]), 0, 0);
+
+                        if (d < minAllowed) {
+                            e.preventDefault();
+                            alert(
+                                `Bookings must be made at least ${bookingAdvanceHours} hours in advance. Please select a later date/time.`);
+                            return;
+                        }
+                    }
+                } catch (err) {
+                    console.warn('Advance hours check failed:', err);
+                }
+
                 // Special handling for airport transfer form
                 if (form.getAttribute('data-service') === 'airport_transfers') {
                     if (!validateAirportTransferForm(form)) {
@@ -1867,12 +1929,139 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
 
     <script>
         $(document).ready(function() {
+            // Booking minimum lead time (hours) provided by server-side setting
+            const bookingAdvanceHours = {{ $bookingAdvanceHours }};
+
+            // Compute the earliest allowed booking datetime based on advance hours
+            function computeMinAllowedDate() {
+                const d = new Date();
+                if (bookingAdvanceHours && bookingAdvanceHours > 0) {
+                    d.setHours(d.getHours() + bookingAdvanceHours);
+                }
+                d.setSeconds(0);
+                d.setMilliseconds(0);
+                return d;
+            }
+
+            // Initialize datepickers with startDate = date part of minAllowed
+            const minAllowedGlobal = computeMinAllowedDate();
             $('.custom-datepicker').datepicker({
                 format: 'dd/mm/yyyy',
                 autoclose: true,
                 todayHighlight: true,
-                startDate: '0d',
+                startDate: new Date(minAllowedGlobal.getFullYear(), minAllowedGlobal.getMonth(),
+                    minAllowedGlobal.getDate()),
                 orientation: 'bottom auto'
+            });
+
+            // Helper formatters
+            function pad(n) {
+                return String(n).padStart(2, '0');
+            }
+
+            function formatDateDDMMYYYY(d) {
+                return `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()}`;
+            }
+
+            function formatTimeHHMM(d) {
+                return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+            }
+
+            // Ensure forms use the minimum allowed datetime where appropriate
+            function applyAdvanceDefaults() {
+                const min = computeMinAllowedDate();
+
+                // Airport transfers (date + time)
+                const airportForm = $('#airport_transfers-form');
+                if (airportForm.length) {
+                    const dateInput = airportForm.find('input[name="date"]');
+                    const timeInput = airportForm.find('input[name="time"]');
+
+                    if (dateInput.length && timeInput.length) {
+                        // Set date to min if empty or earlier
+                        const curDate = dateInput.val();
+                        let setDate = false;
+                        if (!curDate || !isValidDDMMYYYY(curDate)) setDate = true;
+                        else {
+                            const parts = curDate.split('/');
+                            const cd = new Date(parts[2], parts[1] - 1, parts[0]);
+                            if (cd < new Date(min.getFullYear(), min.getMonth(), min.getDate())) setDate = true;
+                        }
+                        if (setDate) {
+                            dateInput.val(formatDateDDMMYYYY(min)).datepicker('update');
+                        }
+
+                        // Time defaults
+                        if (!timeInput.val()) {
+                            timeInput.val(formatTimeHHMM(min));
+                        } else {
+                            const selDateStr = dateInput.val();
+                            if (isValidDDMMYYYY(selDateStr)) {
+                                const parts = selDateStr.split('/');
+                                const selDate = new Date(parts[2], parts[1] - 1, parts[0]);
+                                const minDateOnly = new Date(min.getFullYear(), min.getMonth(), min.getDate());
+                                if (selDate.getTime() === minDateOnly.getTime()) {
+                                    if (timeInput.val() < formatTimeHHMM(min)) {
+                                        timeInput.val(formatTimeHHMM(min));
+                                    }
+                                }
+                            }
+                        }
+
+                        // Enforce min time attribute when same-day
+                        timeInput.attr('min', formatTimeHHMM(min));
+                    }
+                }
+
+                // Ride Now and Day Rental (pickup_date + pickup_time)
+                ['#ride_now-form', '#day_rental-form'].forEach(selector => {
+                    const form = $(selector);
+                    if (!form.length) return;
+                    const dateInput = form.find('.custom-datepicker[name="pickup_date"]');
+                    const timeInput = form.find('input[name="pickup_time"]');
+                    if (dateInput.length && timeInput.length) {
+                        if (!dateInput.val() || !isValidDDMMYYYY(dateInput.val())) {
+                            dateInput.val(formatDateDDMMYYYY(min)).datepicker('update');
+                        } else {
+                            const parts = dateInput.val().split('/');
+                            const cd = new Date(parts[2], parts[1] - 1, parts[0]);
+                            if (cd < new Date(min.getFullYear(), min.getMonth(), min.getDate())) {
+                                dateInput.val(formatDateDDMMYYYY(min)).datepicker('update');
+                            }
+                        }
+
+                        if (!timeInput.val()) {
+                            timeInput.val(formatTimeHHMM(min));
+                        } else {
+                            const parts = dateInput.val().split('/');
+                            const cd = new Date(parts[2], parts[1] - 1, parts[0]);
+                            const minDateOnly = new Date(min.getFullYear(), min.getMonth(), min.getDate());
+                            if (cd.getTime() === minDateOnly.getTime()) {
+                                if (timeInput.val() < formatTimeHHMM(min)) {
+                                    timeInput.val(formatTimeHHMM(min));
+                                }
+                                timeInput.attr('min', formatTimeHHMM(min));
+                            } else {
+                                timeInput.removeAttr('min');
+                            }
+                        }
+                    }
+                });
+            }
+
+            // Re-apply defaults on load
+            applyAdvanceDefaults();
+
+            // Re-check whenever the date/time inputs change
+            $(document).on('change', '.custom-datepicker, input[type="time"]', function() {
+                applyAdvanceDefaults();
+            });
+
+            // On datepicker open, update its startDate in case settings changed
+            $(document).on('show', '.custom-datepicker', function() {
+                const min = computeMinAllowedDate();
+                $(this).datepicker('setStartDate', new Date(min.getFullYear(), min.getMonth(), min
+                .getDate()));
             });
 
             $('.custom-datepicker').on('input', function() {
