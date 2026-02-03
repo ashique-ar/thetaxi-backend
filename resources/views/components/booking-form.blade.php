@@ -285,10 +285,19 @@
             <input type="hidden" name="service_type" value="airport_transfers">
 
             @if ($bookingAdvanceHours && $bookingAdvanceHours > 0)
-                <div class="alert alert-warning booking-advance-banner my-2" role="alert">
-                    <strong>Note:</strong>
-                    Bookings must be made at least <strong>{{ $bookingAdvanceHours }}
-                        hour{{ $bookingAdvanceHours > 1 ? 's' : '' }}</strong> in advance.
+                <div class="booking-advance-note alert alert-warning d-flex align-items-center" role="note"
+                    style="margin-bottom:12px;">
+                    <svg width="18" height="18" viewBox="0 0 16 16" fill="none"
+                        xmlns="http://www.w3.org/2000/svg" style="margin-right:8px;flex-shrink:0;">
+                        <path
+                            d="M8 1.333c-3.683 0-6.667 2.984-6.667 6.667S4.317 14.667 8 14.667 14.667 11.683 14.667 8 11.683 1.333 8 1.333zm0 9.334a.667.667 0 110 1.334.667.667 0 010-1.334zM7.333 4.667h1.334V9.33H7.333V4.667z"
+                            fill="#856404" />
+                    </svg>
+                    <div style="color:#856404;">
+                        <strong>Booking Notice:</strong>
+                        <span> Bookings must be made at least <strong>{{ $bookingAdvanceHours }}
+                                hour{{ $bookingAdvanceHours > 1 ? 's' : '' }}</strong> in advance.</span>
+                    </div>
                 </div>
             @endif
 
@@ -494,10 +503,19 @@
             <input type="hidden" name="service_type" value="ride_now">
 
             @if ($bookingAdvanceHours && $bookingAdvanceHours > 0)
-                <div class="alert alert-warning booking-advance-banner my-2" role="alert">
-                    <strong>Note:</strong>
-                    Bookings must be made at least <strong>{{ $bookingAdvanceHours }}
-                        hour{{ $bookingAdvanceHours > 1 ? 's' : '' }}</strong> in advance.
+                <div class="booking-advance-note alert alert-warning d-flex align-items-center" role="note"
+                    style="margin-bottom:12px;">
+                    <svg width="18" height="18" viewBox="0 0 16 16" fill="none"
+                        xmlns="http://www.w3.org/2000/svg" style="margin-right:8px;flex-shrink:0;">
+                        <path
+                            d="M8 1.333c-3.683 0-6.667 2.984-6.667 6.667S4.317 14.667 8 14.667 14.667 11.683 14.667 8 11.683 1.333 8 1.333zm0 9.334a.667.667 0 110 1.334.667.667 0 010-1.334zM7.333 4.667h1.334V9.33H7.333V4.667z"
+                            fill="#856404" />
+                    </svg>
+                    <div style="color:#856404;">
+                        <strong>Booking Notice:</strong>
+                        <span> Bookings must be made at least <strong>{{ $bookingAdvanceHours }}
+                                hour{{ $bookingAdvanceHours > 1 ? 's' : '' }}</strong> in advance.</span>
+                    </div>
                 </div>
             @endif
 
@@ -757,12 +775,20 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
             data-service="day_rental" action="{{ route('booking.search') }}" method="GET">
 
             <input type="hidden" name="service_type" value="day_rental">
-
             @if ($bookingAdvanceHours && $bookingAdvanceHours > 0)
-                <div class="alert alert-warning booking-advance-banner my-2" role="alert">
-                    <strong>Note:</strong>
-                    Bookings must be made at least <strong>{{ $bookingAdvanceHours }}
-                        hour{{ $bookingAdvanceHours > 1 ? 's' : '' }}</strong> in advance.
+                <div class="booking-advance-note alert alert-warning d-flex align-items-center" role="note"
+                    style="margin-bottom:12px;">
+                    <svg width="18" height="18" viewBox="0 0 16 16" fill="none"
+                        xmlns="http://www.w3.org/2000/svg" style="margin-right:8px;flex-shrink:0;">
+                        <path
+                            d="M8 1.333c-3.683 0-6.667 2.984-6.667 6.667S4.317 14.667 8 14.667 14.667 11.683 14.667 8 11.683 1.333 8 1.333zm0 9.334a.667.667 0 110 1.334.667.667 0 010-1.334zM7.333 4.667h1.334V9.33H7.333V4.667z"
+                            fill="#856404" />
+                    </svg>
+                    <div style="color:#856404;">
+                        <strong>Booking Notice:</strong>
+                        <span> Bookings must be made at least <strong>{{ $bookingAdvanceHours }}
+                                hour{{ $bookingAdvanceHours > 1 ? 's' : '' }}</strong> in advance.</span>
+                    </div>
                 </div>
             @endif
             <!-- Pickup Location -->
@@ -1231,7 +1257,7 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
                             e.preventDefault();
                             alert(
                                 `Bookings must be made at least ${bookingAdvanceHours} hours in advance. Please select a later date/time.`
-                                );
+                            );
                             return;
                         }
                     }
@@ -1494,6 +1520,18 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
 </script>
 
 <style>
+    /* Booking advance note style */
+    .booking-advance-note {
+        background-color: #fff3cd;
+        /* Bootstrap warning bg */
+        color: #856404;
+        /* Bootstrap warning text */
+        padding: 8px 12px;
+        border-radius: 6px;
+        margin-bottom: 12px;
+        font-weight: 500;
+    }
+
     /* Airport select dropdown styles */
     .airport-select {
         width: 100%;
