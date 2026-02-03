@@ -122,9 +122,14 @@ class CmsController extends Controller
         // Resolve canonical service type code for the frontend (booking form expects a code like 'airport_transfers')
         $serviceTypeForView = $serviceTypeRaw;
         try {
-            $resolved = \App\Models\Service\ServiceType::where('code', $serviceTypeRaw)
-                ->orWhere('id', $serviceTypeRaw)
-                ->first();
+            // First try to match by code (string comparison)
+            $resolved = \App\Models\Service\ServiceType::where('code', $serviceTypeRaw)->first();
+
+            // If not found by code and it looks like a UUID, try by ID
+            if (!$resolved && \Illuminate\Support\Str::isUuid($serviceTypeRaw)) {
+                $resolved = \App\Models\Service\ServiceType::find($serviceTypeRaw);
+            }
+
             if ($resolved) {
                 $serviceTypeForView = $resolved->code;
             }

@@ -52,7 +52,7 @@ class HomeController extends Controller
                     'cms_contents.pickup_location',
                     'cms_contents.dropoff_location',
                     'cms_contents.service_type',
-                    'cms_contents.pickup_date',
+                    'cms_contents.min_days',
                     'cms_content_types.slug as content_type'
                 ])
                 ->where('cms_content_types.is_active', true)
