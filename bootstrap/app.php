@@ -3,6 +3,7 @@
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Support\Facades\Route;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -11,10 +12,15 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__ . '/../routes/console.php',
         health: '/up',
         then: function () {
-            // Route::middleware('api')
-            //     // ->prefix('api/admin')
-            //     // ->name('admin.')
-            //     ->group(base_path('routes/a.php'));
+            // Load driver mobile API routes with /api/driver prefix
+            Route::middleware('api')
+                ->prefix('api/driver')
+                ->group(base_path('routes/api_driver.php'));
+            
+            // Load public API routes with /api/public prefix
+            Route::middleware('api')
+                ->prefix('api/public')
+                ->group(base_path('routes/api_public.php'));
         }
     )
     ->withMiddleware(function (Middleware $middleware): void {
@@ -23,6 +29,9 @@ return Application::configure(basePath: dirname(__DIR__))
             'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
             'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
             'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
+            // Driver mobile app middleware
+            'device.uuid' => \App\Http\Middleware\DeviceUuidMiddleware::class,
+            'ensure.driver' => \App\Http\Middleware\EnsureDriverContext::class,
         ]);
 
         $middleware->appendToGroup('web', \App\Http\Middleware\WebsiteSettingsSecurity::class);

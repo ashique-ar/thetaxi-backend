@@ -12,6 +12,7 @@ use App\Models\Booking\Booking;
 use App\Models\Vehicle\Vehicle;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
  * Driver Model
@@ -33,6 +34,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $state_id Foreign key to states table
  * @property string|null $city Foreign key to cities table
  * @property string|null $remarks Additional remarks about the driver
+ * @property bool $is_online Whether driver is currently online
+ * @property \Carbon\Carbon|null $last_active_at Last activity timestamp
+ * @property float|null $current_latitude Current GPS latitude
+ * @property float|null $current_longitude Current GPS longitude
+ * @property string|null $current_device_uuid Current device identifier
  * @property \Carbon\Carbon|null $company_id_renewal_date Company ID renewal date
  * @property \Carbon\Carbon|null $contract_expiry_date Contract expiration date
  * @property string|null $created_user_id ID of user who created this record
@@ -46,6 +52,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property-read State|null $state State/province where driver is located
  * @property-read \Illuminate\Database\Eloquent\Collection<DriverLog> $logs Driver activity logs
  * @property-read \Illuminate\Database\Eloquent\Collection<Booking> $bookings Bookings assigned to this driver
+ * @property-read \Illuminate\Database\Eloquent\Collection<DriverSession> $sessions Driver online sessions
+ * @property-read DriverSession|null $activeSession Current active session
  * @property-read User|null $createdBy User who created this record
  * @property-read User|null $updatedBy User who last updated this record
  */
@@ -76,6 +84,11 @@ class Driver extends BaseModel
         'remarks',
         'postal_code',
         'default_vehicle_id',
+        'is_online',
+        'last_active_at',
+        'current_latitude',
+        'current_longitude',
+        'current_device_uuid',
         'created_user_id',
         'updated_user_id',
     ];
@@ -86,6 +99,10 @@ class Driver extends BaseModel
     protected $casts = [
         'license_expiry' => 'date',
         'dob' => 'date',
+        'is_online' => 'boolean',
+        'last_active_at' => 'datetime',
+        'current_latitude' => 'decimal:8',
+        'current_longitude' => 'decimal:8',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
         'deleted_at' => 'datetime',
@@ -134,6 +151,24 @@ class Driver extends BaseModel
     public function bookings(): HasMany
     {
         return $this->hasMany(Booking::class, 'driver_id');
+    }
+
+    /**
+     * Get all driver online sessions.
+     */
+    public function sessions(): HasMany
+    {
+        return $this->hasMany(DriverSession::class, 'driver_id');
+    }
+
+    /**
+     * Get the current active session.
+     */
+    public function activeSession(): HasOne
+    {
+        return $this->hasOne(DriverSession::class, 'driver_id')
+            ->where('status', 'active')
+            ->latest('start_time');
     }
 
     /**

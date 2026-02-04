@@ -708,6 +708,47 @@ class SettingsCategoryService
                     'placeholder' => '2',
                     'description' => 'Minimum hours in advance for booking'
                 ],
+                // Service visibility toggles
+                'enable_airport_transfers' => [
+                    'label' => 'Enable Airport Transfers',
+                    'type' => 'toggle',
+                    'description' => 'Show Airport Transfers search form on public booking widget'
+                ],
+                'enable_ride_now' => [
+                    'label' => 'Enable Drop & Pickup (Ride Now)',
+                    'type' => 'toggle',
+                    'description' => 'Show Drop & Pickup search form on public booking widget'
+                ],
+                'enable_day_rental' => [
+                    'label' => 'Enable Day Rental',
+                    'type' => 'toggle',
+                    'description' => 'Show Day Rental search form on public booking widget'
+                ],
+                'enable_selfdrive' => [
+                    'label' => 'Enable Self Drive',
+                    'type' => 'toggle',
+                    'description' => 'Enable Self Drive service tab/form'
+                ],
+                'enable_with_drive' => [
+                    'label' => 'Enable With Driver',
+                    'type' => 'toggle',
+                    'description' => 'Enable With Driver service tab/form'
+                ],
+                'enable_wedding' => [
+                    'label' => 'Enable Wedding',
+                    'type' => 'toggle',
+                    'description' => 'Enable Wedding service tab/form'
+                ],
+                'enable_corporate' => [
+                    'label' => 'Enable Corporate Transport',
+                    'type' => 'toggle',
+                    'description' => 'Enable Corporate Transport service tab/form'
+                ],
+                'show_return_trip_toggle' => [
+                    'label' => 'Show Return Trip Toggle',
+                    'type' => 'toggle',
+                    'description' => 'Show/Hide "Add Return Trip" option in rentals'
+                ],
                 'booking_max_days' => [
                     'label' => 'Maximum Advance Booking (days)',
                     'type' => 'number',

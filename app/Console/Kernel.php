@@ -12,6 +12,10 @@ class Kernel extends ConsoleKernel
     {
         // Generate sitemap daily and optionally ping search engines
         $schedule->command('sitemap:generate-and-ping')->daily();
+
+        // Process auto-offline for inactive drivers every 5 minutes
+        // @see Requirement 5.3 - Scheduled job every 5 minutes
+        $schedule->command('drivers:process-auto-offline')->everyFiveMinutes();
     }
 
     protected function commands(): void

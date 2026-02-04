@@ -624,6 +624,13 @@ Route::middleware(['auth:api'])->group(function () {
     Route::middleware(['permission:drivers.view'])->group(function () {
         Route::apiResource('drivers', DriverController::class);
         Route::apiResource('driver-logs', DriverLogController::class);
+        
+        // Driver status and location endpoints
+        Route::get('drivers/locations', [DriverController::class, 'locations']);
+        Route::get('drivers/{driver}/status', [DriverController::class, 'status']);
+        Route::get('drivers/{driver}/sessions', [DriverController::class, 'sessions']);
+        Route::get('drivers/{driver}/sessions/{session}/route', [DriverController::class, 'sessionRoute']);
+        Route::get('drivers/{driver}/analytics', [DriverController::class, 'analytics']);
     });
 
     /*

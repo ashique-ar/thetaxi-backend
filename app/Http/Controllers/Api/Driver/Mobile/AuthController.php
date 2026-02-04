@@ -1,0 +1,148 @@
+<?php
+
+namespace App\Http\Controllers\Api\Driver\Mobile;
+
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Driver\Mobile\DriverLoginRequest;
+use App\Http\Resources\Driver\DriverResource;
+use App\Http\Resources\UserResource;
+use App\Services\Driver\DriverAuthService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
+
+/**
+ * Driver Mobile Authentication Controller
+ * 
+ * Handles authentication for the driver mobile application using Laravel Sanctum.
+ * Provides login, logout, and profile endpoints specifically for drivers.
+ * 
+ * @see Requirements 2.1, 2.5, 2.7
+ */
+class AuthController extends Controller
+{
+    /**
+     * Create a new controller instance.
+     *
+     * @param DriverAuthService $authService
+     */
+    public function __construct(
+        private DriverAuthService $authService
+    ) {}
+
+    /**
+     * Authenticate a driver and issue a Sanctum token.
+     * 
+     * Validates credentials, verifies driver context exists, revokes any existing
+     * tokens for single-session enforcement, and issues a new token.
+     *
+     * @param DriverLoginRequest $request
+     * @return JsonResponse
+     * 
+     * @see Requirement 2.1 - Sanctum token issuance for valid credentials
+     */
+    public function login(DriverLoginRequest $request): JsonResponse
+    {
+        try {
+            $result = $this->authService->login($request->validated());
+
+            // Clear rate limit on successful login
+            $request->clearRateLimit();
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Login successful',
+                'data' => [
+                    'token' => $result['token'],
+                    'user' => new UserResource($result['user']),
+                    'driver' => new DriverResource($result['driver']),
+                ]
+            ]);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Invalid credentials',
+                'error_code' => 'AUTH_INVALID_CREDENTIALS',
+                'errors' => $e->errors()
+            ], 401);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Login failed',
+                'error_code' => 'AUTH_FAILED',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Logout the authenticated driver by revoking their current token.
+     *
+     * @param Request $request
+     * @return JsonResponse
+     * 
+     * @see Requirement 2.5 - Token revocation on logout
+     */
+    public function logout(Request $request): JsonResponse
+    {
+        try {
+            $this->authService->logout($request->user());
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Logged out successfully'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Logout failed',
+                'error_code' => 'AUTH_LOGOUT_FAILED',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get the authenticated driver's profile.
+     * 
+     * Returns both user account data and driver-specific data.
+     *
+     * @param Request $request
+     * @return JsonResponse
+     * 
+     * @see Requirement 2.7 - Profile access with valid token
+     */
+    public function profile(Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            $driver = $this->authService->getDriver($user);
+
+            if (!$driver) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'User is not registered as a driver',
+                    'error_code' => 'AUTH_NOT_DRIVER'
+                ], 403);
+            }
+
+            // Load relationships for the driver
+            $driver->load(['user', 'country', 'state', 'licenseType']);
+
+            return response()->json([
+                'status' => 'success',
+                'data' => [
+                    'user' => new UserResource($user),
+                    'driver' => new DriverResource($driver),
+                ]
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to fetch profile',
+                'error_code' => 'AUTH_PROFILE_FAILED',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+}

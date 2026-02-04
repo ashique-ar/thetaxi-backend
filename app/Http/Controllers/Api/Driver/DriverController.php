@@ -4,14 +4,19 @@ namespace App\Http\Controllers\Api\Driver;
 
 use App\Http\Controllers\Controller;
 use App\Models\Driver\Driver;
+use App\Models\Driver\DriverSession;
 use App\Http\Requests\Driver\Driver\CreateDriverRequest;
 use App\Http\Requests\Driver\Driver\UpdateDriverRequest;
 use App\Http\Resources\Driver\DriverResource;
+use App\Http\Resources\Driver\DriverSessionResource;
+use App\Http\Resources\Driver\RoutePointResource;
 use App\Models\User;
 use App\Services\UserContextService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Str;
+use Carbon\Carbon;
 
 class DriverController extends Controller
 {
@@ -20,7 +25,7 @@ class DriverController extends Controller
     public function __construct(UserContextService $contextService)
     {
         $this->contextService = $contextService;
-        $this->middleware('permission:drivers.view')->only(['index', 'show']);
+        $this->middleware('permission:drivers.view')->only(['index', 'show', 'status', 'sessions', 'sessionRoute', 'locations', 'analytics']);
         $this->middleware('permission:drivers.create')->only(['store']);
         $this->middleware('permission:drivers.edit')->only(['update']);
         $this->middleware('permission:drivers.delete')->only(['destroy']);
@@ -182,6 +187,235 @@ class DriverController extends Controller
         return response()->json([
             'status' => 'success',
             'message' => 'Driver deleted'
+        ]);
+    }
+
+    /**
+     * Get driver's current online status and location.
+     * 
+     * GET /api/drivers/{driver}/status
+     * 
+     * @see Requirements 9.2, 9.3
+     */
+    public function status(Driver $driver): JsonResponse
+    {
+        $driver->load('activeSession');
+        
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'driver_id' => $driver->id,
+                'is_online' => $driver->is_online,
+                'last_active_at' => $driver->last_active_at?->toIso8601String(),
+                'current_latitude' => $driver->current_latitude ? (float) $driver->current_latitude : null,
+                'current_longitude' => $driver->current_longitude ? (float) $driver->current_longitude : null,
+                'current_device_uuid' => $driver->current_device_uuid,
+                'current_session' => $driver->activeSession 
+                    ? new DriverSessionResource($driver->activeSession) 
+                    : null,
+            ]
+        ]);
+    }
+
+    /**
+     * Get driver's session history with pagination.
+     * 
+     * GET /api/drivers/{driver}/sessions
+     * 
+     * @see Requirements 9.4
+     */
+    public function sessions(Request $request, Driver $driver): JsonResponse
+    {
+        $query = $driver->sessions()
+            ->orderBy('start_time', 'desc');
+        
+        // Optional status filter
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+        
+        // Optional date range filter
+        if ($request->filled('from_date')) {
+            $query->where('start_time', '>=', Carbon::parse($request->from_date)->startOfDay());
+        }
+        if ($request->filled('to_date')) {
+            $query->where('start_time', '<=', Carbon::parse($request->to_date)->endOfDay());
+        }
+        
+        $sessions = $query->paginate($request->per_page ?? 15);
+        
+        return response()->json([
+            'status' => 'success',
+            'data' => DriverSessionResource::collection($sessions),
+            'meta' => [
+                'current_page' => $sessions->currentPage(),
+                'last_page' => $sessions->lastPage(),
+                'per_page' => $sessions->perPage(),
+                'total' => $sessions->total(),
+            ]
+        ]);
+    }
+
+    /**
+     * Get route points for a specific session.
+     * 
+     * GET /api/drivers/{driver}/sessions/{session}/route
+     * 
+     * @see Requirements 7.5
+     */
+    public function sessionRoute(Driver $driver, DriverSession $session): JsonResponse
+    {
+        // Verify the session belongs to this driver
+        if ($session->driver_id !== $driver->id) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Session does not belong to this driver'
+            ], 404);
+        }
+        
+        $routePoints = $session->routePoints()
+            ->orderBy('recorded_at', 'asc')
+            ->get();
+        
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'session' => new DriverSessionResource($session),
+                'route_points' => RoutePointResource::collection($routePoints),
+                'point_count' => $routePoints->count(),
+            ]
+        ]);
+    }
+
+    /**
+     * Get current locations of online drivers.
+     * 
+     * GET /api/drivers/locations
+     * 
+     * @see Requirements 9.5, 9.6
+     */
+    public function locations(Request $request): JsonResponse
+    {
+        $query = Driver::query()
+            ->where('is_online', true)
+            ->whereNotNull('current_latitude')
+            ->whereNotNull('current_longitude');
+        
+        // Optional filter by specific driver IDs
+        if ($request->filled('driver_ids')) {
+            $driverIds = is_array($request->driver_ids) 
+                ? $request->driver_ids 
+                : explode(',', $request->driver_ids);
+            $query->whereIn('id', $driverIds);
+        }
+        
+        $drivers = $query->with('user:id,first_name,last_name')->get();
+        
+        $locations = $drivers->map(function ($driver) {
+            return [
+                'driver_id' => $driver->id,
+                'driver_name' => $driver->user ? 
+                    trim($driver->user->first_name . ' ' . $driver->user->last_name) : 
+                    ($driver->code ?? 'Unknown'),
+                'driver_code' => $driver->code,
+                'latitude' => (float) $driver->current_latitude,
+                'longitude' => (float) $driver->current_longitude,
+                'is_online' => $driver->is_online,
+                'last_active_at' => $driver->last_active_at?->toIso8601String(),
+            ];
+        });
+        
+        return response()->json([
+            'status' => 'success',
+            'data' => $locations,
+            'meta' => [
+                'total_online' => $locations->count(),
+                'timestamp' => now()->toIso8601String(),
+            ]
+        ]);
+    }
+
+    /**
+     * Get driver activity analytics.
+     * 
+     * GET /api/drivers/{driver}/analytics
+     * 
+     * @see Requirements 11.1, 11.3, 11.4
+     */
+    public function analytics(Request $request, Driver $driver): JsonResponse
+    {
+        // Default to last 30 days if no date range specified
+        $fromDate = $request->filled('from_date') 
+            ? Carbon::parse($request->from_date)->startOfDay()
+            : now()->subDays(30)->startOfDay();
+        $toDate = $request->filled('to_date')
+            ? Carbon::parse($request->to_date)->endOfDay()
+            : now()->endOfDay();
+        
+        // Get sessions within date range
+        $sessions = $driver->sessions()
+            ->where('start_time', '>=', $fromDate)
+            ->where('start_time', '<=', $toDate)
+            ->get();
+        
+        // Calculate analytics
+        $completedSessions = $sessions->whereIn('status', ['completed', 'auto_closed']);
+        
+        $totalOnlineSeconds = $completedSessions->sum(function ($session) {
+            if ($session->start_time && $session->end_time) {
+                return $session->end_time->diffInSeconds($session->start_time);
+            }
+            return 0;
+        });
+        
+        $sessionCount = $completedSessions->count();
+        $averageDurationSeconds = $sessionCount > 0 
+            ? $totalOnlineSeconds / $sessionCount 
+            : 0;
+        
+        $totalDistanceKm = $completedSessions->sum('total_distance_km') ?? 0;
+        
+        // Calculate daily breakdown
+        $dailyStats = $completedSessions->groupBy(function ($session) {
+            return $session->start_time->format('Y-m-d');
+        })->map(function ($daySessions) {
+            $dayOnlineSeconds = $daySessions->sum(function ($session) {
+                if ($session->start_time && $session->end_time) {
+                    return $session->end_time->diffInSeconds($session->start_time);
+                }
+                return 0;
+            });
+            
+            return [
+                'session_count' => $daySessions->count(),
+                'online_hours' => round($dayOnlineSeconds / 3600, 2),
+                'total_distance_km' => round($daySessions->sum('total_distance_km') ?? 0, 2),
+            ];
+        });
+        
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'driver_id' => $driver->id,
+                'period' => [
+                    'from' => $fromDate->toIso8601String(),
+                    'to' => $toDate->toIso8601String(),
+                ],
+                'summary' => [
+                    'total_sessions' => $sessionCount,
+                    'active_sessions' => $sessions->where('status', 'active')->count(),
+                    'auto_closed_sessions' => $sessions->where('status', 'auto_closed')->count(),
+                    'total_online_hours' => round($totalOnlineSeconds / 3600, 2),
+                    'total_online_minutes' => round($totalOnlineSeconds / 60, 2),
+                    'average_session_duration_minutes' => round($averageDurationSeconds / 60, 2),
+                    'total_distance_km' => round($totalDistanceKm, 2),
+                ],
+                'daily_breakdown' => $dailyStats,
+                'current_status' => [
+                    'is_online' => $driver->is_online,
+                    'last_active_at' => $driver->last_active_at?->toIso8601String(),
+                ],
+            ]
         ]);
     }
 }
