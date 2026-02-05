@@ -246,7 +246,7 @@ class BookingFlowService
                     ]);
 
                     $basePricing = $this->calculateDynamicPricing($pricingParams);
-                    
+
                     // Debug logging for pricing result
                     Log::debug('BookingFlowService: Pricing calculation result', [
                         'vehicle_group_id' => $group->id,
@@ -386,7 +386,7 @@ class BookingFlowService
             }
 
             $isQuotationOnly = !empty($quotationOnlyReasons);
-            
+
             // Debug logging for quotation decision
             if ($isQuotationOnly) {
                 Log::info('BookingFlowService: Vehicle marked as quotation-only', [
@@ -2386,7 +2386,7 @@ class BookingFlowService
             $serviceTypeId = $params['service_type_id'];
             $mode = $params['mode'] ?? 'full_calculation';
             $appliedCustomizations = $params['applied_customizations'] ?? [];
-            
+
             Log::debug('calculateDynamicPricing: START', [
                 'service_type_id' => $serviceTypeId,
                 'vehicle_group_id' => $params['vehicle_group_id'] ?? null,
@@ -2394,7 +2394,7 @@ class BookingFlowService
                 'pickup_location' => $params['pickup_location'] ?? null,
                 'dropoff_location' => $params['dropoff_location'] ?? null,
             ]);
-            
+
             if (!$serviceTypeId) {
                 Log::warning("No service type ID provided for dynamic pricing calculation");
                 return $this->getDefaultPricingStructure();
@@ -2412,7 +2412,7 @@ class BookingFlowService
                 ]);
                 return $this->calculateFallbackPricing($params);
             }
-            
+
             Log::debug('calculateDynamicPricing: Found calculation definition', [
                 'definition_id' => $calculationDefinition->id,
                 'definition_name' => $calculationDefinition->name,

@@ -243,8 +243,7 @@
                     @csrf
                     <div class="modal-body">
                         <input type="hidden" name="vehicle_group_id" id="quotation_vehicle_group_id">
-                        <input type="hidden" name="search_id" id="quotation_search_id"
-                            value="{{ $search->id ?? '' }}">
+                        <input type="hidden" name="search_id" id="quotation_search_id" value="{{ $search->id ?? '' }}">
 
                         <div class="alert alert-info mb-4">
                             <i class="bi bi-info-circle"></i>
@@ -899,7 +898,7 @@
     <script>
         // Search-specific JavaScript (Requirements: 3.4, 3.5)
         // Cart management functions are now in cart-summary-float and vehicle-card-scripts components
-        
+
         // Expose search data globally for vehicle-card-scripts component to use
         window.bookingSearchData = {
             from_date: '{{ $search->from_date ?? '' }}',
