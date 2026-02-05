@@ -631,6 +631,11 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('drivers/{driver}/sessions', [DriverController::class, 'sessions']);
         Route::get('drivers/{driver}/sessions/{session}/route', [DriverController::class, 'sessionRoute']);
         Route::get('drivers/{driver}/analytics', [DriverController::class, 'analytics']);
+        
+        // Driver device management endpoints
+        Route::get('drivers/{driver}/devices', [DriverController::class, 'devices']);
+        Route::post('drivers/{driver}/devices/{deviceUuid}/deactivate', [DriverController::class, 'deactivateDevice']);
+        Route::delete('drivers/{driver}/devices/{deviceUuid}', [DriverController::class, 'removeDevice']);
     });
 
     /*

@@ -25,9 +25,9 @@ class DriverController extends Controller
     public function __construct(UserContextService $contextService)
     {
         $this->contextService = $contextService;
-        $this->middleware('permission:drivers.view')->only(['index', 'show', 'status', 'sessions', 'sessionRoute', 'locations', 'analytics']);
+        $this->middleware('permission:drivers.view')->only(['index', 'show', 'status', 'sessions', 'sessionRoute', 'locations', 'analytics', 'devices']);
         $this->middleware('permission:drivers.create')->only(['store']);
-        $this->middleware('permission:drivers.edit')->only(['update']);
+        $this->middleware('permission:drivers.edit')->only(['update', 'deactivateDevice', 'removeDevice']);
         $this->middleware('permission:drivers.delete')->only(['destroy']);
     }
 
@@ -332,6 +332,89 @@ class DriverController extends Controller
                 'total_online' => $locations->count(),
                 'timestamp' => now()->toIso8601String(),
             ]
+        ]);
+    }
+
+    /**
+     * Get devices registered for a driver.
+     * 
+     * GET /api/drivers/{driver}/devices
+     * 
+     * @see Requirement 3.1
+     */
+    public function devices(Request $request, Driver $driver): JsonResponse
+    {
+        $query = $driver->devices()->orderBy('last_active_at', 'desc');
+        
+        // Optional filter by active status
+        if ($request->filled('is_active')) {
+            $query->where('is_active', filter_var($request->is_active, FILTER_VALIDATE_BOOLEAN));
+        }
+        
+        // Optional filter by platform
+        if ($request->filled('platform')) {
+            $query->where('platform', $request->platform);
+        }
+        
+        $devices = $query->get();
+        
+        return response()->json([
+            'status' => 'success',
+            'data' => \App\Http\Resources\Driver\DriverDeviceResource::collection($devices),
+            'meta' => [
+                'total' => $devices->count(),
+                'active' => $devices->where('is_active', true)->count(),
+                'inactive' => $devices->where('is_active', false)->count(),
+            ]
+        ]);
+    }
+
+    /**
+     * Deactivate a specific device for a driver.
+     * 
+     * POST /api/drivers/{driver}/devices/{deviceUuid}/deactivate
+     */
+    public function deactivateDevice(Driver $driver, string $deviceUuid): JsonResponse
+    {
+        $device = $driver->devices()->where('device_uuid', $deviceUuid)->first();
+        
+        if (!$device) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Device not found'
+            ], 404);
+        }
+        
+        $device->deactivate();
+        
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Device deactivated successfully',
+            'data' => new \App\Http\Resources\Driver\DriverDeviceResource($device)
+        ]);
+    }
+
+    /**
+     * Remove a specific device for a driver.
+     * 
+     * DELETE /api/drivers/{driver}/devices/{deviceUuid}
+     */
+    public function removeDevice(Driver $driver, string $deviceUuid): JsonResponse
+    {
+        $device = $driver->devices()->where('device_uuid', $deviceUuid)->first();
+        
+        if (!$device) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Device not found'
+            ], 404);
+        }
+        
+        $device->delete();
+        
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Device removed successfully'
         ]);
     }
 

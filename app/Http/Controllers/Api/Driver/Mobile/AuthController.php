@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Driver\Mobile;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Driver\Mobile\DriverLoginRequest;
 use App\Http\Resources\Driver\DriverResource;
+use App\Http\Resources\Driver\DriverDeviceResource;
 use App\Http\Resources\UserResource;
 use App\Services\Driver\DriverAuthService;
 use Illuminate\Http\JsonResponse;
@@ -35,6 +36,7 @@ class AuthController extends Controller
      * 
      * Validates credentials, verifies driver context exists, revokes any existing
      * tokens for single-session enforcement, and issues a new token.
+     * Also registers/updates device information if provided.
      *
      * @param DriverLoginRequest $request
      * @return JsonResponse
@@ -49,14 +51,21 @@ class AuthController extends Controller
             // Clear rate limit on successful login
             $request->clearRateLimit();
 
+            $responseData = [
+                'token' => $result['token'],
+                'user' => new UserResource($result['user']),
+                'driver' => new DriverResource($result['driver']),
+            ];
+
+            // Include device info if available
+            if (isset($result['device']) && $result['device']) {
+                $responseData['device'] = new DriverDeviceResource($result['device']);
+            }
+
             return response()->json([
                 'status' => 'success',
                 'message' => 'Login successful',
-                'data' => [
-                    'token' => $result['token'],
-                    'user' => new UserResource($result['user']),
-                    'driver' => new DriverResource($result['driver']),
-                ]
+                'data' => $responseData
             ]);
         } catch (ValidationException $e) {
             return response()->json([

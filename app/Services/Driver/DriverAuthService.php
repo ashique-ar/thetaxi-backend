@@ -19,13 +19,23 @@ use Laravel\Sanctum\PersonalAccessToken;
 class DriverAuthService
 {
     /**
+     * @var DeviceService
+     */
+    protected DeviceService $deviceService;
+
+    public function __construct(DeviceService $deviceService)
+    {
+        $this->deviceService = $deviceService;
+    }
+
+    /**
      * Authenticate a driver and issue a Sanctum token.
      * 
      * Validates credentials, verifies driver context exists, revokes any existing
      * tokens for single-session enforcement, and issues a new token.
      *
-     * @param array $credentials Array containing 'email', 'password', and 'device_uuid'
-     * @return array Contains 'token', 'user', and 'driver' data
+     * @param array $credentials Array containing 'email', 'password', 'device_uuid', and optional device info
+     * @return array Contains 'token', 'user', 'driver', and 'device' data
      * @throws ValidationException If credentials are invalid or user is not a driver
      * 
      * @see Requirement 2.1 - Sanctum token issuance
@@ -101,12 +111,48 @@ class DriverAuthService
             $driver->update([
                 'current_device_uuid' => $credentials['device_uuid']
             ]);
+            
+            // Deactivate other devices for single-session enforcement
+            $this->deviceService->deactivateOtherDevices($driver, $credentials['device_uuid']);
+        }
+
+        // Register/update device information
+        $device = null;
+        if (isset($credentials['device_uuid'])) {
+            $deviceData = $this->extractDeviceData($credentials);
+            $device = $this->deviceService->registerDevice($driver, $deviceData);
         }
 
         return [
             'token' => $token->plainTextToken,
             'user' => $user,
             'driver' => $driver,
+            'device' => $device,
+        ];
+    }
+
+    /**
+     * Extract device data from credentials array.
+     *
+     * @param array $credentials The login credentials with device info
+     * @return array Device data for registration
+     */
+    protected function extractDeviceData(array $credentials): array
+    {
+        return [
+            'device_uuid' => $credentials['device_uuid'],
+            'device_name' => $credentials['device_name'] ?? null,
+            'device_model' => $credentials['device_model'] ?? null,
+            'device_manufacturer' => $credentials['device_manufacturer'] ?? null,
+            'platform' => $credentials['platform'] ?? 'unknown',
+            'os_version' => $credentials['os_version'] ?? null,
+            'app_version' => $credentials['app_version'] ?? null,
+            'app_build' => $credentials['app_build'] ?? null,
+            'push_token' => $credentials['push_token'] ?? null,
+            'push_provider' => $credentials['push_provider'] ?? null,
+            'locale' => $credentials['locale'] ?? null,
+            'timezone' => $credentials['timezone'] ?? null,
+            'ip_address' => request()->ip(),
         ];
     }
 

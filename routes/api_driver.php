@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\Driver\Mobile\HeartbeatController;
 use App\Http\Controllers\Api\Driver\Mobile\LocationController;
 use App\Http\Controllers\Api\Driver\Mobile\SessionController;
 use App\Http\Controllers\Api\Driver\Mobile\AssignmentController;
+use App\Http\Controllers\Api\Driver\Mobile\DeviceController;
 
 /*
 |--------------------------------------------------------------------------
@@ -53,6 +54,16 @@ Route::middleware(['auth:sanctum', 'ensure.driver'])->group(function () {
     Route::prefix('sessions')->group(function () {
         Route::get('', [SessionController::class, 'index']);
         Route::get('{session}', [SessionController::class, 'show']);
+    });
+    
+    // Device management routes
+    Route::prefix('devices')->group(function () {
+        Route::get('', [DeviceController::class, 'index']);
+        Route::get('current', [DeviceController::class, 'current']);
+        Route::put('', [DeviceController::class, 'update']);
+        Route::post('push-token', [DeviceController::class, 'updatePushToken']);
+        Route::post('{deviceUuid}/deactivate', [DeviceController::class, 'deactivate']);
+        Route::delete('{deviceUuid}', [DeviceController::class, 'destroy']);
     });
     
     // Assignment routes (placeholder for future implementation)

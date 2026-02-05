@@ -36,6 +36,19 @@ class DriverLoginRequest extends FormRequest
             'email' => ['required', 'string', 'email', 'max:255'],
             'password' => ['required', 'string'],
             'device_uuid' => ['required', 'string', 'max:255'],
+            
+            // Device information (optional but recommended)
+            'device_name' => ['nullable', 'string', 'max:255'],
+            'device_model' => ['nullable', 'string', 'max:255'],
+            'device_manufacturer' => ['nullable', 'string', 'max:255'],
+            'platform' => ['nullable', 'string', 'in:ios,android'],
+            'os_version' => ['nullable', 'string', 'max:50'],
+            'app_version' => ['nullable', 'string', 'max:50'],
+            'app_build' => ['nullable', 'string', 'max:50'],
+            'push_token' => ['nullable', 'string', 'max:500'],
+            'push_provider' => ['nullable', 'string', 'in:fcm,apns'],
+            'locale' => ['nullable', 'string', 'max:10'],
+            'timezone' => ['nullable', 'string', 'max:50'],
         ];
     }
 

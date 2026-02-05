@@ -162,6 +162,23 @@ class Driver extends BaseModel
     }
 
     /**
+     * Get all registered devices for this driver.
+     */
+    public function devices(): HasMany
+    {
+        return $this->hasMany(DriverDevice::class, 'driver_id');
+    }
+
+    /**
+     * Get active devices for this driver.
+     */
+    public function activeDevices(): HasMany
+    {
+        return $this->hasMany(DriverDevice::class, 'driver_id')
+            ->where('is_active', true);
+    }
+
+    /**
      * Get the current active session.
      */
     public function activeSession(): HasOne
