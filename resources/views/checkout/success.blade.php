@@ -837,13 +837,26 @@
 
 @push('scripts')
     @if (!empty($settings['google_ads_conversion_id']) && !empty($settings['google_ads_conversion_label']) && $booking && ($isFullPayment || $isAdvancePayment))
+        @php
+            // Determine if this is a new customer
+            // Check if customer has any previous paid bookings
+            $isNewCustomer = false;
+            if ($booking->customer) {
+                $previousPaidBookings = \App\Models\Booking\Booking::where('customer_id', $booking->customer_id)
+                    ->where('id', '!=', $booking->id)
+                    ->where('payment_status', 'paid')
+                    ->count();
+                $isNewCustomer = $previousPaidBookings === 0;
+            }
+        @endphp
         <!-- Google Ads Conversion Tracking -->
         <script>
             gtag('event', 'conversion', {
                 'send_to': '{{ $settings['google_ads_conversion_id'] }}/{{ $settings['google_ads_conversion_label'] }}',
                 'value': {{ $booking->amount_to_pay ?? $booking->total_estimated }},
                 'currency': '{{ $booking->currency ?? 'LKR' }}',
-                'transaction_id': '{{ $booking->booking_number }}'
+                'transaction_id': '{{ $booking->booking_number }}',
+                'new_customer': {{ $isNewCustomer ? 'true' : 'false' }}
             });
         </script>
     @endif

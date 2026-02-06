@@ -40,6 +40,16 @@
         $conversionId = $settings['google_ads_conversion_id'];
         $conversionLabel = $settings['google_ads_conversion_label'];
         $sendTo = "{$conversionId}/{$conversionLabel}";
+        
+        // Determine if this is a new customer
+        $isNewCustomer = false;
+        if ($booking->customer) {
+            $previousPaidBookings = \App\Models\Booking\Booking::where('customer_id', $booking->customer_id)
+                ->where('id', '!=', $booking->id)
+                ->where('payment_status', 'paid')
+                ->count();
+            $isNewCustomer = $previousPaidBookings === 0;
+        }
     @endphp
     
     <!-- Google Ads Conversion Tracking -->
@@ -48,7 +58,8 @@
             'send_to': '{{ $sendTo }}',
             'value': {{ $bookingTotal }},
             'currency': '{{ $currency }}',
-            'transaction_id': '{{ $transactionId }}'
+            'transaction_id': '{{ $transactionId }}',
+            'new_customer': {{ $isNewCustomer ? 'true' : 'false' }}
         });
     </script>
 @endif
