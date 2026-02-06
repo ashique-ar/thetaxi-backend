@@ -836,6 +836,18 @@
 @endpush
 
 @push('scripts')
+    @if (!empty($settings['google_ads_conversion_id']) && !empty($settings['google_ads_conversion_label']) && $booking && ($isFullPayment || $isAdvancePayment))
+        <!-- Google Ads Conversion Tracking -->
+        <script>
+            gtag('event', 'conversion', {
+                'send_to': '{{ $settings['google_ads_conversion_id'] }}/{{ $settings['google_ads_conversion_label'] }}',
+                'value': {{ $booking->amount_to_pay ?? $booking->total_estimated }},
+                'currency': '{{ $booking->currency ?? 'LKR' }}',
+                'transaction_id': '{{ $booking->booking_number }}'
+            });
+        </script>
+    @endif
+
     <script>
         $(document).ready(function() {
             // Copy booking reference to clipboard on click

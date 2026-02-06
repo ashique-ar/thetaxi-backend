@@ -32,16 +32,17 @@
     </div>
 </div>
 
-@if (!empty($settings['google_ads_enabled']) && $settings['google_ads_enabled'] && !empty($settings['google_ads_conversion_id']) && !empty($settings['google_ads_conversion_label']))
+@if (!empty($settings['google_ads_conversion_id']) && !empty($settings['google_ads_conversion_label']) && isset($booking))
     @php
         $transactionId = sprintf('BOOKING_%s_%s', $booking->id ?? 'unknown', time());
-        $bookingTotal = $booking->total_amount ?? 0;
-        $currency = $settings['google_ads_currency'] ?? 'USD';
+        $bookingTotal = $booking->total_estimated ?? $booking->total_amount ?? 0;
+        $currency = $booking->currency ?? 'LKR';
         $conversionId = $settings['google_ads_conversion_id'];
         $conversionLabel = $settings['google_ads_conversion_label'];
         $sendTo = "{$conversionId}/{$conversionLabel}";
     @endphp
     
+    <!-- Google Ads Conversion Tracking -->
     <script>
         gtag('event', 'conversion', {
             'send_to': '{{ $sendTo }}',

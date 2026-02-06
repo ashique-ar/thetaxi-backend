@@ -656,7 +656,12 @@ class WebsiteSettingsService
             'seo_twitter_card',
             'google_analytics_id',
             'google_tag_manager_id',
-            'facebook_pixel_id'
+            'google_ads_id',
+            'google_ads_conversion_id',
+            'google_ads_conversion_label',
+            'facebook_pixel_id',
+            'meta_verification_code',
+            'google_site_verification'
         ];
 
         return $this->getMultiple($types);

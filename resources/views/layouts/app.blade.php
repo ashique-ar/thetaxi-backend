@@ -140,14 +140,14 @@
         </script>
     @endif
 
-    @if (!empty($settings['google_ads_enabled']) && $settings['google_ads_enabled'] && !empty($settings['google_ads_conversion_id']))
-        <!-- Google Ads Conversion Tracking -->
-        <script async src="https://www.googletagmanager.com/gtag/js?id={{ $settings['google_ads_conversion_id'] }}"></script>
+    @if (!empty($settings['google_ads_id']))
+        <!-- Google Ads -->
+        <script async src="https://www.googletagmanager.com/gtag/js?id={{ $settings['google_ads_id'] }}"></script>
         <script>
             window.dataLayer = window.dataLayer || [];
             function gtag(){dataLayer.push(arguments);}
             gtag('js', new Date());
-            gtag('config', '{{ $settings['google_ads_conversion_id'] }}');
+            gtag('config', '{{ $settings['google_ads_id'] }}');
         </script>
     @endif
 
