@@ -150,6 +150,9 @@ Route::prefix('public')->group(function () {
 
     // Return trip pricing calculator (public)
     Route::post('return-trip/calculate', [ServicePackageController::class, 'calculateReturnPrice']);
+    
+    // Branding settings (public - no auth required)
+    Route::get('branding', [\App\Http\Controllers\Api\Website\WebsiteSettingController::class, 'branding']);
 });
 
 /*

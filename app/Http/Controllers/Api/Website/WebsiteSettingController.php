@@ -338,6 +338,19 @@ class WebsiteSettingController extends Controller
     }
 
     /**
+     * Get branding settings (public endpoint - no auth required)
+     */
+    public function branding(): JsonResponse
+    {
+        $settings = $this->settingsService->getBrandingSettings();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $settings
+        ]);
+    }
+
+    /**
      * Run php artisan optimize:clear and clear website settings cache
      */
     public function optimizeClear(Request $request): JsonResponse
