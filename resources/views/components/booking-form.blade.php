@@ -491,7 +491,7 @@
             <div class="single-search-box location-search-box">
 
                 <div class="d-flex align-items-center gap-2 py-1">
-                    <label class="input-label">Pickup Time</label>
+                    <label class="input-label">Pickup Location</label>
                     <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
                         <g>
                             <path

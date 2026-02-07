@@ -17,7 +17,6 @@ use App\Enums\QCStatus;
  * @property int $customer_id
  * @property string|null $invoice_number
  * @property string|null $log_code
- * @property int $service_type_id
  * @property int|null $vehicle_group_id
  * @property int|null $vehicle_id
  * @property int|null $driver_id
@@ -645,6 +644,25 @@ class Booking extends BaseModel
         $gamifyDiscount = $this->gamify_discount_applied ?? 0;
 
         return $baseAmount + $driverCost + $distanceCost + $addonsCost + $taxAmount - $discountAmount - $gamifyDiscount;
+    }
+
+    /**
+     * Calculate total from all booking items
+     * This method sums the total_price of all booking items for multi-trip bookings
+     * 
+     * @return float
+     */
+    public function calculateTotal(): float
+    {
+        // If booking has booking items, sum their totals
+        if ($this->bookingItems()->exists()) {
+            return $this->bookingItems->sum(function ($item) {
+                return $item->calculateTotalValue();
+            });
+        }
+
+        // Fallback to legacy calculation if no booking items exist
+        return $this->getTotalAmount();
     }
 
     /**
