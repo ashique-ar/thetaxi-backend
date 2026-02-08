@@ -773,7 +773,8 @@ class WebsiteSettingsService
             'cancellation_hours',
             'auto_dispatch_enabled',
             'guest_booking_enabled',
-            'booking_base_currency'
+            'booking_base_currency',
+            'include_garage_distance_in_pricing'
         ];
 
         return $this->getMultiple($types);

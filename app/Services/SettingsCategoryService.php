@@ -749,6 +749,11 @@ class SettingsCategoryService
                     'type' => 'toggle',
                     'description' => 'Show/Hide "Add Return Trip" option in rentals'
                 ],
+                'include_garage_distance_in_pricing' => [
+                    'label' => 'Include Garage Distance in Pricing',
+                    'type' => 'toggle',
+                    'description' => 'When enabled, pricing includes distance from garage to pickup and dropoff to garage (garage-to-garage). When disabled, only the journey distance is used for pricing calculations.'
+                ],
                 'booking_max_days' => [
                     'label' => 'Maximum Advance Booking (days)',
                     'type' => 'number',

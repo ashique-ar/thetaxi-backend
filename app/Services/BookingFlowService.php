@@ -2081,7 +2081,7 @@ class BookingFlowService
         $includeUnavailable = $params['include_unavailable'] ?? false;
 
         $query = Driver::with([
-            'driverAssignments' => function ($query) use ($fromDate, $toDate) {
+            'assignments' => function ($query) use ($fromDate, $toDate) {
                 $query->whereBetween('from_date', [$fromDate, $toDate])
                     ->orWhereBetween('to_date', [$fromDate, $toDate])
                     ->whereIn('status', ['active', 'pending_approval']);
@@ -2551,6 +2551,16 @@ class BookingFlowService
             }
 
             $inputs = array_merge($inputs, $distanceCalculations);
+
+            // Log distance calculation mode for debugging
+            Log::info('Distance calculation for pricing', [
+                'include_garage_distance' => $distanceCalculations['include_garage_distance'] ?? null,
+                'journey_distance' => $distanceCalculations['journey_distance'] ?? null,
+                'pickup_distance' => $distanceCalculations['pickup_distance'] ?? null,
+                'delivery_distance' => $distanceCalculations['delivery_distance'] ?? null,
+                'total_distance' => $distanceCalculations['total_distance'] ?? null,
+                'service_type' => $serviceType,
+            ]);
         }
 
         // Add customer-specific inputs
@@ -3094,6 +3104,8 @@ class BookingFlowService
             'addons_pricing' => $addonsPricingResult,
             'duration' => $duration,
             'applied_customizations' => $appliedCustomizations,
+            'km_range_pricing' => [], // Initialize empty array for km range pricing
+            'price_adjustments' => [], // Initialize empty array for price adjustments
             'summary' => [
                 'subtotal' => $subtotal,
                 'addons_total' => $addonsTotal,
@@ -3283,6 +3295,13 @@ class BookingFlowService
         $vehicle = $specificVehicleId ? Vehicle::find($specificVehicleId) : null;
         $company = $vehicle ? $vehicle->company : \App\Models\Company::getDefaultCompany();
 
+        // Get booking settings to check if garage distance should be included
+        $bookingSettings = app(\App\Services\WebsiteSettingsService::class)->getBookingSettings();
+        $includeGarageDistance = filter_var(
+            $bookingSettings['include_garage_distance_in_pricing'] ?? true,
+            FILTER_VALIDATE_BOOLEAN
+        );
+
         $journeyData = $this->calculateDistance($pickupLocation, $dropoffLocation);
 
         // Handle case when journey distance cannot be calculated
@@ -3294,6 +3313,7 @@ class BookingFlowService
                 'journey_duration_seconds' => null,
                 'calculation_possible' => false,
                 'service_type_used' => $serviceType,
+                'include_garage_distance' => $includeGarageDistance,
                 'company_used' => [
                     'id' => $company ? $company->id : null,
                     'name' => $company ? $company->name : null,
@@ -3318,6 +3338,7 @@ class BookingFlowService
                 'journey_duration_seconds' => $journeyDuration,
                 'calculation_possible' => true,
                 'service_type_used' => $serviceType,
+                'include_garage_distance' => $includeGarageDistance,
                 'company_used' => [
                     'id' => null,
                     'name' => null,
@@ -3372,6 +3393,7 @@ class BookingFlowService
                 'journey_duration_seconds' => $journeyDuration,
                 'calculation_possible' => false,
                 'service_type_used' => $serviceType,
+                'include_garage_distance' => $includeGarageDistance,
                 'company_used' => [
                     'id' => $company->id,
                     'name' => $company->name,
@@ -3382,6 +3404,18 @@ class BookingFlowService
             ];
         }
 
+        // Calculate total distance based on setting
+        // If include_garage_distance is true: total = journey + pickup + delivery (garage-to-garage)
+        // If include_garage_distance is false: total = journey only
+        $totalDistance = $includeGarageDistance 
+            ? round($journeyDistance + $distances['pickup_distance'] + $distances['delivery_distance'], 2)
+            : round($journeyDistance, 2);
+
+        // Calculate total duration based on setting
+        $totalDuration = $includeGarageDistance
+            ? $journeyDuration + ($durations['pickup_duration_seconds'] ?? 0) + ($durations['delivery_duration_seconds'] ?? 0)
+            : $journeyDuration;
+
         // Enhanced return structure with all required fields for pricing calculations (no costs here)
         return [
             'journey_distance' => round($journeyDistance, 2),
@@ -3390,7 +3424,9 @@ class BookingFlowService
             'pickup_duration_seconds' => $durations['pickup_duration_seconds'],
             'delivery_distance' => round($distances['delivery_distance'], 2),
             'delivery_duration_seconds' => $durations['delivery_duration_seconds'],
-            'total_distance' => round($journeyDistance + $distances['pickup_distance'] + $distances['delivery_distance'], 2), // Main billable distance (excludes company legs)
+            'total_distance' => $totalDistance, // Respects the include_garage_distance setting
+            'total_duration_seconds' => $totalDuration, // Total duration respecting the setting
+            'include_garage_distance' => $includeGarageDistance, // Flag to indicate which calculation method was used
             'calculation_possible' => true,
             'service_type_used' => $serviceType,
             'company_used' => [
