@@ -6665,7 +6665,7 @@ header.style-3 {
   transition: all 0.8s ease-out 0s;
   background-color: transparent;
   padding: 0 70px;
-  border-bottom: 1px solid rgba(var(--white-color-opc), 0.1);
+  // border-bottom: 1px solid rgba(var(--white-color-opc), 0.1);
 
   @include xxl-device() {
     padding: 0 30px;

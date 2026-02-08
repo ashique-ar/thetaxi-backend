@@ -485,12 +485,12 @@
                 @endif
 
                 {{-- Show journey duration --}}
-                @if ($showDurationDetails)
+                {{-- @if ($showDurationDetails)
                     <small class="pricing-detail-item">
                         <i class="bi bi-clock"></i>
                         {{ gmdate('H:i', $journeyDurationSeconds) }} estimated
                     </small>
-                @endif
+                @endif --}}
             </div>
         @endif
 

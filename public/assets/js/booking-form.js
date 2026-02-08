@@ -67,8 +67,6 @@
      * Initialize the booking form
      */
     function init() {
-        console.log("TheTaxi Enhanced Booking Form initializing...");
-
         setupServiceSwitcher();
         setupAirportTransfer();
         setupDropPickup();
@@ -79,8 +77,6 @@
         loadMapsAPI();
         initializeDatePickers();
         setDefaultDatesAndLocations();
-
-        console.log("TheTaxi Enhanced Booking Form initialized");
     }
 
     /**
@@ -414,9 +410,6 @@
         // NOT used for directions/routing (that's Leaflet/OSM - FREE)
 
         initializeLocationSearch();
-        console.log(
-            "Google Maps initialized successfully (for location search only)"
-        );
     };
 
     /**
@@ -464,25 +457,19 @@
                 if (input.__hasFocusReset) return;
                 input.__hasFocusReset = true;
 
-                // On focus: clear existing value and reset autocomplete so suggestions start fresh
+                // On focus: clear the visible value so user can type fresh,
+                // but preserve default data attributes for reset-on-blur.
                 input.addEventListener('focus', function () {
                     try {
                         // Only clear visible value when focus is user-initiated
                         if (this.value && this.value.trim() !== '') {
                             this.value = '';
+                            // Only mark as not-selected when we actually clear the value
+                            this.setAttribute('data-place-selected', 'false');
                         }
 
-                        // If Google Autocomplete instance exists, remove listeners and re-init
-                        if (this.googleAutocomplete && window.google && google.maps && google.maps.event) {
-                            try { google.maps.event.clearInstanceListeners(this.googleAutocomplete); } catch (e) { }
-                            try { delete this.googleAutocomplete; } catch (e) { }
-                            this.removeAttribute('data-autocomplete-initialized');
-
-                            // Reinitialize after a short delay to ensure clean state
-                            setTimeout(() => {
-                                initializeLocationInputAutocomplete(this);
-                            }, 50);
-                        }
+                        // Remove inline error while user is actively editing
+                        removeInlineError(this);
 
                         // For jQuery UI Autocomplete, close to reset suggestions
                         if (typeof $ !== 'undefined' && $.fn.autocomplete && $(this).data('ui-autocomplete')) {
@@ -501,6 +488,34 @@
         } catch (e) {
             console.warn('attachLocationFocusReset init error', e);
         }
+    }
+
+    /**
+     * Get the lat/lng hidden inputs for a given location input
+     * Handles the field name mapping (from→pickup_lat, to→dropoff_lat, etc.)
+     */
+    function getCoordInputs(input) {
+        const form = input.closest("form");
+        if (!form) return { latInput: null, lngInput: null };
+        
+        let latName, lngName;
+        
+        if (input.name === "from" || input.name === "pickup") {
+            latName = "pickup_lat";
+            lngName = "pickup_lng";
+        } else if (input.name === "to" || input.name === "dropoff") {
+            latName = "dropoff_lat";
+            lngName = "dropoff_lng";
+        } else {
+            // Fallback: try input.name + _lat/_lng
+            latName = input.name + "_lat";
+            lngName = input.name + "_lng";
+        }
+        
+        return {
+            latInput: form.querySelector(`input[name="${latName}"]`),
+            lngInput: form.querySelector(`input[name="${lngName}"]`)
+        };
     }
 
     /**
@@ -543,9 +558,116 @@
             autocompleteOptions
         );
 
+        // Get the correct lat/lng inputs using the mapping helper
+        const { latInput, lngInput } = getCoordInputs(input);
+
+        // Store default values
+        if (!input.hasAttribute("data-default-value")) {
+            input.setAttribute("data-default-value", input.value || "");
+        }
+        if (latInput && !latInput.hasAttribute("data-default-lat")) {
+            latInput.setAttribute("data-default-lat", latInput.value || "");
+        }
+        if (lngInput && !lngInput.hasAttribute("data-default-lng")) {
+            lngInput.setAttribute("data-default-lng", lngInput.value || "");
+        }
+
+        // If field has default value with valid coordinates, mark as selected
+        if (input.value.trim() !== "" && latInput?.value && lngInput?.value && latInput.value !== "" && lngInput.value !== "") {
+            input.setAttribute("data-place-selected", "true");
+            input.setAttribute("data-is-default", "true");
+        } else {
+            input.setAttribute("data-place-selected", "false");
+            input.setAttribute("data-is-default", "false");
+        }
+
+        const form = input.closest("form");
+
+        // Check form validity after initialization
+        setTimeout(() => checkFormValidity(form), 100);
+
         autocomplete.addListener("place_changed", function () {
             const place = autocomplete.getPlace();
-            updateLocationData(input, place);
+            if (place && place.geometry) {
+                updateLocationData(input, place);
+                // Mark that a valid selection HAS been made
+                input.setAttribute("data-place-selected", "true");
+                input.setAttribute("data-is-default", "false");
+                // Remove any error styling and message
+                input.classList.remove("error");
+                input.style.borderColor = "";
+                removeInlineError(input);
+                // Re-check form validity to enable submit button
+                checkFormValidity(form);
+            }
+        });
+
+        // When user starts typing, clear coordinates and mark as not selected
+        // NOTE: Do NOT show inline errors here — errors are shown on blur only.
+        // Showing errors while typing creates a bad UX and causes the "still showing error
+        // after selection" bug because the input event fires before place_changed.
+        input.addEventListener("input", function() {
+            const currentValue = this.value.trim();
+            const defaultValue = this.getAttribute("data-default-value") || "";
+            
+            if (currentValue === "") {
+                this.setAttribute("data-place-selected", "false");
+                removeInlineError(this);
+                this.classList.remove("error");
+                this.style.borderColor = "";
+            } else if (currentValue !== defaultValue) {
+                // User is typing something different from default - clear coordinates
+                if (latInput) latInput.value = "";
+                if (lngInput) lngInput.value = "";
+                
+                this.setAttribute("data-place-selected", "false");
+                this.setAttribute("data-is-default", "false");
+                
+                // Don't show error while typing — wait for blur
+            }
+            
+            // Don't call checkFormValidity while typing — it disables the button
+            // prematurely. Validity is checked on blur and on place_changed.
+        });
+
+        // Handle blur - reset to default if empty, validate if has value
+        input.addEventListener("blur", function() {
+            const self = this;
+            // 400ms delay: when user clicks a Google suggestion, blur fires first,
+            // then place_changed fires ~200ms later. We wait long enough for that.
+            setTimeout(function() {
+                const currentValue = self.value.trim();
+                const defaultValue = self.getAttribute("data-default-value") || "";
+                const defaultLat = latInput?.getAttribute("data-default-lat") || "";
+                const defaultLng = lngInput?.getAttribute("data-default-lng") || "";
+                
+                // Re-read state AFTER the delay (place_changed may have updated it)
+                const placeSelected = self.getAttribute("data-place-selected") === "true";
+                
+                if (currentValue === "") {
+                    // Field is empty - reset to default
+                    self.value = defaultValue;
+                    if (latInput) latInput.value = defaultLat;
+                    if (lngInput) lngInput.value = defaultLng;
+                    self.setAttribute("data-place-selected", "true");
+                    self.setAttribute("data-is-default", "true");
+                    self.classList.remove("error");
+                    self.style.borderColor = "";
+                    removeInlineError(self);
+                } else if (placeSelected) {
+                    // Valid selection — clear any leftover errors
+                    self.classList.remove("error");
+                    self.style.borderColor = "";
+                    removeInlineError(self);
+                } else {
+                    // User typed but didn't select from dropdown
+                    self.classList.add("error");
+                    self.style.borderColor = "#dc3545";
+                    showInlineError(self, "Please select a location from the dropdown");
+                }
+                
+                checkFormValidity(form);
+            }, 400);
         });
 
         // Store the autocomplete instance on the input element for later cleanup
@@ -764,7 +886,99 @@
                                 }
                                 : null,
                         });
+                        // Mark that a valid selection HAS been made
+                        input.setAttribute("data-place-selected", "true");
+                        input.setAttribute("data-is-default", "false");
+                        // Remove any error styling and inline error message
+                        input.classList.remove("error");
+                        input.style.borderColor = "";
+                        removeInlineError(input);
+                        checkFormValidity(input.closest("form"));
                     },
+                });
+
+                // Store default values — use getCoordInputs for correct field mapping
+                const form = input.closest("form");
+                const { latInput, lngInput } = getCoordInputs(input);
+                
+                if (!input.hasAttribute("data-default-value")) {
+                    input.setAttribute("data-default-value", input.value || "");
+                }
+                if (latInput && !latInput.hasAttribute("data-default-lat")) {
+                    latInput.setAttribute("data-default-lat", latInput.value || "");
+                }
+                if (lngInput && !lngInput.hasAttribute("data-default-lng")) {
+                    lngInput.setAttribute("data-default-lng", lngInput.value || "");
+                }
+
+                // If field has default value with valid coordinates, mark as selected
+                if (input.value.trim() !== "" && latInput?.value && lngInput?.value && latInput.value !== "" && lngInput.value !== "") {
+                    input.setAttribute("data-place-selected", "true");
+                    input.setAttribute("data-is-default", "true");
+                } else {
+                    input.setAttribute("data-place-selected", "false");
+                    input.setAttribute("data-is-default", "false");
+                }
+
+                // Check form validity after initialization
+                setTimeout(() => checkFormValidity(form), 100);
+
+                // When user starts typing — only clear coords, don't show errors
+                $(input).on("input", function() {
+                    const currentValue = this.value.trim();
+                    const defaultValue = this.getAttribute("data-default-value") || "";
+                    
+                    if (currentValue === "") {
+                        this.setAttribute("data-place-selected", "false");
+                        removeInlineError(this);
+                        this.classList.remove("error");
+                        this.style.borderColor = "";
+                    } else if (currentValue !== defaultValue) {
+                        // Clear coordinates immediately
+                        if (latInput) latInput.value = "";
+                        if (lngInput) lngInput.value = "";
+                        
+                        this.setAttribute("data-place-selected", "false");
+                        this.setAttribute("data-is-default", "false");
+                        // Don't show error while typing — wait for blur
+                    }
+                    // Don't call checkFormValidity while typing
+                });
+
+                // Handle blur — validate after delay to allow autocomplete select to fire
+                $(input).on("blur", function() {
+                    const self = this;
+                    setTimeout(function() {
+                        const currentValue = self.value.trim();
+                        const defaultValue = self.getAttribute("data-default-value") || "";
+                        const defaultLat = latInput?.getAttribute("data-default-lat") || "";
+                        const defaultLng = lngInput?.getAttribute("data-default-lng") || "";
+                        const placeSelected = self.getAttribute("data-place-selected") === "true";
+                        
+                        if (currentValue === "") {
+                            // Reset to default
+                            self.value = defaultValue;
+                            if (latInput) latInput.value = defaultLat;
+                            if (lngInput) lngInput.value = defaultLng;
+                            self.setAttribute("data-place-selected", "true");
+                            self.setAttribute("data-is-default", "true");
+                            self.classList.remove("error");
+                            self.style.borderColor = "";
+                            removeInlineError(self);
+                        } else if (placeSelected) {
+                            // Valid selection — clear any leftover errors
+                            self.classList.remove("error");
+                            self.style.borderColor = "";
+                            removeInlineError(self);
+                        } else {
+                            // User typed but didn't select from dropdown
+                            self.classList.add("error");
+                            self.style.borderColor = "#dc3545";
+                            showInlineError(self, "Please select a location from the dropdown");
+                        }
+                        
+                        checkFormValidity(form);
+                    }, 400);
                 });
             }
 
@@ -772,6 +986,96 @@
             if (isAirportField) {
                 $(input).on("focus", function () {
                     $(this).autocomplete("search", "");
+                });
+            }
+
+            // For airport fields, also handle selection tracking
+            if (isAirportField) {
+                const form = input.closest("form");
+                const { latInput, lngInput } = getCoordInputs(input);
+                
+                // Store defaults
+                if (!input.hasAttribute("data-default-value")) {
+                    input.setAttribute("data-default-value", input.value || "");
+                }
+                if (latInput && !latInput.hasAttribute("data-default-lat")) {
+                    latInput.setAttribute("data-default-lat", latInput.value || "");
+                }
+                if (lngInput && !lngInput.hasAttribute("data-default-lng")) {
+                    lngInput.setAttribute("data-default-lng", lngInput.value || "");
+                }
+
+                // Mark initial state
+                if (input.value.trim() !== "" && latInput?.value && lngInput?.value && latInput.value !== "" && lngInput.value !== "") {
+                    input.setAttribute("data-place-selected", "true");
+                    input.setAttribute("data-is-default", "true");
+                } else {
+                    input.setAttribute("data-place-selected", "false");
+                    input.setAttribute("data-is-default", "false");
+                }
+
+                // Check form validity after initialization
+                setTimeout(() => checkFormValidity(form), 100);
+                
+                $(input).on("autocompleteselect", function() {
+                    this.setAttribute("data-place-selected", "true");
+                    this.setAttribute("data-is-default", "false");
+                    this.classList.remove("error");
+                    this.style.borderColor = "";
+                    removeInlineError(this);
+                    checkFormValidity(form);
+                });
+
+                $(input).on("input", function() {
+                    const currentValue = this.value.trim();
+                    const defaultValue = this.getAttribute("data-default-value") || "";
+                    
+                    if (currentValue === "") {
+                        this.setAttribute("data-place-selected", "false");
+                        removeInlineError(this);
+                        this.classList.remove("error");
+                        this.style.borderColor = "";
+                    } else if (currentValue !== defaultValue) {
+                        if (latInput) latInput.value = "";
+                        if (lngInput) lngInput.value = "";
+                        this.setAttribute("data-place-selected", "false");
+                        this.setAttribute("data-is-default", "false");
+                        // Don't show error while typing — wait for blur
+                    }
+                    // Don't call checkFormValidity while typing
+                });
+
+                $(input).on("blur", function() {
+                    const self = this;
+                    setTimeout(function() {
+                        const currentValue = self.value.trim();
+                        const defaultValue = self.getAttribute("data-default-value") || "";
+                        const defaultLat = latInput?.getAttribute("data-default-lat") || "";
+                        const defaultLng = lngInput?.getAttribute("data-default-lng") || "";
+                        const placeSelected = self.getAttribute("data-place-selected") === "true";
+                        
+                        if (currentValue === "") {
+                            self.value = defaultValue;
+                            if (latInput) latInput.value = defaultLat;
+                            if (lngInput) lngInput.value = defaultLng;
+                            self.setAttribute("data-place-selected", "true");
+                            self.setAttribute("data-is-default", "true");
+                            self.classList.remove("error");
+                            self.style.borderColor = "";
+                            removeInlineError(self);
+                        } else if (placeSelected) {
+                            // Valid selection — clear any leftover errors
+                            self.classList.remove("error");
+                            self.style.borderColor = "";
+                            removeInlineError(self);
+                        } else {
+                            self.classList.add("error");
+                            self.style.borderColor = "#dc3545";
+                            showInlineError(self, "Please select a location from the dropdown");
+                        }
+                        
+                        checkFormValidity(form);
+                    }, 400);
                 });
             }
         }
@@ -826,7 +1130,6 @@
                 const lng = typeof place.geometry.location.lng === 'function' ? place.geometry.location.lng() : parseFloat(place.geometry.location.lng);
                 latInput.value = lat;
                 lngInput.value = lng;
-                console.log('Updated pickup coordinates via Google Places:', latInput.value, lngInput.value);
 
                 // Always prefer formatted_address over coordinates for user-visible input
                 if ((!input.value || input.value.trim() === '') && place.formatted_address) {
@@ -845,14 +1148,11 @@
                 const lng = typeof place.geometry.location.lng === 'function' ? place.geometry.location.lng() : parseFloat(place.geometry.location.lng);
                 latInput.value = lat;
                 lngInput.value = lng;
-                console.log('Updated dropoff coordinates via Google Places:', latInput.value, lngInput.value);
 
                 // Always prefer formatted_address over coordinates for user-visible input
                 if ((!input.value || input.value.trim() === '') && place.formatted_address) {
                     input.value = place.formatted_address;
                 }
-            } else {
-                console.error('Could not find dropoff coordinate fields or place geometry');
             }
         }
     }
@@ -918,11 +1218,9 @@
             'input[name="transfer_type"]:checked'
         );
         if (defaultRadio) {
-            console.log('Initializing airport transfer with type:', defaultRadio.value);
             updateAirportTransferLocations(defaultRadio.value);
         } else {
             // Default to from-airport if no radio is checked
-            console.log('No transfer type selected, defaulting to from-airport');
             const fromAirportRadio = document.querySelector('input[name="transfer_type"][value="from-airport"]');
             if (fromAirportRadio) {
                 fromAirportRadio.checked = true;
@@ -977,15 +1275,6 @@
         const defaultAirport = "Colombo BIA Airport";
         const defaultAirportCoords = CONFIG.cityCoordinates[defaultAirport];
 
-        // Debug: Log coordinate values
-        console.log('Airport coordinate setup:', {
-            type,
-            colomboCoords,
-            defaultAirport,
-            defaultAirportCoords,
-            configKeys: Object.keys(CONFIG.cityCoordinates)
-        });
-
         // Clear any existing Google Places autocomplete instances
         [fromLocationInput, toLocationInput].forEach(input => {
             if (input.googleAutocomplete) {
@@ -1039,13 +1328,6 @@
                 if (!fromLng.value || fromLng.value === '' || fromLng.value === '0') {
                     fromLng.value = defaultAirportCoords.lng;
                 }
-                console.log('FROM coordinates set (from-airport):', {
-                    lat: fromLat.value,
-                    lng: fromLng.value,
-                    source: 'defaultAirportCoords'
-                });
-            } else {
-                console.error('Default airport coordinates not found for:', defaultAirport);
             }
 
             if (colomboCoords && colomboCoords.lat && colomboCoords.lng) {
@@ -1055,13 +1337,6 @@
                 if (!toLng.value || toLng.value === '' || toLng.value === '0') {
                     toLng.value = colomboCoords.lng;
                 }
-                console.log('TO coordinates set (from-airport):', {
-                    lat: toLat.value,
-                    lng: toLng.value,
-                    source: 'colomboCoords'
-                });
-            } else {
-                console.error('Colombo coordinates not found');
             }
 
             // Initialize autocomplete for TO location input
@@ -1106,13 +1381,6 @@
                 if (!fromLng.value || fromLng.value === '' || fromLng.value === '0') {
                     fromLng.value = colomboCoords.lng;
                 }
-                console.log('FROM coordinates set (to-airport):', {
-                    lat: fromLat.value,
-                    lng: fromLng.value,
-                    source: 'colomboCoords'
-                });
-            } else {
-                console.error('Colombo coordinates not found');
             }
 
             if (defaultAirportCoords && defaultAirportCoords.lat && defaultAirportCoords.lng) {
@@ -1122,13 +1390,6 @@
                 if (!toLng.value || toLng.value === '' || toLng.value === '0') {
                     toLng.value = defaultAirportCoords.lng;
                 }
-                console.log('TO coordinates set (to-airport):', {
-                    lat: toLat.value,
-                    lng: toLng.value,
-                    source: 'defaultAirportCoords'
-                });
-            } else {
-                console.error('Default airport coordinates not found for:', defaultAirport);
             }
 
             // Initialize autocomplete for FROM location input
@@ -1144,11 +1405,9 @@
         setTimeout(() => {
             if (fromAirportSelect && fromAirportSelect.value && !fromAirportSelect.classList.contains('hidden')) {
                 fromAirportSelect.dispatchEvent(new Event('change'));
-                console.log('Forced FROM airport coordinate update');
             }
             if (toAirportSelect && toAirportSelect.value && !toAirportSelect.classList.contains('hidden')) {
                 toAirportSelect.dispatchEvent(new Event('change'));
-                console.log('Forced TO airport coordinate update');
             }
         }, 200);
     }
@@ -1159,7 +1418,6 @@
     function setupAirportSelectHandlers() {
         const form = document.getElementById("airport_transfers-form");
         if (!form) {
-            console.warn('Airport transfers form not found');
             return;
         }
 
@@ -1169,15 +1427,6 @@
         const fromLng = form.querySelector('input[name="pickup_lng"]');
         const toLat = form.querySelector('input[name="dropoff_lat"]');
         const toLng = form.querySelector('input[name="dropoff_lng"]');
-
-        console.log('Setting up airport select handlers:', {
-            fromAirportSelect: !!fromAirportSelect,
-            toAirportSelect: !!toAirportSelect,
-            fromLat: !!fromLat,
-            fromLng: !!fromLng,
-            toLat: !!toLat,
-            toLng: !!toLng
-        });
 
         // FROM airport select handler
         if (fromAirportSelect && !fromAirportSelect.hasAirportHandler) {
@@ -1189,11 +1438,7 @@
                         fromLat.value = selectedOption.dataset.lat;
                         fromLng.value = selectedOption.dataset.lng;
 
-                    } else {
-                        console.error('FROM coordinate inputs not found');
                     }
-                } else {
-                    console.warn('FROM airport option missing coordinate data');
                 }
             });
             fromAirportSelect.hasAirportHandler = true;
@@ -1208,21 +1453,12 @@
         if (toAirportSelect && !toAirportSelect.hasAirportHandler) {
             toAirportSelect.addEventListener('change', function () {
                 const selectedOption = this.options[this.selectedIndex];
-                console.log('TO airport changed:', selectedOption.value);
 
                 if (selectedOption && selectedOption.dataset.lat && selectedOption.dataset.lng) {
                     if (toLat && toLng) {
                         toLat.value = selectedOption.dataset.lat;
                         toLng.value = selectedOption.dataset.lng;
-                        console.log('TO airport coordinates set:', {
-                            lat: toLat.value,
-                            lng: toLng.value
-                        });
-                    } else {
-                        console.error('TO coordinate inputs not found');
                     }
-                } else {
-                    console.warn('TO airport option missing coordinate data');
                 }
             });
             toAirportSelect.hasAirportHandler = true;
@@ -1251,7 +1487,15 @@
 
             autocomplete.addListener("place_changed", function () {
                 const place = autocomplete.getPlace();
-                updateLocationDataForInput(input, place);
+                if (place && place.geometry) {
+                    updateLocationDataForInput(input, place);
+                    input.setAttribute("data-place-selected", "true");
+                    input.setAttribute("data-is-default", "false");
+                    input.classList.remove("error");
+                    input.style.borderColor = "";
+                    removeInlineError(input);
+                    checkFormValidity(input.closest("form"));
+                }
             });
 
             input.googleAutocomplete = autocomplete;
@@ -1273,6 +1517,12 @@
                                 },
                             } : null,
                         });
+                        input.setAttribute("data-place-selected", "true");
+                        input.setAttribute("data-is-default", "false");
+                        input.classList.remove("error");
+                        input.style.borderColor = "";
+                        removeInlineError(input);
+                        checkFormValidity(input.closest("form"));
                     },
                 });
             }
@@ -2047,18 +2297,11 @@
             ".location-input-modal"
         );
 
-        console.log(
-            `[Autocomplete] Found ${modalLocationInputs.length} modal location inputs`
-        );
-
         modalLocationInputs.forEach((input, idx) => {
             const dataIndex = input.getAttribute("data-index");
 
             // Skip if already initialized
             if (input.dataset.googleAutocompleteInitialized === "true") {
-                console.log(
-                    `[Autocomplete] Skipping already initialized input at index ${dataIndex}`
-                );
                 return;
             }
 
@@ -2085,10 +2328,6 @@
                     const place = autocomplete.getPlace();
                     const index = parseInt(input.getAttribute("data-index"));
 
-                    console.log(
-                        `[Autocomplete] Place selected for index ${index}:`,
-                        place
-                    );
 
                     if (place.geometry && !isNaN(index)) {
                         // Update state with new location
@@ -2102,11 +2341,6 @@
                         // Update the input value
                         input.value = place.formatted_address || place.name;
 
-                        console.log(
-                            `[Autocomplete] State updated for index ${index}:`,
-                            state.customTourDestinations[index]
-                        );
-
                         // Sync to form and refresh map
                         updateFormFromState();
                         setTimeout(() => initializeRouteMap(), 200);
@@ -2116,13 +2350,7 @@
                 // Mark as initialized
                 input.dataset.googleAutocompleteInitialized = "true";
 
-                console.log(
-                    `[Autocomplete] ✓ Google autocomplete initialized for modal input at index ${dataIndex}`
-                );
             } else {
-                console.warn(
-                    "Google Maps API not loaded yet. Autocomplete not available."
-                );
 
                 // Fallback to basic autocomplete if available
                 if (typeof $ !== "undefined" && $.fn.autocomplete) {
@@ -2781,6 +3009,17 @@
 
         forms.forEach((form) => {
             form.addEventListener("submit", function (e) {
+                // ALWAYS validate FIRST - prevent submission if invalid
+                if (!validateForm(form)) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                    
+                    console.error('Form submission BLOCKED - validation failed');
+                    showValidationMessage("Please select valid locations from the dropdown");
+                    return false;
+                }
+                
                 // Debug: Log form data including coordinates before submission
                 const formData = new FormData(form);
                 const formDataObj = {};
@@ -2788,17 +3027,7 @@
                     formDataObj[key] = value;
                 });
 
-                console.log("Form submission - All form data:", formDataObj);
-                console.log("Form submission - Coordinates check:", {
-                    pickup_lat: formData.get("pickup_lat"),
-                    pickup_lng: formData.get("pickup_lng"),
-                    dropoff_lat: formData.get("dropoff_lat"),
-                    dropoff_lng: formData.get("dropoff_lng"),
-                    pickup_lat: formData.get("pickup_lat"),
-                    pickup_lng: formData.get("pickup_lng"),
-                    dropoff_lat: formData.get("dropoff_lat"),
-                    dropoff_lng: formData.get("dropoff_lng"),
-                });
+                console.log("Form submission ALLOWED - All form data:", formDataObj);
 
                 // Ensure canonical fields exist and contain values before the form is submitted.
                 // This prevents disabled inputs (e.g. airport selects) or alternate field names from
@@ -2808,11 +3037,17 @@
                 } catch (err) {
                     console.warn('ensureCanonicalSearchFields failed', err);
                 }
-
-                if (!validateForm(form)) {
-                    e.preventDefault();
-                }
             });
+            
+            // Add visual feedback for required fields (success/error borders)
+            const requiredInputs = form.querySelectorAll("input[required], select[required]");
+            requiredInputs.forEach((input) => {
+                input.addEventListener("blur", validateField);
+                input.addEventListener("input", validateField);
+            });
+            
+            // Check form validity on load
+            setTimeout(() => checkFormValidity(form), 500);
         });
     }
 
@@ -2824,6 +3059,7 @@
             "input[required], textarea[required]"
         );
         let isValid = true;
+        let errorMessages = [];
 
         requiredInputs.forEach((input) => {
             if (!input.value.trim()) {
@@ -2836,6 +3072,62 @@
             }
         });
 
+        // Validate location inputs - ensure they were selected from autocomplete or are defaults
+        const locationInputs = form.querySelectorAll('.location-search, input[name="pickup"], input[name="dropoff"], input[name="from"], input[name="to"]');
+        locationInputs.forEach((input) => {
+            const placeSelected = input.getAttribute("data-place-selected") === "true";
+            const isDefault = input.getAttribute("data-is-default") === "true";
+            const hasValue = input.value.trim() !== "";
+            
+            // If field has value but wasn't selected and isn't default, it's invalid
+            if (hasValue && !placeSelected && !isDefault) {
+                isValid = false;
+                input.classList.add("error");
+                input.style.borderColor = "#dc3545";
+                
+                const fieldName = input.name === "pickup" ? "pickup location" : "destination";
+                errorMessages.push(`Please select your ${fieldName} from the search results dropdown.`);
+            }
+        });
+
+        // Validate that coordinates are present for location fields (not empty or zero)
+        const pickupInput = form.querySelector('input[name="pickup"]');
+        const dropoffInput = form.querySelector('input[name="dropoff"]');
+        
+        if (pickupInput && pickupInput.value.trim()) {
+            const pickupLat = form.querySelector('input[name="pickup_lat"]');
+            const pickupLng = form.querySelector('input[name="pickup_lng"]');
+            
+            if (!pickupLat?.value || !pickupLng?.value || 
+                pickupLat.value === '0' || pickupLng.value === '0' ||
+                pickupLat.value === '' || pickupLng.value === '') {
+                isValid = false;
+                pickupInput.classList.add("error");
+                pickupInput.style.borderColor = "#dc3545";
+                
+                if (!errorMessages.includes("Please select your pickup location from the search results dropdown.")) {
+                    errorMessages.push("Please select your pickup location from the search results dropdown.");
+                }
+            }
+        }
+        
+        if (dropoffInput && dropoffInput.value.trim()) {
+            const dropoffLat = form.querySelector('input[name="dropoff_lat"]');
+            const dropoffLng = form.querySelector('input[name="dropoff_lng"]');
+            
+            if (!dropoffLat?.value || !dropoffLng?.value || 
+                dropoffLat.value === '0' || dropoffLng.value === '0' ||
+                dropoffLat.value === '' || dropoffLng.value === '') {
+                isValid = false;
+                dropoffInput.classList.add("error");
+                dropoffInput.style.borderColor = "#dc3545";
+                
+                if (!errorMessages.includes("Please select your destination from the search results dropdown.")) {
+                    errorMessages.push("Please select your destination from the search results dropdown.");
+                }
+            }
+        }
+
         // Special validation for airport transfer coordinates
         if (form.id === 'airport_transfers-form') {
             const pickupLat = form.querySelector('input[name="pickup_lat"]');
@@ -2844,35 +3136,35 @@
             const dropoffLng = form.querySelector('input[name="dropoff_lng"]');
 
             if (!pickupLat?.value || pickupLat.value === '' || pickupLat.value === '0') {
-                console.error('Airport transfer missing pickup latitude');
                 isValid = false;
             }
             if (!pickupLng?.value || pickupLng.value === '' || pickupLng.value === '0') {
-                console.error('Airport transfer missing pickup longitude');
                 isValid = false;
             }
             if (!dropoffLat?.value || dropoffLat.value === '' || dropoffLat.value === '0') {
-                console.error('Airport transfer missing dropoff latitude');
                 isValid = false;
             }
             if (!dropoffLng?.value || dropoffLng.value === '' || dropoffLng.value === '0') {
-                console.error('Airport transfer missing dropoff longitude');
                 isValid = false;
             }
 
             if (isValid) {
-                console.log('Airport transfer coordinates validated successfully:', {
-                    pickup: { lat: pickupLat.value, lng: pickupLng.value },
-                    dropoff: { lat: dropoffLat.value, lng: dropoffLng.value }
-                });
             } else {
-                alert("Airport transfer coordinates are missing. Please check your location selections.");
                 return false;
             }
         }
 
+        // Display error messages if validation failed
+        if (!isValid && errorMessages.length > 0) {
+            // Show the first error message
+            showValidationMessage(errorMessages[0]);
+        }
+
         if (!isValid) {
-            alert("Please fill in all required fields");
+            console.error('Form validation failed', {
+                errorMessages,
+                form: form.id
+            });
         }
 
         return isValid;
@@ -2966,40 +3258,8 @@
     }
 
     /**
-     * Enhanced form validation with visual feedback
+     * Visual feedback helper for required fields (success/error border on containers)
      */
-    function setupFormValidation() {
-        const forms = document.querySelectorAll(".filter-input");
-
-        forms.forEach((form) => {
-            const inputs = form.querySelectorAll(
-                "input[required], select[required]"
-            );
-
-            inputs.forEach((input) => {
-                input.addEventListener("blur", validateField);
-                input.addEventListener("input", validateField);
-            });
-
-            form.addEventListener("submit", function (e) {
-                let isValid = true;
-
-                inputs.forEach((input) => {
-                    if (!validateField.call(input)) {
-                        isValid = false;
-                    }
-                });
-
-                if (!isValid) {
-                    e.preventDefault();
-                    showValidationMessage(
-                        "Please fill in all required fields correctly."
-                    );
-                }
-            });
-        });
-    }
-
     function validateField() {
         const container = this.closest(".single-search-box");
         if (!container) return true;
@@ -3050,6 +3310,94 @@
             messageEl.style.animation = "slideOutRight 0.3s ease";
             setTimeout(() => messageEl.remove(), 300);
         }, 3000);
+    }
+
+    /**
+     * Show inline error message below input field
+     */
+    function showInlineError(input, message) {
+        // Remove existing error for this input
+        removeInlineError(input);
+        
+        // Create error message element
+        const errorEl = document.createElement("div");
+        errorEl.className = "inline-error-message";
+        errorEl.style.cssText = `
+            color: #dc3545;
+            font-size: 12px;
+            margin-top: 4px;
+            display: block;
+        `;
+        errorEl.textContent = message;
+        
+        // Insert after the input's parent container
+        const container = input.closest('.single-search-box') || input.closest('.custom-select-dropdown') || input.parentElement;
+        if (container) {
+            container.appendChild(errorEl);
+        }
+    }
+
+    /**
+     * Remove inline error message for input field
+     */
+    function removeInlineError(input) {
+        const container = input.closest('.single-search-box') || input.closest('.custom-select-dropdown') || input.parentElement;
+        if (container) {
+            const existingError = container.querySelector('.inline-error-message');
+            if (existingError) {
+                existingError.remove();
+            }
+        }
+    }
+
+    /**
+     * Check form validity and enable/disable submit button
+     */
+    function checkFormValidity(form) {
+        if (!form) return;
+        
+        const submitBtn = form.querySelector('button[type="submit"]');
+        if (!submitBtn) return;
+        
+        let isValid = true;
+        
+        // Check all location inputs in this form
+        const locationInputs = form.querySelectorAll('.location-search, input[name="pickup"], input[name="dropoff"], input[name="from"], input[name="to"]');
+        
+        locationInputs.forEach((input) => {
+            // Skip if input is disabled or hidden
+            if (input.disabled || input.offsetParent === null) {
+                return;
+            }
+            
+            const placeSelected = input.getAttribute("data-place-selected") === "true";
+            const hasValue = input.value.trim() !== "";
+            
+            // Use the mapping helper to get the correct lat/lng fields
+            const { latInput, lngInput } = getCoordInputs(input);
+            
+            const hasValidCoords = latInput?.value && lngInput?.value && 
+                                   latInput.value !== '0' && lngInput.value !== '0' &&
+                                   latInput.value !== '' && lngInput.value !== '';
+            
+            // Invalid if: has value but not selected AND missing valid coordinates
+            if (hasValue && !placeSelected) {
+                isValid = false;
+            }
+        });
+        
+        // Enable or disable submit button
+        if (isValid) {
+            submitBtn.disabled = false;
+            submitBtn.style.opacity = '1';
+            submitBtn.style.cursor = 'pointer';
+            submitBtn.title = '';
+        } else {
+            submitBtn.disabled = true;
+            submitBtn.style.opacity = '0.5';
+            submitBtn.style.cursor = 'not-allowed';
+            submitBtn.title = 'Please select valid locations from the dropdown';
+        }
     }
 
     // Add CSS animations for messages
@@ -3138,11 +3486,6 @@
                 if (fromLat && fromLng) {
                     fromLat.value = selectedOption.dataset.lat;
                     fromLng.value = selectedOption.dataset.lng;
-                    console.log('Forced FROM airport coordinates:', {
-                        airport: fromAirportSelect.value,
-                        lat: fromLat.value,
-                        lng: fromLng.value
-                    });
                 }
             }
         }
@@ -3152,12 +3495,7 @@
             if (selectedOption && selectedOption.dataset.lat && selectedOption.dataset.lng) {
                 if (toLat && toLng) {
                     toLat.value = selectedOption.dataset.lat;
-                    toLng.value = selectedOption.dataset.lng;
-                    console.log('Forced TO airport coordinates:', {
-                        airport: toAirportSelect.value,
-                        lat: toLat.value,
-                        lng: toLng.value
-                    });
+                    toLng.value = selectedOption.dataset.lng
                 }
             }
         }
@@ -3167,8 +3505,6 @@
      * Ensure all coordinate fields have valid values
      */
     function ensureCoordinateValues() {
-        console.log('Ensuring coordinate values are set...');
-
         // Check Airport Transfers form
         const airportForm = document.getElementById('airport_transfers-form');
         if (airportForm) {
@@ -3180,19 +3516,15 @@
             // Set default airport coordinates if missing
             if (fromLat && (!fromLat.value || fromLat.value === '')) {
                 fromLat.value = '7.1808'; // BIA Airport
-                console.log('Set default airport FROM lat:', fromLat.value);
             }
             if (fromLng && (!fromLng.value || fromLng.value === '')) {
                 fromLng.value = '79.8841'; // BIA Airport
-                console.log('Set default airport FROM lng:', fromLng.value);
             }
             if (toLat && (!toLat.value || toLat.value === '')) {
                 toLat.value = '6.9271'; // Colombo
-                console.log('Set default airport TO lat:', toLat.value);
             }
             if (toLng && (!toLng.value || toLng.value === '')) {
                 toLng.value = '79.8612'; // Colombo  
-                console.log('Set default airport TO lng:', toLng.value);
             }
         }
 
@@ -3207,19 +3539,15 @@
             // Set default coordinates if missing
             if (pickupLat && (!pickupLat.value || pickupLat.value === '')) {
                 pickupLat.value = '6.9271'; // Colombo
-                console.log('Set default ride pickup lat:', pickupLat.value);
             }
             if (pickupLng && (!pickupLng.value || pickupLng.value === '')) {
-                pickupLng.value = '79.8612'; // Colombo
-                console.log('Set default ride pickup lng:', pickupLng.value);
+                pickupLng.value = '79.8612'; // Colomb
             }
             if (dropoffLat && (!dropoffLat.value || dropoffLat.value === '')) {
                 dropoffLat.value = '6.0535'; // Galle
-                console.log('Set default ride dropoff lat:', dropoffLat.value);
             }
             if (dropoffLng && (!dropoffLng.value || dropoffLng.value === '')) {
                 dropoffLng.value = '80.221'; // Galle
-                console.log('Set default ride dropoff lng:', dropoffLng.value);
             }
         }
     }
@@ -3234,7 +3562,6 @@
         const pricingInfo = document.getElementById('ride_now-return-pricing-info');
 
         if (!returnToggle || !returnDetails) {
-            console.log('Return trip elements not found');
             return;
         }
 
@@ -3297,7 +3624,6 @@
             }
         }
 
-        console.log('Return trip functionality initialized');
     }
 
     /**
@@ -3350,8 +3676,6 @@
             }).on('changeDate', function () {
                 calculateReturnPricing();
             });
-
-            console.log('Return date picker initialized');
         }
     }
 
@@ -3389,7 +3713,6 @@
         const returnDateInput = document.getElementById('ride_now-return-date');
 
         if (!packageInput || !pickupDateInput || !returnDateInput) {
-            console.log('Missing inputs for return pricing calculation');
             return;
         }
 

@@ -1314,15 +1314,6 @@
             const locationInputs = document.querySelectorAll('.location-search');
 
             locationInputs.forEach(input => {
-                // Add a data attribute to track if a valid place was selected
-                input.setAttribute('data-place-selected', 'false');
-                
-                // Mark as invalid when user types (not selected from dropdown)
-                input.addEventListener('input', function() {
-                    this.setAttribute('data-place-selected', 'false');
-                    this.classList.remove('is-valid');
-                });
-
                 // Check if this input should be restricted to airports only
                 const isAirportField = isAirportLocationField(input);
 
@@ -1342,17 +1333,7 @@
 
                 autocomplete.addListener('place_changed', function() {
                     const place = autocomplete.getPlace();
-                    
-                    // Only mark as valid if a place with geometry was selected
-                    if (place && place.geometry) {
-                        input.setAttribute('data-place-selected', 'true');
-                        input.classList.add('is-valid');
-                        input.classList.remove('is-invalid');
-                        updateLocationData(input, place);
-                    } else {
-                        input.setAttribute('data-place-selected', 'false');
-                        input.classList.remove('is-valid');
-                    }
+                    updateLocationData(input, place);
                 });
             });
         }
