@@ -836,7 +836,8 @@
 @endpush
 
 @push('scripts')
-    @if (!empty($settings['google_ads_conversion_id']) && !empty($settings['google_ads_conversion_label']) && $booking && ($isFullPayment || $isAdvancePayment))
+    @if (!empty($settings['google_ads_conversion_id']) && !empty($settings['google_ads_conversion_label']) && $booking)
+    {{-- @if (!empty($settings['google_ads_conversion_id']) && !empty($settings['google_ads_conversion_label']) && $booking && ($isFullPayment || $isAdvancePayment)) --}}
         @php
             // Determine if this is a new customer
             // Check if customer has any previous paid bookings
