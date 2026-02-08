@@ -836,8 +836,7 @@
 @endpush
 
 @push('scripts')
-    @if (!empty($settings['google_ads_conversion_id']) && !empty($settings['google_ads_conversion_label']) && $booking)
-    {{-- @if (!empty($settings['google_ads_conversion_id']) && !empty($settings['google_ads_conversion_label']) && $booking && ($isFullPayment || $isAdvancePayment)) --}}
+    @if (!empty($settings['google_ads_conversion_id']) && !empty($settings['google_ads_conversion_label']) && $booking && ($isFullPayment || $isAdvancePayment))
         @php
             // Determine if this is a new customer
             // Check if customer has any previous paid bookings
@@ -891,16 +890,6 @@
                 // Start checking for gtag
                 fireConversion();
             })();
-        </script>
-    @else
-        <script>
-            // Debug: Log why conversion tracking didn't fire
-            console.log('Google Ads Conversion Tracking - Not fired', {
-                has_conversion_id: {{ !empty($settings['google_ads_conversion_id']) ? 'true' : 'false' }},
-                has_conversion_label: {{ !empty($settings['google_ads_conversion_label']) ? 'true' : 'false' }},
-                has_booking: {{ isset($booking) ? 'true' : 'false' }},
-                is_paid: {{ (isset($isFullPayment) && $isFullPayment) || (isset($isAdvancePayment) && $isAdvancePayment) ? 'true' : 'false' }}
-            });
         </script>
     @endif
 
