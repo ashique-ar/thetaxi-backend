@@ -2323,6 +2323,44 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
             const form = this;
             const formId = form.id;
             let hasValidCoordinates = false;
+            let hasValidLocationSelection = true;
+            let errorMessage = '';
+
+            // Check if location inputs were properly selected from Google Places
+            const locationInputs = form.querySelectorAll('input.location-search:not([disabled])');
+            locationInputs.forEach(input => {
+                const placeSelected = input.getAttribute('data-place-selected');
+                const inputValue = input.value.trim();
+                
+                if (inputValue && placeSelected !== 'true') {
+                    hasValidLocationSelection = false;
+                    input.classList.add('is-invalid');
+                    
+                    // Add error message if not already present
+                    if (!input.nextElementSibling || !input.nextElementSibling.classList.contains('invalid-feedback')) {
+                        const errorDiv = document.createElement('div');
+                        errorDiv.className = 'invalid-feedback d-block';
+                        errorDiv.textContent = 'Please select a location from the dropdown suggestions';
+                        input.parentNode.appendChild(errorDiv);
+                    }
+                }
+            });
+
+            // If location selection is invalid, prevent submission
+            if (!hasValidLocationSelection) {
+                e.preventDefault();
+                
+                // Scroll to first invalid input
+                const firstInvalid = form.querySelector('input.location-search.is-invalid');
+                if (firstInvalid) {
+                    firstInvalid.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    firstInvalid.focus();
+                }
+                
+                // Show alert
+                alert('Please select locations from the dropdown suggestions. Do not just type and submit.');
+                return false;
+            }
 
             // Check coordinates based on form type
             if (formId === 'airport_transfers-form') {
@@ -2340,6 +2378,10 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
                     toLat: toLat?.value,
                     toLng: toLng?.value
                 });
+
+                if (!hasValidCoordinates) {
+                    errorMessage = 'Please select valid pickup and destination locations from the dropdown.';
+                }
             } else if ((formId === 'ride_now-form' || formId === 'day_rental-form' ||
                     formId === 'day_rental-form')) {
                 const pickupLat = form.querySelector('input[name="pickup_lat"]');
@@ -2350,17 +2392,23 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
                 hasValidCoordinates = (pickupLat && pickupLat.value && pickupLng && pickupLng.value &&
                     dropoffLat && dropoffLat.value && dropoffLng && dropoffLng.value);
 
-                console.log('Ride Now coordinates check:', {
+                console.log('Ride Now/Day Rental coordinates check:', {
                     pickupLat: pickupLat?.value,
                     pickupLng: pickupLng?.value,
                     dropoffLat: dropoffLat?.value,
                     dropoffLng: dropoffLng?.value
                 });
+
+                if (!hasValidCoordinates) {
+                    errorMessage = 'Please select valid pickup and drop-off locations from the dropdown.';
+                }
             }
 
             if (!hasValidCoordinates) {
-                console.warn('WARNING: Some coordinates are missing for form:', formId);
-                // Still allow submission but log the warning
+                e.preventDefault();
+                console.error('ERROR: Missing coordinates for form:', formId);
+                alert(errorMessage || 'Please select valid locations from the dropdown suggestions.');
+                return false;
             } else {
                 console.log('✓ All coordinates present for submission of form:', formId);
             }
