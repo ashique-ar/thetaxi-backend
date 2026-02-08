@@ -851,6 +851,8 @@
         @endphp
         <!-- Google Ads Conversion Tracking -->
         <script>
+            console.log("Conversion");
+            
             gtag('event', 'conversion', {
                 'send_to': '{{ $settings['google_ads_conversion_id'] }}/{{ $settings['google_ads_conversion_label'] }}',
                 'value': {{ $booking->amount_to_pay ?? $booking->total_estimated }},
