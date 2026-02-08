@@ -851,14 +851,54 @@
         @endphp
         <!-- Google Ads Conversion Tracking -->
         <script>
-            console.log("Conversion");
-            
-            gtag('event', 'conversion', {
-                'send_to': '{{ $settings['google_ads_conversion_id'] }}/{{ $settings['google_ads_conversion_label'] }}',
-                'value': {{ $booking->amount_to_pay ?? $booking->total_estimated }},
-                'currency': '{{ $booking->currency ?? 'LKR' }}',
-                'transaction_id': '{{ $booking->booking_number }}',
-                'new_customer': {{ $isNewCustomer ? 'true' : 'false' }}
+            // Wait for gtag to be available before firing conversion
+            (function() {
+                var maxAttempts = 10;
+                var attempts = 0;
+                var checkInterval = 200; // Check every 200ms
+                
+                function fireConversion() {
+                    if (typeof gtag !== 'undefined') {
+                        console.log('Google Ads Conversion Tracking - Firing conversion event');
+                        
+                        gtag('event', 'conversion', {
+                            'send_to': '{{ $settings['google_ads_conversion_id'] }}/{{ $settings['google_ads_conversion_label'] }}',
+                            'value': {{ $booking->amount_to_pay ?? $booking->total_estimated }},
+                            'currency': '{{ $booking->currency ?? 'LKR' }}',
+                            'transaction_id': '{{ $booking->booking_number }}',
+                            'new_customer': {{ $isNewCustomer ? 'true' : 'false' }}
+                        });
+                        
+                        console.log('Google Ads Conversion tracked successfully', {
+                            booking: '{{ $booking->booking_number }}',
+                            value: {{ $booking->amount_to_pay ?? $booking->total_estimated }},
+                            currency: '{{ $booking->currency ?? 'LKR' }}',
+                            new_customer: {{ $isNewCustomer ? 'true' : 'false' }}
+                        });
+                    } else {
+                        attempts++;
+                        if (attempts < maxAttempts) {
+                            console.log('Waiting for gtag to load... (attempt ' + attempts + '/' + maxAttempts + ')');
+                            setTimeout(fireConversion, checkInterval);
+                        } else {
+                            console.error('Google Ads Conversion Tracking - gtag not loaded after ' + maxAttempts + ' attempts');
+                            console.error('Conversion not tracked for booking: {{ $booking->booking_number }}');
+                        }
+                    }
+                }
+                
+                // Start checking for gtag
+                fireConversion();
+            })();
+        </script>
+    @else
+        <script>
+            // Debug: Log why conversion tracking didn't fire
+            console.log('Google Ads Conversion Tracking - Not fired', {
+                has_conversion_id: {{ !empty($settings['google_ads_conversion_id']) ? 'true' : 'false' }},
+                has_conversion_label: {{ !empty($settings['google_ads_conversion_label']) ? 'true' : 'false' }},
+                has_booking: {{ isset($booking) ? 'true' : 'false' }},
+                is_paid: {{ (isset($isFullPayment) && $isFullPayment) || (isset($isAdvancePayment) && $isAdvancePayment) ? 'true' : 'false' }}
             });
         </script>
     @endif
