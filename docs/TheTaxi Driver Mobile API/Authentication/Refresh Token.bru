@@ -1,0 +1,45 @@
+meta {
+  name: Refresh Token
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{base_url}}/api/driver/auth/refresh
+  body: json
+  auth: bearer
+}
+
+headers {
+  Content-Type: application/json
+  Accept: application/json
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+      "refresh_token": "{{refresh_token}}"
+  }
+}
+
+script:post-response {
+  if (res.getStatus() === 200) {
+      const response = res.getBody();
+      if (response.data) {
+          bru.setEnvVar('access_token', response.data.access_token);
+          bru.setEnvVar('refresh_token', response.data.refresh_token);
+          console.log('✅ Tokens refreshed');
+      }
+  }
+}
+
+settings {
+  encodeUrl: true
+}
+
+docs {
+  Refresh the access token using the refresh token.
+}

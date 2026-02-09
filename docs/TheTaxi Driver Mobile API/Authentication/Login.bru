@@ -1,0 +1,52 @@
+meta {
+  name: Login
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{base_url}}/api/driver/auth/login
+  body: json
+  auth: inherit
+}
+
+headers {
+  Content-Type: application/json
+  Accept: application/json
+}
+
+body:json {
+  {
+      "email": "{{driver_email}}",
+      "password": "{{driver_password}}",
+      "device_uuid": "{{device_uuid}}",
+      "device_name": "{{device_name}}",
+      "device_model": "{{device_model}}",
+      "device_manufacturer": "{{device_manufacturer}}",
+      "platform": "{{platform}}",
+      "os_version": "{{os_version}}",
+      "app_version": "{{app_version}}",
+      "app_build": "{{app_build}}"
+  }
+}
+
+script:post-response {
+  if (res.getStatus() === 200) {
+      const response = res.getBody();
+      if (response.data && response.data.token) {
+          bru.setEnvVar('access_token', response.data.token.access_token);
+          bru.setEnvVar('refresh_token', response.data.token.refresh_token);
+          bru.setEnvVar('driver_id', response.data.driver.id);
+          bru.setEnvVar('user_id', response.data.user.id);
+          console.log('✅ Tokens saved to environment');
+      }
+  }
+}
+
+settings {
+  encodeUrl: true
+}
+
+docs {
+  Authenticate a driver and receive access and refresh tokens. Device information is registered/updated during login.
+}

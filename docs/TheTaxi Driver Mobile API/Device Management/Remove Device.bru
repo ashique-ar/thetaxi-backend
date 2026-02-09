@@ -1,0 +1,27 @@
+meta {
+  name: Remove Device
+  type: http
+  seq: 6
+}
+
+delete {
+  url: {{base_url}}/api/driver/devices/{{device_uuid}}
+  body: none
+  auth: bearer
+}
+
+headers {
+  Accept: application/json
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+settings {
+  encodeUrl: true
+}
+
+docs {
+  Remove a device from the driver's account.
+}

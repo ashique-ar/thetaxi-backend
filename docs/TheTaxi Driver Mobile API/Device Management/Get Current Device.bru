@@ -1,0 +1,27 @@
+meta {
+  name: Get Current Device
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{base_url}}/api/driver/devices/current
+  body: none
+  auth: bearer
+}
+
+headers {
+  Accept: application/json
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+settings {
+  encodeUrl: true
+}
+
+docs {
+  Retrieve information about the current device.
+}

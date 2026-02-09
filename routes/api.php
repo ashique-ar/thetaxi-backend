@@ -588,7 +588,7 @@ Route::middleware(['auth:api'])->group(function () {
             ->middleware('permission:medical-records.view');
     });
 
-    Route::group(['prefix' => 'availability', 'middleware' => ['auth:sanctum']], function () {
+    Route::group(['prefix' => 'availability'], function () {
         Route::post('/check-vehicle', [AvailabilityController::class, 'checkVehicleAvailability'])
             ->middleware('permission:vehicle-availability.view');
         Route::post('/check-driver', [AvailabilityController::class, 'checkDriverAvailability'])
@@ -625,12 +625,11 @@ Route::middleware(['auth:api'])->group(function () {
     */
 
     Route::middleware(['permission:drivers.view'])->group(function () {
-        Route::apiResource('drivers', DriverController::class);
-        Route::apiResource('driver-logs', DriverLogController::class);
-        
-        // Driver status and location endpoints
+        // Driver status and location endpoints (place specific routes before resource registration)
         Route::get('drivers/locations', [DriverController::class, 'locations']);
         Route::get('drivers/{driver}/status', [DriverController::class, 'status']);
+        Route::apiResource('drivers', DriverController::class);
+        Route::apiResource('driver-logs', DriverLogController::class);
         Route::get('drivers/{driver}/sessions', [DriverController::class, 'sessions']);
         Route::get('drivers/{driver}/sessions/{session}/route', [DriverController::class, 'sessionRoute']);
         Route::get('drivers/{driver}/analytics', [DriverController::class, 'analytics']);

@@ -1,0 +1,787 @@
+{
+	"info": {
+		"_postman_id": "driver-mobile-api-v1",
+		"name": "TheTaxi Driver Mobile API",
+		"description": "Complete API collection for TheTaxi Driver Mobile Application. Includes authentication, status management, location tracking, sessions, and device management.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "thetaxi-driver-api"
+	},
+	"item": [
+		{
+			"name": "Authentication",
+			"item": [
+				{
+					"name": "Login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    if (response.data && response.data.token) {",
+									"        pm.environment.set('access_token', response.data.token.access_token);",
+									"        pm.environment.set('refresh_token', response.data.token.refresh_token);",
+									"        pm.environment.set('driver_id', response.data.driver.id);",
+									"        pm.environment.set('user_id', response.data.user.id);",
+									"        console.log('✅ Tokens saved to environment');",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"{{driver_email}}\",\n    \"password\": \"{{driver_password}}\",\n    \"device_uuid\": \"{{device_uuid}}\",\n    \"device_name\": \"{{device_name}}\",\n    \"device_model\": \"{{device_model}}\",\n    \"device_manufacturer\": \"{{device_manufacturer}}\",\n    \"platform\": \"{{platform}}\",\n    \"os_version\": \"{{os_version}}\",\n    \"app_version\": \"{{app_version}}\",\n    \"app_build\": \"{{app_build}}\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/driver/auth/login",
+							"host": ["{{base_url}}"],
+							"path": ["api", "driver", "auth", "login"]
+						},
+						"description": "Authenticate a driver and receive access and refresh tokens. Device information is registered/updated during login."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Profile",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{access_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/driver/auth/profile",
+							"host": ["{{base_url}}"],
+							"path": ["api", "driver", "auth", "profile"]
+						},
+						"description": "Retrieve the authenticated driver's profile information including user and driver details."
+					},
+					"response": []
+				},
+				{
+					"name": "Refresh Token",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    if (response.data) {",
+									"        pm.environment.set('access_token', response.data.access_token);",
+									"        pm.environment.set('refresh_token', response.data.refresh_token);",
+									"        console.log('✅ Tokens refreshed');",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{access_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"refresh_token\": \"{{refresh_token}}\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/driver/auth/refresh",
+							"host": ["{{base_url}}"],
+							"path": ["api", "driver", "auth", "refresh"]
+						},
+						"description": "Refresh the access token using the refresh token."
+					},
+					"response": []
+				},
+				{
+					"name": "Logout",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{access_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/driver/auth/logout",
+							"host": ["{{base_url}}"],
+							"path": ["api", "driver", "auth", "logout"]
+						},
+						"description": "Logout the authenticated driver by revoking their current token."
+					},
+					"response": []
+				}
+			],
+			"description": "Driver authentication endpoints including login, logout, profile, and token refresh."
+		},
+		{
+			"name": "Status Management",
+			"item": [
+				{
+					"name": "Go Online",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    if (response.data && response.data.id) {",
+									"        pm.environment.set('session_id', response.data.id);",
+									"        console.log('✅ Session started:', response.data.id);",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{access_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"device_uuid\": \"{{device_uuid}}\",\n    \"latitude\": {{start_latitude}},\n    \"longitude\": {{start_longitude}},\n    \"metadata\": {\n        \"app_version\": \"{{app_version}}\",\n        \"os\": \"{{platform}} {{os_version}}\"\n    }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/driver/status/online",
+							"host": ["{{base_url}}"],
+							"path": ["api", "driver", "status", "online"]
+						},
+						"description": "Set the driver's status to online and start a new session."
+					},
+					"response": []
+				},
+				{
+					"name": "Go Offline",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{access_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"latitude\": {{end_latitude}},\n    \"longitude\": {{end_longitude}}\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/driver/status/offline",
+							"host": ["{{base_url}}"],
+							"path": ["api", "driver", "status", "offline"]
+						},
+						"description": "Set the driver's status to offline and close the active session."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Current Status",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{access_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/driver/status",
+							"host": ["{{base_url}}"],
+							"path": ["api", "driver", "status"]
+						},
+						"description": "Retrieve the driver's current online/offline status and active session information."
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoints for managing driver online/offline status and sessions."
+		},
+		{
+			"name": "Heartbeat",
+			"item": [
+				{
+					"name": "Send Heartbeat",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{access_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/driver/heartbeat",
+							"host": ["{{base_url}}"],
+							"path": ["api", "driver", "heartbeat"]
+						},
+						"description": "Send a heartbeat signal to indicate the driver is still active. Should be sent every 60 seconds while online."
+					},
+					"response": []
+				}
+			],
+			"description": "Heartbeat endpoint to maintain driver's active status."
+		},
+		{
+			"name": "Location Tracking",
+			"item": [
+				{
+					"name": "Update Location",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{access_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"latitude\": {{current_latitude}},\n    \"longitude\": {{current_longitude}},\n    \"altitude\": 15.5,\n    \"speed\": 45.2,\n    \"heading\": 180.5,\n    \"accuracy\": 10.0,\n    \"recorded_at\": \"{{$isoTimestamp}}\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/driver/location",
+							"host": ["{{base_url}}"],
+							"path": ["api", "driver", "location"]
+						},
+						"description": "Send the driver's current GPS location. Creates a route point for the active session. Should be sent every 10 seconds while moving."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Location History",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{access_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/driver/location/history",
+							"host": ["{{base_url}}"],
+							"path": ["api", "driver", "location", "history"]
+						},
+						"description": "Retrieve route points for the current active session."
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoints for tracking and retrieving driver location data."
+		},
+		{
+			"name": "Sessions",
+			"item": [
+				{
+					"name": "List Sessions",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{access_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/driver/sessions?page=1&per_page=15&status=completed",
+							"host": ["{{base_url}}"],
+							"path": ["api", "driver", "sessions"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1",
+									"description": "Page number"
+								},
+								{
+									"key": "per_page",
+									"value": "15",
+									"description": "Items per page (max 100)"
+								},
+								{
+									"key": "status",
+									"value": "completed",
+									"description": "Filter by status: active, completed, auto_closed",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Retrieve paginated list of driver's session history."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Session Details",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{access_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/driver/sessions/{{session_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "driver", "sessions", "{{session_id}}"]
+						},
+						"description": "Retrieve detailed information about a specific session including route points and statistics."
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoints for viewing session history and details."
+		},
+		{
+			"name": "Device Management",
+			"item": [
+				{
+					"name": "List Devices",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{access_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/driver/devices",
+							"host": ["{{base_url}}"],
+							"path": ["api", "driver", "devices"]
+						},
+						"description": "Retrieve all devices registered for the authenticated driver."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Current Device",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{access_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/driver/devices/current",
+							"host": ["{{base_url}}"],
+							"path": ["api", "driver", "devices", "current"]
+						},
+						"description": "Retrieve information about the current device."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Device",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{access_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"device_name\": \"{{device_name}}\",\n    \"app_version\": \"{{app_version}}\",\n    \"app_build\": \"{{app_build}}\",\n    \"os_version\": \"{{os_version}}\",\n    \"locale\": \"en_US\",\n    \"timezone\": \"Asia/Colombo\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/driver/devices",
+							"host": ["{{base_url}}"],
+							"path": ["api", "driver", "devices"]
+						},
+						"description": "Update device information (app version, push token, etc.)."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Push Token",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{access_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"push_token\": \"{{push_token}}\",\n    \"push_provider\": \"{{push_provider}}\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/driver/devices/push-token",
+							"host": ["{{base_url}}"],
+							"path": ["api", "driver", "devices", "push-token"]
+						},
+						"description": "Update the push notification token for the current device."
+					},
+					"response": []
+				},
+				{
+					"name": "Deactivate Device",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{access_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/driver/devices/{{device_uuid}}/deactivate",
+							"host": ["{{base_url}}"],
+							"path": ["api", "driver", "devices", "{{device_uuid}}", "deactivate"]
+						},
+						"description": "Deactivate a specific device."
+					},
+					"response": []
+				},
+				{
+					"name": "Remove Device",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{access_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/driver/devices/{{device_uuid}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "driver", "devices", "{{device_uuid}}"]
+						},
+						"description": "Remove a device from the driver's account."
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoints for managing driver devices and push notifications."
+		},
+		{
+			"name": "Assignments",
+			"item": [
+				{
+					"name": "List Assignments",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{access_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/driver/assignments",
+							"host": ["{{base_url}}"],
+							"path": ["api", "driver", "assignments"]
+						},
+						"description": "Retrieve list of driver assignments (placeholder for future implementation)."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Current Assignment",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{access_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/driver/assignments/current",
+							"host": ["{{base_url}}"],
+							"path": ["api", "driver", "assignments", "current"]
+						},
+						"description": "Get the current active assignment (placeholder for future implementation)."
+					},
+					"response": []
+				}
+			],
+			"description": "Assignment endpoints (placeholder for future dispatch functionality)."
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000",
+			"type": "string"
+		}
+	]
+}

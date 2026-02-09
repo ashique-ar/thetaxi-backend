@@ -2,13 +2,25 @@
 
 ## Overview
 
-This document provides comprehensive API documentation for the TheTaxi Driver Mobile Application. The API enables drivers to authenticate, manage their online/offline status, track locations, and view session history.
+This document provides comprehensive API documentation for the TheTaxi Driver Mobile Application. The API enables drivers to authenticate, manage their online/offline status, track locations, view session history, and manage devices.
 
-**Base URL:** `https://api.thetaxi.lk` (Production) | `http://thetaxi.test` (Development)
+**Base URL:** `https://api.thetaxi.lk` (Production) | `http://localhost:8000` (Development)
 
 **API Version:** 1.0
 
-**Last Updated:** February 2026
+**Authentication:** Laravel Sanctum (Token-based)
+
+**Last Updated:** February 9, 2026
+
+## Postman Collection
+
+Import the Postman collection and environment files for easy testing:
+
+- **Collection:** `public-thetaxi/docs/postman/TheTaxi-Driver-API.postman_collection.json`
+- **Development Environment:** `public-thetaxi/docs/postman/TheTaxi-Driver-API.postman_environment.json`
+- **Production Environment:** `public-thetaxi/docs/postman/TheTaxi-Driver-API-Production.postman_environment.json`
+
+The collection includes automatic token management and pre-configured requests for all endpoints.
 
 ---
 
@@ -28,12 +40,29 @@ This document provides comprehensive API documentation for the TheTaxi Driver Mo
 
 ---
 
+## Authentication Architecture
+
+The Driver Mobile API uses **Laravel Sanctum** for token-based authentication with the following features:
+
+- **Token Rotation:** Each login and refresh generates new access and refresh tokens
+- **Single Session Enforcement:** Only one active session per driver (new login revokes previous tokens)
+- **Token Expiration:** Access tokens expire after 1 hour (configurable)
+- **Automatic Refresh:** Use refresh tokens to obtain new access tokens before expiration
+- **Driver Context Validation:** Middleware ensures authenticated users have an active driver context
+
+### Middleware Stack
+
+All protected driver endpoints use the following middleware:
+
+1. `auth:api` - Validates Sanctum bearer token
+2. `ensure.driver` - Verifies user has an active driver context
+
 ## Common Headers
 
 All authenticated requests must include:
 
 ```
-Authorization: Bearer {token}
+Authorization: Bearer {access_token}
 Content-Type: application/json
 Accept: application/json
 ```
@@ -91,7 +120,12 @@ Authenticate a driver and receive a Sanctum token.
     "status": "success",
     "message": "Login successful",
     "data": {
-        "token": "1|abc123xyz...",
+        "token": {
+            "access_token": "1|abc123xyz...",
+            "refresh_token": "2|def456uvw...",
+            "token_type": "Bearer",
+            "expires_in": 3600
+        },
         "user": {
             "id": "uuid-here",
             "email": "driver@example.com",
@@ -132,13 +166,69 @@ Authenticate a driver and receive a Sanctum token.
 | 429 | RATE_LIMITED | Too many login attempts |
 
 **Important Notes:**
+- Uses Laravel Sanctum for token-based authentication (not Passport OAuth2)
+- Returns both access_token and refresh_token for token rotation
+- Access tokens expire after 1 hour (configurable)
 - When logging in from a new device, all previous session tokens are automatically revoked (single-session enforcement)
-- Store the token securely on the device (e.g., Keychain on iOS, EncryptedSharedPreferences on Android)
+- Store both tokens securely on the device (e.g., Keychain on iOS, EncryptedSharedPreferences on Android)
 - The device_uuid should be generated once and stored persistently on the device
+- Use the refresh token endpoint to get a new access token before expiration
 
 ---
 
-### 1.2 Logout
+### 1.2 Refresh Token
+
+Refresh the access token using the refresh token before it expires.
+
+**Endpoint:** `POST /api/driver/auth/refresh`
+
+**Authentication:** Required (Bearer token)
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| refresh_token | string | Yes | The refresh token received during login |
+
+**Example Request:**
+
+```json
+{
+    "refresh_token": "2|def456uvw..."
+}
+```
+
+**Success Response (200):**
+
+```json
+{
+    "status": "success",
+    "message": "Token refreshed successfully",
+    "data": {
+        "access_token": "3|ghi789rst...",
+        "refresh_token": "4|jkl012mno...",
+        "token_type": "Bearer",
+        "expires_in": 3600
+    }
+}
+```
+
+**Error Responses:**
+
+| Status | Error Code | Description |
+|--------|------------|-------------|
+| 401 | AUTH_REFRESH_FAILED | Invalid or expired refresh token |
+| 403 | AUTH_NOT_DRIVER | User is not registered as a driver |
+
+**Important Notes:**
+- Refresh tokens should be used before the access token expires
+- Each refresh generates a new access token AND a new refresh token
+- Old refresh tokens are invalidated after use (token rotation)
+- Implement automatic token refresh in your app when receiving 401 errors
+
+---
+
+### 1.3 Logout
 
 Revoke the current authentication token.
 
@@ -159,7 +249,7 @@ Revoke the current authentication token.
 
 ---
 
-### 1.3 Get Profile
+### 1.4 Get Profile
 
 Retrieve the authenticated driver's profile information.
 
@@ -712,7 +802,7 @@ Retrieve information about the current device.
 
 Update device information (app version, push token, etc.).
 
-**Endpoint:** `PUT /api/driver/devices/{device_uuid}`
+**Endpoint:** `PUT /api/driver/devices`
 
 **Authentication:** Required
 
@@ -760,7 +850,7 @@ Update device information (app version, push token, etc.).
 
 Update the push notification token for the current device.
 
-**Endpoint:** `POST /api/driver/devices/{device_uuid}/push-token`
+**Endpoint:** `POST /api/driver/devices/push-token`
 
 **Authentication:** Required
 
@@ -798,13 +888,17 @@ Update the push notification token for the current device.
 
 ### 6.5 Deactivate Device
 
-Deactivate a specific device (admin portal only).
+Deactivate a specific device.
 
-**Endpoint:** `POST /api/drivers/{driver_id}/devices/{device_uuid}/deactivate`
+**Endpoint:** `POST /api/driver/devices/{device_uuid}/deactivate`
 
-**Authentication:** Required (Admin)
+**Authentication:** Required
 
-**Permission:** `drivers.edit`
+**Path Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| device_uuid | string (UUID) | The device's unique identifier |
 
 **Success Response (200):**
 
@@ -824,13 +918,17 @@ Deactivate a specific device (admin portal only).
 
 ### 6.6 Remove Device
 
-Remove a device from the driver's account (admin portal only).
+Remove a device from the driver's account.
 
-**Endpoint:** `DELETE /api/drivers/{driver_id}/devices/{device_uuid}`
+**Endpoint:** `DELETE /api/driver/devices/{device_uuid}`
 
-**Authentication:** Required (Admin)
+**Authentication:** Required
 
-**Permission:** `drivers.edit`
+**Path Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| device_uuid | string (UUID) | The device's unique identifier |
 
 **Success Response (200):**
 
@@ -841,17 +939,32 @@ Remove a device from the driver's account (admin portal only).
 }
 ```
 
+**Important Notes:**
+- Removing a device will revoke all tokens associated with it
+- The driver will need to log in again from that device
+- This is useful for lost or stolen devices
+
 ---
 
-## 7. Assignments (Placeholder)
+## 7. Assignments
 
 These endpoints are placeholders for future assignment/dispatch functionality.
 
-### 6.1 List Assignments
+### 7.1 List Assignments
+
+Retrieve list of driver assignments.
 
 **Endpoint:** `GET /api/driver/assignments`
 
 **Authentication:** Required
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| page | integer | 1 | Page number |
+| per_page | integer | 15 | Items per page (max 100) |
+| status | string | null | Filter by status (future implementation) |
 
 **Success Response (200):**
 
@@ -869,7 +982,13 @@ These endpoints are placeholders for future assignment/dispatch functionality.
 }
 ```
 
-### 6.2 Get Current Assignment
+**Note:** This endpoint is a placeholder for future dispatch/assignment functionality.
+
+---
+
+### 7.2 Get Current Assignment
+
+Get the current active assignment.
 
 **Endpoint:** `GET /api/driver/assignments/current`
 
@@ -885,51 +1004,26 @@ These endpoints are placeholders for future assignment/dispatch functionality.
 }
 ```
 
+**Note:** This endpoint is a placeholder for future dispatch/assignment functionality.
+
 ---
 
-## 8. Public/Meter API
+## 8. Public/Meter API (Future Implementation)
 
-These endpoints are for guest users (meter functionality) and require a Device UUID header instead of authentication.
+These endpoints are planned for guest users (meter functionality) and will require a Device UUID header instead of authentication.
 
 **Required Header:**
 ```
 X-Device-UUID: {device_uuid}
 ```
 
-### 7.1 Start Meter
+**Planned Endpoints:**
+- `POST /api/public/meter/start` - Start a new meter session
+- `POST /api/public/meter/stop` - Stop the active meter session
+- `POST /api/public/meter/location` - Update location during meter session
+- `GET /api/public/meter/estimate` - Get fare estimate based on distance
 
-Start a new meter session for fare tracking.
-
-**Endpoint:** `POST /api/public/meter/start`
-
-**Authentication:** None (Device UUID required)
-
-**Request Body:**
-
-```json
-{
-    "latitude": 6.9271,
-    "longitude": 79.8612
-}
-```
-
-### 7.2 Stop Meter
-
-Stop the active meter session.
-
-**Endpoint:** `POST /api/public/meter/stop`
-
-### 7.3 Update Meter Location
-
-Send location update during meter session.
-
-**Endpoint:** `POST /api/public/meter/location`
-
-### 7.4 Get Fare Estimate
-
-Get estimated fare based on distance.
-
-**Endpoint:** `GET /api/public/meter/estimate`
+**Note:** These endpoints are not yet implemented.
 
 ---
 
@@ -968,14 +1062,16 @@ All error responses follow this format:
 | Error Code | Description |
 |------------|-------------|
 | AUTH_INVALID_CREDENTIALS | Invalid email or password |
-| AUTH_TOKEN_EXPIRED | Token has expired |
-| AUTH_TOKEN_REVOKED | Token has been revoked |
+| AUTH_TOKEN_EXPIRED | Token has expired - use refresh token |
+| AUTH_TOKEN_REVOKED | Token has been revoked - login required |
+| AUTH_REFRESH_FAILED | Refresh token is invalid or expired |
 | AUTH_NOT_DRIVER | User is not registered as a driver |
 | STATUS_ALREADY_ONLINE | Driver is already online |
 | STATUS_NOT_ONLINE | Driver is not currently online |
 | LOCATION_NO_SESSION | No active session for location update |
 | SESSION_NOT_FOUND | Session not found |
 | DEVICE_UUID_REQUIRED | Missing Device UUID header |
+| VALIDATION_ERROR | Request validation failed |
 
 ---
 
@@ -1129,14 +1225,91 @@ For continuous location tracking while online:
 
 ### Handling Token Expiration
 
+Implement automatic token refresh when receiving 401 errors:
+
 ```swift
-// Pseudo-code for handling 401 responses
+// iOS Swift example
 func handleAPIResponse(response: Response) {
     if response.statusCode == 401 {
-        // Clear stored token
-        clearAuthToken()
-        // Navigate to login screen
-        navigateToLogin()
+        let errorCode = response.json["error_code"] as? String
+        
+        if errorCode == "AUTH_TOKEN_EXPIRED" {
+            // Attempt to refresh token
+            refreshAccessToken { success in
+                if success {
+                    // Retry the original request
+                    retryRequest(response.request)
+                } else {
+                    // Refresh failed, navigate to login
+                    navigateToLogin()
+                }
+            }
+        } else {
+            // Other auth errors, navigate to login
+            clearAuthTokens()
+            navigateToLogin()
+        }
+    }
+}
+
+func refreshAccessToken(completion: @escaping (Bool) -> Void) {
+    guard let refreshToken = getStoredRefreshToken() else {
+        completion(false)
+        return
+    }
+    
+    apiClient.post("/api/driver/auth/refresh", body: ["refresh_token": refreshToken]) { result in
+        switch result {
+        case .success(let data):
+            saveTokens(accessToken: data.access_token, refreshToken: data.refresh_token)
+            completion(true)
+        case .failure:
+            completion(false)
+        }
+    }
+}
+```
+
+```kotlin
+// Android Kotlin example
+suspend fun handleApiResponse(response: Response): Result<Any> {
+    return when (response.code) {
+        401 -> {
+            val errorCode = response.body?.errorCode
+            
+            if (errorCode == "AUTH_TOKEN_EXPIRED") {
+                // Attempt to refresh token
+                val refreshResult = refreshAccessToken()
+                if (refreshResult.isSuccess) {
+                    // Retry the original request
+                    retryRequest(response.request)
+                } else {
+                    // Refresh failed, navigate to login
+                    navigateToLogin()
+                    Result.failure(Exception("Authentication failed"))
+                }
+            } else {
+                // Other auth errors
+                clearAuthTokens()
+                navigateToLogin()
+                Result.failure(Exception("Authentication failed"))
+            }
+        }
+        else -> Result.success(response.body)
+    }
+}
+
+suspend fun refreshAccessToken(): Result<TokenResponse> {
+    val refreshToken = getStoredRefreshToken() ?: return Result.failure(Exception("No refresh token"))
+    
+    return try {
+        val response = apiClient.post("/api/driver/auth/refresh") {
+            body = RefreshRequest(refreshToken)
+        }
+        saveTokens(response.accessToken, response.refreshToken)
+        Result.success(response)
+    } catch (e: Exception) {
+        Result.failure(e)
     }
 }
 ```

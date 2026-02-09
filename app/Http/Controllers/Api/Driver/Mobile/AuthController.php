@@ -15,7 +15,7 @@ use Illuminate\Validation\ValidationException;
 /**
  * Driver Mobile Authentication Controller
  * 
- * Handles authentication for the driver mobile application using Laravel Sanctum.
+ * Handles authentication for the driver mobile.
  * Provides login, logout, and profile endpoints specifically for drivers.
  * 
  * @see Requirements 2.1, 2.5, 2.7
@@ -32,16 +32,16 @@ class AuthController extends Controller
     ) {}
 
     /**
-     * Authenticate a driver and issue a Sanctum token.
-     * 
-     * Validates credentials, verifies driver context exists, revokes any existing
-     * tokens for single-session enforcement, and issues a new token.
-     * Also registers/updates device information if provided.
+     * Authenticate a driver and return access tokens.
+     *
+     * Validates driver credentials and creates API tokens for mobile access.
+     * Includes rate limiting for security.
      *
      * @param DriverLoginRequest $request
      * @return JsonResponse
-     * 
-     * @see Requirement 2.1 - Sanctum token issuance for valid credentials
+     *
+     * @see Requirement 2.1 - Driver authentication with credentials
+     * @see Requirement 2.3 - Rate limiting for authentication attempts
      */
     public function login(DriverLoginRequest $request): JsonResponse
     {
@@ -51,21 +51,15 @@ class AuthController extends Controller
             // Clear rate limit on successful login
             $request->clearRateLimit();
 
-            $responseData = [
-                'token' => $result['token'],
-                'user' => new UserResource($result['user']),
-                'driver' => new DriverResource($result['driver']),
-            ];
-
-            // Include device info if available
-            if (isset($result['device']) && $result['device']) {
-                $responseData['device'] = new DriverDeviceResource($result['device']);
-            }
-
             return response()->json([
                 'status' => 'success',
                 'message' => 'Login successful',
-                'data' => $responseData
+                'data' => [
+                    'user' => new UserResource($result['user']),
+                    'driver' => new DriverResource($result['driver']),
+                    'device' => isset($result['device']) ? new DriverDeviceResource($result['device']) : null,
+                    'token' => $result['tokens']
+                ]
             ]);
         } catch (ValidationException $e) {
             return response()->json([
@@ -152,6 +146,36 @@ class AuthController extends Controller
                 'error_code' => 'AUTH_PROFILE_FAILED',
                 'error' => $e->getMessage()
             ], 500);
+        }
+    }
+
+    /**
+     * Refresh access token using refresh token (token ID).
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function refresh(Request $request): JsonResponse
+    {
+        $request->validate([
+            'refresh_token' => 'required|string'
+        ]);
+
+        try {
+            $tokens = $this->authService->refreshToken($request->refresh_token);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Token refreshed successfully',
+                'data' => $tokens
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Token refresh failed',
+                'error_code' => 'AUTH_REFRESH_FAILED',
+                'error' => $e->getMessage()
+            ], 401);
         }
     }
 }

@@ -6,13 +6,13 @@ use App\Models\User;
 use App\Models\Driver\Driver;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
-use Laravel\Sanctum\PersonalAccessToken;
+use Laravel\Passport\Passport;
 
 /**
  * Driver Authentication Service
  * 
- * Handles authentication for the driver mobile application using Laravel Sanctum.
- * Provides login, logout, and token management functionality specifically for drivers.
+ * Handles authentication for the driver mobile application using Laravel Passport.
+ * Provides login, logout, token refresh, and token management functionality for drivers.
  * 
  * @see Requirements 2.1, 2.2, 2.3, 2.5, 2.6
  */
@@ -29,16 +29,17 @@ class DriverAuthService
     }
 
     /**
-     * Authenticate a driver and issue a Sanctum token.
+     * Authenticate a driver and issue Passport tokens.
      * 
      * Validates credentials, verifies driver context exists, revokes any existing
-     * tokens for single-session enforcement, and issues a new token.
+     * tokens for single-session enforcement, and issues new access and refresh tokens.
+     * Also registers/updates device information if provided.
      *
      * @param array $credentials Array containing 'email', 'password', 'device_uuid', and optional device info
-     * @return array Contains 'token', 'user', 'driver', and 'device' data
+     * @return array Contains 'access_token', 'refresh_token', 'expires_in', 'user', 'driver', and 'device' data
      * @throws ValidationException If credentials are invalid or user is not a driver
      * 
-     * @see Requirement 2.1 - Sanctum token issuance
+     * @see Requirement 2.1 - Passport token issuance for valid credentials
      * @see Requirement 2.2 - Link session to User and Driver records
      * @see Requirement 2.3 - Revoke previous session on new login
      * @see Requirement 2.6 - No duplicate records during authentication
@@ -96,38 +97,46 @@ class DriverAuthService
         // Reset login attempts on successful authentication
         $user->resetLoginAttempts();
 
-        // Revoke all existing Sanctum tokens for single-session enforcement
+        // Revoke all existing tokens for single-session enforcement
         $this->revokeAllTokens($user);
 
-        // Create new Sanctum token
-        $tokenName = 'driver-mobile-' . ($credentials['device_uuid'] ?? 'unknown');
-        $token = $user->createToken($tokenName, ['driver']);
+        // Create new Passport token with driver scope
+        $tokenResult = $user->createToken('driver-mobile', ['driver']);
+        $token = $tokenResult->token;
+        
+        // Set token expiration (30 days for access token)
+        $token->expires_at = now()->addDays(30);
+        $token->save();
 
         // Update last login timestamp
         $user->updateLastLogin();
 
-        // Update driver's current device UUID
-        if (isset($credentials['device_uuid'])) {
-            $driver->update([
-                'current_device_uuid' => $credentials['device_uuid']
-            ]);
-            
-            // Deactivate other devices for single-session enforcement
-            $this->deviceService->deactivateOtherDevices($driver, $credentials['device_uuid']);
-        }
-
-        // Register/update device information
+        // Register/update device information FIRST
         $device = null;
         if (isset($credentials['device_uuid'])) {
             $deviceData = $this->extractDeviceData($credentials);
             $device = $this->deviceService->registerDevice($driver, $deviceData);
+            
+            // Update driver's current device UUID
+            $driver->update([
+                'current_device_uuid' => $credentials['device_uuid']
+            ]);
+            
+            // Deactivate other devices for single-session enforcement AFTER registration
+            $this->deviceService->deactivateOtherDevices($driver, $credentials['device_uuid']);
         }
 
         return [
-            'token' => $token->plainTextToken,
             'user' => $user,
             'driver' => $driver,
             'device' => $device,
+            'tokens' => [
+                'access_token' => $tokenResult->accessToken,
+                'token_type' => 'Bearer',
+                'expires_at' => $token->expires_at->toISOString(),
+                'refresh_token' => $token->id, // Use token ID as refresh identifier
+                'scope' => 'driver'
+            ]
         ];
     }
 
@@ -157,7 +166,58 @@ class DriverAuthService
     }
 
     /**
-     * Logout a driver by revoking their current Sanctum token.
+     * Refresh an access token using a refresh token (token ID).
+     *
+     * @param string $tokenId The token ID used as refresh token
+     * @return array Contains new 'access_token', 'refresh_token', and 'expires_in'
+     * @throws \Exception If refresh token is invalid
+     */
+    public function refreshToken(string $tokenId): array
+    {
+        // Find the existing token
+        $token = \Laravel\Passport\Token::find($tokenId);
+        
+        if (!$token || $token->revoked) {
+            throw new \Exception('Invalid or revoked token');
+        }
+
+        if ($token->expires_at && $token->expires_at < now()) {
+            throw new \Exception('Token expired');
+        }
+
+        $user = User::find($token->user_id);
+        
+        if (!$user || !$user->isActive()) {
+            throw new \Exception('User not found or inactive');
+        }
+
+        // Verify user is still a driver
+        if (!$this->isDriver($user)) {
+            throw new \Exception('User is no longer registered as a driver');
+        }
+
+        // Revoke old token
+        $token->revoke();
+
+        // Create new token with same scopes
+        $tokenResult = $user->createToken('driver-mobile', ['driver']);
+        $newToken = $tokenResult->token;
+        
+        // Set token expiration (30 days)
+        $newToken->expires_at = now()->addDays(30);
+        $newToken->save();
+
+        return [
+            'access_token' => $tokenResult->accessToken,
+            'refresh_token' => $newToken->id,
+            'token_type' => 'Bearer',
+            'expires_in' => $newToken->expires_at->diffInSeconds(now()),
+            'expires_at' => $newToken->expires_at->toISOString(),
+        ];
+    }
+
+    /**
+     * Logout a driver by revoking their current token.
      *
      * @param User $user The authenticated user to logout
      * @return void
@@ -167,38 +227,20 @@ class DriverAuthService
     public function logout(User $user): void
     {
         // Revoke the current access token
-        $user->currentAccessToken()?->delete();
+        $user->token()->revoke();
     }
 
     /**
-     * Revoke all tokens except the current one for single-session enforcement.
+     * Revoke all tokens for a user.
      *
-     * @param User $user The user whose other tokens should be revoked
-     * @param string|null $currentTokenId The ID of the current token to keep (optional)
+     * @param User $user The user whose tokens should be revoked
      * @return void
      * 
      * @see Requirement 2.3 - Single active session enforcement
      */
-    public function revokeOtherTokens(User $user, ?string $currentTokenId = null): void
-    {
-        $query = $user->tokens();
-        
-        if ($currentTokenId) {
-            $query->where('id', '!=', $currentTokenId);
-        }
-        
-        $query->delete();
-    }
-
-    /**
-     * Revoke all Sanctum tokens for a user.
-     *
-     * @param User $user The user whose tokens should be revoked
-     * @return void
-     */
     public function revokeAllTokens(User $user): void
     {
-        $user->tokens()->delete();
+        $user->tokens()->update(['revoked' => true]);
     }
 
     /**

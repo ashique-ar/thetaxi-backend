@@ -50,6 +50,23 @@ class UserResource extends JsonResource
                     'code' => $this->agent->code,
                 ];
             }),
+            'contexts' => $this->whenLoaded('contexts', function () {
+                return $this->contexts->map(function ($context) {
+                    return [
+                        'id' => $context->id,
+                        'context_type' => $context->context_type,
+                        'context_id' => $context->context_id,
+                        'is_active' => $context->is_active,
+                        'roles' => $context->roles->map(function ($role) {
+                            return [
+                                'id' => $role->id,
+                                'name' => $role->name,
+                                'display_name' => $role->display_name ?? $role->name,
+                            ];
+                        }),
+                    ];
+                });
+            }),
             'statistics' => $this->when($request->has('include_stats'), function () {
                 return [
                     'total_bookings' => $this->bookings()->count(),

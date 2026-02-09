@@ -6,7 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Driver\DriverLog;
 use App\Http\Requests\Driver\DriverLog\CreateDriverLogRequest;
 use App\Http\Requests\Driver\DriverLog\UpdateDriverLogRequest;
-use App\Http\Resources\DriverLogResource;
+use App\Http\Resources\Driver\DriverLogResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;

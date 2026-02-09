@@ -25,7 +25,7 @@ class UpdateApiSessionOnRequest
                     $tokenModel = $user->token();
                 }
 
-                // Sanctum: currentAccessToken() available
+                // currentAccessToken() available
                 if (!$tokenModel && method_exists($user, 'currentAccessToken')) {
                     $tokenModel = $user->currentAccessToken();
                 }

@@ -19,7 +19,7 @@ class UserService
      */
     public function getAllUsers(array $filters = []): LengthAwarePaginator
     {
-        $query = User::with(['role', 'agent', 'permissions', 'roles']);
+        $query = User::with(['role', 'agent', 'permissions', 'roles', 'contexts']);
 
         // Apply filters
         if (!empty($filters['search'])) {
@@ -40,6 +40,13 @@ class UserService
 
         if (!empty($filters['status'])) {
             $query->where('is_active', $filters['status'] === 'active');
+        }
+
+        if (!empty($filters['context'])) {
+            $query->whereHas('contexts', function ($q) use ($filters) {
+                $q->where('context_type', $filters['context'])
+                  ->where('is_active', true);
+            });
         }
 
         if (!empty($filters['agent_id'])) {

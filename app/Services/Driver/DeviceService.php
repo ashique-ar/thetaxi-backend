@@ -29,80 +29,80 @@ class DeviceService
      */
     public function registerDevice(Driver $driver, array $deviceData): DriverDevice
     {
-        return DB::transaction(function () use ($driver, $deviceData) {
-            $deviceUuid = $deviceData['device_uuid'];
-            
-            // Find existing device or create new one
-            $device = DriverDevice::withTrashed()
+        $deviceUuid = $deviceData['device_uuid'];
+        $now = now();
+        
+        Log::info('Attempting to register/update device', [
+            'driver_id' => $driver->id,
+            'device_uuid' => $deviceUuid,
+        ]);
+        
+        $updateData = [
+            'device_name' => $deviceData['device_name'] ?? null,
+            'device_model' => $deviceData['device_model'] ?? null,
+            'device_manufacturer' => $deviceData['device_manufacturer'] ?? null,
+            'platform' => $deviceData['platform'] ?? 'unknown',
+            'os_version' => $deviceData['os_version'] ?? null,
+            'app_version' => $deviceData['app_version'] ?? null,
+            'app_build' => $deviceData['app_build'] ?? null,
+            'push_token' => $deviceData['push_token'] ?? null,
+            'push_provider' => $deviceData['push_provider'] ?? null,
+            'ip_address' => $deviceData['ip_address'] ?? null,
+            'locale' => $deviceData['locale'] ?? null,
+            'timezone' => $deviceData['timezone'] ?? null,
+            'metadata' => $deviceData['metadata'] ?? null,
+            'is_active' => true,
+            'last_active_at' => $now,
+        ];
+        
+        try {
+            // Use updateOrCreate to handle both insert and update cases
+            // First, check if a soft-deleted device exists and restore it
+            $existingDevice = DriverDevice::withTrashed()
                 ->where('driver_id', $driver->id)
                 ->where('device_uuid', $deviceUuid)
                 ->first();
             
-            $now = now();
-            
-            if ($device) {
-                // Restore if soft deleted
-                if ($device->trashed()) {
-                    $device->restore();
-                }
-                
-                // Update existing device
-                $device->update([
-                    'device_name' => $deviceData['device_name'] ?? $device->device_name,
-                    'device_model' => $deviceData['device_model'] ?? $device->device_model,
-                    'device_manufacturer' => $deviceData['device_manufacturer'] ?? $device->device_manufacturer,
-                    'platform' => $deviceData['platform'] ?? $device->platform,
-                    'os_version' => $deviceData['os_version'] ?? $device->os_version,
-                    'app_version' => $deviceData['app_version'] ?? $device->app_version,
-                    'app_build' => $deviceData['app_build'] ?? $device->app_build,
-                    'push_token' => $deviceData['push_token'] ?? $device->push_token,
-                    'push_provider' => $deviceData['push_provider'] ?? $device->push_provider,
-                    'ip_address' => $deviceData['ip_address'] ?? $device->ip_address,
-                    'locale' => $deviceData['locale'] ?? $device->locale,
-                    'timezone' => $deviceData['timezone'] ?? $device->timezone,
-                    'metadata' => array_merge($device->metadata ?? [], $deviceData['metadata'] ?? []),
-                    'is_active' => true,
-                    'last_active_at' => $now,
-                ]);
-                
-                Log::info('Driver device updated', [
+            if ($existingDevice && $existingDevice->trashed()) {
+                Log::info('Restoring soft-deleted device', [
                     'driver_id' => $driver->id,
-                    'device_id' => $device->id,
+                    'device_id' => $existingDevice->id,
                     'device_uuid' => $deviceUuid,
                 ]);
+                $existingDevice->restore();
+                $existingDevice->update($updateData);
+                $device = $existingDevice;
             } else {
-                // Create new device
-                $device = DriverDevice::create([
-                    'driver_id' => $driver->id,
-                    'device_uuid' => $deviceUuid,
-                    'device_name' => $deviceData['device_name'] ?? null,
-                    'device_model' => $deviceData['device_model'] ?? null,
-                    'device_manufacturer' => $deviceData['device_manufacturer'] ?? null,
-                    'platform' => $deviceData['platform'] ?? 'unknown',
-                    'os_version' => $deviceData['os_version'] ?? null,
-                    'app_version' => $deviceData['app_version'] ?? null,
-                    'app_build' => $deviceData['app_build'] ?? null,
-                    'push_token' => $deviceData['push_token'] ?? null,
-                    'push_provider' => $deviceData['push_provider'] ?? null,
-                    'ip_address' => $deviceData['ip_address'] ?? null,
-                    'locale' => $deviceData['locale'] ?? null,
-                    'timezone' => $deviceData['timezone'] ?? null,
-                    'metadata' => $deviceData['metadata'] ?? null,
-                    'is_active' => true,
-                    'last_active_at' => $now,
-                    'registered_at' => $now,
-                ]);
-                
-                Log::info('Driver device registered', [
-                    'driver_id' => $driver->id,
-                    'device_id' => $device->id,
-                    'device_uuid' => $deviceUuid,
-                    'platform' => $device->platform,
-                ]);
+                // Use updateOrCreate for non-trashed devices
+                $device = DriverDevice::updateOrCreate(
+                    [
+                        'driver_id' => $driver->id,
+                        'device_uuid' => $deviceUuid,
+                    ],
+                    array_merge($updateData, [
+                        'registered_at' => $existingDevice->registered_at ?? $now,
+                    ])
+                );
             }
             
+            Log::info('Driver device registered/updated', [
+                'driver_id' => $driver->id,
+                'device_id' => $device->id,
+                'device_uuid' => $deviceUuid,
+                'platform' => $device->platform,
+                'was_recently_created' => $device->wasRecentlyCreated,
+            ]);
+            
             return $device;
-        });
+        } catch (\Exception $e) {
+            Log::error('Failed to register/update device', [
+                'driver_id' => $driver->id,
+                'device_uuid' => $deviceUuid,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            throw $e;
+        }
     }
 
     /**

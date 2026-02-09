@@ -34,6 +34,19 @@ class AppServiceProvider extends ServiceProvider
         Passport::tokensExpireIn(now()->addHours(24));
         Passport::refreshTokensExpireIn(now()->addDays(30));
         Passport::personalAccessTokensExpireIn(now()->addMonths(6));
+        
+        // Define Passport scopes
+        Passport::tokensCan([
+            'admin' => 'Access admin portal',
+            'driver' => 'Access driver mobile app',
+            'customer' => 'Access customer features',
+            'agent' => 'Access agent features',
+        ]);
+        
+        // Set default scope
+        Passport::setDefaultScope([
+            'admin',
+        ]);
 
         // Define gates for API authentication
         Gate::define('api-access', function ($user) {

@@ -1,0 +1,33 @@
+meta {
+  name: List Sessions
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{base_url}}/api/driver/sessions?page=1&per_page=15&status=completed
+  body: none
+  auth: bearer
+}
+
+params:query {
+  page: 1
+  per_page: 15
+  ~status: completed
+}
+
+headers {
+  Accept: application/json
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+settings {
+  encodeUrl: true
+}
+
+docs {
+  Retrieve paginated list of driver's session history.
+}

@@ -16,7 +16,7 @@ use App\Http\Controllers\Api\Driver\Mobile\DeviceController;
 |
 | These routes are loaded by the RouteServiceProvider and are prefixed
 | with /api/driver. They provide endpoints specifically for the driver
-| mobile application using Sanctum authentication.
+| mobile application using Passport OAuth2 authentication.
 |
 */
 
@@ -25,13 +25,14 @@ Route::prefix('auth')->group(function () {
     Route::post('login', [AuthController::class, 'login']);
 });
 
-// Protected routes (Sanctum authentication required)
-Route::middleware(['auth:sanctum', 'ensure.driver'])->group(function () {
+// Protected routes (Passport authentication required)
+Route::middleware(['auth:api', 'ensure.driver'])->group(function () {
     
     // Authentication routes
     Route::prefix('auth')->group(function () {
         Route::post('logout', [AuthController::class, 'logout']);
         Route::get('profile', [AuthController::class, 'profile']);
+        Route::post('refresh', [AuthController::class, 'refresh']); // Token refresh endpoint
     });
     
     // Status management routes

@@ -148,8 +148,12 @@ class DriverDevice extends BaseModel
     /**
      * Update the last active timestamp.
      */
-    public function touch(): bool
+    public function touch($attribute = null): bool
     {
+        if ($attribute !== null) {
+            return parent::touch($attribute);
+        }
+        
         $this->last_active_at = now();
         return $this->save();
     }

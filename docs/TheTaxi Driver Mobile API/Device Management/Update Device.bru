@@ -1,0 +1,39 @@
+meta {
+  name: Update Device
+  type: http
+  seq: 3
+}
+
+put {
+  url: {{base_url}}/api/driver/devices
+  body: json
+  auth: bearer
+}
+
+headers {
+  Content-Type: application/json
+  Accept: application/json
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+      "device_name": "{{device_name}}",
+      "app_version": "{{app_version}}",
+      "app_build": "{{app_build}}",
+      "os_version": "{{os_version}}",
+      "locale": "en_US",
+      "timezone": "Asia/Colombo"
+  }
+}
+
+settings {
+  encodeUrl: true
+}
+
+docs {
+  Update device information (app version, push token, etc.).
+}

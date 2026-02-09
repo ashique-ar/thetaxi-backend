@@ -1,0 +1,40 @@
+meta {
+  name: Update Location
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{base_url}}/api/driver/location
+  body: json
+  auth: bearer
+}
+
+headers {
+  Content-Type: application/json
+  Accept: application/json
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+      "latitude": {{current_latitude}},
+      "longitude": {{current_longitude}},
+      "altitude": 15.5,
+      "speed": 45.2,
+      "heading": 180.5,
+      "accuracy": 10.0,
+      "recorded_at": "{{$isoTimestamp}}"
+  }
+}
+
+settings {
+  encodeUrl: true
+}
+
+docs {
+  Send the driver's current GPS location. Creates a route point for the active session. Should be sent every 10 seconds while moving.
+}
