@@ -43,7 +43,7 @@ class BookingFlowController extends Controller
         $request->validate([
             'service_type' => 'required|string',
             'from_date' => 'required|date',
-            'to_date' => 'required|date|after:from_date',
+            'to_date' => 'required|date|after_or_equal:from_date',
             'from_time' => 'required|string',
             'to_time' => 'required|string',
             'page' => 'nullable|integer|min:1',
@@ -98,7 +98,7 @@ class BookingFlowController extends Controller
             'search_term' => 'nullable|string|min:1',
             'service_type' => 'required|string',
             'from_date' => 'required|date',
-            'to_date' => 'required|date|after:from_date',
+            'to_date' => 'required|date|after_or_equal:from_date',
             'from_time' => 'required|string',
             'to_time' => 'required|string',
             'include_unavailable' => 'boolean',
@@ -141,7 +141,7 @@ class BookingFlowController extends Controller
         $request->validate([
             'search_term' => 'nullable|string|min:1',
             'from_date' => 'required|date',
-            'to_date' => 'required|date|after:from_date',
+            'to_date' => 'required|date|after_or_equal:from_date',
             'from_time' => 'required|string',
             'to_time' => 'required|string',
             'vehicle_group_id' => 'nullable|uuid|exists:vehicle_groups,id',
@@ -184,7 +184,7 @@ class BookingFlowController extends Controller
         $request->validate([
             'service_type' => 'required|string',
             'from_date' => 'required|date',
-            'to_date' => 'required|date|after:from_date',
+            'to_date' => 'required|date|after_or_equal:from_date',
             'from_time' => 'required|string',
             'to_time' => 'required|string',
         ]);
@@ -215,7 +215,7 @@ class BookingFlowController extends Controller
         $request->validate([
             'vehicle_group_id' => 'required|uuid|exists:vehicle_groups,id',
             'from_date' => 'required|date',
-            'to_date' => 'required|date|after:from_date',
+            'to_date' => 'required|date|after_or_equal:from_date',
             'from_time' => 'required|string',
             'to_time' => 'required|string',
         ]);
@@ -999,7 +999,7 @@ class BookingFlowController extends Controller
             'service_type' => 'required|string',
             'vehicle_group_id' => 'required|uuid|exists:vehicle_groups,id',
             'from_date' => 'required|date',
-            'to_date' => 'required|date|after:from_date',
+            'to_date' => 'required|date|after_or_equal:from_date',
         ]);
 
         try {
@@ -1052,7 +1052,7 @@ class BookingFlowController extends Controller
             'original_vehicle_group_id' => 'required|uuid|exists:vehicle_groups,id',
             'service_type' => 'required|string',
             'from_date' => 'required|date',
-            'to_date' => 'required|date|after:from_date',
+            'to_date' => 'required|date|after_or_equal:from_date',
             'preferences' => 'nullable|array',
         ]);
 
@@ -1879,7 +1879,7 @@ class BookingFlowController extends Controller
             'vehicle_id' => 'required|string|exists:vehicles,id',
             'service_type' => 'required|string',
             'from_date' => 'required|date',
-            'to_date' => 'required|date|after:from_date',
+            'to_date' => 'required|date|after_or_equal:from_date',
             'exclude_booking_id' => 'nullable|string',
         ]);
 
@@ -1913,7 +1913,7 @@ class BookingFlowController extends Controller
             'vehicle_group_id' => 'required|string|exists:vehicle_groups,id',
             'service_type' => 'required|string',
             'from_date' => 'required|date',
-            'to_date' => 'required|date|after:from_date',
+            'to_date' => 'required|date|after_or_equal:from_date',
             'exclude_booking_id' => 'nullable|string',
         ]);
 
@@ -1946,7 +1946,7 @@ class BookingFlowController extends Controller
             'booking_id' => 'required|string|exists:bookings,id',
             'assignment_type' => 'required|string|in:primary,concurrent,override',
             'from_date' => 'required|date',
-            'to_date' => 'required|date|after:from_date',
+            'to_date' => 'required|date|after_or_equal:from_date',
             'customer_name' => 'required|string',
             'service_type' => 'required|string',
             'override_reasons' => 'nullable|array',
@@ -2002,3 +2002,4 @@ class BookingFlowController extends Controller
         }
     }
 }
+
