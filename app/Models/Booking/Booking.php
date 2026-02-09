@@ -17,20 +17,10 @@ use App\Enums\QCStatus;
  * @property int $customer_id
  * @property string|null $invoice_number
  * @property string|null $log_code
- * @property int|null $vehicle_group_id
- * @property int|null $vehicle_id
- * @property int|null $driver_id
  * @property int|null $vip_id
  * @property \Illuminate\Support\Carbon|null $booking_date
- * @property \Illuminate\Support\Carbon|null $from_date
- * @property \Illuminate\Support\Carbon|null $to_date
- * @property string|null $from_time
- * @property string|null $to_time
- * @property array|null $pickup_location
- * @property array|null $dropoff_location
  * @property float|null $total_estimated
  * @property float|null $total_actual
- * @property string $status
  * @property string|null $created_from
  * @property bool $confirmed
  * @property string|null $third_party_ref
@@ -38,12 +28,6 @@ use App\Enums\QCStatus;
  * @property string|null $payment_reference
  * @property int|null $created_user_id
  * @property int|null $updated_user_id
- * @property float|null $pickup_latitude
- * @property float|null $pickup_longitude
- * @property string|null $pickup_landmark
- * @property float|null $dropoff_latitude
- * @property float|null $dropoff_longitude
- * @property string|null $dropoff_landmark
  * @property bool|null $is_self_driven
  * @property int|null $passenger_count
  * @property int|null $luggage_count
@@ -132,11 +116,8 @@ use App\Enums\QCStatus;
  * @property \Illuminate\Support\Carbon|null $updated_at
  * 
  * @property-read \App\Models\Customer|null $customer   
- * @property-read \App\Models\Service\ServiceType $serviceType
  * @property-read \App\Models\VipType|null $vipType
- * @property-read \App\Models\Vehicle\Vehicle|null $vehicle
  * @property-read \App\Models\Vehicle\VehicleGroup|null $vehicleGroup
- * @property-read \App\Models\Driver\Driver|null $driver
  * @property-read \App\Models\User|null $createdBy
  *
  *
@@ -160,7 +141,6 @@ class Booking extends BaseModel
         'customer_id',
         'invoice_number',
         'log_code',
-        'driver_id',
         'vip_id',
         'booking_date',
         'total_estimated',
@@ -174,8 +154,7 @@ class Booking extends BaseModel
         'created_user_id',
         'updated_user_id',
 
-        // Service details
-        'is_self_driven',
+        // Service details (booking-level, not item-specific)
         'passenger_count',
         'luggage_count',
         'special_requirements',
@@ -308,10 +287,7 @@ class Booking extends BaseModel
      * @var array<string, string>
      */
     protected $casts = [
-        'from_date' => 'datetime',
-        'to_date' => 'datetime',
-        'from_time' => 'string',  // time field cast as string for "HH:MM" format
-        'to_time' => 'string',  // time field cast as string for "HH:MM" format
+        'booking_date' => 'datetime',
         'approval_requested_at' => 'datetime',
         'confirmed_at' => 'datetime',
 
@@ -321,8 +297,6 @@ class Booking extends BaseModel
         'confirmed' => 'boolean',
 
         // json
-        'pickup_location' => 'array',
-        'dropoff_location' => 'array',
         'pricing_snapshot' => 'array',
         'duration_metrics' => 'array',
         'distance_metrics' => 'array',
@@ -346,12 +320,29 @@ class Booking extends BaseModel
 
     /**
      * Get the service type for this booking.
+     * Returns the service type from the first booking item.
      *
-     * @return \Illuminate\Database\Eloquent\Relations\BelongsTo
+     * @return \Illuminate\Database\Eloquent\Relations\BelongsTo|null
      */
     public function serviceType()
     {
-        return $this->belongsTo(ServiceType::class);
+        $firstItem = $this->bookingItems()->first();
+        return $firstItem ? $firstItem->serviceType() : null;
+    }
+
+    /**
+     * Get all service types for this booking (from all booking items).
+     *
+     * @return \Illuminate\Support\Collection
+     */
+    public function serviceTypes()
+    {
+        return $this->bookingItems()
+            ->with('serviceType')
+            ->get()
+            ->pluck('serviceType')
+            ->unique('id')
+            ->filter();
     }
 
     /**
@@ -366,12 +357,28 @@ class Booking extends BaseModel
 
     /**
      * Get the assigned vehicle for this booking.
+     * Returns the vehicle from the first booking item.
      *
-     * @return \Illuminate\Database\Eloquent\Relations\BelongsTo
+     * @return \Illuminate\Database\Eloquent\Relations\BelongsTo|null
      */
     public function vehicle()
     {
-        return $this->belongsTo(\App\Models\Vehicle\Vehicle::class);
+        $firstItem = $this->bookingItems()->first();
+        return $firstItem ? $firstItem->vehicle() : null;
+    }
+
+    /**
+     * Get all vehicles for this booking (from all booking items).
+     *
+     * @return \Illuminate\Support\Collection
+     */
+    public function vehicles()
+    {
+        return $this->bookingItems()
+            ->with('vehicle')
+            ->get()
+            ->pluck('vehicle')
+            ->filter();
     }
 
     /**
@@ -386,12 +393,28 @@ class Booking extends BaseModel
 
     /**
      * Get the assigned driver for this booking.
+     * Returns the driver from the first booking item.
      *
-     * @return \Illuminate\Database\Eloquent\Relations\BelongsTo
+     * @return \Illuminate\Database\Eloquent\Relations\BelongsTo|null
      */
     public function driver()
     {
-        return $this->belongsTo(\App\Models\Driver\Driver::class);
+        $firstItem = $this->bookingItems()->first();
+        return $firstItem ? $firstItem->driver() : null;
+    }
+
+    /**
+     * Get all drivers for this booking (from all booking items).
+     *
+     * @return \Illuminate\Support\Collection
+     */
+    public function drivers()
+    {
+        return $this->bookingItems()
+            ->with('driver')
+            ->get()
+            ->pluck('driver')
+            ->filter();
     }
 
     /**
@@ -1006,12 +1029,258 @@ class Booking extends BaseModel
      */
     public function isInStage(string $stage): bool
     {
-        return $this->getLifecycleStatus()->getStage() === $stage;
+        return $this->getLifecycleStatus()->value === $stage;
+    }
+
+    // ========================
+    // BOOKING ITEMS HELPERS
+    // ========================
+
+    /**
+     * Get the primary booking item (first item or single item)
+     */
+    public function primaryItem(): ?BookingItem
+    {
+        return $this->bookingItems()->first();
     }
 
     /**
-     * Generate unique booking number
-     *
+     * Check if this is a multi-item booking
+     */
+    public function isMultiItem(): bool
+    {
+        return $this->bookingItems()->count() > 1;
+    }
+
+    // ========================
+    // ACCESSOR METHODS FOR BACKWARD COMPATIBILITY
+    // ========================
+
+    /**
+     * Get vehicle_group_id from primary booking item
+     */
+    public function getVehicleGroupIdAttribute(): ?string
+    {
+        return $this->primaryItem()?->vehicle_group_id;
+    }
+
+    /**
+     * Get vehicle_id from primary booking item
+     */
+    public function getVehicleIdAttribute(): ?string
+    {
+        return $this->primaryItem()?->vehicle_id;
+    }
+
+    /**
+     * Get driver_id from primary booking item
+     */
+    public function getDriverIdAttribute(): ?string
+    {
+        return $this->primaryItem()?->driver_id;
+    }
+
+    /**
+     * Get service_type_id from primary booking item
+     */
+    public function getServiceTypeIdAttribute(): ?string
+    {
+        return $this->primaryItem()?->service_type_id;
+    }
+
+    /**
+     * Get from_date from primary booking item
+     */
+    public function getFromDateAttribute()
+    {
+        return $this->primaryItem()?->from_date;
+    }
+
+    /**
+     * Get to_date from primary booking item
+     */
+    public function getToDateAttribute()
+    {
+        return $this->primaryItem()?->to_date;
+    }
+
+    /**
+     * Get from_time from primary booking item
+     */
+    public function getFromTimeAttribute(): ?string
+    {
+        return $this->primaryItem()?->from_time;
+    }
+
+    /**
+     * Get to_time from primary booking item
+     */
+    public function getToTimeAttribute(): ?string
+    {
+        return $this->primaryItem()?->to_time;
+    }
+
+    /**
+     * Get pickup_location from primary booking item
+     */
+    public function getPickupLocationAttribute(): ?array
+    {
+        $location = $this->primaryItem()?->pickup_location;
+        
+        // Handle if it's a JSON string
+        if (is_string($location)) {
+            $decoded = json_decode($location, true);
+            return is_array($decoded) ? $decoded : null;
+        }
+        
+        return is_array($location) ? $location : null;
+    }
+
+    /**
+     * Get dropoff_location from primary booking item
+     */
+    public function getDropoffLocationAttribute(): ?array
+    {
+        $location = $this->primaryItem()?->dropoff_location;
+        
+        // Handle if it's a JSON string
+        if (is_string($location)) {
+            $decoded = json_decode($location, true);
+            return is_array($decoded) ? $decoded : null;
+        }
+        
+        return is_array($location) ? $location : null;
+    }
+
+    /**
+     * Get pickup_latitude from primary booking item
+     */
+    public function getPickupLatitudeAttribute(): ?float
+    {
+        return $this->primaryItem()?->pickup_latitude;
+    }
+
+    /**
+     * Get pickup_longitude from primary booking item
+     */
+    public function getPickupLongitudeAttribute(): ?float
+    {
+        return $this->primaryItem()?->pickup_longitude;
+    }
+
+    /**
+     * Get pickup_landmark from primary booking item
+     */
+    public function getPickupLandmarkAttribute(): ?string
+    {
+        return $this->primaryItem()?->pickup_landmark;
+    }
+
+    /**
+     * Get dropoff_latitude from primary booking item
+     */
+    public function getDropoffLatitudeAttribute(): ?float
+    {
+        return $this->primaryItem()?->dropoff_latitude;
+    }
+
+    /**
+     * Get dropoff_longitude from primary booking item
+     */
+    public function getDropoffLongitudeAttribute(): ?float
+    {
+        return $this->primaryItem()?->dropoff_longitude;
+    }
+
+    /**
+     * Get dropoff_landmark from primary booking item
+     */
+    public function getDropoffLandmarkAttribute(): ?string
+    {
+        return $this->primaryItem()?->dropoff_landmark;
+    }
+
+    /**
+     * Get is_self_driven from primary booking item
+     */
+    public function getIsSelfDrivenAttribute(): ?bool
+    {
+        return $this->primaryItem()?->is_self_driven;
+    }
+
+    // ========================
+    // COLLECTION METHODS
+    // ========================
+
+    /**
+     * Get all vehicle IDs from booking items
+     */
+    public function getVehicleIds(): array
+    {
+        return $this->bookingItems()
+            ->whereNotNull('vehicle_id')
+            ->pluck('vehicle_id')
+            ->unique()
+            ->values()
+            ->toArray();
+    }
+
+    /**
+     * Get all driver IDs from booking items
+     */
+    public function getDriverIds(): array
+    {
+        return $this->bookingItems()
+            ->whereNotNull('driver_id')
+            ->pluck('driver_id')
+            ->unique()
+            ->values()
+            ->toArray();
+    }
+
+    /**
+     * Get all service type IDs from booking items
+     */
+    public function getServiceTypeIds(): array
+    {
+        return $this->bookingItems()
+            ->whereNotNull('service_type_id')
+            ->pluck('service_type_id')
+            ->unique()
+            ->values()
+            ->toArray();
+    }
+
+    /**
+     * Get all vehicle group IDs from booking items
+     */
+    public function getVehicleGroupIds(): array
+    {
+        return $this->bookingItems()
+            ->whereNotNull('vehicle_group_id')
+            ->pluck('vehicle_group_id')
+            ->unique()
+            ->values()
+            ->toArray();
+    }
+
+    /**
+     * Get earliest from_date from all booking items
+     */
+    public function getEarliestFromDate()
+    {
+        return $this->bookingItems()->min('from_date');
+    }
+
+    /**
+     * Get latest to_date from all booking items
+     */
+    public function getLatestToDate()
+    {
+        return $this->bookingItems()->max('to_date');
+    }
+
+     /*
      * Format: {PREFIX}{6-digit-sequence} e.g. BK000001 or QT000123
      * Accepts optional $prefix (default 'BK').
      */

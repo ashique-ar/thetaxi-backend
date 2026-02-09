@@ -73,6 +73,12 @@ class GooglePlacesController extends Controller
                 'language' => 'en', // Add language preference
             ];
 
+            Log::info('Google Places Autocomplete Request', [
+                'query' => $query,
+                'country_code' => $countryCode,
+                'params' => array_merge($params, ['key' => substr($this->googleApiKey, 0, 10) . '...'])
+            ]);
+
             $response = Http::timeout(10)->get('https://maps.googleapis.com/maps/api/place/autocomplete/json', $params);
 
             if (!$response->successful()) {
@@ -87,6 +93,12 @@ class GooglePlacesController extends Controller
             }
 
             $data = $response->json();
+
+            Log::info('Google Places Autocomplete Response', [
+                'status' => $data['status'] ?? 'UNKNOWN',
+                'predictions_count' => count($data['predictions'] ?? []),
+                'error_message' => $data['error_message'] ?? null
+            ]);
 
             if (($data['status'] ?? '') !== 'OK') {
                 // Handle specific Google API statuses

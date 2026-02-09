@@ -486,12 +486,20 @@ class CartController extends Controller
                                 // Calculate return trip pricing if this is a return trip
                                 if ($isReturnTrip && $returnTripDate && $servicePackageIdForPricing) {
                                     try {
+                                        // Extract journey distance for KM-based return rules
+                                        $journeyDistance = null;
+                                        if (isset($pricingInfo['distance_details']['journey_distance'])) {
+                                            $journeyDistance = (float) $pricingInfo['distance_details']['journey_distance'];
+                                        }
+                                        
                                         $returnTripPricing = $this->bookingFlowService->calculateReturnTripPricing([
                                             'package_id' => $servicePackageIdForPricing,
                                             'vehicle_group_id' => $vehicleId,
                                             'outbound_date' => $pickupDate,
                                             'return_date' => $returnTripDate,
                                             'one_way_fare' => $oneWayPrice,
+                                            'kilometers' => $journeyDistance,
+                                            'journey_distance' => $journeyDistance,
                                         ]);
 
                                         if ($returnTripPricing && isset($returnTripPricing['total_fare'])) {

@@ -23,6 +23,7 @@ class ServicePackage extends BaseModel
         'rate_type',
         'default_duration_hours',
         'is_active',
+        'supports_return_trip',
         'sort_order',
         'created_user_id',
         'updated_user_id',
@@ -34,6 +35,7 @@ class ServicePackage extends BaseModel
         'price_multiplier' => 'decimal:4',
         'default_duration_hours' => 'integer',
         'is_active' => 'boolean',
+        'supports_return_trip' => 'boolean',
         'sort_order' => 'integer',
     ];
 
@@ -72,15 +74,21 @@ class ServicePackage extends BaseModel
      * @param int $dayOffset Days between outbound and return trip
      * @param string|null $vehicleGroupId Optional vehicle group for specific rules
      * @param Carbon|null $effectiveDate Date to check effectiveness
+     * @param float|null $kilometers Total kilometers for the trip
      * @return ServicePackageReturnRule|null
      */
-    public function findReturnRule(int $dayOffset, ?string $vehicleGroupId = null, ?Carbon $effectiveDate = null): ?ServicePackageReturnRule
-    {
+    public function findReturnRule(
+        int $dayOffset, 
+        ?string $vehicleGroupId = null, 
+        ?Carbon $effectiveDate = null,
+        ?float $kilometers = null
+    ): ?ServicePackageReturnRule {
         return ServicePackageReturnRule::findMatchingRule(
             $this->id,
             $dayOffset,
             $vehicleGroupId,
-            $effectiveDate
+            $effectiveDate,
+            $kilometers
         );
     }
 

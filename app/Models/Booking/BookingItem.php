@@ -32,6 +32,13 @@ class BookingItem extends BaseModel
         'to_time',
         'pickup_location',
         'dropoff_location',
+        'pickup_latitude',
+        'pickup_longitude',
+        'pickup_landmark',
+        'dropoff_latitude',
+        'dropoff_longitude',
+        'dropoff_landmark',
+        'is_self_driven',
         'duration_days',
         'duration_hours',
         'currency',
@@ -59,10 +66,15 @@ class BookingItem extends BaseModel
         'unit_price' => 'decimal:2',
         'total_price' => 'decimal:2',
         'exchange_rate' => 'decimal:6',
+        'pickup_latitude' => 'decimal:7',
+        'pickup_longitude' => 'decimal:7',
+        'dropoff_latitude' => 'decimal:7',
+        'dropoff_longitude' => 'decimal:7',
         'quantity' => 'integer',
         'duration_days' => 'integer',
         'duration_hours' => 'integer',
-        'requires_approval' => 'boolean'
+        'requires_approval' => 'boolean',
+        'is_self_driven' => 'boolean'
     ];
 
     /**

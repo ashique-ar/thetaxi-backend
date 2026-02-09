@@ -2029,18 +2029,11 @@ class CheckoutController extends Controller
                 $workflowData = $quotationBooking->workflow_data ?? [];
                 $cartItems = $workflowData['cart_items'] ?? [];
 
-                // Create new booking from quotation
+                // Create new booking from quotation (booking-level data only)
                 $newBooking = Booking::create([
                     'customer_id' => $customer->id,
                     'booking_number' => Booking::generateBookingNumber(),
-                    'from_date' => $quotationBooking->from_date,
-                    'to_date' => $quotationBooking->to_date,
-                    'from_time' => $quotationBooking->from_time,
-                    'to_time' => $quotationBooking->to_time,
-                    'service_type_id' => $quotationBooking->service_type_id,
-                    'vehicle_group_id' => $quotationBooking->vehicle_group_id,
-                    'pickup_location' => $quotationBooking->pickup_location,
-                    'dropoff_location' => $quotationBooking->dropoff_location,
+                    // Remove all item-related fields - they will be in booking_items
                     'base_amount' => $quotationBooking->base_amount,
                     'service_fee' => $quotationBooking->service_fee,
                     'tax_amount' => $quotationBooking->tax_amount,
@@ -2059,6 +2052,42 @@ class CheckoutController extends Controller
                     'created_user_id' => Auth::id(),
                     'workflow_data' => $workflowData,
                 ]);
+
+                // Copy booking items from quotation
+                foreach ($quotationBooking->bookingItems as $quotationItem) {
+                    BookingItem::create([
+                        'booking_id' => $newBooking->id,
+                        'vehicle_group_id' => $quotationItem->vehicle_group_id,
+                        'vehicle_id' => $quotationItem->vehicle_id,
+                        'driver_id' => $quotationItem->driver_id,
+                        'service_type_id' => $quotationItem->service_type_id,
+                        'from_date' => $quotationItem->from_date,
+                        'to_date' => $quotationItem->to_date,
+                        'from_time' => $quotationItem->from_time,
+                        'to_time' => $quotationItem->to_time,
+                        'pickup_location' => $quotationItem->pickup_location,
+                        'dropoff_location' => $quotationItem->dropoff_location,
+                        'pickup_latitude' => $quotationItem->pickup_latitude,
+                        'pickup_longitude' => $quotationItem->pickup_longitude,
+                        'pickup_landmark' => $quotationItem->pickup_landmark,
+                        'dropoff_latitude' => $quotationItem->dropoff_latitude,
+                        'dropoff_longitude' => $quotationItem->dropoff_longitude,
+                        'dropoff_landmark' => $quotationItem->dropoff_landmark,
+                        'is_self_driven' => $quotationItem->is_self_driven,
+                        'unit_price' => $quotationItem->unit_price,
+                        'total_price' => $quotationItem->total_price,
+                        'quantity' => $quotationItem->quantity,
+                        'duration_days' => $quotationItem->duration_days,
+                        'duration_hours' => $quotationItem->duration_hours,
+                        'currency' => $quotationItem->currency,
+                        'status' => 'confirmed',
+                        'item_type' => $quotationItem->item_type,
+                        'pricing_breakdown' => $quotationItem->pricing_breakdown,
+                        'addons' => $quotationItem->addons,
+                        'customizations' => $quotationItem->customizations,
+                        'metadata' => $quotationItem->metadata,
+                    ]);
+                }
 
                 // Copy booking addons from quotation
                 $quotationBooking->addons()->get()->each(function ($addon) use ($newBooking) {

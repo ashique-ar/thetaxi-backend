@@ -242,12 +242,13 @@ class AnalyticsController extends Controller
                     'drivers.id',
                     'users.first_name',
                     'users.last_name',
-                    DB::raw('COUNT(bookings.id) as total_bookings'),
-                    DB::raw('AVG(CASE WHEN bookings.rating IS NOT NULL THEN bookings.rating ELSE 0 END) as average_rating'),
-                    DB::raw('SUM(CASE WHEN bookings.status = "completed" THEN bookings.total_amount ELSE 0 END) as total_revenue')
+                    DB::raw('COUNT(DISTINCT bookings.id) as total_bookings'),
+                    DB::raw('AVG(CASE WHEN bookings.driver_rating IS NOT NULL THEN bookings.driver_rating ELSE 0 END) as average_rating'),
+                    DB::raw('SUM(CASE WHEN bookings.status = \'completed\' THEN bookings.total_actual ELSE 0 END) as total_revenue')
                 )
                     ->join('users', 'drivers.user_id', '=', 'users.id')
-                    ->leftJoin('bookings', 'drivers.id', '=', 'bookings.driver_id')
+                    ->leftJoin('booking_items', 'drivers.id', '=', 'booking_items.driver_id')
+                    ->leftJoin('bookings', 'booking_items.booking_id', '=', 'bookings.id')
                     ->groupBy('drivers.id', 'users.first_name', 'users.last_name')
                     ->orderByDesc('total_revenue')
                     ->limit(10)
@@ -257,15 +258,15 @@ class AnalyticsController extends Controller
                     ->get(),
                 'driver_ratings_distribution' => Booking::select(
                     DB::raw('CASE 
-                        WHEN rating >= 4.5 THEN "5 Stars"
-                        WHEN rating >= 3.5 THEN "4 Stars"
-                        WHEN rating >= 2.5 THEN "3 Stars"
-                        WHEN rating >= 1.5 THEN "2 Stars"
-                        ELSE "1 Star"
+                        WHEN driver_rating >= 4.5 THEN \'5 Stars\'
+                        WHEN driver_rating >= 3.5 THEN \'4 Stars\'
+                        WHEN driver_rating >= 2.5 THEN \'3 Stars\'
+                        WHEN driver_rating >= 1.5 THEN \'2 Stars\'
+                        ELSE \'1 Star\'
                     END as rating_category'),
                     DB::raw('COUNT(*) as count')
                 )
-                    ->whereNotNull('rating')
+                    ->whereNotNull('driver_rating')
                     ->groupBy('rating_category')
                     ->get()
             ];

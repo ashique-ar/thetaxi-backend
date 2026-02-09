@@ -40,6 +40,8 @@ class ServicePackageReturnRule extends BaseModel
         'vehicle_group_id',
         'day_offset_min',
         'day_offset_max',
+        'km_min',
+        'km_max',
         'charge_percentage',
         'label',
         'description',
@@ -58,6 +60,8 @@ class ServicePackageReturnRule extends BaseModel
     protected $casts = [
         'day_offset_min' => 'integer',
         'day_offset_max' => 'integer',
+        'km_min' => 'decimal:2',
+        'km_max' => 'decimal:2',
         'charge_percentage' => 'decimal:2',
         'same_vehicle_required' => 'boolean',
         'same_driver_required' => 'boolean',
@@ -125,6 +129,27 @@ class ServicePackageReturnRule extends BaseModel
     }
 
     /**
+     * Scope to match rules by KM range.
+     *
+     * @param Builder $query
+     * @param float $kilometers Total kilometers for the trip
+     */
+    public function scopeMatchesKmRange(Builder $query, float $kilometers): Builder
+    {
+        return $query->where(function ($q) use ($kilometers) {
+            $q->where(function ($subQ) use ($kilometers) {
+                // Match if km_min is null OR km is >= km_min
+                $subQ->whereNull('km_min')
+                    ->orWhere('km_min', '<=', $kilometers);
+            })->where(function ($subQ) use ($kilometers) {
+                // Match if km_max is null OR km is <= km_max
+                $subQ->whereNull('km_max')
+                    ->orWhere('km_max', '>=', $kilometers);
+            });
+        });
+    }
+
+    /**
      * Scope to filter by vehicle group (or package-level rules if null).
      */
     public function scopeForVehicleGroup(Builder $query, ?string $vehicleGroupId = null): Builder
@@ -148,20 +173,29 @@ class ServicePackageReturnRule extends BaseModel
      * @param int $dayOffset Days between outbound and return
      * @param string|null $vehicleGroupId Optional vehicle group for specific rules
      * @param Carbon|null $effectiveDate Date to check effectiveness (default: today)
+     * @param float|null $kilometers Total kilometers for the trip
      * @return static|null
      */
     public static function findMatchingRule(
         string $servicePackageId,
         int $dayOffset,
         ?string $vehicleGroupId = null,
-        ?Carbon $effectiveDate = null
+        ?Carbon $effectiveDate = null,
+        ?float $kilometers = null
     ): ?self {
-        return static::query()
+        $query = static::query()
             ->where('service_package_id', $servicePackageId)
             ->active()
             ->effectiveOn($effectiveDate)
             ->matchesDayOffset($dayOffset)
-            ->forVehicleGroup($vehicleGroupId)
+            ->forVehicleGroup($vehicleGroupId);
+
+        // Add KM range matching if kilometers provided
+        if ($kilometers !== null) {
+            $query->matchesKmRange($kilometers);
+        }
+
+        return $query
             ->orderByRaw('vehicle_group_id IS NULL ASC') // Vehicle-specific rules first
             ->orderByDesc('priority')
             ->first();
@@ -255,5 +289,31 @@ class ServicePackageReturnRule extends BaseModel
         }
 
         return "{$this->day_offset_min}-{$this->day_offset_max} days";
+    }
+
+    /**
+     * Get a human-readable description of the KM range.
+     *
+     * @return string
+     */
+    public function getKmRangeDescriptionAttribute(): string
+    {
+        if ($this->km_min === null && $this->km_max === null) {
+            return 'Any distance';
+        }
+
+        if ($this->km_min !== null && $this->km_max === null) {
+            return "{$this->km_min}+ km";
+        }
+
+        if ($this->km_min === null && $this->km_max !== null) {
+            return "Up to {$this->km_max} km";
+        }
+
+        if ($this->km_min === $this->km_max) {
+            return "{$this->km_min} km";
+        }
+
+        return "{$this->km_min}-{$this->km_max} km";
     }
 }

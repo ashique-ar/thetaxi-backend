@@ -333,6 +333,13 @@ Route::middleware(['auth:api'])->group(function () {
         Route::apiResource('service-types', ServiceTypeController::class);
         Route::apiResource('service-packages', ServicePackageController::class);
 
+        // Service Form Configuration
+        Route::get('service-types/{serviceTypeId}/form-config', [Service\ServiceFormConfigController::class, 'getFormConfig']);
+
+        // Service Form Configuration
+        Route::get('service-types/{serviceType}/form-config', [ServiceFormConfigController::class, 'getFormConfig']);
+        Route::put('service-types/{serviceType}/form-config', [ServiceFormConfigController::class, 'updateFormConfig']);
+
         // Service Package Return Rules
         Route::get('service-packages/{servicePackage}/return-rules', [ServicePackageController::class, 'getReturnRules']);
         Route::post('service-packages/{servicePackage}/return-rules', [ServicePackageController::class, 'storeReturnRule']);

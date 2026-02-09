@@ -94,6 +94,9 @@ class ServicePackageController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = ServicePackage::with(['serviceType'])
+            ->withCount(['returnRules' => function ($q) {
+                $q->where('is_active', true);
+            }])
             ->orderBy('service_type_id')
             ->orderBy('sort_order');
 
@@ -134,10 +137,12 @@ class ServicePackageController extends Controller
             'rate_type' => 'required|string|in:flat,per_hour,per_day',
             'default_duration_hours' => 'required|integer|min:1',
             'sort_order' => 'nullable|integer|min:0',
+            'supports_return_trip' => 'boolean',
         ]);
 
         $validated['created_user_id'] = auth()->id();
         $validated['is_active'] = true;
+        $validated['supports_return_trip'] = $validated['supports_return_trip'] ?? false;
 
         $package = ServicePackage::create($validated);
 
@@ -165,6 +170,7 @@ class ServicePackageController extends Controller
             'sort_order' => 'nullable|integer|min:0',
             'service_type_id' => 'required|exists:service_types,id',
             'is_active' => 'boolean',
+            'supports_return_trip' => 'boolean',
         ]);
 
         $validated['updated_user_id'] = auth()->id();
@@ -213,11 +219,14 @@ class ServicePackageController extends Controller
                     'vehicle_group_name' => $rule->vehicleGroup?->name,
                     'day_offset_min' => $rule->day_offset_min,
                     'day_offset_max' => $rule->day_offset_max,
+                    'km_min' => $rule->km_min,
+                    'km_max' => $rule->km_max,
                     'charge_percentage' => $rule->charge_percentage,
                     'discount_percentage' => $rule->discount_percentage,
                     'label' => $rule->label,
                     'description' => $rule->description,
                     'day_range_description' => $rule->day_range_description,
+                    'km_range_description' => $rule->km_range_description,
                     'same_vehicle_required' => $rule->same_vehicle_required,
                     'same_driver_required' => $rule->same_driver_required,
                     'min_wait_minutes' => $rule->min_wait_minutes,
@@ -254,6 +263,8 @@ class ServicePackageController extends Controller
             'vehicle_group_id' => 'nullable|exists:vehicle_groups,id',
             'day_offset_min' => 'required|integer|min:0|max:365',
             'day_offset_max' => 'nullable|integer|min:0|max:365|gte:day_offset_min',
+            'km_min' => 'nullable|numeric|min:0',
+            'km_max' => 'nullable|numeric|min:0|gte:km_min',
             'charge_percentage' => 'required|numeric|min:0|max:200',
             'label' => 'nullable|string|max:100',
             'description' => 'nullable|string|max:500',
@@ -304,6 +315,8 @@ class ServicePackageController extends Controller
             'vehicle_group_id' => 'nullable|exists:vehicle_groups,id',
             'day_offset_min' => 'required|integer|min:0|max:365',
             'day_offset_max' => 'nullable|integer|min:0|max:365|gte:day_offset_min',
+            'km_min' => 'nullable|numeric|min:0',
+            'km_max' => 'nullable|numeric|min:0|gte:km_min',
             'charge_percentage' => 'required|numeric|min:0|max:200',
             'label' => 'nullable|string|max:100',
             'description' => 'nullable|string|max:500',
@@ -363,6 +376,7 @@ class ServicePackageController extends Controller
             'outbound_date' => 'required|date',
             'return_date' => 'required|date|after_or_equal:outbound_date',
             'one_way_fare' => 'required|numeric|min:0',
+            'kilometers' => 'nullable|numeric|min:0',
         ]);
 
         $servicePackage = ServicePackage::find($validated['service_package_id']);
@@ -375,7 +389,9 @@ class ServicePackageController extends Controller
         // Find matching rule
         $rule = $servicePackage->findReturnRule(
             $dayOffset,
-            $validated['vehicle_group_id'] ?? null
+            $validated['vehicle_group_id'] ?? null,
+            null,
+            $validated['kilometers'] ?? null
         );
 
         if (!$rule) {
@@ -384,6 +400,7 @@ class ServicePackageController extends Controller
                 'data' => [
                     'has_return_rule' => false,
                     'day_offset' => $dayOffset,
+                    'kilometers' => $validated['kilometers'] ?? null,
                     'charge_percentage' => 100,
                     'return_fare' => $validated['one_way_fare'],
                     'total_fare' => $validated['one_way_fare'] * 2,
@@ -401,11 +418,13 @@ class ServicePackageController extends Controller
             'data' => [
                 'has_return_rule' => true,
                 'day_offset' => $dayOffset,
+                'kilometers' => $validated['kilometers'] ?? null,
                 'rule' => [
                     'id' => $rule->id,
                     'label' => $rule->label ?? $rule->day_range_description,
                     'charge_percentage' => $rule->charge_percentage,
                     'discount_percentage' => $rule->discount_percentage,
+                    'km_range' => $rule->km_range_description,
                 ],
                 'one_way_fare' => round($validated['one_way_fare'], 2),
                 'return_fare' => $returnFare,

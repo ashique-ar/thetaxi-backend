@@ -587,12 +587,20 @@ class BookingController extends Controller
             $returnTripPricing = null;
             if ($isReturnTrip && $oneWayFare > 0 && $outboundDate && $returnDate) {
                 try {
+                    // Extract journey distance for KM-based return rules
+                    $journeyDistance = null;
+                    if ($distanceDetails && isset($distanceDetails['journey_distance'])) {
+                        $journeyDistance = (float) $distanceDetails['journey_distance'];
+                    }
+                    
                     $returnTripPricing = $this->bookingFlowService->calculateReturnTripPricing([
                         'package_id' => $packageId,
                         'vehicle_group_id' => $groupData['id'],
                         'outbound_date' => $outboundDate,
                         'return_date' => $returnDate,
                         'one_way_fare' => $oneWayFare,
+                        'kilometers' => $journeyDistance,
+                        'journey_distance' => $journeyDistance,
                     ]);
 
                     // Update total amount to include return trip

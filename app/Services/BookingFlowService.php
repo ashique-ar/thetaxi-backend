@@ -1074,6 +1074,7 @@ class BookingFlowService
      * This method calculates the fare for a return trip based on:
      * - The one-way fare
      * - The day offset between outbound and return trip
+     * - The trip distance (kilometers) for KM-based rules
      * - Applicable return rules for the service package
      *
      * @param array $params Parameters including:
@@ -1082,6 +1083,8 @@ class BookingFlowService
      *   - outbound_date: Date of outbound trip (Y-m-d or Carbon)
      *   - return_date: Date of return trip (Y-m-d or Carbon)
      *   - one_way_fare: The calculated fare for the outbound trip
+     *   - kilometers: Optional trip distance for KM-based rules
+     *   - journey_distance: Alternative parameter name for kilometers
      *
      * @return array Return trip pricing details
      */
@@ -1090,6 +1093,13 @@ class BookingFlowService
         $packageId = $params['package_id'] ?? null;
         $vehicleGroupId = $params['vehicle_group_id'] ?? null;
         $oneWayFare = (float) ($params['one_way_fare'] ?? 0);
+        
+        // Get kilometers from multiple possible parameter names
+        $kilometers = $params['kilometers'] 
+            ?? $params['journey_distance'] 
+            ?? $params['distance_km'] 
+            ?? $params['total_journey_distance_km']
+            ?? null;
 
         // Parse dates
         $outboundDate = $params['outbound_date'] instanceof Carbon
@@ -1107,6 +1117,7 @@ class BookingFlowService
         $result = [
             'has_return_rule' => false,
             'day_offset' => $dayOffset,
+            'kilometers' => $kilometers,
             'charge_percentage' => 100,
             'discount_percentage' => 0,
             'one_way_fare' => round($oneWayFare, 2),
@@ -1128,8 +1139,8 @@ class BookingFlowService
             return $result;
         }
 
-        // Find matching return rule
-        $rule = $servicePackage->findReturnRule($dayOffset, $vehicleGroupId);
+        // Find matching return rule with KM parameter
+        $rule = $servicePackage->findReturnRule($dayOffset, $vehicleGroupId, null, $kilometers);
 
         if (!$rule) {
             $result['message'] = 'No return discount available';
@@ -1137,6 +1148,7 @@ class BookingFlowService
                 'package_id' => $packageId,
                 'day_offset' => $dayOffset,
                 'vehicle_group_id' => $vehicleGroupId,
+                'kilometers' => $kilometers,
             ]);
             return $result;
         }
@@ -1148,6 +1160,7 @@ class BookingFlowService
         $result = [
             'has_return_rule' => true,
             'day_offset' => $dayOffset,
+            'kilometers' => $kilometers,
             'charge_percentage' => $rule->charge_percentage,
             'discount_percentage' => $rule->discount_percentage,
             'one_way_fare' => round($oneWayFare, 2),
@@ -1156,6 +1169,7 @@ class BookingFlowService
             'discount_amount' => round($discountAmount, 2),
             'rule_id' => $rule->id,
             'rule_label' => $rule->label ?? $rule->day_range_description,
+            'km_range_description' => $rule->km_range_description,
             'same_vehicle_required' => $rule->same_vehicle_required,
             'same_driver_required' => $rule->same_driver_required,
             'message' => $rule->label
@@ -1166,7 +1180,10 @@ class BookingFlowService
         Log::info('Return trip pricing calculated', [
             'package_id' => $packageId,
             'day_offset' => $dayOffset,
+            'kilometers' => $kilometers,
             'rule_id' => $rule->id,
+            'rule_label' => $rule->label,
+            'km_range' => $rule->km_range_description,
             'charge_percentage' => $rule->charge_percentage,
             'one_way_fare' => $oneWayFare,
             'return_fare' => $returnFare,
@@ -1315,30 +1332,16 @@ class BookingFlowService
             // 2) Extract totals
             $totals = $this->extractTotalsFromPricing($pricing);
 
-            // 3) Create confirmed booking
+            // 3) Create confirmed booking (booking-level data only)
             $booking = new Booking();
 
             $booking->customer_id = $params['customer_id'] ?? null;
-            $booking->service_type_id = $params['service_type'] ?? ($params['service_type_id'] ?? null);
-
-            // For multi-group bookings, use first group as primary or null
-            $isMultiGroup = !empty($params['vehicle_groups']) && count($params['vehicle_groups']) > 1;
-            if ($isMultiGroup) {
-                $booking->vehicle_group_id = null; // Multi-group booking
-                $booking->vehicle_id = null;
-                $booking->driver_id = null;
-            } else {
-                $booking->vehicle_group_id = $params['vehicle_group_id'] ?? null;
-                $booking->vehicle_id = $params['vehicle_id'] ?? ($params['vehicle_id'] ?? null);
-                $booking->driver_id = $params['driver_id'] ?? null;
-            }
-
-            $booking->from_date = $params['from_date'] ?? null;
-            $booking->to_date = $params['to_date'] ?? null;
-            $booking->from_time = $params['from_time'] ?? null;
-            $booking->to_time = $params['to_time'] ?? null;
-            $booking->pickup_location = $params['pickup_location'] ?? null;
-            $booking->dropoff_location = $params['dropoff_location'] ?? null;
+            $booking->booking_date = now();
+            
+            // Booking-level metadata only
+            $booking->passenger_count = $params['passenger_count'] ?? 1;
+            $booking->luggage_count = $params['luggage_count'] ?? null;
+            $booking->special_requirements = $params['special_requirements'] ?? null;
 
             $booking->pricing_snapshot = $totals['pricing_snapshot'];
             $booking->base_amount = $totals['base_amount'];
@@ -1371,11 +1374,17 @@ class BookingFlowService
             $booking->total_actual = $booking->total_estimated;
             $booking->save();
 
+            // Determine if multi-group booking
+            $isMultiGroup = !empty($params['vehicle_groups']) && count($params['vehicle_groups']) > 1;
+
             // Handle multi-group booking items creation
             if ($isMultiGroup) {
                 $this->createMultiGroupBookingItems($booking, $params, $pricing);
             } else {
-                // Handle single group booking (existing logic)
+                // Handle single group booking - create booking item
+                $this->createSingleGroupBookingItem($booking, $params, $pricing);
+                
+                // Legacy addon and customization handling
                 if (!empty($params['selected_addons'])) {
                     $this->syncBookingAddons($booking, $params['selected_addons']);
                 }
@@ -1451,16 +1460,51 @@ class BookingFlowService
                     }
                 }
 
+                // Extract location coordinates
+                $pickupLocation = $params['pickup_location'] ?? null;
+                $dropoffLocation = $params['dropoff_location'] ?? null;
+                
+                $pickupLatitude = null;
+                $pickupLongitude = null;
+                $pickupLandmark = null;
+                $dropoffLatitude = null;
+                $dropoffLongitude = null;
+                $dropoffLandmark = null;
+                
+                if (is_array($pickupLocation)) {
+                    $pickupLatitude = $pickupLocation['latitude'] ?? $pickupLocation['lat'] ?? null;
+                    $pickupLongitude = $pickupLocation['longitude'] ?? $pickupLocation['lng'] ?? null;
+                    $pickupLandmark = $pickupLocation['landmark'] ?? $pickupLocation['name'] ?? null;
+                }
+                
+                if (is_array($dropoffLocation)) {
+                    $dropoffLatitude = $dropoffLocation['latitude'] ?? $dropoffLocation['lat'] ?? null;
+                    $dropoffLongitude = $dropoffLocation['longitude'] ?? $dropoffLocation['lng'] ?? null;
+                    $dropoffLandmark = $dropoffLocation['landmark'] ?? $dropoffLocation['name'] ?? null;
+                }
+
                 $bookingItem = BookingItem::create([
                     'booking_id' => $booking->id,
                     'vehicle_group_id' => $groupId,
+                    'service_type_id' => $params['service_type'] ?? $params['service_type_id'] ?? null,
                     'vehicle_id' => $assignedVehicleId,
                     'driver_id' => $assignedDriverId,
                     'quantity' => 1, // Each item represents 1 unit
                     'unit_price' => $groupPricing['base_pricing']['total_amount'] ?? 0,
                     'total_price' => $groupPricing['base_pricing']['total_amount'] ?? 0,
-                    'from_date' => $booking->from_date,
-                    'to_date' => $booking->to_date,
+                    'from_date' => $params['from_date'] ?? null,
+                    'to_date' => $params['to_date'] ?? null,
+                    'from_time' => $params['from_time'] ?? null,
+                    'to_time' => $params['to_time'] ?? null,
+                    'pickup_location' => $pickupLocation,
+                    'dropoff_location' => $dropoffLocation,
+                    'pickup_latitude' => $pickupLatitude,
+                    'pickup_longitude' => $pickupLongitude,
+                    'pickup_landmark' => $pickupLandmark,
+                    'dropoff_latitude' => $dropoffLatitude,
+                    'dropoff_longitude' => $dropoffLongitude,
+                    'dropoff_landmark' => $dropoffLandmark,
+                    'is_self_driven' => $params['is_self_driven'] ?? false,
                     'duration_days' => $groupPricing['duration']['days'] ?? 0,
                     'duration_hours' => $groupPricing['duration']['hours'] ?? 0,
                     'currency' => $groupPricing['currency'] ?? 'LKR',
@@ -1512,6 +1556,82 @@ class BookingFlowService
     }
 
     /**
+     * Create a single booking item for single-group bookings
+     */
+    private function createSingleGroupBookingItem(Booking $booking, array $params, array $pricing): void
+    {
+        // Extract location data
+        $pickupLocation = $params['pickup_location'] ?? null;
+        $dropoffLocation = $params['dropoff_location'] ?? null;
+        
+        // Extract coordinates from location arrays if available
+        $pickupLatitude = null;
+        $pickupLongitude = null;
+        $pickupLandmark = null;
+        $dropoffLatitude = null;
+        $dropoffLongitude = null;
+        $dropoffLandmark = null;
+        
+        if (is_array($pickupLocation)) {
+            $pickupLatitude = $pickupLocation['latitude'] ?? $pickupLocation['lat'] ?? null;
+            $pickupLongitude = $pickupLocation['longitude'] ?? $pickupLocation['lng'] ?? null;
+            $pickupLandmark = $pickupLocation['landmark'] ?? $pickupLocation['name'] ?? null;
+        }
+        
+        if (is_array($dropoffLocation)) {
+            $dropoffLatitude = $dropoffLocation['latitude'] ?? $dropoffLocation['lat'] ?? null;
+            $dropoffLongitude = $dropoffLocation['longitude'] ?? $dropoffLocation['lng'] ?? null;
+            $dropoffLandmark = $dropoffLocation['landmark'] ?? $dropoffLocation['name'] ?? null;
+        }
+        
+        $bookingItem = BookingItem::create([
+            'booking_id' => $booking->id,
+            'vehicle_group_id' => $params['vehicle_group_id'] ?? null,
+            'service_type_id' => $params['service_type'] ?? $params['service_type_id'] ?? null,
+            'vehicle_id' => $params['vehicle_id'] ?? null,
+            'driver_id' => $params['driver_id'] ?? null,
+            'quantity' => 1,
+            'unit_price' => $pricing['total_amount'] ?? $booking->base_amount ?? 0,
+            'total_price' => $pricing['total_amount'] ?? $booking->total_estimated ?? 0,
+            'from_date' => $params['from_date'] ?? null,
+            'to_date' => $params['to_date'] ?? null,
+            'from_time' => $params['from_time'] ?? null,
+            'to_time' => $params['to_time'] ?? null,
+            'pickup_location' => $pickupLocation,
+            'dropoff_location' => $dropoffLocation,
+            'pickup_latitude' => $pickupLatitude,
+            'pickup_longitude' => $pickupLongitude,
+            'pickup_landmark' => $pickupLandmark,
+            'dropoff_latitude' => $dropoffLatitude,
+            'dropoff_longitude' => $dropoffLongitude,
+            'dropoff_landmark' => $dropoffLandmark,
+            'is_self_driven' => $params['is_self_driven'] ?? false,
+            'duration_days' => $pricing['duration']['days'] ?? 0,
+            'duration_hours' => $pricing['duration']['hours'] ?? 0,
+            'currency' => $pricing['currency'] ?? 'LKR',
+            'exchange_rate' => '1.000000',
+            'status' => $booking->status ?? 'confirmed',
+            'requires_approval' => $booking->requires_approval ?? false,
+            'approved_at' => $booking->confirmed_at,
+            'approved_by' => Auth::id(),
+            'item_type' => 'vehicle_group'
+        ]);
+
+        // Update additional JSON fields
+        $bookingItem->update([
+            'pricing_breakdown' => $pricing['breakdown'] ?? [],
+            'addons' => $pricing['addons'] ?? [],
+            'customizations' => $params['variable_customizations'] ?? [],
+            'discounts' => $params['applied_discounts'] ?? [],
+            'metadata' => [
+                'distance_details' => $pricing['distance_details'] ?? null,
+                'calculation_type' => $pricing['calculation_type'] ?? null,
+                'package_info' => $pricing['package_info'] ?? null,
+            ]
+        ]);
+    }
+
+    /**
      * Create assignments for individual booking items
      */
     private function createBookingItemAssignments(BookingItem $bookingItem, array $assignmentData): void
@@ -1550,19 +1670,11 @@ class BookingFlowService
             // 3) Extract totals + snapshot
             $totals = $this->extractTotalsFromPricing($pricing);
 
-            // 4) Apply incoming fields directly (no normalization)
+            // 4) Apply incoming fields directly (booking-level data only)
             $booking->customer_id = $params['customer_id'] ?? $booking->customer_id;
-            $booking->service_type_id = $params['service_type'] ?? ($params['service_type_id'] ?? $booking->service_type_id);
-            $booking->vehicle_group_id = $params['vehicle_group_id'] ?? $booking->vehicle_group_id;
-            $booking->vehicle_id = $params['vehicle_id'] ?? ($params['vehicle_id'] ?? $booking->vehicle_id);
-            $booking->driver_id = $params['driver_id'] ?? $booking->driver_id;
-
-            $booking->from_date = $params['from_date'] ?? $booking->from_date;
-            $booking->to_date = $params['to_date'] ?? $booking->to_date;
-            $booking->from_time = $params['from_time'] ?? null;
-            $booking->to_time = $params['to_time'] ?? null;
-            $booking->pickup_location = $params['pickup_location'] ?? $booking->pickup_location;
-            $booking->dropoff_location = $params['dropoff_location'] ?? $booking->dropoff_location;
+            $booking->passenger_count = $params['passenger_count'] ?? $booking->passenger_count;
+            $booking->luggage_count = $params['luggage_count'] ?? $booking->luggage_count;
+            $booking->special_requirements = $params['special_requirements'] ?? $booking->special_requirements;
 
             $booking->pricing_snapshot = $totals['pricing_snapshot'];
             $booking->base_amount = $totals['base_amount'];
@@ -1584,7 +1696,101 @@ class BookingFlowService
 
             $booking->save();
 
-            // 5) Re-sync addons only if provided
+            // 5) Update or create booking items
+            if (array_key_exists('vehicle_id', $params) || 
+                array_key_exists('driver_id', $params) || 
+                array_key_exists('service_type', $params) ||
+                array_key_exists('service_type_id', $params) ||
+                array_key_exists('vehicle_group_id', $params) ||
+                array_key_exists('from_date', $params) ||
+                array_key_exists('to_date', $params) ||
+                array_key_exists('pickup_location', $params) ||
+                array_key_exists('dropoff_location', $params)) {
+                
+                // Update primary booking item or create if doesn't exist
+                $primaryItem = $booking->primaryItem();
+                
+                // Extract location data
+                $pickupLocation = $params['pickup_location'] ?? ($primaryItem?->pickup_location ?? null);
+                $dropoffLocation = $params['dropoff_location'] ?? ($primaryItem?->dropoff_location ?? null);
+                
+                $pickupLatitude = null;
+                $pickupLongitude = null;
+                $pickupLandmark = null;
+                $dropoffLatitude = null;
+                $dropoffLongitude = null;
+                $dropoffLandmark = null;
+                
+                if (is_array($pickupLocation)) {
+                    $pickupLatitude = $pickupLocation['latitude'] ?? $pickupLocation['lat'] ?? ($primaryItem?->pickup_latitude ?? null);
+                    $pickupLongitude = $pickupLocation['longitude'] ?? $pickupLocation['lng'] ?? ($primaryItem?->pickup_longitude ?? null);
+                    $pickupLandmark = $pickupLocation['landmark'] ?? $pickupLocation['name'] ?? ($primaryItem?->pickup_landmark ?? null);
+                }
+                
+                if (is_array($dropoffLocation)) {
+                    $dropoffLatitude = $dropoffLocation['latitude'] ?? $dropoffLocation['lat'] ?? ($primaryItem?->dropoff_latitude ?? null);
+                    $dropoffLongitude = $dropoffLocation['longitude'] ?? $dropoffLocation['lng'] ?? ($primaryItem?->dropoff_longitude ?? null);
+                    $dropoffLandmark = $dropoffLocation['landmark'] ?? $dropoffLocation['name'] ?? ($primaryItem?->dropoff_landmark ?? null);
+                }
+                
+                if ($primaryItem) {
+                    // Update existing item
+                    $primaryItem->update([
+                        'service_type_id' => $params['service_type'] ?? $params['service_type_id'] ?? $primaryItem->service_type_id,
+                        'vehicle_id' => $params['vehicle_id'] ?? $primaryItem->vehicle_id,
+                        'driver_id' => $params['driver_id'] ?? $primaryItem->driver_id,
+                        'vehicle_group_id' => $params['vehicle_group_id'] ?? $primaryItem->vehicle_group_id,
+                        'from_date' => $params['from_date'] ?? $primaryItem->from_date,
+                        'to_date' => $params['to_date'] ?? $primaryItem->to_date,
+                        'from_time' => $params['from_time'] ?? $primaryItem->from_time,
+                        'to_time' => $params['to_time'] ?? $primaryItem->to_time,
+                        'pickup_location' => $pickupLocation,
+                        'dropoff_location' => $dropoffLocation,
+                        'pickup_latitude' => $pickupLatitude ?? $primaryItem->pickup_latitude,
+                        'pickup_longitude' => $pickupLongitude ?? $primaryItem->pickup_longitude,
+                        'pickup_landmark' => $pickupLandmark ?? $primaryItem->pickup_landmark,
+                        'dropoff_latitude' => $dropoffLatitude ?? $primaryItem->dropoff_latitude,
+                        'dropoff_longitude' => $dropoffLongitude ?? $primaryItem->dropoff_longitude,
+                        'dropoff_landmark' => $dropoffLandmark ?? $primaryItem->dropoff_landmark,
+                        'is_self_driven' => $params['is_self_driven'] ?? $primaryItem->is_self_driven,
+                        'unit_price' => $totals['base_amount'],
+                        'total_price' => $totals['total_estimated'],
+                        'status' => $booking->status,
+                    ]);
+                } else {
+                    // Create new booking item
+                    BookingItem::create([
+                        'booking_id' => $booking->id,
+                        'service_type_id' => $params['service_type'] ?? $params['service_type_id'] ?? null,
+                        'vehicle_group_id' => $params['vehicle_group_id'] ?? null,
+                        'vehicle_id' => $params['vehicle_id'] ?? null,
+                        'driver_id' => $params['driver_id'] ?? null,
+                        'quantity' => 1,
+                        'unit_price' => $totals['base_amount'],
+                        'total_price' => $totals['total_estimated'],
+                        'from_date' => $params['from_date'] ?? null,
+                        'to_date' => $params['to_date'] ?? null,
+                        'from_time' => $params['from_time'] ?? null,
+                        'to_time' => $params['to_time'] ?? null,
+                        'pickup_location' => $pickupLocation,
+                        'dropoff_location' => $dropoffLocation,
+                        'pickup_latitude' => $pickupLatitude,
+                        'pickup_longitude' => $pickupLongitude,
+                        'pickup_landmark' => $pickupLandmark,
+                        'dropoff_latitude' => $dropoffLatitude,
+                        'dropoff_longitude' => $dropoffLongitude,
+                        'dropoff_landmark' => $dropoffLandmark,
+                        'is_self_driven' => $params['is_self_driven'] ?? false,
+                        'currency' => 'LKR',
+                        'exchange_rate' => '1.000000',
+                        'status' => $booking->status,
+                        'item_type' => 'vehicle_group',
+                        'pricing_breakdown' => $totals['pricing_snapshot'] ?? [],
+                    ]);
+                }
+            }
+
+            // 6) Re-sync addons only if provided
             if (array_key_exists('selected_addons', $params)) {
                 $booking->bookingAddons()->delete();
                 if (!empty($params['selected_addons'])) {
@@ -1592,7 +1798,7 @@ class BookingFlowService
                 }
             }
 
-            // 6) Replace variable customizations only if provided
+            // 7) Replace variable customizations only if provided
             if (array_key_exists('variable_customizations', $params)) {
                 $booking->variableCustomizations()->delete();
                 if (!empty($params['variable_customizations'])) {
@@ -1600,20 +1806,28 @@ class BookingFlowService
                 }
             }
 
-            // 7) Handle assignment updates when vehicle/driver or dates change
-            $assignmentChanged = (
-                $original->vehicle_id !== $booking->vehicle_id ||
-                $original->driver_id !== $booking->driver_id ||
-                optional($original->from_date)->toDateString() !== optional($booking->from_date)->toDateString() ||
-                optional($original->to_date)->toDateString() !== optional($booking->to_date)->toDateString()
-            );
+            // 8) Handle assignment updates when vehicle/driver or dates change
+            $primaryItem = $booking->primaryItem();
+            $assignmentChanged = false;
+            
+            if ($primaryItem) {
+                // Get original values before update
+                $originalItem = $primaryItem->getOriginal();
+                
+                $assignmentChanged = (
+                    (isset($params['vehicle_id']) && $originalItem['vehicle_id'] !== $primaryItem->vehicle_id) ||
+                    (isset($params['driver_id']) && $originalItem['driver_id'] !== $primaryItem->driver_id) ||
+                    (isset($params['from_date']) && optional($originalItem['from_date'])->toDateString() !== optional($primaryItem->from_date)->toDateString()) ||
+                    (isset($params['to_date']) && optional($originalItem['to_date'])->toDateString() !== optional($primaryItem->to_date)->toDateString())
+                );
+            }
 
             if ($assignmentChanged) {
                 // Update assignments when vehicle/driver or dates change
                 $this->updateBookingAssignments($booking, $params, $original);
             }
 
-            // 8) Re-approval logic:
+            // 9) Re-approval logic:
             //    Trigger when pricing says so OR meaningful totals changed
             $requiresApprovalByPricing = (bool) ($pricing['requires_approval'] ?? false);
             $pricingChanged = (
@@ -1622,13 +1836,19 @@ class BookingFlowService
                 (float) $original->discount_amount !== (float) $booking->discount_amount ||
                 (float) $original->total_estimated !== (float) $booking->total_estimated
             );
-            $detailsChanged = (
-                optional($original->from_date)->toDateString() !== optional($booking->from_date)->toDateString() ||
-                optional($original->to_date)->toDateString() !== optional($booking->to_date)->toDateString() ||
-                $original->vehicle_group_id !== $booking->vehicle_group_id ||
-                $original->vehicle_id !== $booking->vehicle_id ||
-                $original->driver_id !== $booking->driver_id
-            );
+            
+            // Check if item-level details changed
+            $detailsChanged = false;
+            if ($primaryItem) {
+                $originalItem = $primaryItem->getOriginal();
+                $detailsChanged = (
+                    (isset($params['from_date']) && optional($originalItem['from_date'])->toDateString() !== optional($primaryItem->from_date)->toDateString()) ||
+                    (isset($params['to_date']) && optional($originalItem['to_date'])->toDateString() !== optional($primaryItem->to_date)->toDateString()) ||
+                    (isset($params['vehicle_group_id']) && $originalItem['vehicle_group_id'] !== $primaryItem->vehicle_group_id) ||
+                    (isset($params['vehicle_id']) && $originalItem['vehicle_id'] !== $primaryItem->vehicle_id) ||
+                    (isset($params['driver_id']) && $originalItem['driver_id'] !== $primaryItem->driver_id)
+                );
+            }
 
             if ($booking->status !== 'pending_approval' && ($requiresApprovalByPricing || $pricingChanged || $detailsChanged)) {
                 $booking->status = 'pending_approval';
@@ -1652,22 +1872,15 @@ class BookingFlowService
                 }
             }
 
-            // 8) Optional: allow explicit status override if client sent it AND no approval needed
+            // 10) Optional: allow explicit status override if client sent it AND no approval needed
             if (isset($params['status']) && $params['status'] === 'confirmed' && !$booking->requires_approval) {
                 $booking->status = 'confirmed';
                 $booking->confirmed = true;
-                $booking->confirmed_at = $booking->confirmed_at ?? now();
-                if (empty($booking->confirmation_number) && method_exists(Booking::class, 'generateConfirmationNumber')) {
-                    $booking->confirmation_number = Booking::generateConfirmationNumber();
-                }
+                $booking->confirmed_at = now();
                 $booking->save();
-
-                if (method_exists($this, 'sendBookingConfirmation')) {
-                    $this->sendBookingConfirmation($booking);
-                }
             }
 
-            return $booking->fresh(['customer', 'vehicle', 'driver', 'serviceType', 'vehicleGroup', 'approvals']);
+            return $booking->load(['customer', 'vehicleGroup', 'bookingItems.vehicle', 'bookingItems.driver', 'bookingItems.serviceType', 'approvals']);
         });
     }
 
@@ -4881,10 +5094,12 @@ class BookingFlowService
         if (!empty($filters['search'])) {
             $search = $filters['search'];
             $query->where(function ($q) use ($search) {
-                $q->where('booking_id', 'like', "%{$search}%")
-                    ->orWhere('reference_number', 'like', "%{$search}%")
-                    ->orWhereHas('customer', function ($customerQuery) use ($search) {
-                        $customerQuery->where('name', 'like', "%{$search}%")
+                $q->where('booking_number', 'like', "%{$search}%")
+                    ->orWhere('invoice_number', 'like', "%{$search}%")
+                    ->orWhere('confirmation_number', 'like', "%{$search}%")
+                    ->orWhereHas('customer.user', function ($userQuery) use ($search) {
+                        $userQuery->where('first_name', 'like', "%{$search}%")
+                            ->orWhere('last_name', 'like', "%{$search}%")
                             ->orWhere('email', 'like', "%{$search}%")
                             ->orWhere('phone', 'like', "%{$search}%");
                     });
@@ -4896,7 +5111,9 @@ class BookingFlowService
         }
 
         if (!empty($filters['service_type'])) {
-            $query->where('service_type_id', $filters['service_type']);
+            $query->whereHas('bookingItems', function ($q) use ($filters) {
+                $q->where('service_type_id', $filters['service_type']);
+            });
         }
 
         if (!empty($filters['customer_id'])) {
@@ -4904,25 +5121,33 @@ class BookingFlowService
         }
 
         if (!empty($filters['vehicle_group_id'])) {
-            $query->whereHas('vehicle', function ($q) use ($filters) {
+            $query->whereHas('bookingItems', function ($q) use ($filters) {
                 $q->where('vehicle_group_id', $filters['vehicle_group_id']);
             });
         }
 
         if (!empty($filters['vehicle_id'])) {
-            $query->where('vehicle_id', $filters['vehicle_id']);
+            $query->whereHas('bookingItems', function ($q) use ($filters) {
+                $q->where('vehicle_id', $filters['vehicle_id']);
+            });
         }
 
         if (!empty($filters['driver_id'])) {
-            $query->where('driver_id', $filters['driver_id']);
+            $query->whereHas('bookingItems', function ($q) use ($filters) {
+                $q->where('driver_id', $filters['driver_id']);
+            });
         }
 
         if (!empty($filters['date_from'])) {
-            $query->whereDate('from_date', '>=', $filters['date_from']);
+            $query->whereHas('bookingItems', function ($q) use ($filters) {
+                $q->whereDate('from_date', '>=', $filters['date_from']);
+            });
         }
 
         if (!empty($filters['date_to'])) {
-            $query->whereDate('to_date', '<=', $filters['date_to']);
+            $query->whereHas('bookingItems', function ($q) use ($filters) {
+                $q->whereDate('to_date', '<=', $filters['date_to']);
+            });
         }
 
         if (isset($filters['requires_approval'])) {
@@ -5734,8 +5959,17 @@ class BookingFlowService
         $statusQuery = clone $query;
         $statusQuery->reorder(); // Remove all existing order clauses
 
-        $serviceTypeQuery = clone $query;
-        $serviceTypeQuery->reorder(); // Remove all existing order clauses
+        // Get booking IDs from the filtered query
+        $bookingIds = (clone $query)->pluck('id');
+
+        // Query service type counts from booking_items
+        $serviceTypeCounts = \DB::table('booking_items')
+            ->whereIn('booking_id', $bookingIds)
+            ->whereNotNull('service_type_id')
+            ->groupBy('service_type_id')
+            ->selectRaw('service_type_id, count(DISTINCT booking_id) as count')
+            ->pluck('count', 'service_type_id')
+            ->toArray();
 
         return [
             'total_amount' => $totalQuery->sum('total_actual'),
@@ -5744,10 +5978,7 @@ class BookingFlowService
                 ->selectRaw('status, count(*) as count')
                 ->pluck('count', 'status')
                 ->toArray(),
-            'service_type_counts' => $serviceTypeQuery->groupBy('service_type_id')
-                ->selectRaw('service_type_id, count(*) as count')
-                ->pluck('count', 'service_type_id')
-                ->toArray()
+            'service_type_counts' => $serviceTypeCounts
         ];
     }
 
