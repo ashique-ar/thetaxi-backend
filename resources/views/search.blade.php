@@ -932,10 +932,32 @@
             from_time: '{{ $search->from_time ?? '' }}',
             to_time: '{{ $search->to_time ?? '' }}',
             service_type: '{{ $search->service_type ?? '' }}',
-            pickup_location: '{{ $search->pickup_location ?? '' }}',
+            @php
+                $pickupLocationStr = '';
+                $dropoffLocationStr = '';
+                if (isset($search->pickup_location)) {
+                    if (is_array($search->pickup_location)) {
+                        $pickupLocationStr = $search->pickup_location['address'] ?? '';
+                    } elseif (is_object($search->pickup_location)) {
+                        $pickupLocationStr = $search->pickup_location->address ?? '';
+                    } else {
+                        $pickupLocationStr = $search->pickup_location;
+                    }
+                }
+                if (isset($search->dropoff_location)) {
+                    if (is_array($search->dropoff_location)) {
+                        $dropoffLocationStr = $search->dropoff_location['address'] ?? '';
+                    } elseif (is_object($search->dropoff_location)) {
+                        $dropoffLocationStr = $search->dropoff_location->address ?? '';
+                    } else {
+                        $dropoffLocationStr = $search->dropoff_location;
+                    }
+                }
+            @endphp
+            pickup_location: '{{ $pickupLocationStr }}',
             pickup_lat: {{ $search->pickup_latitude ?? 'null' }},
             pickup_lng: {{ $search->pickup_longitude ?? 'null' }},
-            dropoff_location: '{{ $search->dropoff_location ?? '' }}',
+            dropoff_location: '{{ $dropoffLocationStr }}',
             dropoff_lat: {{ $search->dropoff_latitude ?? 'null' }},
             dropoff_lng: {{ $search->dropoff_longitude ?? 'null' }},
             service_package_id: '{{ $search->service_package_id ?? ($search->package_id ?? '') }}',
@@ -1205,10 +1227,10 @@
                 from_time: '{{ $search->from_time ?? '' }}',
                 to_time: '{{ $search->to_time ?? '' }}',
                 service_type: '{{ $search->service_type ?? '' }}',
-                pickup_location: '{{ $search->pickup_location ?? '' }}',
+                pickup_location: '{{ $pickupLocationStr }}',
                 pickup_lat: {{ $search->pickup_latitude ?? 'null' }},
                 pickup_lng: {{ $search->pickup_longitude ?? 'null' }},
-                dropoff_location: '{{ $search->dropoff_location ?? '' }}',
+                dropoff_location: '{{ $dropoffLocationStr }}',
                 dropoff_lat: {{ $search->dropoff_latitude ?? 'null' }},
                 dropoff_lng: {{ $search->dropoff_longitude ?? 'null' }},
                 duration_days: durationDays,
