@@ -227,43 +227,61 @@ class UserContextService
     public function getAvailableContexts(User $user): array
     {
         $contexts = [];
+        
+        // Get currently active context types
+        $activeContextTypes = $user->contexts()
+            ->where('is_active', true)
+            ->pluck('context_type')
+            ->toArray();
 
         // Check if user can be a customer
         if ($user->canActAsCustomer() || $user->hasRole(['staff', 'admin'])) {
+            $isActive = in_array('customer', $activeContextTypes);
             $contexts[] = [
-                'type' => 'customer',
+                'value' => 'customer',
                 'label' => 'Customer',
-                'active' => $user->customerContext() !== null
+                'active' => !$isActive, // Active means "available to activate" (not currently active)
+                'is_currently_active' => $isActive
             ];
         }
 
         // Check if user can be a vehicle owner
         if ($user->canActAsVehicleOwner() || $user->hasRole(['admin'])) {
+            $isActive = in_array('vehicle_owner', $activeContextTypes);
             $contexts[] = [
-                'type' => 'vehicle_owner',
+                'value' => 'vehicle_owner',
                 'label' => 'Vehicle Owner',
-                'active' => $user->vehicleOwnerContext() !== null
+                'active' => !$isActive,
+                'is_currently_active' => $isActive
             ];
         }
 
+        // Check if user can be a driver
         if ($user->canActAsDriver() || $user->hasRole(['admin'])) {
+            $isActive = in_array('driver', $activeContextTypes);
             $contexts[] = [
-                'type' => 'driver',
+                'value' => 'driver',
                 'label' => 'Driver',
-                'active' => $user->driverContext() !== null
+                'active' => !$isActive,
+                'is_currently_active' => $isActive
             ];
         }
 
         // Add staff context if user has staff role
         if ($user->hasRole(['staff', 'admin'])) {
+            $isActive = in_array('staff', $activeContextTypes);
             $contexts[] = [
-                'type' => 'staff',
+                'value' => 'staff',
                 'label' => 'Staff',
-                'active' => $user->staffContext() !== null
+                'active' => !$isActive,
+                'is_currently_active' => $isActive
             ];
         }
 
-        return $contexts;
+        // Filter to only return contexts that are available to activate (not currently active)
+        return array_values(array_filter($contexts, function($ctx) {
+            return $ctx['active'] === true; // Only return contexts that can be activated
+        }));
     }
 
     /**
