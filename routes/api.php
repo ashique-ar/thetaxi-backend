@@ -33,6 +33,7 @@ use App\Http\Controllers\Api\PublicInquiryServiceController;
 use App\Http\Controllers\Api\PhoneCallController;
 use App\Http\Controllers\Api\ServiceTypeController;
 use App\Http\Controllers\Api\Service\ServicePackageController;
+use App\Http\Controllers\Api\Service\ServiceFormConfigController;
 use App\Http\Controllers\Api\StateController;
 use App\Http\Controllers\Api\Vehicle\VehicleAddonController;
 use App\Http\Controllers\Api\Vehicle\VehicleCategoryController;
@@ -150,7 +151,7 @@ Route::prefix('public')->group(function () {
 
     // Return trip pricing calculator (public)
     Route::post('return-trip/calculate', [ServicePackageController::class, 'calculateReturnPrice']);
-    
+
     // Branding settings (public - no auth required)
     Route::get('branding', [\App\Http\Controllers\Api\Website\WebsiteSettingController::class, 'branding']);
 });
@@ -208,6 +209,7 @@ Route::middleware(['auth:api'])->group(function () {
     Route::delete('users/{user}/permissions', [UserController::class, 'revokePermissions'])->middleware('permission:permissions.manage');
     Route::post('users/{user}/roles', [UserController::class, 'assignRoles'])->middleware('permission:users.edit');
     Route::delete('users/{user}/roles', [UserController::class, 'revokeRoles'])->middleware('permission:users.edit');
+    Route::post('users/{user}/contexts/activate', [UserController::class, 'activateContext'])->middleware('permission:users.edit');
     Route::post('users/{user}/contexts/deactivate', [UserController::class, 'deactivateContext'])->middleware('permission:users.edit');
     Route::post('users/{user}/contexts/{context}/roles', [UserController::class, 'assignContextRoles'])->middleware('permission:users.edit');
     Route::delete('users/{user}/contexts/{context}/roles', [UserController::class, 'revokeContextRole'])->middleware('permission:users.edit');
@@ -332,9 +334,6 @@ Route::middleware(['auth:api'])->group(function () {
         Route::apiResource('vip-types', VipTypeController::class);
         Route::apiResource('service-types', ServiceTypeController::class);
         Route::apiResource('service-packages', ServicePackageController::class);
-
-        // Service Form Configuration
-        Route::get('service-types/{serviceTypeId}/form-config', [Service\ServiceFormConfigController::class, 'getFormConfig']);
 
         // Service Form Configuration
         Route::get('service-types/{serviceType}/form-config', [ServiceFormConfigController::class, 'getFormConfig']);
@@ -640,7 +639,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('drivers/{driver}/sessions', [DriverController::class, 'sessions']);
         Route::get('drivers/{driver}/sessions/{session}/route', [DriverController::class, 'sessionRoute']);
         Route::get('drivers/{driver}/analytics', [DriverController::class, 'analytics']);
-        
+
         // Driver device management endpoints
         Route::get('drivers/{driver}/devices', [DriverController::class, 'devices']);
         Route::post('drivers/{driver}/devices/{deviceUuid}/deactivate', [DriverController::class, 'deactivateDevice']);
@@ -793,6 +792,10 @@ Route::middleware(['auth:api'])->group(function () {
 
             // Company/System Routes
             Route::get('company/locations', [BookingFlowController::class, 'getCompanyLocations'])
+                ->middleware('permission:bookings.view');
+
+            // Route Calculation for Multiple Locations
+            Route::post('calculate-route', [BookingFlowController::class, 'calculateRoute'])
                 ->middleware('permission:bookings.view');
 
             Route::get('edit/{id}', [BookingFlowController::class, 'getBookingForEdit']);

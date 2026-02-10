@@ -1157,6 +1157,50 @@ class BookingFlowController extends Controller
     }
 
     /**
+     * Calculate optimal route through multiple waypoints
+     */
+    public function calculateRoute(Request $request): JsonResponse
+    {
+        $request->validate([
+            'waypoints' => 'required|array|min:2',
+            'waypoints.*.latitude' => 'required|numeric',
+            'waypoints.*.longitude' => 'required|numeric',
+            'waypoints.*.address' => 'sometimes|string',
+            'optimize' => 'sometimes|boolean',
+            'mode' => 'sometimes|string|in:driving,walking,bicycling,transit',
+        ]);
+
+        try {
+            $waypoints = $request->input('waypoints');
+            $optimize = $request->input('optimize', true);
+            $mode = $request->input('mode', 'driving');
+
+            // Use Google Maps Service to calculate route
+            $googleMapsService = app(\App\Services\GoogleMapsService::class);
+            $route = $googleMapsService->calculateOptimalRoute($waypoints, $optimize, $mode);
+
+            return response()->json([
+                'status' => 'success',
+                'data' => [
+                    'total_distance' => $route['distance_km'],
+                    'total_duration' => $route['duration_minutes'],
+                    'duration_seconds' => $route['duration_seconds'],
+                    'optimized_waypoints' => $route['waypoints'],
+                    'polyline' => $route['polyline'],
+                ],
+                'message' => 'Route calculated successfully'
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error calculating route: ' . $e->getMessage());
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to calculate route',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
      * Get booking edit history and change log
      */
     public function getBookingEditHistory(string $bookingId): JsonResponse

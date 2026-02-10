@@ -19,6 +19,7 @@
     // Get display values with fallbacks
     $vehicleGroupName = $item->vehicleGroup?->name ?? 'N/A';
     $serviceTypeName = $item->serviceType?->name ?? 'N/A';
+    $servicePricingMode = $item->serviceType?->pricing_mode ?? 'transfer';
     $durationDays = $item->duration_days ?? 0;
     $pickupAddress = $pickupLoc['address'] ?? 'N/A';
     $dropoffAddress = $dropoffLoc['address'] ?? 'N/A';
@@ -251,7 +252,11 @@
         @endif
         <tr>
             <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; width: 30%;">
-                Rate per Day
+                @if ($servicePricingMode !== 'day')
+                    Transfer
+                @else
+                    Rate per Day
+                @endif
             </td>
             <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
                 {{ $currencySymbol }} {{ number_format($unitPrice, 2) }}

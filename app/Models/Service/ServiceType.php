@@ -48,6 +48,8 @@ class ServiceType extends BaseModel
         'pricing_mode',
         'uses_dropoff_time',
         'allow_return_trip',
+        'allow_multiple_pickup_locations',
+        'allow_multiple_dropoff_locations',
         'frontend_category',
         'priority',
         'minimum_km',
@@ -68,6 +70,8 @@ class ServiceType extends BaseModel
         'minimum_km' => 'decimal:2',
         'uses_dropoff_time' => 'boolean',
         'allow_return_trip' => 'boolean',
+        'allow_multiple_pickup_locations' => 'boolean',
+        'allow_multiple_dropoff_locations' => 'boolean',
         'pricing_mode' => 'string',
         'frontend_category' => 'string',
     ];

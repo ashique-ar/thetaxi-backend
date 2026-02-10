@@ -58,6 +58,8 @@ class ServiceFormConfigController extends Controller
                 'pricing_mode' => $serviceType->pricing_mode,
                 'uses_dropoff_time' => (bool) $serviceType->uses_dropoff_time,
                 'allow_return_trip' => (bool) $serviceType->allow_return_trip,
+                'allow_multiple_pickup_locations' => (bool) ($serviceType->allow_multiple_pickup_locations ?? false),
+                'allow_multiple_dropoff_locations' => (bool) ($serviceType->allow_multiple_dropoff_locations ?? false),
                 'frontend_category' => $serviceType->frontend_category,
                 'minimum_km' => $serviceType->minimum_km,
             ],
@@ -387,6 +389,8 @@ class ServiceFormConfigController extends Controller
             $validated = $request->validate([
                 'uses_dropoff_time' => 'boolean',
                 'allow_return_trip' => 'boolean',
+                'allow_multiple_pickup_locations' => 'boolean',
+                'allow_multiple_dropoff_locations' => 'boolean',
                 'form_config' => 'nullable|array',
             ]);
 
@@ -395,6 +399,8 @@ class ServiceFormConfigController extends Controller
             $serviceType->update([
                 'uses_dropoff_time' => $validated['uses_dropoff_time'] ?? true,
                 'allow_return_trip' => $validated['allow_return_trip'] ?? false,
+                'allow_multiple_pickup_locations' => $validated['allow_multiple_pickup_locations'] ?? false,
+                'allow_multiple_dropoff_locations' => $validated['allow_multiple_dropoff_locations'] ?? false,
                 'form_config' => $validated['form_config'] ?? null,
             ]);
 

@@ -104,11 +104,21 @@ class UserService
             // Assign roles if provided
             if (isset($userData['roles'])) {
                 $user->assignRole($userData['roles']);
+                
+                // Auto-assign permissions from roles
+                if (!isset($userData['auto_assign_permissions']) || $userData['auto_assign_permissions'] === true) {
+                    $this->autoAssignPermissionsFromRoles($user, $userData['roles']);
+                }
             }
 
             // Assign permissions if provided
             if (isset($userData['permissions'])) {
                 $user->givePermissionTo($userData['permissions']);
+            }
+
+            // Handle context-based role and permission assignment
+            if (isset($userData['context_type'])) {
+                $this->assignContextPermissions($user, $userData['context_type']);
             }
 
             DB::commit();
@@ -142,11 +152,21 @@ class UserService
             // Update roles if provided
             if (isset($userData['roles'])) {
                 $user->syncRoles($userData['roles']);
+                
+                // Auto-assign permissions from roles if enabled
+                if (!isset($userData['auto_assign_permissions']) || $userData['auto_assign_permissions'] === true) {
+                    $this->autoAssignPermissionsFromRoles($user, $userData['roles']);
+                }
             }
 
             // Update permissions if provided
             if (isset($userData['permissions'])) {
                 $user->syncPermissions($userData['permissions']);
+            }
+
+            // Handle context-based role and permission assignment
+            if (isset($userData['context_type'])) {
+                $this->assignContextPermissions($user, $userData['context_type']);
             }
 
             DB::commit();
@@ -358,5 +378,82 @@ class UserService
             'permissions' => $user->getPermissionsArray(),
             'roles' => $user->getRolesArray(),
         ];
+    }
+
+    /**
+     * Auto-assign permissions from roles
+     *
+     * @param User $user
+     * @param array $roleNames
+     * @return void
+     */
+    private function autoAssignPermissionsFromRoles(User $user, array $roleNames): void
+    {
+        $roles = \Spatie\Permission\Models\Role::whereIn('name', $roleNames)->get();
+        
+        foreach ($roles as $role) {
+            $permissions = $role->permissions;
+            foreach ($permissions as $permission) {
+                if (!$user->hasPermissionTo($permission->name)) {
+                    $user->givePermissionTo($permission->name);
+                }
+            }
+        }
+    }
+
+    /**
+     * Assign context-based permissions
+     *
+     * @param User $user
+     * @param string $contextType
+     * @return void
+     */
+    private function assignContextPermissions(User $user, string $contextType): void
+    {
+        // Map context types to default permissions
+        $contextPermissionMap = [
+            'customer' => [
+                'bookings.view',
+                'bookings.create',
+                'profile.view',
+                'profile.edit',
+            ],
+            'driver' => [
+                'bookings.view',
+                'assignments.view',
+                'profile.view',
+                'profile.edit',
+            ],
+            'vehicle_owner' => [
+                'vehicles.view',
+                'vehicles.create',
+                'vehicles.edit',
+                'bookings.view',
+                'profile.view',
+                'profile.edit',
+            ],
+            'staff' => [
+                'bookings.view',
+                'bookings.edit',
+                'customers.view',
+                'vehicles.view',
+                'reports.view',
+            ],
+            'agent' => [
+                'bookings.view',
+                'bookings.create',
+                'customers.view',
+                'reports.view',
+            ],
+        ];
+
+        $permissions = $contextPermissionMap[$contextType] ?? [];
+        
+        foreach ($permissions as $permissionName) {
+            $permission = \Spatie\Permission\Models\Permission::where('name', $permissionName)->first();
+            if ($permission && !$user->hasPermissionTo($permissionName)) {
+                $user->givePermissionTo($permissionName);
+            }
+        }
     }
 }

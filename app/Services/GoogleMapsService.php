@@ -180,4 +180,146 @@ class GoogleMapsService
 
         return null;
     }
+
+    /**
+     * Calculate optimal route through multiple waypoints
+     * 
+     * @param array $waypoints Array of locations (each can be array or string)
+     * @param bool $optimize Whether to optimize waypoint order
+     * @param string $mode Travel mode (driving, walking, bicycling, transit)
+     * @return array Route information with distance, duration, and optimized waypoints
+     */
+    public function calculateOptimalRoute(array $waypoints, bool $optimize = true, string $mode = 'driving'): array
+    {
+        if (count($waypoints) < 2) {
+            return [
+                'distance_km' => 0.0,
+                'duration_seconds' => 0,
+                'duration_minutes' => 0,
+                'waypoints' => [],
+                'polyline' => '',
+            ];
+        }
+
+        if (empty($this->apiKey)) {
+            Log::warning('Google Maps API key not configured for route calculation');
+            return [
+                'distance_km' => 0.0,
+                'duration_seconds' => 0,
+                'duration_minutes' => 0,
+                'waypoints' => $waypoints,
+                'polyline' => '',
+            ];
+        }
+
+        $origin = array_shift($waypoints);
+        $destination = array_pop($waypoints);
+
+        $originStr = $this->formatLocation($origin);
+        $destinationStr = $this->formatLocation($destination);
+
+        if (!$originStr || !$destinationStr) {
+            return [
+                'distance_km' => 0.0,
+                'duration_seconds' => 0,
+                'duration_minutes' => 0,
+                'waypoints' => [],
+                'polyline' => '',
+            ];
+        }
+
+        $cacheKey = 'gm:route:' . md5(json_encode([$originStr, $destinationStr, $waypoints, $optimize, $mode]));
+        
+        return Cache::remember($cacheKey, $this->ttl, function () use ($originStr, $destinationStr, $waypoints, $optimize, $mode) {
+            try {
+                $params = [
+                    'key' => $this->apiKey,
+                    'origin' => $originStr,
+                    'destination' => $destinationStr,
+                    'mode' => $mode,
+                    'units' => 'metric',
+                ];
+
+                // Add waypoints if any
+                if (!empty($waypoints)) {
+                    $waypointStrs = array_map(fn($wp) => $this->formatLocation($wp), $waypoints);
+                    $waypointStrs = array_filter($waypointStrs); // Remove nulls
+                    
+                    if (!empty($waypointStrs)) {
+                        $waypointParam = implode('|', $waypointStrs);
+                        if ($optimize) {
+                            $waypointParam = 'optimize:true|' . $waypointParam;
+                        }
+                        $params['waypoints'] = $waypointParam;
+                    }
+                }
+
+                $resp = Http::timeout(15)->get('https://maps.googleapis.com/maps/api/directions/json', $params);
+                
+                if (!$resp->successful()) {
+                    Log::error('Directions API HTTP error', ['status' => $resp->status(), 'body' => $resp->body()]);
+                    return [
+                        'distance_km' => 0.0,
+                        'duration_seconds' => 0,
+                        'duration_minutes' => 0,
+                        'waypoints' => [],
+                        'polyline' => '',
+                    ];
+                }
+
+                $data = $resp->json();
+                
+                if (($data['status'] ?? '') !== 'OK') {
+                    Log::warning('Directions API status not OK', [
+                        'status' => $data['status'] ?? 'UNKNOWN',
+                        'error_message' => $data['error_message'] ?? null
+                    ]);
+                    return [
+                        'distance_km' => 0.0,
+                        'duration_seconds' => 0,
+                        'duration_minutes' => 0,
+                        'waypoints' => [],
+                        'polyline' => '',
+                    ];
+                }
+
+                $route = $data['routes'][0] ?? null;
+                if (!$route) {
+                    return [
+                        'distance_km' => 0.0,
+                        'duration_seconds' => 0,
+                        'duration_minutes' => 0,
+                        'waypoints' => [],
+                        'polyline' => '',
+                    ];
+                }
+
+                // Calculate total distance and duration from all legs
+                $totalDistance = 0;
+                $totalDuration = 0;
+
+                foreach ($route['legs'] as $leg) {
+                    $totalDistance += $leg['distance']['value'] ?? 0; // meters
+                    $totalDuration += $leg['duration']['value'] ?? 0; // seconds
+                }
+
+                return [
+                    'distance_km' => $totalDistance > 0 ? round($totalDistance / 1000, 3) : 0.0,
+                    'duration_seconds' => $totalDuration,
+                    'duration_minutes' => $totalDuration > 0 ? round($totalDuration / 60) : 0,
+                    'waypoints' => $route['waypoint_order'] ?? [],
+                    'polyline' => $route['overview_polyline']['points'] ?? '',
+                ];
+            } catch (\Throwable $e) {
+                Log::error('Route calculation exception', ['error' => $e->getMessage()]);
+                return [
+                    'distance_km' => 0.0,
+                    'duration_seconds' => 0,
+                    'duration_minutes' => 0,
+                    'waypoints' => [],
+                    'polyline' => '',
+                ];
+            }
+        });
+    }
 }

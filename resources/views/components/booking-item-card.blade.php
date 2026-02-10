@@ -251,7 +251,12 @@
             <div class="col-md-6">
                 <div class="pricing-info">
                     <div class="d-flex justify-content-between mb-2">
-                        <span class="text-muted">Rate per Day:</span>
+                        @if ($servicePricingMode !== 'day')
+                            <span class="text-muted">Transfer:</span>
+                        @else
+                            <span class="text-muted">Rate per Day:</span>
+                        @endif
+
                         <strong>{{ $currencySymbol }} {{ number_format($unitPrice, 2) }}</strong>
                     </div>
                     <div class="d-flex justify-content-between mb-2">

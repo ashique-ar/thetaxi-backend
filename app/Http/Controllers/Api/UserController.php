@@ -425,7 +425,8 @@ class UserController extends Controller
     {
         $request->validate([
             'roles' => ['required', 'array'],
-            'roles.*' => ['required']
+            'roles.*' => ['required'],
+            'auto_assign_permissions' => ['sometimes', 'boolean']
         ]);
 
         try {
@@ -436,6 +437,11 @@ class UserController extends Controller
 
             $this->contextService->assignRolesToContext($user, $context, $request->roles);
 
+            // Auto-assign context-based permissions if requested
+            if ($request->boolean('auto_assign_permissions', true)) {
+                $this->assignContextBasedPermissions($user, $context->context_type);
+            }
+
             $activeContexts = $user->getActiveContexts()->map(function($ctx){
                 return array_merge($ctx->toArray(), ['roles' => $ctx->roles()->get()->map(function($r){ return ['id' => $r->id, 'name' => $r->name, 'display_name' => $r->display_name ?? $r->name]; })]);
             });
@@ -444,6 +450,68 @@ class UserController extends Controller
         } catch (\Exception $e) {
             return response()->json(['status' => 'error', 'message' => 'Failed to assign roles', 'error' => $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Assign context-based permissions to user
+     *
+     * @param User $user
+     * @param string $contextType
+     * @return void
+     */
+    private function assignContextBasedPermissions(User $user, string $contextType): void
+    {
+        // Map context types to default permissions
+        $contextPermissionMap = [
+            'customer' => [
+                'bookings.view',
+                'bookings.create',
+                'profile.view',
+                'profile.edit',
+            ],
+            'driver' => [
+                'bookings.view',
+                'assignments.view',
+                'profile.view',
+                'profile.edit',
+            ],
+            'vehicle_owner' => [
+                'vehicles.view',
+                'vehicles.create',
+                'vehicles.edit',
+                'bookings.view',
+                'profile.view',
+                'profile.edit',
+            ],
+            'staff' => [
+                'bookings.view',
+                'bookings.edit',
+                'customers.view',
+                'vehicles.view',
+                'reports.view',
+            ],
+            'agent' => [
+                'bookings.view',
+                'bookings.create',
+                'customers.view',
+                'reports.view',
+            ],
+        ];
+
+        $permissions = $contextPermissionMap[$contextType] ?? [];
+        
+        foreach ($permissions as $permissionName) {
+            $permission = \Spatie\Permission\Models\Permission::where('name', $permissionName)->first();
+            if ($permission && !$user->hasPermissionTo($permissionName)) {
+                DB::table('model_has_permissions')->updateOrInsert([
+                    'permission_id' => $permission->id,
+                    'model_type' => User::class,
+                    'model_id' => $user->id,
+                ]);
+            }
+        }
+        
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
     }
 
     /**
@@ -516,6 +584,43 @@ class UserController extends Controller
     }
 
     /**
+     * Activate/Create a context for a specific user (admin)
+     */
+    public function activateContext(Request $request, User $user): JsonResponse
+    {
+        $request->validate([
+            'context_type' => 'required|string|in:customer,vehicle_owner,staff,agent,driver',
+            'context_data' => 'sometimes|array',
+        ]);
+
+        try {
+            $contextType = $request->get('context_type');
+            $contextData = $request->get('context_data', []);
+
+            // Use switchContext to create/activate the context
+            $userContext = $this->contextService->switchContext($user, $contextType, $contextData);
+
+            // Auto-assign context-based permissions
+            $this->assignContextBasedPermissions($user, $contextType);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Context activated successfully',
+                'data' => [
+                    'context' => $userContext,
+                    'available_contexts' => $this->contextService->getAvailableContexts($user)
+                ]
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to activate context',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
      * Assign roles to user
      *
      * @param Request $request
@@ -529,6 +634,7 @@ class UserController extends Controller
             'roles.*' => ['required', 'string', 'exists:roles,name'],
             'apply_to_guards' => ['sometimes', 'array'],
             'apply_to_guards.*' => ['string', Rule::in(['web', 'api'])],
+            'auto_assign_permissions' => ['sometimes', 'boolean'],
         ]);
 
         try {
@@ -552,6 +658,12 @@ class UserController extends Controller
                     'model_id' => $user->id,
                 ]);
             }
+
+            // Auto-assign permissions from roles if requested
+            if ($request->boolean('auto_assign_permissions', true)) {
+                $this->autoAssignPermissionsFromRoles($user, $request->roles, $guards);
+            }
+
             app(PermissionRegistrar::class)->forgetCachedPermissions();
             
             return response()->json([
@@ -564,6 +676,32 @@ class UserController extends Controller
                 'message' => 'Failed to assign roles',
                 'error' => $e->getMessage()
             ], 500);
+        }
+    }
+
+    /**
+     * Auto-assign permissions from roles
+     *
+     * @param User $user
+     * @param array $roleNames
+     * @param array $guards
+     * @return void
+     */
+    private function autoAssignPermissionsFromRoles(User $user, array $roleNames, array $guards): void
+    {
+        $roles = Role::whereIn('name', $roleNames)
+            ->whereIn('guard_name', $guards)
+            ->with('permissions')
+            ->get();
+        
+        foreach ($roles as $role) {
+            foreach ($role->permissions as $permission) {
+                DB::table('model_has_permissions')->updateOrInsert([
+                    'permission_id' => $permission->id,
+                    'model_type' => User::class,
+                    'model_id' => $user->id,
+                ]);
+            }
         }
     }
 

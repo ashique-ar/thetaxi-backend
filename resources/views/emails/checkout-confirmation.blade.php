@@ -368,7 +368,12 @@
             </div>
         @elseif($booking->payment_type === 'advance' && $booking->payment_status === 'paid')
             <div class="highlight-box success">
-                <h3>✓ Advance Payment Confirmed!</h3>
+                <h3>✓ Your Booking is Confirmed!</h3>
+                   <p>Your payment has been successfully processed and your vehicle will be prepared and ready for pickup on
+                    <strong>{{ \Carbon\Carbon::parse($booking->from_date)->format('F d, Y \a\t g:i A') }}</strong>.
+                </p>  
+                <p>Driver Details will be shared with you before 3 hours of pickup time.
+                </p>           
                 <p>You have successfully paid {{ $advancePercentage }}% advance
                     ({{ $currencySymbol }} {{ number_format($booking->amount_to_pay ?? 0, 2) }}).</p>
                 <p><strong>Balance Due at Pickup:</strong>
@@ -450,6 +455,8 @@
                 <p>Your payment has been successfully processed and your vehicle will be prepared and ready for pickup on
                     <strong>{{ \Carbon\Carbon::parse($booking->from_date)->format('F d, Y \a\t g:i A') }}</strong>.
                 </p>
+                <p>Driver Details will be shared with you before 3 hours of pickup time.
+                </p>
                 {{-- <p style="margin-bottom: 8px;"><strong>Important Reminders:</strong></p>
                 <ul>
                     <li>Bring valid government-issued ID/Passport</li>
@@ -463,6 +470,8 @@
                 <h3>✓ Your Booking is Confirmed!</h3>
                 <p>Your vehicle will be prepared and ready for pickup on
                     <strong>{{ \Carbon\Carbon::parse($booking->from_date)->format('F d, Y \a\t g:i A') }}</strong>.
+                </p>
+                <p>Driver Details will be shared with you before 3 hours of pickup time.
                 </p>
                 {{-- <p style="margin-bottom: 8px;"><strong>Important Reminders:</strong></p>
                 <ul>
@@ -484,7 +493,7 @@
         <table class="info-table">
             <tr>
                 <td>📞 Phone</td>
-                <td><a href="tel:+9471615615" style="color: #BF2629; text-decoration: none;">+94 71 1 615 615</a></td>
+                <td><a href="tel:+9471615615" style="color: #BF2629; text-decoration: none;">+94 711 92 00 00</a></td>
             </tr>
             <tr>
                 <td>📧 Email</td>
@@ -499,7 +508,7 @@
             </tr>
             <tr>
                 <td>💬 WhatsApp</td>
-                <td><a href="https://wa.me/9471615615" style="color: #BF2629; text-decoration: none;">+94 71 1 615 615</a>
+                <td><a href="https://wa.me/9471615615" style="color: #BF2629; text-decoration: none;">+94 71 768 00 00</a>
                 </td>
             </tr>
         </table>
