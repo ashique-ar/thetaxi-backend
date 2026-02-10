@@ -24,6 +24,13 @@
 									"        pm.environment.set('refresh_token', response.data.token.refresh_token);",
 									"        pm.environment.set('driver_id', response.data.driver.id);",
 									"        pm.environment.set('user_id', response.data.user.id);",
+									"        ",
+									"        // Save device UUID returned by backend",
+									"        if (response.data.device && response.data.device.device_uuid) {",
+									"            pm.environment.set('device_uuid', response.data.device.device_uuid);",
+									"            console.log('✅ Device UUID:', response.data.device.device_uuid);",
+									"        }",
+									"        ",
 									"        console.log('✅ Tokens saved to environment');",
 									"    }",
 									"}"
@@ -46,16 +53,104 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"email\": \"{{driver_email}}\",\n    \"password\": \"{{driver_password}}\",\n    \"device_uuid\": \"{{device_uuid}}\",\n    \"device_name\": \"{{device_name}}\",\n    \"device_model\": \"{{device_model}}\",\n    \"device_manufacturer\": \"{{device_manufacturer}}\",\n    \"platform\": \"{{platform}}\",\n    \"os_version\": \"{{os_version}}\",\n    \"app_version\": \"{{app_version}}\",\n    \"app_build\": \"{{app_build}}\"\n}"
+							"raw": "{\n    \"email\": \"{{driver_email}}\",\n    \"password\": \"{{driver_password}}\",\n    \n    \"device_fingerprint\": \"{{device_fingerprint}}\",\n    \"device_name\": \"{{device_name}}\",\n    \"device_model\": \"{{device_model}}\",\n    \"device_manufacturer\": \"{{device_manufacturer}}\",\n    \"platform\": \"{{platform}}\",\n    \"os_version\": \"{{os_version}}\",\n    \"app_version\": \"{{app_version}}\",\n    \"app_build\": \"{{app_build}}\",\n    \"push_token\": \"{{push_token}}\",\n    \"push_provider\": \"{{push_provider}}\",\n    \"locale\": \"en_US\",\n    \"timezone\": \"Asia/Colombo\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
 						},
 						"url": {
-							"raw": "{{base_url}}/api/driver/auth/login",
+							"raw": "{{base_url}}/api/driver/mobile/auth/login",
 							"host": ["{{base_url}}"],
-							"path": ["api", "driver", "auth", "login"]
+							"path": ["api", "driver", "mobile", "auth", "login"]
 						},
-						"description": "Authenticate a driver and receive access and refresh tokens. Device information is registered/updated during login."
+						"description": "Authenticate a driver and receive access and refresh tokens.\n\n**NEW: Backend-Generated UUID Approach**\n- Send `device_fingerprint` (SHA-256 hash of device characteristics)\n- Backend generates and returns `device_uuid`\n- Same fingerprint = same device recognized\n- No need to store UUID on mobile app\n\n**Device Fingerprint:**\nGenerate by hashing device characteristics:\n- Device model/manufacturer\n- OS version\n- Platform-specific ID (IDFV/Android ID)\n- Screen dimensions\n- Time zone\n\n**Backward Compatible:**\n- Can still send `device_uuid` if you have it\n- If both sent, UUID is used and fingerprint is updated"
 					},
-					"response": []
+					"response": [
+						{
+							"name": "Login Success (New Device)",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									},
+									{
+										"key": "Accept",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"email\": \"driver@example.com\",\n    \"password\": \"password123\",\n    \"device_fingerprint\": \"a3f5b2c1d4e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2\",\n    \"platform\": \"ios\",\n    \"device_model\": \"iPhone 14 Pro\",\n    \"os_version\": \"17.2\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{base_url}}/api/driver/mobile/auth/login",
+									"host": ["{{base_url}}"],
+									"path": ["api", "driver", "mobile", "auth", "login"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n    \"status\": \"success\",\n    \"message\": \"Login successful\",\n    \"data\": {\n        \"user\": {\n            \"id\": \"user-uuid\",\n            \"email\": \"driver@example.com\",\n            \"name\": \"John Driver\"\n        },\n        \"driver\": {\n            \"id\": \"driver-uuid\",\n            \"name\": \"John Driver\",\n            \"phone\": \"+94771234567\",\n            \"license_number\": \"DL123456\"\n        },\n        \"device\": {\n            \"id\": \"device-record-uuid\",\n            \"device_uuid\": \"550e8400-e29b-41d4-a716-446655440000\",\n            \"device_fingerprint\": \"a3f5b2c1d4e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2\",\n            \"platform\": \"ios\",\n            \"device_model\": \"iPhone 14 Pro\",\n            \"is_active\": true,\n            \"registered_at\": \"2024-02-10T10:30:00.000000Z\"\n        },\n        \"token\": {\n            \"access_token\": \"eyJ0eXAiOiJKV1QiLCJhbGc...\",\n            \"token_type\": \"Bearer\",\n            \"expires_at\": \"2024-03-15T10:30:00.000000Z\",\n            \"refresh_token\": \"token-id-here\",\n            \"scope\": \"driver\"\n        }\n    }\n}"
+						},
+						{
+							"name": "Login Success (Returning Device)",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									},
+									{
+										"key": "Accept",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"email\": \"driver@example.com\",\n    \"password\": \"password123\",\n    \"device_fingerprint\": \"a3f5b2c1d4e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2\",\n    \"platform\": \"ios\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{base_url}}/api/driver/mobile/auth/login",
+									"host": ["{{base_url}}"],
+									"path": ["api", "driver", "mobile", "auth", "login"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n    \"status\": \"success\",\n    \"message\": \"Login successful\",\n    \"data\": {\n        \"user\": { ... },\n        \"driver\": { ... },\n        \"device\": {\n            \"id\": \"device-record-uuid\",\n            \"device_uuid\": \"550e8400-e29b-41d4-a716-446655440000\",\n            \"device_fingerprint\": \"a3f5b2c1d4e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2\",\n            \"platform\": \"ios\",\n            \"is_active\": true,\n            \"last_active_at\": \"2024-02-10T12:45:00.000000Z\"\n        },\n        \"token\": { ... }\n    }\n}"
+						}
+					]
 				},
 				{
 					"name": "Get Profile",

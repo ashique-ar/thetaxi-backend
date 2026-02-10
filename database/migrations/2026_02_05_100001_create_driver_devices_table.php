@@ -24,12 +24,14 @@ return new class extends Migration
      */
     public function up(): void
     {
+        Schema::dropIfExists('driver_devices');
         Schema::create('driver_devices', function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->foreignUuid('driver_id')->constrained('drivers')->onDelete('cascade');
             
             // Device identification
-            $table->string('device_uuid')->comment('Unique device identifier from mobile app');
+            $table->string('device_uuid')->nullable()->comment('Unique device identifier from mobile app');
+            $table->string('device_fingerprint', 500)->nullable()->comment('Device fingerprint for identification (hash of device characteristics)');
             $table->string('device_name')->nullable()->comment('User-friendly device name (e.g., "John\'s iPhone")');
             $table->string('device_model')->nullable()->comment('Device model (e.g., "iPhone 14 Pro", "Samsung Galaxy S23")');
             $table->string('device_manufacturer')->nullable()->comment('Device manufacturer (e.g., "Apple", "Samsung")');
@@ -60,8 +62,6 @@ return new class extends Migration
             $table->timestamps();
             $table->softDeletes();
             
-            // Indexes
-            $table->unique(['driver_id', 'device_uuid'], 'driver_device_unique');
             $table->index('device_uuid');
             $table->index('platform');
             $table->index('is_active');

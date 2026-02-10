@@ -48,6 +48,7 @@ class DriverDevice extends BaseModel
     protected $fillable = [
         'driver_id',
         'device_uuid',
+        'device_fingerprint',
         'device_name',
         'device_model',
         'device_manufacturer',

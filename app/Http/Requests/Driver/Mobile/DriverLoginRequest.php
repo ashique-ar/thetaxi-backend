@@ -35,7 +35,12 @@ class DriverLoginRequest extends FormRequest
         return [
             'email' => ['required', 'string', 'email', 'max:255'],
             'password' => ['required', 'string'],
-            'device_uuid' => ['required', 'string', 'max:255'],
+            
+            // Device UUID is now optional - backend will generate if not provided
+            'device_uuid' => ['nullable', 'string', 'max:255'],
+            
+            // Device fingerprint for identification (recommended)
+            'device_fingerprint' => ['nullable', 'string', 'max:500'],
             
             // Device information (optional but recommended)
             'device_name' => ['nullable', 'string', 'max:255'],
@@ -63,7 +68,6 @@ class DriverLoginRequest extends FormRequest
             'email.required' => 'Email address is required',
             'email.email' => 'Please enter a valid email address',
             'password.required' => 'Password is required',
-            'device_uuid.required' => 'Device UUID is required',
         ];
     }
 

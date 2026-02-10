@@ -1,259 +1,332 @@
 # TheTaxi Driver Mobile API - Postman Collection
 
-This directory contains Postman collection and environment files for testing the TheTaxi Driver Mobile API.
+## Overview
+
+This Postman collection provides complete API testing for the TheTaxi Driver Mobile Application, including authentication, device management, status tracking, and location services.
 
 ## Files
 
-- **TheTaxi-Driver-API.postman_collection.json** - Complete API collection with all endpoints
+- **TheTaxi-Driver-API.postman_collection.json** - Complete API collection
 - **TheTaxi-Driver-API.postman_environment.json** - Development environment variables
-- **TheTaxi-Driver-API-Production.postman_environment.json** - Production environment variables
 
 ## Quick Start
 
 ### 1. Import Collection
 
 1. Open Postman
-2. Click **Import** button
-3. Select `TheTaxi-Driver-API.postman_collection.json`
-4. The collection will appear in your Collections sidebar
+2. Click **Import**
+3. Select both JSON files
+4. Collection and environment will be imported
 
-### 2. Import Environment
+### 2. Select Environment
 
-**For Development:**
-1. Click **Import** button
-2. Select `TheTaxi-Driver-API.postman_environment.json`
-3. Select the environment from the dropdown in the top-right corner
+1. Click the environment dropdown (top right)
+2. Select **"TheTaxi Driver API - Development"**
 
-**For Production:**
-1. Click **Import** button
-2. Select `TheTaxi-Driver-API-Production.postman_environment.json`
-3. Update the empty variables with your production credentials
-4. Select the environment from the dropdown
+### 3. Update Environment Variables
 
-### 3. Configure Environment Variables
+Click the eye icon next to the environment dropdown and update:
 
-Before testing, update these environment variables:
+```
+base_url: http://localhost:8000 (or your API URL)
+driver_email: your-driver@example.com
+driver_password: your-password
+device_fingerprint: (auto-generated on login, or use test value)
+```
 
-#### Required Variables (Development)
-- `driver_email` - Driver's email address (default: driver@example.com)
-- `driver_password` - Driver's password (default: password)
-- `device_uuid` - Unique device identifier (default provided, or generate your own UUID)
+### 4. Test Login
 
-#### Required Variables (Production)
-- `driver_email` - Your production driver email
-- `driver_password` - Your production driver password
-- `device_uuid` - Generate a unique UUID for your test device
+1. Open **Authentication → Login**
+2. Click **Send**
+3. Access token will be automatically saved to environment
 
-#### Optional Variables
-- `device_name` - Friendly device name (e.g., "Test iPhone")
+## New: Backend-Generated UUID Approach
+
+### What Changed
+
+The API now uses a **device fingerprint** approach where:
+- Mobile app sends a fingerprint (SHA-256 hash of device characteristics)
+- Backend generates and returns a UUID
+- Same fingerprint = same device recognized
+- No need to store UUID on mobile app
+
+### Device Fingerprint
+
+The `device_fingerprint` is a SHA-256 hash of device characteristics:
+
+```
+Components:
+- Device model (e.g., "iPhone 14 Pro")
+- OS version (e.g., "17.2")
+- Platform ID (IDFV for iOS, Android ID for Android)
+- Screen dimensions
+- Time zone
+
+Example:
+"iPhone 14 Pro|iOS|17.2|ABC-123-DEF|1170x2532|Asia/Colombo"
+↓ SHA-256
+"a3f5b2c1d4e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2"
+```
+
+### Login Request (New Format)
+
+```json
+{
+  "email": "driver@example.com",
+  "password": "password123",
+  "device_fingerprint": "a3f5b2c1d4e6f7a8...",
+  "platform": "ios",
+  "device_model": "iPhone 14 Pro",
+  "os_version": "17.2"
+}
+```
+
+### Login Response
+
+```json
+{
+  "status": "success",
+  "data": {
+    "device": {
+      "device_uuid": "550e8400-e29b-41d4-a716-446655440000",
+      "device_fingerprint": "a3f5b2c1d4e6f7a8...",
+      "platform": "ios"
+    },
+    "token": {
+      "access_token": "eyJ0eXAiOiJKV1QiLCJhbGc...",
+      "refresh_token": "token-id"
+    }
+  }
+}
+```
+
+The `device_uuid` is automatically saved to the environment for subsequent requests.
+
+## Environment Variables
+
+### Authentication
+- `access_token` - Bearer token (auto-set on login)
+- `refresh_token` - Refresh token ID (auto-set on login)
+- `driver_id` - Driver UUID (auto-set on login)
+- `user_id` - User UUID (auto-set on login)
+
+### Device Information
+- `device_uuid` - Device UUID (returned by backend)
+- `device_fingerprint` - Device fingerprint hash
+- `device_name` - User-friendly device name
 - `device_model` - Device model (e.g., "iPhone 14 Pro")
 - `device_manufacturer` - Manufacturer (e.g., "Apple")
-- `platform` - Platform: `ios` or `android`
-- `os_version` - OS version (e.g., "17.0")
+- `platform` - OS platform ("ios" or "android")
+- `os_version` - OS version (e.g., "17.2")
 - `app_version` - App version (e.g., "1.0.0")
 - `app_build` - Build number (e.g., "100")
+- `push_token` - FCM/APNs push token
+- `push_provider` - Push provider ("fcm" or "apns")
 
-#### Auto-Populated Variables
-These are automatically set by the collection scripts:
-- `access_token` - Set after successful login
-- `refresh_token` - Set after successful login
-- `driver_id` - Set after successful login
-- `user_id` - Set after successful login
-- `session_id` - Set after going online
+### Location
+- `start_latitude` - Session start latitude (Colombo: 6.9271)
+- `start_longitude` - Session start longitude (Colombo: 79.8612)
+- `current_latitude` - Current location latitude
+- `current_longitude` - Current location longitude
+- `end_latitude` - Session end latitude
+- `end_longitude` - Session end longitude
+
+### Session
+- `session_id` - Active session UUID (auto-set on go online)
+
+## API Endpoints
+
+### Authentication
+- **POST** `/api/driver/mobile/auth/login` - Login with credentials
+- **GET** `/api/driver/mobile/auth/profile` - Get driver profile
+- **POST** `/api/driver/mobile/auth/refresh` - Refresh access token
+- **POST** `/api/driver/mobile/auth/logout` - Logout and revoke token
+
+### Status Management
+- **POST** `/api/driver/status/online` - Go online (start session)
+- **POST** `/api/driver/status/offline` - Go offline (end session)
+- **GET** `/api/driver/status` - Get current status
+
+### Heartbeat
+- **POST** `/api/driver/heartbeat` - Send heartbeat (every 60s)
+
+### Location Tracking
+- **POST** `/api/driver/location` - Update location (every 10s)
+- **GET** `/api/driver/location/history` - Get location history
+
+### Sessions
+- **GET** `/api/driver/sessions` - List session history
+- **GET** `/api/driver/sessions/{id}` - Get session details
+
+### Device Management
+- **GET** `/api/driver/devices` - List all devices
+- **GET** `/api/driver/devices/current` - Get current device
+- **PUT** `/api/driver/devices` - Update device info
+- **POST** `/api/driver/devices/push-token` - Update push token
+- **POST** `/api/driver/devices/{uuid}/deactivate` - Deactivate device
+- **DELETE** `/api/driver/devices/{uuid}` - Remove device
+
+### Assignments (Placeholder)
+- **GET** `/api/driver/assignments` - List assignments
+- **GET** `/api/driver/assignments/current` - Get current assignment
 
 ## Testing Workflow
 
-### Basic Authentication Flow
+### 1. Authentication Flow
 
-1. **Login**
-   - Navigate to: `Authentication > Login`
-   - Click **Send**
-   - Tokens are automatically saved to environment variables
-   - Response includes user, driver, device, and token information
+```
+1. Login → Saves access_token, device_uuid
+2. Get Profile → Verify authentication
+3. Refresh Token → Get new access token
+4. Logout → Revoke token
+```
 
-2. **Get Profile**
-   - Navigate to: `Authentication > Get Profile`
-   - Click **Send**
-   - Returns complete driver profile
+### 2. Session Flow
 
-3. **Refresh Token**
-   - Navigate to: `Authentication > Refresh Token`
-   - Click **Send**
-   - New tokens are automatically saved
+```
+1. Login
+2. Go Online → Saves session_id
+3. Send Heartbeat (every 60s)
+4. Update Location (every 10s)
+5. Go Offline → Ends session
+```
 
-4. **Logout**
-   - Navigate to: `Authentication > Logout`
-   - Click **Send**
-   - Current token is revoked
+### 3. Device Management Flow
 
-### Status Management Flow
+```
+1. Login → Device registered/updated
+2. List Devices → See all devices
+3. Get Current Device → Current device info
+4. Update Device → Update app version, etc.
+5. Update Push Token → Register for notifications
+```
 
-1. **Go Online**
-   - Navigate to: `Status Management > Go Online`
-   - Update latitude/longitude if needed
-   - Click **Send**
-   - Session ID is automatically saved
+## Testing Different Scenarios
 
-2. **Get Current Status**
-   - Navigate to: `Status Management > Get Current Status`
-   - Click **Send**
+### Test New Device
 
-3. **Send Heartbeat**
-   - Navigate to: `Heartbeat > Send Heartbeat`
-   - Click **Send**
-   - Should be sent every 60 seconds while online
+```json
+{
+  "email": "driver@test.com",
+  "password": "password",
+  "device_fingerprint": "new-fingerprint-abc123...",
+  "platform": "ios"
+}
+```
 
-4. **Update Location**
-   - Navigate to: `Location Tracking > Update Location`
-   - Update coordinates if needed
-   - Click **Send**
-   - Should be sent every 10 seconds while moving
+**Expected:** Backend generates new UUID, returns it in response.
 
-5. **Go Offline**
-   - Navigate to: `Status Management > Go Offline`
-   - Click **Send**
+### Test Returning Device
 
-### Session History
+```json
+{
+  "email": "driver@test.com",
+  "password": "password",
+  "device_fingerprint": "new-fingerprint-abc123...",
+  "platform": "ios"
+}
+```
 
-1. **List Sessions**
-   - Navigate to: `Sessions > List Sessions`
-   - Modify query parameters if needed
-   - Click **Send**
+**Expected:** Backend recognizes fingerprint, returns same UUID as before.
 
-2. **Get Session Details**
-   - Navigate to: `Sessions > Get Session Details`
-   - Ensure `session_id` is set in environment
-   - Click **Send**
+### Test App Reinstall
 
-### Device Management
+```json
+{
+  "email": "driver@test.com",
+  "password": "password",
+  "device_fingerprint": "new-fingerprint-abc123...",
+  "platform": "ios"
+}
+```
 
-1. **List Devices**
-   - Navigate to: `Device Management > List Devices`
-   - Click **Send**
+**Expected:** Same fingerprint = same device recognized, same UUID returned.
 
-2. **Get Current Device**
-   - Navigate to: `Device Management > Get Current Device`
-   - Click **Send**
+### Test Different Device
 
-3. **Update Device**
-   - Navigate to: `Device Management > Update Device`
-   - Modify request body as needed
-   - Click **Send**
+```json
+{
+  "email": "driver@test.com",
+  "password": "password",
+  "device_fingerprint": "different-fingerprint-xyz789...",
+  "platform": "android"
+}
+```
 
-4. **Update Push Token**
-   - Navigate to: `Device Management > Update Push Token`
-   - Set `push_token` in environment or request body
-   - Click **Send**
+**Expected:** Different fingerprint = new device, new UUID generated.
 
-## Features
+## Automated Tests
 
-### Automatic Token Management
+The collection includes automated tests that:
 
-The collection includes pre-request and test scripts that automatically:
-- Save access and refresh tokens after login
-- Save driver and user IDs
-- Save session IDs when going online
-- Use saved tokens for authenticated requests
+1. **Save tokens on login** - Access and refresh tokens saved to environment
+2. **Save device UUID** - Device UUID returned by backend saved to environment
+3. **Save session ID** - Session ID saved when going online
+4. **Verify responses** - Check status codes and response structure
 
-### Environment Variables
+## Rate Limiting
 
-All requests use environment variables for:
-- Base URL (easily switch between dev/prod)
-- Authentication tokens
-- Driver and session IDs
-- Device information
-- GPS coordinates
+The login endpoint has rate limiting:
+- **5 attempts per minute** per email/IP combination
+- After 5 failed attempts, wait 1 minute before retrying
 
-### Pre-configured Requests
+## Error Responses
 
-All requests include:
-- Proper headers (Content-Type, Accept, Authorization)
-- Sample request bodies with environment variables
-- Query parameters where applicable
-- Bearer token authentication
+### 401 Unauthorized
+```json
+{
+  "status": "error",
+  "message": "Invalid credentials",
+  "error_code": "AUTH_INVALID_CREDENTIALS"
+}
+```
+
+### 429 Too Many Requests
+```json
+{
+  "status": "error",
+  "message": "Too many login attempts. Please try again in 0:45 minutes."
+}
+```
+
+### 500 Server Error
+```json
+{
+  "status": "error",
+  "message": "Login failed",
+  "error_code": "AUTH_FAILED",
+  "error": "Detailed error message"
+}
+```
 
 ## Tips
 
-### Generate UUID for Device
-
-Use an online UUID generator or:
-
-**macOS/Linux:**
-```bash
-uuidgen | tr '[:upper:]' '[:lower:]'
-```
-
-**Python:**
-```python
-import uuid
-print(str(uuid.uuid4()))
-```
-
-**JavaScript (Browser Console):**
-```javascript
-crypto.randomUUID()
-```
-
-### Test Location Updates
-
-For realistic testing, update the location variables in sequence:
-1. Set `start_latitude` and `start_longitude` (starting point)
-2. Set `current_latitude` and `current_longitude` (moving points)
-3. Set `end_latitude` and `end_longitude` (ending point)
-
-Example coordinates (Colombo, Sri Lanka):
-- Start: 6.9271, 79.8612
-- Current: 6.9285, 79.8625
-- End: 6.9350, 79.8500
-
-### Rate Limiting
-
-The login endpoint has rate limiting (5 attempts per minute). If you hit the limit:
-- Wait 60 seconds
-- Or use a different email/IP
-
-### Token Expiration
-
-Access tokens expire after 1 hour. If you get a 401 error:
-1. Use the **Refresh Token** request
-2. Or login again
-
-## Troubleshooting
-
-### 401 Unauthorized
-- Check if `access_token` is set in environment
-- Try refreshing the token
-- Login again if refresh fails
-
-### 403 Forbidden (AUTH_NOT_DRIVER)
-- The user account is not registered as a driver
-- Contact admin to create a driver account
-
-### 400 Bad Request (STATUS_ALREADY_ONLINE)
-- Driver is already online
-- Use **Go Offline** first, then **Go Online**
-
-### 400 Bad Request (LOCATION_NO_SESSION)
-- No active session exists
-- Use **Go Online** before sending location updates
-
-### Empty Response
-- Check if the correct environment is selected
-- Verify `base_url` is correct
-- Check server is running
-
-## API Documentation
-
-For complete API documentation, see:
-- `public-thetaxi/docs/DRIVER_MOBILE_API.md`
+1. **Use environment variables** - Don't hardcode values in requests
+2. **Check auto-saved values** - Tokens and IDs are saved automatically
+3. **Test error cases** - Try invalid credentials, expired tokens, etc.
+4. **Monitor rate limits** - Wait between failed login attempts
+5. **Update device info** - Keep device information current
 
 ## Support
 
 For issues or questions:
-- Check the main API documentation
-- Review error codes in the response
-- Contact the development team
+- Check the API documentation: `public-thetaxi/docs/DRIVER_MOBILE_API.md`
+- Review implementation guides:
+  - `MOBILE_DEVICE_FINGERPRINT_GUIDE.md` - Fingerprint generation
+  - `BACKEND_UUID_SOLUTION_SUMMARY.md` - Backend UUID approach
+- Check application logs for detailed error messages
 
----
+## Version History
 
-**Last Updated:** February 9, 2026
+### v2.0 (2026-02-10)
+- Added device fingerprint support
+- Backend now generates device UUIDs
+- Updated login request/response format
+- Added example responses
+- Improved documentation
+
+### v1.0 (2026-02-05)
+- Initial release
+- Basic authentication and device management
+- Status and location tracking
+- Session management

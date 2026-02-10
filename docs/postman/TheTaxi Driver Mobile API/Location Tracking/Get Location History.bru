@@ -1,0 +1,27 @@
+meta {
+  name: Get Location History
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{base_url}}/api/driver/location/history
+  body: none
+  auth: bearer
+}
+
+headers {
+  Accept: application/json
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+settings {
+  encodeUrl: true
+}
+
+docs {
+  Retrieve route points for the current active session.
+}

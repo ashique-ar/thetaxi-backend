@@ -1,0 +1,35 @@
+meta {
+  name: Update Push Token
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{base_url}}/api/driver/devices/push-token
+  body: json
+  auth: bearer
+}
+
+headers {
+  Content-Type: application/json
+  Accept: application/json
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+      "push_token": "{{push_token}}",
+      "push_provider": "{{push_provider}}"
+  }
+}
+
+settings {
+  encodeUrl: true
+}
+
+docs {
+  Update the push notification token for the current device.
+}

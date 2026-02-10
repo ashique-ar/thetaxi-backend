@@ -1,0 +1,9 @@
+{
+  "version": "1",
+  "name": "TheTaxi Driver Mobile API",
+  "type": "collection",
+  "ignore": [
+    "node_modules",
+    ".git"
+  ]
+}

@@ -1,0 +1,27 @@
+meta {
+  name: Get Profile
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{base_url}}/api/driver/auth/profile
+  body: none
+  auth: bearer
+}
+
+headers {
+  Accept: application/json
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+settings {
+  encodeUrl: true
+}
+
+docs {
+  Retrieve the authenticated driver's profile information including user and driver details.
+}

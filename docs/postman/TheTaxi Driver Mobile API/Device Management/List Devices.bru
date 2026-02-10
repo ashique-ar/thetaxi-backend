@@ -1,0 +1,27 @@
+meta {
+  name: List Devices
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{base_url}}/api/driver/devices
+  body: none
+  auth: bearer
+}
+
+headers {
+  Accept: application/json
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+settings {
+  encodeUrl: true
+}
+
+docs {
+  Retrieve all devices registered for the authenticated driver.
+}

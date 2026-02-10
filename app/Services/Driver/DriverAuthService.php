@@ -113,17 +113,18 @@ class DriverAuthService
 
         // Register/update device information FIRST
         $device = null;
-        if (isset($credentials['device_uuid'])) {
+        // Device UUID is now optional - backend generates if not provided
+        if (isset($credentials['device_uuid']) || isset($credentials['device_fingerprint']) || isset($credentials['platform'])) {
             $deviceData = $this->extractDeviceData($credentials);
             $device = $this->deviceService->registerDevice($driver, $deviceData);
 
             // Update driver's current device UUID
             $driver->update([
-                'current_device_uuid' => $credentials['device_uuid']
+                'current_device_uuid' => $device->device_uuid
             ]);
 
             // Deactivate other devices for single-session enforcement AFTER registration
-            $this->deviceService->deactivateOtherDevices($driver, $credentials['device_uuid']);
+            $this->deviceService->deactivateOtherDevices($driver, $device->device_uuid);
         }
 
         return [
@@ -149,7 +150,8 @@ class DriverAuthService
     protected function extractDeviceData(array $credentials): array
     {
         return [
-            'device_uuid' => $credentials['device_uuid'],
+            'device_uuid' => $credentials['device_uuid'] ?? null,
+            'device_fingerprint' => $credentials['device_fingerprint'] ?? null,
             'device_name' => $credentials['device_name'] ?? null,
             'device_model' => $credentials['device_model'] ?? null,
             'device_manufacturer' => $credentials['device_manufacturer'] ?? null,
@@ -227,7 +229,10 @@ class DriverAuthService
     public function logout(User $user): void
     {
         // Revoke the current access token
-        $user->token()->revoke();
+        $token = $user->token();
+        if ($token) {
+            $token->revoke();
+        }
     }
 
     /**
