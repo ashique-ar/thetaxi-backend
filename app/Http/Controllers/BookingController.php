@@ -426,18 +426,18 @@ class BookingController extends Controller
                     'to_date' => $searchParams['to_date'] ?? null,
                     'from_time' => $searchParams['from_time'] ?? null,
                     'to_time' => $searchParams['to_time'] ?? null,
-                    'pickup_location' => is_array($searchParams['pickup_location'] ?? null)
-                        ? $searchParams['pickup_location']['address'] ?? ''
-                        : $searchParams['pickup_location'] ?? '',
+                    // Keep pickup_location as full object for Blade template
+                    'pickup_location' => $searchParams['pickup_location'] ?? null,
+                    // Also provide flattened versions for backward compatibility
                     'pickup_latitude' => is_array($searchParams['pickup_location'] ?? null)
                         ? $searchParams['pickup_location']['latitude'] ?? null
                         : null,
                     'pickup_longitude' => is_array($searchParams['pickup_location'] ?? null)
                         ? $searchParams['pickup_location']['longitude'] ?? null
                         : null,
-                    'dropoff_location' => is_array($searchParams['dropoff_location'] ?? null)
-                        ? $searchParams['dropoff_location']['address'] ?? ''
-                        : $searchParams['dropoff_location'] ?? '',
+                    // Keep dropoff_location as full object for Blade template
+                    'dropoff_location' => $searchParams['dropoff_location'] ?? null,
+                    // Also provide flattened versions for backward compatibility
                     'dropoff_latitude' => is_array($searchParams['dropoff_location'] ?? null)
                         ? $searchParams['dropoff_location']['latitude'] ?? null
                         : null,

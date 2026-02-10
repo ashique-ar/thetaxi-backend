@@ -82,6 +82,15 @@
     $pickup = $normalizeLocation($search ?? null, 'pickup_location');
     $dropoff = $normalizeLocation($search ?? null, 'dropoff_location');
 
+    // DEBUG: Log what we're getting from search
+    if (isset($search)) {
+        \Log::debug('Booking form - Search data received', [
+            'search_keys' => is_array($search) ? array_keys($search) : (is_object($search) ? array_keys(get_object_vars($search)) : 'not array or object'),
+            'pickup_result' => $pickup,
+            'dropoff_result' => $dropoff,
+        ]);
+    }
+
     // ============================================================================
     // CROSS-SERVICE LOCATION & DATE INTELLIGENCE
     // ============================================================================
