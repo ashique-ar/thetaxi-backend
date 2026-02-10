@@ -54,7 +54,15 @@
                                 if (empty($location)) {
                                     return '';
                                 }
-                                // Split by comma and take first part
+                                // Handle array (new format from controller)
+                                if (is_array($location)) {
+                                    $location = $location['address'] ?? '';
+                                }
+                                // Handle object
+                                if (is_object($location)) {
+                                    $location = $location->address ?? '';
+                                }
+                                // Now location is a string - split by comma and take first part
                                 $parts = explode(',', $location);
                                 return trim($parts[0]);
                             };
