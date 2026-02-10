@@ -1,6 +1,15 @@
 /**
  * TheTaxi Enhanced Booking Form - Complete Implementation
  * Handles all service types with Google Maps integration and fallbacks
+ * 
+ * IMPORTANT FIX (2026-02-10):
+ * - Fixed search results not persisting when making subsequent searches
+ * - Issue: Default values were stored only once on page load, preventing search result
+ *   coordinates from being recognized as the new "defaults" when the page reloads
+ * - Solution: Always update data-default-value attributes to current input values,
+ *   allowing search results (e.g., Jaffna to Trincomalee) to become the new baseline
+ * - This ensures that when user changes only one field, the other field's coordinates
+ *   from the search results are preserved instead of reverting to hardcoded defaults
  */
 
 (function () {
@@ -212,7 +221,6 @@
             // }
 
             // Set default locations: Colombo to Galle (for rentals)
-            // ONLY set defaults if BOTH address AND coordinates are empty
             const pickupInput = rideNowForm.querySelector(
                 'input[name="pickup"]'
             );
@@ -228,26 +236,23 @@
             const dropoffLat = rideNowForm.querySelector('input[name="dropoff_lat"]');
             const dropoffLng = rideNowForm.querySelector('input[name="dropoff_lng"]');
 
-            // Only set pickup defaults if both address and coordinates are empty
-            const pickupHasValue = pickupInput && pickupInput.value && pickupInput.value.trim() !== '';
-            const pickupHasCoords = pickupLat && pickupLng && pickupLat.value && pickupLng.value && 
-                                   pickupLat.value !== '0' && pickupLng.value !== '0';
-            
-            if (!pickupHasValue && !pickupHasCoords) {
-                if (pickupInput) pickupInput.value = "Colombo, Sri Lanka";
-                if (pickupLat) pickupLat.value = CONFIG.cityCoordinates["Colombo, Sri Lanka"].lat;
-                if (pickupLng) pickupLng.value = CONFIG.cityCoordinates["Colombo, Sri Lanka"].lng;
+            if (pickupInput && !pickupInput.value) {
+                pickupInput.value = "Colombo, Sri Lanka";
+                if (pickupLat)
+                    pickupLat.value =
+                        CONFIG.cityCoordinates["Colombo, Sri Lanka"].lat;
+                if (pickupLng)
+                    pickupLng.value =
+                        CONFIG.cityCoordinates["Colombo, Sri Lanka"].lng;
             }
-
-            // Only set dropoff defaults if both address and coordinates are empty
-            const dropoffHasValue = dropoffInput && dropoffInput.value && dropoffInput.value.trim() !== '';
-            const dropoffHasCoords = dropoffLat && dropoffLng && dropoffLat.value && dropoffLng.value && 
-                                    dropoffLat.value !== '0' && dropoffLng.value !== '0';
-            
-            if (!dropoffHasValue && !dropoffHasCoords) {
-                if (dropoffInput) dropoffInput.value = "Galle, Sri Lanka";
-                if (dropoffLat) dropoffLat.value = CONFIG.cityCoordinates["Galle, Sri Lanka"].lat;
-                if (dropoffLng) dropoffLng.value = CONFIG.cityCoordinates["Galle, Sri Lanka"].lng;
+            if (dropoffInput && !dropoffInput.value) {
+                dropoffInput.value = "Galle, Sri Lanka";
+                if (dropoffLat)
+                    dropoffLat.value =
+                        CONFIG.cityCoordinates["Galle, Sri Lanka"].lat;
+                if (dropoffLng)
+                    dropoffLng.value =
+                        CONFIG.cityCoordinates["Galle, Sri Lanka"].lng;
             }
         }
 
@@ -565,14 +570,12 @@
         // Get the correct lat/lng inputs using the mapping helper
         const { latInput, lngInput } = getCoordInputs(input);
 
-        // Store default values
-        if (!input.hasAttribute("data-default-value")) {
-            input.setAttribute("data-default-value", input.value || "");
-        }
-        if (latInput && !latInput.hasAttribute("data-default-lat")) {
+        // Store default values - ALWAYS update to current values (handles search results)
+        input.setAttribute("data-default-value", input.value || "");
+        if (latInput) {
             latInput.setAttribute("data-default-lat", latInput.value || "");
         }
-        if (lngInput && !lngInput.hasAttribute("data-default-lng")) {
+        if (lngInput) {
             lngInput.setAttribute("data-default-lng", lngInput.value || "");
         }
 
@@ -905,13 +908,12 @@
                 const form = input.closest("form");
                 const { latInput, lngInput } = getCoordInputs(input);
                 
-                if (!input.hasAttribute("data-default-value")) {
-                    input.setAttribute("data-default-value", input.value || "");
-                }
-                if (latInput && !latInput.hasAttribute("data-default-lat")) {
+                // ALWAYS update to current values (handles search results)
+                input.setAttribute("data-default-value", input.value || "");
+                if (latInput) {
                     latInput.setAttribute("data-default-lat", latInput.value || "");
                 }
-                if (lngInput && !lngInput.hasAttribute("data-default-lng")) {
+                if (lngInput) {
                     lngInput.setAttribute("data-default-lng", lngInput.value || "");
                 }
 
@@ -998,14 +1000,12 @@
                 const form = input.closest("form");
                 const { latInput, lngInput } = getCoordInputs(input);
                 
-                // Store defaults
-                if (!input.hasAttribute("data-default-value")) {
-                    input.setAttribute("data-default-value", input.value || "");
-                }
-                if (latInput && !latInput.hasAttribute("data-default-lat")) {
+                // ALWAYS update to current values (handles search results)
+                input.setAttribute("data-default-value", input.value || "");
+                if (latInput) {
                     latInput.setAttribute("data-default-lat", latInput.value || "");
                 }
-                if (lngInput && !lngInput.hasAttribute("data-default-lng")) {
+                if (lngInput) {
                     lngInput.setAttribute("data-default-lng", lngInput.value || "");
                 }
 
@@ -1319,29 +1319,21 @@
             // Set default values ONLY if empty
             if (!fromAirportSelect.value || fromAirportSelect.value === '') {
                 fromAirportSelect.value = defaultAirport;
-            }
-            if (!toLocationInput.value || toLocationInput.value.trim() === '') {
-                toLocationInput.value = "Colombo, Sri Lanka";
-            }
-
-            // Set coordinates with validation (only if not already set)
-            if (defaultAirportCoords && defaultAirportCoords.lat && defaultAirportCoords.lng) {
-                if (!fromLat.value || fromLat.value === '' || fromLat.value === '0') {
+                // Only set default coordinates when setting default airport
+                if (defaultAirportCoords && defaultAirportCoords.lat && defaultAirportCoords.lng) {
                     fromLat.value = defaultAirportCoords.lat;
-                }
-                if (!fromLng.value || fromLng.value === '' || fromLng.value === '0') {
                     fromLng.value = defaultAirportCoords.lng;
                 }
             }
-
-            if (colomboCoords && colomboCoords.lat && colomboCoords.lng) {
-                if (!toLat.value || toLat.value === '' || toLat.value === '0') {
+            if (!toLocationInput.value || toLocationInput.value.trim() === '') {
+                toLocationInput.value = "Colombo, Sri Lanka";
+                // Only set default coordinates when setting default location
+                if (colomboCoords && colomboCoords.lat && colomboCoords.lng) {
                     toLat.value = colomboCoords.lat;
-                }
-                if (!toLng.value || toLng.value === '' || toLng.value === '0') {
                     toLng.value = colomboCoords.lng;
                 }
             }
+            // If values exist (from search results), preserve their coordinates - don't reset
 
             // Initialize autocomplete for TO location input
             setTimeout(() => {
@@ -1372,29 +1364,21 @@
             // Set default values ONLY if empty
             if (!fromLocationInput.value || fromLocationInput.value.trim() === '') {
                 fromLocationInput.value = "Colombo, Sri Lanka";
-            }
-            if (!toAirportSelect.value || toAirportSelect.value === '') {
-                toAirportSelect.value = defaultAirport;
-            }
-
-            // Set coordinates with validation (only if not already set)
-            if (colomboCoords && colomboCoords.lat && colomboCoords.lng) {
-                if (!fromLat.value || fromLat.value === '' || fromLat.value === '0') {
+                // Only set default coordinates when setting default location
+                if (colomboCoords && colomboCoords.lat && colomboCoords.lng) {
                     fromLat.value = colomboCoords.lat;
-                }
-                if (!fromLng.value || fromLng.value === '' || fromLng.value === '0') {
                     fromLng.value = colomboCoords.lng;
                 }
             }
-
-            if (defaultAirportCoords && defaultAirportCoords.lat && defaultAirportCoords.lng) {
-                if (!toLat.value || toLat.value === '' || toLat.value === '0') {
+            if (!toAirportSelect.value || toAirportSelect.value === '') {
+                toAirportSelect.value = defaultAirport;
+                // Only set default coordinates when setting default airport
+                if (defaultAirportCoords && defaultAirportCoords.lat && defaultAirportCoords.lng) {
                     toLat.value = defaultAirportCoords.lat;
-                }
-                if (!toLng.value || toLng.value === '' || toLng.value === '0') {
                     toLng.value = defaultAirportCoords.lng;
                 }
             }
+            // If values exist (from search results), preserve their coordinates - don't reset
 
             // Initialize autocomplete for FROM location input
             setTimeout(() => {
