@@ -122,6 +122,12 @@
                                 $actualDistance = $search->actual_distance_km ?? ($search->total_distance_km ?? 0);
                                 $displayDistance =
                                     $minimumKmApplied && $minimumKm ? $minimumKm : $search->total_distance_km ?? 0;
+
+                                // Return trip data
+                                $isReturnTrip = $search->is_return_trip ?? false;
+                                $outboundKm = $search->outbound_distance_km ?? null;
+                                $returnKm = $search->return_distance_km ?? null;
+                                $hasReturnData = $isReturnTrip && $outboundKm && $returnKm;
                             @endphp
                             @if ($minimumKmApplied && $minimumKm)
                                 <span class="distance-info"
@@ -130,6 +136,25 @@
                                     Minimum {{ number_format($minimumKm, 0) }} km
                                     {{-- <small class="text-white-50">(Actual: {{ number_format($actualDistance, 1) }}
                                         km)</small> --}}
+                                </span>
+                            @elseif ($hasReturnData)
+                                <div class="d-flex gap-2">
+                                    <span class="distance-info" title="Outbound Journey">
+                                        <i class="bi bi-arrow-right-circle"></i>
+                                        Outbound: {{ number_format($outboundKm, 1) }} km
+                                    </span>
+                                    <span class="distance-info"
+                                        style="background: rgba(40, 167, 69, 0.2); border: 1px solid rgba(40, 167, 69, 0.3);"
+                                        title="Return Journey">
+                                        <i class="bi bi-arrow-left-circle"></i>
+                                        Return: {{ number_format($returnKm, 1) }} km
+                                    </span>
+                                </div>
+                                <span class="distance-info"
+                                    style="background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.3); font-weight: 700;"
+                                    title="Total Distance">
+                                    <i class="bi bi-signpost-2-fill"></i>
+                                    Total: {{ number_format($outboundKm + $returnKm, 1) }} km
                                 </span>
                             @elseif (isset($search->total_distance_km) && $search->total_distance_km > 0)
                                 <span class="distance-info">
@@ -251,7 +276,8 @@
                     @csrf
                     <div class="modal-body">
                         <input type="hidden" name="vehicle_group_id" id="quotation_vehicle_group_id">
-                        <input type="hidden" name="search_id" id="quotation_search_id" value="{{ $search->id ?? '' }}">
+                        <input type="hidden" name="search_id" id="quotation_search_id"
+                            value="{{ $search->id ?? '' }}">
 
                         <div class="alert alert-info mb-4">
                             <i class="bi bi-info-circle"></i>
@@ -319,7 +345,9 @@
                                     <small class="text-muted">Drop-off Location:</small>
                                     <p class="mb-1">
                                         @php
-                                            $dropoffDisplay = $search->dropoff_location ?? $search->pickup_location ?? 'Not specified';
+                                            $dropoffDisplay =
+                                                $search->dropoff_location ??
+                                                ($search->pickup_location ?? 'Not specified');
                                             if (is_array($dropoffDisplay)) {
                                                 $dropoffDisplay = $dropoffDisplay['address'] ?? 'Not specified';
                                             } elseif (is_object($dropoffDisplay)) {
@@ -436,7 +464,7 @@
             align-items: center;
             gap: 6px;
             background: rgba(255, 255, 255, 0.2);
-            padding: 4px 12px;
+            padding: 0 10px;
             border-radius: 20px;
             font-weight: 600;
         }

@@ -904,6 +904,7 @@ class WebsiteSettingsService
     public function getAppearanceSettings(): array
     {
         $types = [
+            'active_theme',
             'primary_color',
             'secondary_color',
             'tertiary_color',
@@ -957,32 +958,34 @@ class WebsiteSettingsService
             'brand_name',
             'brand_tagline',
             'brand_short_name',
-            
+
             // Logos
             'brand_logo_primary',
             'brand_logo_secondary',
             'brand_logo_icon',
             'brand_favicon',
-            
+
             // Colors - Primary
             'brand_color_primary',
             'brand_color_primary_light',
             'brand_color_primary_dark',
-            
+
             // Colors - Secondary
             'brand_color_secondary',
             'brand_color_secondary_light',
             'brand_color_secondary_dark',
-            
+
             // Colors - Accent
             'brand_color_accent',
             'brand_color_accent_light',
             'brand_color_accent_dark',
-            
+
             // Portal Specific
             'portal_title',
             'portal_logo',
-            'portal_theme',            
+            'portal_theme',
+            // Legacy/alternate key used in admin UI and helpers
+            'active_theme',
         ];
 
         return $this->getMultiple($types);

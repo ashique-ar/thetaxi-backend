@@ -40,6 +40,11 @@ class BookingSearch extends BaseModel
         'pickup_location',
         'dropoff_location',
         'estimated_distance',
+        'is_return_trip',
+        'outbound_distance_km',
+        'return_distance_km',
+        'outbound_duration_seconds',
+        'return_duration_seconds',
         'duration_hours',
         'duration_days',
         'customer_id',
@@ -51,6 +56,11 @@ class BookingSearch extends BaseModel
         'pickup_date' => 'datetime',
         'dropoff_date' => 'datetime',
         'estimated_distance' => 'float',
+        'is_return_trip' => 'boolean',
+        'outbound_distance_km' => 'float',
+        'return_distance_km' => 'float',
+        'outbound_duration_seconds' => 'integer',
+        'return_duration_seconds' => 'integer',
         'duration_hours' => 'integer',
         'duration_days' => 'integer',
         'created_at' => 'datetime',
@@ -101,5 +111,37 @@ class BookingSearch extends BaseModel
             'duration_days' => $this->duration_days,
             'duration_hours' => $this->duration_hours,
         ];
+    }
+
+    /**
+     * Get total distance including return trip if applicable
+     */
+    public function getTotalDistanceKm(): float
+    {
+        if ($this->is_return_trip && $this->return_distance_km) {
+            return ($this->outbound_distance_km ?? 0) + $this->return_distance_km;
+        }
+        
+        return $this->outbound_distance_km ?? $this->estimated_distance ?? 0;
+    }
+
+    /**
+     * Get total duration including return trip if applicable
+     */
+    public function getTotalDurationSeconds(): int
+    {
+        if ($this->is_return_trip && $this->return_duration_seconds) {
+            return ($this->outbound_duration_seconds ?? 0) + $this->return_duration_seconds;
+        }
+        
+        return $this->outbound_duration_seconds ?? 0;
+    }
+
+    /**
+     * Check if this search has return trip data
+     */
+    public function hasReturnTrip(): bool
+    {
+        return $this->is_return_trip && $this->return_distance_km > 0;
     }
 }

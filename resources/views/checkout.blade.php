@@ -535,6 +535,28 @@
                                                                                     km)
                                                                                 </small></p>
                                                                         @endif
+                                                                        
+                                                                        {{-- Display Return Trip KM Breakdown --}}
+                                                                        @php
+                                                                            $outboundKm = $item['outbound_distance_km'] ?? $distanceDetails['outbound_distance_km'] ?? null;
+                                                                            $returnKm = $item['return_distance_km'] ?? $distanceDetails['return_distance_km'] ?? null;
+                                                                            $hasReturnKmData = !empty($item['is_return_trip']) && $outboundKm && $returnKm;
+                                                                        @endphp
+                                                                        @if ($hasReturnKmData)
+                                                                            <p><small style="background: #e3f2fd; padding: 4px 8px; border-radius: 4px; display: inline-block; border-left: 3px solid #2196f3;">
+                                                                                <i class="bi bi-signpost-2-fill" style="color: #1565c0;"></i>
+                                                                                <strong style="color: #1565c0;">Trip Distance:</strong>
+                                                                                <span style="color: #1976d2;">
+                                                                                    <i class="bi bi-arrow-right-circle"></i> {{ number_format($outboundKm, 1) }} km
+                                                                                </span>
+                                                                                <span style="color: #28a745;">
+                                                                                    <i class="bi bi-arrow-left-circle"></i> {{ number_format($returnKm, 1) }} km
+                                                                                </span>
+                                                                                <strong style="color: #1565c0;">
+                                                                                    = {{ number_format($outboundKm + $returnKm, 1) }} km total
+                                                                                </strong>
+                                                                            </small></p>
+                                                                        @endif
 
                                                                         @if ($allowedTotalKm || $freeKmPerDay)
                                                                             <p><small style="color: #0066cc;">

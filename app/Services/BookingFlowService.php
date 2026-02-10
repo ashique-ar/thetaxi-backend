@@ -463,11 +463,41 @@ class BookingFlowService
         $minimumKmApplied = false;
         $minimumKm = null;
         $actualDistanceKm = null;
+        
+        // Return trip distance tracking
+        $outboundDistanceKm = null;
+        $returnDistanceKm = null;
+        $outboundDurationSeconds = null;
+        $returnDurationSeconds = null;
+        $isReturnTrip = $params['is_return_trip'] ?? false;
 
         if ($pickupLocation && $dropoffLocation) {
             $distanceData = $this->calculateCompanyDistances($pickupLocation, $dropoffLocation, $serviceType);
-            $totalJourneyDistance = $distanceData['journey_distance'] ?? null;
-            $totalJourneyDuration = $distanceData['journey_duration_seconds'] ?? null;
+            $outboundDistanceKm = $distanceData['journey_distance'] ?? null;
+            $outboundDurationSeconds = $distanceData['journey_duration_seconds'] ?? null;
+            
+            // For return trips, calculate the return journey distance (dropoff back to pickup)
+            if ($isReturnTrip && $outboundDistanceKm) {
+                $returnDistanceData = $this->calculateCompanyDistances($dropoffLocation, $pickupLocation, $serviceType);
+                $returnDistanceKm = $returnDistanceData['journey_distance'] ?? null;
+                $returnDurationSeconds = $returnDistanceData['journey_duration_seconds'] ?? null;
+                
+                // Total distance is outbound + return
+                $totalJourneyDistance = $outboundDistanceKm + ($returnDistanceKm ?? 0);
+                $totalJourneyDuration = $outboundDurationSeconds + ($returnDurationSeconds ?? 0);
+                
+                Log::info('Return trip distance calculated', [
+                    'outbound_km' => $outboundDistanceKm,
+                    'return_km' => $returnDistanceKm,
+                    'total_km' => $totalJourneyDistance,
+                    'outbound_duration' => $outboundDurationSeconds,
+                    'return_duration' => $returnDurationSeconds,
+                ]);
+            } else {
+                // One-way trip
+                $totalJourneyDistance = $outboundDistanceKm;
+                $totalJourneyDuration = $outboundDurationSeconds;
+            }
 
             // Check if minimum KM was applied
             $minimumKmApplied = $distanceData['minimum_km_applied'] ?? false;
@@ -506,6 +536,12 @@ class BookingFlowService
                 'minimum_km_applied' => $minimumKmApplied,
                 'minimum_km' => $minimumKm,
                 'actual_distance_km' => $actualDistanceKm,
+                // Return trip breakdown
+                'is_return_trip' => $isReturnTrip,
+                'outbound_distance_km' => $outboundDistanceKm,
+                'return_distance_km' => $returnDistanceKm,
+                'outbound_duration_seconds' => $outboundDurationSeconds,
+                'return_duration_seconds' => $returnDurationSeconds,
             ];
         }
 
@@ -516,6 +552,12 @@ class BookingFlowService
             'minimum_km_applied' => $minimumKmApplied,
             'minimum_km' => $minimumKm,
             'actual_distance_km' => $actualDistanceKm,
+            // Return trip breakdown
+            'is_return_trip' => $isReturnTrip,
+            'outbound_distance_km' => $outboundDistanceKm,
+            'return_distance_km' => $returnDistanceKm,
+            'outbound_duration_seconds' => $outboundDurationSeconds,
+            'return_duration_seconds' => $returnDurationSeconds,
         ];
     }
 

@@ -428,6 +428,11 @@ $returnDropoffAddress = is_array($returnDropoff)
 
                 // Fallbacks for display ordering
                 $displayDistance = $actualJourneyDistance ?? ($journeyDistance ?? ($totalDistance ?? null));
+                
+                // Return trip KM breakdown
+                $outboundKm = $distanceDetails['outbound_distance_km'] ?? ($item->outbound_distance_km ?? ($item['outbound_distance_km'] ?? null));
+                $returnKm = $distanceDetails['return_distance_km'] ?? ($item->return_distance_km ?? ($item['return_distance_km'] ?? null));
+                $hasReturnKmData = $isReturnTrip && $outboundKm && $returnKm;
             @endphp
 
             @if ($minimumKmApplied && $minimumKm)
@@ -440,6 +445,25 @@ $returnDropoffAddress = is_array($returnDropoff)
                         <strong>{{ number_format($minimumKm, 0) }} km</strong>
                         <small style="color: #92400e;">(Actual distance: {{ number_format($actualJourneyDistance, 1) }}
                             km)</small>
+                    </td>
+                </tr>
+            @endif
+
+            @if ($hasReturnKmData)
+                <tr>
+                    <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #1565c0; background: #e3f2fd;">
+                        Trip Distance
+                    </td>
+                    <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555; background: #e3f2fd;">
+                        <div style="margin-bottom: 4px;">
+                            <strong style="color: #1976d2;">→ Outbound:</strong> {{ number_format($outboundKm, 1) }} km
+                        </div>
+                        <div style="margin-bottom: 4px;">
+                            <strong style="color: #28a745;">← Return:</strong> {{ number_format($returnKm, 1) }} km
+                        </div>
+                        <div>
+                            <strong style="color: #1565c0;">⚑ Total:</strong> {{ number_format($outboundKm + $returnKm, 1) }} km
+                        </div>
                     </td>
                 </tr>
             @elseif($displayDistance)

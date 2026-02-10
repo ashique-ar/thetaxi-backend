@@ -103,7 +103,7 @@ class DriverAuthService
         // Create new Passport token with driver scope
         $tokenResult = $user->createToken('driver-mobile', ['driver']);
         $token = $tokenResult->token;
-        
+
         // Set token expiration (30 days for access token)
         $token->expires_at = now()->addDays(30);
         $token->save();
@@ -116,12 +116,12 @@ class DriverAuthService
         if (isset($credentials['device_uuid'])) {
             $deviceData = $this->extractDeviceData($credentials);
             $device = $this->deviceService->registerDevice($driver, $deviceData);
-            
+
             // Update driver's current device UUID
             $driver->update([
                 'current_device_uuid' => $credentials['device_uuid']
             ]);
-            
+
             // Deactivate other devices for single-session enforcement AFTER registration
             $this->deviceService->deactivateOtherDevices($driver, $credentials['device_uuid']);
         }
@@ -176,7 +176,7 @@ class DriverAuthService
     {
         // Find the existing token
         $token = \Laravel\Passport\Token::find($tokenId);
-        
+
         if (!$token || $token->revoked) {
             throw new \Exception('Invalid or revoked token');
         }
@@ -186,7 +186,7 @@ class DriverAuthService
         }
 
         $user = User::find($token->user_id);
-        
+
         if (!$user || !$user->isActive()) {
             throw new \Exception('User not found or inactive');
         }
@@ -202,7 +202,7 @@ class DriverAuthService
         // Create new token with same scopes
         $tokenResult = $user->createToken('driver-mobile', ['driver']);
         $newToken = $tokenResult->token;
-        
+
         // Set token expiration (30 days)
         $newToken->expires_at = now()->addDays(30);
         $newToken->save();

@@ -291,6 +291,35 @@
                                                                 <small style="color: #92400e;">(Actual: {{ number_format($actualJourneyDistance, 1) }} km)</small>
                                                             </p>
                                                         @endif
+                                                        
+                                                        {{-- Display Return Trip KM Breakdown --}}
+                                                        @php
+                                                            $outboundKm = $item['outbound_distance_km'] ?? $distanceDetails['outbound_distance_km'] ?? null;
+                                                            $returnKm = $item['return_distance_km'] ?? $distanceDetails['return_distance_km'] ?? null;
+                                                            $hasReturnKmData = !empty($item['is_return_trip']) && $outboundKm && $returnKm;
+                                                        @endphp
+                                                        @if ($hasReturnKmData)
+                                                            <div class="return-km-breakdown mt-2 p-2" style="background: linear-gradient(135deg, #e3f2fd, #bbdefb); border-radius: 6px; border-left: 3px solid #2196f3;">
+                                                                <p style="margin: 0 0 4px 0; font-weight: 600; color: #1565c0; font-size: 13px;">
+                                                                    <i class="bi bi-signpost-2-fill"></i> Trip Distance Breakdown
+                                                                </p>
+                                                                <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-top: 6px;">
+                                                                    <span style="background: rgba(156, 163, 175, 0.2); padding: 3px 8px; border-radius: 4px; font-size: 12px;">
+                                                                        <i class="bi bi-arrow-right-circle" style="color: #1976d2;"></i>
+                                                                        <strong>Outbound:</strong> {{ number_format($outboundKm, 1) }} km
+                                                                    </span>
+                                                                    <span style="background: rgba(40, 167, 69, 0.2); padding: 3px 8px; border-radius: 4px; font-size: 12px;">
+                                                                        <i class="bi bi-arrow-left-circle" style="color: #28a745;"></i>
+                                                                        <strong>Return:</strong> {{ number_format($returnKm, 1) }} km
+                                                                    </span>
+                                                                    <span style="background: rgba(59, 130, 246, 0.3); padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: 700;">
+                                                                        <i class="bi bi-signpost-2-fill" style="color: #1565c0;"></i>
+                                                                        <strong>Total:</strong> {{ number_format($outboundKm + $returnKm, 1) }} km
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        @endif
+                                                        
                                                         @if ($freeKmPerDay || $freeKmPerPackage || $allowedTotalKm)
                                                             <p class="text-muted" style="margin-top: 6px;">
                                                                 <i class="bi bi-speedometer2" style="color: #28a745;"></i>

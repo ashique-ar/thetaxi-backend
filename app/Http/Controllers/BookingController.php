@@ -457,6 +457,11 @@ class BookingController extends Controller
                     'is_return_trip' => $searchParams['is_return_trip'] ?? false,
                     'return_date' => $searchParams['return_date'] ?? null,
                     'return_time' => $searchParams['return_time'] ?? null,
+                    // Return trip distance breakdown
+                    'outbound_distance_km' => $availabilityData['outbound_distance_km'] ?? null,
+                    'return_distance_km' => $availabilityData['return_distance_km'] ?? null,
+                    'outbound_duration_seconds' => $availabilityData['outbound_duration_seconds'] ?? null,
+                    'return_duration_seconds' => $availabilityData['return_duration_seconds'] ?? null,
 
                 ]
             );
