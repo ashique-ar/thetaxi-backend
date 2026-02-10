@@ -986,6 +986,10 @@ class WebsiteSettingsService
             'portal_theme',
             // Legacy/alternate key used in admin UI and helpers
             'active_theme',
+            
+            // Footer
+            'footer_copyright_text',
+            'footer_company_name',
         ];
 
         return $this->getMultiple($types);
