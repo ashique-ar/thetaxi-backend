@@ -249,24 +249,24 @@ class BookingFlowController extends Controller
             $request->validate([
                 'customer_id' => 'nullable|string',
                 'service_type' => 'required|string',
-                
+
                 // Multi-selection support - accept both single and multiple
                 'vehicle_group_id' => 'sometimes|string', // For backward compatibility
                 'vehicle_groups' => 'sometimes|array', // New multi-selection format
                 'vehicle_groups.*.id' => 'required|string',
                 'vehicle_groups.*.quantity' => 'required|integer|min:1',
-                
+
                 'vehicles' => 'sometimes|array', // Selected specific vehicles
                 'vehicles.*.id' => 'required|string',
-                'vehicles.*.group_id' => 'required|string', 
-                
+                'vehicles.*.group_id' => 'required|string',
+
                 'drivers' => 'sometimes|array', // Selected drivers
                 'drivers.*.id' => 'required|string',
-                
+
                 'vehicle_driver_assignments' => 'sometimes|array', // Vehicle-driver assignments
                 'vehicle_driver_assignments.*.vehicle_id' => 'required|string',
                 'vehicle_driver_assignments.*.driver_id' => 'nullable|string',
-                
+
                 'from_date' => 'required|date',
                 'to_date' => 'required|date|after_or_equal:from_date',
                 'pickup_location' => 'required|array',
@@ -275,13 +275,13 @@ class BookingFlowController extends Controller
                 'dropoff_location' => 'required|array',
                 'dropoff_location.latitude' => 'required|numeric',
                 'dropoff_location.longitude' => 'required|numeric',
-                
+
                 'selected_addons' => 'sometimes|array',
                 'selected_addons.*.id' => 'required|string',
                 'selected_addons.*.quantity' => 'sometimes|integer|min:1',
                 'selected_addons.*.custom_price' => 'sometimes',
                 'selected_addons.*.group_id' => 'sometimes|string', // Group-specific addons
-                
+
                 'variable_customizations' => 'sometimes|array',
                 'variable_customizations.*.id' => 'sometimes|string',
                 'variable_customizations.*.variable_name' => 'required|string',
@@ -295,7 +295,7 @@ class BookingFlowController extends Controller
                 'variable_customizations.*.context' => 'sometimes|string|in:base_pricing,addon_pricing',
                 'variable_customizations.*.reason' => 'sometimes|string',
                 'variable_customizations.*.vehicle_group_id' => 'sometimes|string', // Vehicle group specific customizations
-                
+
                 'has_variable_customizations' => 'sometimes|boolean',
                 'session_id' => 'sometimes|string',
                 'is_preview_calculation' => 'sometimes|boolean',
@@ -369,24 +369,24 @@ class BookingFlowController extends Controller
         $request->validate([
             'customer_id' => 'nullable|string',
             'service_type' => 'required|string',
-            
+
             // Multi-selection support - accept both single and multiple
             'vehicle_group_id' => 'sometimes|string', // For backward compatibility
             'vehicle_groups' => 'sometimes|array', // New multi-selection format
             'vehicle_groups.*.id' => 'required|string',
             'vehicle_groups.*.quantity' => 'required|integer|min:1',
-            
+
             'vehicles' => 'sometimes|array', // Selected specific vehicles
             'vehicles.*.id' => 'required|string',
-            'vehicles.*.group_id' => 'required|string', 
-            
+            'vehicles.*.group_id' => 'required|string',
+
             'drivers' => 'sometimes|array', // Selected drivers
             'drivers.*.id' => 'required|string',
-            
+
             'vehicle_driver_assignments' => 'sometimes|array', // Vehicle-driver assignments
             'vehicle_driver_assignments.*.vehicle_id' => 'required|string',
             'vehicle_driver_assignments.*.driver_id' => 'nullable|string',
-            
+
             'from_date' => 'required|date',
             'to_date' => 'required|date|after_or_equal:from_date',
             'from_time' => 'required|string',
@@ -397,13 +397,13 @@ class BookingFlowController extends Controller
             'dropoff_location' => 'required|array',
             'dropoff_location.latitude' => 'required|numeric',
             'dropoff_location.longitude' => 'required|numeric',
-            
+
             'selected_addons' => 'sometimes|array',
             'selected_addons.*.id' => 'required|string',
             'selected_addons.*.quantity' => 'sometimes|integer|min:1',
             'selected_addons.*.custom_price' => 'sometimes',
             'selected_addons.*.group_id' => 'sometimes|string', // Group-specific addons
-            
+
             'variable_customizations' => 'sometimes|array',
             'variable_customizations.*.id' => 'sometimes|string',
             'variable_customizations.*.variable_name' => 'required|string',
@@ -417,7 +417,7 @@ class BookingFlowController extends Controller
             'variable_customizations.*.context' => 'sometimes|string|in:base_pricing,addon_pricing',
             'variable_customizations.*.reason' => 'sometimes|string',
             'variable_customizations.*.group_id' => 'sometimes|string', // Group-specific customizations
-            
+
             'has_variable_customizations' => 'sometimes|boolean',
             'session_id' => 'sometimes|string',
             'is_preview_calculation' => 'sometimes|boolean',
@@ -445,24 +445,24 @@ class BookingFlowController extends Controller
         $request->validate([
             'customer_id' => 'nullable|string',
             'service_type' => 'required|string',
-            
+
             // Multi-selection support - accept both single and multiple
             'vehicle_group_id' => 'sometimes|string', // For backward compatibility
             'vehicle_groups' => 'sometimes|array', // New multi-selection format
             'vehicle_groups.*.id' => 'required|string',
             'vehicle_groups.*.quantity' => 'required|integer|min:1',
-            
+
             'vehicles' => 'sometimes|array', // Selected specific vehicles
             'vehicles.*.id' => 'required|string',
-            'vehicles.*.group_id' => 'required|string', 
-            
+            'vehicles.*.group_id' => 'required|string',
+
             'drivers' => 'sometimes|array', // Selected drivers
             'drivers.*.id' => 'required|string',
-            
+
             'vehicle_driver_assignments' => 'sometimes|array', // Vehicle-driver assignments
             'vehicle_driver_assignments.*.vehicle_id' => 'required|string',
             'vehicle_driver_assignments.*.driver_id' => 'nullable|string',
-            
+
             'from_date' => 'required|date',
             'to_date' => 'required|date|after_or_equal:from_date',
             'from_time' => 'required|string',
@@ -473,13 +473,13 @@ class BookingFlowController extends Controller
             'dropoff_location' => 'required|array',
             'dropoff_location.latitude' => 'required|numeric',
             'dropoff_location.longitude' => 'required|numeric',
-            
+
             'selected_addons' => 'sometimes|array',
             'selected_addons.*.id' => 'required|string',
             'selected_addons.*.quantity' => 'sometimes|integer|min:1',
             'selected_addons.*.custom_price' => 'sometimes',
             'selected_addons.*.group_id' => 'sometimes|string', // Group-specific addons
-            
+
             'variable_customizations' => 'sometimes|array',
             'variable_customizations.*.id' => 'sometimes|string',
             'variable_customizations.*.variable_name' => 'required|string',
@@ -493,7 +493,7 @@ class BookingFlowController extends Controller
             'variable_customizations.*.context' => 'sometimes|string|in:base_pricing,addon_pricing',
             'variable_customizations.*.reason' => 'sometimes|string',
             'variable_customizations.*.group_id' => 'sometimes|string', // Group-specific customizations
-            
+
             'has_variable_customizations' => 'sometimes|boolean',
             'session_id' => 'sometimes|string',
             'is_preview_calculation' => 'sometimes|boolean',
@@ -562,8 +562,8 @@ class BookingFlowController extends Controller
             $booking = $this->bookingFlowService->updateBooking($bookingId, $request->all(), []);
 
             return response()->json([
-                'status'               => 'success',
-                'data'                 => new BookingFlowResource($booking->load([
+                'status' => 'success',
+                'data' => new BookingFlowResource($booking->load([
                     'customer',
                     'vehicle',
                     'driver',
@@ -571,21 +571,21 @@ class BookingFlowController extends Controller
                     'vehicleGroup'
                 ])),
                 'requires_re_approval' => $booking->status === 'pending_approval',
-                'message'              => $booking->status === 'pending_approval'
+                'message' => $booking->status === 'pending_approval'
                     ? 'Booking updated and submitted for re-approval'
                     : 'Booking updated successfully',
             ]);
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
             return response()->json([
-                'status'  => 'error',
+                'status' => 'error',
                 'message' => 'Booking not found',
             ], 404);
         } catch (\Throwable $e) {
             Log::error('Error updating booking: ' . $e->getMessage());
             return response()->json([
-                'status'  => 'error',
+                'status' => 'error',
                 'message' => 'Failed to update booking',
-                'error'   => $e->getMessage(),
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
