@@ -212,6 +212,7 @@
             // }
 
             // Set default locations: Colombo to Galle (for rentals)
+            // ONLY set defaults if BOTH address AND coordinates are empty
             const pickupInput = rideNowForm.querySelector(
                 'input[name="pickup"]'
             );
@@ -227,23 +228,26 @@
             const dropoffLat = rideNowForm.querySelector('input[name="dropoff_lat"]');
             const dropoffLng = rideNowForm.querySelector('input[name="dropoff_lng"]');
 
-            if (pickupInput && !pickupInput.value) {
-                pickupInput.value = "Colombo, Sri Lanka";
-                if (pickupLat)
-                    pickupLat.value =
-                        CONFIG.cityCoordinates["Colombo, Sri Lanka"].lat;
-                if (pickupLng)
-                    pickupLng.value =
-                        CONFIG.cityCoordinates["Colombo, Sri Lanka"].lng;
+            // Only set pickup defaults if both address and coordinates are empty
+            const pickupHasValue = pickupInput && pickupInput.value && pickupInput.value.trim() !== '';
+            const pickupHasCoords = pickupLat && pickupLng && pickupLat.value && pickupLng.value && 
+                                   pickupLat.value !== '0' && pickupLng.value !== '0';
+            
+            if (!pickupHasValue && !pickupHasCoords) {
+                if (pickupInput) pickupInput.value = "Colombo, Sri Lanka";
+                if (pickupLat) pickupLat.value = CONFIG.cityCoordinates["Colombo, Sri Lanka"].lat;
+                if (pickupLng) pickupLng.value = CONFIG.cityCoordinates["Colombo, Sri Lanka"].lng;
             }
-            if (dropoffInput && !dropoffInput.value) {
-                dropoffInput.value = "Galle, Sri Lanka";
-                if (dropoffLat)
-                    dropoffLat.value =
-                        CONFIG.cityCoordinates["Galle, Sri Lanka"].lat;
-                if (dropoffLng)
-                    dropoffLng.value =
-                        CONFIG.cityCoordinates["Galle, Sri Lanka"].lng;
+
+            // Only set dropoff defaults if both address and coordinates are empty
+            const dropoffHasValue = dropoffInput && dropoffInput.value && dropoffInput.value.trim() !== '';
+            const dropoffHasCoords = dropoffLat && dropoffLng && dropoffLat.value && dropoffLng.value && 
+                                    dropoffLat.value !== '0' && dropoffLng.value !== '0';
+            
+            if (!dropoffHasValue && !dropoffHasCoords) {
+                if (dropoffInput) dropoffInput.value = "Galle, Sri Lanka";
+                if (dropoffLat) dropoffLat.value = CONFIG.cityCoordinates["Galle, Sri Lanka"].lat;
+                if (dropoffLng) dropoffLng.value = CONFIG.cityCoordinates["Galle, Sri Lanka"].lng;
             }
         }
 
