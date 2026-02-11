@@ -214,14 +214,22 @@ class Vehicle extends BaseModel
     }
 
     /**
-     * Get all bookings for this vehicle.
+     * Get all bookings for this vehicle through booking items.
      *
-     * @return \Illuminate\Database\Eloquent\Relations\HasMany
+     * @return \Illuminate\Database\Eloquent\Relations\HasManyThrough
      */
     public function bookings()
     {
-        return $this->hasMany(Booking::class);
+        return $this->hasManyThrough(
+            Booking::class,
+            \App\Models\Booking\BookingItem::class,
+            'vehicle_id', // Foreign key on booking_items table
+            'id',         // Foreign key on bookings table
+            'id',         // Local key on vehicles table
+            'booking_id'  // Local key on booking_items table
+        );
     }
+
 
     /**
      * Get all bookings for this vehicle.

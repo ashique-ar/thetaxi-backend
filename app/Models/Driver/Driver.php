@@ -12,6 +12,7 @@ use App\Models\Booking\Booking;
 use App\Models\Vehicle\Vehicle;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
@@ -146,11 +147,26 @@ class Driver extends BaseModel
     }
 
     /**
-     * Get all bookings assigned to this driver.
+     * Get all bookings assigned to this driver through booking items.
      */
-    public function bookings(): HasMany
+    public function bookings(): HasManyThrough
     {
-        return $this->hasMany(Booking::class, 'driver_id');
+        return $this->hasManyThrough(
+            Booking::class,
+            \App\Models\Booking\BookingItem::class,
+            'driver_id',  // Foreign key on booking_items table
+            'id',         // Foreign key on bookings table
+            'id',         // Local key on drivers table
+            'booking_id'  // Local key on booking_items table
+        );
+    }
+
+    /**
+     * Get all booking items for this driver.
+     */
+    public function bookingItems(): HasMany
+    {
+        return $this->hasMany(\App\Models\Booking\BookingItem::class, 'driver_id');
     }
 
     /**

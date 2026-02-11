@@ -2481,9 +2481,15 @@ class BookingFlowService
 
         $query = Driver::with([
             'assignments' => function ($query) use ($fromDate, $toDate) {
-                $query->whereBetween('from_date', [$fromDate, $toDate])
-                    ->orWhereBetween('to_date', [$fromDate, $toDate])
-                    ->whereIn('status', ['active', 'pending_approval']);
+                $query->where(function ($q) use ($fromDate, $toDate) {
+                    $q->whereBetween('assigned_from', [$fromDate, $toDate])
+                        ->orWhereBetween('assigned_to', [$fromDate, $toDate])
+                        ->orWhere(function ($inner) use ($fromDate, $toDate) {
+                            $inner->where('assigned_from', '<=', $fromDate)
+                                ->where('assigned_to', '>=', $toDate);
+                        });
+                })
+                ->whereIn('status', ['active', 'pending_approval']);
             },
             'user' => function ($query) use ($searchTerm) {
                 $query->Where('first_name', 'LIKE', "%{$searchTerm}%")
@@ -2689,6 +2695,11 @@ class BookingFlowService
             $conflictStart = Carbon::parse($conflict['from']);
             $conflictEnd = Carbon::parse($conflict['to']);
             $conflictMinutes += $conflictStart->diffInMinutes($conflictEnd);
+        }
+
+        // Prevent division by zero
+        if ($totalMinutes == 0) {
+            return 100; // If no time range, consider 100% available
         }
 
         return max(0, ($totalMinutes - $conflictMinutes) / $totalMinutes * 100);
@@ -6879,37 +6890,38 @@ class BookingFlowService
     {
         $conflicts = [];
 
-        // Query through booking_items which contains the date fields
-        $bookingItems = DriverAssignment::where('driver_id', $driver->id)
+        // Query driver assignments with correct column names
+        $driverAssignments = DriverAssignment::where('driver_id', $driver->id)
             ->join('bookings', 'driver_assignments.booking_id', '=', 'bookings.id')
             ->where('bookings.status', '!=', 'cancelled')
             ->when($excludeBookingId, function ($q) use ($excludeBookingId) {
                 $q->where('bookings.id', '!=', $excludeBookingId);
             })
             ->where(function ($q) use ($fromDate, $toDate) {
-                $q->whereBetween('driver_assignments.from_date', [$fromDate, $toDate])
-                    ->orWhereBetween('driver_assignments.to_date', [$fromDate, $toDate])
+                $q->whereBetween('driver_assignments.assigned_from', [$fromDate, $toDate])
+                    ->orWhereBetween('driver_assignments.assigned_to', [$fromDate, $toDate])
                     ->orWhere(function ($inner) use ($fromDate, $toDate) {
-                        $inner->where('driver_assignments.from_date', '<=', $fromDate)
-                            ->where('driver_assignments.to_date', '>=', $toDate);
+                        $inner->where('driver_assignments.assigned_from', '<=', $fromDate)
+                            ->where('driver_assignments.assigned_to', '>=', $toDate);
                     });
             })
-            ->select('driver_assignments.*', 'bookings.id as booking_id', 'bookings.status', 'bookings.service_type', 'bookings.customer_id')
+            ->whereIn('driver_assignments.status', ['active', 'pending_approval'])
+            ->select('driver_assignments.*', 'bookings.id as booking_id', 'bookings.status', 'bookings.customer_id')
             ->with(['booking.customer'])
             ->get();
 
-        foreach ($bookingItems as $item) {
-            $booking = $item->booking;
-            $overlapType = $this->determineOverlapType($fromDate, $toDate, $item->from_date, $item->to_date);
+        foreach ($driverAssignments as $assignment) {
+            $booking = $assignment->booking;
+            $overlapType = $this->determineOverlapType($fromDate, $toDate, $assignment->assigned_from, $assignment->assigned_to);
             $canOverride = $this->canOverrideBooking($booking);
 
             $conflicts[] = [
                 'booking_id' => $booking->id,
                 'customer_name' => $booking->customer->first_name . ' ' . $booking->customer->last_name,
-                'from' => $item->from_date->format('Y-m-d H:i'),
-                'to' => $item->to_date->format('Y-m-d H:i'),
+                'from' => $assignment->assigned_from->format('Y-m-d H:i'),
+                'to' => $assignment->assigned_to->format('Y-m-d H:i'),
                 'status' => $booking->status,
-                'type' => $booking->service_type,
+                'type' => $assignment->service_type ?? 'N/A',
                 'overlap_type' => $overlapType,
                 'can_override' => $canOverride,
                 'priority' => $this->getBookingPriority($booking),
