@@ -508,13 +508,26 @@ class BookingFlowService
             // Apply minimum KM rule if service type has it configured
             $serviceTypeId = $params['service_type_id'] ?? $params['service_type'] ?? null;
             if ($serviceTypeId && !$minimumKmApplied) {
-                $serviceTypeModel = ServiceType::find($serviceTypeId);
+                // Try to find service type by ID, code, or name
+                $serviceTypeModel = ServiceType::where('id', $serviceTypeId)
+                    ->orWhere('code', $serviceTypeId)
+                    ->orWhere('name', $serviceTypeId)
+                    ->first();
+                    
                 if ($serviceTypeModel && $serviceTypeModel->minimum_km > 0) {
                     $minimumKm = (float) $serviceTypeModel->minimum_km;
                     if ($totalJourneyDistance !== null && $totalJourneyDistance > 0 && $totalJourneyDistance < $minimumKm) {
                         $actualDistanceKm = $totalJourneyDistance;
                         $totalJourneyDistance = $minimumKm;
                         $minimumKmApplied = true;
+                        
+                        Log::info('Minimum KM rule applied in getAvailableVehicleGroups', [
+                            'actual_distance' => $actualDistanceKm,
+                            'minimum_km' => $minimumKm,
+                            'charged_distance' => $totalJourneyDistance,
+                            'service_type_id' => $serviceTypeModel->id,
+                            'service_type_code' => $serviceTypeModel->code,
+                        ]);
                     }
                 }
             }
@@ -2933,11 +2946,27 @@ class BookingFlowService
                     $distanceCalculations['minimum_km'] = $minimumKm;
                     // Use minimum KM for pricing calculations
                     $distanceCalculations['journey_distance'] = $minimumKm;
+                    
+                    // CRITICAL: Update total_distance to reflect minimum km
+                    // If include_garage_distance is false, total_distance = journey_distance
+                    // If include_garage_distance is true, total_distance = journey + pickup + delivery
+                    $includeGarageDistance = $distanceCalculations['include_garage_distance'] ?? false;
+                    if (!$includeGarageDistance) {
+                        // When garage distance is not included, total_distance should equal journey_distance
+                        $distanceCalculations['total_distance'] = $minimumKm;
+                    } else {
+                        // When garage distance is included, recalculate total with minimum km
+                        $pickupDistance = $distanceCalculations['pickup_distance'] ?? 0;
+                        $deliveryDistance = $distanceCalculations['delivery_distance'] ?? 0;
+                        $distanceCalculations['total_distance'] = round($minimumKm + $pickupDistance + $deliveryDistance, 2);
+                    }
 
                     Log::info('Minimum KM rule applied in prepareCalculationInputs', [
                         'actual_distance' => $actualDistance,
                         'minimum_km' => $minimumKm,
                         'charged_distance' => $minimumKm,
+                        'include_garage_distance' => $includeGarageDistance,
+                        'total_distance_updated' => $distanceCalculations['total_distance'],
                         'service_type_id' => $serviceType->id ?? $serviceTypeId,
                         'service_type_code' => $serviceType->code ?? null,
                     ]);
