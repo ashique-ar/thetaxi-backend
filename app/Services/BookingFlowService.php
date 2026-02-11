@@ -225,6 +225,7 @@ class BookingFlowService
                     // Use dynamic pricing calculation for accurate results
                     $pricingParams = [
                         'service_type_id' => $serviceTypeModel->id,
+                        'service_type' => $serviceType, // Pass service type for distance calculations
                         'vehicle_group_id' => $group->id,
                         'duration_hours' => $durationInfo['total_hours'],
                         'duration_days' => $durationInfo['days'],
@@ -4771,125 +4772,252 @@ class BookingFlowService
     public function getComprehensiveBookingData(string $bookingId): array
     {
         $booking = Booking::with([
-            'customer',
+            'customer.user',
             'vehicle.vehicleGroup',
-            'driver',
+            'driver.user',
             'serviceType',
             'vehicleGroup',
             'bookingAddons.addon',
-            'approvals',
+            'approvals.approver',
+            'approvals.requester',
             'variableCustomizations',
+            'bookingItems.vehicle',
+            'bookingItems.driver.user',
+            'bookingItems.vehicleGroup',
+            'bookingItems.serviceType',
         ])->findOrFail($bookingId);
+
+        // ---- helpers / safe getters from pricing_snapshot
+        $pricingSnapshot = (array) ($booking->pricing_snapshot ?? []);
+        $summary = (array) ($pricingSnapshot['summary'] ?? []);
+        $addonsPricing = (array) ($pricingSnapshot['addons_pricing'] ?? []);
+        $discountSummary = (array) ($pricingSnapshot['discount_summary'] ?? []);
+        $detailed = (array) ($pricingSnapshot['detailed_breakdown'] ?? []);
+        $duration = (array) ($pricingSnapshot['duration'] ?? []);
+        $customizations = (array) ($pricingSnapshot['applied_customizations'] ?? []);
+
+        // fallback currency
+        $currency = $summary['currency'] ?? 'LKR';
+
+        // Transform booking items for multi-trip support
+        $bookingItems = $booking->bookingItems->map(function ($item) {
+            return [
+                'id' => (string) $item->id,
+                'booking_id' => (string) $item->booking_id,
+                'service_type_id' => $item->service_type_id ? (string) $item->service_type_id : null,
+                'service_type' => $item->serviceType ? [
+                    'id' => (string) $item->serviceType->id,
+                    'name' => $item->serviceType->name,
+                    'code' => $item->serviceType->code ?? null,
+                ] : null,
+                'vehicle_group_id' => $item->vehicle_group_id ? (string) $item->vehicle_group_id : null,
+                'vehicle_group' => $item->vehicleGroup ? [
+                    'id' => (string) $item->vehicleGroup->id,
+                    'name' => $item->vehicleGroup->name,
+                    'category' => $item->vehicleGroup->category ?? null,
+                ] : null,
+                'vehicle_id' => $item->vehicle_id ? (string) $item->vehicle_id : null,
+                'vehicle' => $item->vehicle ? [
+                    'id' => (string) $item->vehicle->id,
+                    'name' => $item->vehicle->title ?? $item->vehicle->name,
+                    'license_plate' => $item->vehicle->license_plate ?? $item->vehicle->plate_number ?? null,
+                ] : null,
+                'driver_id' => $item->driver_id ? (string) $item->driver_id : null,
+                'driver' => $item->driver ? [
+                    'id' => (string) $item->driver->id,
+                    'name' => trim(($item->driver->user?->first_name ?? '') . ' ' . ($item->driver->user?->last_name ?? '')),
+                    'license_number' => $item->driver->license_number ?? null,
+                ] : null,
+                'quantity' => (int) ($item->quantity ?? 1),
+                'unit_price' => (float) ($item->unit_price ?? 0),
+                'total_price' => (float) ($item->total_price ?? 0),
+                'pricing_breakdown' => $item->pricing_breakdown ?? null,
+                'addons' => $item->addons ?? [],
+                'customizations' => $item->customizations ?? [],
+                'discounts' => $item->discounts ?? [],
+                'from_date' => $item->from_date ? (is_string($item->from_date) ? $item->from_date : $item->from_date->toISOString()) : null,
+                'from_time' => (string) ($item->from_time ?? ''),
+                'to_date' => $item->to_date ? (is_string($item->to_date) ? $item->to_date : $item->to_date->toISOString()) : null,
+                'to_time' => (string) ($item->to_time ?? ''),
+                'pickup_location' => $item->pickup_location ?? null,
+                'dropoff_location' => $item->dropoff_location ?? null,
+                'pickup_latitude' => $item->pickup_latitude,
+                'pickup_longitude' => $item->pickup_longitude,
+                'pickup_landmark' => $item->pickup_landmark ?? null,
+                'dropoff_latitude' => $item->dropoff_latitude,
+                'dropoff_longitude' => $item->dropoff_longitude,
+                'dropoff_landmark' => $item->dropoff_landmark ?? null,
+                'is_self_driven' => (bool) ($item->is_self_driven ?? false),
+                'duration_days' => (int) ($item->duration_days ?? 0),
+                'duration_hours' => (int) ($item->duration_hours ?? 0),
+                'currency' => $item->currency ?? 'LKR',
+                'exchange_rate' => (float) ($item->exchange_rate ?? 1),
+                'status' => $item->status ?? 'pending',
+                'requires_approval' => (bool) ($item->requires_approval ?? false),
+                'item_type' => $item->item_type ?? null,
+                'notes' => $item->notes ?? null,
+                'metadata' => $item->metadata ?? null,
+            ];
+        })->toArray();
+
+        // Normalize addons (prefer snapshot → fallback to relation)
+        $addons = [];
+        if (!empty($addonsPricing['addons'])) {
+            foreach ($addonsPricing['addons'] as $a) {
+                $addons[] = [
+                    'id' => $a['id'] ?? null,
+                    'name' => $a['name'] ?? 'Addon',
+                    'unit_price' => (float) ($a['unit_price'] ?? 0),
+                    'quantity' => (int) ($a['quantity'] ?? 1),
+                    'billing_type' => $a['billing_type'] ?? null,
+                    'multiplier' => $a['multiplier'] ?? null,
+                    'duration_info' => $a['duration_info'] ?? null,
+                    'total_price' => (float) ($a['total_price'] ?? 0),
+                    'is_custom_price' => (bool) ($a['is_custom_price'] ?? false),
+                    'original_price' => isset($a['original_price']) ? (float) $a['original_price'] : null,
+                    'calculation_detail' => $a['calculation_detail'] ?? null,
+                ];
+            }
+        } else {
+            $addons = $booking->bookingAddons->map(function ($ba) {
+                $orig = (float) ($ba->addon->amount ?? 0);
+                $rate = (float) ($ba->rate ?? $orig);
+                return [
+                    'id' => $ba->addon_id,
+                    'name' => $ba->addon->name ?? $ba->label ?? 'Addon',
+                    'unit_price' => $rate,
+                    'quantity' => (int) ($ba->qty ?? 1),
+                    'billing_type' => $ba->billing_type ?? null,
+                    'multiplier' => null,
+                    'duration_info' => null,
+                    'total_price' => (float) ($ba->amount ?? ($rate * max(1, (int) $ba->qty))),
+                    'is_custom_price' => $ba->rate && $rate !== $orig,
+                    'original_price' => $rate !== $orig ? $orig : null,
+                    'calculation_detail' => null,
+                ];
+            })->values()->toArray();
+        }
+
+        // Variable customizations
+        $variableCustomizations = BookingVariableCustomization::where('booking_id', $bookingId)
+            ->orderBy('updated_at', 'desc')
+            ->get()
+            ->groupBy('variable_name')
+            ->map(function ($customizations) {
+                $latest = $customizations->first();
+                return [
+                    'id' => $latest->id,
+                    'variable_name' => $latest->variable_name,
+                    'variable_type' => $latest->variable_type,
+                    'display_name' => $latest->variable_name,
+                    'category' => 'base',
+                    'unit' => 'LKR',
+                    'original_value' => $latest->original_value,
+                    'custom_value' => $latest->custom_value,
+                    'customization_reason' => $latest->customization_reason,
+                    'context' => $latest->context,
+                ];
+            })
+            ->values()
+            ->toArray();
 
         return [
             'booking' => $booking,
-            'service_details' => [
-                'service_type' => $booking->serviceType->id ?? $booking->service_type_id,
-                'from_date' => $booking->from_date,
-                'to_date' => $booking->to_date,
-                'from_time' => $booking->from_time,
-                'to_time' => $booking->to_time,
-                'pickup_location' => [
-                    'address' => $booking->pickup_location ? $booking->pickup_location['address'] : null,
-                    'latitude' => $booking->pickup_latitude,
-                    'longitude' => $booking->pickup_longitude
-                ],
-                'dropoff_location' => [
-                    'address' => $booking->dropoff_location ? $booking->dropoff_location['address'] : null,
-                    'latitude' => $booking->dropoff_latitude,
-                    'longitude' => $booking->dropoff_longitude
-                ]
-            ],
-            'vehicle_driver' => [
-                'vehicle_group_id' => $booking->vehicle_group_id,
-                'vehicle_id' => $booking->vehicle_id,
-                'driver_id' => $booking->driver_id,
-                'is_self_driven' => $booking->is_self_driven,
-                'needs_specific_driver' => !is_null($booking->driver_id),
-                'vehicle_id' => $booking->vehicle_id
-            ],
+            
+            // Customer details for form population
             'customer_details' => [
-                'customer_id' => $booking->customer_id,
-                'first_name' => $booking->customer?->user?->first_name,
-                'last_name' => $booking->customer?->user?->last_name,
-                'full_name' => $booking->customer?->user?->first_name . ' ' . $booking->customer?->user?->last_name,
-                'phone' => $booking->customer?->user?->phone,
-                'email' => $booking->customer?->user?->email
+                'customer_id' => (string) $booking->customer_id,
+                'first_name' => $booking->customer?->user?->first_name ?? '',
+                'last_name' => $booking->customer?->user?->last_name ?? '',
+                'full_name' => trim(($booking->customer?->user?->first_name ?? '') . ' ' . ($booking->customer?->user?->last_name ?? '')),
+                'phone' => $booking->customer?->user?->phone ?? '',
+                'email' => $booking->customer?->user?->email ?? '',
+                'code' => $booking->customer?->code ?? null,
             ],
+            
+            // Service details (legacy single-trip support)
+            'service_details' => [
+                'service_type' => $booking->serviceType?->id ?? $booking->service_type_id,
+                'service_type_name' => $booking->serviceType?->name ?? null,
+                'from_date' => $booking->from_date ? (is_string($booking->from_date) ? $booking->from_date : $booking->from_date->toISOString()) : null,
+                'to_date' => $booking->to_date ? (is_string($booking->to_date) ? $booking->to_date : $booking->to_date->toISOString()) : null,
+                'from_time' => $booking->from_time ?? null,
+                'to_time' => $booking->to_time ?? null,
+                'pickup_location' => [
+                    'address' => $booking->pickup_location['address'] ?? '',
+                    'latitude' => $booking->pickup_latitude ?? ($booking->pickup_location['latitude'] ?? null),
+                    'longitude' => $booking->pickup_longitude ?? ($booking->pickup_location['longitude'] ?? null),
+                    'place_id' => $booking->pickup_location['place_id'] ?? null,
+                ],
+                'dropoff_location' => $booking->dropoff_location ? [
+                    'address' => $booking->dropoff_location['address'] ?? '',
+                    'latitude' => $booking->dropoff_latitude ?? ($booking->dropoff_location['latitude'] ?? null),
+                    'longitude' => $booking->dropoff_longitude ?? ($booking->dropoff_location['longitude'] ?? null),
+                    'place_id' => $booking->dropoff_location['place_id'] ?? null,
+                ] : null,
+            ],
+            
+            // Vehicle/driver selection (legacy single-trip support)
+            'vehicle_driver' => [
+                'vehicle_group_id' => $booking->vehicle_group_id ? (string) $booking->vehicle_group_id : null,
+                'vehicle_group_name' => $booking->vehicleGroup?->name ?? null,
+                'vehicle_id' => $booking->vehicle_id ? (string) $booking->vehicle_id : null,
+                'vehicle_name' => $booking->vehicle?->title ?? $booking->vehicle?->name ?? null,
+                'driver_id' => $booking->driver_id ? (string) $booking->driver_id : null,
+                'driver_name' => $booking->driver ? trim(($booking->driver->user?->first_name ?? '') . ' ' . ($booking->driver->user?->last_name ?? '')) : null,
+                'is_self_driven' => (bool) ($booking->is_self_driven ?? false),
+                'needs_specific_driver' => !is_null($booking->driver_id),
+                'needs_specific_vehicle' => !is_null($booking->vehicle_id),
+            ],
+            
+            // Multi-trip booking items (primary data source for edit form)
+            'booking_items' => $bookingItems,
+            
+            // Addons data
             'addons' => [
                 'selected_addons' => $booking->bookingAddons->pluck('addon_id')->toArray(),
+                'addon_list' => $addons,
                 'addon_data' => $booking->bookingAddons->mapWithKeys(function ($bookingAddon) {
+                    $orig = (float) ($bookingAddon->addon->amount ?? 0);
+                    $rate = (float) ($bookingAddon->rate ?? $orig);
                     return [
                         $bookingAddon->addon_id => [
                             'quantity' => (int) ($bookingAddon->qty ?? 1),
-                            'custom_price' => !is_null($bookingAddon->rate) && isset($bookingAddon->addon->amount)
-                                ? ((float) $bookingAddon->rate !== (float) $bookingAddon->addon->amount ? (float) $bookingAddon->rate : null)
-                                : (!is_null($bookingAddon->rate) ? (float) $bookingAddon->rate : null),
+                            'custom_price' => $rate !== $orig ? $rate : null,
                             'total_price' => (float) ($bookingAddon->amount ?? 0),
-                            'original_price' => (float) ($bookingAddon->addon->amount ?? 0),
-                            'is_customized' => !is_null($bookingAddon->rate) && isset($bookingAddon->addon->amount)
-                                ? ((float) $bookingAddon->rate !== (float) $bookingAddon->addon->amount)
-                                : false
+                            'original_price' => $orig,
+                            'is_customized' => $rate !== $orig,
                         ]
                     ];
-                })->toArray()
+                })->toArray(),
+                'special_requests' => $booking->special_requests ?? '',
             ],
+            
+            // Pricing data
             'pricing' => [
-                'base_amount' => $booking->base_amount,
-                'addon_total' => $booking->addons_cost,
-                'discount_total' => $booking->discount_amount,
-                'tax_amount' => $booking->tax_amount,
-                'total_amount' => $booking->total_estimated,
-                'base_price_override' => $booking->base_price_override,
-                'base_price_override_reason' => $booking->base_price_override_reason,
+                'base_amount' => (float) ($summary['subtotal'] ?? $booking->base_amount ?? 0),
+                'addon_total' => (float) ($summary['addons_total'] ?? $booking->addons_cost ?? 0),
+                'discount_total' => (float) ($discountSummary['total_discount_amount'] ?? $booking->discount_amount ?? 0),
+                'tax_amount' => (float) ($booking->tax_amount ?? 0),
+                'total_amount' => (float) ($booking->total_estimated ?? 0),
+                'currency' => $currency,
+                'exchange_rate' => (float) ($summary['exchange_rate'] ?? 1),
+                'base_price_override' => $booking->base_price_override ? (float) $booking->base_price_override : null,
+                'base_price_override_reason' => $booking->base_price_override_reason ?? null,
                 'has_custom_base_price' => !is_null($booking->base_price_override),
                 'is_pricing_locked' => !is_null($booking->base_price_override) || $booking->bookingAddons->whereNotNull('rate')->count() > 0,
-                // 'base_pricing_overrides' => !is_null($booking->base_price_override) ? [
-                //     [
-                //         'amount' => $booking->base_price_override,
-                //         'reason' => $booking->base_price_override_reason ?? 'Custom pricing applied'
-                //     ]
-                // ] : [],
                 'breakdown' => [
-                    'base_pricing' => !is_null($booking->base_price_override) ? [
-                        [
-                            'component' => 'custom_base_rate',
-                            'description' => 'Custom Base Rate',
-                            'amount' => $booking->base_price_override,
-                            'original_amount' => $booking->base_amount,
-                            'is_custom' => true
-                        ]
-                    ] : [
-                        [
-                            'component' => 'base_rate',
-                            'description' => 'Base Rate',
-                            'amount' => $booking->base_amount,
-                            'original_amount' => $booking->base_amount,
-                            'is_custom' => false
-                        ]
-                    ],
-                    'addons' => $booking->bookingAddons->map(function ($bookingAddon) {
-                        return [
-                            'id' => $bookingAddon->addon_id,
-                            'name' => $bookingAddon->label,
-                            'quantity' => $bookingAddon->qty,
-                            'price' => $bookingAddon->rate,
-                            'custom_price' => $bookingAddon->addon ?
-                                ($bookingAddon->rate != $bookingAddon->addon->amount ? $bookingAddon->rate : null) :
-                                null,
-                            'original_unit_price' => $bookingAddon->addon ? $bookingAddon->addon->amount : $bookingAddon->rate,
-                            'total_price' => $bookingAddon->amount,
-                            'is_custom' => $bookingAddon->addon ?
-                                ($bookingAddon->rate != $bookingAddon->addon->amount) :
-                                false
-                        ];
-                    })->toArray(),
-                    'subtotal' => !is_null($booking->base_price_override) ? $booking->base_price_override : $booking->base_amount,
-                    'addons_total' => $booking->addons_cost,
-                    'discount_total' => $booking->discount_amount,
-                    'tax_amount' => $booking->tax_amount,
-                    'total' => $booking->total_estimated
+                    'base_pricing' => (array) ($pricingSnapshot['base_pricing']['breakdown'] ?? []),
+                    'addons' => $addons,
+                    'subtotal' => (float) ($summary['subtotal'] ?? $booking->base_amount ?? 0),
+                    'addons_total' => (float) ($summary['addons_total'] ?? $booking->addons_cost ?? 0),
+                    'discount_total' => (float) ($discountSummary['total_discount_amount'] ?? $booking->discount_amount ?? 0),
+                    'tax_amount' => (float) ($booking->tax_amount ?? 0),
+                    'total' => (float) ($booking->total_estimated ?? 0),
                 ],
+                'detailed_breakdown' => $detailed,
+                'discount_summary' => $discountSummary,
+                'duration' => $duration,
                 'calculation_params' => [
                     'vehicle_group_id' => $booking->vehicle_group_id,
                     'service_type' => $booking->service_type_id,
@@ -4897,43 +5025,46 @@ class BookingFlowService
                     'to_date' => $booking->to_date,
                     'pickup_location' => [
                         'latitude' => $booking->pickup_latitude,
-                        'longitude' => $booking->pickup_longitude
+                        'longitude' => $booking->pickup_longitude,
                     ],
                     'dropoff_location' => [
                         'latitude' => $booking->dropoff_latitude,
-                        'longitude' => $booking->dropoff_longitude
-                    ]
+                        'longitude' => $booking->dropoff_longitude,
+                    ],
                 ],
-                'variable_customizations' => BookingVariableCustomization::where('booking_id', $bookingId)
-                    ->orderBy('updated_at', 'desc')
-                    ->get()
-                    ->groupBy('variable_name')
-                    ->map(function ($customizations) {
-                        // Return the most recent customization for each variable
-                        $latest = $customizations->first();
-                        return [
-                            'id' => $latest->id,
-                            'variable_name' => $latest->variable_name,
-                            'variable_type' => $latest->variable_type,
-                            'display_name' => $latest->variable_name, // Add for frontend consistency
-                            'category' => 'base', // Default category
-                            'unit' => 'LKR', // Default unit
-                            'original_value' => $latest->original_value,
-                            'custom_value' => $latest->custom_value,
-                            'customization_reason' => $latest->customization_reason,
-                            'context' => $latest->context,
-                        ];
-                    })
-                    ->values()
-                    ->toArray()
+                'variable_customizations' => $variableCustomizations,
             ],
+            
+            // State and status
             'state' => [
-                'status' => $booking->status,
-                'override_reasons' => $booking->override_reasons,
-                'concurrent_assignments' => $booking->concurrent_assignments,
-                'approval_status' => $booking->approval_status,
-                'requires_approval' => $booking->requiresApproval()
-            ]
+                'status' => $booking->status ?? 'pending',
+                'workflow_step' => $booking->workflow_step ?? 'pending_approval',
+                'override_reasons' => (array) ($booking->override_reasons ?? []),
+                'concurrent_assignments' => (array) ($booking->concurrent_assignments ?? []),
+                'approval_status' => $booking->approval_status ?? null,
+                'requires_approval' => (bool) ($booking->requires_approval ?? $booking->requiresApproval()),
+            ],
+            
+            // Approval info
+            'approval' => $booking->approvals->first() ? [
+                'status' => $booking->approval_status ?? 'pending',
+                'priority' => $booking->approval_priority ?? 'normal',
+                'requested_by' => $booking->approvals->first()->requester?->name ?? null,
+                'requested_at' => optional($booking->approvals->first()->created_at)->toISOString(),
+                'reviewed_by' => $booking->approvals->first()->approver?->name ?? null,
+                'reviewed_at' => optional($booking->approvals->first()->approved_at)->toISOString(),
+                'justification' => $booking->approvals->first()->justification ?? null,
+                'comments' => $booking->approvals->first()->comments ?? null,
+            ] : null,
+            
+            // Meta info
+            'meta' => [
+                'booking_number' => $booking->booking_number ?? null,
+                'created_at' => optional($booking->created_at)->toISOString(),
+                'updated_at' => optional($booking->updated_at)->toISOString(),
+                'base_currency' => $currency,
+                'exchange_rate' => (float) ($summary['exchange_rate'] ?? 1),
+            ],
         ];
     }
 

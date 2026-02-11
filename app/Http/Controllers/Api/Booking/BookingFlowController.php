@@ -621,14 +621,7 @@ class BookingFlowController extends Controller
 
             return response()->json([
                 'status' => 'success',
-                'data' => new BookingFlowResource($booking->load([
-                    'customer',
-                    'vehicle',
-                    'driver',
-                    'serviceType',
-                    'vehicleGroup'
-                ])),
-                'edit_data' => $editData,
+                'data' => $editData,
                 'permissions' => [
                     'can_edit_basic' => Gate::allows('update', $booking),
                     'can_edit_pricing' => Gate::allows('update', $booking),

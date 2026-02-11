@@ -5,7 +5,7 @@ meta {
 }
 
 post {
-  url: {{base_url}}/api/driver/mobile/auth/login
+  url: {{base_url}}/api/driver/auth/login
   body: json
   auth: inherit
 }
@@ -57,6 +57,7 @@ script:post-response {
 
 settings {
   encodeUrl: true
+  timeout: 0
 }
 
 docs {

@@ -61,9 +61,9 @@
 							}
 						},
 						"url": {
-							"raw": "{{base_url}}/api/driver/mobile/auth/login",
+							"raw": "{{base_url}}/api/driver/auth/login",
 							"host": ["{{base_url}}"],
-							"path": ["api", "driver", "mobile", "auth", "login"]
+							"path": ["api", "driver", "auth", "login"]
 						},
 						"description": "Authenticate a driver and receive access and refresh tokens.\n\n**NEW: Backend-Generated UUID Approach**\n- Send `device_fingerprint` (SHA-256 hash of device characteristics)\n- Backend generates and returns `device_uuid`\n- Same fingerprint = same device recognized\n- No need to store UUID on mobile app\n\n**Device Fingerprint:**\nGenerate by hashing device characteristics:\n- Device model/manufacturer\n- OS version\n- Platform-specific ID (IDFV/Android ID)\n- Screen dimensions\n- Time zone\n\n**Backward Compatible:**\n- Can still send `device_uuid` if you have it\n- If both sent, UUID is used and fingerprint is updated"
 					},
