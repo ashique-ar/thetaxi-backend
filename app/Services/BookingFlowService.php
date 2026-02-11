@@ -2870,10 +2870,21 @@ class BookingFlowService
         $minimumKm = null;
 
         if ($serviceTypeId) {
-            $serviceType = ServiceType::find($serviceTypeId);
+            // Try to find service type by ID first, then by code or name
+            $serviceType = ServiceType::where('id', $serviceTypeId)
+                ->orWhere('code', $serviceTypeId)
+                ->orWhere('name', $serviceTypeId)
+                ->first();
+                
             if ($serviceType && $serviceType->minimum_km > 0) {
                 $minimumKm = (float) $serviceType->minimum_km;
                 $inputs['minimum_km'] = $minimumKm;
+                
+                Log::debug('prepareCalculationInputs: Minimum KM configured', [
+                    'service_type_id' => $serviceType->id,
+                    'service_type_code' => $serviceType->code,
+                    'minimum_km' => $minimumKm,
+                ]);
             }
         }
 
@@ -2923,11 +2934,12 @@ class BookingFlowService
                     // Use minimum KM for pricing calculations
                     $distanceCalculations['journey_distance'] = $minimumKm;
 
-                    Log::info('Minimum KM rule applied', [
+                    Log::info('Minimum KM rule applied in prepareCalculationInputs', [
                         'actual_distance' => $actualDistance,
                         'minimum_km' => $minimumKm,
                         'charged_distance' => $minimumKm,
-                        'service_type_id' => $serviceTypeId,
+                        'service_type_id' => $serviceType->id ?? $serviceTypeId,
+                        'service_type_code' => $serviceType->code ?? null,
                     ]);
                 } else {
                     $distanceCalculations['minimum_km_applied'] = false;
