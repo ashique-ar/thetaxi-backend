@@ -3915,11 +3915,15 @@ class BookingFlowService
         $address = '';
         if (is_array($location)) {
             $address = $location['address'] ?? '';
+            // Handle nested array case (malformed data from session)
+            if (is_array($address)) {
+                $address = $address['address'] ?? '';
+            }
         } elseif (is_string($location)) {
             $address = $location;
         }
 
-        if (empty($address)) {
+        if (empty($address) || !is_string($address)) {
             return false;
         }
 

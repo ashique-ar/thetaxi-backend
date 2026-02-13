@@ -462,6 +462,10 @@
                 if (isset($search->pickup_location)) {
                     if (is_array($search->pickup_location)) {
                         $pickupAddress = $search->pickup_location['address'] ?? '';
+                        // Handle nested array case (malformed data from session)
+                        if (is_array($pickupAddress)) {
+                            $pickupAddress = $pickupAddress['address'] ?? '';
+                        }
                         $pickupLat = $search->pickup_location['lat'] ?? $search->pickup_location['latitude'] ?? null;
                         $pickupLng = $search->pickup_location['lng'] ?? $search->pickup_location['longitude'] ?? null;
                     } elseif (is_string($search->pickup_location)) {
@@ -472,6 +476,10 @@
                 if (isset($search->dropoff_location)) {
                     if (is_array($search->dropoff_location)) {
                         $dropoffAddress = $search->dropoff_location['address'] ?? '';
+                        // Handle nested array case (malformed data from session)
+                        if (is_array($dropoffAddress)) {
+                            $dropoffAddress = $dropoffAddress['address'] ?? '';
+                        }
                         $dropoffLat = $search->dropoff_location['lat'] ?? $search->dropoff_location['latitude'] ?? null;
                         $dropoffLng = $search->dropoff_location['lng'] ?? $search->dropoff_location['longitude'] ?? null;
                     } elseif (is_string($search->dropoff_location)) {
