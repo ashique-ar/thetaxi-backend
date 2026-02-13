@@ -160,7 +160,7 @@ class CmsController extends Controller
 
         // Construct the effective search params with structured location data (use raw value for backend calls)
         // Helper to safely extract location data from session (which might be string or array)
-        $extractLocationData = function ($sessionLocation, $addressKey = 'address', $latKey = 'latitude', $lngKey = 'longitude') {
+        $extractLocationData = function ($sessionLocation) {
             if (empty($sessionLocation)) {
                 return ['address' => null, 'latitude' => null, 'longitude' => null];
             }
@@ -170,10 +170,19 @@ class CmsController extends Controller
             }
             
             if (is_array($sessionLocation)) {
+                // Handle nested array case (malformed data)
+                $address = $sessionLocation['address'] ?? null;
+                if (is_array($address)) {
+                    $address = $address['address'] ?? null;
+                }
+                
+                $latitude = $sessionLocation['latitude'] ?? $sessionLocation['lat'] ?? null;
+                $longitude = $sessionLocation['longitude'] ?? $sessionLocation['lng'] ?? null;
+                
                 return [
-                    'address' => $sessionLocation[$addressKey] ?? $sessionLocation['address'] ?? null,
-                    'latitude' => $sessionLocation[$latKey] ?? $sessionLocation['lat'] ?? $sessionLocation['latitude'] ?? null,
-                    'longitude' => $sessionLocation[$lngKey] ?? $sessionLocation['lng'] ?? $sessionLocation['longitude'] ?? null,
+                    'address' => $address,
+                    'latitude' => $latitude,
+                    'longitude' => $longitude,
                 ];
             }
             
