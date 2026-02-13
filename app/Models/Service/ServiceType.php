@@ -50,6 +50,7 @@ class ServiceType extends BaseModel
         'allow_return_trip',
         'allow_multiple_pickup_locations',
         'allow_multiple_dropoff_locations',
+        'form_config',
         'frontend_category',
         'priority',
         'minimum_km',
@@ -74,6 +75,7 @@ class ServiceType extends BaseModel
         'allow_multiple_dropoff_locations' => 'boolean',
         'pricing_mode' => 'string',
         'frontend_category' => 'string',
+        'form_config' => 'array',
     ];
 
     // Relations

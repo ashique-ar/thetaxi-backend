@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Service;
 use App\Http\Controllers\Controller;
 use App\Models\Service\ServiceType;
 use App\Models\Service\ServicePackage;
+use App\Models\Airport;
 use App\Models\Country;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -77,6 +78,12 @@ class ServiceFormConfigController extends Controller
      */
     private function getFieldsConfig(ServiceType $serviceType): array
     {
+        // Check if custom form_config exists in database
+        if ($serviceType->form_config) {
+            return $serviceType->form_config;
+        }
+
+        // Otherwise, build default configuration
         $baseFields = [];
 
         // Airport Transfer specific fields
@@ -90,6 +97,9 @@ class ServiceFormConfigController extends Controller
                 'label' => 'Transfer Type',
                 'required' => true,
                 'order' => 0,
+                'width' => 'full', // full, half, third
+                'alignment' => 'left', // left, center, right
+                'row' => 1,
                 'options' => [
                     ['value' => 'from-airport', 'label' => 'From Airport'],
                     ['value' => 'to-airport', 'label' => 'To Airport'],
@@ -104,6 +114,9 @@ class ServiceFormConfigController extends Controller
                 'label' => 'Pickup Location',
                 'required' => true,
                 'order' => 1,
+                'width' => 'half',
+                'alignment' => 'left',
+                'row' => 2,
                 'location_type' => 'conditional',
                 'conditions' => [
                     'from-airport' => ['type' => 'airport', 'options' => $airports],
@@ -118,6 +131,9 @@ class ServiceFormConfigController extends Controller
                 'label' => 'Drop-off Location',
                 'required' => true,
                 'order' => 2,
+                'width' => 'half',
+                'alignment' => 'left',
+                'row' => 2,
                 'location_type' => 'conditional',
                 'conditions' => [
                     'from-airport' => ['type' => 'any'],
@@ -132,6 +148,9 @@ class ServiceFormConfigController extends Controller
                 'label' => 'Transfer Date',
                 'required' => true,
                 'order' => 3,
+                'width' => 'half',
+                'alignment' => 'left',
+                'row' => 3,
             ];
 
             $baseFields['time'] = [
@@ -139,6 +158,9 @@ class ServiceFormConfigController extends Controller
                 'label' => 'Transfer Time',
                 'required' => true,
                 'order' => 4,
+                'width' => 'half',
+                'alignment' => 'left',
+                'row' => 3,
                 'default' => '09:00',
             ];
         } else {
@@ -336,48 +358,25 @@ class ServiceFormConfigController extends Controller
     }
 
     /**
-     * Get list of airports in Sri Lanka
+     * Get list of airports from database
      */
     private function getAirports(): array
     {
-        return [
-            [
-                'id' => 'BIA',
-                'name' => 'Bandaranaike International Airport (BIA)',
-                'code' => 'CMB',
-                'city' => 'Colombo',
-                'latitude' => 7.180756,
-                'longitude' => 79.884117,
-                'is_default' => true,
-            ],
-            [
-                'id' => 'RML',
-                'name' => 'Ratmalana Airport',
-                'code' => 'RML',
-                'city' => 'Colombo',
-                'latitude' => 6.821986,
-                'longitude' => 79.886208,
-                'is_default' => false,
-            ],
-            [
-                'id' => 'HRI',
-                'name' => 'Mattala Rajapaksa International Airport',
-                'code' => 'HRI',
-                'city' => 'Hambantota',
-                'latitude' => 6.284467,
-                'longitude' => 81.124128,
-                'is_default' => false,
-            ],
-            [
-                'id' => 'JAF',
-                'name' => 'Jaffna International Airport',
-                'code' => 'JAF',
-                'city' => 'Jaffna',
-                'latitude' => 9.792333,
-                'longitude' => 80.070097,
-                'is_default' => false,
-            ],
-        ];
+        return Airport::active()
+            ->ordered()
+            ->get()
+            ->map(function ($airport) {
+                return [
+                    'id' => $airport->id,
+                    'name' => $airport->name,
+                    'code' => $airport->code,
+                    'city' => $airport->city,
+                    'latitude' => (float) $airport->latitude,
+                    'longitude' => (float) $airport->longitude,
+                    'is_default' => $airport->is_default,
+                ];
+            })
+            ->toArray();
     }
 
     /**
@@ -392,6 +391,13 @@ class ServiceFormConfigController extends Controller
                 'allow_multiple_pickup_locations' => 'boolean',
                 'allow_multiple_dropoff_locations' => 'boolean',
                 'form_config' => 'nullable|array',
+                'form_config.*.type' => 'required|string',
+                'form_config.*.label' => 'required|string',
+                'form_config.*.required' => 'boolean',
+                'form_config.*.order' => 'integer',
+                'form_config.*.width' => 'nullable|in:full,half,third',
+                'form_config.*.alignment' => 'nullable|in:left,center,right',
+                'form_config.*.row' => 'nullable|integer',
             ]);
 
             $serviceType = ServiceType::findOrFail($serviceTypeId);

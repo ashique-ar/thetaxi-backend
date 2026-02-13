@@ -34,6 +34,7 @@ use App\Http\Controllers\Api\PhoneCallController;
 use App\Http\Controllers\Api\ServiceTypeController;
 use App\Http\Controllers\Api\Service\ServicePackageController;
 use App\Http\Controllers\Api\Service\ServiceFormConfigController;
+use App\Http\Controllers\Api\AirportController;
 use App\Http\Controllers\Api\StateController;
 use App\Http\Controllers\Api\Vehicle\VehicleAddonController;
 use App\Http\Controllers\Api\Vehicle\VehicleCategoryController;
@@ -338,6 +339,10 @@ Route::middleware(['auth:api'])->group(function () {
         // Service Form Configuration
         Route::get('service-types/{serviceType}/form-config', [ServiceFormConfigController::class, 'getFormConfig']);
         Route::put('service-types/{serviceType}/form-config', [ServiceFormConfigController::class, 'updateFormConfig']);
+
+        // Airports Management
+        Route::apiResource('airports', AirportController::class);
+        Route::get('airports-active', [AirportController::class, 'getActive']);
 
         // Service Package Return Rules
         Route::get('service-packages/{servicePackage}/return-rules', [ServicePackageController::class, 'getReturnRules']);

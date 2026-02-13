@@ -450,18 +450,47 @@
         // Expose search data globally for vehicle-card-scripts component to use
         // This allows the component to get booking parameters when adding to cart
         @if (isset($search))
+            @php
+                // Safely extract location data
+                $pickupAddress = '';
+                $pickupLat = null;
+                $pickupLng = null;
+                $dropoffAddress = '';
+                $dropoffLat = null;
+                $dropoffLng = null;
+
+                if (isset($search->pickup_location)) {
+                    if (is_array($search->pickup_location)) {
+                        $pickupAddress = $search->pickup_location['address'] ?? '';
+                        $pickupLat = $search->pickup_location['lat'] ?? $search->pickup_location['latitude'] ?? null;
+                        $pickupLng = $search->pickup_location['lng'] ?? $search->pickup_location['longitude'] ?? null;
+                    } elseif (is_string($search->pickup_location)) {
+                        $pickupAddress = $search->pickup_location;
+                    }
+                }
+
+                if (isset($search->dropoff_location)) {
+                    if (is_array($search->dropoff_location)) {
+                        $dropoffAddress = $search->dropoff_location['address'] ?? '';
+                        $dropoffLat = $search->dropoff_location['lat'] ?? $search->dropoff_location['latitude'] ?? null;
+                        $dropoffLng = $search->dropoff_location['lng'] ?? $search->dropoff_location['longitude'] ?? null;
+                    } elseif (is_string($search->dropoff_location)) {
+                        $dropoffAddress = $search->dropoff_location;
+                    }
+                }
+            @endphp
             window.bookingSearchData = {
                 from_date: '{{ $search->from_date ?? ($search->pickup_date ?? '') }}',
                 to_date: '{{ $search->to_date ?? ($search->dropoff_date ?? '') }}',
                 from_time: '{{ $search->from_time ?? ($search->pickup_time ?? '') }}',
                 to_time: '{{ $search->to_time ?? ($search->dropoff_time ?? '') }}',
                 service_type: '{{ $search->service_type ?? '' }}',
-                pickup_location: '{{ is_object($search) && isset($search->pickup_location['address']) ? $search->pickup_location['address'] : (is_string($search->pickup_location ?? '') ? $search->pickup_location ?? '' : '') }}',
-                pickup_lat: {{ is_array($search->pickup_location ?? null) && isset($search->pickup_location['lat']) ? $search->pickup_location['lat'] : 'null' }},
-                pickup_lng: {{ is_array($search->pickup_location ?? null) && isset($search->pickup_location['lng']) ? $search->pickup_location['lng'] : 'null' }},
-                dropoff_location: '{{ is_object($search) && isset($search->dropoff_location['address']) ? $search->dropoff_location['address'] : (is_string($search->dropoff_location ?? '') ? $search->dropoff_location ?? '' : '') }}',
-                dropoff_lat: {{ is_array($search->dropoff_location ?? null) && isset($search->dropoff_location['lat']) ? $search->dropoff_location['lat'] : 'null' }},
-                dropoff_lng: {{ is_array($search->dropoff_location ?? null) && isset($search->dropoff_location['lng']) ? $search->dropoff_location['lng'] : 'null' }},
+                pickup_location: '{{ $pickupAddress }}',
+                pickup_lat: {{ $pickupLat ?? 'null' }},
+                pickup_lng: {{ $pickupLng ?? 'null' }},
+                dropoff_location: '{{ $dropoffAddress }}',
+                dropoff_lat: {{ $dropoffLat ?? 'null' }},
+                dropoff_lng: {{ $dropoffLng ?? 'null' }},
                 service_package_id: '{{ $search->service_package_id ?? ($search->package_id ?? '') }}',
                 package_id: '{{ $search->service_package_id ?? ($search->package_id ?? '') }}',
                 is_return_trip: {{ isset($search->is_return_trip) && $search->is_return_trip ? 'true' : 'false' }},

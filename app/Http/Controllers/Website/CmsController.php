@@ -185,8 +185,14 @@ class CmsController extends Controller
             try {
                 // Ensure we have a valid ServiceType ID if it's a code
                 // Use the raw value (may be code or id) to resolve backend record
-                $backendServiceType = \App\Models\Service\ServiceType::where('code', $serviceTypeRaw)
-                    ->orWhere('id', $serviceTypeRaw)
+                $backendServiceType = \App\Models\Service\ServiceType::where(function ($query) use ($serviceTypeRaw) {
+                    $query->where('code', $serviceTypeRaw);
+                    // Only check by ID if it's a valid UUID
+                    if (\Illuminate\Support\Str::isUuid($serviceTypeRaw)) {
+                        $query->orWhere('id', $serviceTypeRaw);
+                    }
+                })
+                    ->where('is_active', true)
                     ->first();
 
                 if ($backendServiceType) {
