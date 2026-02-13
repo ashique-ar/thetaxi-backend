@@ -159,17 +159,41 @@ class CmsController extends Controller
         }
 
         // Construct the effective search params with structured location data (use raw value for backend calls)
+        // Helper to safely extract location data from session (which might be string or array)
+        $extractLocationData = function ($sessionLocation, $addressKey = 'address', $latKey = 'latitude', $lngKey = 'longitude') {
+            if (empty($sessionLocation)) {
+                return ['address' => null, 'latitude' => null, 'longitude' => null];
+            }
+            
+            if (is_string($sessionLocation)) {
+                return ['address' => $sessionLocation, 'latitude' => null, 'longitude' => null];
+            }
+            
+            if (is_array($sessionLocation)) {
+                return [
+                    'address' => $sessionLocation[$addressKey] ?? $sessionLocation['address'] ?? null,
+                    'latitude' => $sessionLocation[$latKey] ?? $sessionLocation['lat'] ?? $sessionLocation['latitude'] ?? null,
+                    'longitude' => $sessionLocation[$lngKey] ?? $sessionLocation['lng'] ?? $sessionLocation['longitude'] ?? null,
+                ];
+            }
+            
+            return ['address' => null, 'latitude' => null, 'longitude' => null];
+        };
+
+        $sessionPickup = $extractLocationData($sessionSearchParams['pickup_location'] ?? null);
+        $sessionDropoff = $extractLocationData($sessionSearchParams['dropoff_location'] ?? null);
+
         $searchParams = array_merge($sessionSearchParams, [
             'service_type' => $serviceTypeRaw,
             'pickup_location' => [
-                'address' => $content->pickup_location ?: ($sessionSearchParams['pickup_location']['address'] ?? $sessionSearchParams['pickup_location'] ?? null),
-                'latitude' => $content->pickup_lat ?: ($sessionSearchParams['pickup_location']['latitude'] ?? $sessionSearchParams['pickup_location']['lat'] ?? null),
-                'longitude' => $content->pickup_lng ?: ($sessionSearchParams['pickup_location']['longitude'] ?? $sessionSearchParams['pickup_location']['lng'] ?? null),
+                'address' => $content->pickup_location ?: $sessionPickup['address'],
+                'latitude' => $content->pickup_lat ?: $sessionPickup['latitude'],
+                'longitude' => $content->pickup_lng ?: $sessionPickup['longitude'],
             ],
             'dropoff_location' => [
-                'address' => $content->dropoff_location ?: ($sessionSearchParams['dropoff_location']['address'] ?? $sessionSearchParams['dropoff_location'] ?? null),
-                'latitude' => $content->dropoff_lat ?: ($sessionSearchParams['dropoff_location']['latitude'] ?? $sessionSearchParams['dropoff_location']['lat'] ?? null),
-                'longitude' => $content->dropoff_lng ?: ($sessionSearchParams['dropoff_location']['longitude'] ?? $sessionSearchParams['dropoff_location']['lng'] ?? null),
+                'address' => $content->dropoff_location ?: $sessionDropoff['address'],
+                'latitude' => $content->dropoff_lat ?: $sessionDropoff['latitude'],
+                'longitude' => $content->dropoff_lng ?: $sessionDropoff['longitude'],
             ],
             'from_date' => $pickupDate,
             'from_time' => $pickupTime,
