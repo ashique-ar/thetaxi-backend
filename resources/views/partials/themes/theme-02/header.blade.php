@@ -30,7 +30,7 @@
                         <ul class="sub-menu">
                             @foreach($headerServices as $service)
                                 @if(!empty($service->slug))
-                                <li><a href="{{ route('cms.show', ['contentTypeSlug' => 'services', 'contentSlug' => $service->slug]) }}">{{ $service->title }}</a></li>
+                                <li><a href="{{ route('cms.show', ['contentType' => 'services', 'content' => $service->slug]) }}">{{ $service->title }}</a></li>
                                 @endif
                             @endforeach
                         </ul>
