@@ -89,7 +89,7 @@ class AppServiceProvider extends ServiceProvider
         // Register settings view composer for all views
         view()->composer('*', \App\Http\ViewComposers\SettingsViewComposer::class);
 
-        // Register services view composer for all views
+        // Register services view composer for all views (Updated: 2026-02-14)
         view()->composer('*', \App\Http\ViewComposers\ServicesViewComposer::class);
 
         RateLimiter::for('api', function (Request $request) {

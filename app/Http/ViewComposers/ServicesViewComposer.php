@@ -6,6 +6,11 @@ use App\Models\Website\CmsContent;
 use Illuminate\View\View;
 use Illuminate\Support\Facades\Cache;
 
+/**
+ * Services View Composer
+ * Provides header services dropdown data to all views
+ * Last updated: 2026-02-14
+ */
 class ServicesViewComposer
 {
     /**
