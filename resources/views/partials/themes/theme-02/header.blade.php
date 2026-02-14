@@ -28,7 +28,9 @@
                         <i class="bi bi-plus dropdown-icon"></i>
                         <ul class="sub-menu">
                             @foreach($headerServices as $service)
-                            <li><a href="{{ route('cms.show', ['contentTypeSlug' => 'services', 'contentSlug' => $service->slug]) }}">{{ $service->title }}</a></li>
+                                @if(!empty($service->slug))
+                                <li><a href="{{ route('cms.show', ['contentTypeSlug' => 'services', 'contentSlug' => $service->slug]) }}">{{ $service->title }}</a></li>
+                                @endif
                             @endforeach
                         </ul>
                     </li>

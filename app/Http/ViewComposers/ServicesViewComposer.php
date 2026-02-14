@@ -20,6 +20,8 @@ class ServicesViewComposer
         $services = Cache::remember('header_services', 3600, function () {
             return CmsContent::published()
                 ->byType('services')
+                ->whereNotNull('slug')
+                ->where('slug', '!=', '')
                 ->orderBy('display_order', 'asc')
                 ->orderBy('title', 'asc')
                 ->select('id', 'title', 'slug', 'excerpt', 'thumbnail')

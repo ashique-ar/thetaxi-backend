@@ -64,15 +64,20 @@
                             </a>
                             <i class="bi bi-plus dropdown-icon"></i>
                             <ul class="sub-menu">
-                                <li><a href="{{ route('corporate-transfers') }}">Corporate Transport</a></li>
                                 @foreach ($headerServices as $service)
+                                    @if(!empty($service->slug))
                                     <li><a
                                             href="{{ route('cms.show', ['contentTypeSlug' => 'services', 'contentSlug' => $service->slug]) }}">{{ $service->title }}</a>
                                     </li>
+                                    @endif
                                 @endforeach
                             </ul>
                         </li>
                     @endif
+                    <li><a href="{{ route('corporate-transfers') }}">Corporate Transport</a></li>
+                    <li><a href="{{ route('about') }}">About</a></li>
+                    <li><a href="{{ route('contact') }}">Contact</a></li>
+                </ul>
 
                     <li><a href="{{ route('about') }}">About</a></li>
                     <li><a href="{{ route('contact') }}">Contact</a></li>
