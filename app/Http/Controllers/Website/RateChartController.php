@@ -160,9 +160,18 @@ class RateChartController extends Controller
     private function calculateRate(VehicleGroup $group, ServiceType $serviceType, int $days): array
     {
         try {
-            // Use calendar days - start of day to start of day
+            // Use calendar days - for 1 day rental, use same date (today to today)
+            // For multi-day, add days to the start date
             $fromDate = Carbon::today()->startOfDay();
-            $toDate = Carbon::today()->addDays($days)->startOfDay();
+            
+            if ($days === 1) {
+                // 1 day rental: same day (today to today)
+                $toDate = Carbon::today()->startOfDay();
+            } else {
+                // Multi-day rental: today + (days - 1)
+                // e.g., 30 days = today + 29 days = 30 calendar days total
+                $toDate = Carbon::today()->addDays($days - 1)->startOfDay();
+            }
 
             $params = [
                 'service_type' => $serviceType->id,
@@ -178,6 +187,8 @@ class RateChartController extends Controller
             Log::debug("Rate chart: Calculating rate", [
                 'vehicle_group' => $group->name,
                 'days' => $days,
+                'from_date' => $fromDate->format('Y-m-d'),
+                'to_date' => $toDate->format('Y-m-d'),
                 'params' => $params
             ]);
 
