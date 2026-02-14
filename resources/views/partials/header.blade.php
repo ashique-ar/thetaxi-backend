@@ -53,7 +53,6 @@
                         <i class="bi bi-x"></i>
                     </div>
                 </div>
-{{-- Header Navigation - Updated: 2026-02-14 --}}
                 <ul class="menu-list">
                     <li class="{{ Request::routeIs('home') ? 'active' : '' }}"><a href="{{ route('home') }}">Home</a>
                     </li>
@@ -75,7 +74,7 @@
                             </ul>
                         </li>
                     @endif
-                    <li><a href="{{ route('corporate-transfers') }}">Corporate Transport</a></li>
+                    {{-- <li><a href="{{ route('corporate-transfers') }}">Corporate Transport</a></li> --}}
                     <li><a href="{{ route('about') }}">About</a></li>
                     <li><a href="{{ route('contact') }}">Contact</a></li>
                 </ul>
