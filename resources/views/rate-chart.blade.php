@@ -240,7 +240,7 @@
                             <th style="width: 20%;">Specifications</th>
                             <th style="width: 20%; text-align: center;">Daily Rate</th>
                             <th style="width: 20%; text-align: center;">Monthly Rate (30 Days)</th>
-                            <th style="width: 5%; text-align: center;">Action</th>
+                            {{-- <th style="width: 5%; text-align: center;">Action</th> --}}
                         </tr>
                     </thead>
                     <tbody>
@@ -287,12 +287,12 @@
                             <td>
                                 <div style="font-size: 0.9rem; color: #495057;">
                                     @if($vehicle['passengers_count'])
-                                        <div style="margin-bottom: 5px;">
+                                        <div>
                                             <i class="bi bi-people"></i> {{ $vehicle['passengers_count'] }} Passengers
                                         </div>
                                     @endif
                                     @if($vehicle['fuel_type'] !== 'N/A')
-                                        <div style="margin-bottom: 5px;">
+                                        <div>
                                             <i class="bi bi-fuel-pump"></i> {{ $vehicle['fuel_type'] }}
                                         </div>
                                     @endif
@@ -335,13 +335,13 @@
                             </td>
 
                             <!-- Action -->
-                            <td style="text-align: center;">
+                            {{-- <td style="text-align: center;">
                                 <a href="{{ route('vehicle.details', $vehicle['id']) }}" 
                                    class="btn btn-sm btn-primary"
                                    style="padding: 8px 16px; border-radius: 6px; text-decoration: none;">
                                     <i class="bi bi-eye"></i> View
                                 </a>
-                            </td>
+                            </td> --}}
                         </tr>
                         @endforeach
                     </tbody>

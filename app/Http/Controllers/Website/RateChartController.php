@@ -80,15 +80,30 @@ class RateChartController extends Controller
                     ]);
                 }
 
-                // Get vehicle thumbnail - ensure it's a string
+                // Get vehicle thumbnail - handle array or string format
                 $thumbnail = null;
-                if ($group->thumbnail) {
-                    $thumbnail = is_array($group->thumbnail) ? ($group->thumbnail[0] ?? null) : $group->thumbnail;
+                $thumbnailRaw = $group->thumbnail ?? null;
+                
+                if ($thumbnailRaw) {
+                    if (is_array($thumbnailRaw)) {
+                        // Handle array format: ['path' => '...'] or [0 => '...']
+                        $thumbnail = $thumbnailRaw['path'] ?? ($thumbnailRaw[0] ?? null);
+                    } else {
+                        $thumbnail = $thumbnailRaw;
+                    }
                 }
+                
+                // Fallback to first vehicle's thumbnail if group has no thumbnail
                 if (!$thumbnail && $group->vehicles->isNotEmpty()) {
                     $vehicle = $group->vehicles->first();
-                    if ($vehicle->thumbnail) {
-                        $thumbnail = is_array($vehicle->thumbnail) ? ($vehicle->thumbnail[0] ?? null) : $vehicle->thumbnail;
+                    $vehicleThumbnailRaw = $vehicle->thumbnail ?? null;
+                    
+                    if ($vehicleThumbnailRaw) {
+                        if (is_array($vehicleThumbnailRaw)) {
+                            $thumbnail = $vehicleThumbnailRaw['path'] ?? ($vehicleThumbnailRaw[0] ?? null);
+                        } else {
+                            $thumbnail = $vehicleThumbnailRaw;
+                        }
                     }
                 }
 
