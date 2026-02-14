@@ -208,7 +208,7 @@
 <div class="rate-chart-hero">
     <div class="container">
         <h1>Vehicle Rental Rate Chart</h1>
-        <p>Compare daily and monthly rental rates for all our vehicles. All prices are in Sri Lankan Rupees (LKR) and include standard features.</p>
+        <p>Compare daily and monthly rental rates for all our vehicles. All prices are shown in {{ getCurrencyName(getSelectedCurrency()) }} and calculated based on calendar days.</p>
     </div>
 </div>
 
@@ -355,12 +355,14 @@
                     <i class="bi bi-info-circle"></i> Important Information
                 </h5>
                 <ul style="margin: 0; padding-left: 20px; color: #6c757d; line-height: 1.8;">
-                    <li>All rates are in Sri Lankan Rupees (LKR) and subject to change without notice</li>
-                    <li>Monthly rates are calculated for 30 days and offer better value</li>
+                    <li>All rates are in {{ getCurrencyName(getSelectedCurrency()) }} ({{ getCurrencySymbol() }}) and subject to change without notice</li>
+                    <li>Rates are calculated based on calendar days (not 24-hour periods) - today counts as day 1</li>
+                    <li>Monthly rates are calculated for 30 calendar days and offer better value</li>
                     <li>Rates include standard insurance and basic maintenance</li>
                     <li>Additional charges may apply for extra kilometers, fuel, and optional add-ons</li>
                     <li>Driver charges are separate and can be added during booking</li>
                     <li>For custom packages or long-term rentals, please contact us for special rates</li>
+                    <li>Currency conversion rates are updated regularly and may vary at time of booking</li>
                 </ul>
             </div>
 

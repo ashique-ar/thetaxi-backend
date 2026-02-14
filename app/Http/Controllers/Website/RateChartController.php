@@ -131,8 +131,9 @@ class RateChartController extends Controller
     private function calculateRate(VehicleGroup $group, ServiceType $serviceType, int $days): array
     {
         try {
-            $fromDate = Carbon::today();
-            $toDate = Carbon::today()->addDays($days);
+            // Use calendar days - start of day to start of day
+            $fromDate = Carbon::today()->startOfDay();
+            $toDate = Carbon::today()->addDays($days)->startOfDay();
 
             $params = [
                 'service_type' => $serviceType->id,
@@ -151,10 +152,17 @@ class RateChartController extends Controller
                 $vehicleData = collect($availability['data'])->firstWhere('id', $group->id);
                 
                 if ($vehicleData && isset($vehicleData['pricing_info']['base_amount'])) {
+                    $baseAmountLKR = $vehicleData['pricing_info']['base_amount'];
+                    
+                    // Convert to selected currency
+                    $convertedAmount = convertCurrency($baseAmountLKR, 'LKR', getSelectedCurrency());
+                    $perDayAmount = $days > 1 ? round($convertedAmount / $days, 2) : $convertedAmount;
+                    
                     return [
-                        'amount' => $vehicleData['pricing_info']['base_amount'],
-                        'currency' => 'LKR',
-                        'per_day' => $days > 1 ? round($vehicleData['pricing_info']['base_amount'] / $days, 2) : $vehicleData['pricing_info']['base_amount'],
+                        'amount' => $convertedAmount,
+                        'amount_lkr' => $baseAmountLKR,
+                        'currency' => getSelectedCurrency(),
+                        'per_day' => $perDayAmount,
                         'breakdown' => $vehicleData['pricing_info']['breakdown'] ?? null,
                     ];
                 }
@@ -162,7 +170,8 @@ class RateChartController extends Controller
 
             return [
                 'amount' => 0,
-                'currency' => 'LKR',
+                'amount_lkr' => 0,
+                'currency' => getSelectedCurrency(),
                 'per_day' => 0,
                 'breakdown' => null,
             ];
@@ -172,7 +181,8 @@ class RateChartController extends Controller
             
             return [
                 'amount' => 0,
-                'currency' => 'LKR',
+                'amount_lkr' => 0,
+                'currency' => getSelectedCurrency(),
                 'per_day' => 0,
                 'breakdown' => null,
             ];
