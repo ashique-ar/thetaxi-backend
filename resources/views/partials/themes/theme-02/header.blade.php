@@ -19,6 +19,20 @@
                 </div>
                 <ul class="menu-list">
                     <li class="{{ Request::routeIs('home') ? 'active' : '' }}"><a href="{{ route('home') }}">Home</a></li>
+                    @if(isset($headerServices) && $headerServices->count() > 0)
+                    <li class="menu-item-has-children">
+                        <a href="#" class="drop-down">
+                            Services
+                            <i class="bi bi-caret-down-fill"></i>
+                        </a>
+                        <i class="bi bi-plus dropdown-icon"></i>
+                        <ul class="sub-menu">
+                            @foreach($headerServices as $service)
+                            <li><a href="{{ route('cms.show', ['contentTypeSlug' => 'services', 'contentSlug' => $service->slug]) }}">{{ $service->title }}</a></li>
+                            @endforeach
+                        </ul>
+                    </li>
+                    @endif
                     <li><a href="{{ route('about') }}">About</a></li>
                     <li><a href="{{ route('contact') }}">Contact</a></li>
                 </ul>

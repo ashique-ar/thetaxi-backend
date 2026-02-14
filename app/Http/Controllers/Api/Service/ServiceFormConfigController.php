@@ -18,18 +18,23 @@ class ServiceFormConfigController extends Controller
     public function getFormConfig(string $serviceTypeId): JsonResponse
     {
         try {
+            \Log::info('Loading form config for service type: ' . $serviceTypeId);
+            
             $serviceType = ServiceType::with(['packages' => function ($query) {
                 $query->where('is_active', true)->orderBy('sort_order');
             }])->find($serviceTypeId);
 
             if (!$serviceType) {
+                \Log::warning('Service type not found: ' . $serviceTypeId);
                 return response()->json([
                     'status' => 'error',
                     'message' => 'Service type not found',
                 ], 404);
             }
 
+            \Log::info('Building form config for: ' . $serviceType->name);
             $config = $this->buildFormConfig($serviceType);
+            \Log::info('Form config built successfully');
 
             return response()->json([
                 'status' => 'success',
@@ -37,6 +42,10 @@ class ServiceFormConfigController extends Controller
             ]);
 
         } catch (\Exception $e) {
+            \Log::error('Failed to retrieve form configuration: ' . $e->getMessage(), [
+                'service_type_id' => $serviceTypeId,
+                'trace' => $e->getTraceAsString()
+            ]);
             return response()->json([
                 'status' => 'error',
                 'message' => 'Failed to retrieve form configuration',
@@ -362,21 +371,27 @@ class ServiceFormConfigController extends Controller
      */
     private function getAirports(): array
     {
-        return Airport::active()
-            ->ordered()
-            ->get()
-            ->map(function ($airport) {
-                return [
-                    'id' => $airport->id,
-                    'name' => $airport->name,
-                    'code' => $airport->code,
-                    'city' => $airport->city,
-                    'latitude' => (float) $airport->latitude,
-                    'longitude' => (float) $airport->longitude,
-                    'is_default' => $airport->is_default,
-                ];
-            })
-            ->toArray();
+        try {
+            return Airport::active()
+                ->ordered()
+                ->get()
+                ->map(function ($airport) {
+                    return [
+                        'id' => $airport->id,
+                        'name' => $airport->name,
+                        'code' => $airport->code,
+                        'city' => $airport->city,
+                        'latitude' => (float) $airport->latitude,
+                        'longitude' => (float) $airport->longitude,
+                        'is_default' => $airport->is_default,
+                    ];
+                })
+                ->toArray();
+        } catch (\Exception $e) {
+            \Log::error('Error loading airports for form config: ' . $e->getMessage());
+            // Return empty array if airports can't be loaded
+            return [];
+        }
     }
 
     /**
