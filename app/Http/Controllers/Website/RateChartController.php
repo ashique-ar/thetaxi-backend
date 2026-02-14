@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Vehicle\VehicleGroup;
 use App\Models\Service\ServiceType;
 use App\Services\BookingFlowService;
+use App\Services\CurrencyService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
@@ -13,10 +14,12 @@ use Illuminate\View\View;
 class RateChartController extends Controller
 {
     protected BookingFlowService $bookingFlowService;
+    protected CurrencyService $currencyService;
 
-    public function __construct(BookingFlowService $bookingFlowService)
+    public function __construct(BookingFlowService $bookingFlowService, CurrencyService $currencyService)
     {
         $this->bookingFlowService = $bookingFlowService;
+        $this->currencyService = $currencyService;
     }
 
     /**
@@ -155,23 +158,25 @@ class RateChartController extends Controller
                     $baseAmountLKR = $vehicleData['pricing_info']['base_amount'];
                     
                     // Convert to selected currency
-                    $convertedAmount = convertCurrency($baseAmountLKR, 'LKR', getSelectedCurrency());
+                    $selectedCurrency = $this->currencyService->getSelectedCurrency();
+                    $convertedAmount = $this->currencyService->convertFromLKR($baseAmountLKR, $selectedCurrency);
                     $perDayAmount = $days > 1 ? round($convertedAmount / $days, 2) : $convertedAmount;
                     
                     return [
                         'amount' => $convertedAmount,
                         'amount_lkr' => $baseAmountLKR,
-                        'currency' => getSelectedCurrency(),
+                        'currency' => $selectedCurrency,
                         'per_day' => $perDayAmount,
                         'breakdown' => $vehicleData['pricing_info']['breakdown'] ?? null,
                     ];
                 }
             }
 
+            $selectedCurrency = $this->currencyService->getSelectedCurrency();
             return [
                 'amount' => 0,
                 'amount_lkr' => 0,
-                'currency' => getSelectedCurrency(),
+                'currency' => $selectedCurrency,
                 'per_day' => 0,
                 'breakdown' => null,
             ];
@@ -179,10 +184,11 @@ class RateChartController extends Controller
         } catch (\Exception $e) {
             Log::warning("Rate calculation failed for vehicle group {$group->id}, {$days} days: " . $e->getMessage());
             
+            $selectedCurrency = $this->currencyService->getSelectedCurrency();
             return [
                 'amount' => 0,
                 'amount_lkr' => 0,
-                'currency' => getSelectedCurrency(),
+                'currency' => $selectedCurrency,
                 'per_day' => 0,
                 'breakdown' => null,
             ];
