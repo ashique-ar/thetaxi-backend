@@ -244,8 +244,16 @@
                             <!-- Vehicle Info -->
                             <td>
                                 <div class="vehicle-info">
-                                    @if($vehicle['thumbnail'])
-                                        <img src="{{ asset($vehicle['thumbnail']) }}" 
+                                    @php
+                                        $thumbnailPath = $vehicle['thumbnail'];
+                                        // Handle if thumbnail is an array
+                                        if (is_array($thumbnailPath)) {
+                                            $thumbnailPath = $thumbnailPath[0] ?? null;
+                                        }
+                                    @endphp
+                                    
+                                    @if($thumbnailPath)
+                                        <img src="{{ s3_asset($thumbnailPath) }}" 
                                              alt="{{ $vehicle['name'] }}" 
                                              class="vehicle-thumbnail"
                                              onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">

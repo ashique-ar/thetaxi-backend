@@ -66,11 +66,16 @@ class RateChartController extends Controller
                 // Calculate monthly rate (30 days)
                 $monthlyRate = $this->calculateRate($group, $dayRentalService, 30);
 
-                // Get vehicle thumbnail
-                $thumbnail = $group->thumbnail ?? null;
+                // Get vehicle thumbnail - ensure it's a string
+                $thumbnail = null;
+                if ($group->thumbnail) {
+                    $thumbnail = is_array($group->thumbnail) ? ($group->thumbnail[0] ?? null) : $group->thumbnail;
+                }
                 if (!$thumbnail && $group->vehicles->isNotEmpty()) {
                     $vehicle = $group->vehicles->first();
-                    $thumbnail = $vehicle->thumbnail;
+                    if ($vehicle->thumbnail) {
+                        $thumbnail = is_array($vehicle->thumbnail) ? ($vehicle->thumbnail[0] ?? null) : $vehicle->thumbnail;
+                    }
                 }
 
                 $rateData[] = [
