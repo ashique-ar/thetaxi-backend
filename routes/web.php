@@ -12,6 +12,7 @@ use App\Http\Controllers\VehicleController;
 use App\Http\Controllers\Website\CmsController;
 use App\Http\Controllers\Website\HomeController;
 use App\Http\Controllers\Website\InquiryServicePageController;
+use App\Http\Controllers\Website\RateChartController;
 use App\Http\Controllers\Website\SitemapController;
 use App\Http\Controllers\TestController;
 use Illuminate\Support\Facades\Route;
@@ -199,6 +200,9 @@ Route::get('/api/services/{serviceCode}/packages', [ServicePackageController::cl
 Route::get('/faq', [FAQController::class, 'index'])->name('faq');
 // Route::get('/faq', [FAQController::class, 'index'])->name('faq.index');  
 Route::get('/faq/category/{category}', [FAQController::class, 'category'])->name('faq.category');
+
+// Rate Chart route (must be before dynamic CMS routes)
+Route::get('/rate-chart', [RateChartController::class, 'index'])->name('rate-chart');
 
 // Dynamic CMS content routes - these handle all content types dynamically
 Route::get('/{contentType}', [CmsController::class, 'index'])
