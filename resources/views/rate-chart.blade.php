@@ -251,14 +251,15 @@
                                 <div class="vehicle-info">
                                     @php
                                         $thumbnailPath = $vehicle['thumbnail'];
-                                        // Handle if thumbnail is an array
-                                        if (is_array($thumbnailPath)) {
-                                            $thumbnailPath = $thumbnailPath[0] ?? null;
+                                        $imageUrl = null;
+                                        
+                                        if ($thumbnailPath) {
+                                            $imageUrl = s3_asset($thumbnailPath);
                                         }
                                     @endphp
                                     
-                                    @if($thumbnailPath)
-                                        <img src="{{ s3_asset($thumbnailPath) }}" 
+                                    @if($imageUrl)
+                                        <img src="{{ $imageUrl }}" 
                                              alt="{{ $vehicle['name'] }}" 
                                              class="vehicle-thumbnail"
                                              onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
