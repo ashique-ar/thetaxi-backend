@@ -69,6 +69,17 @@ class RateChartController extends Controller
                 // Calculate monthly rate (30 days)
                 $monthlyRate = $this->calculateRate($group, $dayRentalService, 30);
 
+                // Debug logging
+                if ($dailyRate['amount'] == 0) {
+                    continue;
+                    Log::warning("Rate chart: No pricing for vehicle group", [
+                        'vehicle_group_id' => $group->id,
+                        'vehicle_group_name' => $group->name,
+                        'daily_rate_response' => $dailyRate,
+                        'monthly_rate_response' => $monthlyRate
+                    ]);
+                }
+
                 // Get vehicle thumbnail - ensure it's a string
                 $thumbnail = null;
                 if ($group->thumbnail) {
@@ -149,10 +160,30 @@ class RateChartController extends Controller
                 'mode' => 'preview'
             ];
 
+            Log::debug("Rate chart: Calculating rate", [
+                'vehicle_group' => $group->name,
+                'days' => $days,
+                'params' => $params
+            ]);
+
             $availability = $this->bookingFlowService->getAvailableVehicleGroups($params, true);
+
+            Log::debug("Rate chart: Availability response", [
+                'vehicle_group' => $group->name,
+                'has_data' => isset($availability['data']),
+                'data_count' => isset($availability['data']) ? count($availability['data']) : 0,
+                'availability_keys' => array_keys($availability)
+            ]);
 
             if (isset($availability['data']) && count($availability['data']) > 0) {
                 $vehicleData = collect($availability['data'])->firstWhere('id', $group->id);
+                
+                Log::debug("Rate chart: Vehicle data found", [
+                    'vehicle_group' => $group->name,
+                    'found' => $vehicleData !== null,
+                    'has_pricing' => $vehicleData && isset($vehicleData['pricing_info']['base_amount']),
+                    'pricing_info' => $vehicleData['pricing_info'] ?? null
+                ]);
                 
                 if ($vehicleData && isset($vehicleData['pricing_info']['base_amount'])) {
                     $baseAmountLKR = $vehicleData['pricing_info']['base_amount'];
@@ -182,7 +213,10 @@ class RateChartController extends Controller
             ];
 
         } catch (\Exception $e) {
-            Log::warning("Rate calculation failed for vehicle group {$group->id}, {$days} days: " . $e->getMessage());
+            Log::error("Rate calculation failed for vehicle group {$group->id}, {$days} days: " . $e->getMessage(), [
+                'exception' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
             
             $selectedCurrency = $this->currencyService->getSelectedCurrency();
             return [
