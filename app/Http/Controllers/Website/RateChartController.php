@@ -160,16 +160,14 @@ class RateChartController extends Controller
     private function calculateRate(VehicleGroup $group, ServiceType $serviceType, int $days): array
     {
         try {
-            // Use calendar days - for 1 day rental, use same date (today to today)
-            // For multi-day, add days to the start date
             $fromDate = Carbon::today()->startOfDay();
+            $toDate = Carbon::today()->startOfDay();
             
-            if ($days === 1) {
-                // 1 day rental: same day (today to today)
-                $toDate = Carbon::today()->startOfDay();
-            } else {
-                // Multi-day rental: today + (days - 1)
-                // e.g., 30 days = today + 29 days = 30 calendar days total
+            // For day rental pricing, we need to account for how the system calculates days
+            // The system uses: diffInDays() + 1
+            // So for 1 day: same date = 0 diff + 1 = 1 day ✓
+            // For 30 days: we need 29 days diff + 1 = 30 days
+            if ($days > 1) {
                 $toDate = Carbon::today()->addDays($days - 1)->startOfDay();
             }
 
@@ -186,10 +184,11 @@ class RateChartController extends Controller
 
             Log::debug("Rate chart: Calculating rate", [
                 'vehicle_group' => $group->name,
-                'days' => $days,
+                'requested_days' => $days,
                 'from_date' => $fromDate->format('Y-m-d'),
                 'to_date' => $toDate->format('Y-m-d'),
-                'params' => $params
+                'diff_in_days' => $fromDate->diffInDays($toDate),
+                'calculated_days' => $fromDate->diffInDays($toDate) + 1,
             ]);
 
             $availability = $this->bookingFlowService->getAvailableVehicleGroups($params, true);
