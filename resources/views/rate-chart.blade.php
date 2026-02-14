@@ -9,7 +9,7 @@
 @push('styles')
 <style>
     .rate-chart-hero {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #BF2629 0%, #a02123 100%);
         padding: 60px 0;
         color: white;
         text-align: center;
@@ -46,7 +46,7 @@
     }
 
     .rate-table thead {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #BF2629 0%, #a02123 100%);
         color: white;
     }
 
@@ -127,7 +127,7 @@
     .rate-amount {
         font-size: 1.3rem;
         font-weight: 700;
-        color: #667eea;
+        color: #BF2629;
     }
 
     .rate-per-day {
@@ -148,8 +148,8 @@
         border-radius: 20px;
         font-size: 0.8rem;
         font-weight: 500;
-        background: #e7f3ff;
-        color: #0066cc;
+        background: #fef5f5;
+        color: #BF2629;
     }
 
     .last-updated {
@@ -350,7 +350,7 @@
             @endif
 
             <!-- Info Section -->
-            <div style="margin-top: 40px; padding: 25px; background: white; border-radius: 12px; border-left: 4px solid #667eea;">
+            <div style="margin-top: 40px; padding: 25px; background: white; border-radius: 12px; border-left: 4px solid #BF2629;">
                 <h5 style="margin-bottom: 15px; color: #2c3e50;">
                     <i class="bi bi-info-circle"></i> Important Information
                 </h5>
@@ -365,7 +365,7 @@
             </div>
 
             <!-- CTA Section -->
-            <div style="margin-top: 30px; text-align: center; padding: 40px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; color: white;">
+            <div style="margin-top: 30px; text-align: center; padding: 40px; background: linear-gradient(135deg, #BF2629 0%, #a02123 100%); border-radius: 12px; color: white;">
                 <h4 style="margin-bottom: 15px;">Ready to Book Your Vehicle?</h4>
                 <p style="margin-bottom: 25px; opacity: 0.95;">Get the best rates and enjoy a seamless booking experience</p>
                 <a href="{{ route('home') }}#search-section" class="btn btn-light btn-lg" style="padding: 12px 40px; border-radius: 8px; font-weight: 600;">
