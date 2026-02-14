@@ -177,27 +177,149 @@
             font-size: 1.8rem;
         }
 
-        .rate-table-wrapper {
-            overflow-x: auto;
-        }
-
-        .rate-table {
-            min-width: 800px;
-        }
-
-        .vehicle-thumbnail,
-        .vehicle-thumbnail-placeholder {
-            width: 60px;
-            height: 45px;
-        }
-
-        .vehicle-details h5 {
+        .rate-chart-hero p {
             font-size: 0.95rem;
         }
 
-        .rate-amount {
-            font-size: 1.1rem;
+        /* Hide table on mobile, show cards instead */
+        .rate-table-wrapper {
+            display: none;
         }
+
+        .mobile-rate-cards {
+            display: block !important;
+        }
+    }
+
+    /* Mobile card layout */
+    .mobile-rate-cards {
+        display: none;
+    }
+
+    .mobile-rate-card {
+        background: white;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .mobile-rate-card .vehicle-header {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        margin-bottom: 15px;
+        padding-bottom: 15px;
+        border-bottom: 2px solid #f0f0f0;
+    }
+
+    .mobile-rate-card .vehicle-thumbnail {
+        width: 80px;
+        height: 60px;
+        object-fit: cover;
+        border-radius: 8px;
+        border: 2px solid #e9ecef;
+    }
+
+    .mobile-rate-card .vehicle-thumbnail-placeholder {
+        width: 80px;
+        height: 60px;
+        background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%);
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #6c757d;
+        font-size: 24px;
+    }
+
+    .mobile-rate-card .vehicle-name {
+        flex: 1;
+    }
+
+    .mobile-rate-card .vehicle-name h5 {
+        margin: 0 0 5px 0;
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #2c3e50;
+    }
+
+    .mobile-rate-card .vehicle-category {
+        font-size: 0.85rem;
+        color: #6c757d;
+    }
+
+    .mobile-rate-card .specs-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-bottom: 15px;
+        padding-bottom: 15px;
+        border-bottom: 2px solid #f0f0f0;
+    }
+
+    .mobile-rate-card .spec-item {
+        font-size: 0.85rem;
+        color: #495057;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+
+    .mobile-rate-card .spec-item i {
+        color: #BF2629;
+    }
+
+    .mobile-rate-card .rates-section {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 15px;
+        margin-bottom: 15px;
+    }
+
+    .mobile-rate-card .rate-box {
+        text-align: center;
+        padding: 15px;
+        background: #f8f9fa;
+        border-radius: 8px;
+    }
+
+    .mobile-rate-card .rate-label {
+        font-size: 0.8rem;
+        color: #6c757d;
+        margin-bottom: 5px;
+        font-weight: 500;
+    }
+
+    .mobile-rate-card .rate-amount {
+        font-size: 1.2rem;
+        font-weight: 700;
+        color: #BF2629;
+    }
+
+    .mobile-rate-card .rate-per-day {
+        font-size: 0.75rem;
+        color: #6c757d;
+        margin-top: 3px;
+    }
+
+    .mobile-rate-card .rate-unavailable {
+        color: #dc3545;
+        font-weight: 500;
+        font-size: 0.9rem;
+    }
+
+    .mobile-rate-card .view-btn {
+        width: 100%;
+        padding: 12px;
+        background: #BF2629;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-weight: 600;
+        text-decoration: none;
+        display: block;
+        text-align: center;
     }
 </style>
 @endpush
@@ -347,6 +469,110 @@
                         @endforeach
                     </tbody>
                 </table>
+            </div>
+
+            <!-- Mobile Card Layout (visible on mobile only) -->
+            <div class="mobile-rate-cards">
+                @foreach($vehicleGroups as $vehicle)
+                <div class="mobile-rate-card">
+                    <!-- Vehicle Header -->
+                    <div class="vehicle-header">
+                        @php
+                            $thumbnailPath = $vehicle['thumbnail'];
+                            $imageUrl = null;
+                            
+                            if ($thumbnailPath) {
+                                $imageUrl = s3_asset($thumbnailPath);
+                            }
+                        @endphp
+                        
+                        @if($imageUrl)
+                            <img src="{{ $imageUrl }}" 
+                                 alt="{{ $vehicle['name'] }}" 
+                                 class="vehicle-thumbnail"
+                                 onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                            <div class="vehicle-thumbnail-placeholder" style="display: none;">
+                                <i class="bi bi-car-front"></i>
+                            </div>
+                        @else
+                            <div class="vehicle-thumbnail-placeholder">
+                                <i class="bi bi-car-front"></i>
+                            </div>
+                        @endif
+                        
+                        <div class="vehicle-name">
+                            <h5>{{ $vehicle['name'] }}</h5>
+                            <div class="vehicle-category">{{ $vehicle['category'] }}</div>
+                        </div>
+                    </div>
+
+                    <!-- Specifications -->
+                    <div class="specs-grid">
+                        @if($vehicle['passengers_count'])
+                            <div class="spec-item">
+                                <i class="bi bi-people"></i>
+                                {{ $vehicle['passengers_count'] }} Passengers
+                            </div>
+                        @endif
+                        @if($vehicle['fuel_type'] !== 'N/A')
+                            <div class="spec-item">
+                                <i class="bi bi-fuel-pump"></i>
+                                {{ $vehicle['fuel_type'] }}
+                            </div>
+                        @endif
+                        @if($vehicle['transmission'] !== 'N/A')
+                            <div class="spec-item">
+                                <i class="bi bi-gear"></i>
+                                {{ $vehicle['transmission'] }}
+                            </div>
+                        @endif
+                        @if($vehicle['air_conditioning'])
+                            <div class="spec-item">
+                                <i class="bi bi-snow"></i>
+                                A/C
+                            </div>
+                        @endif
+                    </div>
+
+                    <!-- Rates -->
+                    <div class="rates-section">
+                        <div class="rate-box">
+                            <div class="rate-label">Daily Rate</div>
+                            @if($vehicle['daily_rate']['amount'] > 0)
+                                <div class="rate-amount">
+                                    {{ getCurrencySymbol() }} {{ number_format($vehicle['daily_rate']['amount'], 2) }}
+                                </div>
+                                <div class="rate-per-day">per day</div>
+                            @else
+                                <div class="rate-unavailable">
+                                    <i class="bi bi-dash-circle"></i> Contact Us
+                                </div>
+                            @endif
+                        </div>
+
+                        <div class="rate-box">
+                            <div class="rate-label">Monthly Rate</div>
+                            @if($vehicle['monthly_rate']['amount'] > 0)
+                                <div class="rate-amount">
+                                    {{ getCurrencySymbol() }} {{ number_format($vehicle['monthly_rate']['amount'], 2) }}
+                                </div>
+                                <div class="rate-per-day">
+                                    {{ getCurrencySymbol() }} {{ number_format($vehicle['monthly_rate']['per_day'], 2) }}/day
+                                </div>
+                            @else
+                                <div class="rate-unavailable">
+                                    <i class="bi bi-dash-circle"></i> Contact Us
+                                </div>
+                            @endif
+                        </div>
+                    </div>
+
+                    <!-- View Button -->
+                    <a href="{{ route('vehicle.details', $vehicle['id']) }}" class="view-btn">
+                        <i class="bi bi-eye"></i> View Details
+                    </a>
+                </div>
+                @endforeach
             </div>
 
             @if(isset($lastUpdated))
