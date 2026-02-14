@@ -19,6 +19,69 @@ use Illuminate\Support\Facades\Route;
 // TheTaxi Website Routes
 Route::get('/', [HomeController::class, 'index'])->name('home');
 
+// Temporary cache clear route (remove after use)
+Route::get('/clear-all-caches', function () {
+    \Illuminate\Support\Facades\Artisan::call('cache:clear');
+    \Illuminate\Support\Facades\Artisan::call('config:clear');
+    \Illuminate\Support\Facades\Artisan::call('route:clear');
+    \Illuminate\Support\Facades\Artisan::call('view:clear');
+    
+    // Manually delete compiled views
+    $viewPath = storage_path('framework/views');
+    if (is_dir($viewPath)) {
+        $files = glob($viewPath . '/*.php');
+        foreach ($files as $file) {
+            if (is_file($file)) {
+                unlink($file);
+            }
+        }
+    }
+    
+    return response()->json([
+        'success' => true,
+        'message' => 'All caches cleared successfully! The services dropdown should now work.',
+        'cleared' => [
+            'cache' => true,
+            'config' => true,
+            'route' => true,
+            'view' => true,
+            'compiled_views' => count($files ?? []) . ' files deleted'
+        ]
+    ]);
+});
+
+// Diagnostic route to check services
+Route::get('/check-services-debug', function () {
+    $composer = new \App\Http\ViewComposers\ServicesViewComposer();
+    
+    // Get services from cache/database
+    $services = \Illuminate\Support\Facades\Cache::remember('header_services', 3600, function () {
+        return \App\Models\Website\CmsContent::published()
+            ->byType('services')
+            ->whereNotNull('slug')
+            ->where('slug', '!=', '')
+            ->orderBy('display_order', 'asc')
+            ->orderBy('title', 'asc')
+            ->select('id', 'title', 'slug', 'excerpt', 'thumbnail')
+            ->get();
+    });
+    
+    return response()->json([
+        'services_count' => $services->count(),
+        'services' => $services->map(function($s) {
+            return [
+                'id' => $s->id,
+                'title' => $s->title,
+                'slug' => $s->slug,
+                'url' => route('cms.show', ['contentTypeSlug' => 'services', 'contentSlug' => $s->slug])
+            ];
+        }),
+        'view_composer_class_exists' => class_exists('\App\Http\ViewComposers\ServicesViewComposer'),
+        'header_file_path' => resource_path('views/partials/header.blade.php'),
+        'header_file_exists' => file_exists(resource_path('views/partials/header.blade.php')),
+    ]);
+});
+
 // Debug diagnostic endpoints
 Route::get('/test', [\App\Http\Controllers\DebugController::class, 'timeoutDiagnostic'])->name('test');
 Route::get('/test-render', function () {
