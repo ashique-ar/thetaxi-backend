@@ -287,7 +287,7 @@
     .mobile-rate-card .rate-label {
         font-size: 0.8rem;
         color: #6c757d;
-        margin-bottom: 5px;
+        /* margin-bottom: 5px; */
         font-weight: 500;
     }
 
@@ -300,7 +300,7 @@
     .mobile-rate-card .rate-per-day {
         font-size: 0.75rem;
         color: #6c757d;
-        margin-top: 3px;
+        /* margin-top: 3px; */
     }
 
     .mobile-rate-card .rate-unavailable {
@@ -359,7 +359,7 @@
                     <thead>
                         <tr>
                             <th style="width: 35%;">Vehicle</th>
-                            <th style="width: 20%;">Specifications</th>
+                            {{-- <th style="width: 20%;">Specifications</th> --}}
                             <th style="width: 20%; text-align: center;">Daily Rate</th>
                             <th style="width: 20%; text-align: center;">Monthly Rate (30 Days)</th>
                             {{-- <th style="width: 5%; text-align: center;">Action</th> --}}
@@ -407,7 +407,7 @@
                             </td>
 
                             <!-- Specifications -->
-                            <td>
+                            {{-- <td>
                                 <div style="font-size: 0.9rem; color: #495057;">
                                     @if($vehicle['passengers_count'])
                                         <div>
@@ -425,7 +425,7 @@
                                         </div>
                                     @endif
                                 </div>
-                            </td>
+                            </td> --}}
 
                             <!-- Daily Rate -->
                             <td style="text-align: center;">
@@ -507,7 +507,7 @@
                     </div>
 
                     <!-- Specifications -->
-                    <div class="specs-grid">
+                    {{-- <div class="specs-grid">
                         @if($vehicle['passengers_count'])
                             <div class="spec-item">
                                 <i class="bi bi-people"></i>
@@ -532,7 +532,7 @@
                                 A/C
                             </div>
                         @endif
-                    </div>
+                    </div> --}}
 
                     <!-- Rates -->
                     <div class="rates-section">
