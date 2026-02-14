@@ -568,9 +568,9 @@
                     </div>
 
                     <!-- View Button -->
-                    <a href="{{ route('vehicle.details', $vehicle['id']) }}" class="view-btn">
+                    {{-- <a href="{{ route('vehicle.details', $vehicle['id']) }}" class="view-btn">
                         <i class="bi bi-eye"></i> View Details
-                    </a>
+                    </a> --}}
                 </div>
                 @endforeach
             </div>
