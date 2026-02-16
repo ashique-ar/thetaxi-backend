@@ -2894,11 +2894,17 @@ class BookingFlowService
         $minimumKm = null;
 
         if ($serviceTypeId) {
-            // Try to find service type by ID first, then by code or name
-            $serviceType = ServiceType::where('id', $serviceTypeId)
-                ->orWhere('code', $serviceTypeId)
-                ->orWhere('name', $serviceTypeId)
-                ->first();
+            // Avoid UUID comparison errors in PostgreSQL when service type is passed as code.
+            $serviceTypeQuery = ServiceType::query();
+            if (is_string($serviceTypeId) && Str::isUuid($serviceTypeId)) {
+                $serviceTypeQuery->where('id', $serviceTypeId);
+            } else {
+                $serviceTypeQuery->where(function ($query) use ($serviceTypeId) {
+                    $query->where('code', $serviceTypeId)
+                        ->orWhere('name', $serviceTypeId);
+                });
+            }
+            $serviceType = $serviceTypeQuery->first();
                 
             if ($serviceType && $serviceType->minimum_km > 0) {
                 $minimumKm = (float) $serviceType->minimum_km;
@@ -2925,15 +2931,18 @@ class BookingFlowService
         }
 
         if (isset($params['pickup_location']) && isset($params['dropoff_location'])) {
-            $pickupIsAirport = $this->isAirportLocation($params['pickup_location']);
-            $dropoffIsAirport = $this->isAirportLocation($params['dropoff_location']);
+            $pickupLocation = $this->normalizeLocationInput($params['pickup_location']);
+            $dropoffLocation = $this->normalizeLocationInput($params['dropoff_location']);
+
+            $pickupIsAirport = $this->isAirportLocation($pickupLocation);
+            $dropoffIsAirport = $this->isAirportLocation($dropoffLocation);
 
             $inputs['pickup_is_airport'] = $pickupIsAirport;
             $inputs['dropoff_is_airport'] = $dropoffIsAirport;
 
             Log::debug('prepareCalculationInputs: Airport detection', [
-                'pickup_location' => $params['pickup_location'],
-                'dropoff_location' => $params['dropoff_location'],
+                'pickup_location' => $pickupLocation,
+                'dropoff_location' => $dropoffLocation,
                 'pickup_is_airport' => $pickupIsAirport,
                 'dropoff_is_airport' => $dropoffIsAirport,
             ]);
@@ -2941,8 +2950,8 @@ class BookingFlowService
             $serviceType = $params['service_type'] ?? null;
 
             $distanceCalculations = $this->calculateCompanyDistances(
-                $params['pickup_location'],
-                $params['dropoff_location'],
+                $pickupLocation,
+                $dropoffLocation,
                 $serviceType,
                 $params['vehicle_id'] ?? null,
             );
@@ -3329,6 +3338,30 @@ class BookingFlowService
 
             // Check if this is multi-group selection or single group
             $isMultiGroup = !empty($params['vehicle_groups']) && count($params['vehicle_groups']) > 1;
+            
+            // Robustify single group detection: if vehicle_group_id is missing but vehicle_id is present, resolve it
+            if (empty($params['vehicle_group_id']) && !empty($params['vehicle_id'])) {
+                $vehicle = \App\Models\Vehicle\Vehicle::find($params['vehicle_id']);
+                if ($vehicle) {
+                    $params['vehicle_group_id'] = $vehicle->vehicle_group_id;
+                    Log::info('Resolved vehicle_group_id from vehicle_id in calculatePricing', [
+                        'vehicle_id' => $params['vehicle_id'],
+                        'resolved_group_id' => $params['vehicle_group_id']
+                    ]);
+                }
+            }
+
+            // Also check 'vehicles' array (multi-select format but with only one item)
+            if (empty($params['vehicle_group_id']) && !empty($params['vehicles']) && count($params['vehicles']) === 1) {
+                $params['vehicle_group_id'] = $params['vehicles'][0]['group_id'] ?? null;
+                if (!empty($params['vehicles'][0]['id']) && empty($params['vehicle_group_id'])) {
+                    $vehicle = \App\Models\Vehicle\Vehicle::find($params['vehicles'][0]['id']);
+                    if ($vehicle) {
+                        $params['vehicle_group_id'] = $vehicle->vehicle_group_id;
+                    }
+                }
+            }
+
             $hasSingleGroup = !empty($params['vehicle_group_id']) || (!empty($params['vehicle_groups']) && count($params['vehicle_groups']) === 1);
 
             if ($isMultiGroup) {
@@ -3822,8 +3855,11 @@ class BookingFlowService
         }
     }
 
-    private function calculateCompanyDistances(array $pickupLocation, array $dropoffLocation, ?string $serviceType = null, ?string $specificVehicleId = null): array
+    private function calculateCompanyDistances($pickupLocation, $dropoffLocation, ?string $serviceType = null, ?string $specificVehicleId = null): array
     {
+        $pickupLocation = $this->normalizeLocationInput($pickupLocation);
+        $dropoffLocation = $this->normalizeLocationInput($dropoffLocation);
+
         // Get the company location (specified company or default)
         $vehicle = $specificVehicleId ? Vehicle::find($specificVehicleId) : null;
         $company = $vehicle ? $vehicle->company : \App\Models\Company::getDefaultCompany();
@@ -3864,21 +3900,30 @@ class BookingFlowService
         $journeyDuration = $journeyData['duration_seconds'];
 
         if (!$company || !$company->latitude || !$company->longitude) {
+            $fallbackPickup = 0.0;
+            $fallbackDelivery = 0.0;
+            $totalDistance = $includeGarageDistance 
+                ? round($journeyDistance + $fallbackPickup + $fallbackDelivery, 2)
+                : round($journeyDistance, 2);
+
             return [
-                'pickup_distance' => 10.0,
-                'delivery_distance' => 10.0,
+                'pickup_distance' => $fallbackPickup,
+                'delivery_distance' => $fallbackDelivery,
                 'journey_distance' => round($journeyDistance, 2),
                 'journey_duration_seconds' => $journeyDuration,
+                'total_distance' => $totalDistance,
+                'total_duration_seconds' => $journeyDuration,
                 'calculation_possible' => true,
                 'service_type_used' => $serviceType,
                 'include_garage_distance' => $includeGarageDistance,
+                'garage_distance_failed' => true,
                 'company_used' => [
-                    'id' => null,
-                    'name' => null,
+                    'id' => $company->id ?? null,
+                    'name' => $company->name ?? null,
                     'coordinates' => null
                 ],
                 'company_location' => null,
-                'company_id' => null
+                'company_id' => $company->id ?? null
             ];
         }
 
@@ -3922,18 +3967,21 @@ class BookingFlowService
             return [
                 'pickup_distance' => $distances['pickup_distance'],
                 'delivery_distance' => $distances['delivery_distance'],
-                'journey_distance' => $journeyDistance,
+                'journey_distance' => round($journeyDistance, 2),
                 'journey_duration_seconds' => $journeyDuration,
-                'calculation_possible' => false,
+                'total_distance' => round($journeyDistance, 2), // Fallback to journey distance only
+                'total_duration_seconds' => $journeyDuration,
+                'calculation_possible' => true, // Still possible to calculate based on journey
                 'service_type_used' => $serviceType,
                 'include_garage_distance' => $includeGarageDistance,
+                'garage_distance_failed' => true,
                 'company_used' => [
-                    'id' => $company->id,
-                    'name' => $company->name,
+                    'id' => $company->id ?? null,
+                    'name' => $company->name ?? null,
                     'coordinates' => $companyLocation
                 ],
                 'company_location' => $companyLocation,
-                'company_id' => $company->id
+                'company_id' => $company->id ?? null
             ];
         }
 
@@ -3969,6 +4017,40 @@ class BookingFlowService
             ],
             'company_location' => $companyLocation,
             'company_id' => $company->id
+        ];
+    }
+
+    /**
+     * Normalize location payload to array format used by distance calculations.
+     */
+    private function normalizeLocationInput($location): array
+    {
+        if (is_array($location)) {
+            $normalized = $location;
+
+            if (isset($normalized['address']) && is_array($normalized['address'])) {
+                $nestedAddress = $normalized['address'];
+                $normalized['address'] = $nestedAddress['address'] ?? ($nestedAddress['name'] ?? '');
+
+                if (!isset($normalized['latitude']) && isset($nestedAddress['latitude'])) {
+                    $normalized['latitude'] = $nestedAddress['latitude'];
+                }
+                if (!isset($normalized['longitude']) && isset($nestedAddress['longitude'])) {
+                    $normalized['longitude'] = $nestedAddress['longitude'];
+                }
+            }
+
+            return $normalized;
+        }
+
+        if (is_string($location)) {
+            return [
+                'address' => $location,
+            ];
+        }
+
+        return [
+            'address' => '',
         ];
     }
 
@@ -7923,4 +8005,3 @@ class BookingFlowService
             ->findOrFail($draftId);
     }
 }
-

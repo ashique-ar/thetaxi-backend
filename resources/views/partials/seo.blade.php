@@ -69,7 +69,13 @@
 
     $ogImageUrl = '';
     if ($ogImage) {
-        $ogImageUrl = filter_var($ogImage, FILTER_VALIDATE_URL) ? $ogImage : s3_asset($ogImage);
+        $ogImagePath = is_array($ogImage)
+            ? ($ogImage['path'] ?? ($ogImage['url'] ?? ($ogImage[0] ?? null)))
+            : (is_object($ogImage) ? ($ogImage->path ?? ($ogImage->url ?? null)) : $ogImage);
+
+        if (is_string($ogImagePath) && $ogImagePath !== '') {
+            $ogImageUrl = filter_var($ogImagePath, FILTER_VALIDATE_URL) ? $ogImagePath : s3_asset($ogImagePath);
+        }
     }
 @endphp
 

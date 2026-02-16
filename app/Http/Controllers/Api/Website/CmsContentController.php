@@ -7,6 +7,8 @@ use App\Models\Website\CmsContent;
 use App\Http\Requests\Website\CmsContent\CreateCmsContentRequest;
 use App\Http\Requests\Website\CmsContent\UpdateCmsContentRequest;
 use App\Http\Resources\Website\CmsContentResource;
+use App\Models\User;
+use App\Models\Website\CmsContentType;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -23,7 +25,8 @@ class CmsContentController extends Controller
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        $q = CmsContent::with(['contentType', 'createdBy', 'updatedBy']);
+        $q = CmsContent::query()->with(['contentType', 'createdBy', 'updatedBy']);
+        $contentTable = $q->getModel()->getTable();
 
         if ($request->filled('search')) {
             $q->where(function ($query) use ($request) {
@@ -42,6 +45,10 @@ class CmsContentController extends Controller
             $q->where('status', $request->status);
         }
 
+        if ($request->filled('author')) {
+            $q->where('author', 'like', '%' . $request->author . '%');
+        }
+
         if ($request->filled('is_active')) {
             $q->where('is_active', $request->boolean('is_active'));
         }
@@ -54,9 +61,51 @@ class CmsContentController extends Controller
             $q->byType($request->content_type_slug);
         }
 
-        $q->orderBy('display_order', 'asc')
-            ->orderBy('published_at', 'desc')
-            ->orderBy('created_at', 'desc');
+        $sortBy = $request->string('sort_by')->toString();
+        $sortDirection = strtolower($request->string('sort_direction', 'desc')->toString()) === 'asc' ? 'asc' : 'desc';
+
+        switch ($sortBy) {
+            case 'title':
+            case 'status':
+            case 'published_at':
+            case 'views_count':
+            case 'is_featured':
+            case 'is_active':
+            case 'created_at':
+            case 'updated_at':
+            case 'display_order':
+                $q->orderBy("{$contentTable}.{$sortBy}", $sortDirection);
+                break;
+            case 'content_type':
+                $q->orderBy(
+                    CmsContentType::select('title')
+                        ->whereColumn('cms_content_types.id', "{$contentTable}.cms_content_type_id")
+                        ->limit(1),
+                    $sortDirection
+                );
+                break;
+            case 'created_by':
+                $q->orderBy(
+                    User::selectRaw("CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, ''))")
+                        ->whereColumn('users.id', "{$contentTable}.created_user_id")
+                        ->limit(1),
+                    $sortDirection
+                );
+                break;
+            case 'updated_by':
+                $q->orderBy(
+                    User::selectRaw("CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, ''))")
+                        ->whereColumn('users.id', "{$contentTable}.updated_user_id")
+                        ->limit(1),
+                    $sortDirection
+                );
+                break;
+            default:
+                $q->orderBy("{$contentTable}.display_order", 'asc')
+                    ->orderBy("{$contentTable}.published_at", 'desc')
+                    ->orderBy("{$contentTable}.created_at", 'desc');
+                break;
+        }
 
         return CmsContentResource::collection(
             $q->paginate($request->per_page ?? 15)

@@ -71,10 +71,19 @@ if (!function_exists('file_upload')) {
 if (!function_exists('s3_asset')) {
     function s3_asset($path, $secure = null)
     {
+        // Normalize common media payload shapes (array/object) to a string path.
+        if (is_array($path)) {
+            $path = $path['path'] ?? ($path['url'] ?? ($path[0] ?? null));
+        } elseif (is_object($path)) {
+            $path = $path->path ?? ($path->url ?? null);
+        }
+
         // Return early for empty paths
-        if (!$path) {
+        if (!$path || !is_string($path)) {
             return null;
         }
+
+        $path = trim($path);
 
         // If already a full URL, return as-is
         if (preg_match('/^https?:\/\//', $path)) {

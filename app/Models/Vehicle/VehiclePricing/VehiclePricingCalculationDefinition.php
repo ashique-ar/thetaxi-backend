@@ -843,7 +843,10 @@ class VehiclePricingCalculationDefinition extends Model
 
             // Get vehicle group specific common rate pricing first
             $commonRatePricing = VehicleGroupCommonRatePricing::whereHas('commonRateDefinition', function ($query) use ($rateKey) {
-                $query->where('code', $rateKey)
+                $query->where(function ($q) use ($rateKey) {
+                    $q->where('code', $rateKey)
+                        ->orWhere('name', $rateKey);
+                })
                     ->where('service_type_id', $this->service_type_id)
                     ->where('is_active', true);
             })
@@ -851,8 +854,23 @@ class VehiclePricingCalculationDefinition extends Model
                 ->where('is_active', true)
                 ->first();
 
-            if ($commonRatePricing && $commonRatePricing->value) {
+            if ($commonRatePricing && isset($commonRatePricing->value)) {
                 return (float) $commonRatePricing->value;
+            } elseif ($commonRatePricing && isset($commonRatePricing->rate)) {
+                return (float) $commonRatePricing->rate;
+            }
+
+            // Fallback: Try to get a default rate from the common rate definition itself
+            $commonRateDefinition = VehiclePricingCommonRateDefinition::where(function ($q) use ($rateKey) {
+                $q->where('code', $rateKey)
+                    ->orWhere('name', $rateKey);
+            })
+                ->where('service_type_id', $this->service_type_id)
+                ->where('is_active', true)
+                ->first();
+
+            if ($commonRateDefinition) {
+                return (float) $commonRateDefinition->rate;
             }
 
             return 0;

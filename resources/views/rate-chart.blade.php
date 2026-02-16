@@ -220,6 +220,21 @@
         color: #BF2629;
     }
 
+    .rate-link {
+        text-decoration: none;
+        display: inline-block;
+    }
+
+    .rate-link .rate-amount {
+        text-decoration: underline;
+        text-decoration-style: dotted;
+        text-underline-offset: 3px;
+    }
+
+    .rate-link:hover .rate-amount {
+        color: #a02123;
+    }
+
     .rate-per-day {
         font-size: 0.85rem;
         color: #6c757d;
@@ -425,7 +440,7 @@
 <!-- Hero Section -->
 <div class="rate-chart-hero">
     <div class="container">
-        <h1>Vehicle Rental Rate Chart</h1>
+        <h1 class="text-white">Taxi & Tour Packages</h1>
         @php
             $selectedCurrency = getSelectedCurrency();
             $currencyData = \App\Models\Currency::where('code', $selectedCurrency)->first();
@@ -531,9 +546,11 @@
                             <!-- Daily Rate -->
                             <td style="text-align: center;">
                                 @if($vehicle['daily_rate']['amount'] > 0)
-                                    <div class="rate-amount">
-                                        {{ getCurrencySymbol() }} {{ number_format($vehicle['daily_rate']['amount'], 2) }}
-                                    </div>
+                                    <a href="{{ route('vehicle.details', ['id' => $vehicle['id'], 'preset' => 'daily']) }}" class="rate-link" title="Open vehicle with 1-day rental preset">
+                                        <div class="rate-amount">
+                                            {{ getCurrencySymbol() }} {{ number_format($vehicle['daily_rate']['amount'], 2) }}
+                                        </div>
+                                    </a>
                                     <div class="rate-per-day">per day</div>
                                 @else
                                     <div class="rate-unavailable">
@@ -545,9 +562,11 @@
                             <!-- Monthly Rate -->
                             <td style="text-align: center;">
                                 @if($vehicle['monthly_rate']['amount'] > 0)
-                                    <div class="rate-amount">
-                                        {{ getCurrencySymbol() }} {{ number_format($vehicle['monthly_rate']['amount'], 2) }}
-                                    </div>
+                                    <a href="{{ route('vehicle.details', ['id' => $vehicle['id'], 'preset' => 'monthly']) }}" class="rate-link" title="Open vehicle with 30-day rental preset">
+                                        <div class="rate-amount">
+                                            {{ getCurrencySymbol() }} {{ number_format($vehicle['monthly_rate']['amount'], 2) }}
+                                        </div>
+                                    </a>
                                     <div class="rate-per-day">
                                         {{ getCurrencySymbol() }} {{ number_format($vehicle['monthly_rate']['per_day'], 2) }}/day
                                     </div>
@@ -658,9 +677,11 @@
                         <div class="rate-box">
                             <div class="rate-label">Daily Rate</div>
                             @if($vehicle['daily_rate']['amount'] > 0)
-                                <div class="rate-amount">
-                                    {{ getCurrencySymbol() }} {{ number_format($vehicle['daily_rate']['amount'], 2) }}
-                                </div>
+                                <a href="{{ route('vehicle.details', ['id' => $vehicle['id'], 'preset' => 'daily']) }}" class="rate-link" title="Open vehicle with 1-day rental preset">
+                                    <div class="rate-amount">
+                                        {{ getCurrencySymbol() }} {{ number_format($vehicle['daily_rate']['amount'], 2) }}
+                                    </div>
+                                </a>
                                 <div class="rate-per-day">per day</div>
                             @else
                                 <div class="rate-unavailable">
@@ -672,9 +693,11 @@
                         <div class="rate-box">
                             <div class="rate-label">Monthly Rate</div>
                             @if($vehicle['monthly_rate']['amount'] > 0)
-                                <div class="rate-amount">
-                                    {{ getCurrencySymbol() }} {{ number_format($vehicle['monthly_rate']['amount'], 2) }}
-                                </div>
+                                <a href="{{ route('vehicle.details', ['id' => $vehicle['id'], 'preset' => 'monthly']) }}" class="rate-link" title="Open vehicle with 30-day rental preset">
+                                    <div class="rate-amount">
+                                        {{ getCurrencySymbol() }} {{ number_format($vehicle['monthly_rate']['amount'], 2) }}
+                                    </div>
+                                </a>
                                 <div class="rate-per-day">
                                     {{ getCurrencySymbol() }} {{ number_format($vehicle['monthly_rate']['per_day'], 2) }}/day
                                 </div>
