@@ -40,12 +40,11 @@
         $returnDate = $searchData['return_date'] ?? $pickupDate;
         $pickupTime = $searchData['pickup_time'] ?? ($searchData['time'] ?? '10:00');
         $returnTime = $searchData['return_time'] ?? $pickupTime;
-        $numDays = max(
-            1,
-            \Carbon\Carbon::parse($pickupDate)->diffInDays(\Carbon\Carbon::parse($returnDate)) + 1,
-        );
+        $numDays = max(1, \Carbon\Carbon::parse($pickupDate)->diffInDays(\Carbon\Carbon::parse($returnDate)) + 1);
         $initialServiceTypeCode = $searchData['service_type'] ?? 'day_rental';
-        $initialServiceTypeName = $serviceTypes->firstWhere('code', $initialServiceTypeCode)->name ?? ucwords(str_replace('_', ' ', $initialServiceTypeCode));
+        $initialServiceTypeName =
+            $serviceTypes->firstWhere('code', $initialServiceTypeCode)->name ??
+            ucwords(str_replace('_', ' ', $initialServiceTypeCode));
 
         $bookingFormSearch = (object) [
             'service_type' => $initialServiceTypeCode,
@@ -88,7 +87,7 @@
         </div>
     </div>
 
-    <div class="vehicle-details-wrapper pt-5 mb-110">
+    <div class="vehicle-details-wrapper py-5">
         <div class="container">
             <div class="row g-4">
                 <div class="col-lg-8">
@@ -316,11 +315,13 @@
                                 </div>
                                 <div class="text-end">
                                     <div class="vehicle-summary-price" id="vehicleSummaryPrice">
-                                        {{ getCurrencySymbol() }} {{ number_format((float) ($pricing['base_amount'] ?? 0), 2) }}
+                                        {{ getCurrencySymbol() }}
+                                        {{ number_format((float) ($pricing['base_amount'] ?? 0), 2) }}
                                     </div>
                                     @if (($pricing['base_amount'] ?? 0) > 0 && $numDays > 1)
                                         <div class="vehicle-summary-unit" id="vehicleSummaryUnit">
-                                            {{ getCurrencySymbol() }} {{ number_format((float) ($pricing['base_amount'] ?? 0) / $numDays, 2) }}/day
+                                            {{ getCurrencySymbol() }}
+                                            {{ number_format((float) ($pricing['base_amount'] ?? 0) / $numDays, 2) }}/day
                                         </div>
                                     @else
                                         <div class="vehicle-summary-unit" id="vehicleSummaryUnit">per day</div>
@@ -765,8 +766,8 @@
             display: block !important;
             text-align: center !important;
         }
-        .return-trip-details{
-    display: block !important;
+        .return-trip-details {
+            display: block !important;
         }
     </style>
 @endpush
@@ -923,6 +924,17 @@
                 return String(code).replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase());
             }
 
+            function getDurationLabel(serviceType, days) {
+                if (serviceType === 'ride_now') return 'One-time trip';
+                if (serviceType === 'airport_transfers') return 'Airport transfer';
+                if (serviceType === 'point_to_point') return 'Trip';
+                return days === 1 ? '1 day' : `${days} days`;
+            }
+
+            function isFixedRateService(serviceType) {
+                return ['ride_now', 'airport_transfers', 'point_to_point'].includes(serviceType);
+            }
+
             function setPriceStatus(message, type) {
                 if (!priceStatus) return;
                 if (!message) {
@@ -940,22 +952,48 @@
 
             function applyPricingToUi(pricing, searchData) {
                 const amount = Number((pricing && pricing.base_amount) || 0);
-                const serviceType = (searchData && searchData.service_type) || 'day_rental';
-                const numDays = Math.max(1, parseInt((searchData && searchData.num_days) || 1, 10) || 1);
+                const serviceType = ((pricing && pricing.service_type) || (searchData && searchData.service_type) ||
+                    'day_rental').toString();
+                const durationInfo = (pricing && pricing.duration_info) || {};
+                const numDays = Math.max(
+                    1,
+                    parseInt(durationInfo.days || (searchData && searchData.num_days) || 1, 10) || 1
+                );
+                const packageHours = parseInt(durationInfo.package_hours || 0, 10) || 0;
+                const fixedRateService = isFixedRateService(serviceType);
+                const isWeddingPackage = serviceType === 'wedding_hire' && packageHours > 0;
                 const perDay = numDays > 0 ? (amount / numDays) : amount;
-                const currencyCode = (pricing && pricing.currency) || ((priceHeader && priceHeader.dataset.currencyCode) ||
+                const durationLabel = getDurationLabel(serviceType, numDays);
+                const currencyCode = (pricing && pricing.currency) || ((priceHeader && priceHeader.dataset
+                    .currencyCode) ||
                     '{{ getSelectedCurrency() }}');
 
                 if (priceHeaderValue) priceHeaderValue.textContent = formatMoney(amount);
                 if (summaryPrice) summaryPrice.textContent = formatMoney(amount);
                 if (summaryLabel) summaryLabel.textContent = resolveServiceLabel(serviceType);
                 if (summarySubLabel) {
-                    summarySubLabel.textContent = serviceType === 'day_rental' ?
-                        pluralize(numDays, 'day') :
-                        `${pluralize(numDays, 'day')} selection`;
+                    if (isWeddingPackage) {
+                        summarySubLabel.textContent = `${packageHours}h package total`;
+                    } else if (serviceType === 'airport_transfers') {
+                        summarySubLabel.textContent = 'Transfer total';
+                    } else if (fixedRateService) {
+                        summarySubLabel.textContent = `${durationLabel} total`;
+                    } else {
+                        summarySubLabel.textContent = `${durationLabel} total`;
+                    }
                 }
                 if (summaryUnit) {
-                    summaryUnit.textContent = numDays > 1 ? `${formatMoney(perDay)}/day` : 'per day';
+                    if (isWeddingPackage) {
+                        summaryUnit.textContent = `/${packageHours}h package`;
+                    } else if (serviceType === 'airport_transfers') {
+                        summaryUnit.textContent = '/ transfer';
+                    } else if (fixedRateService) {
+                        summaryUnit.textContent = durationLabel;
+                    } else if (numDays > 1) {
+                        summaryUnit.textContent = `${formatMoney(perDay)}/day`;
+                    } else {
+                        summaryUnit.textContent = durationLabel;
+                    }
                 }
                 if (offerPriceMeta) offerPriceMeta.setAttribute('content', amount.toFixed(2));
                 if (offerCurrencyMeta) offerCurrencyMeta.setAttribute('content', currencyCode);
@@ -1065,13 +1103,16 @@
                     });
 
                     bookingCard.addEventListener('input', function(e) {
-                        if (e.target && e.target.matches('input[name=\"pickup\"], input[name=\"dropoff\"], input[name=\"pickup_date\"], input[name=\"dropoff_date\"], input[name=\"date\"], input[name=\"pickup_time\"], input[name=\"dropoff_time\"], input[name=\"time\"]')) {
+                        if (e.target && e.target.matches(
+                                'input[name=\"pickup\"], input[name=\"dropoff\"], input[name=\"pickup_date\"], input[name=\"dropoff_date\"], input[name=\"date\"], input[name=\"pickup_time\"], input[name=\"dropoff_time\"], input[name=\"time\"]'
+                                )) {
                             requestPriceUpdate();
                         }
                     });
                 }
 
-                document.querySelectorAll('.booking-form-card .single-item[data-service]').forEach(function(tab) {
+                document.querySelectorAll('.booking-form-card .single-item[data-service]').forEach(function(
+                tab) {
                     tab.addEventListener('click', function() {
                         setTimeout(requestPriceUpdate, 450);
                     });

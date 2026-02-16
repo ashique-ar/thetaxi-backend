@@ -2959,7 +2959,7 @@ class BookingFlowService
             // Apply minimum KM rule: if journey distance is below minimum, use minimum for pricing
             if ($minimumKm !== null && isset($distanceCalculations['journey_distance'])) {
                 $actualDistance = (float) $distanceCalculations['journey_distance'];
-                if ($actualDistance > 0 && $actualDistance < $minimumKm) {
+                if ($actualDistance >= 0 && $actualDistance < $minimumKm) {
                     // Store original distance for display purposes
                     $distanceCalculations['actual_journey_distance'] = $actualDistance;
                     $distanceCalculations['minimum_km_applied'] = true;

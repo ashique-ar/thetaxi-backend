@@ -45,8 +45,8 @@ class CmsContentController extends Controller
             $q->where('status', $request->status);
         }
 
-        if ($request->filled('author')) {
-            $q->where('author', 'like', '%' . $request->author . '%');
+        if ($request->filled('created_user_id')) {
+            $q->where('created_user_id', $request->created_user_id);
         }
 
         if ($request->filled('is_active')) {
