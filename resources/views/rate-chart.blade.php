@@ -272,7 +272,7 @@
 
     .mobile-rate-card .rates-section {
         display: grid;
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
         gap: 15px;
         margin-bottom: 15px;
     }
@@ -358,10 +358,11 @@
                 <table class="rate-table">
                     <thead>
                         <tr>
-                            <th style="width: 35%;">Vehicle</th>
+                            <th style="width: 40%;">Vehicle</th>
                             {{-- <th style="width: 20%;">Specifications</th> --}}
-                            <th style="width: 20%; text-align: center;">Daily Rate <small>(100km)</small></th>
-                            <th style="width: 20%; text-align: center;">Monthly Rate <small>(30 Days - 3000km)</small></th>
+                            <th style="width: 18%; text-align: center;">Daily Rate <small>(100km)</small></th>
+                            <th style="width: 22%; text-align: center;">Monthly Rate <small>(30 Days - 3000km)</small></th>
+                            <th style="width: 20%; text-align: center;">Extra KM Rate</th>
                             {{-- <th style="width: 5%; text-align: center;">Action</th> --}}
                         </tr>
                     </thead>
@@ -450,6 +451,20 @@
                                     <div class="rate-per-day">
                                         {{ getCurrencySymbol() }} {{ number_format($vehicle['monthly_rate']['per_day'], 2) }}/day
                                     </div>
+                                @else
+                                    <div class="rate-unavailable">
+                                        <i class="bi bi-dash-circle"></i> Contact Us
+                                    </div>
+                                @endif
+                            </td>
+
+                            <!-- Extra KM Rate -->
+                            <td style="text-align: center;">
+                                @if(isset($vehicle['extra_km_rate']) && $vehicle['extra_km_rate'] > 0)
+                                    <div class="rate-amount">
+                                        {{ getCurrencySymbol() }} {{ number_format($vehicle['extra_km_rate'], 2) }}
+                                    </div>
+                                    <div class="rate-per-day">per km</div>
                                 @else
                                     <div class="rate-unavailable">
                                         <i class="bi bi-dash-circle"></i> Contact Us
@@ -559,6 +574,20 @@
                                 <div class="rate-per-day">
                                     {{ getCurrencySymbol() }} {{ number_format($vehicle['monthly_rate']['per_day'], 2) }}/day
                                 </div>
+                            @else
+                                <div class="rate-unavailable">
+                                    <i class="bi bi-dash-circle"></i> Contact Us
+                                </div>
+                            @endif
+                        </div>
+
+                        <div class="rate-box">
+                            <div class="rate-label">Extra KM Rate</div>
+                            @if(isset($vehicle['extra_km_rate']) && $vehicle['extra_km_rate'] > 0)
+                                <div class="rate-amount">
+                                    {{ getCurrencySymbol() }} {{ number_format($vehicle['extra_km_rate'], 2) }}
+                                </div>
+                                <div class="rate-per-day">per km</div>
                             @else
                                 <div class="rate-unavailable">
                                     <i class="bi bi-dash-circle"></i> Contact Us
