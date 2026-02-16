@@ -267,14 +267,18 @@ class BookingFlowController extends Controller
                 'vehicle_driver_assignments.*.vehicle_id' => 'required|string',
                 'vehicle_driver_assignments.*.driver_id' => 'nullable|string',
 
+                'booking_items' => 'sometimes|array',
+
                 'from_date' => 'required|date',
                 'to_date' => 'required|date|after_or_equal:from_date',
-                'pickup_location' => 'required|array',
-                'pickup_location.latitude' => 'required|numeric',
-                'pickup_location.longitude' => 'required|numeric',
-                'dropoff_location' => 'required|array',
-                'dropoff_location.latitude' => 'required|numeric',
-                'dropoff_location.longitude' => 'required|numeric',
+                
+                // Relaxed validation to support multi-trip (booking_items) where top-level location is optional
+                'pickup_location' => 'sometimes|array',
+                'pickup_location.latitude' => 'sometimes|numeric',
+                'pickup_location.longitude' => 'sometimes|numeric',
+                'dropoff_location' => 'sometimes|array',
+                'dropoff_location.latitude' => 'sometimes|numeric',
+                'dropoff_location.longitude' => 'sometimes|numeric',
 
                 'selected_addons' => 'sometimes|array',
                 'selected_addons.*.id' => 'required|string',
@@ -1121,6 +1125,53 @@ class BookingFlowController extends Controller
                 'status' => 'error',
                 'message' => 'Failed to generate booking confirmation',
                 'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Save booking as a draft for later completion
+     */
+    public function saveBookingDraft(Request $request): JsonResponse
+    {
+        try {
+            $draft = $this->bookingFlowService->saveBookingDraft($request->all());
+
+            return response()->json([
+                'success' => true,
+                'data' => new BookingFlowResource($draft),
+                'message' => 'Booking draft saved successfully'
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Draft saving failed: ' . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to save booking draft',
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Load an existing booking draft
+     */
+    public function loadBookingDraft(string $draftId): JsonResponse
+    {
+        try {
+            $draft = $this->bookingFlowService->loadBookingDraft($draftId);
+
+            return response()->json([
+                'success' => true,
+                'data' => new BookingFlowResource($draft)
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Loading draft failed: ' . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to load booking draft',
+                'message' => $e->getMessage()
             ], 500);
         }
     }

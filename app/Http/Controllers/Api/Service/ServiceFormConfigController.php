@@ -418,10 +418,18 @@ class ServiceFormConfigController extends Controller
                 'form_config.*.location_type' => 'nullable|string|in:default,airport,conditional',
                 'form_config.*.condition_field' => 'nullable|string',
                 'form_config.*.conditions' => 'nullable|array',
-                'form_config.*.role' => 'nullable|string|in:pickup_date,dropoff_date,pickup_time,dropoff_time,pickup_location,dropoff_location,transfer_type',
                 'form_config.*.options' => 'nullable|array',
                 'form_config.*.options.*.value' => 'required|string',
                 'form_config.*.options.*.label' => 'required|string',
+                'form_config.field_mappings' => 'nullable|array',
+                'form_config.field_mappings.dates' => 'nullable|array',
+                'form_config.field_mappings.dates.from_date' => 'nullable|string',
+                'form_config.field_mappings.dates.from_time' => 'nullable|string',
+                'form_config.field_mappings.dates.to_date' => 'nullable|string',
+                'form_config.field_mappings.dates.to_time' => 'nullable|string',
+                'form_config.field_mappings.locations' =>  'nullable|array',
+                'form_config.field_mappings.locations.pickup_location' => 'nullable|string',
+                'form_config.field_mappings.locations.dropoff_location' => 'nullable|string',
             ]);
 
             $serviceType = ServiceType::findOrFail($serviceTypeId);

@@ -14,6 +14,11 @@ class BaseModel extends Model
 {
     use HasFactory, LogsActivity, SoftDeletes, HasIsActive, HasUuids;
 
+    /**
+     * Whether to automatically track created/updated user IDs.
+     * Set to false in child models if the table lacks these columns.
+     */
+    protected $useUserTracking = true;
 
     protected $fillable = [
         'created_user_id',
@@ -26,13 +31,13 @@ class BaseModel extends Model
         parent::boot();
 
         static::creating(function ($model) {
-            if (auth()->check()) {
+            if ($model->useUserTracking && auth()->check()) {
                 $model->created_user_id = auth()->id();
             }
         });
 
         static::updating(function ($model) {
-            if (auth()->check()) {
+            if ($model->useUserTracking && auth()->check()) {
                 $model->updated_user_id = auth()->id();
             }
         });

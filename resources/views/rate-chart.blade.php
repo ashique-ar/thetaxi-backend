@@ -87,6 +87,96 @@
         border: 2px solid #e9ecef;
     }
 
+    .zoom-trigger {
+        position: relative;
+        display: inline-flex;
+        border: none;
+        padding: 0;
+        background: transparent;
+        cursor: zoom-in;
+    }
+
+    .zoom-trigger:focus-visible {
+        outline: 2px solid #BF2629;
+        outline-offset: 2px;
+        border-radius: 10px;
+    }
+
+    .zoom-hover-popup {
+        position: fixed;
+        z-index: 1200;
+        width: 260px;
+        height: 190px;
+        border-radius: 10px;
+        border: 2px solid #fff;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+        overflow: hidden;
+        pointer-events: none;
+        opacity: 0;
+        transform: scale(0.95);
+        transition: opacity 0.15s ease, transform 0.15s ease;
+        background: #fff;
+    }
+
+    .zoom-hover-popup.show {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    .zoom-hover-popup img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .zoom-modal {
+        position: fixed;
+        inset: 0;
+        z-index: 1250;
+        background: rgba(20, 24, 31, 0.78);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+    }
+
+    .zoom-modal.show {
+        display: flex;
+    }
+
+    .zoom-modal-content {
+        max-width: min(92vw, 900px);
+        max-height: 86vh;
+        border-radius: 14px;
+        overflow: hidden;
+        border: 2px solid #fff;
+        box-shadow: 0 14px 40px rgba(0, 0, 0, 0.35);
+    }
+
+    .zoom-modal-content img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        background: #fff;
+        display: block;
+    }
+
+    .zoom-modal-close {
+        position: absolute;
+        top: 14px;
+        right: 14px;
+        width: 38px;
+        height: 38px;
+        border-radius: 50%;
+        border: none;
+        background: #fff;
+        color: #111827;
+        font-size: 20px;
+        font-weight: 700;
+        line-height: 1;
+        cursor: pointer;
+    }
+
     .vehicle-thumbnail-placeholder {
         width: 80px;
         height: 60px;
@@ -188,6 +278,12 @@
 
         .mobile-rate-cards {
             display: block !important;
+        }
+    }
+
+    @media (hover: none), (pointer: coarse) {
+        .zoom-hover-popup {
+            display: none !important;
         }
     }
 
@@ -382,10 +478,14 @@
                                     @endphp
                                     
                                     @if($imageUrl)
-                                        <img src="{{ $imageUrl }}" 
-                                             alt="{{ $vehicle['name'] }}" 
-                                             class="vehicle-thumbnail"
-                                             onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                                        <button type="button" class="zoom-trigger"
+                                            data-zoom-src="{{ $imageUrl }}"
+                                            data-zoom-alt="{{ $vehicle['name'] }}">
+                                            <img src="{{ $imageUrl }}" 
+                                                alt="{{ $vehicle['name'] }}" 
+                                                class="vehicle-thumbnail"
+                                                onerror="this.closest('.zoom-trigger').style.display='none'; this.closest('.zoom-trigger').nextElementSibling.style.display='flex';">
+                                        </button>
                                         <div class="vehicle-thumbnail-placeholder" style="display: none;">
                                             <i class="bi bi-car-front"></i>
                                         </div>
@@ -502,10 +602,14 @@
                         @endphp
                         
                         @if($imageUrl)
-                            <img src="{{ $imageUrl }}" 
-                                 alt="{{ $vehicle['name'] }}" 
-                                 class="vehicle-thumbnail"
-                                 onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                            <button type="button" class="zoom-trigger"
+                                data-zoom-src="{{ $imageUrl }}"
+                                data-zoom-alt="{{ $vehicle['name'] }}">
+                                <img src="{{ $imageUrl }}" 
+                                    alt="{{ $vehicle['name'] }}" 
+                                    class="vehicle-thumbnail"
+                                    onerror="this.closest('.zoom-trigger').style.display='none'; this.closest('.zoom-trigger').nextElementSibling.style.display='flex';">
+                            </button>
                             <div class="vehicle-thumbnail-placeholder" style="display: none;">
                                 <i class="bi bi-car-front"></i>
                             </div>
@@ -581,19 +685,19 @@
                             @endif
                         </div>
 
-                    </div>
-                    <div class="rate-box">
-                        <div class="rate-label">Extra KM Rate</div>
-                        @if(isset($vehicle['extra_km_rate']) && $vehicle['extra_km_rate'] > 0)
-                            <div class="rate-amount">
-                                {{ getCurrencySymbol() }} {{ number_format($vehicle['extra_km_rate'], 2) }}
-                            </div>
-                            <div class="rate-per-day">per km</div>
-                        @else
-                            <div class="rate-unavailable">
-                                <i class="bi bi-dash-circle"></i> Contact Us
-                            </div>
-                        @endif
+                        <div class="rate-box">
+                            <div class="rate-label">Extra KM Rate</div>
+                            @if(isset($vehicle['extra_km_rate']) && $vehicle['extra_km_rate'] > 0)
+                                <div class="rate-amount">
+                                    {{ getCurrencySymbol() }} {{ number_format($vehicle['extra_km_rate'], 2) }}
+                                </div>
+                                <div class="rate-per-day">per km</div>
+                            @else
+                                <div class="rate-unavailable">
+                                    <i class="bi bi-dash-circle"></i> Contact Us
+                                </div>
+                            @endif
+                        </div>
                     </div>
 
                     <!-- View Button -->
@@ -647,4 +751,91 @@
     </div>
 </div>
 
+<div id="zoom-hover-popup" class="zoom-hover-popup" aria-hidden="true">
+    <img id="zoom-hover-image" src="" alt="">
+</div>
+
+<div id="zoom-modal" class="zoom-modal" aria-hidden="true" role="dialog" aria-label="Vehicle image preview">
+    <button type="button" class="zoom-modal-close" id="zoom-modal-close" aria-label="Close image preview">&times;</button>
+    <div class="zoom-modal-content">
+        <img id="zoom-modal-image" src="" alt="">
+    </div>
+</div>
+
 @endsection
+
+@push('scripts')
+<script>
+    (function () {
+        const triggers = document.querySelectorAll('.zoom-trigger');
+        const hoverPopup = document.getElementById('zoom-hover-popup');
+        const hoverImage = document.getElementById('zoom-hover-image');
+        const modal = document.getElementById('zoom-modal');
+        const modalImage = document.getElementById('zoom-modal-image');
+        const closeBtn = document.getElementById('zoom-modal-close');
+        const prefersHover = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+
+        function positionHoverPopup(event) {
+            const offset = 16;
+            const popupWidth = 260;
+            const popupHeight = 190;
+            let x = event.clientX + offset;
+            let y = event.clientY + offset;
+
+            if (x + popupWidth > window.innerWidth - 8) x = event.clientX - popupWidth - offset;
+            if (y + popupHeight > window.innerHeight - 8) y = event.clientY - popupHeight - offset;
+
+            hoverPopup.style.left = `${Math.max(8, x)}px`;
+            hoverPopup.style.top = `${Math.max(8, y)}px`;
+        }
+
+        function openModal(src, alt) {
+            modalImage.src = src;
+            modalImage.alt = alt || 'Vehicle image';
+            modal.classList.add('show');
+            modal.setAttribute('aria-hidden', 'false');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeModal() {
+            modal.classList.remove('show');
+            modal.setAttribute('aria-hidden', 'true');
+            modalImage.src = '';
+            document.body.style.overflow = '';
+        }
+
+        triggers.forEach((el) => {
+            const src = el.dataset.zoomSrc;
+            const alt = el.dataset.zoomAlt || 'Vehicle image';
+            if (!src) return;
+
+            el.addEventListener('click', () => openModal(src, alt));
+
+            if (prefersHover) {
+                el.addEventListener('mouseenter', (event) => {
+                    hoverImage.src = src;
+                    hoverImage.alt = alt;
+                    positionHoverPopup(event);
+                    hoverPopup.classList.add('show');
+                    hoverPopup.setAttribute('aria-hidden', 'false');
+                });
+
+                el.addEventListener('mousemove', positionHoverPopup);
+
+                el.addEventListener('mouseleave', () => {
+                    hoverPopup.classList.remove('show');
+                    hoverPopup.setAttribute('aria-hidden', 'true');
+                });
+            }
+        });
+
+        closeBtn.addEventListener('click', closeModal);
+        modal.addEventListener('click', (event) => {
+            if (event.target === modal) closeModal();
+        });
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && modal.classList.contains('show')) closeModal();
+        });
+    })();
+</script>
+@endpush

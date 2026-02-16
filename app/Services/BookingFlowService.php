@@ -3334,6 +3334,9 @@ class BookingFlowService
             if ($isMultiGroup) {
                 // Handle multi-group pricing calculation
                 return $this->calculateMultiGroupPricing($params, $duration, $baseCurrency, $targetCurrency);
+            } else if (!empty($params['booking_items'])) {
+                // Handle multi-trip (booking items) pricing calculation
+                return $this->calculateBookingItemsPricing($params, $baseCurrency, $targetCurrency);
             } else if ($hasSingleGroup) {
                 // Handle single group pricing (existing logic)
                 return $this->calculateSingleGroupPricing($params, $duration, $baseCurrency, $targetCurrency);
@@ -3441,6 +3444,98 @@ class BookingFlowService
                 'target_currency' => $targetCurrency,
                 'duration_days' => $duration['days'],
                 'duration_hours' => $duration['hours'],
+                'calculated_at' => now()->toISOString()
+            ]
+        ];
+    }
+
+    /**
+     * Calculate pricing for booking items (multi-trip)
+     */
+    private function calculateBookingItemsPricing(array $params, string $baseCurrency, string $targetCurrency): array
+    {
+        $bookingItems = $params['booking_items'] ?? [];
+        $selectedAddons = $params['selected_addons'] ?? [];
+        $variableCustomizations = $params['variable_customizations'] ?? [];
+
+        $itemPricingResults = [];
+        $totalSubtotal = 0;
+        $totalAddons = 0;
+        $totalAmount = 0;
+        $allAppliedCustomizations = [];
+
+        foreach ($bookingItems as $index => $item) {
+            // Determine vehicle group ID
+            $vehicleGroupId = $item['vehicle_group_id'] ?? null;
+            if (!$vehicleGroupId && !empty($item['vehicle_id'])) {
+                $vehicle = Vehicle::find($item['vehicle_id']);
+                $vehicleGroupId = $vehicle?->vehicle_group_id;
+            }
+
+            if (!$vehicleGroupId) {
+                Log::warning("Skipping pricing for item $index: No vehicle group ID found");
+                continue;
+            }
+
+            // Calculate duration for this item
+            $fromDate = Carbon::parse($item['from_date']);
+            $toDate = Carbon::parse($item['to_date']);
+            $duration = $this->calculateDurationInDaysAndHours($fromDate, $toDate);
+
+            // Get item-specific addons and customizations
+            // Note: In the current payload structure, addons/customizations might be global or per-item.
+            // For now, assuming we filter by vehicle_group_id if available, or pass empty if not applicable per item context from frontend yet.
+            // Ideally, the frontend should structure addons inside booking_items or linked by some ID.
+            // As a fallback for the current request context, passing global params but forcing the correct vehicle group context.
+            
+            $itemParams = array_merge($params, $item, [
+                'vehicle_group_id' => $vehicleGroupId,
+                'from_date' => $item['from_date'],
+                'to_date' => $item['to_date'],
+                'from_time' => $item['from_time'] ?? '00:00',
+                'to_time' => $item['to_time'] ?? '00:00',
+                // Overwrite top-level locations with item-specific locations
+                'pickup_location' => $item['pickup_location'] ?? $params['pickup_location'] ?? null,
+                'dropoff_location' => $item['dropoff_location'] ?? $params['dropoff_location'] ?? null,
+            ]);
+
+            $groupResult = $this->calculateSingleGroupPricing($itemParams, $duration, $baseCurrency, $targetCurrency);
+
+            // Add item metadata
+            $groupResult['item_index'] = $index;
+            $groupResult['group_id'] = $vehicleGroupId;
+            $groupResult['group_info'] = $this->getVehicleGroupInfo($vehicleGroupId);
+
+            $itemPricingResults[] = $groupResult;
+
+            // Aggregate totals
+            $totalSubtotal += $groupResult['summary']['subtotal'];
+            $totalAddons += $groupResult['summary']['addons_total'];
+            $totalAmount += $groupResult['summary']['total'];
+
+            // Collect customizations
+            if (!empty($groupResult['applied_customizations'])) {
+                $allAppliedCustomizations = array_merge($allAppliedCustomizations, $groupResult['applied_customizations']);
+            }
+        }
+
+        return [
+            'success' => true,
+            'is_multi_trip' => true,
+            'currency' => $targetCurrency,
+            'groups' => $itemPricingResults, // Using 'groups' key to maintain frontend compatibility
+            'applied_customizations' => $allAppliedCustomizations,
+            'summary' => [
+                'subtotal' => $totalSubtotal,
+                'addons_total' => $totalAddons,
+                'total' => $totalAmount,
+                'currency' => $targetCurrency,
+                'item_count' => count($itemPricingResults),
+                'total_vehicles' => count($itemPricingResults) // Assuming 1 vehicle per trip item
+            ],
+            'calculations' => [
+                'base_currency' => $baseCurrency,
+                'target_currency' => $targetCurrency,
                 'calculated_at' => now()->toISOString()
             ]
         ];
@@ -7754,4 +7849,78 @@ class BookingFlowService
 
         return $history;
     }
+
+    /**
+     * Save booking as a draft for later completion
+     */
+    public function saveBookingDraft(array $params): Booking
+    {
+        return DB::transaction(function () use ($params) {
+            $bookingId = $params['booking_id'] ?? null;
+            
+            if ($bookingId) {
+                $booking = Booking::findOrFail($bookingId);
+            } else {
+                $booking = new Booking();
+                if (method_exists(Booking::class, 'generateConfirmationNumber')) {
+                    $booking->confirmation_number = Booking::generateConfirmationNumber();
+                }
+            }
+
+            $booking->customer_id = $params['customer_id'] ?? $booking->customer_id ?? null;
+            $booking->booking_date = $booking->booking_date ?? now();
+            $booking->status = 'draft';
+            
+            // Extract pricing if available
+            $pricing = [];
+            try {
+                // Determine if we should call multi-trip or single-trip pricing
+                $pricing = $this->calculatePricing($params);
+                $totals = $this->extractTotalsFromPricing($pricing);
+                
+                $booking->pricing_snapshot = $totals['pricing_snapshot'];
+                $booking->base_amount = $totals['base_amount'];
+                $booking->addons_cost = $totals['addons_cost'];
+                $booking->discount_amount = $totals['discount_amount'];
+                $booking->total_estimated = $totals['total_estimated'];
+                $booking->total_actual = $totals['total_estimated'];
+            } catch (\Exception $e) {
+                Log::warning("Pricing calculation failed during draft save: " . $e->getMessage());
+            }
+
+            $booking->workflow_step = 'draft';
+            
+            $existingWorkflowData = is_array($booking->workflow_data) ? $booking->workflow_data : [];
+            $booking->workflow_data = array_merge($existingWorkflowData, [
+                'last_draft_save' => now()->toISOString(),
+                'frontend_data' => $params
+            ]);
+
+            $booking->save();
+
+            // Handle booking items (trips)
+            if (isset($params['booking_items']) && is_array($params['booking_items'])) {
+                // Delete existing items for draft to keep it clean
+                $booking->bookingItems()->delete();
+                
+                foreach ($params['booking_items'] as $itemData) {
+                    $itemPricing = $pricing['items'][$itemData['id'] ?? ''] ?? $pricing;
+                    $this->createSingleGroupBookingItem($booking, $itemData, $itemPricing);
+                }
+            }
+
+            return $booking->load(['customer', 'bookingItems']);
+        });
+    }
+
+    /**
+     * Load an existing booking draft
+     */
+    public function loadBookingDraft(string $draftId): Booking
+    {
+        return Booking::with(['customer', 'bookingItems', 'bookingItems.vehicle', 'bookingItems.driver', 'bookingItems.serviceType', 'bookingItems.vehicleGroup'])
+            ->where('status', 'draft')
+            ->findOrFail($draftId);
+    }
 }
+

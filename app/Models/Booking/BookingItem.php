@@ -13,6 +13,8 @@ use App\Models\User;
 
 class BookingItem extends BaseModel
 {
+    protected $useUserTracking = false;
+
     protected $fillable = [
         'booking_id',
         'vehicle_group_id',

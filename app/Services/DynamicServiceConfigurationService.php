@@ -132,6 +132,16 @@ class DynamicServiceConfigurationService
                 'time' => 'required|date_format:H:i',
                 'transfer_type' => 'required|in:from-airport,to-airport'
             ],
+            'field_mappings' => [
+                'dates' => [
+                    'from_date' => 'date',
+                    'from_time' => 'time',
+                ],
+                'locations' => [
+                    'pickup_location' => 'from',
+                    'dropoff_location' => 'to'
+                ]
+            ],
             'form_action' => 'booking.search',
             'button_text' => 'Search For Vehicles'
         ],
@@ -189,6 +199,16 @@ class DynamicServiceConfigurationService
                 'date' => 'required|date_format:d/m/Y|after_or_equal:today',
                 'time' => 'required|date_format:H:i',
                 'transfer_type' => 'required|in:from-airport,to-airport'
+            ],
+            'field_mappings' => [
+                'dates' => [
+                    'from_date' => 'date',
+                    'from_time' => 'time',
+                ],
+                'locations' => [
+                    'pickup_location' => 'from',
+                    'dropoff_location' => 'to'
+                ]
             ],
             'form_action' => 'booking.search',
             'button_text' => 'Search For Vehicles'
