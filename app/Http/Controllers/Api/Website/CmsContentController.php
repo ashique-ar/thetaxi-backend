@@ -17,7 +17,7 @@ class CmsContentController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('permission:cms-contents.view')->only(['index', 'show']);
+        $this->middleware('permission:cms-contents.view')->only(['index', 'show', 'filterUsers']);
         $this->middleware('permission:cms-contents.create')->only(['store']);
         $this->middleware('permission:cms-contents.edit')->only(['update']);
         $this->middleware('permission:cms-contents.delete')->only(['destroy']);
@@ -47,6 +47,10 @@ class CmsContentController extends Controller
 
         if ($request->filled('created_user_id')) {
             $q->where('created_user_id', $request->created_user_id);
+        }
+
+        if ($request->filled('updated_user_id')) {
+            $q->where('updated_user_id', $request->updated_user_id);
         }
 
         if ($request->filled('is_active')) {
@@ -155,6 +159,62 @@ class CmsContentController extends Controller
         return response()->json([
             'status' => 'success',
             'message' => 'Content deleted'
+        ]);
+    }
+
+    /**
+     * Get users used in CMS contents filters.
+     */
+    public function filterUsers(): JsonResponse
+    {
+        $createdUserIds = CmsContent::query()
+            ->whereNotNull('created_user_id')
+            ->distinct()
+            ->pluck('created_user_id')
+            ->filter()
+            ->values();
+
+        $updatedUserIds = CmsContent::query()
+            ->whereNotNull('updated_user_id')
+            ->distinct()
+            ->pluck('updated_user_id')
+            ->filter()
+            ->values();
+
+        $createdUsers = User::query()
+            ->whereIn('id', $createdUserIds)
+            ->select('id', 'first_name', 'last_name', 'email')
+            ->orderBy('first_name')
+            ->orderBy('last_name')
+            ->get()
+            ->map(function (User $user) {
+                return [
+                    'id' => $user->id,
+                    'name' => trim(($user->first_name ?? '') . ' ' . ($user->last_name ?? '')) ?: ($user->email ?? 'Unknown'),
+                ];
+            })
+            ->values();
+
+        $updatedUsers = User::query()
+            ->whereIn('id', $updatedUserIds)
+            ->select('id', 'first_name', 'last_name', 'email')
+            ->orderBy('first_name')
+            ->orderBy('last_name')
+            ->get()
+            ->map(function (User $user) {
+                return [
+                    'id' => $user->id,
+                    'name' => trim(($user->first_name ?? '') . ' ' . ($user->last_name ?? '')) ?: ($user->email ?? 'Unknown'),
+                ];
+            })
+            ->values();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'created_users' => $createdUsers,
+                'updated_users' => $updatedUsers,
+            ],
         ]);
     }
 

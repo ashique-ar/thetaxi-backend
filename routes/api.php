@@ -368,6 +368,7 @@ Route::middleware(['auth:api'])->group(function () {
 
     // CMS content management (protected by controller permissions)
     Route::apiResource('cms-content-types', CmsContentTypeController::class);
+    Route::get('cms-contents/filter-users', [CmsContentController::class, 'filterUsers']);
     Route::apiResource('cms-contents', CmsContentController::class);
 
     // AI Content Generation Routes
