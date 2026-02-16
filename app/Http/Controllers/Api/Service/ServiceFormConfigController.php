@@ -413,6 +413,15 @@ class ServiceFormConfigController extends Controller
                 'form_config.*.width' => 'nullable|in:full,half,third',
                 'form_config.*.alignment' => 'nullable|in:left,center,right',
                 'form_config.*.row' => 'nullable|integer',
+                'form_config.*.placeholder' => 'nullable|string',
+                'form_config.*.hint' => 'nullable|string',
+                'form_config.*.location_type' => 'nullable|string|in:default,airport,conditional',
+                'form_config.*.condition_field' => 'nullable|string',
+                'form_config.*.conditions' => 'nullable|array',
+                'form_config.*.role' => 'nullable|string|in:pickup_date,dropoff_date,pickup_time,dropoff_time,pickup_location,dropoff_location,transfer_type',
+                'form_config.*.options' => 'nullable|array',
+                'form_config.*.options.*.value' => 'required|string',
+                'form_config.*.options.*.label' => 'required|string',
             ]);
 
             $serviceType = ServiceType::findOrFail($serviceTypeId);

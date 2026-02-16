@@ -77,6 +77,12 @@ class DynamicServiceConfigurationService
                     'label' => 'Pickup Location',
                     'placeholder' => 'Enter pickup location',
                     'required' => true,
+                    'location_type' => 'conditional',
+                    'condition_field' => 'transfer_type',
+                    'conditions' => [
+                        'from-airport' => ['type' => 'airport'],
+                        'to-airport' => ['type' => 'location']
+                    ],
                     'layout' => [
                         'width' => 'half',
                         'align' => 'left'
@@ -87,6 +93,12 @@ class DynamicServiceConfigurationService
                     'label' => 'Destination',
                     'placeholder' => 'Enter destination',
                     'required' => true,
+                    'location_type' => 'conditional',
+                    'condition_field' => 'transfer_type',
+                    'conditions' => [
+                        'from-airport' => ['type' => 'location'],
+                        'to-airport' => ['type' => 'airport']
+                    ],
                     'layout' => [
                         'width' => 'half',
                         'align' => 'left'
@@ -138,13 +150,25 @@ class DynamicServiceConfigurationService
                     'type' => 'location',
                     'label' => 'Pickup Location',
                     'placeholder' => 'Enter pickup location',
-                    'required' => true
+                    'required' => true,
+                    'location_type' => 'conditional',
+                    'condition_field' => 'transfer_type',
+                    'conditions' => [
+                        'from-airport' => ['type' => 'airport'],
+                        'to-airport' => ['type' => 'location']
+                    ]
                 ],
                 'to' => [
                     'type' => 'location',
                     'label' => 'Destination',
                     'placeholder' => 'Enter destination',
-                    'required' => true
+                    'required' => true,
+                    'location_type' => 'conditional',
+                    'condition_field' => 'transfer_type',
+                    'conditions' => [
+                        'from-airport' => ['type' => 'location'],
+                        'to-airport' => ['type' => 'airport']
+                    ]
                 ],
                 'date' => [
                     'type' => 'date',
@@ -185,13 +209,13 @@ class DynamicServiceConfigurationService
                     'placeholder' => 'Enter drop off location',
                     'required' => true
                 ],
-                'date' => [
+                'pickup_date' => [
                     'type' => 'date',
                     'label' => 'Date',
                     'placeholder' => 'DD/MM/YYYY',
                     'required' => true
                 ],
-                'time' => [
+                'pickup_time' => [
                     'type' => 'time',
                     'label' => 'Time',
                     'placeholder' => 'HH:MM',

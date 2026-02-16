@@ -360,8 +360,8 @@
                         <tr>
                             <th style="width: 35%;">Vehicle</th>
                             {{-- <th style="width: 20%;">Specifications</th> --}}
-                            <th style="width: 20%; text-align: center;">Daily Rate</th>
-                            <th style="width: 20%; text-align: center;">Monthly Rate (30 Days)</th>
+                            <th style="width: 20%; text-align: center;">Daily Rate <small>(100km)</small></th>
+                            <th style="width: 20%; text-align: center;">Monthly Rate <small>(30 Days - 3000km)</small></th>
                             {{-- <th style="width: 5%; text-align: center;">Action</th> --}}
                         </tr>
                     </thead>
