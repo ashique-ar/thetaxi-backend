@@ -581,19 +581,19 @@
                             @endif
                         </div>
 
-                        <div class="rate-box">
-                            <div class="rate-label">Extra KM Rate</div>
-                            @if(isset($vehicle['extra_km_rate']) && $vehicle['extra_km_rate'] > 0)
-                                <div class="rate-amount">
-                                    {{ getCurrencySymbol() }} {{ number_format($vehicle['extra_km_rate'], 2) }}
-                                </div>
-                                <div class="rate-per-day">per km</div>
-                            @else
-                                <div class="rate-unavailable">
-                                    <i class="bi bi-dash-circle"></i> Contact Us
-                                </div>
-                            @endif
-                        </div>
+                    </div>
+                    <div class="rate-box">
+                        <div class="rate-label">Extra KM Rate</div>
+                        @if(isset($vehicle['extra_km_rate']) && $vehicle['extra_km_rate'] > 0)
+                            <div class="rate-amount">
+                                {{ getCurrencySymbol() }} {{ number_format($vehicle['extra_km_rate'], 2) }}
+                            </div>
+                            <div class="rate-per-day">per km</div>
+                        @else
+                            <div class="rate-unavailable">
+                                <i class="bi bi-dash-circle"></i> Contact Us
+                            </div>
+                        @endif
                     </div>
 
                     <!-- View Button -->
