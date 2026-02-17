@@ -440,13 +440,14 @@
 <!-- Hero Section -->
 <div class="rate-chart-hero">
     <div class="container">
-        <h1 class="text-white">Taxi & Tour Rate Chart</h1>
+        <h1 class="text-white">Sri Lanka Airport Taxi Rates</h1>
         @php
             $selectedCurrency = getSelectedCurrency();
             $currencyData = \App\Models\Currency::where('code', $selectedCurrency)->first();
             $currencyName = $currencyData ? $currencyData->name : $selectedCurrency;
         @endphp
-        <p>Compare daily and monthly taxi rental rates for all our vehicles. All prices are shown in {{ $currencyName }} ({{ getCurrencySymbol() }}) and calculated based on calendar days.</p>
+        <p>Affordable Fixed Price</p>
+        {{-- <p>Compare daily and monthly taxi rental rates for all our vehicles. All prices are shown in {{ $currencyName }} ({{ getCurrencySymbol() }}) and calculated based on calendar days.</p> --}}
     </div>
 </div>
 
