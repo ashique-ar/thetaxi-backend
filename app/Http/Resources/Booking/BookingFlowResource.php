@@ -250,6 +250,10 @@ class BookingFlowResource extends JsonResource
             'confirmed_at' => $this->confirmed_at?->format('Y-m-d H:i:s'),
             'completed_at' => $this->completed_at?->format('Y-m-d H:i:s'),
             'cancelled_at' => $this->cancelled_at?->format('Y-m-d H:i:s'),
+
+            // Multi-trip details
+            'booking_items' => $this->whenLoaded('bookingItems'),
+            'variable_customizations' => $this->whenLoaded('variableCustomizations'),
         ];
     }
 }

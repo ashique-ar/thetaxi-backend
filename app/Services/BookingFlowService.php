@@ -1418,6 +1418,9 @@ class BookingFlowService
                 $booking->confirmation_number = Booking::generateConfirmationNumber();
             }
 
+            // Determine if multi-group booking
+            $isMultiGroup = !empty($params['vehicle_groups']) && count($params['vehicle_groups']) > 1;
+
             $booking->workflow_step = 'confirmed';
             $booking->workflow_data = [
                 'confirmed_at' => now()->toISOString(),
@@ -1430,8 +1433,7 @@ class BookingFlowService
             $booking->total_actual = $booking->total_estimated;
             $booking->save();
 
-            // Determine if multi-group booking
-            $isMultiGroup = !empty($params['vehicle_groups']) && count($params['vehicle_groups']) > 1;
+            // Handle multi-group booking items creation
 
             // Handle multi-group booking items creation
             if ($isMultiGroup) {
@@ -1679,11 +1681,11 @@ class BookingFlowService
             'addons' => $pricing['addons'] ?? [],
             'customizations' => $params['variable_customizations'] ?? [],
             'discounts' => $params['applied_discounts'] ?? [],
-            'metadata' => [
+            'metadata' => array_merge($params['metadata'] ?? [], [
                 'distance_details' => $pricing['distance_details'] ?? null,
                 'calculation_type' => $pricing['calculation_type'] ?? null,
                 'package_info' => $pricing['package_info'] ?? null,
-            ]
+            ])
         ]);
     }
 
@@ -1819,6 +1821,7 @@ class BookingFlowService
                         'addons' => $itemData['addons'] ?? [], // Store addons per item
                         'customizations' => $itemData['customizations'] ?? [],
                         'discounts' => $itemData['discounts'] ?? [],
+                        'metadata' => $itemData['metadata'] ?? [],
                     ]);
 
                     // Accumulate totals

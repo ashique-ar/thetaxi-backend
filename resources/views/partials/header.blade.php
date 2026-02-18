@@ -74,7 +74,7 @@
                             </ul>
                         </li>
                     @endif
-                    {{-- <li><a href="{{ route('corporate-transfers') }}">Corporate Transport</a></li> --}}
+                    <li><a href="{{ route('corporate-transfers') }}">Corporate Transport</a></li>
                     <li class="{{ Request::routeIs('rate-chart') ? 'active' : '' }}"><a href="{{ route('rate-chart') }}">Rate Chart</a></li>
                     <li><a href="{{ route('about') }}">About</a></li>
                     <li><a href="{{ route('contact') }}">Contact</a></li>

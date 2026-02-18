@@ -526,19 +526,44 @@ class BookingFlowController extends Controller
             $request->validate([
                 'customer_id' => 'nullable|string',
                 'service_type' => 'required|string',
-                'vehicle_group_id' => 'required|string',
+                
+                // Multi-selection support
+                'vehicle_group_id' => 'sometimes|string',
+                'vehicle_groups' => 'sometimes|array',
+                'vehicle_groups.*.id' => 'required|string',
+                'vehicle_groups.*.quantity' => 'required|integer|min:1',
+
+                'vehicles' => 'sometimes|array',
+                'vehicles.*.id' => 'required|string',
+                'vehicles.*.group_id' => 'required|string',
+
+                'drivers' => 'sometimes|array',
+                'drivers.*.id' => 'required|string',
+
+                'vehicle_driver_assignments' => 'sometimes|array',
+                'vehicle_driver_assignments.*.vehicle_id' => 'required|string',
+                'vehicle_driver_assignments.*.driver_id' => 'nullable|string',
+
+                'booking_items' => 'sometimes|array',
+
                 'from_date' => 'required|date',
                 'to_date' => 'required|date|after_or_equal:from_date',
+                'from_time' => 'required|string',
+                'to_time' => 'required|string',
+                
                 'pickup_location' => 'required|array',
                 'pickup_location.latitude' => 'required|numeric',
                 'pickup_location.longitude' => 'required|numeric',
                 'dropoff_location' => 'required|array',
                 'dropoff_location.latitude' => 'required|numeric',
                 'dropoff_location.longitude' => 'required|numeric',
+                
                 'selected_addons' => 'sometimes|array',
                 'selected_addons.*.id' => 'required|string',
                 'selected_addons.*.quantity' => 'sometimes|integer|min:1',
                 'selected_addons.*.custom_price' => 'sometimes',
+                'selected_addons.*.group_id' => 'sometimes|string',
+                
                 'variable_customizations' => 'sometimes|array',
                 'variable_customizations.*.id' => 'sometimes|string',
                 'variable_customizations.*.variable_name' => 'required|string',
@@ -551,6 +576,8 @@ class BookingFlowController extends Controller
                 'variable_customizations.*.model_id' => 'sometimes|string',
                 'variable_customizations.*.context' => 'sometimes|string|in:base_pricing,addon_pricing',
                 'variable_customizations.*.reason' => 'sometimes|string',
+                'variable_customizations.*.group_id' => 'sometimes|string',
+                
                 'has_variable_customizations' => 'sometimes|boolean',
                 'session_id' => 'sometimes|string',
                 'is_preview_calculation' => 'sometimes|boolean',
@@ -560,7 +587,7 @@ class BookingFlowController extends Controller
                 'preserve_custom_pricing' => 'sometimes|boolean',
                 'preserve_custom_addon_prices' => 'sometimes|boolean',
                 'force_recalculation' => 'sometimes|boolean',
-                'applied_discounts' => 'sometimes|array', // Include applied discounts
+                'applied_discounts' => 'sometimes|array',
             ]);
 
             $booking = $this->bookingFlowService->updateBooking($bookingId, $request->all(), []);
@@ -1138,7 +1165,7 @@ class BookingFlowController extends Controller
             $draft = $this->bookingFlowService->saveBookingDraft($request->all());
 
             return response()->json([
-                'success' => true,
+                'status' => 'success',
                 'data' => new BookingFlowResource($draft),
                 'message' => 'Booking draft saved successfully'
             ]);
@@ -1146,9 +1173,9 @@ class BookingFlowController extends Controller
             Log::error('Draft saving failed: ' . $e->getMessage());
 
             return response()->json([
-                'success' => false,
-                'error' => 'Failed to save booking draft',
-                'message' => $e->getMessage()
+                'status' => 'error',
+                'message' => 'Failed to save booking draft',
+                'error' => $e->getMessage()
             ], 500);
         }
     }
