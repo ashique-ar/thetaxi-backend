@@ -277,8 +277,8 @@ class PendingPaymentManager
                 'to_time' => $booking->to_time,
             ],
             'locations' => [
-                'pickup' => json_decode($booking->pickup_location ?? '{}', true),
-                'dropoff' => json_decode($booking->dropoff_location ?? '{}', true),
+                'pickup' => is_array($booking->pickup_location) ? $booking->pickup_location : json_decode($booking->pickup_location ?? '{}', true),
+                'dropoff' => is_array($booking->dropoff_location) ? $booking->dropoff_location : json_decode($booking->dropoff_location ?? '{}', true),
             ],
             'pricing' => [
                 'base_amount' => $booking->base_amount ?? 0,
@@ -356,8 +356,8 @@ class PendingPaymentManager
                     'from_time' => $item->from_time,
                     'to_time' => $item->to_time,
                     'duration_days' => $item->duration_days,
-                    'pickup_location' => json_decode($item->pickup_location ?? '{}', true),
-                    'dropoff_location' => json_decode($item->dropoff_location ?? '{}', true),
+                    'pickup_location' => is_array($item->pickup_location) ? $item->pickup_location : json_decode($item->pickup_location ?? '{}', true),
+                    'dropoff_location' => is_array($item->dropoff_location) ? $item->dropoff_location : json_decode($item->dropoff_location ?? '{}', true),
                     'unit_price' => $item->unit_price,
                     'total_price' => $item->total_price,
                     'vehicle_group_images' => $vehicleGroupImages,
