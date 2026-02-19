@@ -33,10 +33,10 @@
     <link rel="stylesheet" href="{{ assetVersion('assets/css/style.css') }}">
 
     <!-- Theme-specific CSS (loaded conditionally) -->
-    @if(is_theme('theme-02'))
-    <link rel="stylesheet" href="{{ assetVersion('assets/css/theme-02.css') }}">
+    @if (is_theme('theme-02'))
+        <link rel="stylesheet" href="{{ assetVersion('assets/css/theme-02.css') }}">
     @else
-    <link rel="stylesheet" href="{{ assetVersion('assets/css/theme-01.css') }}">
+        <link rel="stylesheet" href="{{ assetVersion('assets/css/theme-01.css') }}">
     @endif
 
     <!-- Booking Form CSS -->
@@ -56,14 +56,21 @@
             $computedTitle = str_replace('{page_title}', $pageTitle !== '' ? $pageTitle : $siteName, $titleTemplate);
             $computedTitle = str_replace('{year}', date('Y'), $computedTitle);
         }
+
+        // Override with custom page title if set
+        if (!empty($settings['seo_title_custom'])) {
+            $computedTitle = $settings['seo_title_custom'];
+        }
         $metaDescription = trim($settings['seo_meta_description'] ?? '');
         $metaKeywords = trim($settings['seo_keywords'] ?? '');
         $ogImage = $settings['seo_og_image'] ?? '';
         $ogImageUrl = '';
         if ($ogImage) {
             $ogImagePath = is_array($ogImage)
-                ? ($ogImage['path'] ?? ($ogImage['url'] ?? ($ogImage[0] ?? null)))
-                : (is_object($ogImage) ? ($ogImage->path ?? ($ogImage->url ?? null)) : $ogImage);
+                ? $ogImage['path'] ?? ($ogImage['url'] ?? ($ogImage[0] ?? null))
+                : (is_object($ogImage)
+                    ? $ogImage->path ?? ($ogImage->url ?? null)
+                    : $ogImage);
 
             if (is_string($ogImagePath) && $ogImagePath !== '') {
                 $ogImageUrl = filter_var($ogImagePath, FILTER_VALIDATE_URL) ? $ogImagePath : s3_asset($ogImagePath);
@@ -151,7 +158,10 @@
         <script async src="https://www.googletagmanager.com/gtag/js?id={{ $settings['google_ads_id'] }}"></script>
         <script>
             window.dataLayer = window.dataLayer || [];
-            function gtag(){dataLayer.push(arguments);}
+
+            function gtag() {
+                dataLayer.push(arguments);
+            }
             gtag('js', new Date());
             gtag('config', '{{ $settings['google_ads_id'] }}');
         </script>

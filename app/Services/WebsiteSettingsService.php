@@ -664,6 +664,14 @@ class WebsiteSettingsService
             'google_site_verification'
         ];
 
+        // Add page-specific SEO keys
+        $pages = ['home', 'about', 'taxi', 'contact', 'things_to_do', 'services', 'corporate_transfers', 'cart', 'checkout'];
+        foreach ($pages as $page) {
+            $types[] = "seo_{$page}_title";
+            $types[] = "seo_{$page}_description";
+            $types[] = "seo_{$page}_keywords";
+        }
+
         return $this->getMultiple($types);
     }
 

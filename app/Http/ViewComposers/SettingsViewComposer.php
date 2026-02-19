@@ -15,10 +15,6 @@ class SettingsViewComposer
         $this->settingsService = $settingsService;
     }
 
-    /**
-     * Bind data to the view.
-     * CRITICAL FIX: Cache settings globally to avoid database calls on every page
-     */
     public function compose(View $view): void
     {
         // ULTRA-OPTIMIZED: Use aggressive caching to avoid repeated database hits
@@ -153,6 +149,17 @@ class SettingsViewComposer
                     'footer_support_link_9_url',
                     'footer_support_link_10_text',
                     'footer_support_link_10_url',
+
+                    // Page Specific SEO Overrides
+                    'seo_home_title', 'seo_home_description', 'seo_home_keywords',
+                    'seo_about_title', 'seo_about_description', 'seo_about_keywords',
+                    'seo_taxi_title', 'seo_taxi_description', 'seo_taxi_keywords',
+                    'seo_contact_title', 'seo_contact_description', 'seo_contact_keywords',
+                    'seo_things_to_do_title', 'seo_things_to_do_description', 'seo_things_to_do_keywords',
+                    'seo_services_title', 'seo_services_description', 'seo_services_keywords',
+                    'seo_corporate_transfers_title', 'seo_corporate_transfers_description', 'seo_corporate_transfers_keywords',
+                    'seo_cart_title', 'seo_cart_description', 'seo_cart_keywords',
+                    'seo_checkout_title', 'seo_checkout_description', 'seo_checkout_keywords',
 
                     // Homepage sections
                     'banner_heading',
@@ -448,6 +455,44 @@ class SettingsViewComposer
                 ];
             }
         });
+
+        // Identify Current System Page for SEO Overrides
+        $routeName = request()->route() ? request()->route()->getName() : null;
+        $systemPage = null;
+
+        $routeMap = [
+            'home' => 'home',
+            'about' => 'about',
+            'taxi' => 'taxi',
+            'contact' => 'contact',
+            'things-to-do' => 'things_to_do',
+            'services.index' => 'services',
+            'corporate-transfers' => 'corporate_transfers',
+            'cart.index' => 'cart',
+            'checkout.index' => 'checkout',
+        ];
+
+        if ($routeName && isset($routeMap[$routeName])) {
+            $systemPage = $routeMap[$routeName];
+        }
+
+        // Inject Overrides if on a System Page
+        if ($systemPage) {
+            $pageTitle = $settings["seo_{$systemPage}_title"] ?? null;
+            $pageDesc = $settings["seo_{$systemPage}_description"] ?? null;
+            $pageKeywords = $settings["seo_{$systemPage}_keywords"] ?? null;
+
+            if ($pageTitle) {
+                $settings['seo_title_custom'] = $pageTitle;
+            }
+            if ($pageDesc) {
+                $settings['seo_meta_description'] = $pageDesc;
+            }
+            if ($pageKeywords) {
+                $settings['seo_keywords'] = $pageKeywords;
+            }
+        }
+
         $view->with('settings', $settings);
     }
 }
