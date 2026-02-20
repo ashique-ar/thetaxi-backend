@@ -408,7 +408,7 @@ class PerformanceOptimizationService
 
         foreach ($urls as $url) {
             $xml .= "  <url>\n";
-            $xml .= "    <loc>{$url['loc']}</loc>\n";
+            $xml .= "    <loc>" . htmlspecialchars($url['loc']) . "</loc>\n";
             $xml .= "    <lastmod>{$url['lastmod']}</lastmod>\n";
             $xml .= "    <changefreq>{$url['changefreq']}</changefreq>\n";
             $xml .= "    <priority>{$url['priority']}</priority>\n";
