@@ -661,7 +661,12 @@ class WebsiteSettingsService
             'google_ads_conversion_label',
             'facebook_pixel_id',
             'meta_verification_code',
-            'google_site_verification'
+            'google_site_verification',
+            'sitemap_auto_generate',
+            'sitemap_auto_ping',
+            'sitemap_ping_urls',
+            'sitemap_failure_notify',
+            'sitemap_failure_notify_email'
         ];
 
         // Add page-specific SEO keys

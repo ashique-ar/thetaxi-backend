@@ -114,6 +114,7 @@ Route::get('/about', function () {
 })->name('about');
 
 Route::get('/contact', [\App\Http\Controllers\Website\ContactController::class, 'index'])->name('contact');
+Route::get('/inquiry', [\App\Http\Controllers\Website\ContactController::class, 'index'])->name('inquiry');
 
 Route::get('/faq', function () {
     return view('faq');

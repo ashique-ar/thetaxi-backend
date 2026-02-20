@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', $settings['contact_page_title'] ?? 'Contact Us - TheTaxi')
+@section('title', $settings['contact_page_title'] ?? 'Inquiry - TheTaxi')
 
 @push('meta')
     @include('partials.seo')
@@ -13,10 +13,10 @@
         style="background-image:linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url({{ s3_asset($settings['contact_breadcrumb_image'] ?? 'assets/img/innerpages/breadcrumb-bg.jpg') }});">
         <div class="container">
             <div class="banner-content">
-                <h1>{{ $settings['contact_hero_heading'] ?? 'Contact Us' }}</h1>
+                <h1>{{ $settings['contact_hero_heading'] ?? 'Inquiry' }}</h1>
                 <ul class="breadcrumb-list">
                     <li><a href="{{ route('home') }}">Home</a></li>
-                    <li>{{ $settings['contact_hero_subheading'] ?? 'Contact Us' }}</li>
+                    <li>{{ $settings['contact_hero_subheading'] ?? 'Inquiry' }}</li>
                 </ul>
             </div>
         </div>
