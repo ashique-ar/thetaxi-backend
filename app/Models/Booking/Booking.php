@@ -1288,22 +1288,39 @@ class Booking extends BaseModel
     {
         // Default booking number generator (BKxxxxxx)
         $prefix = 'BK';
+        $attempt = 0;
+        $maxAttempts = 100; // Prevent infinite loops
 
-        // Attempt to find the most recent booking with this prefix and increment the trailing number
-        $last = static::where('booking_number', 'like', $prefix . '%')
-            ->orderByDesc('created_at')
+        // Attempt to find the most recent booking with this prefix (including soft deleted)
+        $last = static::withTrashed()
+            ->where('booking_number', 'like', $prefix . '%')
+            ->orderByDesc('id')
             ->first();
 
         $next = 1;
 
-        if ($last && preg_match('/(\d{1,})$/', $last->booking_number, $m)) {
+        if ($last && preg_match('/(\d+)$/', $last->booking_number, $m)) {
             $next = intval($m[1]) + 1;
         } else {
-            $count = static::where('booking_number', 'like', $prefix . '%')->count();
+            $count = static::withTrashed()->where('booking_number', 'like', $prefix . '%')->count();
             $next = $count + 1;
         }
 
-        return $prefix . str_pad($next, 6, '0', STR_PAD_LEFT);
+        // Add loop to ensure uniqueness
+        do {
+            $candidate = $prefix . str_pad((string)$next, 6, '0', STR_PAD_LEFT);
+            
+            // Check existence including soft deleted records
+            if (!static::withTrashed()->where('booking_number', $candidate)->exists()) {
+                return $candidate;
+            }
+            
+            $next++;
+            $attempt++;
+        } while ($attempt < $maxAttempts);
+
+        // Fallback for extreme cases (should basically never happen)
+        return $prefix . now()->format('ymdHis');
     }
 
     /**
@@ -1312,21 +1329,35 @@ class Booking extends BaseModel
     public static function generateQuotationNumber(): string
     {
         $prefix = 'QT';
+        $attempt = 0;
+        $maxAttempts = 100;
 
-        $last = static::where('booking_number', 'like', $prefix . '%')
-            ->orderByDesc('created_at')
+        $last = static::withTrashed()
+            ->where('booking_number', 'like', $prefix . '%')
+            ->orderByDesc('id')
             ->first();
 
         $next = 1;
 
-        if ($last && preg_match('/(\d{1,})$/', $last->booking_number, $m)) {
+        if ($last && preg_match('/(\d+)$/', $last->booking_number, $m)) {
             $next = intval($m[1]) + 1;
         } else {
-            $count = static::where('booking_number', 'like', $prefix . '%')->count();
+            $count = static::withTrashed()->where('booking_number', 'like', $prefix . '%')->count();
             $next = $count + 1;
         }
 
-        return $prefix . str_pad($next, 6, '0', STR_PAD_LEFT);
+        do {
+            $candidate = $prefix . str_pad((string)$next, 6, '0', STR_PAD_LEFT);
+            
+            if (!static::withTrashed()->where('booking_number', $candidate)->exists()) {
+                return $candidate;
+            }
+            
+            $next++;
+            $attempt++;
+        } while ($attempt < $maxAttempts);
+
+        return $prefix . now()->format('ymdHis');
     }
 
     /**
