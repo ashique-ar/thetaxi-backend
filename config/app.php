@@ -123,18 +123,18 @@ return [
         'store' => env('APP_MAINTENANCE_STORE', 'database'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | SEO Indexable
+    |--------------------------------------------------------------------------
+    |
+    | This value determines whether search engines should index this site.
+    | Set to false for dev/staging environments to prevent Google indexing.
+    | Set to true for production sites that should appear in search results.
+    |
+    */
+
+    'seo_indexable' => env('SEO_INDEXABLE', true),
+
 ];
-
-/*
-|--------------------------------------------------------------------------
-| SEO Indexable
-|--------------------------------------------------------------------------
-|
-| This value determines whether search engines should index this site.
-| Set to false for dev/staging environments to prevent Google indexing.
-| Set to true for production sites that should appear in search results.
-|
-*/
-
-'seo_indexable' => env('SEO_INDEXABLE', true),
 
