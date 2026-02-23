@@ -2,6 +2,7 @@
 namespace App\Models\Service;
 
 use App\Models\BaseModel;
+use App\Models\User;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingSlabDefinition;
 use App\Traits\UUID;
 
@@ -14,8 +15,10 @@ use App\Traits\UUID;
  * @property string|null $description Service type description (optional)
  * @property string|null $slug Service type URL slug (optional)
  * @property string|null $thumbnail Service type thumbnail image (optional)
+ * @property string|null $category Service category (airport, corporate, transport, etc.)
  * @property int|null $priority Service type priority (optional)
  * @property bool|null $is_internal Whether service is internal only (optional)
+ * @property bool|null $is_inquiry Whether service requires inquiry form instead of direct booking
  * @property string|null $terms Service terms and conditions (optional)
  * @property string|null $created_user_id ID of user who created this record
  * @property string|null $updated_user_id ID of user who last updated this record
@@ -52,9 +55,11 @@ class ServiceType extends BaseModel
         'allow_multiple_dropoff_locations',
         'form_config',
         'frontend_category',
+        'category',
         'priority',
         'minimum_km',
         'is_internal',
+        'is_inquiry',
         'terms',
         'created_user_id',
         'updated_user_id'
@@ -67,6 +72,7 @@ class ServiceType extends BaseModel
      */
     protected $casts = [
         'is_internal' => 'boolean',
+        'is_inquiry' => 'boolean',
         'priority' => 'integer',
         'minimum_km' => 'decimal:2',
         'uses_dropoff_time' => 'boolean',
@@ -75,6 +81,7 @@ class ServiceType extends BaseModel
         'allow_multiple_dropoff_locations' => 'boolean',
         'pricing_mode' => 'string',
         'frontend_category' => 'string',
+        'category' => 'string',
         'form_config' => 'array',
     ];
 

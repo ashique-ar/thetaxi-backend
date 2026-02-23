@@ -20,6 +20,22 @@ use Illuminate\Support\Facades\Route;
 // TheTaxi Website Routes
 Route::get('/', [HomeController::class, 'index'])->name('home');
 
+// Dynamic robots.txt based on SEO_INDEXABLE environment variable
+Route::get('/robots.txt', function () {
+    $indexable = config('app.seo_indexable', true);
+    
+    if ($indexable) {
+        // Allow indexing for production sites
+        $content = "User-agent: *\nDisallow:\n\nSitemap: " . url('/sitemap.xml');
+    } else {
+        // Block all indexing for dev/staging sites
+        $content = "User-agent: *\nDisallow: /";
+    }
+    
+    return response($content, 200)
+        ->header('Content-Type', 'text/plain');
+})->name('robots');
+
 // Temporary cache clear route (remove after use)
 Route::get('/clear-all-caches', function () {
     \Illuminate\Support\Facades\Artisan::call('cache:clear');

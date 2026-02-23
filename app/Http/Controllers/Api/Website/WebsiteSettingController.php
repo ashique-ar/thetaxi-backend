@@ -193,7 +193,7 @@ class WebsiteSettingController extends Controller
 
         try {
             $updatedSettings = [];
-            
+
             foreach ($request->settings as $type => $value) {
                 $setting = WebsiteSetting::updateOrCreate(
                     ['type' => $type],
