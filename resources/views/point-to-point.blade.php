@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Point-to-Point Transfers - TheTaxi')
+@section('title', 'Point-to-Point Transfers')
 
 @push('meta')
     @include('partials.seo')

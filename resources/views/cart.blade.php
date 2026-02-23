@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Shopping Cart - TheTaxi')
+@section('title', 'Shopping Cart')
 
 @section('content')
     <!-- Breadcrumb section -->

@@ -4,7 +4,7 @@
     <h2>{{ $settings['faq_section_title'] ?? 'General Questions' }}</h2>
     <p>{{ $settings['faq_section_description'] ?? "We're committed to offering more than just products—we provide exceptional experiences." }}
     </p>
-</div>on('title', $settings['faq_page_title'] ?? 'FAQ - Frequently Asked Questions - TheTaxi')
+</div>on('title', $settings['faq_page_title'] ?? 'FAQ - Frequently Asked Questions')
 
 @section('content')
 

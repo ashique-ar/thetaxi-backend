@@ -1,7 +1,5 @@
 @extends('layouts.app')
 
-@section('title', 'TheTaxi - Taxi Sri lanka | Airport Transfers | Book a Taxi Online')
-
 @push('meta')
 @include('partials.seo')
 @endpush

@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', $settings['contact_page_title'] ?? 'Inquiry - TheTaxi')
+@section('title', $settings['contact_page_title'] ?? 'Inquiry')
 
 @push('meta')
     @include('partials.seo')

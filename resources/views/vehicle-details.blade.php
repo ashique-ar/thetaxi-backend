@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', ($vehicleGroup->name ?? 'Vehicle Details') . ' - TheTaxi')
+@section('title', ($vehicleGroup->name ?? 'Vehicle Details'))
 
 @push('meta')
     @include('partials.seo', ['model' => $vehicleGroup])
@@ -18,7 +18,7 @@
             'image' => [$schemaImage],
             'brand' => [
                 '@type' => 'Brand',
-                'name' => $vehicleGroup->make->name ?? (config('app.name') ?? 'TheTaxi'),
+                'name' => $vehicleGroup->make->name ?? (config('app.name')),
             ],
             'url' => route('vehicle.details', ['id' => $vehicleGroup->id]),
             'offers' => [

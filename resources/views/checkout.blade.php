@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Checkout - TheTaxi')
+@section('title', 'Checkout')
 
 @section('content')
     <!-- Popup Page Identifier for Popup Display Engine -->
