@@ -5626,34 +5626,73 @@ class BookingFlowService
      */
     public function getFilteredBookings(array $filters): array
     {
-        $query = Booking::with([
-            'customer',
-            'customer.user:id,first_name,last_name,email,phone',
-            'vehicle.vehicleGroup',
-            'driver.user:id,first_name,last_name,email,phone',
-            'serviceType:id,name',
-            'createdBy:id,first_name,last_name',
-            'vehicleAssignments' => function ($q) {
-                $q->where('status', '!=', 'cancelled')
-                    ->orderBy('created_at', 'desc')
-                    ->limit(1);
-            },
-            'driverAssignments' => function ($q) {
-                $q->where('status', '!=', 'cancelled')
-                    ->orderBy('created_at', 'desc')
-                    ->limit(1);
-            }
-        ]);
+        $bookingStatuses = $this->normalizeFilterValues(
+            $filters['status'] ?? null,
+            ['draft', 'pending_approval', 'approved', 'confirmed', 'allocated', 'in_progress', 'completed', 'cancelled']
+        );
+        $itemStatuses = $this->normalizeFilterValues(
+            $filters['item_status'] ?? null,
+            ['pending', 'confirmed', 'cancelled', 'completed']
+        );
+        $assignmentStatuses = $this->normalizeFilterValues(
+            $filters['assignment_status'] ?? null,
+            ['active', 'pending_approval', 'approved', 'completed', 'cancelled']
+        );
+        $assignmentTypes = $this->normalizeFilterValues(
+            $filters['assignment_type'] ?? null,
+            ['primary', 'concurrent', 'override']
+        );
 
-        // Apply filters
+        $query = BookingItem::query()
+            ->with([
+                'booking.customer.user:id,first_name,last_name,email,phone',
+                'booking.createdBy:id,first_name,last_name',
+                'booking.vehicleAssignments' => function ($q) {
+                    $q->where('status', '!=', 'cancelled')
+                        ->orderBy('created_at', 'desc');
+                },
+                'booking.vehicleAssignments.vehicle',
+                'booking.driverAssignments' => function ($q) {
+                    $q->where('status', '!=', 'cancelled')
+                        ->orderBy('created_at', 'desc');
+                },
+                'booking.driverAssignments.driver.user:id,first_name,last_name,email,phone',
+                'serviceType:id,name',
+                'vehicle',
+                'vehicle.vehicleGroup:id,name',
+                'driver',
+                'driver.user:id,first_name,last_name,email,phone',
+                'vehicleGroup:id,name',
+            ]);
+
         if (!empty($filters['search'])) {
-            $search = $filters['search'];
-            $query->where(function ($q) use ($search) {
-                $q->where('booking_number', 'like', "%{$search}%")
-                    ->orWhere('invoice_number', 'like', "%{$search}%")
-                    ->orWhere('confirmation_number', 'like', "%{$search}%")
-                    ->orWhereHas('customer.user', function ($userQuery) use ($search) {
-                        $userQuery->where('first_name', 'like', "%{$search}%")
+            $search = trim((string) $filters['search']);
+
+            $query->where(function ($itemQuery) use ($search) {
+                $itemQuery->where('booking_items.id', 'like', "%{$search}%")
+                    ->orWhere('booking_items.booking_id', 'like', "%{$search}%")
+                    ->orWhereHas('booking', function ($bookingQuery) use ($search) {
+                        $bookingQuery->where('booking_number', 'like', "%{$search}%")
+                            ->orWhere('invoice_number', 'like', "%{$search}%")
+                            ->orWhere('confirmation_number', 'like', "%{$search}%")
+                            ->orWhereHas('customer.user', function ($userQuery) use ($search) {
+                                $userQuery->where('first_name', 'like', "%{$search}%")
+                                    ->orWhere('last_name', 'like', "%{$search}%")
+                                    ->orWhere('email', 'like', "%{$search}%")
+                                    ->orWhere('phone', 'like', "%{$search}%");
+                            });
+                    })
+                    ->orWhereHas('serviceType', function ($serviceTypeQuery) use ($search) {
+                        $serviceTypeQuery->where('name', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('vehicle', function ($vehicleQuery) use ($search) {
+                        $vehicleQuery->where('title', 'like', "%{$search}%")
+                            ->orWhere('name', 'like', "%{$search}%")
+                            ->orWhere('license_plate', 'like', "%{$search}%")
+                            ->orWhere('registration_number', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('driver.user', function ($driverUserQuery) use ($search) {
+                        $driverUserQuery->where('first_name', 'like', "%{$search}%")
                             ->orWhere('last_name', 'like', "%{$search}%")
                             ->orWhere('email', 'like', "%{$search}%")
                             ->orWhere('phone', 'like', "%{$search}%");
@@ -5661,91 +5700,203 @@ class BookingFlowService
             });
         }
 
-        if (!empty($filters['status'])) {
-            $query->where('status', $filters['status']);
+        if (!empty($bookingStatuses)) {
+            $query->whereHas('booking', function ($bookingQuery) use ($bookingStatuses) {
+                $bookingQuery->whereIn('status', $bookingStatuses);
+            });
+        }
+
+        if (!empty($itemStatuses)) {
+            $query->whereIn('booking_items.status', $itemStatuses);
         }
 
         if (!empty($filters['service_type'])) {
-            $query->whereHas('bookingItems', function ($q) use ($filters) {
-                $q->where('service_type_id', $filters['service_type']);
-            });
+            $query->where('booking_items.service_type_id', $filters['service_type']);
         }
 
         if (!empty($filters['customer_id'])) {
-            $query->where('customer_id', $filters['customer_id']);
+            $query->whereHas('booking', function ($bookingQuery) use ($filters) {
+                $bookingQuery->where('customer_id', $filters['customer_id']);
+            });
         }
 
         if (!empty($filters['vehicle_group_id'])) {
-            $query->whereHas('bookingItems', function ($q) use ($filters) {
-                $q->where('vehicle_group_id', $filters['vehicle_group_id']);
-            });
+            $query->where('booking_items.vehicle_group_id', $filters['vehicle_group_id']);
         }
 
         if (!empty($filters['vehicle_id'])) {
-            $query->whereHas('bookingItems', function ($q) use ($filters) {
-                $q->where('vehicle_id', $filters['vehicle_id']);
-            });
+            $query->where('booking_items.vehicle_id', $filters['vehicle_id']);
         }
 
         if (!empty($filters['driver_id'])) {
-            $query->whereHas('bookingItems', function ($q) use ($filters) {
-                $q->where('driver_id', $filters['driver_id']);
-            });
+            $query->where('booking_items.driver_id', $filters['driver_id']);
         }
 
         if (!empty($filters['date_from'])) {
-            $query->whereHas('bookingItems', function ($q) use ($filters) {
-                $q->whereDate('from_date', '>=', $filters['date_from']);
-            });
+            $query->whereDate('booking_items.from_date', '>=', $filters['date_from']);
         }
 
         if (!empty($filters['date_to'])) {
-            $query->whereHas('bookingItems', function ($q) use ($filters) {
-                $q->whereDate('to_date', '<=', $filters['date_to']);
-            });
+            $query->whereDate('booking_items.to_date', '<=', $filters['date_to']);
         }
 
-        if (isset($filters['requires_approval'])) {
-            $query->where('requires_approval', $filters['requires_approval']);
-        }
-
-        if (isset($filters['has_overrides'])) {
-            if ($filters['has_overrides']) {
-                $query->where(function ($q) {
-                    $q->whereNotNull('base_price_override')
-                        ->orWhereNotNull('addon_overrides')
-                        ->orWhereNotNull('custom_pricing');
+        $requiresApproval = $this->parseBooleanFilter($filters['requires_approval'] ?? null);
+        if (!is_null($requiresApproval)) {
+            if ($requiresApproval) {
+                $query->where(function ($approvalQuery) {
+                    $approvalQuery->where('booking_items.requires_approval', true)
+                        ->orWhereHas('booking', function ($bookingQuery) {
+                            $bookingQuery->where('requires_approval', true);
+                        });
                 });
             } else {
-                $query->whereNull('base_price_override')
-                    ->whereNull('addon_overrides')
-                    ->whereNull('custom_pricing');
+                $query->where('booking_items.requires_approval', false)
+                    ->whereHas('booking', function ($bookingQuery) {
+                        $bookingQuery->where('requires_approval', false);
+                    });
             }
         }
 
+        $hasOverrides = $this->parseBooleanFilter($filters['has_overrides'] ?? null);
+        if (!is_null($hasOverrides)) {
+            $query->whereHas('booking', function ($bookingQuery) use ($hasOverrides) {
+                if ($hasOverrides) {
+                    $bookingQuery->where(function ($overrideQuery) {
+                        $overrideQuery->where('has_overrides', true)
+                            ->orWhereNotNull('base_price_override')
+                            ->orWhereNotNull('addon_overrides');
+                    });
+                } else {
+                    $bookingQuery->where(function ($overrideQuery) {
+                        $overrideQuery->where('has_overrides', false)
+                            ->whereNull('base_price_override')
+                            ->whereNull('addon_overrides');
+                    });
+                }
+            });
+        }
+
         if (!empty($filters['priority'])) {
-            $query->where('priority', $filters['priority']);
+            $query->whereHas('booking', function ($bookingQuery) use ($filters) {
+                $bookingQuery->where('approval_priority', $filters['priority']);
+            });
         }
 
         if (!empty($filters['assigned_to'])) {
-            $query->where('assigned_to', $filters['assigned_to']);
+            $query->whereHas('booking', function ($bookingQuery) use ($filters) {
+                $bookingQuery->where('assigned_to', $filters['assigned_to']);
+            });
         }
 
         if (!empty($filters['created_by'])) {
-            $query->where('created_by', $filters['created_by']);
+            $query->whereHas('booking', function ($bookingQuery) use ($filters) {
+                $bookingQuery->where(function ($creatorQuery) use ($filters) {
+                    $creatorQuery->where('created_by', $filters['created_by'])
+                        ->orWhere('created_user_id', $filters['created_by']);
+                });
+            });
         }
 
-        // Apply sorting
-        $sortBy = $filters['sort_by'] ?? 'created_at';
-        $sortDirection = $filters['sort_direction'] ?? 'desc';
-        $query->orderBy($sortBy, $sortDirection);
+        if (!empty($filters['item_type'])) {
+            $query->where('booking_items.item_type', $filters['item_type']);
+        }
 
-        // Paginate
-        $perPage = $filters['per_page'] ?? 15;
+        $isSelfDriven = $this->parseBooleanFilter($filters['is_self_driven'] ?? null);
+        if (!is_null($isSelfDriven)) {
+            $query->where('booking_items.is_self_driven', $isSelfDriven);
+        }
+
+        if (!empty($assignmentStatuses)) {
+            $query->whereHas('booking', function ($bookingQuery) use ($assignmentStatuses) {
+                $bookingQuery->where(function ($assignmentQuery) use ($assignmentStatuses) {
+                    $assignmentQuery->whereHas('vehicleAssignments', function ($vehicleAssignmentQuery) use ($assignmentStatuses) {
+                        $vehicleAssignmentQuery->whereIn('status', $assignmentStatuses);
+                    })->orWhereHas('driverAssignments', function ($driverAssignmentQuery) use ($assignmentStatuses) {
+                        $driverAssignmentQuery->whereIn('status', $assignmentStatuses);
+                    });
+                });
+            });
+        }
+
+        if (!empty($assignmentTypes)) {
+            $query->whereHas('booking', function ($bookingQuery) use ($assignmentTypes) {
+                $bookingQuery->where(function ($assignmentQuery) use ($assignmentTypes) {
+                    $assignmentQuery->whereHas('vehicleAssignments', function ($vehicleAssignmentQuery) use ($assignmentTypes) {
+                        $vehicleAssignmentQuery->whereIn('assignment_type', $assignmentTypes);
+                    })->orWhereHas('driverAssignments', function ($driverAssignmentQuery) use ($assignmentTypes) {
+                        $driverAssignmentQuery->whereIn('assignment_type', $assignmentTypes);
+                    });
+                });
+            });
+        }
+
+        $sortBy = $filters['sort_by'] ?? 'created_at';
+        $sortDirection = strtolower($filters['sort_direction'] ?? $filters['sort_order'] ?? 'desc');
+        if (!in_array($sortDirection, ['asc', 'desc'], true)) {
+            $sortDirection = 'desc';
+        }
+
+        switch ($sortBy) {
+            case 'booking_date':
+                $query->orderBy(
+                    Booking::select('booking_date')
+                        ->whereColumn('bookings.id', 'booking_items.booking_id')
+                        ->limit(1),
+                    $sortDirection
+                );
+                break;
+
+            case 'from_date':
+                $query->orderBy('booking_items.from_date', $sortDirection);
+                break;
+
+            case 'to_date':
+                $query->orderBy('booking_items.to_date', $sortDirection);
+                break;
+
+            case 'total_amount':
+            case 'total_actual':
+                $query->orderBy('booking_items.total_price', $sortDirection);
+                break;
+
+            case 'status':
+                $query->orderBy('booking_items.status', $sortDirection);
+                break;
+
+            case 'booking_status':
+                $query->orderBy(
+                    Booking::select('status')
+                        ->whereColumn('bookings.id', 'booking_items.booking_id')
+                        ->limit(1),
+                    $sortDirection
+                );
+                break;
+
+            case 'priority':
+                $query->orderBy(
+                    Booking::select('approval_priority')
+                        ->whereColumn('bookings.id', 'booking_items.booking_id')
+                        ->limit(1),
+                    $sortDirection
+                );
+                break;
+
+            case 'created_at':
+            default:
+                $query->orderBy('booking_items.created_at', $sortDirection);
+                break;
+        }
+
+        $perPage = max(1, min((int) ($filters['per_page'] ?? 15), 100));
         $paginated = $query->paginate($perPage);
 
+        $listItems = collect($paginated->items())
+            ->map(fn(BookingItem $bookingItem) => $this->mapBookingListItem($bookingItem))
+            ->values()
+            ->all();
+
         return [
-            'bookings' => $paginated->items(),
+            'bookings' => $listItems,
             'pagination' => [
                 'current_page' => $paginated->currentPage(),
                 'per_page' => $paginated->perPage(),
@@ -5755,7 +5906,200 @@ class BookingFlowService
                 'to' => $paginated->lastItem(),
             ],
             'filters_applied' => $filters,
-            'summary' => $this->getBookingsSummary($query)
+            'summary' => $this->getBookingsSummary($query),
+        ];
+    }
+
+    private function normalizeFilterValues($value, array $allowedValues = []): array
+    {
+        if (is_null($value) || $value === '') {
+            return [];
+        }
+
+        $values = is_array($value)
+            ? $value
+            : array_map('trim', explode(',', (string) $value));
+
+        $values = array_values(array_filter($values, fn($item) => !is_null($item) && $item !== ''));
+
+        if (!empty($allowedValues)) {
+            $values = array_values(array_filter(
+                $values,
+                fn($item) => in_array($item, $allowedValues, true)
+            ));
+        }
+
+        return array_values(array_unique($values));
+    }
+
+    private function parseBooleanFilter($value): ?bool
+    {
+        if (is_null($value) || $value === '') {
+            return null;
+        }
+
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if (is_numeric($value)) {
+            return (int) $value === 1;
+        }
+
+        $normalized = strtolower(trim((string) $value));
+        if ($normalized === '') {
+            return null;
+        }
+
+        if (in_array($normalized, ['1', 'true', 'yes', 'on'], true)) {
+            return true;
+        }
+        if (in_array($normalized, ['0', 'false', 'no', 'off'], true)) {
+            return false;
+        }
+
+        return null;
+    }
+
+    private function mapBookingListItem(BookingItem $item): array
+    {
+        $booking = $item->booking;
+        $customer = $booking?->customer;
+        $customerUser = $customer?->user;
+
+        $itemVehicle = $item->vehicle;
+        $itemDriver = $item->driver;
+        $itemDriverUser = $itemDriver?->user;
+        $itemServiceType = $item->serviceType;
+        $itemVehicleGroup = $item->vehicleGroup ?: $itemVehicle?->vehicleGroup;
+
+        $vehicleAssignments = collect($booking?->vehicleAssignments ?? []);
+        $driverAssignments = collect($booking?->driverAssignments ?? []);
+
+        $matchingVehicleAssignments = $item->vehicle_id
+            ? $vehicleAssignments->where('vehicle_id', $item->vehicle_id)
+            : $vehicleAssignments;
+        $matchingDriverAssignments = $item->driver_id
+            ? $driverAssignments->where('driver_id', $item->driver_id)
+            : $driverAssignments;
+
+        if ($matchingVehicleAssignments->isEmpty()) {
+            $matchingVehicleAssignments = $vehicleAssignments;
+        }
+        if ($matchingDriverAssignments->isEmpty()) {
+            $matchingDriverAssignments = $driverAssignments;
+        }
+
+        $vehicleAssignmentRows = $matchingVehicleAssignments
+            ->sortByDesc(fn($assignment) => optional($assignment->created_at)->getTimestamp() ?? 0)
+            ->take(1)
+            ->map(function ($assignment) {
+                return [
+                    'id' => (string) $assignment->id,
+                    'status' => $assignment->status,
+                    'assignment_type' => $assignment->assignment_type,
+                    'overlap_type' => $assignment->overlap_type,
+                    'requires_approval' => (bool) ($assignment->requires_approval ?? false),
+                    'manually_confirmed' => (bool) ($assignment->manually_confirmed ?? false),
+                    'assigned_from' => $assignment->assigned_from,
+                    'assigned_to' => $assignment->assigned_to,
+                ];
+            })
+            ->values()
+            ->toArray();
+
+        $driverAssignmentRows = $matchingDriverAssignments
+            ->sortByDesc(fn($assignment) => optional($assignment->created_at)->getTimestamp() ?? 0)
+            ->take(1)
+            ->map(function ($assignment) {
+                return [
+                    'id' => (string) $assignment->id,
+                    'status' => $assignment->status,
+                    'assignment_type' => $assignment->assignment_type,
+                    'overlap_type' => $assignment->overlap_type,
+                    'requires_approval' => (bool) ($assignment->requires_approval ?? false),
+                    'manually_confirmed' => (bool) ($assignment->manually_confirmed ?? false),
+                    'assigned_from' => $assignment->assigned_from,
+                    'assigned_to' => $assignment->assigned_to,
+                ];
+            })
+            ->values()
+            ->toArray();
+
+        $customerName = trim(($customerUser?->first_name ?? '') . ' ' . ($customerUser?->last_name ?? ''));
+        if ($customerName === '') {
+            $customerName = $customer?->name ?? 'Unknown Customer';
+        }
+
+        $driverName = trim(($itemDriverUser?->first_name ?? '') . ' ' . ($itemDriverUser?->last_name ?? ''));
+        if ($driverName === '') {
+            $driverName = $itemDriver?->name ?? null;
+        }
+
+        $hasConflicts = collect($vehicleAssignmentRows)->contains(fn($assignment) => !empty($assignment['overlap_type']))
+            || collect($driverAssignmentRows)->contains(fn($assignment) => !empty($assignment['overlap_type']));
+
+        return [
+            'id' => (string) $item->id,
+            'booking_id' => (string) $item->booking_id,
+            'booking_number' => $booking?->booking_number,
+            'reference_number' => $booking?->confirmation_number ?? $booking?->invoice_number ?? $booking?->booking_number,
+            'status' => $item->status ?? 'pending',
+            'booking_status' => $booking?->status,
+            'service_type' => $itemServiceType ? [
+                'id' => (string) $itemServiceType->id,
+                'name' => $itemServiceType->name,
+            ] : null,
+            'customer' => [
+                'id' => (string) ($customer?->id ?? ''),
+                'name' => $customerName,
+                'email' => $customerUser?->email,
+                'phone' => $customerUser?->phone,
+                'user' => [
+                    'first_name' => $customerUser?->first_name,
+                    'last_name' => $customerUser?->last_name,
+                    'email' => $customerUser?->email,
+                    'phone' => $customerUser?->phone,
+                ],
+            ],
+            'vehicle' => $itemVehicle ? [
+                'id' => (string) $itemVehicle->id,
+                'name' => $itemVehicle->name ?? $itemVehicle->title,
+                'title' => $itemVehicle->title ?? $itemVehicle->name,
+                'registration_number' => $itemVehicle->registration_number ?? $itemVehicle->license_plate,
+                'license_plate' => $itemVehicle->license_plate,
+                'vehicle_group' => $itemVehicleGroup ? [
+                    'id' => (string) $itemVehicleGroup->id,
+                    'name' => $itemVehicleGroup->name,
+                ] : null,
+            ] : null,
+            'driver' => $itemDriver ? [
+                'id' => (string) $itemDriver->id,
+                'name' => $driverName,
+                'license_number' => $itemDriver->license_number ?? $itemDriver->license_no,
+                'user' => [
+                    'first_name' => $itemDriverUser?->first_name,
+                    'last_name' => $itemDriverUser?->last_name,
+                    'email' => $itemDriverUser?->email,
+                    'phone' => $itemDriverUser?->phone,
+                ],
+            ] : null,
+            'vehicle_assignments' => $vehicleAssignmentRows,
+            'driver_assignments' => $driverAssignmentRows,
+            'from_date' => $item->from_date,
+            'to_date' => $item->to_date,
+            'from_time' => $item->from_time,
+            'to_time' => $item->to_time,
+            'total_amount' => (float) ($item->total_price ?? 0),
+            'booking_total_amount' => (float) ($booking?->total_actual ?? $booking?->total_estimated ?? 0),
+            'currency' => $item->currency ?? 'LKR',
+            'created_at' => $item->created_at ?? $booking?->created_at,
+            'requires_approval' => (bool) ($item->requires_approval ?? false) || (bool) ($booking?->requires_approval ?? false),
+            'booking_requires_approval' => (bool) ($booking?->requires_approval ?? false),
+            'priority' => $booking?->approval_priority ?? 'normal',
+            'item_type' => $item->item_type,
+            'is_self_driven' => (bool) ($item->is_self_driven ?? false),
+            'has_conflicts' => $hasConflicts,
         ];
     }
 
@@ -6693,34 +7037,38 @@ class BookingFlowService
      */
     private function getBookingsSummary($query): array
     {
-        // Create fresh clones for each aggregation to avoid conflicts
-        $totalQuery = clone $query;
-        $avgQuery = clone $query;
+        $baseQuery = clone $query;
+        $baseQuery->reorder();
 
-        // For grouped queries, create clones and remove any ORDER BY clauses
-        $statusQuery = clone $query;
-        $statusQuery->reorder(); // Remove all existing order clauses
+        $totalAmount = (clone $baseQuery)->sum('booking_items.total_price');
+        $averageAmount = (clone $baseQuery)->avg('booking_items.total_price');
 
-        // Get booking IDs from the filtered query
-        $bookingIds = (clone $query)->pluck('id');
+        $statusCounts = (clone $baseQuery)
+            ->selectRaw('booking_items.status, count(*) as count')
+            ->groupBy('booking_items.status')
+            ->pluck('count', 'booking_items.status')
+            ->toArray();
 
-        // Query service type counts from booking_items
-        $serviceTypeCounts = \DB::table('booking_items')
-            ->whereIn('booking_id', $bookingIds)
-            ->whereNotNull('service_type_id')
-            ->groupBy('service_type_id')
-            ->selectRaw('service_type_id, count(DISTINCT booking_id) as count')
-            ->pluck('count', 'service_type_id')
+        $serviceTypeCounts = (clone $baseQuery)
+            ->whereNotNull('booking_items.service_type_id')
+            ->selectRaw('booking_items.service_type_id, count(*) as count')
+            ->groupBy('booking_items.service_type_id')
+            ->pluck('count', 'booking_items.service_type_id')
+            ->toArray();
+
+        $bookingStatusCounts = (clone $baseQuery)
+            ->join('bookings', 'bookings.id', '=', 'booking_items.booking_id')
+            ->selectRaw('bookings.status, count(*) as count')
+            ->groupBy('bookings.status')
+            ->pluck('count', 'bookings.status')
             ->toArray();
 
         return [
-            'total_amount' => $totalQuery->sum('total_actual'),
-            'average_amount' => $avgQuery->avg('total_actual'),
-            'status_counts' => $statusQuery->groupBy('status')
-                ->selectRaw('status, count(*) as count')
-                ->pluck('count', 'status')
-                ->toArray(),
-            'service_type_counts' => $serviceTypeCounts
+            'total_amount' => (float) $totalAmount,
+            'average_amount' => (float) ($averageAmount ?? 0),
+            'status_counts' => $statusCounts,
+            'service_type_counts' => $serviceTypeCounts,
+            'booking_status_counts' => $bookingStatusCounts,
         ];
     }
 

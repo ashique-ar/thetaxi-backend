@@ -1445,21 +1445,31 @@ class BookingFlowController extends Controller
             'page' => 'nullable|integer|min:1',
             'per_page' => 'nullable|integer|min:1|max:100',
             'search' => 'nullable|string|max:255',
-            'status' => 'nullable|string|in:draft,pending_approval,approved,confirmed,allocated,in_progress,completed,cancelled',
+            'status' => 'nullable',
+            'status.*' => 'string|in:draft,pending_approval,approved,confirmed,allocated,in_progress,completed,cancelled',
+            'item_status' => 'nullable',
+            'item_status.*' => 'string|in:pending,confirmed,cancelled,completed',
             'service_type' => 'nullable|string',
             'customer_id' => 'nullable|uuid|exists:customers,id',
             'vehicle_group_id' => 'nullable|uuid|exists:vehicle_groups,id',
             'vehicle_id' => 'nullable|uuid|exists:vehicles,id',
             'driver_id' => 'nullable|uuid|exists:drivers,id',
+            'assignment_status' => 'nullable',
+            'assignment_status.*' => 'string|in:active,pending_approval,approved,completed,cancelled',
+            'assignment_type' => 'nullable',
+            'assignment_type.*' => 'string|in:primary,concurrent,override',
             'date_from' => 'nullable|date',
             'date_to' => 'nullable|date|after_or_equal:date_from',
-            'sort_by' => 'nullable|string|in:created_at,booking_date,from_date,total_actual,status',
+            'sort_by' => 'nullable|string|in:created_at,booking_date,from_date,to_date,total_amount,total_actual,status,booking_status,priority',
             'sort_direction' => 'nullable|string|in:asc,desc',
+            'sort_order' => 'nullable|string|in:asc,desc',
             'requires_approval' => 'nullable|boolean',
             'has_overrides' => 'nullable|boolean',
             'priority' => 'nullable|string|in:normal,high,urgent',
             'assigned_to' => 'nullable|uuid|exists:users,id',
-            'created_by' => 'nullable|uuid|exists:users,id'
+            'created_by' => 'nullable|uuid|exists:users,id',
+            'item_type' => 'nullable|string|max:100',
+            'is_self_driven' => 'nullable|boolean',
         ]);
 
         try {
@@ -2201,4 +2211,3 @@ class BookingFlowController extends Controller
         }
     }
 }
-
