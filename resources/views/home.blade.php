@@ -1,5 +1,4 @@
 @extends('layouts.app')
-
 @push('meta')
 @include('partials.seo')
 @endpush

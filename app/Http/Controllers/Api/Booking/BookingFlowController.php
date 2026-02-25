@@ -40,24 +40,45 @@ class BookingFlowController extends Controller
      */
     public function getAvailableVehicleGroups(Request $request): JsonResponse
     {
-        $request->validate([
+        // Get service type to check if it uses dropoff time
+        $serviceTypeId = $request->input('service_type');
+        $serviceType = \App\Models\Service\ServiceType::find($serviceTypeId);
+        $usesDropoffTime = $serviceType?->uses_dropoff_time ?? true;
+
+        // Build validation rules dynamically
+        $rules = [
             'service_type' => 'required|string',
             'from_date' => 'required|date',
-            'to_date' => 'required|date|after_or_equal:from_date',
             'from_time' => 'required|string',
-            'to_time' => 'required|string',
             'page' => 'nullable|integer|min:1',
             'per_page' => 'nullable|integer|min:1|max:100',
             'search' => 'nullable|string|max:255',
             'category_filter' => 'nullable|string',
             'exclude_booking_id' => 'nullable|string', // For edit mode
             'force_refresh' => 'nullable|boolean', // Control data refresh
-        ]);
+        ];
+
+        // Only require dropoff date/time if service type uses it
+        if ($usesDropoffTime) {
+            $rules['to_date'] = 'required|date|after_or_equal:from_date';
+            $rules['to_time'] = 'required|string';
+        } else {
+            $rules['to_date'] = 'nullable|date|after_or_equal:from_date';
+            $rules['to_time'] = 'nullable|string';
+        }
+
+        $request->validate($rules);
 
         try {
             $params = $request->all();
             $params['page'] = $request->get('page', 1);
             $params['per_page'] = $request->get('per_page', 20);
+
+            // If service doesn't use dropoff time, set to_date = from_date and to_time = from_time
+            if (!$usesDropoffTime) {
+                $params['to_date'] = $params['to_date'] ?? $params['from_date'];
+                $params['to_time'] = $params['to_time'] ?? $params['from_time'];
+            }
 
             $params['pickup_location'] = isset($params['pickup_location'])
                 ? json_decode($params['pickup_location'], true)
@@ -94,25 +115,46 @@ class BookingFlowController extends Controller
      */
     public function getAvailableVehiclesInGroup(Request $request): JsonResponse
     {
-        $request->validate([
+        // Get service type to check if it uses dropoff time
+        $serviceTypeId = $request->input('service_type');
+        $serviceType = \App\Models\Service\ServiceType::find($serviceTypeId);
+        $usesDropoffTime = $serviceType?->uses_dropoff_time ?? true;
+
+        // Build validation rules dynamically
+        $rules = [
             'search_term' => 'nullable|string|min:1',
             'service_type' => 'required|string',
             'from_date' => 'required|date',
-            'to_date' => 'required|date|after_or_equal:from_date',
             'from_time' => 'required|string',
-            'to_time' => 'required|string',
             'include_unavailable' => 'boolean',
             'vehicle_group_id' => 'nullable|string',
             'page' => 'nullable|integer|min:1',
             'per_page' => 'nullable|integer|min:1|max:100',
             'exclude_booking_id' => 'nullable|string',
             'force_refresh' => 'nullable|boolean',
-        ]);
+        ];
+
+        // Only require dropoff date/time if service type uses it
+        if ($usesDropoffTime) {
+            $rules['to_date'] = 'required|date|after_or_equal:from_date';
+            $rules['to_time'] = 'required|string';
+        } else {
+            $rules['to_date'] = 'nullable|date|after_or_equal:from_date';
+            $rules['to_time'] = 'nullable|string';
+        }
+
+        $request->validate($rules);
 
         try {
             $params = $request->all();
             $params['page'] = $request->get('page', 1);
             $params['per_page'] = $request->get('per_page', 20);
+
+            // If service doesn't use dropoff time, set to_date = from_date and to_time = from_time
+            if (!$usesDropoffTime) {
+                $params['to_date'] = $params['to_date'] ?? $params['from_date'];
+                $params['to_time'] = $params['to_time'] ?? $params['from_time'];
+            }
 
             $vehicles = $this->bookingFlowService->searchSpecificVehicles($params);
 
@@ -138,24 +180,46 @@ class BookingFlowController extends Controller
      */
     public function getAvailableDrivers(Request $request): JsonResponse
     {
-        $request->validate([
+        // Get service type to check if it uses dropoff time
+        $serviceTypeId = $request->input('service_type');
+        $serviceType = \App\Models\Service\ServiceType::find($serviceTypeId);
+        $usesDropoffTime = $serviceType?->uses_dropoff_time ?? true;
+
+        // Build validation rules dynamically
+        $rules = [
             'search_term' => 'nullable|string|min:1',
+            'service_type' => 'nullable|string',
             'from_date' => 'required|date',
-            'to_date' => 'required|date|after_or_equal:from_date',
             'from_time' => 'required|string',
-            'to_time' => 'required|string',
             'vehicle_group_id' => 'nullable|uuid|exists:vehicle_groups,id',
             'include_unavailable' => 'boolean',
             'page' => 'nullable|integer|min:1',
             'per_page' => 'nullable|integer|min:1|max:100',
             'exclude_booking_id' => 'nullable|string',
             'force_refresh' => 'nullable|boolean',
-        ]);
+        ];
+
+        // Only require dropoff date/time if service type uses it
+        if ($usesDropoffTime) {
+            $rules['to_date'] = 'required|date|after_or_equal:from_date';
+            $rules['to_time'] = 'required|string';
+        } else {
+            $rules['to_date'] = 'nullable|date|after_or_equal:from_date';
+            $rules['to_time'] = 'nullable|string';
+        }
+
+        $request->validate($rules);
 
         try {
             $params = $request->all();
             $params['page'] = $request->get('page', 1);
             $params['per_page'] = $request->get('per_page', 20);
+
+            // If service doesn't use dropoff time, set to_date = from_date and to_time = from_time
+            if (!$usesDropoffTime) {
+                $params['to_date'] = $params['to_date'] ?? $params['from_date'];
+                $params['to_time'] = $params['to_time'] ?? $params['from_time'];
+            }
 
             $drivers = $this->bookingFlowService->searchSpecificDrivers($params);
 
@@ -184,9 +248,9 @@ class BookingFlowController extends Controller
         $request->validate([
             'service_type' => 'required|string',
             'from_date' => 'required|date',
-            'to_date' => 'required|date|after_or_equal:from_date',
+            'to_date' => 'nullable|date',
             'from_time' => 'required|string',
-            'to_time' => 'required|string',
+            'to_time' => 'nullable|string',
         ]);
 
         try {
@@ -215,9 +279,9 @@ class BookingFlowController extends Controller
         $request->validate([
             'vehicle_group_id' => 'required|uuid|exists:vehicle_groups,id',
             'from_date' => 'required|date',
-            'to_date' => 'required|date|after_or_equal:from_date',
+            'to_date' => 'nullable|date',
             'from_time' => 'required|string',
-            'to_time' => 'required|string',
+            'to_time' => 'nullable|string',
         ]);
 
         try {
@@ -246,7 +310,13 @@ class BookingFlowController extends Controller
     public function calculatePricing(Request $request): JsonResponse
     {
         try {
-            $request->validate([
+            // Get service type to check if it uses dropoff time
+            $serviceTypeId = $request->input('service_type');
+            $serviceType = \App\Models\Service\ServiceType::find($serviceTypeId);
+            $usesDropoffTime = $serviceType?->uses_dropoff_time ?? true;
+
+            // Build validation rules dynamically
+            $rules = [
                 'customer_id' => 'nullable|string',
                 'service_type' => 'required|string',
 
@@ -270,7 +340,6 @@ class BookingFlowController extends Controller
                 'booking_items' => 'sometimes|array',
 
                 'from_date' => 'required|date',
-                'to_date' => 'required|date|after_or_equal:from_date',
                 
                 // Relaxed validation to support multi-trip (booking_items) where top-level location is optional
                 'pickup_location' => 'sometimes|array',
@@ -310,9 +379,24 @@ class BookingFlowController extends Controller
                 'preserve_custom_addon_prices' => 'sometimes|boolean',
                 'force_recalculation' => 'sometimes|boolean',
                 'applied_discounts' => 'sometimes|array', // Include applied discounts
-            ]);
+            ];
 
-            $result = $this->bookingFlowService->calculatePricing($request->all());
+            // Only require to_date if service type uses dropoff time
+            if ($usesDropoffTime) {
+                $rules['to_date'] = 'required|date|after_or_equal:from_date';
+            } else {
+                $rules['to_date'] = 'nullable|date|after_or_equal:from_date';
+            }
+
+            $request->validate($rules);
+
+            // If service doesn't use dropoff time, set to_date = from_date
+            $params = $request->all();
+            if (!$usesDropoffTime && empty($params['to_date'])) {
+                $params['to_date'] = $params['from_date'];
+            }
+
+            $result = $this->bookingFlowService->calculatePricing($params);
 
             return response()->json([
                 'success' => true,
@@ -392,9 +476,9 @@ class BookingFlowController extends Controller
             'vehicle_driver_assignments.*.driver_id' => 'nullable|string',
 
             'from_date' => 'required|date',
-            'to_date' => 'required|date|after_or_equal:from_date',
+            'to_date' => 'nullable|date',
             'from_time' => 'required|string',
-            'to_time' => 'required|string',
+            'to_time' => 'nullable|string',
             'pickup_location' => 'required|array',
             'pickup_location.latitude' => 'required|numeric',
             'pickup_location.longitude' => 'required|numeric',
@@ -468,9 +552,9 @@ class BookingFlowController extends Controller
             'vehicle_driver_assignments.*.driver_id' => 'nullable|string',
 
             'from_date' => 'required|date',
-            'to_date' => 'required|date|after_or_equal:from_date',
+            'to_date' => 'nullable|date',
             'from_time' => 'required|string',
-            'to_time' => 'required|string',
+            'to_time' => 'nullable|string',
             'pickup_location' => 'required|array',
             'pickup_location.latitude' => 'required|numeric',
             'pickup_location.longitude' => 'required|numeric',
@@ -547,9 +631,9 @@ class BookingFlowController extends Controller
                 'booking_items' => 'sometimes|array',
 
                 'from_date' => 'required|date',
-                'to_date' => 'required|date|after_or_equal:from_date',
+                'to_date' => 'nullable|date',
                 'from_time' => 'required|string',
-                'to_time' => 'required|string',
+                'to_time' => 'nullable|string',
                 
                 'pickup_location' => 'required|array',
                 'pickup_location.latitude' => 'required|numeric',
