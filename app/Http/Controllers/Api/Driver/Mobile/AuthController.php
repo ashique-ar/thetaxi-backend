@@ -7,6 +7,8 @@ use App\Http\Requests\Driver\Mobile\DriverLoginRequest;
 use App\Http\Resources\Driver\DriverResource;
 use App\Http\Resources\Driver\DriverDeviceResource;
 use App\Http\Resources\UserResource;
+use App\Enums\TripPhase;
+use App\Models\DriverAssignment;
 use App\Services\Driver\DriverAuthService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -51,6 +53,17 @@ class AuthController extends Controller
             // Clear rate limit on successful login
             $request->clearRateLimit();
 
+            // Get current active assignment and trip phase for the driver
+            $driver = $result['driver'];
+            $activeAssignment = DriverAssignment::where('driver_id', $driver->id)
+                ->whereIn('trip_phase', [
+                    TripPhase::ACCEPTED,
+                    TripPhase::PICKUP_ARRIVED,
+                    TripPhase::IN_PROGRESS,
+                ])
+                ->with(['booking', 'bookingItem'])
+                ->first();
+
             return response()->json([
                 'status' => 'success',
                 'message' => 'Login successful',
@@ -58,7 +71,9 @@ class AuthController extends Controller
                     'user' => new UserResource($result['user']),
                     'driver' => new DriverResource($result['driver']),
                     'device' => isset($result['device']) ? new DriverDeviceResource($result['device']) : null,
-                    'token' => $result['tokens']
+                    'token' => $result['tokens'],
+                    'current_assignment' => $activeAssignment,
+                    'trip_phase' => $activeAssignment?->trip_phase?->value,
                 ]
             ]);
         } catch (ValidationException $e) {
@@ -132,11 +147,21 @@ class AuthController extends Controller
             // Load relationships for the driver
             $driver->load(['user', 'country', 'state', 'licenseType']);
 
+            // Compute assignment statistics
+            $assignmentStats = [
+                'total_assignments' => DriverAssignment::where('driver_id', $driver->id)->count(),
+                'active_assignments' => DriverAssignment::where('driver_id', $driver->id)
+                    ->where('status', 'active')->count(),
+                'completed_assignments' => DriverAssignment::where('driver_id', $driver->id)
+                    ->where('trip_phase', TripPhase::COMPLETED)->count(),
+            ];
+
             return response()->json([
                 'status' => 'success',
                 'data' => [
                     'user' => new UserResource($user),
                     'driver' => new DriverResource($driver),
+                    'assignment_statistics' => $assignmentStats,
                 ]
             ]);
         } catch (\Exception $e) {

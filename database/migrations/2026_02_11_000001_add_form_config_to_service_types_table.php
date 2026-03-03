@@ -11,9 +11,9 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('service_types', function (Blueprint $table) {
-            $table->json('form_config')->nullable()->after('allow_multiple_dropoff_locations');
-        });
+        // Schema::table('service_types', function (Blueprint $table) {
+        //     $table->json('form_config')->nullable()->after('allow_multiple_dropoff_locations');
+        // });
     }
 
     /**

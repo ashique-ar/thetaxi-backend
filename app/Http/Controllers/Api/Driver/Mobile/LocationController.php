@@ -64,13 +64,21 @@ class LocationController extends Controller
                 'data' => new RoutePointResource($routePoint)
             ]);
         } catch (\Exception $e) {
-            // Check if it's a "No active session" error
+            // Check for specific error types
             if ($e->getMessage() === 'No active session') {
                 return response()->json([
                     'status' => 'error',
                     'message' => 'No active session',
                     'error_code' => 'LOCATION_NO_SESSION'
                 ], 400);
+            }
+
+            if ($e->getMessage() === 'LOCATION_RATE_LIMITED') {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Location updates must be at least 10 seconds apart',
+                    'error_code' => 'LOCATION_RATE_LIMITED'
+                ], 429);
             }
 
             return response()->json([

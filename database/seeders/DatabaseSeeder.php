@@ -16,10 +16,11 @@ class DatabaseSeeder extends Seeder
         $this->call([
                 // Basic/core seeders (uncomment as needed)
                 // RolesAndPermissionsSeeder::class,
+                // CorporatePermissionsSeeder::class,
                 // AdminUserSeeder::class,
 
                 // Service type defaults for frontend behavior and duration handling
-            ServiceTypeDefaultsSeeder::class,
+            // ServiceTypeDefaultsSeeder::class,
 
             // Admin/other seeders can remain commented; enable as needed for local dev
             // CountrySeeder::class,

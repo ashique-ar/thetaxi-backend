@@ -10,7 +10,7 @@ This document provides comprehensive API documentation for the TheTaxi Driver Mo
 
 **Authentication:** Laravel Sanctum (Token-based)
 
-**Last Updated:** February 9, 2026
+**Last Updated:** February 25, 2026
 
 ## Postman Collection
 
@@ -32,11 +32,12 @@ The collection includes automatic token management and pre-configured requests f
 4. [Location Tracking](#4-location-tracking)
 5. [Sessions](#5-sessions)
 6. [Device Management](#6-device-management)
-7. [Assignments](#7-assignments-placeholder)
-8. [Public/Meter API](#8-publicmeter-api)
-9. [Error Handling](#9-error-handling)
-10. [Data Models](#10-data-models)
-11. [Best Practices](#11-best-practices)
+7. [Booking Assignments](#7-booking-assignments)
+8. [Trip Tracking](#8-trip-tracking)
+9. [Public/Meter API](#9-publicmeter-api)
+10. [Error Handling](#10-error-handling)
+11. [Data Models](#11-data-models)
+12. [Best Practices](#12-best-practices)
 
 ---
 
@@ -152,10 +153,29 @@ Authenticate a driver and receive a Sanctum token.
             "platform": "ios",
             "is_active": true,
             "registered_at": "2026-02-04T10:00:00Z"
-        }
+        },
+        "current_assignment": {
+            "id": "assignment-uuid",
+            "driver_id": "driver-uuid",
+            "booking_id": "booking-uuid",
+            "status": "active",
+            "trip_phase": "accepted",
+            "booking": {
+                "id": "booking-uuid",
+                "booking_number": "BK-2026-0001"
+            },
+            "booking_item": {
+                "id": "item-uuid",
+                "pickup_location": "Colombo Airport",
+                "dropoff_location": "Hilton Colombo"
+            }
+        },
+        "trip_phase": "accepted"
     }
 }
 ```
+
+> **Note:** `current_assignment` is the driver's active DriverAssignment (in accepted/pickup_arrived/in_progress trip phase) with booking and booking_item details. Returns `null` if no active assignment exists. `trip_phase` is the current trip lifecycle phase string, or `null`.
 
 **Error Responses:**
 
@@ -289,10 +309,17 @@ Retrieve the authenticated driver's profile information.
             "rating": 4.8,
             "total_trips": 150,
             "total_distance": 5420.5
+        },
+        "assignment_statistics": {
+            "total_assignments": 25,
+            "active_assignments": 2,
+            "completed_assignments": 20
         }
     }
 }
 ```
+
+> **Note:** `assignment_statistics` provides counts of the driver's total, active, and completed booking assignments.
 
 ---
 
@@ -336,20 +363,40 @@ Set the driver's status to online and start a new session.
     "status": "success",
     "message": "Driver is now online",
     "data": {
-        "id": "session-uuid-here",
-        "driver_id": "driver-uuid-here",
-        "device_uuid": "550e8400-e29b-41d4-a716-446655440000",
-        "status": "active",
-        "start_time": "2026-02-04T10:30:00Z",
-        "start_latitude": 6.9271,
-        "start_longitude": 79.8612,
-        "end_time": null,
-        "end_latitude": null,
-        "end_longitude": null,
-        "total_distance_km": null
+        "session": {
+            "id": "session-uuid-here",
+            "driver_id": "driver-uuid-here",
+            "device_uuid": "550e8400-e29b-41d4-a716-446655440000",
+            "status": "active",
+            "start_time": "2026-02-04T10:30:00Z",
+            "start_latitude": 6.9271,
+            "start_longitude": 79.8612,
+            "end_time": null,
+            "end_latitude": null,
+            "end_longitude": null,
+            "total_distance_km": null
+        },
+        "pending_assignments": [
+            {
+                "id": "assignment-uuid",
+                "status": "active",
+                "trip_phase": "active",
+                "booking": {
+                    "id": "booking-uuid",
+                    "booking_number": "BK-2026-0001"
+                },
+                "booking_item": {
+                    "id": "item-uuid",
+                    "pickup_location": "Colombo Airport",
+                    "dropoff_location": "Hilton Colombo"
+                }
+            }
+        ]
     }
 }
 ```
+
+> **Note:** `pending_assignments` is an array of DriverAssignments in active/pending_approval status. Empty array if no pending assignments exist.
 
 **Error Responses:**
 
@@ -391,20 +438,27 @@ Set the driver's status to offline and close the active session.
     "status": "success",
     "message": "Driver is now offline",
     "data": {
-        "id": "session-uuid-here",
-        "driver_id": "driver-uuid-here",
-        "device_uuid": "550e8400-e29b-41d4-a716-446655440000",
-        "status": "completed",
-        "start_time": "2026-02-04T10:30:00Z",
-        "start_latitude": 6.9271,
-        "start_longitude": 79.8612,
-        "end_time": "2026-02-04T14:45:00Z",
-        "end_latitude": 6.9350,
-        "end_longitude": 79.8500,
-        "total_distance_km": 45.67
+        "session": {
+            "id": "session-uuid-here",
+            "driver_id": "driver-uuid-here",
+            "device_uuid": "550e8400-e29b-41d4-a716-446655440000",
+            "status": "completed",
+            "start_time": "2026-02-04T10:30:00Z",
+            "start_latitude": 6.9271,
+            "start_longitude": 79.8612,
+            "end_time": "2026-02-04T14:45:00Z",
+            "end_latitude": 6.9350,
+            "end_longitude": 79.8500,
+            "total_distance_km": 45.67
+        }
     }
 }
 ```
+
+> **Note:** If a trip tracking session is active when going offline, the trip remains active and the response includes additional fields:
+> - `trip_warning`: Warning message that the trip is still in progress
+> - `active_trip`: Object with `assignment_id` and `trip_phase` of the active trip
+> - `message` will include the warning text
 
 **Error Responses:**
 
@@ -468,10 +522,14 @@ Send a heartbeat signal to indicate the driver is still active. This prevents au
     "message": "Heartbeat received",
     "data": {
         "last_active_at": "2026-02-04T10:35:00Z",
-        "is_online": true
+        "is_online": true,
+        "trip_phase": "in_progress",
+        "assignment_id": "assignment-uuid"
     }
 }
 ```
+
+> **Note:** `trip_phase` and `assignment_id` are only included when a trip tracking session is active (assignment in accepted/pickup_arrived/in_progress phase). When no trip is active, these fields are absent from the response.
 
 **Important Notes:**
 - If no heartbeat is received for 10 minutes (configurable), the driver will be automatically marked offline
@@ -946,13 +1004,11 @@ Remove a device from the driver's account.
 
 ---
 
-## 7. Assignments
-
-These endpoints are placeholders for future assignment/dispatch functionality.
+## 7. Booking Assignments
 
 ### 7.1 List Assignments
 
-Retrieve list of driver assignments.
+Retrieve a paginated list of booking assignments for the authenticated driver.
 
 **Endpoint:** `GET /api/driver/assignments`
 
@@ -964,31 +1020,80 @@ Retrieve list of driver assignments.
 |-----------|------|---------|-------------|
 | page | integer | 1 | Page number |
 | per_page | integer | 15 | Items per page (max 100) |
-| status | string | null | Filter by status (future implementation) |
+| status | string | null | Filter by status: `active`, `completed`, `pending_approval`, `cancelled` |
 
 **Success Response (200):**
 
 ```json
 {
     "status": "success",
-    "data": [],
+    "data": [
+        {
+            "id": "assignment-uuid",
+            "driver_id": "driver-uuid",
+            "booking_id": "booking-uuid",
+            "status": "active",
+            "trip_phase": "accepted",
+            "assigned_from": "2026-03-01T08:00:00Z",
+            "assigned_to": "2026-03-01T18:00:00Z",
+            "booking": {
+                "id": "booking-uuid",
+                "booking_number": "BK-2026-0001",
+                "customer_name": "Customer Name"
+            },
+            "booking_item": {
+                "id": "item-uuid",
+                "service_type_id": "service-uuid",
+                "pickup_location": "Colombo Airport",
+                "dropoff_location": "Hilton Colombo",
+                "pickup_latitude": 7.1808,
+                "pickup_longitude": 79.8841,
+                "dropoff_latitude": 6.9344,
+                "dropoff_longitude": 79.8428,
+                "from_date": "2026-03-01",
+                "from_time": "08:00",
+                "to_date": "2026-03-01",
+                "to_time": "18:00"
+            },
+            "vehicle": {
+                "id": "vehicle-uuid",
+                "license_plate": "CAB-1234",
+                "make": "Toyota",
+                "model": "Prius",
+                "vehicle_group": "Sedan",
+                "fuel_type": "Hybrid",
+                "transmission": "Automatic",
+                "owner_type": "company",
+                "owner_name": "TheTaxi Fleet"
+            },
+            "dispatch": {
+                "dispatch_status": "dispatched",
+                "dispatched_at": "2026-03-01T07:30:00Z",
+                "fuel_level_out": 85.0,
+                "mileage_out": 45230
+            }
+        }
+    ],
     "meta": {
         "current_page": 1,
         "last_page": 1,
         "per_page": 15,
-        "total": 0
-    },
-    "message": "Assignment feature coming soon"
+        "total": 1
+    }
 }
 ```
 
-**Note:** This endpoint is a placeholder for future dispatch/assignment functionality.
+**Notes:**
+- Each assignment includes the associated Booking, BookingItem, Vehicle (with owner info), and Dispatch details
+- Vehicle `owner_type` is either `"driver"` (individual) or `"company"`, with the corresponding `owner_name`
+- If no Vehicle is assigned, the `vehicle` field is `null`
+- If no Dispatch record exists, the `dispatch` field is `null`
 
 ---
 
 ### 7.2 Get Current Assignment
 
-Get the current active assignment.
+Get the current active assignment for the authenticated driver.
 
 **Endpoint:** `GET /api/driver/assignments/current`
 
@@ -999,16 +1104,393 @@ Get the current active assignment.
 ```json
 {
     "status": "success",
-    "data": null,
-    "message": "No active assignment"
+    "data": {
+        "id": "assignment-uuid",
+        "driver_id": "driver-uuid",
+        "booking_id": "booking-uuid",
+        "status": "active",
+        "trip_phase": "active",
+        "assigned_from": "2026-03-01T08:00:00Z",
+        "assigned_to": "2026-03-01T18:00:00Z",
+        "booking": {
+            "id": "booking-uuid",
+            "booking_number": "BK-2026-0001"
+        },
+        "booking_item": {
+            "id": "item-uuid",
+            "pickup_location": "Colombo Airport",
+            "dropoff_location": "Hilton Colombo"
+        }
+    }
 }
 ```
 
-**Note:** This endpoint is a placeholder for future dispatch/assignment functionality.
+**No Active Assignment Response (200):**
+
+```json
+{
+    "status": "success",
+    "data": null
+}
+```
 
 ---
 
-## 8. Public/Meter API (Future Implementation)
+### 7.3 Accept Assignment
+
+Accept a booking assignment and initiate trip tracking.
+
+**Endpoint:** `POST /api/driver/assignments/{id}/accept`
+
+**Authentication:** Required
+
+**Path Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| id | string (UUID) | The assignment's unique identifier |
+
+**Request Body:** Empty (`{}`)
+
+**Success Response (200):**
+
+```json
+{
+    "status": "success",
+    "message": "Assignment accepted",
+    "data": {
+        "id": "assignment-uuid",
+        "driver_id": "driver-uuid",
+        "booking_id": "booking-uuid",
+        "status": "confirmed",
+        "trip_phase": "accepted",
+        "confirmed_at": "2026-03-01T08:05:00Z",
+        "confirmed_by": "user-uuid"
+    }
+}
+```
+
+**Error Responses:**
+
+| Status | Error Code | Description |
+|--------|------------|-------------|
+| 400 | ASSIGNMENT_INVALID_STATE | Assignment is not in active/pending_approval status |
+| 400 | ASSIGNMENT_ALREADY_CONFIRMED | Assignment has already been confirmed |
+| 404 | ASSIGNMENT_NOT_FOUND | Assignment not found or doesn't belong to driver |
+
+**Important Notes:**
+- Accepting sets the assignment status to "confirmed" and trip_phase to "accepted"
+- A Trip Tracking Session is initiated, linking the active DriverSession to the assignment
+- All subsequent location updates (RoutePoints) will be linked to this assignment
+
+---
+
+### 7.4 Decline Assignment
+
+Decline a booking assignment with a reason.
+
+**Endpoint:** `POST /api/driver/assignments/{id}/decline`
+
+**Authentication:** Required
+
+**Path Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| id | string (UUID) | The assignment's unique identifier |
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| decline_reason | string | Yes | Reason for declining (max 1000 characters) |
+
+**Example Request:**
+
+```json
+{
+    "decline_reason": "Vehicle not available at the scheduled time"
+}
+```
+
+**Success Response (200):**
+
+```json
+{
+    "status": "success",
+    "message": "Assignment declined",
+    "data": {
+        "id": "assignment-uuid",
+        "driver_id": "driver-uuid",
+        "booking_id": "booking-uuid",
+        "status": "declined",
+        "trip_phase": "declined",
+        "decline_reason": "Vehicle not available at the scheduled time"
+    }
+}
+```
+
+**Error Responses:**
+
+| Status | Error Code | Description |
+|--------|------------|-------------|
+| 400 | ASSIGNMENT_INVALID_STATE | Assignment is not in active/pending_approval status |
+| 404 | ASSIGNMENT_NOT_FOUND | Assignment not found or doesn't belong to driver |
+| 422 | VALIDATION_ERROR | Missing or invalid decline_reason |
+
+---
+
+## 8. Trip Tracking
+
+### 8.1 Get Trip Status
+
+Get the current trip status including phase, pickup location, distance, waiting time, and route point count.
+
+**Endpoint:** `GET /api/driver/trip/status`
+
+**Authentication:** Required
+
+**Success Response (200):**
+
+```json
+{
+    "status": "success",
+    "data": {
+        "assignment_id": "assignment-uuid",
+        "booking_id": "booking-uuid",
+        "trip_phase": "in_progress",
+        "pickup_location": {
+            "latitude": 7.1808,
+            "longitude": 79.8841,
+            "landmark": "Colombo Airport"
+        },
+        "pickup_arrival": {
+            "arrived_at": "2026-03-01T08:15:00Z",
+            "latitude": 7.1810,
+            "longitude": 79.8839
+        },
+        "trip_started_at": "2026-03-01T08:20:00Z",
+        "estimated_distance_to_pickup_km": null,
+        "near_pickup": false,
+        "cumulative_distance_km": 12.5,
+        "total_waiting_time_seconds": 300,
+        "waiting_period_count": 1,
+        "route_point_count": 75
+    }
+}
+```
+
+**No Active Trip Response (200):**
+
+```json
+{
+    "status": "success",
+    "data": null
+}
+```
+
+**Notes:**
+- Active trip = assignment in accepted, pickup_arrived, or in_progress phase
+- `estimated_distance_to_pickup_km` is calculated during "accepted" phase, null otherwise
+- `near_pickup` is true when driver is within 200 meters of the pickup location
+- `pickup_arrival` is null until the driver confirms arrival
+- `trip_started_at` is null until the trip starts
+- Waiting time is automatically detected during "in_progress" phase (no manual action needed)
+
+---
+
+### 8.2 Confirm Pickup Arrival
+
+Confirm arrival at the pickup location.
+
+**Endpoint:** `POST /api/driver/trip/pickup-arrived`
+
+**Authentication:** Required
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| latitude | number | Yes | Arrival latitude (-90 to 90) |
+| longitude | number | Yes | Arrival longitude (-180 to 180) |
+
+**Example Request:**
+
+```json
+{
+    "latitude": 7.1810,
+    "longitude": 79.8839
+}
+```
+
+**Success Response (200):**
+
+```json
+{
+    "status": "success",
+    "message": "Pickup arrival confirmed",
+    "data": {
+        "assignment_id": "assignment-uuid",
+        "booking_id": "booking-uuid",
+        "trip_phase": "pickup_arrived",
+        "pickup_location": {
+            "latitude": 7.1808,
+            "longitude": 79.8841,
+            "landmark": "Colombo Airport"
+        },
+        "pickup_arrival": {
+            "arrived_at": "2026-03-01T08:15:00Z",
+            "latitude": 7.1810,
+            "longitude": 79.8839
+        },
+        "trip_started_at": null,
+        "estimated_distance_to_pickup_km": null,
+        "near_pickup": true,
+        "cumulative_distance_km": 0,
+        "total_waiting_time_seconds": 0,
+        "waiting_period_count": 0,
+        "route_point_count": 15
+    }
+}
+```
+
+**Error Responses:**
+
+| Status | Error Code | Description |
+|--------|------------|-------------|
+| 400 | TRIP_NO_ACTIVE_SESSION | No active trip found |
+| 400 | ASSIGNMENT_INVALID_STATE | Trip is not in "accepted" phase |
+| 422 | VALIDATION_ERROR | Invalid coordinates |
+
+**Important Notes:**
+- Transitions trip phase from "accepted" to "pickup_arrived"
+- The arrival coordinates are stored separately from the BookingItem's planned pickup location
+- Records the actual arrival timestamp
+
+---
+
+### 8.3 Start Trip
+
+Start the trip after confirming pickup arrival.
+
+**Endpoint:** `POST /api/driver/trip/start`
+
+**Authentication:** Required
+
+**Request Body:** Empty (`{}`)
+
+**Success Response (200):**
+
+```json
+{
+    "status": "success",
+    "message": "Trip started",
+    "data": {
+        "assignment_id": "assignment-uuid",
+        "booking_id": "booking-uuid",
+        "trip_phase": "in_progress",
+        "pickup_location": {
+            "latitude": 7.1808,
+            "longitude": 79.8841,
+            "landmark": "Colombo Airport"
+        },
+        "pickup_arrival": {
+            "arrived_at": "2026-03-01T08:15:00Z",
+            "latitude": 7.1810,
+            "longitude": 79.8839
+        },
+        "trip_started_at": "2026-03-01T08:20:00Z",
+        "estimated_distance_to_pickup_km": null,
+        "near_pickup": false,
+        "cumulative_distance_km": 0,
+        "total_waiting_time_seconds": 0,
+        "waiting_period_count": 0,
+        "route_point_count": 18
+    }
+}
+```
+
+**Error Responses:**
+
+| Status | Error Code | Description |
+|--------|------------|-------------|
+| 400 | TRIP_NO_ACTIVE_SESSION | No active trip found |
+| 400 | TRIP_PICKUP_NOT_CONFIRMED | Pickup arrival must be confirmed first |
+
+**Important Notes:**
+- Transitions trip phase from "pickup_arrived" to "in_progress"
+- Records the trip start timestamp
+- Waiting time detection begins automatically during "in_progress" phase
+
+---
+
+### 8.4 End Trip
+
+End the trip and receive a trip summary.
+
+**Endpoint:** `POST /api/driver/trip/end`
+
+**Authentication:** Required
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| latitude | number | Yes | Final dropoff latitude (-90 to 90) |
+| longitude | number | Yes | Final dropoff longitude (-180 to 180) |
+
+**Example Request:**
+
+```json
+{
+    "latitude": 6.9344,
+    "longitude": 79.8428
+}
+```
+
+**Success Response (200):**
+
+```json
+{
+    "status": "success",
+    "message": "Trip completed",
+    "data": {
+        "assignment_id": "assignment-uuid",
+        "total_distance_km": 45.2,
+        "total_duration_minutes": 95,
+        "total_waiting_time_seconds": 600,
+        "waiting_period_count": 2,
+        "pickup_coordinates": {
+            "latitude": 7.1810,
+            "longitude": 79.8839
+        },
+        "dropoff_coordinates": {
+            "latitude": 6.9344,
+            "longitude": 79.8428
+        },
+        "route_point_count": 570
+    }
+}
+```
+
+**Error Responses:**
+
+| Status | Error Code | Description |
+|--------|------------|-------------|
+| 400 | TRIP_NO_ACTIVE_SESSION | No active trip found |
+| 400 | TRIP_NOT_IN_PROGRESS | Trip is not in "in_progress" phase |
+| 422 | VALIDATION_ERROR | Invalid coordinates |
+
+**Important Notes:**
+- Transitions trip phase to "completed"
+- Records final location, timestamp, and total trip distance
+- Closes all open waiting time records and calculates final totals
+- Disassociates the Trip Tracking Session, allowing the driver to accept new assignments
+- Returns a comprehensive trip summary
+
+---
+
+## 9. Public/Meter API (Future Implementation)
 
 These endpoints are planned for guest users (meter functionality) and will require a Device UUID header instead of authentication.
 
@@ -1027,7 +1509,7 @@ X-Device-UUID: {device_uuid}
 
 ---
 
-## 9. Error Handling
+## 10. Error Handling
 
 ### Standard Error Response Format
 
@@ -1059,23 +1541,30 @@ All error responses follow this format:
 
 ### Common Error Codes
 
-| Error Code | Description |
-|------------|-------------|
-| AUTH_INVALID_CREDENTIALS | Invalid email or password |
-| AUTH_TOKEN_EXPIRED | Token has expired - use refresh token |
-| AUTH_TOKEN_REVOKED | Token has been revoked - login required |
-| AUTH_REFRESH_FAILED | Refresh token is invalid or expired |
-| AUTH_NOT_DRIVER | User is not registered as a driver |
-| STATUS_ALREADY_ONLINE | Driver is already online |
-| STATUS_NOT_ONLINE | Driver is not currently online |
-| LOCATION_NO_SESSION | No active session for location update |
-| SESSION_NOT_FOUND | Session not found |
-| DEVICE_UUID_REQUIRED | Missing Device UUID header |
-| VALIDATION_ERROR | Request validation failed |
+| Error Code | HTTP Status | Description |
+|------------|-------------|-------------|
+| AUTH_INVALID_CREDENTIALS | 401 | Invalid email or password |
+| AUTH_TOKEN_EXPIRED | 401 | Token has expired - use refresh token |
+| AUTH_TOKEN_REVOKED | 401 | Token has been revoked - login required |
+| AUTH_REFRESH_FAILED | 401 | Refresh token is invalid or expired |
+| AUTH_NOT_DRIVER | 403 | User is not registered as a driver |
+| STATUS_ALREADY_ONLINE | 400 | Driver is already online |
+| STATUS_NOT_ONLINE | 400 | Driver is not currently online |
+| LOCATION_NO_SESSION | 400 | No active session for location update |
+| SESSION_NOT_FOUND | 404 | Session not found |
+| DEVICE_UUID_REQUIRED | 400 | Missing Device UUID header |
+| VALIDATION_ERROR | 422 | Request validation failed |
+| ASSIGNMENT_INVALID_STATE | 400 | Assignment is not in a valid state for the requested operation (accept/decline requires active or pending_approval status) |
+| ASSIGNMENT_ALREADY_CONFIRMED | 400 | Assignment has already been confirmed by the driver |
+| ASSIGNMENT_NOT_FOUND | 404 | Assignment not found or doesn't belong to the authenticated driver |
+| TRIP_NO_ACTIVE_SESSION | 400 | No active trip tracking session found for the driver |
+| TRIP_PICKUP_NOT_CONFIRMED | 400 | Cannot start trip — pickup arrival must be confirmed first (trip phase must be pickup_arrived) |
+| TRIP_NOT_IN_PROGRESS | 400 | Cannot end trip — trip is not in the in_progress phase |
+| LOCATION_RATE_LIMITED | 429 | Location update sent faster than the 10-second minimum interval |
 
 ---
 
-## 10. Data Models
+## 11. Data Models
 
 ### User Object
 
@@ -1181,7 +1670,7 @@ interface DriverDevice {
 
 ---
 
-## 11. Best Practices
+## 12. Best Practices
 
 ### Device UUID Generation
 

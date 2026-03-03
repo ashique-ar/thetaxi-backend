@@ -2,9 +2,11 @@
 
 namespace App\Services\Driver;
 
+use App\Enums\TripPhase;
 use App\Models\Driver\Driver;
 use App\Models\Driver\DriverSession;
 use App\Models\Driver\RoutePoint;
+use App\Models\DriverAssignment;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -12,12 +14,18 @@ use Illuminate\Support\Facades\DB;
  * Location Service
  * 
  * Handles driver location updates, creating route points for tracking,
- * and updating driver coordinates.
+ * and updating driver coordinates. Extended to support assignment-aware
+ * route points and waiting time detection during active trips.
  * 
- * @see Requirements 6.2, 6.3, 6.4, 6.5, 6.6
+ * @see Requirements 4.1, 4.2, 4.4, 4.5, 6.2, 6.3, 6.4, 6.5, 6.6
  */
 class LocationService
 {
+    private const MIN_UPDATE_INTERVAL_SECONDS = 10;
+
+    public function __construct(
+        private ?WaitingTimeService $waitingTimeService = null
+    ) {}
     /**
      * Update a driver's location and create a route point.
      * 
@@ -44,12 +52,28 @@ class LocationService
             throw new \Exception('No active session');
         }
 
+        // Enforce minimum 10-second interval between location updates
+        $lastPoint = $session->routePoints()
+            ->orderBy('recorded_at', 'desc')
+            ->first();
+
+        if ($lastPoint && $lastPoint->recorded_at) {
+            $elapsed = Carbon::parse($lastPoint->recorded_at)->diffInSeconds(Carbon::now());
+            if ($elapsed < self::MIN_UPDATE_INTERVAL_SECONDS) {
+                throw new \Exception('LOCATION_RATE_LIMITED');
+            }
+        }
+
         return DB::transaction(function () use ($driver, $session, $locationData) {
             $now = Carbon::now();
+
+            // Check for active trip tracking session
+            $assignmentId = $this->getActiveAssignmentId($driver);
 
             // Create route point
             $routePoint = RoutePoint::create([
                 'session_id' => $session->id,
+                'assignment_id' => $assignmentId,
                 'latitude' => $locationData['latitude'],
                 'longitude' => $locationData['longitude'],
                 'altitude' => $locationData['altitude'] ?? null,
@@ -66,8 +90,42 @@ class LocationService
                 'last_active_at' => $now,
             ]);
 
+            // Trigger waiting time analysis during in_progress phase (non-blocking)
+            if ($assignmentId && $this->waitingTimeService) {
+                $assignment = DriverAssignment::find($assignmentId);
+                if ($assignment && $assignment->trip_phase === TripPhase::IN_PROGRESS) {
+                    try {
+                        $this->waitingTimeService->analyzeRoutePoints($assignment);
+                    } catch (\Exception $e) {
+                        // Non-blocking — waiting time analysis failure should not
+                        // prevent the location update from succeeding
+                        \Illuminate\Support\Facades\Log::warning(
+                            'Waiting time analysis failed for assignment ' . $assignmentId,
+                            ['error' => $e->getMessage()]
+                        );
+                    }
+                }
+            }
+
             return $routePoint;
         });
+    }
+
+    /**
+     * Get the active assignment ID for trip-specific route point linking.
+     * Returns null if no trip tracking session is active.
+     */
+    private function getActiveAssignmentId(Driver $driver): ?string
+    {
+        $assignment = DriverAssignment::where('driver_id', $driver->id)
+            ->whereIn('trip_phase', [
+                TripPhase::ACCEPTED,
+                TripPhase::PICKUP_ARRIVED,
+                TripPhase::IN_PROGRESS,
+            ])
+            ->first();
+
+        return $assignment?->id;
     }
 
     /**

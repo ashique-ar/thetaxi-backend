@@ -2,8 +2,11 @@
 
 namespace App\Models;
 
+use App\Enums\TripPhase;
 use App\Models\Booking\Booking;
+use App\Models\Booking\BookingItem;
 use App\Models\Driver\Driver;
+use App\Models\Driver\RoutePoint;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
@@ -39,11 +42,33 @@ class DriverAssignment extends BaseModel
         'hourly_rate',
         'overtime_applicable',
         'special_requirements',
+        'booking_item_id',
+        'trip_phase',
+        'trip_started_at',
+        'trip_completed_at',
+        'pickup_arrived_at',
+        'pickup_arrival_latitude',
+        'pickup_arrival_longitude',
+        'final_latitude',
+        'final_longitude',
+        'total_distance_km',
+        'total_waiting_time_seconds',
+        'decline_reason',
         'created_user_id',
         'updated_user_id',
     ];
 
     protected $casts = [
+        'trip_phase' => TripPhase::class,
+        'trip_started_at' => 'datetime',
+        'trip_completed_at' => 'datetime',
+        'pickup_arrived_at' => 'datetime',
+        'pickup_arrival_latitude' => 'decimal:8',
+        'pickup_arrival_longitude' => 'decimal:8',
+        'final_latitude' => 'decimal:8',
+        'final_longitude' => 'decimal:8',
+        'total_distance_km' => 'decimal:2',
+        'total_waiting_time_seconds' => 'integer',
         'assigned_from' => 'datetime',
         'assigned_to' => 'datetime',
         'approved_at' => 'datetime',
@@ -113,6 +138,30 @@ class DriverAssignment extends BaseModel
     public function assignedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'assigned_by');
+    }
+
+    /**
+     * Booking item this assignment is linked to
+     */
+    public function bookingItem(): BelongsTo
+    {
+        return $this->belongsTo(BookingItem::class);
+    }
+
+    /**
+     * Waiting time records for this assignment
+     */
+    public function waitingTimeRecords(): HasMany
+    {
+        return $this->hasMany(WaitingTimeRecord::class, 'assignment_id');
+    }
+
+    /**
+     * Route points recorded during this assignment's trip
+     */
+    public function routePoints(): HasMany
+    {
+        return $this->hasMany(RoutePoint::class, 'assignment_id');
     }
 
     /**

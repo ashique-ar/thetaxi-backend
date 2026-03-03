@@ -19,7 +19,7 @@ class UserContext extends Model
 
     protected $fillable = [
         'user_id',
-        'context_type', // 'customer', 'vehicle_owner', 'staff', 'agent'
+        'context_type', // 'customer', 'vehicle_owner', 'staff', 'agent', 'corporate'
         'context_id',   // ID of the related model (customer_id, vehicle_owner_id, etc.)
         'is_active',
         'created_user_id',
@@ -47,6 +47,22 @@ class UserContext extends Model
     public function roles()
     {
         return $this->belongsToMany(Role::class, 'user_context_roles', 'user_context_id', 'role_id');
+    }
+
+    /**
+     * Get the CorporateEmployee when context_type is 'corporate'.
+     */
+    public function corporateEmployee()
+    {
+        return $this->belongsTo(\App\Models\Corporate\CorporateEmployee::class, 'context_id');
+    }
+
+    /**
+     * Get the Corporate through the CorporateEmployee relationship.
+     */
+    public function corporate()
+    {
+        return $this->corporateEmployee?->corporate();
     }
 
     // Scopes

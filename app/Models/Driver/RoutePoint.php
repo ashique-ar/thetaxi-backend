@@ -4,6 +4,7 @@ namespace App\Models\Driver;
 
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
+use App\Models\DriverAssignment;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
@@ -45,6 +46,7 @@ class RoutePoint extends Model
      */
     protected $fillable = [
         'session_id',
+        'assignment_id',
         'latitude',
         'longitude',
         'altitude',
@@ -74,5 +76,13 @@ class RoutePoint extends Model
     public function session(): BelongsTo
     {
         return $this->belongsTo(DriverSession::class, 'session_id');
+    }
+
+    /**
+     * Get the driver assignment this route point is linked to (trip-specific tracking).
+     */
+    public function assignment(): BelongsTo
+    {
+        return $this->belongsTo(DriverAssignment::class, 'assignment_id');
     }
 }

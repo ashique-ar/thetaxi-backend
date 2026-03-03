@@ -16,6 +16,9 @@ class Kernel extends ConsoleKernel
         // Process auto-offline for inactive drivers every 5 minutes
         // @see Requirement 5.3 - Scheduled job every 5 minutes
         $schedule->command('drivers:process-auto-offline')->everyFiveMinutes();
+
+        // Clean up expired short URLs daily
+        $schedule->command('short-urls:cleanup')->daily();
     }
 
     protected function commands(): void

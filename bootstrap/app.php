@@ -3,6 +3,7 @@
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -21,6 +22,9 @@ return Application::configure(basePath: dirname(__DIR__))
             Route::middleware('api')
                 ->prefix('api/public')
                 ->group(base_path('routes/api_public.php'));
+
+            // Register broadcast channel authorization routes
+            Broadcast::routes(['middleware' => ['auth:sanctum']]);
         }
     )
     ->withMiddleware(function (Middleware $middleware): void {
@@ -32,6 +36,8 @@ return Application::configure(basePath: dirname(__DIR__))
             // Driver mobile app middleware
             'device.uuid' => \App\Http\Middleware\DeviceUuidMiddleware::class,
             'ensure.driver' => \App\Http\Middleware\EnsureDriverContext::class,
+            // Corporate portal middleware
+            'ensure.corporate' => \App\Http\Middleware\EnsureCorporateContext::class,
         ]);
 
         $middleware->appendToGroup('web', \App\Http\Middleware\WebsiteSettingsSecurity::class);

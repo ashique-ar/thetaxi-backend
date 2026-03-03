@@ -562,6 +562,10 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('/vehicles/service-types', [VehicleController::class, 'getServiceTypes']);
         Route::get('/vehicles/insurance-types', [VehicleController::class, 'getInsuranceTypes']);
         Route::apiResource('vehicles', VehicleController::class);
+
+        // Default driver management for vehicles
+        Route::get('vehicles/{vehicle}/default-driver', [\App\Http\Controllers\Api\Admin\BookingAssignmentController::class, 'getVehicleDefaultDriver']);
+        Route::put('vehicles/{vehicle}/default-driver', [\App\Http\Controllers\Api\Admin\BookingAssignmentController::class, 'updateVehicleDefaultDriver']);
     });
 
     Route::group(['prefix' => 'reports'], function () {
@@ -639,12 +643,17 @@ Route::middleware(['auth:api'])->group(function () {
     Route::middleware(['permission:drivers.view'])->group(function () {
         // Driver status and location endpoints (place specific routes before resource registration)
         Route::get('drivers/locations', [DriverController::class, 'locations']);
+        Route::get('drivers/with-status', [\App\Http\Controllers\Api\Admin\BookingAssignmentController::class, 'driversWithStatus']);
         Route::get('drivers/{driver}/status', [DriverController::class, 'status']);
         Route::apiResource('drivers', DriverController::class);
         Route::apiResource('driver-logs', DriverLogController::class);
         Route::get('drivers/{driver}/sessions', [DriverController::class, 'sessions']);
         Route::get('drivers/{driver}/sessions/{session}/route', [DriverController::class, 'sessionRoute']);
         Route::get('drivers/{driver}/analytics', [DriverController::class, 'analytics']);
+
+        // Default vehicle management for drivers
+        Route::get('drivers/{driver}/default-vehicle', [\App\Http\Controllers\Api\Admin\BookingAssignmentController::class, 'getDriverDefaultVehicle']);
+        Route::put('drivers/{driver}/default-vehicle', [\App\Http\Controllers\Api\Admin\BookingAssignmentController::class, 'updateDriverDefaultVehicle']);
 
         // Driver device management endpoints
         Route::get('drivers/{driver}/devices', [DriverController::class, 'devices']);
@@ -891,6 +900,10 @@ Route::middleware(['auth:api'])->group(function () {
             Route::post('breakdown', [AssignmentController::class, 'recordBreakdown'])
                 ->middleware('permission:bookings.update');
         });
+
+        // Booking Item Assignment (inline from booking list)
+        Route::post('booking-items/{bookingItem}/assign', [\App\Http\Controllers\Api\Admin\BookingAssignmentController::class, 'createBookingAssignment'])
+            ->middleware('permission:bookings.create');
 
         // Booking Lifecycle Management Routes
         Route::group(['prefix' => 'booking-lifecycle'], function () {
@@ -1143,6 +1156,161 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('/', [PaymentController::class, 'getPaymentTransactions']);
         Route::get('{id}', [PaymentController::class, 'getTransactionDetails']);
         Route::post('{id}/refund', [PaymentController::class, 'refundTransaction'])->middleware('permission:payments.refund');
+    });
+
+    /*
+    |--------------------------------------------------------------------------
+    | Corporate Portal Routes
+    |--------------------------------------------------------------------------
+    |
+    | These routes are for corporate portal users (employees, coordinators,
+    | admins). All routes are scoped to the authenticated user's corporate
+    | via the EnsureCorporateContext middleware.
+    |
+    */
+
+    Route::prefix('corporate')->middleware(['ensure.corporate'])->group(function () {
+        // Department Management
+        Route::get('departments', [\App\Http\Controllers\Api\Corporate\CorporateDepartmentController::class, 'index']);
+        Route::post('departments', [\App\Http\Controllers\Api\Corporate\CorporateDepartmentController::class, 'store']);
+        Route::put('departments/{id}', [\App\Http\Controllers\Api\Corporate\CorporateDepartmentController::class, 'update']);
+        Route::delete('departments/{id}', [\App\Http\Controllers\Api\Corporate\CorporateDepartmentController::class, 'destroy']);
+
+        // Division Management (nested under departments for index/store)
+        Route::get('departments/{department}/divisions', [\App\Http\Controllers\Api\Corporate\CorporateDivisionController::class, 'index']);
+        Route::post('departments/{department}/divisions', [\App\Http\Controllers\Api\Corporate\CorporateDivisionController::class, 'store']);
+        Route::put('divisions/{id}', [\App\Http\Controllers\Api\Corporate\CorporateDivisionController::class, 'update']);
+        Route::delete('divisions/{id}', [\App\Http\Controllers\Api\Corporate\CorporateDivisionController::class, 'destroy']);
+
+        // Employee Management
+        Route::get('employees', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'index']);
+        Route::post('employees', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'store']);
+        Route::get('employees/{id}', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'show']);
+        Route::put('employees/{id}', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'update']);
+        Route::post('employees/{id}/activate', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'activate']);
+        Route::post('employees/{id}/deactivate', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'deactivate']);
+        Route::post('employees/{id}/role', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'assignRole']);
+
+        // Role Management
+        Route::get('roles', [\App\Http\Controllers\Api\Corporate\CorporateRoleController::class, 'index']);
+        Route::post('roles', [\App\Http\Controllers\Api\Corporate\CorporateRoleController::class, 'store']);
+        Route::put('roles/{id}', [\App\Http\Controllers\Api\Corporate\CorporateRoleController::class, 'update']);
+        Route::delete('roles/{id}', [\App\Http\Controllers\Api\Corporate\CorporateRoleController::class, 'destroy']);
+        Route::get('permissions', [\App\Http\Controllers\Api\Corporate\CorporateRoleController::class, 'permissions']);
+
+        // Corporate Profile
+        Route::get('profile', function (\Illuminate\Http\Request $request) {
+            $corporate = \App\Models\Corporate\Corporate::findOrFail($request->corporate_id);
+            
+            return response()->json([
+                'status' => 'success',
+                'data'   => [
+                    'corporate' => [
+                        'id' => $corporate->id,
+                        'name' => $corporate->name,
+                        'contact_email' => $corporate->contact_email,
+                        'contact_phone' => $corporate->contact_phone,
+                        'billing_address' => $corporate->billing_address,
+                        'is_active' => $corporate->is_active,
+                        'approval_required' => $corporate->approval_required,
+                        'exempt_coordinator_from_approval' => $corporate->exempt_coordinator_from_approval,
+                        'coordinator_can_view_payments' => $corporate->coordinator_can_view_payments,
+                    ],
+                ],
+            ]);
+        });
+
+        // Rate Charts
+        Route::get('rate-charts', function (\Illuminate\Http\Request $request) {
+            $rateCharts = \App\Models\Corporate\CorporateRateChart::where('corporate_id', $request->corporate_id)
+                ->where('is_active', true)
+                ->with(['vehicleGroup', 'serviceType'])
+                ->get();
+
+            return response()->json([
+                'status' => 'success',
+                'data'   => ['rate_charts' => $rateCharts],
+            ]);
+        });
+
+        // Booking Management
+        Route::get('bookings/my', [\App\Http\Controllers\Api\Corporate\CorporateBookingController::class, 'myBookings']);
+        Route::get('bookings/export', [\App\Http\Controllers\Api\Corporate\CorporateBookingController::class, 'export']);
+        Route::get('bookings/stats', [\App\Http\Controllers\Api\Corporate\CorporateBookingController::class, 'stats']);
+        Route::get('bookings', [\App\Http\Controllers\Api\Corporate\CorporateBookingController::class, 'index']);
+        Route::post('bookings', [\App\Http\Controllers\Api\Corporate\CorporateBookingController::class, 'store']);
+        Route::post('bookings/for-employee', [\App\Http\Controllers\Api\Corporate\CorporateBookingController::class, 'storeForEmployee']);
+        Route::get('bookings/{id}', [\App\Http\Controllers\Api\Corporate\CorporateBookingController::class, 'show']);
+
+        // Approval Management
+        Route::get('approvals', [\App\Http\Controllers\Api\Corporate\CorporateApprovalController::class, 'index']);
+        Route::post('approvals/{bookingId}/approve', [\App\Http\Controllers\Api\Corporate\CorporateApprovalController::class, 'approve']);
+        Route::post('approvals/{bookingId}/reject', [\App\Http\Controllers\Api\Corporate\CorporateApprovalController::class, 'reject']);
+
+        // Audit Log
+        Route::get('audit-logs', [\App\Http\Controllers\Api\Corporate\CorporateAuditLogController::class, 'index']);
+
+        // Reports
+        Route::get('reports/booking-history', [\App\Http\Controllers\Api\Corporate\CorporateReportController::class, 'bookingHistory']);
+        Route::get('reports/summary-stats', [\App\Http\Controllers\Api\Corporate\CorporateReportController::class, 'summaryStats']);
+        Route::get('reports/export', [\App\Http\Controllers\Api\Corporate\CorporateReportController::class, 'exportCsv']);
+
+        // Vehicle Groups (read-only for corporate users)
+        Route::get('vehicle-groups', function (\Illuminate\Http\Request $request) {
+            $corporate = \App\Models\Corporate\Corporate::findOrFail($request->corporate_id);
+            $vehicleGroups = $corporate->vehicleGroups()->get();
+
+            return response()->json([
+                'status' => 'success',
+                'data'   => ['vehicle_groups' => $vehicleGroups],
+            ]);
+        });
+    });
+
+    /*
+    |--------------------------------------------------------------------------
+    | System Admin — Corporate Management Routes
+    |--------------------------------------------------------------------------
+    */
+
+    Route::prefix('admin/corporates')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\Corporate\CorporateController::class, 'index']);
+        Route::post('/', [\App\Http\Controllers\Api\Corporate\CorporateController::class, 'store']);
+        Route::get('{corporate}', [\App\Http\Controllers\Api\Corporate\CorporateController::class, 'show']);
+        Route::put('{corporate}', [\App\Http\Controllers\Api\Corporate\CorporateController::class, 'update']);
+        Route::post('{corporate}/activate', [\App\Http\Controllers\Api\Corporate\CorporateController::class, 'activate']);
+        Route::post('{corporate}/deactivate', [\App\Http\Controllers\Api\Corporate\CorporateController::class, 'deactivate']);
+        Route::post('{corporate}/vehicle-groups', [\App\Http\Controllers\Api\Corporate\CorporateController::class, 'assignVehicleGroups']);
+        Route::delete('{corporate}/vehicle-groups/{vehicleGroupId}', [\App\Http\Controllers\Api\Corporate\CorporateController::class, 'removeVehicleGroup']);
+        Route::post('{corporate}/initial-admin', [\App\Http\Controllers\Api\Corporate\CorporateController::class, 'createInitialAdmin']);
+
+        // Rate chart routes nested under corporate
+        Route::get('{corporate}/rate-charts', [\App\Http\Controllers\Api\Corporate\CorporateRateChartController::class, 'index']);
+        Route::post('{corporate}/rate-charts', [\App\Http\Controllers\Api\Corporate\CorporateRateChartController::class, 'store']);
+        Route::put('{corporate}/rate-charts/{rateChart}', [\App\Http\Controllers\Api\Corporate\CorporateRateChartController::class, 'update']);
+        Route::delete('{corporate}/rate-charts/{rateChart}', [\App\Http\Controllers\Api\Corporate\CorporateRateChartController::class, 'destroy']);
+
+        // Admin sub-resource routes for departments, divisions, employees, bookings
+        Route::get('{corporate}/departments', [\App\Http\Controllers\Api\Corporate\AdminCorporateDepartmentController::class, 'index']);
+        Route::post('{corporate}/departments', [\App\Http\Controllers\Api\Corporate\AdminCorporateDepartmentController::class, 'store']);
+        Route::get('{corporate}/departments/{department}', [\App\Http\Controllers\Api\Corporate\AdminCorporateDepartmentController::class, 'show']);
+        Route::put('{corporate}/departments/{department}', [\App\Http\Controllers\Api\Corporate\AdminCorporateDepartmentController::class, 'update']);
+        Route::delete('{corporate}/departments/{department}', [\App\Http\Controllers\Api\Corporate\AdminCorporateDepartmentController::class, 'destroy']);
+
+        Route::get('{corporate}/departments/{department}/divisions', [\App\Http\Controllers\Api\Corporate\AdminCorporateDivisionController::class, 'index']);
+        Route::post('{corporate}/departments/{department}/divisions', [\App\Http\Controllers\Api\Corporate\AdminCorporateDivisionController::class, 'store']);
+        Route::put('{corporate}/divisions/{division}', [\App\Http\Controllers\Api\Corporate\AdminCorporateDivisionController::class, 'update']);
+        Route::delete('{corporate}/divisions/{division}', [\App\Http\Controllers\Api\Corporate\AdminCorporateDivisionController::class, 'destroy']);
+
+        Route::get('{corporate}/employees', [\App\Http\Controllers\Api\Corporate\AdminCorporateEmployeeController::class, 'index']);
+        Route::post('{corporate}/employees', [\App\Http\Controllers\Api\Corporate\AdminCorporateEmployeeController::class, 'store']);
+        Route::get('{corporate}/employees/{id}', [\App\Http\Controllers\Api\Corporate\AdminCorporateEmployeeController::class, 'show']);
+        Route::put('{corporate}/employees/{id}', [\App\Http\Controllers\Api\Corporate\AdminCorporateEmployeeController::class, 'update']);
+        Route::post('{corporate}/employees/{id}/activate', [\App\Http\Controllers\Api\Corporate\AdminCorporateEmployeeController::class, 'activate']);
+        Route::post('{corporate}/employees/{id}/deactivate', [\App\Http\Controllers\Api\Corporate\AdminCorporateEmployeeController::class, 'deactivate']);
+        Route::post('{corporate}/employees/{id}/role', [\App\Http\Controllers\Api\Corporate\AdminCorporateEmployeeController::class, 'assignRole']);
+
+        Route::post('{corporate}/bookings/for-employee', [\App\Http\Controllers\Api\Corporate\AdminCorporateBookingController::class, 'storeForEmployee']);
     });
 });
 

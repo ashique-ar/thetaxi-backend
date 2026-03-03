@@ -4,6 +4,7 @@ namespace App\Helpers;
 
 use App\Models\Booking\Booking;
 use App\Services\PendingPaymentManager;
+use App\Services\UrlShortenerService;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\URL;
 
@@ -13,6 +14,11 @@ use Illuminate\Support\Facades\URL;
  * Generates secure links for payment resumption and quotation conversion
  * Used in email templates to provide one-click checkout for customers
  * Now uses persistent PendingPaymentManager for better cart-independent payment management
+ * 
+ * URL Shortening: All payment and quotation links are automatically shortened using
+ * UrlShortenerService to create email-friendly URLs (e.g., /s/abc123 instead of 
+ * /checkout/payment-resume/very-long-token). This significantly reduces email length
+ * and improves deliverability while maintaining security.
  */
 class BookingLinkHelper
 {
@@ -73,16 +79,35 @@ class BookingLinkHelper
                 'to_date' => $booking->to_date?->toDateString(),
             ]);
 
-            $url = route('checkout.quotation-convert', [
+            $originalUrl = route('checkout.quotation-convert', [
                 'token' => $encryptedData
             ]);
 
+            // Create shortened URL for email-friendly links
+            $shortenedUrl = UrlShortenerService::shorten(
+                $originalUrl,
+                168, // 7 days expiry
+                'booking',
+                $booking->id,
+                'email', // source
+                'quotation_conversion', // campaign
+                'transactional', // medium
+                [ // metadata
+                    'booking_number' => $booking->booking_number ?? null,
+                    'vehicle_group_id' => $booking->vehicle_group_id,
+                    'quotation_type' => 'conversion',
+                ]
+            );
+
+            $shortUrl = UrlShortenerService::getShortUrl($shortenedUrl);
+
             \Illuminate\Support\Facades\Log::info('BookingLinkHelper: Quotation checkout link generated', [
                 'booking_id' => $booking->id ?? null,
-                'url' => $url,
+                'original_url' => $originalUrl,
+                'short_url' => $shortUrl,
             ]);
 
-            return $url;
+            return $shortUrl;
         } catch (\Exception $e) {
             \Illuminate\Support\Facades\Log::error('BookingLinkHelper: Error generating quotation checkout link', [
                 'booking_id' => $booking->id ?? null,
@@ -139,16 +164,35 @@ class BookingLinkHelper
                 'convert_to_booking' => true
             ]);
 
-            $url = route('checkout.quotation-payment', [
+            $originalUrl = route('checkout.quotation-payment', [
                 'token' => $encryptedData
             ]);
 
+            // Create shortened URL for email-friendly links
+            $shortenedUrl = UrlShortenerService::shorten(
+                $originalUrl,
+                168, // 7 days expiry
+                'booking',
+                $quotationBooking->id,
+                'email', // source
+                'quotation_payment', // campaign
+                'transactional', // medium
+                [ // metadata
+                    'booking_number' => $quotationBooking->booking_number ?? null,
+                    'quotation_type' => 'payment',
+                    'amount' => $quotationBooking->total_estimated ?? null,
+                ]
+            );
+
+            $shortUrl = UrlShortenerService::getShortUrl($shortenedUrl);
+
             \Illuminate\Support\Facades\Log::info('BookingLinkHelper: Quotation payment link generated', [
                 'booking_id' => $quotationBooking->id ?? null,
-                'url' => $url,
+                'original_url' => $originalUrl,
+                'short_url' => $shortUrl,
             ]);
 
-            return $url;
+            return $shortUrl;
         } catch (\Exception $e) {
             \Illuminate\Support\Facades\Log::error('BookingLinkHelper: Error generating quotation payment link', [
                 'booking_id' => $quotationBooking->id ?? null,

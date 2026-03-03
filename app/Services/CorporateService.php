@@ -1,0 +1,303 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\AuditLog;
+use App\Models\Corporate\Corporate;
+use App\Models\Corporate\CorporateDepartment;
+use App\Models\Corporate\CorporateDivision;
+use App\Models\Corporate\CorporateEmployee;
+use App\Models\User;
+use App\Models\UserContext;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Spatie\Permission\Models\Role;
+
+class CorporateService
+{
+    // ─── Corporate CRUD ───────────────────────────────────────────────
+
+    public function createCorporate(array $data): Corporate
+    {
+        $corporate = Corporate::create($data);
+
+        $this->logAudit('create', 'Corporate', $corporate->id, [
+            'name' => $corporate->name,
+        ]);
+
+        return $corporate;
+    }
+
+    public function updateCorporate(Corporate $corporate, array $data): Corporate
+    {
+        $before = $corporate->only(array_keys($data));
+        $corporate->update($data);
+        $corporate->refresh();
+
+        $this->logAudit('update', 'Corporate', $corporate->id, [
+            'before' => $before,
+            'after'  => $corporate->only(array_keys($data)),
+        ]);
+
+        return $corporate;
+    }
+
+    public function toggleCorporateStatus(Corporate $corporate): Corporate
+    {
+        $corporate->is_active = !$corporate->is_active;
+        $corporate->save();
+
+        $this->logAudit(
+            $corporate->is_active ? 'activate' : 'deactivate',
+            'Corporate',
+            $corporate->id,
+            ['is_active' => $corporate->is_active]
+        );
+
+        return $corporate;
+    }
+
+    // ─── Vehicle Group Assignment ─────────────────────────────────────
+
+    public function assignVehicleGroups(Corporate $corporate, array $vehicleGroupIds): void
+    {
+        $corporate->vehicleGroups()->sync($vehicleGroupIds);
+
+        $this->logAudit('assign_vehicle_groups', 'Corporate', $corporate->id, [
+            'vehicle_group_ids' => $vehicleGroupIds,
+        ]);
+    }
+
+    public function removeVehicleGroup(Corporate $corporate, string $vehicleGroupId): void
+    {
+        $corporate->vehicleGroups()->detach($vehicleGroupId);
+
+        $this->logAudit('remove_vehicle_group', 'Corporate', $corporate->id, [
+            'vehicle_group_id' => $vehicleGroupId,
+        ]);
+    }
+
+    // ─── Department CRUD ──────────────────────────────────────────────
+
+    public function createDepartment(Corporate $corporate, array $data): CorporateDepartment
+    {
+        $data['corporate_id'] = $corporate->id;
+        $department = CorporateDepartment::create($data);
+
+        $this->logAudit('create', 'CorporateDepartment', $department->id, [
+            'corporate_id' => $corporate->id,
+            'name'         => $department->name,
+        ]);
+
+        return $department;
+    }
+
+    public function updateDepartment(CorporateDepartment $dept, array $data): CorporateDepartment
+    {
+        $before = $dept->only(array_keys($data));
+        $dept->update($data);
+        $dept->refresh();
+
+        $this->logAudit('update', 'CorporateDepartment', $dept->id, [
+            'before' => $before,
+            'after'  => $dept->only(array_keys($data)),
+        ]);
+
+        return $dept;
+    }
+
+    public function deleteDepartment(CorporateDepartment $dept): void
+    {
+        $activeCount = $dept->employees()->where('is_active', true)->count();
+
+        if ($activeCount > 0) {
+            abort(409, "Cannot delete department. There are {$activeCount} active employees assigned to this department.");
+        }
+
+        $dept->delete(); // soft delete
+
+        $this->logAudit('delete', 'CorporateDepartment', $dept->id, [
+            'name' => $dept->name,
+        ]);
+    }
+
+    // ─── Division CRUD ────────────────────────────────────────────────
+
+    public function createDivision(CorporateDepartment $dept, array $data): CorporateDivision
+    {
+        $data['department_id'] = $dept->id;
+        $division = CorporateDivision::create($data);
+
+        $this->logAudit('create', 'CorporateDivision', $division->id, [
+            'department_id' => $dept->id,
+            'name'          => $division->name,
+        ]);
+
+        return $division;
+    }
+
+    public function updateDivision(CorporateDivision $div, array $data): CorporateDivision
+    {
+        $before = $div->only(array_keys($data));
+        $div->update($data);
+        $div->refresh();
+
+        $this->logAudit('update', 'CorporateDivision', $div->id, [
+            'before' => $before,
+            'after'  => $div->only(array_keys($data)),
+        ]);
+
+        return $div;
+    }
+
+    public function deleteDivision(CorporateDivision $div): void
+    {
+        $activeCount = $div->employees()->where('is_active', true)->count();
+
+        if ($activeCount > 0) {
+            abort(409, "Cannot delete division. There are {$activeCount} active employees assigned to this division.");
+        }
+
+        $div->delete(); // soft delete
+
+        $this->logAudit('delete', 'CorporateDivision', $div->id, [
+            'name' => $div->name,
+        ]);
+    }
+
+    // ─── Employee Management ──────────────────────────────────────────
+
+    public function addEmployee(Corporate $corporate, array $data): CorporateEmployee
+    {
+        return DB::transaction(function () use ($corporate, $data) {
+            // Check if a user with this email already exists
+            $user = User::where('email', $data['email'])->first();
+            $isExistingUser = $user !== null;
+
+            if (!$user) {
+                $user = User::create([
+                    'email'      => $data['email'],
+                    'first_name' => $data['first_name'] ?? '',
+                    'last_name'  => $data['last_name'] ?? '',
+                    'phone'      => $data['phone'] ?? null,
+                    'password'   => Hash::make($data['password'] ?? str()->random(16)),
+                    'is_active'  => true,
+                ]);
+            }
+
+            // Create CorporateEmployee record
+            $employee = CorporateEmployee::create([
+                'user_id'       => $user->id,
+                'corporate_id'  => $corporate->id,
+                'department_id' => $data['department_id'],
+                'division_id'   => $data['division_id'] ?? null,
+                'employee_code' => $data['employee_code'] ?? null,
+                'is_active'     => true,
+            ]);
+
+            // Create UserContext with context_type='corporate'
+            $userContext = UserContext::create([
+                'user_id'      => $user->id,
+                'context_type' => 'corporate',
+                'context_id'   => $employee->id,
+                'is_active'    => true,
+            ]);
+
+            // Assign role via Spatie through the UserContext roles relationship
+            if (!empty($data['role'])) {
+                $this->assignEmployeeRole($employee, $data['role']);
+            }
+
+            $this->logAudit('create', 'CorporateEmployee', $employee->id, [
+                'corporate_id'   => $corporate->id,
+                'user_id'        => $user->id,
+                'email'          => $data['email'],
+                'existing_user'  => $isExistingUser,
+                'department_id'  => $data['department_id'],
+                'division_id'    => $data['division_id'] ?? null,
+                'role'           => $data['role'] ?? null,
+            ]);
+
+            return $employee;
+        });
+    }
+
+    public function updateEmployee(CorporateEmployee $employee, array $data): CorporateEmployee
+    {
+        $updatable = array_intersect_key($data, array_flip([
+            'department_id', 'division_id', 'employee_code',
+        ]));
+
+        $before = $employee->only(array_keys($updatable));
+        $employee->update($updatable);
+        $employee->refresh();
+
+        $this->logAudit('update', 'CorporateEmployee', $employee->id, [
+            'before' => $before,
+            'after'  => $employee->only(array_keys($updatable)),
+        ]);
+
+        return $employee;
+    }
+
+    public function toggleEmployeeStatus(CorporateEmployee $employee): CorporateEmployee
+    {
+        return DB::transaction(function () use ($employee) {
+            $employee->is_active = !$employee->is_active;
+            $employee->save();
+
+            // Also toggle the associated UserContext
+            $userContext = $employee->userContext;
+            if ($userContext) {
+                $userContext->is_active = $employee->is_active;
+                $userContext->save();
+            }
+
+            $this->logAudit(
+                $employee->is_active ? 'activate' : 'deactivate',
+                'CorporateEmployee',
+                $employee->id,
+                ['is_active' => $employee->is_active]
+            );
+
+            return $employee;
+        });
+    }
+
+    public function assignEmployeeRole(CorporateEmployee $employee, string $roleName): void
+    {
+        $role = Role::firstOrCreate(
+            ['name' => $roleName, 'guard_name' => 'api']
+        );
+
+        // Sync role on the employee's UserContext roles relationship
+        $userContext = $employee->userContext;
+        if ($userContext) {
+            $userContext->roles()->sync([$role->id]);
+        }
+
+        // Also assign the role to the user via Spatie
+        $user = $employee->user;
+        if ($user && !$user->hasRole($roleName)) {
+            $user->assignRole($roleName);
+        }
+
+        $this->logAudit('assign_role', 'CorporateEmployee', $employee->id, [
+            'role' => $roleName,
+        ]);
+    }
+
+    // ─── Audit Logging ────────────────────────────────────────────────
+
+    private function logAudit(string $action, string $entity, ?string $entityId, array $details = []): void
+    {
+        AuditLog::create([
+            'user_id'   => auth()->id(),
+            'action'    => $action,
+            'entity'    => $entity,
+            'entity_id' => $entityId,
+            'timestamp' => now(),
+            'details'   => $details,
+        ]);
+    }
+}

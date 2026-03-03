@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Booking\Booking;
 use App\Models\Website\PendingPaymentLink;
+use App\Services\UrlShortenerService;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -143,17 +144,38 @@ class PendingPaymentManager
 
             $paymentLink = self::createPaymentLink($booking, $expiryHours);
 
-            $url = route('checkout.payment-resume', [
+            $originalUrl = route('checkout.payment-resume', [
                 'token' => $paymentLink->token
             ]);
+
+            // Create shortened URL for email-friendly links
+            $shortenedUrl = UrlShortenerService::shorten(
+                $originalUrl,
+                $expiryHours,
+                'booking',
+                $booking->id,
+                'email', // source
+                'payment_reminder', // campaign
+                'transactional', // medium
+                [ // metadata
+                    'booking_number' => $booking->booking_number ?? null,
+                    'booking_status' => $booking->status ?? null,
+                    'amount_due' => $paymentLink->amount_due,
+                    'customer_id' => $booking->customer_id ?? null,
+                ]
+            );
+
+            $shortUrl = UrlShortenerService::getShortUrl($shortenedUrl);
 
             Log::info('PendingPaymentManager: Payment link generated successfully', [
                 'booking_id' => $booking->id,
                 'amount_due' => $paymentLink->amount_due,
-                'url' => $url,
+                'original_url' => $originalUrl,
+                'short_url' => $shortUrl,
+                'short_code' => $shortenedUrl->short_code,
             ]);
 
-            return $url;
+            return $shortUrl;
         } catch (\Exception $e) {
             Log::error('PendingPaymentManager: Payment link generation failed', [
                 'booking_id' => $booking->id,

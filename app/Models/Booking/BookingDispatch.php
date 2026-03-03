@@ -43,6 +43,8 @@ class BookingDispatch extends BaseModel
         'documents_generated',
         'agreements_signed',
         'is_self_driven',
+        'trigger_delivered_at',
+        'trigger_delivery_channel',
         'created_user_id',
         'updated_user_id',
     ];
@@ -52,6 +54,7 @@ class BookingDispatch extends BaseModel
         'dispatched_at' => 'datetime',
         'expected_return_at' => 'datetime',
         'actual_return_at' => 'datetime',
+        'trigger_delivered_at' => 'datetime',
         'fuel_level_out' => 'decimal:1',
         'fuel_level_in' => 'decimal:1',
         'mileage_out' => 'integer',

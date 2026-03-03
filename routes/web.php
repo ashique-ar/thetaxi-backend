@@ -8,6 +8,7 @@ use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\CurrencyController;
 use App\Http\Controllers\FAQController;
 use App\Http\Controllers\InquiryController;
+use App\Http\Controllers\ShortUrlController;
 use App\Http\Controllers\VehicleController;
 use App\Http\Controllers\Website\CmsController;
 use App\Http\Controllers\Website\HomeController;
@@ -19,6 +20,9 @@ use Illuminate\Support\Facades\Route;
 
 // TheTaxi Website Routes
 Route::get('/', [HomeController::class, 'index'])->name('home');
+
+// Short URL redirects - must be early in routes to avoid conflicts
+Route::get('/s/{code}', [ShortUrlController::class, 'redirect'])->name('short-url.redirect');
 
 // Dynamic robots.txt based on SEO_INDEXABLE environment variable
 Route::get('/robots.txt', function () {

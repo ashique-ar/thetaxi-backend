@@ -1470,6 +1470,7 @@ class BookingFlowController extends Controller
             'created_by' => 'nullable|uuid|exists:users,id',
             'item_type' => 'nullable|string|max:100',
             'is_self_driven' => 'nullable|boolean',
+            'corporate_id' => 'nullable|uuid',
         ]);
 
         try {

@@ -10,6 +10,10 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Passport\Passport;
 use Illuminate\Support\Facades\Gate;
+use App\Models\Corporate\Corporate;
+use App\Models\Driver\Driver;
+use App\Observers\DriverObserver;
+use App\Policies\CorporatePolicy;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -29,6 +33,15 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Register model observers
+        Driver::observe(DriverObserver::class);
+
+        // Register policies
+        Gate::policy(Corporate::class, CorporatePolicy::class);
+
+        // Load broadcast channel authorization routes
+        require base_path('routes/channels.php');
+
         // Configure Passport
         Passport::loadKeysFrom(storage_path('oauth-keys'));
         Passport::tokensExpireIn(now()->addHours(24));

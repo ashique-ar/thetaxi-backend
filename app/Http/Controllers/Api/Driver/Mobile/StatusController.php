@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers\Api\Driver\Mobile;
 
+use App\Enums\TripPhase;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Driver\Mobile\GoOnlineRequest;
 use App\Http\Requests\Driver\Mobile\GoOfflineRequest;
 use App\Http\Resources\Driver\DriverSessionResource;
+use App\Models\DriverAssignment;
 use App\Services\Driver\DriverAuthService;
 use App\Services\Driver\SessionService;
 use Illuminate\Http\JsonResponse;
@@ -70,10 +72,19 @@ class StatusController extends Controller
 
             $session = $this->sessionService->startSession($driver, $request->validated());
 
+            // Check for pending assignments
+            $pendingAssignments = DriverAssignment::where('driver_id', $driver->id)
+                ->whereIn('status', ['active', 'pending_approval'])
+                ->with(['booking', 'bookingItem'])
+                ->get();
+
             return response()->json([
                 'status' => 'success',
                 'message' => 'Driver is now online',
-                'data' => new DriverSessionResource($session)
+                'data' => [
+                    'session' => new DriverSessionResource($session),
+                    'pending_assignments' => $pendingAssignments,
+                ],
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -118,12 +129,36 @@ class StatusController extends Controller
                 ], 400);
             }
 
+            // Check for active trip tracking session
+            $activeTrip = DriverAssignment::where('driver_id', $driver->id)
+                ->whereIn('trip_phase', [
+                    TripPhase::ACCEPTED,
+                    TripPhase::PICKUP_ARRIVED,
+                    TripPhase::IN_PROGRESS,
+                ])
+                ->first();
+
             $session = $this->sessionService->endSession($driver, $request->validated());
+
+            $responseData = [
+                'session' => new DriverSessionResource($session),
+            ];
+
+            $message = 'Driver is now offline';
+
+            if ($activeTrip) {
+                $responseData['trip_warning'] = 'Trip is still in progress. The trip tracking session remains active.';
+                $responseData['active_trip'] = [
+                    'assignment_id' => $activeTrip->id,
+                    'trip_phase' => $activeTrip->trip_phase->value,
+                ];
+                $message = 'Driver is now offline. Warning: trip is still in progress.';
+            }
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'Driver is now offline',
-                'data' => new DriverSessionResource($session)
+                'message' => $message,
+                'data' => $responseData,
             ]);
         } catch (\Exception $e) {
             return response()->json([

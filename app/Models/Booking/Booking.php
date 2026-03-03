@@ -181,6 +181,8 @@ class Booking extends BaseModel
         'cost_center',
         'project_code',
         'employee_id',
+        'corporate_department_id',
+        'corporate_division_id',
 
         // Recurring booking fields
         'is_recurring',
@@ -524,6 +526,47 @@ class Booking extends BaseModel
     public function approvals()
     {
         return $this->hasMany(BookingApproval::class);
+    }
+
+    /**
+     * Get the corporate account for this booking.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\BelongsTo
+     */
+    public function corporateAccount()
+    {
+        return $this->belongsTo(\App\Models\Corporate\Corporate::class, 'corporate_account_id');
+    }
+
+    /**
+     * Get the corporate department for this booking.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\BelongsTo
+     */
+    public function corporateDepartment()
+    {
+        return $this->belongsTo(\App\Models\Corporate\CorporateDepartment::class, 'corporate_department_id');
+    }
+
+    /**
+     * Get the corporate division for this booking.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\BelongsTo
+     */
+    public function corporateDivision()
+    {
+        return $this->belongsTo(\App\Models\Corporate\CorporateDivision::class, 'corporate_division_id');
+    }
+
+    /**
+     * Get the corporate employee for this booking.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\HasOne
+     */
+    public function employee()
+    {
+        return $this->hasOne(\App\Models\Corporate\CorporateEmployee::class, 'user_id', 'employee_id')
+            ->where('corporate_id', $this->corporate_account_id);
     }
 
     /**

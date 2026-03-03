@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\Driver\Mobile\LocationController;
 use App\Http\Controllers\Api\Driver\Mobile\SessionController;
 use App\Http\Controllers\Api\Driver\Mobile\AssignmentController;
 use App\Http\Controllers\Api\Driver\Mobile\DeviceController;
+use App\Http\Controllers\Api\Driver\Mobile\TripController;
 
 /*
 |--------------------------------------------------------------------------
@@ -67,9 +68,19 @@ Route::middleware(['auth:api', 'ensure.driver'])->group(function () {
         Route::delete('{deviceUuid}', [DeviceController::class, 'destroy']);
     });
     
-    // Assignment routes (placeholder for future implementation)
+    // Assignment routes
     Route::prefix('assignments')->group(function () {
         Route::get('', [AssignmentController::class, 'index']);
         Route::get('current', [AssignmentController::class, 'current']);
+        Route::post('{id}/accept', [AssignmentController::class, 'accept']);
+        Route::post('{id}/decline', [AssignmentController::class, 'decline']);
+    });
+    
+    // Trip tracking routes
+    Route::prefix('trip')->group(function () {
+        Route::get('status', [TripController::class, 'status']);
+        Route::post('pickup-arrived', [TripController::class, 'pickupArrived']);
+        Route::post('start', [TripController::class, 'startTrip']);
+        Route::post('end', [TripController::class, 'endTrip']);
     });
 });

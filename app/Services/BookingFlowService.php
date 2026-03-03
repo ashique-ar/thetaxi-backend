@@ -5663,7 +5663,16 @@ class BookingFlowService
                 'driver',
                 'driver.user:id,first_name,last_name,email,phone',
                 'vehicleGroup:id,name',
+                'booking.corporateAccount:id,name',
+                'booking.corporateDepartment:id,name',
+                'booking.corporateDivision:id,name',
             ]);
+
+        if (!empty($filters['corporate_id'])) {
+            $query->whereHas('booking', function ($bookingQuery) use ($filters) {
+                $bookingQuery->where('corporate_account_id', $filters['corporate_id']);
+            });
+        }
 
         if (!empty($filters['search'])) {
             $search = trim((string) $filters['search']);
@@ -6062,6 +6071,12 @@ class BookingFlowService
                     'phone' => $customerUser?->phone,
                 ],
             ],
+            'corporate' => $booking?->is_corporate_booking ? [
+                'id' => (string) $booking->corporate_account_id,
+                'name' => $booking->corporateAccount?->name ?? null,
+                'department' => $booking->corporateDepartment?->name ?? null,
+                'division' => $booking->corporateDivision?->name ?? null,
+            ] : null,
             'vehicle' => $itemVehicle ? [
                 'id' => (string) $itemVehicle->id,
                 'name' => $itemVehicle->name ?? $itemVehicle->title,
@@ -6133,6 +6148,11 @@ class BookingFlowService
             // Load assignment history
             'vehicleAssignments',
             'driverAssignments',
+            // Corporate relationships
+            'corporateAccount:id,name',
+            'corporateDepartment:id,name',
+            'corporateDivision:id,name',
+            'employee.user:id,first_name,last_name',
         ])->findOrFail($bookingId);
 
         // ---- helpers / safe getters
@@ -6580,6 +6600,14 @@ class BookingFlowService
             'updated_at' => optional($booking->updated_at)->toISOString(),
 
             'customer' => $customer,
+            'corporate' => $booking->is_corporate_booking ? [
+                'id' => (string) $booking->corporate_account_id,
+                'name' => $booking->corporateAccount?->name ?? null,
+                'department' => $booking->corporateDepartment?->name ?? null,
+                'division' => $booking->corporateDivision?->name ?? null,
+                'employee_name' => $booking->employee ? (trim(($booking->employee->user?->first_name ?? '') . ' ' . ($booking->employee->user?->last_name ?? ''))) : null,
+                'is_corporate_booking' => true,
+            ] : null,
             'service_details' => $serviceDetails,
             'vehicle_driver' => $vehicleDriver,
 

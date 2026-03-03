@@ -507,7 +507,7 @@ class BookingLifecycleService
     // ========================
     // COMPLETION STAGE
     // ========================
-
+    
     /**
      * Complete booking lifecycle
      */
@@ -519,6 +519,23 @@ class BookingLifecycleService
             $booking->transitionToStatus(BookingLifecycleStatus::COMPLETED, Auth::id(), $completionData);
 
             $this->logLifecycleTransition($booking, BookingLifecycleStatus::QC_COMPLETED, BookingLifecycleStatus::COMPLETED, $completionData);
+
+            // Notify corporate employee about booking completion
+            if ($booking->is_corporate_booking && $booking->corporate_account_id) {
+                \App\Models\AuditLog::create([
+                    'user_id'   => auth()->id(),
+                    'action'    => 'corporate_booking_completed',
+                    'entity'    => 'Booking',
+                    'entity_id' => $booking->id,
+                    'timestamp' => now(),
+                    'details'   => [
+                        'corporate_id' => $booking->corporate_account_id,
+                        'employee_id'  => $booking->employee_id,
+                        'booking_number' => $booking->booking_number,
+                        'completed_at' => now()->toISOString(),
+                    ],
+                ]);
+            }
 
             return $booking;
         });
