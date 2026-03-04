@@ -2,15 +2,14 @@
 
 namespace App\Models\Website;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Models\BaseModel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
 
-class ShortenedUrl extends Model
+class ShortenedUrl extends BaseModel
 {
-    use HasFactory;
-
     protected $fillable = [
         'short_code',
         'original_url',

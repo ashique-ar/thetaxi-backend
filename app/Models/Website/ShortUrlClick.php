@@ -2,10 +2,10 @@
 
 namespace App\Models\Website;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Models\BaseModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class ShortUrlClick extends Model
+class ShortUrlClick extends BaseModel
 {
     protected $fillable = [
         'shortened_url_id',
