@@ -3031,6 +3031,19 @@ class BookingFlowService
             $inputs['day_of_week'] = $fromDate->dayOfWeek;
         }
 
+        // Fallback: If total_distance is not set but minimum_km is configured, use minimum_km as total_distance
+        // This allows pricing calculations to work in preview mode without locations
+        if (!isset($inputs['total_distance']) && isset($inputs['minimum_km']) && $inputs['minimum_km'] > 0) {
+            $inputs['total_distance'] = $inputs['minimum_km'];
+            $inputs['journey_distance'] = $inputs['minimum_km'];
+            $inputs['minimum_km_applied'] = true;
+            
+            Log::info('prepareCalculationInputs: Using minimum_km as fallback for total_distance', [
+                'minimum_km' => $inputs['minimum_km'],
+                'reason' => 'no_locations_provided',
+            ]);
+        }
+
         Log::debug('prepareCalculationInputs: Final inputs prepared', [
             'inputs' => $inputs,
             'has_journey_distance' => isset($inputs['journey_distance']),
