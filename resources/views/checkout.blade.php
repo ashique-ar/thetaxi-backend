@@ -387,9 +387,6 @@
                                                         You can unsubscribe at any time.
                                                     </label>
                                                 </div>
-                                                <small class="text-muted d-block mt-1" style="margin-left: 1.5rem;">
-                                                    We respect your privacy and will handle your information in accordance with applicable data protection laws.
-                                                </small>
                                             </div>
                                         </div>
 
