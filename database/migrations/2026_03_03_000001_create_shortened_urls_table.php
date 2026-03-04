@@ -11,8 +11,9 @@ return new class extends Migration
      */
     public function up(): void
     {
+        Schema::dropIfExists('shortened_urls');
         Schema::create('shortened_urls', function (Blueprint $table) {
-            $table->uuid()->primary();
+            $table->uuid('id')->primary();
             $table->string('short_code', 10)->unique()->index();
             $table->text('original_url');
             $table->timestamp('expires_at')->nullable()->index();
