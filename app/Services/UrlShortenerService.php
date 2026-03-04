@@ -14,7 +14,7 @@ class UrlShortenerService
      * @param string $originalUrl The full URL to shorten
      * @param int|null $expiryHours Hours until expiry (null for no expiry)
      * @param string|null $createdByType Model type that created this (e.g., 'booking')
-     * @param int|null $createdById ID of the model that created this
+     * @param string|null $createdById ID of the model that created this (UUID or integer)
      * @param string|null $source Source of the link (e.g., 'email', 'sms', 'web')
      * @param string|null $campaign Campaign identifier (e.g., 'payment_reminder', 'quotation_follow_up')
      * @param string|null $medium Medium type (e.g., 'notification', 'marketing', 'transactional')
@@ -25,7 +25,7 @@ class UrlShortenerService
         string $originalUrl,
         ?int $expiryHours = null,
         ?string $createdByType = null,
-        ?int $createdById = null,
+        ?string $createdById = null,
         ?string $source = null,
         ?string $campaign = null,
         ?string $medium = null,
