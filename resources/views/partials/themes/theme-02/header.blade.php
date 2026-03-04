@@ -27,7 +27,7 @@
                             <i class="bi bi-caret-down-fill"></i>
                         </a>
                         <i class="bi bi-plus dropdown-icon"></i>
-                        <ul class="sub-menu">
+                        <ul class="sub-menu scrollable-submenu">
                             @foreach($headerServices as $service)
                                 @if(!empty($service->slug))
                                 <li><a href="{{ route('cms.show', ['contentType' => 'services', 'content' => $service->slug]) }}">{{ $service->title }}</a></li>
@@ -128,3 +128,45 @@
         </div>
     </div>
 </header>
+
+
+<style>
+/* Scrollable submenu styles */
+.scrollable-submenu {
+    max-height: 70vh !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+}
+
+/* Custom scrollbar for submenu */
+.scrollable-submenu::-webkit-scrollbar {
+    width: 6px;
+}
+
+.scrollable-submenu::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 3px;
+}
+
+.scrollable-submenu::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 3px;
+}
+
+.scrollable-submenu::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+/* For Firefox */
+.scrollable-submenu {
+    scrollbar-width: thin;
+    scrollbar-color: #888 #f1f1f1;
+}
+
+/* Mobile menu scrollable submenu */
+@media (max-width: 1199px) {
+    .scrollable-submenu {
+        max-height: 60vh !important;
+    }
+}
+</style>
