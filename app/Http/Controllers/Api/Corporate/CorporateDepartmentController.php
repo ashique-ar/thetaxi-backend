@@ -30,7 +30,8 @@ class CorporateDepartmentController extends Controller
             $query->where('name', 'like', '%' . $request->search . '%');
         }
 
-        if ($request->filled('is_active')) {
+        // Only apply is_active filter if explicitly set (not 'all')
+        if ($request->filled('is_active') && $request->is_active !== 'all') {
             $query->where('is_active', filter_var($request->is_active, FILTER_VALIDATE_BOOL));
         }
 

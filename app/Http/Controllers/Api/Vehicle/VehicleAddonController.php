@@ -53,8 +53,8 @@ class VehicleAddonController extends Controller
             $query->where('pricing_type', $request->pricing_type);
         }
 
-        // Filter by active status
-        if ($request->filled('is_active')) {
+        // Filter by active status - only if explicitly set (not 'all')
+        if ($request->filled('is_active') && $request->is_active !== 'all') {
             $query->where('is_active', filter_var($request->is_active, FILTER_VALIDATE_BOOLEAN));
         }
 

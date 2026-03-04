@@ -53,11 +53,13 @@ class CmsContentController extends Controller
             $q->where('updated_user_id', $request->updated_user_id);
         }
 
-        if ($request->filled('is_active')) {
+        // Only apply is_active filter if explicitly set (not 'all')
+        if ($request->filled('is_active') && $request->is_active !== 'all') {
             $q->where('is_active', $request->boolean('is_active'));
         }
 
-        if ($request->filled('is_featured')) {
+        // Only apply is_featured filter if explicitly set (not 'all')
+        if ($request->filled('is_featured') && $request->is_featured !== 'all') {
             $q->where('is_featured', $request->boolean('is_featured'));
         }
 

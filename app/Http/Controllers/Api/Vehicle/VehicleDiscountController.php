@@ -62,8 +62,8 @@ class VehicleDiscountController extends Controller
             }
         }
 
-        // Status filter
-        if ($request->filled('is_active')) {
+        // Status filter - only if explicitly set (not 'all')
+        if ($request->filled('is_active') && $request->is_active !== 'all') {
             $query->where('is_active', $request->boolean('is_active'));
         }
 

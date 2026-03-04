@@ -346,8 +346,8 @@ class DriverController extends Controller
     {
         $query = $driver->devices()->orderBy('last_active_at', 'desc');
         
-        // Optional filter by active status
-        if ($request->filled('is_active')) {
+        // Optional filter by active status - only if explicitly set (not 'all')
+        if ($request->filled('is_active') && $request->is_active !== 'all') {
             $query->where('is_active', filter_var($request->is_active, FILTER_VALIDATE_BOOLEAN));
         }
         

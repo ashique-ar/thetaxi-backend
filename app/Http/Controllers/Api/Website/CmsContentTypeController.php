@@ -34,7 +34,8 @@ class CmsContentTypeController extends Controller
             });
         }
         
-        if ($request->filled('is_active')) {
+        // Only apply is_active filter if explicitly set (not 'all')
+        if ($request->filled('is_active') && $request->is_active !== 'all') {
             $q->where('is_active', $request->boolean('is_active'));
         }
         
