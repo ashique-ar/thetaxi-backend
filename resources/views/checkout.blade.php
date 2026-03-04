@@ -388,8 +388,7 @@
                                                     </label>
                                                 </div>
                                                 <small class="text-muted d-block mt-1" style="margin-left: 1.5rem;">
-                                                    We respect your privacy. Your information will be used in accordance with our 
-                                                    <a href="{{ route('privacy-policy') }}" target="_blank" class="text-decoration-underline">Privacy Policy</a>.
+                                                    We respect your privacy and will handle your information in accordance with applicable data protection laws.
                                                 </small>
                                             </div>
                                         </div>
