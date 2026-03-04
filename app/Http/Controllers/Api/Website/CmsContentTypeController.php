@@ -23,7 +23,8 @@ class CmsContentTypeController extends Controller
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        $q = CmsContentType::with(['createdBy'])
+        $q = CmsContentType::withInactive()
+            ->with(['createdBy'])
             ->withCount('contents');
             
         if ($request->filled('search')) {
@@ -34,8 +35,8 @@ class CmsContentTypeController extends Controller
             });
         }
         
-        // Only apply is_active filter if explicitly set (not 'all')
-        if ($request->filled('is_active') && $request->is_active !== 'all') {
+        // Only apply is_active filter if explicitly set to true or false
+        if ($request->filled('is_active') && $request->is_active !== '' && $request->is_active !== 'all') {
             $q->where('is_active', $request->boolean('is_active'));
         }
         
