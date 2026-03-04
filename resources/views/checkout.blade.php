@@ -375,6 +375,25 @@
                                             </div>
                                         </div>
 
+                                        <!-- Marketing Consent Checkbox -->
+                                        <div class="col-md-12">
+                                            <div class="form-inner2">
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" name="marketing_consent"
+                                                        value="1" id="marketingConsent"
+                                                        {{ old('marketing_consent') ? 'checked' : '' }}>
+                                                    <label class="form-check-label" for="marketingConsent">
+                                                        I would like to receive marketing communications, special offers, and promotional emails. 
+                                                        You can unsubscribe at any time.
+                                                    </label>
+                                                </div>
+                                                <small class="text-muted d-block mt-1" style="margin-left: 1.5rem;">
+                                                    We respect your privacy. Your information will be used in accordance with our 
+                                                    <a href="{{ route('privacy-policy') }}" target="_blank" class="text-decoration-underline">Privacy Policy</a>.
+                                                </small>
+                                            </div>
+                                        </div>
+
                                     </div>
                                 </div>
                             </div>

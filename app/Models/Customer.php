@@ -66,7 +66,10 @@ class Customer extends BaseModel
         'state_id',
         'city',
         'created_user_id',
-        'updated_user_id'
+        'updated_user_id',
+        'marketing_consent',
+        'marketing_consent_date',
+        'marketing_consent_ip',
     ];
 
     /**
@@ -77,6 +80,8 @@ class Customer extends BaseModel
     protected $casts = [
         'license_expiry' => 'date',
         'dob' => 'date',
+        'marketing_consent' => 'boolean',
+        'marketing_consent_date' => 'datetime',
     ];
 
     // Relations
@@ -206,5 +211,33 @@ class Customer extends BaseModel
     public function getPhoneAttribute(): ?string
     {
         return $this->user?->phone;
+    }
+
+    // Marketing Consent Methods
+
+    /**
+     * Update marketing consent with timestamp and IP
+     *
+     * @param bool $consent
+     * @param string|null $ipAddress
+     * @return void
+     */
+    public function updateMarketingConsent(bool $consent, ?string $ipAddress = null): void
+    {
+        $this->update([
+            'marketing_consent' => $consent,
+            'marketing_consent_date' => $consent ? now() : null,
+            'marketing_consent_ip' => $consent ? $ipAddress : null,
+        ]);
+    }
+
+    /**
+     * Check if customer has given marketing consent
+     *
+     * @return bool
+     */
+    public function hasMarketingConsent(): bool
+    {
+        return $this->marketing_consent === true;
     }
 }

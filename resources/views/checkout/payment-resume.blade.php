@@ -107,7 +107,7 @@
                                     @endphp
                                     <div class="booking-item-email">
                                         <div
-                                            style="display: flex; align-items: flex-start; gap: 15px; margin-bottom: 15px;">
+                                            style="display: flex; align-items: flex-start; gap: 15px; margin-bottom: 5px;">
                                             @if ($defaultImage)
                                                 <div style="flex-shrink: 0;">
                                                     <img src="{{ asset($defaultImage) }}" alt="{{ $item['vehicle_group'] }}"
@@ -471,7 +471,7 @@
         .greeting {
             font-size: 16px;
             color: #333333;
-            margin-bottom: 20px;
+            margin-bottom: 10px;
             line-height: 1.6;
         }
 
@@ -482,8 +482,8 @@
         .intro-text {
             font-size: 15px;
             color: #555555;
-            line-height: 1.7;
-            margin-bottom: 25px;
+            line-height: 0.5;
+            margin-bottom: 0;
         }
 
         /* Reference Box */
@@ -501,7 +501,7 @@
             color: #717171;
             text-transform: uppercase;
             letter-spacing: 1px;
-            margin-bottom: 8px;
+            margin-bottom: 0;
         }
 
         .reference-number {
@@ -513,7 +513,7 @@
 
         /* Section */
         .section {
-            margin-bottom: 30px;
+            margin-bottom: 10px;
         }
 
         .section-title {
@@ -544,7 +544,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 15px;
+            margin-bottom: 0;
         }
 
         .vehicle-header h3 {
@@ -623,7 +623,7 @@
         }
 
         .info-table td {
-            padding: 12px 0;
+            padding: 0;
             font-size: 14px;
             vertical-align: top;
         }
@@ -685,7 +685,7 @@
         /* Button */
         .btn-container {
             text-align: center;
-            margin: 30px 0;
+            margin: 10px 0;
         }
 
         .btn {
@@ -735,7 +735,7 @@
         .divider {
             height: 1px;
             background: linear-gradient(to right, transparent, #e5e7eb, transparent);
-            margin: 30px 0;
+            margin: 5px 0;
         }
 
         /* Footer */

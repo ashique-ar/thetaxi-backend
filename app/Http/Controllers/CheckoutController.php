@@ -269,6 +269,7 @@ class CheckoutController extends Controller
             'contact_time' => 'nullable|string|in:morning,afternoon,evening,anytime',
             'budget_range' => 'nullable|string|in:under-500,500-1000,1000-2000,over-2000',
             'save_info' => 'boolean',
+            'marketing_consent' => 'boolean',
         ];
 
         // Custom validation messages

@@ -50,19 +50,28 @@ class CustomerService
                 
                 if ($customer) {
                     // Customer exists - update their info
-                    $customer->update([
+                    $updateData = [
                         'address' => $data['customer_address'] ?? $customer->address,
                         'city' => $data['customer_city'] ?? $customer->city,
                         'country' => $data['customer_country'] ?? $customer->country,
                         'country_id' => $data['country_id'] ?? $customer->country_id,
                         'nic' => $data['customer_identification'] ?? $customer->nic,
                         'updated_user_id' => Auth::id() ?? $user->id,
-                    ]);
+                    ];
+                    
+                    // Handle marketing consent
+                    if (isset($data['marketing_consent'])) {
+                        $updateData['marketing_consent'] = (bool) $data['marketing_consent'];
+                        $updateData['marketing_consent_date'] = $data['marketing_consent'] ? now() : null;
+                        $updateData['marketing_consent_ip'] = $data['marketing_consent'] ? request()->ip() : null;
+                    }
+                    
+                    $customer->update($updateData);
                     
                     return $customer->load('user');
                 } else {
                     // User exists but no customer - create customer
-                    $customer = Customer::create([
+                    $customerData = [
                         'user_id' => $user->id,
                         'address' => $data['customer_address'] ?? null,
                         'city' => $data['customer_city'] ?? null,
@@ -70,7 +79,16 @@ class CustomerService
                         'country_id' => $data['country_id'] ?? null,
                         'nic' => $data['customer_identification'] ?? null,
                         'created_user_id' => Auth::id() ?? $user->id,
-                    ]);
+                    ];
+                    
+                    // Handle marketing consent
+                    if (isset($data['marketing_consent'])) {
+                        $customerData['marketing_consent'] = (bool) $data['marketing_consent'];
+                        $customerData['marketing_consent_date'] = $data['marketing_consent'] ? now() : null;
+                        $customerData['marketing_consent_ip'] = $data['marketing_consent'] ? request()->ip() : null;
+                    }
+                    
+                    $customer = Customer::create($customerData);
                     
                     return $customer->load('user');
                 }
@@ -88,7 +106,7 @@ class CustomerService
             ]);
 
             // Create new customer linked to user
-            $customer = Customer::create([
+            $customerData = [
                 'user_id' => $user->id,
                 'address' => $data['customer_address'] ?? null,
                 'city' => $data['customer_city'] ?? null,
@@ -96,7 +114,16 @@ class CustomerService
                 'country_id' => $data['country_id'] ?? null,
                 'nic' => $data['customer_identification'] ?? null,
                 'created_user_id' => Auth::id() ?? $user->id,
-            ]);
+            ];
+            
+            // Handle marketing consent
+            if (isset($data['marketing_consent'])) {
+                $customerData['marketing_consent'] = (bool) $data['marketing_consent'];
+                $customerData['marketing_consent_date'] = $data['marketing_consent'] ? now() : null;
+                $customerData['marketing_consent_ip'] = $data['marketing_consent'] ? request()->ip() : null;
+            }
+            
+            $customer = Customer::create($customerData);
 
             return $customer->load('user');
         });
