@@ -32,7 +32,7 @@ class VehicleDiscountController extends Controller
      */
     public function index(Request $request): AnonymousResourceCollection
     {
-        $query = VehicleDiscount::with(['serviceType', 'vehicleGroup', 'createdBy']);
+        $query = VehicleDiscount::withInactive()->with(['serviceType', 'vehicleGroup', 'createdBy']);
 
         // Search filter
         if ($request->filled('search')) {

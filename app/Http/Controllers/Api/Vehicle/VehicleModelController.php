@@ -23,7 +23,7 @@ class VehicleModelController extends Controller
 
     public function index(Request $request)
     {
-        $q = VehicleModel::query();
+        $q = VehicleModel::withInactive();
         if ($request->filled('search')) {
             // Case-insensitive search across DBs
             $search = mb_strtolower($request->search);
@@ -32,6 +32,11 @@ class VehicleModelController extends Controller
 
         if ($request->filled('make_id')) {
             $q->where('make_id', $request->make_id);
+        }
+        
+        // Only apply is_active filter if explicitly set
+        if ($request->filled('is_active') && $request->is_active !== '' && $request->is_active !== 'all') {
+            $q->where('is_active', $request->boolean('is_active'));
         }
 
         return VehicleModelResource::collection($q->paginate($request->per_page ?? 15));

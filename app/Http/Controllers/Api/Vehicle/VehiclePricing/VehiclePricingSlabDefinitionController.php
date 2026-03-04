@@ -18,7 +18,7 @@ class VehiclePricingSlabDefinitionController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $query = VehiclePricingSlabDefinition::with(['serviceType']);
+        $query = VehiclePricingSlabDefinition::withInactive()->with(['serviceType']);
 
         // Filter by service type if provided
         if ($request->has('service_type_id')) {

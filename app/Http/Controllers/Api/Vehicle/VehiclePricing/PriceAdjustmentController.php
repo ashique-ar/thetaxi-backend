@@ -43,7 +43,7 @@ class PriceAdjustmentController extends Controller
         }
 
         try {
-            $query = PriceAdjustment::with(['serviceType', 'vehicleGroup']);
+            $query = PriceAdjustment::withInactive()->with(['serviceType', 'vehicleGroup']);
 
             // Apply filters
             if ($request->filled('search')) {
@@ -74,7 +74,8 @@ class PriceAdjustmentController extends Controller
                 $query->where('applies_to', $request->applies_to);
             }
 
-            if ($request->has('is_active')) {
+            // Only apply is_active filter if explicitly set (not empty or 'all')
+            if ($request->filled('is_active') && $request->is_active !== '' && $request->is_active !== 'all') {
                 $query->where('is_active', $request->boolean('is_active'));
             }
 

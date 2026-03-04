@@ -27,7 +27,7 @@ class VehicleAddonController extends Controller
      */
     public function index(Request $request)
     {
-        $query = VehicleAddon::query()->with('serviceType');
+        $query = VehicleAddon::withInactive()->with('serviceType');
 
         // Search filter
         if ($request->filled('search')) {
@@ -41,6 +41,11 @@ class VehicleAddonController extends Controller
         // Filter by service type
         if ($request->filled('service_type_id')) {
             $query->forServiceType($request->service_type_id);
+        }
+        
+        // Only apply is_active filter if explicitly set
+        if ($request->filled('is_active') && $request->is_active !== '' && $request->is_active !== 'all') {
+            $query->where('is_active', $request->boolean('is_active'));
         }
 
         // Filter by addon type

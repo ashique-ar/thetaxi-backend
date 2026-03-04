@@ -23,10 +23,16 @@ class VehicleClassController extends Controller
 
     public function index(Request $request)
     {
-        $q = VehicleClass::query();
+        $q = VehicleClass::withInactive();
         if ($request->filled('search')) {
             $q->where('name', 'like', '%' . $request->search . '%');
         }
+        
+        // Only apply is_active filter if explicitly set
+        if ($request->filled('is_active') && $request->is_active !== '' && $request->is_active !== 'all') {
+            $q->where('is_active', $request->boolean('is_active'));
+        }
+        
         return VehicleClassResource::collection($q->paginate($request->per_page ?? 15));
     }
 

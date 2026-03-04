@@ -23,11 +23,17 @@ class ServiceTypeController extends Controller
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        $q = ServiceType::query();
+        $q = ServiceType::withInactive();
         if ($request->filled('search')) {
             $q->where('name','like','%'.$request->search.'%')
               ->orWhere('code','like','%'.$request->search.'%');
         }
+        
+        // Only apply is_active filter if explicitly set
+        if ($request->filled('is_active') && $request->is_active !== '' && $request->is_active !== 'all') {
+            $q->where('is_active', $request->boolean('is_active'));
+        }
+        
         return ServiceTypeResource::collection($q->paginate($request->per_page ?? 15));
     }
 

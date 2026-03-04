@@ -23,7 +23,7 @@ class VehicleGroupController extends Controller
 
     public function index(Request $request)
     {
-        $q = VehicleGroup::with(
+        $q = VehicleGroup::withInactive()->with(
             'grade',
             'make',
             'model',
@@ -43,7 +43,6 @@ class VehicleGroupController extends Controller
             'transmission_id',
             'category_id',
             'model_id',
-            'is_active',
             'is_premium',
         ];
 

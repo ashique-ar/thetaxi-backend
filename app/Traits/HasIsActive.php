@@ -47,4 +47,13 @@ trait HasIsActive
     {
         return $q->withInactive()->where($q->getModel()->getTable() . '.is_active', false);
     }
+
+    /**
+     * Retrieve the model for a bound value (route model binding).
+     * Override to include inactive records for admin operations.
+     */
+    public function resolveRouteBinding($value, $field = null)
+    {
+        return $this->withInactive()->where($field ?? $this->getRouteKeyName(), $value)->firstOrFail();
+    }
 }

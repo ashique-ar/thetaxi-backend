@@ -25,7 +25,7 @@ class CmsContentController extends Controller
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        $q = CmsContent::query()->with(['contentType', 'createdBy', 'updatedBy']);
+        $q = CmsContent::withInactive()->with(['contentType', 'createdBy', 'updatedBy']);
         $contentTable = $q->getModel()->getTable();
 
         if ($request->filled('search')) {

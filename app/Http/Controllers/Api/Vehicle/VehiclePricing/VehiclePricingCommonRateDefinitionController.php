@@ -38,7 +38,7 @@ class VehiclePricingCommonRateDefinitionController extends Controller
      */
     public function index(Request $request): AnonymousResourceCollection
     {
-        $query = VehiclePricingCommonRateDefinition::with(['serviceType', 'createdBy', 'updatedBy']);
+        $query = VehiclePricingCommonRateDefinition::withInactive()->with(['serviceType', 'createdBy', 'updatedBy']);
 
         // Apply filters
         if ($request->filled('search')) {

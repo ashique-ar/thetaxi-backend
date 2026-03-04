@@ -40,7 +40,7 @@ class KmRangePricingController extends Controller
         }
 
         try {
-            $query = KmRangePricingRule::with(['serviceType', 'vehicleGroup']);
+            $query = KmRangePricingRule::withInactive()->with(['serviceType', 'vehicleGroup']);
 
             // Apply filters
             if ($request->filled('search')) {
@@ -63,7 +63,8 @@ class KmRangePricingController extends Controller
                 $query->where('vehicle_group_id', $request->vehicle_group_id);
             }
 
-            if ($request->has('is_active')) {
+            // Only apply is_active filter if explicitly set (not empty or 'all')
+            if ($request->filled('is_active') && $request->is_active !== '' && $request->is_active !== 'all') {
                 $query->where('is_active', $request->boolean('is_active'));
             }
 

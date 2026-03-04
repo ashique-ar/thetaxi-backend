@@ -23,12 +23,18 @@ class VehicleMakeController extends Controller
 
     public function index(Request $request)
     {
-        $q = VehicleMake::query();
+        $q = VehicleMake::withInactive();
         if ($request->filled('search')) {
             // Case-insensitive search for name
             $search = mb_strtolower($request->search);
             $q->whereRaw('LOWER(name) LIKE ?', ['%' . $search . '%']);
         }
+        
+        // Only apply is_active filter if explicitly set
+        if ($request->filled('is_active') && $request->is_active !== '' && $request->is_active !== 'all') {
+            $q->where('is_active', $request->boolean('is_active'));
+        }
+        
         return VehicleMakeResource::collection($q->paginate($request->per_page ?? 15));
     }
 
