@@ -1377,6 +1377,19 @@ Route::middleware(['auth:api'])->group(function () {
             ->middleware('permission:faqs.edit');
         Route::get('faqs/categories/list', [\App\Http\Controllers\Api\Admin\FAQController::class, 'getCategories'])
             ->middleware('permission:faqs.view');
+
+        Route::middleware(['permission:settings.view'])->group(function () {
+            Route::get('booking-form-tabs', [\App\Http\Controllers\Api\Admin\BookingFormTabController::class, 'index']);
+            Route::get('booking-form-tabs/{id}', [\App\Http\Controllers\Api\Admin\BookingFormTabController::class, 'show']);
+        });
+        Route::put('booking-form-tabs/{id}', [\App\Http\Controllers\Api\Admin\BookingFormTabController::class, 'update'])
+            ->middleware('permission:settings.edit');
+        Route::post('booking-form-tabs/{id}/toggle', [\App\Http\Controllers\Api\Admin\BookingFormTabController::class, 'toggle'])
+            ->middleware('permission:settings.edit');
+        Route::post('booking-form-tabs/reorder', [\App\Http\Controllers\Api\Admin\BookingFormTabController::class, 'reorder'])
+            ->middleware('permission:settings.edit');
+        Route::post('booking-form-tabs/bulk-update', [\App\Http\Controllers\Api\Admin\BookingFormTabController::class, 'bulkUpdate'])
+            ->middleware('permission:settings.edit');
     });
 });
 
