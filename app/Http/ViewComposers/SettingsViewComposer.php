@@ -428,6 +428,20 @@ class SettingsViewComposer
                     'point_to_point_faq_3_answer',
                     'point_to_point_faq_4_question',
                     'point_to_point_faq_4_answer',
+
+                    // Booking form settings
+                    'enable_airport_transfers',
+                    'enable_ride_now',
+                    'enable_day_rental',
+                    'enable_selfdrive',
+                    'enable_with_drive',
+                    'enable_wedding',
+                    'enable_corporate',
+                    'show_return_trip_toggle',
+                    'booking_advance_hours',
+                    'booking_max_days',
+                    'guest_booking_enabled',
+                    'booking_base_currency',
                 ];
 
                 $essentialSettings = $this->settingsService->getMultiple($allSettingsKeys);

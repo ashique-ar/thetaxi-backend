@@ -787,6 +787,14 @@ class WebsiteSettingsService
             'auto_dispatch_enabled',
             'guest_booking_enabled',
             'booking_base_currency',
+            'enable_airport_transfers',
+            'enable_ride_now',
+            'enable_day_rental',
+            'enable_selfdrive',
+            'enable_with_drive',
+            'enable_wedding',
+            'enable_corporate',
+            'show_return_trip_toggle',
             'include_garage_distance_in_pricing'
         ];
 

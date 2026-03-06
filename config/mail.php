@@ -146,8 +146,11 @@ return [
     */
     'inquiry_routing' => [
         'default' => [
-            'cc' => ['info@thetaxi.lk', 'inquiry@thetaxi.lk'],
-            'bcc' => ['sales@thetaxi.lk'],
+            'cc' => ['info@thetaxi.lk',
+            //  'inquiry@thetaxi.lk'
+            ],
+            // 'cc' => ['info@thetaxi.lk', 'inquiry@thetaxi.lk'],
+            // 'bcc' => ['sales@thetaxi.lk'],
             'include_default_cc' => true,
             'include_default_bcc' => true,
         ],

@@ -42,10 +42,9 @@ class CorporateController extends Controller
         $perPage = (int) $request->get('per_page', 15);
         $corporates = $query->paginate($perPage);
 
-        return response()->json([
-            'status' => 'success',
-            'data'   => ['corporates' => $corporates],
-        ]);
+        return response()->json(
+            $corporates
+        );
     }
 
     public function store(StoreCorporateRequest $request): JsonResponse

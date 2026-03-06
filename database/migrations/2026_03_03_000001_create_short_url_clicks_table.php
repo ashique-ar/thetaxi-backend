@@ -11,6 +11,7 @@ return new class extends Migration
      */
     public function up(): void
     {
+        Schema::dropIfExists('short_url_clicks');
         Schema::create('short_url_clicks', function (Blueprint $table) {
             $table->uuid()->primary();
             $table->uuid('shortened_url_id')->nullable();

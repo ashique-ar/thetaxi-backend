@@ -17236,6 +17236,8 @@ header.style-3.two .main-menu>ul>li.active>a i {
 
 .home3-banner-section .banner-wrapper .banner-img-area img {
   min-height: 775px;
+  height: 775px;
+  width: 100%;
   -o-object-fit: cover;
   object-fit: cover;
 }
@@ -17244,6 +17246,7 @@ header.style-3.two .main-menu>ul>li.active>a i {
   .home3-banner-section .banner-wrapper .banner-img-area img {
     min-height: 680px;
     height: 680px;
+    width: 100%;
   }
 }
 
@@ -17251,6 +17254,7 @@ header.style-3.two .main-menu>ul>li.active>a i {
   .home3-banner-section .banner-wrapper .banner-img-area img {
     min-height: 640px;
     height: 640px;
+    width: 100%;
   }
 }
 
@@ -17258,6 +17262,7 @@ header.style-3.two .main-menu>ul>li.active>a i {
   .home3-banner-section .banner-wrapper .banner-img-area img {
     min-height: 600px;
     height: 600px;
+    width: 100%;
   }
 }
 
@@ -17265,6 +17270,7 @@ header.style-3.two .main-menu>ul>li.active>a i {
   .home3-banner-section .banner-wrapper .banner-img-area img {
     min-height: 580px;
     height: 580px;
+    width: 100%;
   }
 }
 

@@ -5,7 +5,7 @@
 {{-- Includes banner pagination controls --}}
 
 <!-- home3 Banner Section Start -->
-<div class="home3-banner-section">
+<div class="theme2 home3-banner-section">
     <div class="swiper home2-banner-slider">
         <div class="swiper-wrapper">
             <div class="swiper-slide">
@@ -17,8 +17,8 @@
                     <div class="banner-content-wrap">
                         <div class="container">
                             <div class="banner-content">
-                                <h2>{{ $settings['banner_heading'] ?? 'Fly First Class, Land Refreshed' }}</h2>
-                                <p>{{ $settings['banner_subheading'] ?? 'Every destination is backed by care, culture, and confidence.' }}
+                                <h2>{{ $settings['banner_heading'] ?? '' }}</h2>
+                                <p>{{ $settings['banner_subheading'] ?? '' }}
                                 </p>
                             </div>
                         </div>
