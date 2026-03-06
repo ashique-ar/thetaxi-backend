@@ -920,7 +920,7 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
 
         @if($isEnabled('enable_corporate', false))
         <!-- Corporate Form -->
-        <form id="corporate-form" class="filter-input {{ $currentServiceType === 'corporate' ? 'show' : '' }}"
+        {{-- <form id="corporate-form" class="filter-input {{ $currentServiceType === 'corporate' ? 'show' : '' }}"
             data-service="corporate" action="{{ route('booking.search') }}" method="GET">
             <input type="hidden" name="service_type" value="corporate">
             
@@ -992,7 +992,7 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
             <button type="submit" class="primary-btn1">
                 <span>Request Quote</span>
             </button>
-        </form>
+        </form> --}}
         @endif
 
         @if($isEnabled('enable_wedding', false))
