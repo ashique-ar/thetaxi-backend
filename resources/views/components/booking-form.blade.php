@@ -2341,15 +2341,249 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
     .package-option span {
         white-space: normal;
     }
+
+    /* ===== Flatpickr Material Red Theme ===== */
+    .flatpickr-calendar {
+        z-index: 9999 !important;
+        border-radius: 4px;
+        box-shadow: 0 6px 20px rgba(0,0,0,.18), 0 2px 6px rgba(0,0,0,.1);
+        border: none;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        width: 308px;
+        padding: 0;
+        background: #fff;
+        overflow: hidden;
+    }
+
+    .flatpickr-calendar.arrowTop::before,
+    .flatpickr-calendar.arrowTop::after,
+    .flatpickr-calendar.arrowBottom::before,
+    .flatpickr-calendar.arrowBottom::after {
+        display: none;
+    }
+
+    /* ---- Header bar (brand colored) ---- */
+    .flatpickr-months {
+        background: #c91c23;
+        padding: 0;
+        border-radius: 4px 4px 0 0;
+        align-items: center;
+        height: 48px;
+    }
+
+    .flatpickr-months .flatpickr-month {
+        background: transparent;
+        color: #fff;
+        height: 48px;
+        fill: #fff;
+    }
+
+    .flatpickr-current-month {
+        font-size: 14px;
+        font-weight: 600;
+        color: #fff;
+        padding-top: 8px;
+    }
+
+    .flatpickr-current-month .flatpickr-monthDropdown-months {
+        font-weight: 600;
+        font-size: 14px;
+        color: #fff;
+        background: transparent;
+        appearance: none;
+        -webkit-appearance: none;
+        padding: 2px 4px;
+        border: none;
+        cursor: pointer;
+    }
+
+    .flatpickr-current-month .flatpickr-monthDropdown-months option {
+        color: #333;
+        background: #fff;
+    }
+
+    .flatpickr-current-month input.cur-year {
+        font-weight: 600;
+        font-size: 14px;
+        color: #fff;
+    }
+
+    .flatpickr-current-month .numInputWrapper:hover {
+        background: rgba(255,255,255,.15);
+        border-radius: 4px;
+    }
+
+    .numInputWrapper span {
+        border: none;
+    }
+
+    .numInputWrapper span::after {
+        border-bottom-color: #fff !important;
+        border-top-color: #fff !important;
+    }
+
+    /* ---- Navigation arrows ---- */
+    .flatpickr-months .flatpickr-prev-month,
+    .flatpickr-months .flatpickr-next-month {
+        width: 36px;
+        height: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        transition: background .2s;
+        top: 6px;
+        padding: 0;
+        fill: #fff;
+    }
+
+    .flatpickr-months .flatpickr-prev-month:hover,
+    .flatpickr-months .flatpickr-next-month:hover {
+        background: rgba(255,255,255,.2);
+    }
+
+    .flatpickr-months .flatpickr-prev-month svg,
+    .flatpickr-months .flatpickr-next-month svg {
+        width: 14px;
+        height: 14px;
+        fill: #fff;
+    }
+
+    /* ---- Weekday headers ---- */
+    .flatpickr-weekdays {
+        background: #fff;
+        padding: 8px 12px 0;
+        height: 32px;
+    }
+
+    span.flatpickr-weekday {
+        font-size: 11px;
+        font-weight: 700;
+        color: #999;
+        text-transform: uppercase;
+        letter-spacing: .5px;
+        background: transparent;
+    }
+
+    /* ---- Day grid ---- */
+    .flatpickr-days {
+        padding: 4px 8px 8px;
+        border: none;
+    }
+
+    .flatpickr-days .dayContainer {
+        min-width: 292px;
+        max-width: 292px;
+    }
+
+    .flatpickr-day {
+        max-width: 38px;
+        height: 38px;
+        line-height: 38px;
+        border-radius: 50%;
+        font-size: 13px;
+        font-weight: 500;
+        color: #333;
+        border: none;
+        margin: 1px;
+        transition: background .15s, color .15s;
+    }
+
+    .flatpickr-day:hover {
+        background: rgba(201,28,35,.08);
+        border: none;
+        color: #c91c23;
+    }
+
+    .flatpickr-day.selected,
+    .flatpickr-day.startRange,
+    .flatpickr-day.endRange,
+    .flatpickr-day.selected:hover,
+    .flatpickr-day.selected:focus {
+        background: #c91c23;
+        border-color: #c91c23;
+        color: #fff;
+        box-shadow: 0 2px 6px rgba(201,28,35,.35);
+    }
+
+    .flatpickr-day.today {
+        border: 2px solid #c91c23;
+        font-weight: 700;
+        color: #c91c23;
+    }
+
+    .flatpickr-day.today:hover {
+        background: #c91c23;
+        border-color: #c91c23;
+        color: #fff;
+    }
+
+    .flatpickr-day.today.selected {
+        border: none;
+    }
+
+    .flatpickr-day.flatpickr-disabled,
+    .flatpickr-day.flatpickr-disabled:hover {
+        color: #d5d5d5;
+        background: transparent;
+        cursor: not-allowed;
+    }
+
+    .flatpickr-day.prevMonthDay,
+    .flatpickr-day.nextMonthDay {
+        color: #ccc;
+        background: transparent;
+    }
+
+    .flatpickr-day.prevMonthDay:hover,
+    .flatpickr-day.nextMonthDay:hover {
+        background: #f5f5f5;
+        color: #999;
+    }
+
+    .flatpickr-day.inRange {
+        background: rgba(201,28,35,.1);
+        border-color: transparent;
+        box-shadow: none;
+    }
+
+    /* ---- Input styling ---- */
+    .custom-datepicker {
+        cursor: pointer;
+    }
+
+    .custom-datepicker:focus {
+        border-color: #c91c23;
+        box-shadow: 0 0 0 2px rgba(201,28,35,.15);
+    }
+
+    /* ---- Responsive ---- */
+    @media (max-width: 576px) {
+        .flatpickr-calendar {
+            width: calc(100vw - 20px) !important;
+            left: 10px !important;
+            right: 10px !important;
+        }
+
+        .flatpickr-days .dayContainer {
+            min-width: 100%;
+            max-width: 100%;
+        }
+
+        .flatpickr-day {
+            max-width: calc((100% - 14px) / 7);
+            height: 36px;
+            line-height: 36px;
+        }
+    }
 </style>
 
 @push('scripts')
-    <!-- Bootstrap Datepicker CSS -->
-    <link rel="stylesheet"
-        href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datepicker/1.9.0/css/bootstrap-datepicker.min.css">
+    <!-- Flatpickr Material Theme CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/themes/material_red.css">
 
-    <!-- Bootstrap Datepicker JS -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datepicker/1.9.0/js/bootstrap-datepicker.min.js"></script>
+    <!-- Flatpickr JS -->
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 
     <script>
         $(document).ready(function() {
@@ -2367,15 +2601,43 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
                 return d;
             }
 
-            // Initialize datepickers with startDate = date part of minAllowed
+            // Initialize datepickers with Flatpickr
             const minAllowedGlobal = computeMinAllowedDate();
-            $('.custom-datepicker').datepicker({
-                format: 'dd/mm/yyyy',
-                autoclose: true,
-                todayHighlight: true,
-                startDate: new Date(minAllowedGlobal.getFullYear(), minAllowedGlobal.getMonth(),
-                    minAllowedGlobal.getDate()),
-                orientation: 'bottom auto'
+            
+            // Calculate maximum allowed booking date
+            const bookingMaxDays = {{ $settings['booking_max_days'] ?? 365 }};
+            const maxAllowedDate = new Date();
+            maxAllowedDate.setDate(maxAllowedDate.getDate() + bookingMaxDays);
+            
+            // Store all flatpickr instances for later reference
+            const flatpickrInstances = {};
+            
+            // Initialize all date inputs with Flatpickr
+            document.querySelectorAll('.custom-datepicker').forEach(function(el) {
+                const fp = flatpickr(el, {
+                    dateFormat: 'd/m/Y',
+                    minDate: new Date(minAllowedGlobal.getFullYear(), minAllowedGlobal.getMonth(), minAllowedGlobal.getDate()),
+                    maxDate: maxAllowedDate,
+                    allowInput: true,
+                    disableMobile: true,
+                    animate: true,
+                    monthSelectorType: 'dropdown',
+                    locale: { firstDayOfWeek: 1 },
+                    prevArrow: '<svg width="12" height="12" viewBox="0 0 24 24"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z" fill="currentColor"/></svg>',
+                    nextArrow: '<svg width="12" height="12" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z" fill="currentColor"/></svg>',
+                    onChange: function(selectedDates, dateStr, instance) {
+                        // Trigger jQuery change event for existing handlers
+                        $(instance.element).trigger('change');
+                        // Remove any validation errors
+                        $(instance.element).removeClass('is-invalid');
+                        $(instance.element).siblings('.invalid-feedback').remove();
+                    }
+                });
+                
+                // Store instance by element name + form id for later access
+                const formEl = el.closest('form');
+                const key = (formEl ? formEl.id + '-' : '') + (el.name || el.id || '');
+                if (key) flatpickrInstances[key] = fp;
             });
 
             // Helper formatters
@@ -2412,7 +2674,7 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
                             if (cd < new Date(min.getFullYear(), min.getMonth(), min.getDate())) setDate = true;
                         }
                         if (setDate) {
-                            dateInput.val(formatDateDDMMYYYY(min)).datepicker('update');
+                            dateInput.val(formatDateDDMMYYYY(min));
                         }
 
                         // Time defaults
@@ -2445,12 +2707,12 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
                     const timeInput = form.find('input[name="pickup_time"]');
                     if (dateInput.length && timeInput.length) {
                         if (!dateInput.val() || !isValidDDMMYYYY(dateInput.val())) {
-                            dateInput.val(formatDateDDMMYYYY(min)).datepicker('update');
+                            dateInput.val(formatDateDDMMYYYY(min));
                         } else {
                             const parts = dateInput.val().split('/');
                             const cd = new Date(parts[2], parts[1] - 1, parts[0]);
                             if (cd < new Date(min.getFullYear(), min.getMonth(), min.getDate())) {
-                                dateInput.val(formatDateDDMMYYYY(min)).datepicker('update');
+                                dateInput.val(formatDateDDMMYYYY(min));
                             }
                         }
 
@@ -2481,31 +2743,12 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
                 applyAdvanceDefaults();
             });
 
-            // On datepicker open, update its startDate in case settings changed
-            $(document).on('show', '.custom-datepicker', function() {
-                const min = computeMinAllowedDate();
-                $(this).datepicker('setStartDate', new Date(min.getFullYear(), min.getMonth(), min
-                    .getDate()));
-            });
+            // Helper: get flatpickr instance from an element
+            function getFlatpickrInstance(el) {
+                return el._flatpickr || null;
+            }
 
-            $('.custom-datepicker').on('input', function() {
-                let value = $(this).val();
-
-                value = value.replace(/[^\d\/]/g, '');
-
-                if (value.length === 2 && !value.includes('/')) {
-                    value += '/';
-                } else if (value.length === 5 && value.split('/').length === 2) {
-                    value += '/';
-                }
-
-                if (value.length > 10) {
-                    value = value.substring(0, 10);
-                }
-
-                $(this).val(value);
-            });
-
+            // Validation on blur for manually typed dates
             $('.custom-datepicker').on('blur', function() {
                 let value = $(this).val();
                 if (value && !isValidDDMMYYYY(value)) {
@@ -2573,30 +2816,30 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
             }
 
             // Auto-update dropoff_date when pickup_date changes in day_rental form
-            $('#day_rental-form .custom-datepicker[name="pickup_date"]').on('changeDate change', function() {
+            $('#day_rental-form .custom-datepicker[name="pickup_date"]').on('change', function() {
                 const pickupDateStr = $(this).val();
                 if (!pickupDateStr || !isValidDDMMYYYY(pickupDateStr)) return;
 
                 const pickupDate = parseDate(pickupDateStr);
-                const dropoffInput = $('#day_rental-form .custom-datepicker[name="dropoff_date"]');
+                const dropoffEl = document.querySelector('#day_rental-form .custom-datepicker[name="dropoff_date"]');
+                const dropoffInput = $(dropoffEl);
                 const dropoffDateStr = dropoffInput.val();
 
                 // If dropoff_date is empty or is before pickup_date, set it to same day (same-day rental)
                 if (!dropoffDateStr || !isValidDDMMYYYY(dropoffDateStr)) {
-                    // Default to same day for same-day rental
                     dropoffInput.val(formatDate(pickupDate));
-                    dropoffInput.datepicker('update');
                 } else {
                     const dropoffDate = parseDate(dropoffDateStr);
-                    // Only update if dropoff is before pickup (allow same day)
                     if (dropoffDate < pickupDate) {
                         dropoffInput.val(formatDate(pickupDate));
-                        dropoffInput.datepicker('update');
                     }
                 }
 
-                // Update the minimum date for dropoff datepicker to allow same day
-                dropoffInput.datepicker('setStartDate', pickupDate);
+                // Update the minimum date for dropoff flatpickr to allow same day
+                const fpDropoff = getFlatpickrInstance(dropoffEl);
+                if (fpDropoff) {
+                    fpDropoff.set('minDate', pickupDate);
+                }
             });
 
             // Initialize dropoff_date min date based on current pickup_date value
@@ -2604,9 +2847,11 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
                 const pickupDateStr = $('#day_rental-form .custom-datepicker[name="pickup_date"]').val();
                 if (pickupDateStr && isValidDDMMYYYY(pickupDateStr)) {
                     const pickupDate = parseDate(pickupDateStr);
-                    // Allow same day rental
-                    $('#day_rental-form .custom-datepicker[name="dropoff_date"]').datepicker('setStartDate',
-                        pickupDate);
+                    const dropoffEl = document.querySelector('#day_rental-form .custom-datepicker[name="dropoff_date"]');
+                    const fpDropoff = getFlatpickrInstance(dropoffEl);
+                    if (fpDropoff) {
+                        fpDropoff.set('minDate', pickupDate);
+                    }
                 }
             })();
         });
