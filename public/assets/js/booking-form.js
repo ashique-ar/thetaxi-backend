@@ -2776,6 +2776,16 @@
      * Initialize date pickers with proper value binding and validation
      */
     function initializeDatePickers() {
+        // If Flatpickr is loaded (from blade component), skip Bootstrap Datepicker init
+        // to avoid double-datepicker conflicts.
+        if (typeof flatpickr !== 'undefined') {
+            // Flatpickr is handling date pickers — just wire up validation on blur/change
+            $(".custom-datepicker").on("blur change", function () {
+                validateDate(this);
+            });
+            return;
+        }
+
         // Destroy existing datepickers first to prevent duplicates
         if (typeof $ !== "undefined" && $.fn.datepicker) {
             $(".custom-datepicker").each(function () {
@@ -3167,6 +3177,9 @@
         datePickers.forEach((picker) => {
             // Remove readonly to allow direct clicking
             picker.removeAttribute("readonly");
+
+            // If Flatpickr is already attached, skip Bootstrap datepicker show logic
+            if (picker._flatpickr) return;
 
             picker.addEventListener("click", function (e) {
                 e.stopPropagation();
@@ -3639,7 +3652,12 @@
      */
     function initReturnDatePicker() {
         const returnDateInput = document.getElementById('ride_now-return-date');
-        if (returnDateInput && typeof $ !== 'undefined' && $.fn.datepicker) {
+        if (!returnDateInput) return;
+
+        // If Flatpickr is already attached, skip Bootstrap Datepicker init
+        if (returnDateInput._flatpickr) return;
+
+        if (typeof $ !== 'undefined' && $.fn.datepicker) {
             // Destroy existing datepicker if any to prevent duplicates
             if ($(returnDateInput).data('datepicker')) {
                 $(returnDateInput).datepicker('destroy');
@@ -3676,8 +3694,10 @@
 
         if (pickupDateInput && returnDateInput) {
             returnDateInput.value = pickupDateInput.value;
-            // Update datepicker
-            if (typeof $ !== 'undefined' && $.fn.datepicker) {
+            // Update datepicker (Flatpickr or Bootstrap)
+            if (returnDateInput._flatpickr) {
+                returnDateInput._flatpickr.setDate(pickupDateInput.value, false, 'd/m/Y');
+            } else if (typeof $ !== 'undefined' && $.fn.datepicker) {
                 $(returnDateInput).datepicker('update', pickupDateInput.value);
             }
         }
