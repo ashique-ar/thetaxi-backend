@@ -34,7 +34,8 @@
 
     <!-- Theme-specific CSS (loaded conditionally) -->
     @if (is_theme('theme-02'))
-        <link rel="stylesheet" href="{{ assetVersion('assets/css/theme-02.css') }}">
+        <script src="https://cdn.tailwindcss.com"></script>
+        <link rel="stylesheet" href="{{ assetVersion('assets/css/theme-02-tw.css') }}">
     @else
         <link rel="stylesheet" href="{{ assetVersion('assets/css/theme-01.css') }}">
     @endif

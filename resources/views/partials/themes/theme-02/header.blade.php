@@ -1,31 +1,28 @@
-{{-- Theme-02 Header - Based on travel-agency-02.html (style-3) --}}
-{{-- No top offer text slider section for this theme --}}
+{{-- Theme-02 Header - Tailwind CSS - Glass-morphism transparent header --}}
 
 <!-- Header Section -->
-<header class="header-area style-3">
-    <div class="container-fluid d-flex flex-nowrap align-items-center justify-content-between">
+<header class="t2-header header-area style-3">
+    <div class="container d-flex flex-nowrap align-items-center justify-content-between">
         <div class="logo-and-menu-area">
             <a href="{{ route('home') }}" class="header-logo">
-                <img src="{{ s3_asset($settings['logo_header'] ?? 'assets/img/header-logo3.svg') }}" alt="{{ $settings['logo_header_alt'] ?? $settings['site_name'] ?? 'TheTaxi' }}">
+                <img src="{{ s3_asset($settings['logo_header'] ?? 'assets/img/header-logo3.svg') }}"
+                     alt="{{ $settings['logo_header_alt'] ?? $settings['site_name'] ?? 'TheTaxi' }}">
             </a>
             <div class="main-menu">
                 <div class="mobile-logo-area d-xl-none d-flex align-items-center justify-content-between">
                     <a href="{{ route('home') }}" class="mobile-logo-wrap">
-                        <img src="{{ s3_asset($settings['logo_mobile'] ?? $settings['logo_header'] ?? 'assets/img/header-logo2.svg') }}" alt="{{ $settings['logo_mobile_alt'] ?? $settings['site_name'] ?? 'TheTaxi' }}">
+                        <img src="{{ s3_asset($settings['logo_mobile'] ?? $settings['logo_header'] ?? 'assets/img/header-logo2.svg') }}"
+                             alt="{{ $settings['logo_mobile_alt'] ?? $settings['site_name'] ?? 'TheTaxi' }}">
                     </a>
                     <div class="menu-close-btn">
                         <i class="bi bi-x"></i>
                     </div>
                 </div>
-                {{-- Header Navigation - Updated: 2026-02-14 --}}
                 <ul class="menu-list">
                     <li class="{{ Request::routeIs('home') ? 'active' : '' }}"><a href="{{ route('home') }}">Home</a></li>
                     @if(isset($headerServices) && $headerServices->count() > 0)
                     <li class="menu-item-has-children">
-                        <a href="#" class="drop-down">
-                            Services
-                            <i class="bi bi-caret-down-fill"></i>
-                        </a>
+                        <a href="#" class="drop-down">Services <i class="bi bi-caret-down-fill"></i></a>
                         <i class="bi bi-plus dropdown-icon"></i>
                         <ul class="sub-menu scrollable-submenu">
                             @foreach($headerServices as $service)
@@ -42,10 +39,7 @@
                 <div class="contact-area d-xl-none d-flex">
                     <div class="icon">
                         <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
-                            <g>
-                                <path
-                                    d="M15.5646 11.7424L13.3317 9.50954C12.5343 8.7121 11.1786 9.03111 10.8596 10.0678C10.6204 10.7855 9.82296 11.1842 9.10526 11.0247C7.51037 10.626 5.35726 8.55261 4.95854 6.87797C4.71931 6.16024 5.19778 5.36279 5.91548 5.12359C6.95216 4.80461 7.27113 3.44895 6.47369 2.65151L4.24084 0.418659C3.60288 -0.139553 2.64595 -0.139553 2.08774 0.418659L0.572591 1.93381C-0.942555 3.5287 0.73208 7.75516 4.48007 11.5032C8.22807 15.2512 12.4545 17.0056 14.0494 15.4106L15.5646 13.8955C16.1228 13.2575 16.1228 12.3006 15.5646 11.7424Z"/>
-                            </g>
+                            <g><path d="M15.5646 11.7424L13.3317 9.50954C12.5343 8.7121 11.1786 9.03111 10.8596 10.0678C10.6204 10.7855 9.82296 11.1842 9.10526 11.0247C7.51037 10.626 5.35726 8.55261 4.95854 6.87797C4.71931 6.16024 5.19778 5.36279 5.91548 5.12359C6.95216 4.80461 7.27113 3.44895 6.47369 2.65151L4.24084 0.418659C3.60288 -0.139553 2.64595 -0.139553 2.08774 0.418659L0.572591 1.93381C-0.942555 3.5287 0.73208 7.75516 4.48007 11.5032C8.22807 15.2512 12.4545 17.0056 14.0494 15.4106L15.5646 13.8955C16.1228 13.2575 16.1228 12.3006 15.5646 11.7424Z"/></g>
                         </svg>
                     </div>
                     <div class="content">
@@ -53,8 +47,7 @@
                         <a href="tel:{{ preg_replace('/[^0-9+]/', '', $settings['company_phone'] ?? '+1234567890') }}">{{ $settings['company_phone'] ?? '+1 234 567 890' }}</a>
                     </div>
                 </div>
-                
-                <!-- Mobile Cart Link -->
+                <!-- Mobile Cart -->
                 <div class="mobile-cart-area d-xl-none d-flex align-items-center mt-3">
                     <a href="{{ route('cart') }}" class="cart-icon-link position-relative d-flex align-items-center text-decoration-none">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -71,17 +64,15 @@
                 <!-- Currency Selector -->
                 <div class="currency-selector align-items-center me-3">
                     <div class="dropdown">
-                        <button class="btn btn-link dropdown-toggle p-0 text-decoration-none" type="button" 
-                                id="currencyDropdown" data-bs-toggle="dropdown" aria-expanded="false"
-                                style="color: #333; font-weight: 500;">
+                        <button class="btn btn-link dropdown-toggle p-0 text-decoration-none" type="button"
+                                id="currencyDropdown" data-bs-toggle="dropdown" aria-expanded="false">
                             <span class="currency-symbol">{{ getCurrencySymbol() }}</span>
                         </button>
                         <ul class="dropdown-menu dropdown-menu-end shadow-sm" aria-labelledby="currencyDropdown">
                             @foreach(getAvailableCurrencies() as $currency)
                                 <li>
-                                    <a class="dropdown-item currency-option {{ getSelectedCurrency() === $currency['code'] ? 'active' : '' }}" 
-                                       href="#" 
-                                       data-currency="{{ $currency['code'] }}"
+                                    <a class="dropdown-item currency-option {{ getSelectedCurrency() === $currency['code'] ? 'active' : '' }}"
+                                       href="#" data-currency="{{ $currency['code'] }}"
                                        style="{{ getSelectedCurrency() === $currency['code'] ? 'background-color: var(--primary-color1);' : '' }}">
                                         <span class="currency-symbol me-2">{{ $currency['symbol'] ?? $currency['code'] }}</span>
                                         <span class="currency-name">{{ $currency['name'] }}</span>
@@ -92,7 +83,6 @@
                         </ul>
                     </div>
                 </div>
-                
                 <!-- Cart Icon -->
                 <div class="cart-icon-container d-flex align-items-center me-3">
                     <a href="{{ route('cart') }}" class="cart-icon-link position-relative">
@@ -102,14 +92,10 @@
                         <span class="cart-badge position-absolute" id="cartBadge" style="display: none;">0</span>
                     </a>
                 </div>
-                
                 <div class="contact-area d-xl-flex d-none">
                     <div class="icon">
                         <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
-                            <g>
-                                <path
-                                    d="M15.5646 11.7424L13.3317 9.50954C12.5343 8.7121 11.1786 9.03111 10.8596 10.0678C10.6204 10.7855 9.82296 11.1842 9.10526 11.0247C7.51037 10.626 5.35726 8.55261 4.95854 6.87797C4.71931 6.16024 5.19778 5.36279 5.91548 5.12359C6.95216 4.80461 7.27113 3.44895 6.47369 2.65151L4.24084 0.418659C3.60288 -0.139553 2.64595 -0.139553 2.08774 0.418659L0.572591 1.93381C-0.942555 3.5287 0.73208 7.75516 4.48007 11.5032C8.22807 15.2512 12.4545 17.0056 14.0494 15.4106L15.5646 13.8955C16.1228 13.2575 16.1228 12.3006 15.5646 11.7424Z"/>
-                            </g>
+                            <g><path d="M15.5646 11.7424L13.3317 9.50954C12.5343 8.7121 11.1786 9.03111 10.8596 10.0678C10.6204 10.7855 9.82296 11.1842 9.10526 11.0247C7.51037 10.626 5.35726 8.55261 4.95854 6.87797C4.71931 6.16024 5.19778 5.36279 5.91548 5.12359C6.95216 4.80461 7.27113 3.44895 6.47369 2.65151L4.24084 0.418659C3.60288 -0.139553 2.64595 -0.139553 2.08774 0.418659L0.572591 1.93381C-0.942555 3.5287 0.73208 7.75516 4.48007 11.5032C8.22807 15.2512 12.4545 17.0056 14.0494 15.4106L15.5646 13.8955C16.1228 13.2575 16.1228 12.3006 15.5646 11.7424Z"/></g>
                         </svg>
                     </div>
                     <div class="content">
@@ -128,45 +114,3 @@
         </div>
     </div>
 </header>
-
-
-<style>
-/* Scrollable submenu styles */
-.scrollable-submenu {
-    max-height: 70vh !important;
-    overflow-y: auto !important;
-    overflow-x: hidden !important;
-}
-
-/* Custom scrollbar for submenu */
-.scrollable-submenu::-webkit-scrollbar {
-    width: 6px;
-}
-
-.scrollable-submenu::-webkit-scrollbar-track {
-    background: #f1f1f1;
-    border-radius: 3px;
-}
-
-.scrollable-submenu::-webkit-scrollbar-thumb {
-    background: #888;
-    border-radius: 3px;
-}
-
-.scrollable-submenu::-webkit-scrollbar-thumb:hover {
-    background: #555;
-}
-
-/* For Firefox */
-.scrollable-submenu {
-    scrollbar-width: thin;
-    scrollbar-color: #888 #f1f1f1;
-}
-
-/* Mobile menu scrollable submenu */
-@media (max-width: 1199px) {
-    .scrollable-submenu {
-        max-height: 60vh !important;
-    }
-}
-</style>

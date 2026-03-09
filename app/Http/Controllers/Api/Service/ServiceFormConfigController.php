@@ -4,9 +4,7 @@ namespace App\Http\Controllers\Api\Service;
 
 use App\Http\Controllers\Controller;
 use App\Models\Service\ServiceType;
-use App\Models\Service\ServicePackage;
 use App\Models\Airport;
-use App\Models\Country;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
@@ -59,6 +57,8 @@ class ServiceFormConfigController extends Controller
      */
     private function buildFormConfig(ServiceType $serviceType): array
     {
+        $storedConfig = $this->extractStoredFormConfig($serviceType->form_config);
+
         $config = [
             'service_type' => [
                 'id' => $serviceType->id,
@@ -73,7 +73,8 @@ class ServiceFormConfigController extends Controller
                 'frontend_category' => $serviceType->frontend_category,
                 'minimum_km' => $serviceType->minimum_km,
             ],
-            'fields' => $this->getFieldsConfig($serviceType),
+            'fields' => $storedConfig['fields'] ?: $this->getFieldsConfig($serviceType),
+            'field_mappings' => $storedConfig['field_mappings'] ?: $this->getDefaultFieldMappings($serviceType),
             'packages' => $this->getPackagesConfig($serviceType),
             'location_restrictions' => $this->getLocationRestrictions($serviceType),
             'validation_rules' => $this->getValidationRules($serviceType),
@@ -89,7 +90,10 @@ class ServiceFormConfigController extends Controller
     {
         // Check if custom form_config exists in database
         if ($serviceType->form_config) {
-            return $serviceType->form_config;
+            $storedConfig = $this->extractStoredFormConfig($serviceType->form_config);
+            if (!empty($storedConfig['fields'])) {
+                return $storedConfig['fields'];
+            }
         }
 
         // Otherwise, build default configuration
@@ -127,6 +131,7 @@ class ServiceFormConfigController extends Controller
                 'alignment' => 'left',
                 'row' => 2,
                 'location_type' => 'conditional',
+                'condition_field' => 'transfer_type',
                 'conditions' => [
                     'from-airport' => ['type' => 'airport', 'options' => $airports],
                     'to-airport' => ['type' => 'any'],
@@ -144,6 +149,7 @@ class ServiceFormConfigController extends Controller
                 'alignment' => 'left',
                 'row' => 2,
                 'location_type' => 'conditional',
+                'condition_field' => 'transfer_type',
                 'conditions' => [
                     'from-airport' => ['type' => 'any'],
                     'to-airport' => ['type' => 'airport', 'options' => $airports],
@@ -266,6 +272,81 @@ class ServiceFormConfigController extends Controller
         }
 
         return $baseFields;
+    }
+
+    /**
+     * Split stored service form config into fields + field mappings.
+     */
+    private function extractStoredFormConfig(?array $storedConfig): array
+    {
+        if (empty($storedConfig) || !is_array($storedConfig)) {
+            return [
+                'fields' => [],
+                'field_mappings' => [],
+            ];
+        }
+
+        $fieldMappings = [];
+
+        if (isset($storedConfig['field_mappings']) && is_array($storedConfig['field_mappings'])) {
+            $fieldMappings = $storedConfig['field_mappings'];
+        }
+
+        // Support wrapped storage shape: { fields: {...}, field_mappings: {...} }
+        $fieldsCandidate = $storedConfig;
+        if (isset($storedConfig['fields']) && is_array($storedConfig['fields'])) {
+            $fieldsCandidate = $storedConfig['fields'];
+        }
+
+        if (isset($fieldsCandidate['field_mappings'])) {
+            unset($fieldsCandidate['field_mappings']);
+        }
+
+        // Keep only actual field definitions (defensive guard against metadata keys).
+        $fields = array_filter($fieldsCandidate, function ($fieldConfig) {
+            return is_array($fieldConfig)
+                && isset($fieldConfig['type'])
+                && isset($fieldConfig['label']);
+        });
+
+        return [
+            'fields' => $fields,
+            'field_mappings' => $fieldMappings,
+        ];
+    }
+
+    /**
+     * Provide default field mappings for dynamic trip editor/public booking compatibility.
+     */
+    private function getDefaultFieldMappings(ServiceType $serviceType): array
+    {
+        if ($serviceType->code === 'airport_transfers') {
+            return [
+                'dates' => [
+                    'from_date' => 'date',
+                    'from_time' => 'time',
+                    'to_date' => 'date',
+                    'to_time' => 'time',
+                ],
+                'locations' => [
+                    'pickup_location' => 'pickup_location',
+                    'dropoff_location' => 'dropoff_location',
+                ],
+            ];
+        }
+
+        return [
+            'dates' => [
+                'from_date' => 'pickup_date',
+                'from_time' => 'pickup_time',
+                'to_date' => 'dropoff_date',
+                'to_time' => 'dropoff_time',
+            ],
+            'locations' => [
+                'pickup_location' => 'pickup_location',
+                'dropoff_location' => 'dropoff_location',
+            ],
+        ];
     }
 
     /**
@@ -400,14 +481,36 @@ class ServiceFormConfigController extends Controller
     public function updateFormConfig(Request $request, string $serviceTypeId): JsonResponse
     {
         try {
+            $payload = $request->all();
+
+            // Backward compatibility: support field_mappings nested under form_config.
+            if (
+                empty($payload['field_mappings'])
+                && isset($payload['form_config']['field_mappings'])
+                && is_array($payload['form_config']['field_mappings'])
+            ) {
+                $payload['field_mappings'] = $payload['form_config']['field_mappings'];
+            }
+
+            // Support wrapped structure: { form_config: { fields: {...}, field_mappings: {...} } }
+            if (isset($payload['form_config']['fields']) && is_array($payload['form_config']['fields'])) {
+                $payload['form_config'] = $payload['form_config']['fields'];
+            }
+
+            if (isset($payload['form_config']['field_mappings'])) {
+                unset($payload['form_config']['field_mappings']);
+            }
+
+            $request->replace($payload);
+
             $validated = $request->validate([
                 'uses_dropoff_time' => 'boolean',
                 'allow_return_trip' => 'boolean',
                 'allow_multiple_pickup_locations' => 'boolean',
                 'allow_multiple_dropoff_locations' => 'boolean',
                 'form_config' => 'nullable|array',
-                'form_config.*.type' => 'required|string',
-                'form_config.*.label' => 'required|string',
+                'form_config.*.type' => 'sometimes|required|string',
+                'form_config.*.label' => 'sometimes|required|string',
                 'form_config.*.required' => 'boolean',
                 'form_config.*.order' => 'integer',
                 'form_config.*.width' => 'nullable|in:full,half,third',
@@ -421,25 +524,31 @@ class ServiceFormConfigController extends Controller
                 'form_config.*.options' => 'nullable|array',
                 'form_config.*.options.*.value' => 'required|string',
                 'form_config.*.options.*.label' => 'required|string',
-                'form_config.field_mappings' => 'nullable|array',
-                'form_config.field_mappings.dates' => 'nullable|array',
-                'form_config.field_mappings.dates.from_date' => 'nullable|string',
-                'form_config.field_mappings.dates.from_time' => 'nullable|string',
-                'form_config.field_mappings.dates.to_date' => 'nullable|string',
-                'form_config.field_mappings.dates.to_time' => 'nullable|string',
-                'form_config.field_mappings.locations' =>  'nullable|array',
-                'form_config.field_mappings.locations.pickup_location' => 'nullable|string',
-                'form_config.field_mappings.locations.dropoff_location' => 'nullable|string',
+                'field_mappings' => 'nullable|array',
+                'field_mappings.dates' => 'nullable|array',
+                'field_mappings.dates.from_date' => 'nullable|string',
+                'field_mappings.dates.from_time' => 'nullable|string',
+                'field_mappings.dates.to_date' => 'nullable|string',
+                'field_mappings.dates.to_time' => 'nullable|string',
+                'field_mappings.locations' => 'nullable|array',
+                'field_mappings.locations.pickup_location' => 'nullable|string',
+                'field_mappings.locations.dropoff_location' => 'nullable|string',
             ]);
 
             $serviceType = ServiceType::findOrFail($serviceTypeId);
+
+            $formConfig = $validated['form_config'] ?? null;
+            if (!empty($validated['field_mappings'])) {
+                $formConfig = is_array($formConfig) ? $formConfig : [];
+                $formConfig['field_mappings'] = $validated['field_mappings'];
+            }
             
             $serviceType->update([
                 'uses_dropoff_time' => $validated['uses_dropoff_time'] ?? true,
                 'allow_return_trip' => $validated['allow_return_trip'] ?? false,
                 'allow_multiple_pickup_locations' => $validated['allow_multiple_pickup_locations'] ?? false,
                 'allow_multiple_dropoff_locations' => $validated['allow_multiple_dropoff_locations'] ?? false,
-                'form_config' => $validated['form_config'] ?? null,
+                'form_config' => $formConfig,
             ]);
 
             return response()->json([

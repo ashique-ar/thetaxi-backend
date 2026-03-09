@@ -5,17 +5,17 @@
     }
 
     // Helper function to check boolean settings (handles string "true"/"false")
-    $isEnabled = function($settingKey, $default = true) use ($settings) {
+    $isEnabled = function ($settingKey, $default = true) use ($settings) {
         if (!isset($settings[$settingKey])) {
             return $default;
         }
         $value = $settings[$settingKey];
-        
+
         // Handle string "true"/"false"
         if (is_string($value)) {
             return strtolower($value) === 'true' || $value === '1';
         }
-        
+
         // Handle boolean
         return (bool) $value;
     };
@@ -24,6 +24,52 @@
     $bookingTabs = Cache::remember('booking_form_tabs', 3600, function () {
         return \App\Models\BookingFormTab::getOrderedTabs();
     });
+    $bookingTabsByCode = $bookingTabs->keyBy('code');
+    $defaultTabCode = $bookingTabs->first()?->code ?? 'airport_transfers';
+
+    $isTabEnabled = function (string $tabCode, bool $legacyFallback = true) use ($bookingTabsByCode, $bookingTabs) {
+        if ($bookingTabs->isEmpty()) {
+            return $legacyFallback;
+        }
+
+        return $bookingTabsByCode->has($tabCode);
+    };
+
+    $knownFormCodes = ['airport_transfers', 'ride_now', 'day_rental', 'corporate', 'wedding_hire', 'self_drive', 'with_driver'];
+    $getFormServiceCodeForTab = function ($tab) use ($knownFormCodes) {
+        $tabCode = $tab->code;
+        if (in_array($tabCode, $knownFormCodes, true)) {
+            return $tabCode;
+        }
+
+        $metadata = is_array($tab->metadata) ? $tab->metadata : [];
+        $rentalMode = $metadata['rental_mode'] ?? null;
+        if (in_array($rentalMode, ['self_drive', 'with_driver'], true)) {
+            return $rentalMode;
+        }
+
+        $serviceTypeCode = $tab->service_type_code ?: null;
+        if ($serviceTypeCode && in_array($serviceTypeCode, $knownFormCodes, true)) {
+            return $serviceTypeCode;
+        }
+
+        return $tabCode;
+    };
+    $enabledFormServiceCodes = $bookingTabs
+        ->map(function ($tab) use ($getFormServiceCodeForTab) {
+            return $getFormServiceCodeForTab($tab);
+        })
+        ->filter()
+        ->unique()
+        ->values();
+
+    $isFormEnabled = function (string $formCode, bool $legacyFallback = true) use ($bookingTabs, $enabledFormServiceCodes) {
+        if ($bookingTabs->isEmpty()) {
+            return $legacyFallback;
+        }
+
+        return $enabledFormServiceCodes->contains($formCode);
+    };
 
     // Ensure $search exists to avoid undefined variable when included without search context
     $search = $search ?? null;
@@ -49,8 +95,59 @@
         return $default;
     };
 
-    // Get current service type
-    $currentServiceType = $getSearchProp('service_type', 'airport_transfers');
+    // Resolve current tab code first, then derive rendered form service code from that tab.
+    $currentTabCodeRaw = (string) $getSearchProp('service_type', $defaultTabCode);
+    $currentRentalMode = (string) $getSearchProp('rental_mode', '');
+    $currentTabCode = $currentTabCodeRaw;
+
+    if ($currentTabCodeRaw === 'day_rental' && in_array($currentRentalMode, ['self_drive', 'with_driver'], true)) {
+        $currentTabCode = $currentRentalMode;
+    }
+
+    if (!$bookingTabsByCode->has($currentTabCode)) {
+        $mappedTab = $bookingTabs->first(function ($tab) use ($currentTabCodeRaw, $currentRentalMode) {
+            if (($tab->service_type_code ?: '') !== $currentTabCodeRaw) {
+                return false;
+            }
+
+            $metadata = is_array($tab->metadata) ? $tab->metadata : [];
+            $tabRentalMode = $metadata['rental_mode'] ?? null;
+            if ($tabRentalMode && $currentRentalMode) {
+                return $tabRentalMode === $currentRentalMode;
+            }
+            if ($tabRentalMode && !$currentRentalMode) {
+                return false;
+            }
+
+            return true;
+        });
+
+        if ($mappedTab) {
+            $currentTabCode = $mappedTab->code;
+        }
+    }
+
+    if (!$bookingTabsByCode->has($currentTabCode)) {
+        $currentTabCode = $defaultTabCode;
+    }
+
+    $currentTab = $bookingTabsByCode->get($currentTabCode);
+    $currentFormServiceType = $currentTab ? $getFormServiceCodeForTab($currentTab) : $currentTabCode;
+
+    // Preserve explicit rental-mode search selection when day_rental is used as backend service.
+    if ($currentTabCodeRaw === 'day_rental' && in_array($currentRentalMode, ['self_drive', 'with_driver'], true)) {
+        $currentFormServiceType = $currentRentalMode;
+    }
+
+    if (!in_array($currentFormServiceType, $knownFormCodes, true)) {
+        if (in_array($currentTabCodeRaw, $knownFormCodes, true)) {
+            $currentFormServiceType = $currentTabCodeRaw;
+        } elseif (in_array($currentTabCode, $knownFormCodes, true)) {
+            $currentFormServiceType = $currentTabCode;
+        } else {
+            $currentFormServiceType = 'airport_transfers';
+        }
+    }
 
     // Normalize pickup/dropoff locations: support string OR object/array with latitude/longitude
     $normalizeLocation = function ($search, $key) {
@@ -109,153 +206,346 @@
     $dropoff = $normalizeLocation($search ?? null, 'dropoff_location');
 
     // DEBUG: Log what we're getting from search
-    if (isset($search)) {
-        \Log::debug('Booking form - Search data received', [
-            'search_keys' => is_array($search) ? array_keys($search) : (is_object($search) ? array_keys(get_object_vars($search)) : 'not array or object'),
-            'pickup_result' => $pickup,
-            'dropoff_result' => $dropoff,
-        ]);
-    }
+if (isset($search)) {
+    \Log::debug('Booking form - Search data received', [
+        'search_keys' => is_array($search)
+            ? array_keys($search)
+            : (is_object($search)
+                ? array_keys(get_object_vars($search))
+                : 'not array or object'),
+        'pickup_result' => $pickup,
+        'dropoff_result' => $dropoff,
+    ]);
+}
 
-    // ============================================================================
-    // CROSS-SERVICE LOCATION & DATE INTELLIGENCE
-    // ============================================================================
-    // When a search includes a drop-off location, use it as pickup for OTHER services.
-    // The originally searched service keeps its original data unchanged.
-    // ============================================================================
+// ============================================================================
+// CROSS-SERVICE LOCATION & DATE INTELLIGENCE
+// ============================================================================
+// When a search includes a drop-off location, use it as pickup for OTHER services.
+// The originally searched service keeps its original data unchanged.
+// ============================================================================
 
-    // Get search dates
-    $searchPickupDate = $getSearchProp('pickup_date') ?? $getSearchProp('from_date');
-    $searchDropoffDate = $getSearchProp('dropoff_date') ?? $getSearchProp('to_date');
-    $searchPickupTime = $getSearchProp('pickup_time') ?? $getSearchProp('from_time');
-    $searchDropoffTime = $getSearchProp('dropoff_time') ?? $getSearchProp('to_time');
+// Get search dates
+$searchPickupDate = $getSearchProp('pickup_date') ?? $getSearchProp('from_date');
+$searchDropoffDate = $getSearchProp('dropoff_date') ?? $getSearchProp('to_date');
+$searchPickupTime = $getSearchProp('pickup_time') ?? $getSearchProp('from_time');
+$searchDropoffTime = $getSearchProp('dropoff_time') ?? $getSearchProp('to_time');
 
-    // Determine if drop-off location exists (has meaningful data)
-    $hasDropoffLocation = !empty($dropoff['address']) || (!empty($dropoff['lat']) && !empty($dropoff['lng']));
+// Determine if drop-off location exists (has meaningful data)
+$hasDropoffLocation = !empty($dropoff['address']) || (!empty($dropoff['lat']) && !empty($dropoff['lng']));
 
-    // For OTHER service types (not the searched one), determine default location and date
-    $otherServicesPickupLocation = $hasDropoffLocation ? $dropoff : $pickup;
-    $otherServicesPickupDate = $searchDropoffDate ?? $searchPickupDate;
-    $otherServicesPickupTime = $searchDropoffTime ?? $searchPickupTime;
+// For OTHER service types (not the searched one), determine default location and date
+$otherServicesPickupLocation = $hasDropoffLocation ? $dropoff : $pickup;
+$otherServicesPickupDate = $searchDropoffDate ?? $searchPickupDate;
+$otherServicesPickupTime = $searchDropoffTime ?? $searchPickupTime;
 
-    // For drop-off date on other services, default to same day as pickup (same-day rental)
-    $otherServicesDropoffDate = null;
-    if ($otherServicesPickupDate) {
-        try {
-            $dateObj = new DateTime($otherServicesPickupDate);
-            // Same day rental - no need to add days
-            $otherServicesDropoffDate = $dateObj->format('Y-m-d');
-        } catch (Exception $e) {
-            $otherServicesDropoffDate = null;
-        }
-    }
-
-    // Helper function to get location for a specific service type
-    $getLocationForService = function ($serviceType, $isPickup = true) use (
-        $currentServiceType,
-        $pickup,
-        $dropoff,
-        $otherServicesPickupLocation,
-    ) {
-        // If this is the searched service, return original data
-        if ($serviceType === $currentServiceType) {
-            return $isPickup ? $pickup : $dropoff;
-        }
-
-        // For other services, pickup comes from otherServicesPickupLocation
-        if ($isPickup) {
-            return $otherServicesPickupLocation;
-        }
-
-        // Drop-off for other services is empty by default (user needs to fill)
-        return ['address' => null, 'lat' => null, 'lng' => null];
-    };
-
-    // Helper function to get date for a specific service type
-    $getDateForService = function ($serviceType, $isPickup = true) use (
-        $currentServiceType,
-        $searchPickupDate,
-        $searchDropoffDate,
-        $otherServicesPickupDate,
-        $otherServicesDropoffDate,
-    ) {
-        // If this is the searched service, return original data
-        if ($serviceType === $currentServiceType) {
-            return $isPickup ? $searchPickupDate : $searchDropoffDate;
-        }
-
-        // For other services
-        return $isPickup ? $otherServicesPickupDate : $otherServicesDropoffDate;
-    };
-
-    // Helper function to get time for a specific service type
-    $getTimeForService = function ($serviceType, $isPickup = true) use (
-        $currentServiceType,
-        $searchPickupTime,
-        $searchDropoffTime,
-        $otherServicesPickupTime,
-    ) {
-        // If this is the searched service, return original data
-        if ($serviceType === $currentServiceType) {
-            return $isPickup ? $searchPickupTime : $searchDropoffTime;
-        }
-
-        // For other services, use the pickup time (or default to empty)
-        return $isPickup ? $otherServicesPickupTime : null;
-    };
-
-    // ============================================================================
-    // SPECIAL HANDLING FOR AIRPORT TRANSFERS
-    // ============================================================================
-    // Determine transfer_type (from-airport / to-airport) for airport_transfers
-    $airportTransferType = null;
-    if ($currentServiceType === 'airport_transfers') {
-        // If this IS the searched service, use the search transfer_type
-        $airportTransferType = $getSearchProp('transfer_type', 'from-airport');
-    } else {
-        // If switching FROM another service TO airport_transfers, default to 'to-airport'
-        $airportTransferType = 'to-airport';
-    }
-
-    // Override with old() if form was resubmitted
-    $airportTransferType = old('transfer_type', $airportTransferType);
-
-    // Utility for safe old() fallback
-    $safeOldOr = function ($field, $value) {
-        $oldValue = old($field);
-        return $oldValue !== null ? $oldValue : $value;
-    };
-
-    // Load service type model and flags to drive form behavior
+// For drop-off date on other services, default to same day as pickup (same-day rental)
+$otherServicesDropoffDate = null;
+if ($otherServicesPickupDate) {
     try {
-        $serviceTypeModel = \App\Models\Service\ServiceType::where('code', $currentServiceType)->first();
+        $dateObj = new DateTime($otherServicesPickupDate);
+        // Same day rental - no need to add days
+        $otherServicesDropoffDate = $dateObj->format('Y-m-d');
     } catch (Exception $e) {
-        $serviceTypeModel = null;
+        $otherServicesDropoffDate = null;
+    }
+}
+
+// Helper function to get location for a specific service type
+$getLocationForService = function ($serviceType, $isPickup = true) use (
+    $currentFormServiceType,
+    $pickup,
+    $dropoff,
+    $otherServicesPickupLocation,
+) {
+    // If this is the searched service, return original data
+    if ($serviceType === $currentFormServiceType) {
+        return $isPickup ? $pickup : $dropoff;
     }
 
-    $usesDropoffTime = $serviceTypeModel?->uses_dropoff_time ?? true;
-    $allowReturnTrip = $serviceTypeModel?->allow_return_trip ?? false;
-    $pricingMode = $serviceTypeModel?->pricing_mode ?? 'day';
+    // For other services, pickup comes from otherServicesPickupLocation
+    if ($isPickup) {
+        return $otherServicesPickupLocation;
+    }
 
-    // Booking advance time configured in admin (hours). Used by blade/js to set minimum booking date/time.
-    try {
-        $bookingSettings = app(\App\Services\WebsiteSettingsService::class)->getBookingSettings();
-        $bookingAdvanceHours = (int) ($bookingSettings['booking_advance_hours'] ?? 4);
+    // Drop-off for other services is empty by default (user needs to fill)
+    return ['address' => null, 'lat' => null, 'lng' => null];
+};
+
+// Helper function to get date for a specific service type
+$getDateForService = function ($serviceType, $isPickup = true) use (
+    $currentFormServiceType,
+    $searchPickupDate,
+    $searchDropoffDate,
+    $otherServicesPickupDate,
+    $otherServicesDropoffDate,
+) {
+    // If this is the searched service, return original data
+    if ($serviceType === $currentFormServiceType) {
+        return $isPickup ? $searchPickupDate : $searchDropoffDate;
+    }
+
+    // For other services
+    return $isPickup ? $otherServicesPickupDate : $otherServicesDropoffDate;
+};
+
+// Helper function to get time for a specific service type
+$getTimeForService = function ($serviceType, $isPickup = true) use (
+    $currentFormServiceType,
+    $searchPickupTime,
+    $searchDropoffTime,
+    $otherServicesPickupTime,
+) {
+    // If this is the searched service, return original data
+    if ($serviceType === $currentFormServiceType) {
+        return $isPickup ? $searchPickupTime : $searchDropoffTime;
+    }
+
+    // For other services, use the pickup time (or default to empty)
+    return $isPickup ? $otherServicesPickupTime : null;
+};
+
+// ============================================================================
+// SPECIAL HANDLING FOR AIRPORT TRANSFERS
+// ============================================================================
+// Determine transfer_type (from-airport / to-airport) for airport_transfers
+$airportTransferType = null;
+if ($currentFormServiceType === 'airport_transfers') {
+    // If this IS the searched service, use the search transfer_type
+    $airportTransferType = $getSearchProp('transfer_type', 'from-airport');
+} else {
+    // If switching FROM another service TO airport_transfers, default to 'to-airport'
+    $airportTransferType = 'to-airport';
+}
+
+// Override with old() if form was resubmitted
+$airportTransferType = old('transfer_type', $airportTransferType);
+
+// Utility for safe old() fallback
+$safeOldOr = function ($field, $value) {
+    $oldValue = old($field);
+    return $oldValue !== null ? $oldValue : $value;
+};
+
+// Load service type models/configs once to drive dynamic form behavior
+$tabServiceCodeMap = $bookingTabsByCode->mapWithKeys(function ($tab) {
+    return [$tab->code => $tab->service_type_code ?: $tab->code];
+});
+
+$serviceTypeCodesForConfig = collect(['airport_transfers', 'ride_now', 'day_rental', 'wedding_hire', 'corporate'])
+    ->merge($tabServiceCodeMap->values())
+    ->filter()
+    ->unique()
+    ->values();
+
+try {
+    $serviceTypeConfigs = \App\Models\Service\ServiceType::query()
+        ->whereIn('code', $serviceTypeCodesForConfig)
+        ->get()
+        ->keyBy('code');
+} catch (Exception $e) {
+    $serviceTypeConfigs = collect();
+}
+
+$resolveConfigCode = function ($serviceCode) use ($serviceTypeConfigs, $tabServiceCodeMap) {
+    if (!$serviceCode) {
+        return null;
+    }
+
+    if ($serviceTypeConfigs->has($serviceCode)) {
+        return $serviceCode;
+    }
+
+    $mappedCode = $tabServiceCodeMap->get($serviceCode);
+    if ($mappedCode && $serviceTypeConfigs->has($mappedCode)) {
+        return $mappedCode;
+    }
+
+    return null;
+};
+
+$getServiceTypeConfig = function ($serviceCode, $fallbackCode = null) use ($serviceTypeConfigs, $resolveConfigCode) {
+    $resolvedCode = $resolveConfigCode($serviceCode);
+    if ($resolvedCode) {
+        return $serviceTypeConfigs->get($resolvedCode);
+    }
+
+    $fallbackResolvedCode = $resolveConfigCode($fallbackCode);
+    if ($fallbackResolvedCode) {
+        return $serviceTypeConfigs->get($fallbackResolvedCode);
+    }
+
+    return null;
+};
+
+$extractConfigFields = function ($serviceTypeModel) {
+    if (!$serviceTypeModel || !is_array($serviceTypeModel->form_config)) {
+        return [];
+    }
+
+    $storedConfig = $serviceTypeModel->form_config;
+    $fieldConfig =
+        isset($storedConfig['fields']) && is_array($storedConfig['fields'])
+            ? $storedConfig['fields']
+            : $storedConfig;
+
+    if (isset($fieldConfig['field_mappings'])) {
+        unset($fieldConfig['field_mappings']);
+    }
+
+    return array_filter($fieldConfig, function ($field) {
+        return is_array($field) && isset($field['type']) && isset($field['label']);
+    });
+};
+
+$isFieldEnabled = function (array $fields, string $fieldName, bool $default = true) {
+    if (empty($fields)) {
+        return $default;
+    }
+    return array_key_exists($fieldName, $fields);
+};
+
+$isFieldRequired = function (array $fields, string $fieldName, bool $default = true) use ($isFieldEnabled) {
+    if (!$isFieldEnabled($fields, $fieldName, $default)) {
+        return false;
+    }
+    if (empty($fields)) {
+        return $default;
+    }
+    return (bool) ($fields[$fieldName]['required'] ?? $default);
+};
+
+$airportServiceType = $getServiceTypeConfig('airport_transfers');
+$rideNowServiceType = $getServiceTypeConfig('ride_now');
+$dayRentalServiceType = $getServiceTypeConfig('day_rental');
+
+// self_drive / with_driver use day_rental service backend
+$selfDriveServiceType = $getServiceTypeConfig('self_drive', 'day_rental');
+$withDriverServiceType = $getServiceTypeConfig('with_driver', 'day_rental');
+
+$airportFields = $extractConfigFields($airportServiceType);
+$rideNowFields = $extractConfigFields($rideNowServiceType);
+$dayRentalFields = $extractConfigFields($dayRentalServiceType);
+
+$serviceTypeModel = $getServiceTypeConfig(
+    $currentFormServiceType,
+    in_array($currentFormServiceType, ['self_drive', 'with_driver', 'wedding_hire']) ? 'day_rental' : null,
+);
+
+$usesDropoffTime = $serviceTypeModel?->uses_dropoff_time ?? true;
+$allowReturnTrip = $serviceTypeModel?->allow_return_trip ?? false;
+$pricingMode = $serviceTypeModel?->pricing_mode ?? 'day';
+
+$rideNowUsesDropoffTime = (bool) ($rideNowServiceType?->uses_dropoff_time ?? false);
+$rideNowAllowReturnTrip = (bool) ($rideNowServiceType?->allow_return_trip ?? false);
+$rideNowHasDropoffLocation = $isFieldEnabled($rideNowFields, 'dropoff_location', true);
+$rideNowDropoffLocationRequired = $isFieldRequired($rideNowFields, 'dropoff_location', true);
+$rideNowPickupRequired = $isFieldRequired($rideNowFields, 'pickup_location', true);
+$rideNowPickupDateRequired = $isFieldRequired($rideNowFields, 'pickup_date', true);
+$rideNowPickupTimeRequired = $isFieldRequired($rideNowFields, 'pickup_time', true);
+$rideNowDropoffDateEnabled =
+    $rideNowUsesDropoffTime && $isFieldEnabled($rideNowFields, 'dropoff_date', $rideNowUsesDropoffTime);
+$rideNowDropoffTimeEnabled =
+    $rideNowUsesDropoffTime && $isFieldEnabled($rideNowFields, 'dropoff_time', $rideNowUsesDropoffTime);
+$rideNowDropoffDateRequired = $isFieldRequired($rideNowFields, 'dropoff_date', true);
+$rideNowDropoffTimeRequired = $isFieldRequired($rideNowFields, 'dropoff_time', true);
+
+$dayRentalUsesDropoffTime = (bool) ($dayRentalServiceType?->uses_dropoff_time ?? true);
+$dayRentalHasDropoffLocation = $isFieldEnabled($dayRentalFields, 'dropoff_location', false);
+$dayRentalDropoffLocationRequired = $isFieldRequired($dayRentalFields, 'dropoff_location', false);
+$dayRentalPickupRequired = $isFieldRequired($dayRentalFields, 'pickup_location', true);
+$dayRentalPickupDateRequired = $isFieldRequired($dayRentalFields, 'pickup_date', true);
+$dayRentalPickupTimeRequired = $isFieldRequired($dayRentalFields, 'pickup_time', true);
+$dayRentalDropoffDateEnabled =
+    $dayRentalUsesDropoffTime && $isFieldEnabled($dayRentalFields, 'dropoff_date', $dayRentalUsesDropoffTime);
+$dayRentalDropoffTimeEnabled =
+    $dayRentalUsesDropoffTime && $isFieldEnabled($dayRentalFields, 'dropoff_time', $dayRentalUsesDropoffTime);
+$dayRentalDropoffDateRequired = $isFieldRequired($dayRentalFields, 'dropoff_date', true);
+$dayRentalDropoffTimeRequired = $isFieldRequired($dayRentalFields, 'dropoff_time', true);
+
+$selfDriveUsesDropoffTime = (bool) ($selfDriveServiceType?->uses_dropoff_time ?? true);
+$withDriverUsesDropoffTime = (bool) ($withDriverServiceType?->uses_dropoff_time ?? true);
+
+$airportPickupLabel = $airportFields['pickup_location']['label'] ?? 'Pickup Location';
+$airportDropoffLabel = $airportFields['dropoff_location']['label'] ?? 'Destination';
+$airportDateLabel = $airportFields['date']['label'] ?? 'Pickup Date';
+$airportTimeLabel = $airportFields['time']['label'] ?? 'Pickup Time';
+
+$rideNowPickupLabel = $rideNowFields['pickup_location']['label'] ?? 'Pickup Location';
+$rideNowDropoffLabel = $rideNowFields['dropoff_location']['label'] ?? 'Drop Off Location';
+$rideNowPickupDateLabel = $rideNowFields['pickup_date']['label'] ?? 'Pickup Date';
+$rideNowPickupTimeLabel = $rideNowFields['pickup_time']['label'] ?? 'Pickup Time';
+$rideNowDropoffDateLabel = $rideNowFields['dropoff_date']['label'] ?? 'Drop-off Date';
+$rideNowDropoffTimeLabel = $rideNowFields['dropoff_time']['label'] ?? 'Drop-off Time';
+
+$dayRentalPickupLabel = $dayRentalFields['pickup_location']['label'] ?? 'Pickup Location';
+$dayRentalDropoffLabel = $dayRentalFields['dropoff_location']['label'] ?? 'Drop Off Location';
+$dayRentalPickupDateLabel = $dayRentalFields['pickup_date']['label'] ?? 'Pickup Date';
+$dayRentalPickupTimeLabel = $dayRentalFields['pickup_time']['label'] ?? 'Pickup Time';
+$dayRentalDropoffDateLabel = $dayRentalFields['dropoff_date']['label'] ?? 'Return Date';
+$dayRentalDropoffTimeLabel = $dayRentalFields['dropoff_time']['label'] ?? 'Return Time';
+
+$rideNowPickupPlaceholder = $rideNowFields['pickup_location']['placeholder'] ?? 'Pick up Location';
+$rideNowDropoffPlaceholder = $rideNowFields['dropoff_location']['placeholder'] ?? 'Drop Off Location';
+$dayRentalPickupPlaceholder = $dayRentalFields['pickup_location']['placeholder'] ?? 'Pick up Location';
+$dayRentalDropoffPlaceholder = $dayRentalFields['dropoff_location']['placeholder'] ?? 'Drop Off Location';
+
+// Airport options: dynamic from DB with static fallback.
+try {
+    $airportOptions = \App\Models\Airport::query()
+        ->where('is_active', true)
+        ->orderBy('sort_order')
+        ->get(['name', 'code', 'city', 'latitude', 'longitude']);
+} catch (Exception $e) {
+    $airportOptions = collect();
+}
+
+if ($airportOptions->isEmpty()) {
+    $airportOptions = collect([
+        [
+            'name' => 'Colombo BIA Airport',
+            'code' => 'BIA',
+            'city' => 'Colombo',
+            'latitude' => 7.1808,
+            'longitude' => 79.8841,
+        ],
+        [
+            'name' => 'Mattala Rajapaksa Airport',
+            'code' => 'HRI',
+            'city' => 'Hambantota',
+            'latitude' => 6.2847,
+            'longitude' => 81.1242,
+        ],
+        [
+            'name' => 'Jaffna International Airport',
+            'code' => 'JAF',
+            'city' => 'Jaffna',
+            'latitude' => 9.7923,
+            'longitude' => 80.0701,
+        ],
+    ]);
+}
+
+// Booking advance time configured in admin (hours). Used by blade/js to set minimum booking date/time.
+try {
+    $bookingSettings = app(\App\Services\WebsiteSettingsService::class)->getBookingSettings();
+    $bookingAdvanceHours = (int) ($bookingSettings['booking_advance_hours'] ?? 4);
     } catch (Exception $e) {
         $bookingAdvanceHours = 0;
     }
 @endphp
 
-<div class="filter-wrapper {{ theme_class('filter-wrapper') }}">
+<div class="filter-wrapper {{ is_theme('theme-02') ? 't2-filter-wrapper' : theme_class('filter-wrapper') }}">
     <ul class="filter-item-list">
-        @foreach($bookingTabs as $tab)
-        <li class="single-item {{ $currentServiceType === $tab->code ? 'active' : '' }}"
-            data-service="{{ $tab->code }}">
-            <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                {!! $tab->icon_data !!}
-            </svg>
-            <span>{{ $tab->label }}</span>
-        </li>
+        @foreach ($bookingTabs as $tab)
+            <li class="single-item {{ $currentTabCode === $tab->code ? 'active' : '' }}"
+                data-service="{{ $tab->code }}"
+                data-form-service="{{ $getFormServiceCodeForTab($tab) }}">
+                <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    {!! $tab->icon_data !!}
+                </svg>
+                <span>{{ $tab->label }}</span>
+            </li>
         @endforeach
 
         {{-- <li class="single-item {{ $currentServiceType === 'point_to_point' ? 'active' : '' }}" data-service="point_to_point" data-redirect="{{ route('point-to-point') }}">
@@ -298,34 +588,34 @@
             </div>
         @endif
 
-        @if($isEnabled('enable_airport_transfers'))
-        <!-- Airport Transfer Form -->
-        <form id="airport_transfers-form"
-            class="filter-input {{ $currentServiceType === 'airport_transfers' ? 'show' : '' }}"
-            data-service="airport_transfers" action="{{ route('booking.search') }}" method="GET">
-            <input type="hidden" name="service_type" value="airport_transfers">
+        @if ($isFormEnabled('airport_transfers', $isEnabled('enable_airport_transfers')))
+            <!-- Airport Transfer Form -->
+            <form id="airport_transfers-form"
+                class="filter-input {{ $currentFormServiceType === 'airport_transfers' ? 'show' : '' }}"
+                data-service="airport_transfers" action="{{ route('booking.search') }}" method="GET">
+                <input type="hidden" name="service_type" value="airport_transfers">
 
-            <!-- Transfer Type Selection - Compact Toggle Style -->
-            <div class="transfer-type-selector">
-                <div class="transfer-type-toggle">
-                    <label class="transfer-type-option">
-                        <input type="radio" name="transfer_type" value="from-airport"
-                            {{ $airportTransferType === 'from-airport' ? 'checked' : '' }}>
-                        <span>From Airport</span>
-                    </label>
-                    <label class="transfer-type-option">
-                        <input type="radio" name="transfer_type" value="to-airport"
-                            {{ $airportTransferType === 'to-airport' ? 'checked' : '' }}>
-                        <span>To Airport</span>
-                    </label>
+                <!-- Transfer Type Selection - Compact Toggle Style -->
+                <div class="transfer-type-selector">
+                    <div class="transfer-type-toggle">
+                        <label class="transfer-type-option">
+                            <input type="radio" name="transfer_type" value="from-airport"
+                                {{ $airportTransferType === 'from-airport' ? 'checked' : '' }}>
+                            <span>From Airport</span>
+                        </label>
+                        <label class="transfer-type-option">
+                            <input type="radio" name="transfer_type" value="to-airport"
+                                {{ $airportTransferType === 'to-airport' ? 'checked' : '' }}>
+                            <span>To Airport</span>
+                        </label>
+                    </div>
+                    @error('transfer_type')
+                        <span class="text-danger small">{{ $message }}</span>
+                    @enderror
                 </div>
-                @error('transfer_type')
-                    <span class="text-danger small">{{ $message }}</span>
-                @enderror
-            </div>
 
-            <!-- Package Selection (uses same toggle design as transfer-type) -->
-            {{-- <div class="package-selector" id="airport_transfers-packages" style="display: none;"
+                <!-- Package Selection (uses same toggle design as transfer-type) -->
+                {{-- <div class="package-selector" id="airport_transfers-packages" style="display: none;"
                 data-selected="{{ old('package_id', $getSearchProp('service_package_id', '')) }}">
                 <div class="transfer-type-toggle package-selector-toggle">
                     <!-- Packages will be dynamically loaded here as transfer-type-option labels -->
@@ -335,149 +625,160 @@
                 </div>
             </div> --}}
 
-            <!-- From Location -->
-            @php
-                $airportTransfersPickup = $getLocationForService('airport_transfers', true);
-            @endphp
-            <div class="single-search-box from-location location-search-box">
-                <div class="d-flex align-items-center gap-2 py-1">
-                    <label class="input-label">Pickup Location</label>
-                    <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                        <g>
+                <!-- From Location -->
+                @php
+                    $airportTransfersPickup = $getLocationForService('airport_transfers', true);
+                @endphp
+                <div class="single-search-box from-location location-search-box">
+                    <div class="d-flex align-items-center gap-2 py-1">
+                        <label class="input-label">{{ $airportPickupLabel }}</label>
+                        <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+                            <g>
+                                <path
+                                    d="M12.5944 8.99987C12.5944 10.988 10.9826 12.5998 8.99443 12.5998C7.00627 12.5998 5.39465 10.988 5.39465 8.99987C5.39465 7.0117 7.00627 5.40009 8.99443 5.40009C10.9826 5.40009 12.5944 7.0117 12.5944 8.99987Z" />
+                                <path
+                                    d="M17.4601 8.4599H16.2564C15.9858 4.86535 13.1291 2.00812 9.53458 1.7372V0.539976C9.53458 0.241723 9.29268 0 8.9946 0C8.69635 0 8.45462 0.241723 8.45462 0.539976V1.7372C4.85986 2.00812 2.00297 4.86535 1.73235 8.4599H0.540018C0.241723 8.4599 0 8.7017 0 8.99987C0 9.29813 0.241723 9.53985 0.539976 9.53985H1.73239C2.00297 13.1344 4.85991 15.9916 8.45441 16.2625V17.4601C8.45441 17.7583 8.69614 18 8.99439 18C9.29251 18 9.53428 17.7583 9.53428 17.4601V16.2625C13.1289 15.9918 15.9858 13.1346 16.2564 9.53985H17.4601C17.7583 9.53985 18 9.29813 18 8.99987C18 8.70175 17.7583 8.4599 17.4601 8.4599ZM8.99443 15.2096C5.56504 15.2094 2.78509 12.4291 2.78509 8.9997C2.78522 5.57014 5.56554 2.7902 8.99494 2.7902C12.4245 2.7902 15.2046 5.57048 15.2046 8.99987C15.2005 12.428 12.4225 15.2058 8.99443 15.2096Z" />
+                            </g>
+                        </svg>
+                    </div>
+                    <div class="custom-select-dropdown">
+                        <!-- Airport Select (shown when from-airport is selected) -->
+                        <select name="pickup" id="from-airport-select"
+                            class="airport-select from-field hidden @error('pickup') is-invalid @enderror" disabled>
+                            <option value="">Select Airport</option>
+                            @foreach ($airportOptions as $airport)
+                                @php
+                                    $airportName = is_array($airport) ? $airport['name'] ?? '' : $airport->name ?? '';
+                                    $airportCode = is_array($airport) ? $airport['code'] ?? '' : $airport->code ?? '';
+                                    $airportLat = is_array($airport)
+                                        ? $airport['latitude'] ?? ''
+                                        : $airport->latitude ?? '';
+                                    $airportLng = is_array($airport)
+                                        ? $airport['longitude'] ?? ''
+                                        : $airport->longitude ?? '';
+                                @endphp
+                                <option value="{{ $airportName }}" data-lat="{{ $airportLat }}"
+                                    data-lng="{{ $airportLng }}"
+                                    {{ old('pickup') == $airportName || ($airportTransfersPickup['address'] ?? '') == $airportName ? 'selected' : '' }}>
+                                    {{ $airportName }}{{ $airportCode ? ' (' . $airportCode . ')' : '' }}
+                                </option>
+                            @endforeach
+                        </select>
+
+                        <!-- Location Input (shown when to-airport is selected) -->
+                        <input type="text" name="pickup" id="from-location-input"
+                            placeholder="Enter pickup location"
+                            class="location-search from-field hidden @error('pickup') is-invalid @enderror"
+                            value="{{ $safeOldOr('pickup', $airportTransfersPickup['address'] ?? '') }}" disabled>
+
+                        <input type="hidden" name="pickup_lat" class="location-lat"
+                            value="{{ $safeOldOr('pickup_lat', $airportTransfersPickup['lat'] ?? '7.1808') }}">
+                        <input type="hidden" name="pickup_lng" class="location-lng"
+                            value="{{ $safeOldOr('pickup_lng', $airportTransfersPickup['lng'] ?? '79.8841') }}">
+                    </div>
+                    @error('pickup')
+                        <span class="text-danger small">{{ $message }}</span>
+                    @enderror
+                </div>
+
+                <!-- To Location -->
+                @php
+                    $airportTransfersDropoff = $getLocationForService('airport_transfers', false);
+                @endphp
+                <div class="single-search-box to-location location-search-box">
+                    <div class="d-flex align-items-center gap-2 py-1">
+                        <label class="input-label">{{ $airportDropoffLabel }}</label>
+                        <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+                            <g>
+                                <path
+                                    d="M12.5944 8.99987C12.5944 10.988 10.9826 12.5998 8.99443 12.5998C7.00627 12.5998 5.39465 10.988 5.39465 8.99987C5.39465 7.0117 7.00627 5.40009 8.99443 5.40009C10.9826 5.40009 12.5944 7.0117 12.5944 8.99987Z" />
+                                <path
+                                    d="M17.4601 8.4599H16.2564C15.9858 4.86535 13.1291 2.00812 9.53458 1.7372V0.539976C9.53458 0.241723 9.29268 0 8.9946 0C8.69635 0 8.45462 0.241723 8.45462 0.539976V1.7372C4.85986 2.00812 2.00297 4.86535 1.73235 8.4599H0.540018C0.241723 8.4599 0 8.7017 0 8.99987C0 9.29813 0.241723 9.53985 0.539976 9.53985H1.73239C2.00297 13.1344 4.85991 15.9916 8.45441 16.2625V17.4601C8.45441 17.7583 8.69614 18 8.99439 18C9.29251 18 9.53428 17.7583 9.53428 17.4601V16.2625C13.1289 15.9918 15.9858 13.1346 16.2564 9.53985H17.4601C17.7583 9.53985 18 9.29813 18 8.99987C18 8.70175 17.7583 8.4599 17.4601 8.4599ZM8.99443 15.2096C5.56504 15.2094 2.78509 12.4291 2.78509 8.9997C2.78522 5.57014 5.56554 2.7902 8.99494 2.7902C12.4245 2.7902 15.2046 5.57048 15.2046 8.99987C15.2005 12.428 12.4225 15.2058 8.99443 15.2096Z" />
+                            </g>
+                        </svg>
+                    </div>
+                    <div class="custom-select-dropdown">
+                        <!-- Location Input (shown when from-airport is selected) -->
+                        <input type="text" name="dropoff" id="to-location-input" placeholder="Enter destination"
+                            class="location-search to-field hidden @error('dropoff') is-invalid @enderror"
+                            value="{{ $safeOldOr('dropoff', $airportTransfersDropoff['address'] ?? '') }}" disabled>
+
+                        <!-- Airport Select (shown when to-airport is selected) -->
+                        <select name="dropoff" id="to-airport-select"
+                            class="airport-select to-field hidden @error('dropoff') is-invalid @enderror" disabled>
+                            <option value="">Select Airport</option>
+                            @foreach ($airportOptions as $airport)
+                                @php
+                                    $airportName = is_array($airport) ? $airport['name'] ?? '' : $airport->name ?? '';
+                                    $airportCode = is_array($airport) ? $airport['code'] ?? '' : $airport->code ?? '';
+                                    $airportLat = is_array($airport)
+                                        ? $airport['latitude'] ?? ''
+                                        : $airport->latitude ?? '';
+                                    $airportLng = is_array($airport)
+                                        ? $airport['longitude'] ?? ''
+                                        : $airport->longitude ?? '';
+                                @endphp
+                                <option value="{{ $airportName }}" data-lat="{{ $airportLat }}"
+                                    data-lng="{{ $airportLng }}"
+                                    {{ old('dropoff') == $airportName || ($airportTransfersDropoff['address'] ?? '') == $airportName ? 'selected' : '' }}>
+                                    {{ $airportName }}{{ $airportCode ? ' (' . $airportCode . ')' : '' }}
+                                </option>
+                            @endforeach
+                        </select>
+
+                        <input type="hidden" name="dropoff_lat" class="location-lat"
+                            value="{{ $safeOldOr('dropoff_lat', $airportTransfersDropoff['lat'] ?? '6.9271') }}">
+                        <input type="hidden" name="dropoff_lng" class="location-lng"
+                            value="{{ $safeOldOr('dropoff_lng', $airportTransfersDropoff['lng'] ?? '79.8612') }}">
+                    </div>
+                    @error('to')
+                        <span class="text-danger small">{{ $message }}</span>
+                    @enderror
+                </div>
+
+                <!-- Date -->
+                @php
+                    $airportTransfersPickupDate = $getDateForService('airport_transfers', true);
+                    $airportTransfersPickupTime = $getTimeForService('airport_transfers', true);
+                @endphp
+                <div class="single-search-box date-field">
+                    <div class="d-flex align-items-center gap-2 py-1">
+                        <label class="input-label">{{ $airportDateLabel }}</label>
+                        <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
                             <path
-                                d="M12.5944 8.99987C12.5944 10.988 10.9826 12.5998 8.99443 12.5998C7.00627 12.5998 5.39465 10.988 5.39465 8.99987C5.39465 7.0117 7.00627 5.40009 8.99443 5.40009C10.9826 5.40009 12.5944 7.0117 12.5944 8.99987Z" />
+                                d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z" />
+                        </svg>
+                    </div>
+                    <input type="text" name="date" placeholder="DD/MM/YYYY"
+                        class="custom-datepicker @error('date') is-invalid @enderror"
+                        value="{{ old('date', $airportTransfersPickupDate ? date('d/m/Y', strtotime($airportTransfersPickupDate)) : date('d/m/Y')) }}"
+                        required autocomplete="off">
+                    @error('date')
+                        <span class="text-danger small">{{ $message }}</span>
+                    @enderror
+                </div>
+
+                <!-- Time -->
+                <div class="single-search-box">
+                    <div class="d-flex align-items-center gap-2 py-1">
+                        <label class="input-label">{{ $airportTimeLabel }}</label>
+                        <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
                             <path
-                                d="M17.4601 8.4599H16.2564C15.9858 4.86535 13.1291 2.00812 9.53458 1.7372V0.539976C9.53458 0.241723 9.29268 0 8.9946 0C8.69635 0 8.45462 0.241723 8.45462 0.539976V1.7372C4.85986 2.00812 2.00297 4.86535 1.73235 8.4599H0.540018C0.241723 8.4599 0 8.7017 0 8.99987C0 9.29813 0.241723 9.53985 0.539976 9.53985H1.73239C2.00297 13.1344 4.85991 15.9916 8.45441 16.2625V17.4601C8.45441 17.7583 8.69614 18 8.99439 18C9.29251 18 9.53428 17.7583 9.53428 17.4601V16.2625C13.1289 15.9918 15.9858 13.1346 16.2564 9.53985H17.4601C17.7583 9.53985 18 9.29813 18 8.99987C18 8.70175 17.7583 8.4599 17.4601 8.4599ZM8.99443 15.2096C5.56504 15.2094 2.78509 12.4291 2.78509 8.9997C2.78522 5.57014 5.56554 2.7902 8.99494 2.7902C12.4245 2.7902 15.2046 5.57048 15.2046 8.99987C15.2005 12.428 12.4225 15.2058 8.99443 15.2096Z" />
-                        </g>
-                    </svg>
+                                d="M9 0C4.03 0 0 4.03 0 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm.5-12H8v5l4.25 2.52.75-1.23-3.5-2.08V4z" />
+                        </svg>
+                    </div>
+                    <div class="custom-select-dropdown">
+                        <input type="time" name="time"
+                            value="{{ old('time', $airportTransfersPickupTime ?? '12:00') }}"
+                            class="@error('time') is-invalid @enderror" required>
+                    </div>
+                    @error('time')
+                        <span class="text-danger small">{{ $message }}</span>
+                    @enderror
                 </div>
-                <div class="custom-select-dropdown">
-                    <!-- Airport Select (shown when from-airport is selected) -->
-                    <select name="pickup" id="from-airport-select"
-                        class="airport-select from-field hidden @error('pickup') is-invalid @enderror" disabled>
-                        <option value="">Select Airport</option>
-                        <option value="Colombo BIA Airport" data-lat="7.1808" data-lng="79.8841"
-                            {{ old('pickup') == 'Colombo BIA Airport' || ($airportTransfersPickup['address'] ?? '') == 'Colombo BIA Airport' ? 'selected' : '' }}>
-                            Bandaranaike International Airport (BIA)
-                        </option>
-                        <option value="Mattala Rajapaksa Airport" data-lat="6.2847" data-lng="81.1242"
-                            {{ old('pickup') == 'Mattala Rajapaksa Airport' || ($airportTransfersPickup['address'] ?? '') == 'Mattala Rajapaksa Airport' ? 'selected' : '' }}>
-                            Mattala Rajapaksa International Airport
-                        </option>
-                        <option value="Jaffna International Airport" data-lat="9.7923" data-lng="80.0701"
-                            {{ old('pickup') == 'Jaffna International Airport' || ($airportTransfersPickup['address'] ?? '') == 'Jaffna International Airport' ? 'selected' : '' }}>
-                            Jaffna International Airport
-                        </option>
-                    </select>
 
-                    <!-- Location Input (shown when to-airport is selected) -->
-                    <input type="text" name="pickup" id="from-location-input" placeholder="Enter pickup location"
-                        class="location-search from-field hidden @error('pickup') is-invalid @enderror"
-                        value="{{ $safeOldOr('pickup', $airportTransfersPickup['address'] ?? '') }}" disabled>
-
-                    <input type="hidden" name="pickup_lat" class="location-lat"
-                        value="{{ $safeOldOr('pickup_lat', $airportTransfersPickup['lat'] ?? '7.1808') }}">
-                    <input type="hidden" name="pickup_lng" class="location-lng"
-                        value="{{ $safeOldOr('pickup_lng', $airportTransfersPickup['lng'] ?? '79.8841') }}">
-                </div>
-                @error('pickup')
-                    <span class="text-danger small">{{ $message }}</span>
-                @enderror
-            </div>
-
-            <!-- To Location -->
-            @php
-                $airportTransfersDropoff = $getLocationForService('airport_transfers', false);
-            @endphp
-            <div class="single-search-box to-location location-search-box">
-                <div class="d-flex align-items-center gap-2 py-1">
-                    <label class="input-label">Destination</label>
-                    <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                        <g>
-                            <path
-                                d="M12.5944 8.99987C12.5944 10.988 10.9826 12.5998 8.99443 12.5998C7.00627 12.5998 5.39465 10.988 5.39465 8.99987C5.39465 7.0117 7.00627 5.40009 8.99443 5.40009C10.9826 5.40009 12.5944 7.0117 12.5944 8.99987Z" />
-                            <path
-                                d="M17.4601 8.4599H16.2564C15.9858 4.86535 13.1291 2.00812 9.53458 1.7372V0.539976C9.53458 0.241723 9.29268 0 8.9946 0C8.69635 0 8.45462 0.241723 8.45462 0.539976V1.7372C4.85986 2.00812 2.00297 4.86535 1.73235 8.4599H0.540018C0.241723 8.4599 0 8.7017 0 8.99987C0 9.29813 0.241723 9.53985 0.539976 9.53985H1.73239C2.00297 13.1344 4.85991 15.9916 8.45441 16.2625V17.4601C8.45441 17.7583 8.69614 18 8.99439 18C9.29251 18 9.53428 17.7583 9.53428 17.4601V16.2625C13.1289 15.9918 15.9858 13.1346 16.2564 9.53985H17.4601C17.7583 9.53985 18 9.29813 18 8.99987C18 8.70175 17.7583 8.4599 17.4601 8.4599ZM8.99443 15.2096C5.56504 15.2094 2.78509 12.4291 2.78509 8.9997C2.78522 5.57014 5.56554 2.7902 8.99494 2.7902C12.4245 2.7902 15.2046 5.57048 15.2046 8.99987C15.2005 12.428 12.4225 15.2058 8.99443 15.2096Z" />
-                        </g>
-                    </svg>
-                </div>
-                <div class="custom-select-dropdown">
-                    <!-- Location Input (shown when from-airport is selected) -->
-                    <input type="text" name="dropoff" id="to-location-input" placeholder="Enter destination"
-                        class="location-search to-field hidden @error('dropoff') is-invalid @enderror"
-                        value="{{ $safeOldOr('dropoff', $airportTransfersDropoff['address'] ?? '') }}" disabled>
-
-                    <!-- Airport Select (shown when to-airport is selected) -->
-                    <select name="dropoff" id="to-airport-select"
-                        class="airport-select to-field hidden @error('dropoff') is-invalid @enderror" disabled>
-                        <option value="">Select Airport</option>
-                        <option value="Colombo BIA Airport" data-lat="7.1808" data-lng="79.8841"
-                            {{ old('dropoff') == 'Colombo BIA Airport' || ($airportTransfersDropoff['address'] ?? '') == 'Colombo BIA Airport' ? 'selected' : '' }}>
-                            Bandaranaike International Airport (BIA)
-                        </option>
-                        <option value="Mattala Rajapaksa Airport" data-lat="6.2847" data-lng="81.1242"
-                            {{ old('dropoff') == 'Mattala Rajapaksa Airport' || ($airportTransfersDropoff['address'] ?? '') == 'Mattala Rajapaksa Airport' ? 'selected' : '' }}>
-                            Mattala Rajapaksa International Airport
-                        </option>
-                        <option value="Jaffna International Airport" data-lat="9.7923" data-lng="80.0701"
-                            {{ old('dropoff') == 'Jaffna International Airport' || ($airportTransfersDropoff['address'] ?? '') == 'Jaffna International Airport' ? 'selected' : '' }}>
-                            Jaffna International Airport
-                        </option>
-                    </select>
-
-                    <input type="hidden" name="dropoff_lat" class="location-lat"
-                        value="{{ $safeOldOr('dropoff_lat', $airportTransfersDropoff['lat'] ?? '6.9271') }}">
-                    <input type="hidden" name="dropoff_lng" class="location-lng"
-                        value="{{ $safeOldOr('dropoff_lng', $airportTransfersDropoff['lng'] ?? '79.8612') }}">
-                </div>
-                @error('to')
-                    <span class="text-danger small">{{ $message }}</span>
-                @enderror
-            </div>
-
-            <!-- Date -->
-            @php
-                $airportTransfersPickupDate = $getDateForService('airport_transfers', true);
-                $airportTransfersPickupTime = $getTimeForService('airport_transfers', true);
-            @endphp
-            <div class="single-search-box date-field">
-                <div class="d-flex align-items-center gap-2 py-1">
-                    <label class="input-label">Pickup Date</label>
-                    <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                        <path
-                            d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z" />
-                    </svg>
-                </div>
-                <input type="text" name="date" placeholder="DD/MM/YYYY"
-                    class="custom-datepicker @error('date') is-invalid @enderror"
-                    value="{{ old('date', $airportTransfersPickupDate ? date('d/m/Y', strtotime($airportTransfersPickupDate)) : date('d/m/Y')) }}"
-                    required autocomplete="off">
-                @error('date')
-                    <span class="text-danger small">{{ $message }}</span>
-                @enderror
-            </div>
-
-            <!-- Time -->
-            <div class="single-search-box">
-                <div class="d-flex align-items-center gap-2 py-1">
-                    <label class="input-label">Pickup Time</label>
-                    <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                        <path
-                            d="M9 0C4.03 0 0 4.03 0 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm.5-12H8v5l4.25 2.52.75-1.23-3.5-2.08V4z" />
-                    </svg>
-                </div>
-                <div class="custom-select-dropdown">
-                    <input type="time" name="time"
-                        value="{{ old('time', $airportTransfersPickupTime ?? '12:00') }}"
-                        class="@error('time') is-invalid @enderror" required>
-                </div>
-                @error('time')
-                    <span class="text-danger small">{{ $message }}</span>
-                @enderror
-            </div>
-
-            <!-- Passengers -->
-            {{-- <div class="single-search-box">
+                <!-- Passengers -->
+                {{-- <div class="single-search-box">
                 <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
                     <path d="M9 9c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
                 </svg>
@@ -496,214 +797,740 @@
                 @enderror
             </div> --}}
 
-            <button type="submit" class="primary-btn1">
-                <span>Search For Vehicles</span>
-            </button>
-        </form>
+                <button type="submit" class="primary-btn1">
+                    <span>Search For Vehicles</span>
+                </button>
+            </form>
         @endif
 
-        @if($isEnabled('enable_ride_now'))
-        <!-- Rental Packages Form -->
-        <form id="ride_now-form" class="filter-input {{ $currentServiceType === 'ride_now' ? 'show' : '' }}"
-            data-service="ride_now" action="{{ route('booking.search') }}" method="GET">
-            <input type="hidden" name="service_type" value="ride_now">
-            <!-- Pickup Location -->
-            @php
-                $rideNowPickup = $getLocationForService('ride_now', true);
-            @endphp
-            <div class="single-search-box location-search-box">
+        @if ($isFormEnabled('ride_now', $isEnabled('enable_ride_now')))
+            <!-- Rental Packages Form -->
+            <form id="ride_now-form" class="filter-input {{ $currentFormServiceType === 'ride_now' ? 'show' : '' }}"
+                data-service="ride_now" data-uses-dropoff-time="{{ $rideNowUsesDropoffTime ? '1' : '0' }}"
+                data-allow-return-trip="{{ $rideNowAllowReturnTrip ? '1' : '0' }}"
+                action="{{ route('booking.search') }}" method="GET">
+                <input type="hidden" name="service_type" value="ride_now">
+                <!-- Pickup Location -->
+                @php
+                    $rideNowPickup = $getLocationForService('ride_now', true);
+                @endphp
+                <div class="single-search-box location-search-box">
 
-                <div class="d-flex align-items-center gap-2 py-1">
-                    <label class="input-label">Pickup Location</label>
-                    <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                        <g>
+                    <div class="d-flex align-items-center gap-2 py-1">
+                        <label class="input-label">{{ $rideNowPickupLabel }}</label>
+                        <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+                            <g>
+                                <path
+                                    d="M12.5944 8.99987C12.5944 10.988 10.9826 12.5998 8.99443 12.5998C7.00627 12.5998 5.39465 10.988 5.39465 8.99987C5.39465 7.0117 7.00627 5.40009 8.99443 5.40009C10.9826 5.40009 12.5944 7.0117 12.5944 8.99987Z" />
+                                <path
+                                    d="M17.4601 8.4599H16.2564C15.9858 4.86535 13.1291 2.00812 9.53458 1.7372V0.539976C9.53458 0.241723 9.29268 0 8.9946 0C8.69635 0 8.45462 0.241723 8.45462 0.539976V1.7372C4.85986 2.00812 2.00297 4.86535 1.73235 8.4599H0.540018C0.241723 8.4599 0 8.7017 0 8.99987C0 9.29813 0.241723 9.53985 0.539976 9.53985H1.73239C2.00297 13.1344 4.85991 15.9916 8.45441 16.2625V17.4601C8.45441 17.7583 8.69614 18 8.99439 18C9.29251 18 9.53428 17.7583 9.53428 17.4601V16.2625C13.1289 15.9918 15.9858 13.1346 16.2564 9.53985H17.4601C17.7583 9.53985 18 9.29813 18 8.99987C18 8.70175 17.7583 8.4599 17.4601 8.4599ZM8.99443 15.2096C5.56504 15.2094 2.78509 12.4291 2.78509 8.9997C2.78522 5.57014 5.56554 2.7902 8.99494 2.7902C12.4245 2.7902 15.2046 5.57048 15.2046 8.99987C15.2005 12.428 12.4225 15.2058 8.99443 15.2096Z" />
+                            </g>
+                        </svg>
+                    </div>
+                    <div class="custom-select-dropdown">
+                        <input type="text" name="pickup" placeholder="{{ $rideNowPickupPlaceholder }}"
+                            class="location-search @error('pickup') is-invalid @enderror"
+                            value="{{ $safeOldOr('pickup', $rideNowPickup['address'] ?? 'Colombo, Sri Lanka') }}"
+                            {{ $rideNowPickupRequired ? 'required' : '' }}>
+                        <input type="hidden" name="pickup_lat" class="location-lat"
+                            value="{{ $safeOldOr('pickup_lat', $rideNowPickup['lat'] ?? '6.9271') }}">
+                        <input type="hidden" name="pickup_lng" class="location-lng"
+                            value="{{ $safeOldOr('pickup_lng', $rideNowPickup['lng'] ?? '79.8612') }}">
+                    </div>
+                    @error('pickup')
+                        <span class="text-danger small">{{ $message }}</span>
+                    @enderror
+                </div>
+
+                <!-- Drop Off Location -->
+                @php
+                    $rideNowDropoff = $getLocationForService('ride_now', false);
+                @endphp
+                @if ($rideNowHasDropoffLocation)
+                    <div class="single-search-box location-search-box">
+                        <div class="d-flex align-items-center gap-2 py-1">
+                            <label class="input-label">{{ $rideNowDropoffLabel }}</label>
+                            <svg width="15" height="15" viewBox="0 0 18 18"
+                                xmlns="http://www.w3.org/2000/svg">
+                                <g>
+                                    <path
+                                        d="M12.5944 8.99987C12.5944 10.988 10.9826 12.5998 8.99443 12.5998C7.00627 12.5998 5.39465 10.988 5.39465 8.99987C5.39465 7.0117 7.00627 5.40009 8.99443 5.40009C10.9826 5.40009 12.5944 7.0117 12.5944 8.99987Z" />
+                                    <path
+                                        d="M17.4601 8.4599H16.2564C15.9858 4.86535 13.1291 2.00812 9.53458 1.7372V0.539976C9.53458 0.241723 9.29268 0 8.9946 0C8.69635 0 8.45462 0.241723 8.45462 0.539976V1.7372C4.85986 2.00812 2.00297 4.86535 1.73235 8.4599H0.540018C0.241723 8.4599 0 8.7017 0 8.99987C0 9.29813 0.241723 9.53985 0.539976 9.53985H1.73239C2.00297 13.1344 4.85991 15.9916 8.45441 16.2625V17.4601C8.45441 17.7583 8.69614 18 8.99439 18C9.29251 18 9.53428 17.7583 9.53428 17.4601V16.2625C13.1289 15.9918 15.9858 13.1346 16.2564 9.53985H17.4601C17.7583 9.53985 18 9.29813 18 8.99987C18 8.70175 17.7583 8.4599 17.4601 8.4599ZM8.99443 15.2096C5.56504 15.2094 2.78509 12.4291 2.78509 8.9997C2.78522 5.57014 5.56554 2.7902 8.99494 2.7902C12.4245 2.7902 15.2046 5.57048 15.2046 8.99987C15.2005 12.428 12.4225 15.2058 8.99443 15.2096Z" />
+                                </g>
+                            </svg>
+                        </div>
+                        <div class="custom-select-dropdown">
+                            <input type="text" name="dropoff" placeholder="{{ $rideNowDropoffPlaceholder }}"
+                                class="location-search @error('dropoff') is-invalid @enderror"
+                                value="{{ $safeOldOr('dropoff', $rideNowDropoff['address'] ?? 'Galle, Sri Lanka') }}"
+                                {{ $rideNowDropoffLocationRequired ? 'required' : '' }}>
+                            <input type="hidden" name="dropoff_lat" class="location-lat"
+                                value="{{ $safeOldOr('dropoff_lat', $rideNowDropoff['lat'] ?? '6.0535') }}">
+                            <input type="hidden" name="dropoff_lng" class="location-lng"
+                                value="{{ $safeOldOr('dropoff_lng', $rideNowDropoff['lng'] ?? '80.221') }}">
+                        </div>
+                        @error('dropoff')
+                            <span class="text-danger small">{{ $message }}</span>
+                        @enderror
+                    </div>
+                @else
+                    <input type="hidden" name="dropoff"
+                        value="{{ $safeOldOr('dropoff', $rideNowPickup['address'] ?? '') }}">
+                    <input type="hidden" name="dropoff_lat"
+                        value="{{ $safeOldOr('dropoff_lat', $rideNowPickup['lat'] ?? '') }}">
+                    <input type="hidden" name="dropoff_lng"
+                        value="{{ $safeOldOr('dropoff_lng', $rideNowPickup['lng'] ?? '') }}">
+                @endif
+
+                <!-- Pickup Date -->
+                @php
+                    $rideNowPickupDate = $getDateForService('ride_now', true);
+                    $rideNowPickupTime = $getTimeForService('ride_now', true);
+                @endphp
+                <div class="single-search-box date-field">
+                    <div class="d-flex align-items-center gap-2 py-1">
+                        <label class="input-label">{{ $rideNowPickupDateLabel }}</label>
+                        <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
                             <path
-                                d="M12.5944 8.99987C12.5944 10.988 10.9826 12.5998 8.99443 12.5998C7.00627 12.5998 5.39465 10.988 5.39465 8.99987C5.39465 7.0117 7.00627 5.40009 8.99443 5.40009C10.9826 5.40009 12.5944 7.0117 12.5944 8.99987Z" />
+                                d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z" />
+                        </svg>
+                    </div>
+                    <input type="text" name="pickup_date" placeholder="DD/MM/YYYY"
+                        class="custom-datepicker @error('pickup_date') is-invalid @enderror"
+                        value="{{ old('pickup_date', $rideNowPickupDate ? date('d/m/Y', strtotime($rideNowPickupDate)) : date('d/m/Y')) }}"
+                        {{ $rideNowPickupDateRequired ? 'required' : '' }} autocomplete="off">
+                    @error('pickup_date')
+                        <span class="text-danger small">{{ $message }}</span>
+                    @enderror
+                </div>
+
+                <!-- Pickup Time -->
+                <div class="single-search-box">
+                    <div class="d-flex align-items-center gap-2 py-1">
+                        <label class="input-label">{{ $rideNowPickupTimeLabel }}</label>
+                        <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
                             <path
-                                d="M17.4601 8.4599H16.2564C15.9858 4.86535 13.1291 2.00812 9.53458 1.7372V0.539976C9.53458 0.241723 9.29268 0 8.9946 0C8.69635 0 8.45462 0.241723 8.45462 0.539976V1.7372C4.85986 2.00812 2.00297 4.86535 1.73235 8.4599H0.540018C0.241723 8.4599 0 8.7017 0 8.99987C0 9.29813 0.241723 9.53985 0.539976 9.53985H1.73239C2.00297 13.1344 4.85991 15.9916 8.45441 16.2625V17.4601C8.45441 17.7583 8.69614 18 8.99439 18C9.29251 18 9.53428 17.7583 9.53428 17.4601V16.2625C13.1289 15.9918 15.9858 13.1346 16.2564 9.53985H17.4601C17.7583 9.53985 18 9.29813 18 8.99987C18 8.70175 17.7583 8.4599 17.4601 8.4599ZM8.99443 15.2096C5.56504 15.2094 2.78509 12.4291 2.78509 8.9997C2.78522 5.57014 5.56554 2.7902 8.99494 2.7902C12.4245 2.7902 15.2046 5.57048 15.2046 8.99987C15.2005 12.428 12.4225 15.2058 8.99443 15.2096Z" />
-                        </g>
-                    </svg>
+                                d="M9 0C4.03 0 0 4.03 0 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm.5-12H8v5l4.25 2.52.75-1.23-3.5-2.08V4z" />
+                        </svg>
+                    </div>
+                    <div class="custom-select-dropdown">
+                        <input type="time" name="pickup_time"
+                            value="{{ old('pickup_time', $rideNowPickupTime ?? '12:00') }}"
+                            class="@error('pickup_time') is-invalid @enderror"
+                            {{ $rideNowPickupTimeRequired ? 'required' : '' }}>
+                    </div>
+                    @error('pickup_time')
+                        <span class="text-danger small">{{ $message }}</span>
+                    @enderror
                 </div>
-                <div class="custom-select-dropdown">
-                    <input type="text" name="pickup" placeholder="Pick up Location"
-                        class="location-search @error('pickup') is-invalid @enderror"
-                        value="{{ $safeOldOr('pickup', $rideNowPickup['address'] ?? 'Colombo, Sri Lanka') }}"
-                        required>
-                    <input type="hidden" name="pickup_lat" class="location-lat"
-                        value="{{ $safeOldOr('pickup_lat', $rideNowPickup['lat'] ?? '6.9271') }}">
-                    <input type="hidden" name="pickup_lng" class="location-lng"
-                        value="{{ $safeOldOr('pickup_lng', $rideNowPickup['lng'] ?? '79.8612') }}">
-                </div>
-                @error('pickup')
-                    <span class="text-danger small">{{ $message }}</span>
-                @enderror
-            </div>
 
-            <!-- Drop Off Location -->
-            @php
-                $rideNowDropoff = $getLocationForService('ride_now', false);
-            @endphp
-            <div class="single-search-box location-search-box">
-                <div class="d-flex align-items-center gap-2 py-1">
-                    <label class="input-label">Drop Off Location</label>
-                    <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                        <g>
-                            <path
-                                d="M12.5944 8.99987C12.5944 10.988 10.9826 12.5998 8.99443 12.5998C7.00627 12.5998 5.39465 10.988 5.39465 8.99987C5.39465 7.0117 7.00627 5.40009 8.99443 5.40009C10.9826 5.40009 12.5944 7.0117 12.5944 8.99987Z" />
-                            <path
-                                d="M17.4601 8.4599H16.2564C15.9858 4.86535 13.1291 2.00812 9.53458 1.7372V0.539976C9.53458 0.241723 9.29268 0 8.9946 0C8.69635 0 8.45462 0.241723 8.45462 0.539976V1.7372C4.85986 2.00812 2.00297 4.86535 1.73235 8.4599H0.540018C0.241723 8.4599 0 8.7017 0 8.99987C0 9.29813 0.241723 9.53985 0.539976 9.53985H1.73239C2.00297 13.1344 4.85991 15.9916 8.45441 16.2625V17.4601C8.45441 17.7583 8.69614 18 8.99439 18C9.29251 18 9.53428 17.7583 9.53428 17.4601V16.2625C13.1289 15.9918 15.9858 13.1346 16.2564 9.53985H17.4601C17.7583 9.53985 18 9.29813 18 8.99987C18 8.70175 17.7583 8.4599 17.4601 8.4599ZM8.99443 15.2096C5.56504 15.2094 2.78509 12.4291 2.78509 8.9997C2.78522 5.57014 5.56554 2.7902 8.99494 2.7902C12.4245 2.7902 15.2046 5.57048 15.2046 8.99987C15.2005 12.428 12.4225 15.2058 8.99443 15.2096Z" />
-                        </g>
-                    </svg>
-                </div>
-                <div class="custom-select-dropdown">
-                    <input type="text" name="dropoff" placeholder="Drop Off Location"
-                        class="location-search @error('dropoff') is-invalid @enderror"
-                        value="{{ $safeOldOr('dropoff', $rideNowDropoff['address'] ?? 'Galle, Sri Lanka') }}"
-                        required>
-                    <input type="hidden" name="dropoff_lat" class="location-lat"
-                        value="{{ $safeOldOr('dropoff_lat', $rideNowDropoff['lat'] ?? '6.0535') }}">
-                    <input type="hidden" name="dropoff_lng" class="location-lng"
-                        value="{{ $safeOldOr('dropoff_lng', $rideNowDropoff['lng'] ?? '80.221') }}">
-                </div>
-                @error('dropoff')
-                    <span class="text-danger small">{{ $message }}</span>
-                @enderror
-            </div>
-
-            <!-- Pickup Date -->
-            @php
-                $rideNowPickupDate = $getDateForService('ride_now', true);
-                $rideNowPickupTime = $getTimeForService('ride_now', true);
-            @endphp
-            <div class="single-search-box date-field">
-                <div class="d-flex align-items-center gap-2 py-1">
-                    <label class="input-label">Pickpup Date</label>
-                    <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                        <path
-                            d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z" />
-                    </svg>
-                </div>
-                <input type="text" name="pickup_date" placeholder="DD/MM/YYYY"
-                    class="custom-datepicker @error('pickup_date') is-invalid @enderror"
-                    value="{{ old('pickup_date', $rideNowPickupDate ? date('d/m/Y', strtotime($rideNowPickupDate)) : date('d/m/Y')) }}"
-                    required autocomplete="off">
-                @error('pickup_date')
-                    <span class="text-danger small">{{ $message }}</span>
-                @enderror
-            </div>
-
-            <!-- Pickup Time -->
-            <div class="single-search-box">
-                <div class="d-flex align-items-center gap-2 py-1">
-                    <label class="input-label">Pickup Time</label>
-                    <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                        <path
-                            d="M9 0C4.03 0 0 4.03 0 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm.5-12H8v5l4.25 2.52.75-1.23-3.5-2.08V4z" />
-                    </svg>
-                </div>
-                <div class="custom-select-dropdown">
-                    <input type="time" name="pickup_time"
-                        value="{{ old('pickup_time', $rideNowPickupTime ?? '12:00') }}"
-                        class="@error('pickup_time') is-invalid @enderror" required>
-                </div>
-                @error('pickup_time')
-                    <span class="text-danger small">{{ $message }}</span>
-                @enderror
-            </div>
-
-            <!-- Drop Off Date -->
-            {{-- <div class="single-search-box date-field">
-                <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                    <path
-                        d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z" />
-                </svg>
-                <input type="text" name="dropoff_date" placeholder="DD/MM/YYYY"
-                    class="custom-datepicker @error('dropoff_date') is-invalid @enderror"
-                    value="{{ old('dropoff_date', isset($search) && isset($search->to_date) && $search->to_date ? date('d/m/Y', strtotime($search->to_date)) : date('d/m/Y')) }}"
-                    required autocomplete="off">
-                @error('dropoff_date')
-                    <span class="text-danger small">{{ $message }}</span>
-                @enderror
-            </div>
-
-            <!-- Drop Off Time -->
-            <div class="single-search-box">
-                <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                    <path
-                        d="M9 0C4.03 0 0 4.03 0 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm.5-12H8v5l4.25 2.52.75-1.23-3.5-2.08V4z" />
-                </svg>
-                <div class="custom-select-dropdown">
-                    <input type="time" name="dropoff_time"
-                        value="{{ old('dropoff_time', isset($search) && isset($search->to_time) ? $search->to_time : '12:00') }}"
-                        class="@error('dropoff_time') is-invalid @enderror" required>
-                </div>
-                @error('dropoff_time')
-                    <span class="text-danger small">{{ $message }}</span>
-                @enderror
-            </div> --}}
-
-            {{-- <div class="package-selector" id="ride_now-packages" style="display: none;" class="d-none"
-                data-selected="{{ old('package_id', $getSearchProp('service_package_id', '')) }}">
-                <div class="transfer-type-toggle package-selector-toggle">
-                    <!-- Packages will be dynamically loaded here as transfer-type-option labels -->
-                </div>
-                <div class="loading-packages" style="display: none;">
-                    <span>Loading packages...</span>
-                </div>
-            </div> --}}
-
-
-            <!-- Return Trip Toggle -->
-            @php
-                $isReturnTrip = old('is_return_trip', $getSearchProp('is_return_trip', false));
-                $returnDate = old('return_date', $getSearchProp('return_date'));
-                $returnTime = old('return_time', $getSearchProp('return_time', '12:00'));
-                // Format return date to DD/MM/YYYY if it's in Y-m-d format
+                @if ($rideNowAllowReturnTrip)
+                    <!-- Return Trip Toggle -->
+                    @php
+                        $isReturnTrip = old('is_return_trip', $getSearchProp('is_return_trip', false));
+                        $returnDate = old('return_date', $getSearchProp('return_date'));
+                        $returnTime = old('return_time', $getSearchProp('return_time', '12:00'));
+                        // Format return date to DD/MM/YYYY if it's in Y-m-d format
 if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
     $returnDate = date('d/m/Y', strtotime($returnDate));
 } elseif (!$returnDate) {
     $returnDate = date('d/m/Y'); // Default to today
-                }
-            @endphp
-            <div class="return-trip-section " id="ride_now-return-trip-section">
-                <div class="return-trip-toggle">
-                    <label class="return-trip-checkbox-label">
-                        <input type="checkbox" name="is_return_trip" id="ride_now-return-toggle" value="1"
-                            {{ $isReturnTrip ? 'checked' : '' }}>
-                        <span class="return-trip-text">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-                                xmlns="http://www.w3.org/2000/svg">
-                                <path
-                                    d="M7.5 21L3 16.5M3 16.5L7.5 12M3 16.5H16.5C18.9853 16.5 21 14.4853 21 12C21 9.51472 18.9853 7.5 16.5 7.5H15"
-                                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                    stroke-linejoin="round" />
-                            </svg>
-                            Add Return Trip
-                        </span>
-                    </label>
-                </div>
+                        }
+                    @endphp
+                    <div class="return-trip-section " id="ride_now-return-trip-section">
+                        <div class="return-trip-toggle">
+                            <label class="return-trip-checkbox-label">
+                                <input type="checkbox" name="is_return_trip" id="ride_now-return-toggle"
+                                    value="1" {{ $isReturnTrip ? 'checked' : '' }}>
+                                <span class="return-trip-text">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                        xmlns="http://www.w3.org/2000/svg">
+                                        <path
+                                            d="M7.5 21L3 16.5M3 16.5L7.5 12M3 16.5H16.5C18.9853 16.5 21 14.4853 21 12C21 9.51472 18.9853 7.5 16.5 7.5H15"
+                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                            stroke-linejoin="round" />
+                                    </svg>
+                                    Add Return Trip
+                                </span>
+                            </label>
+                        </div>
 
-                <!-- Return Trip Details (shown if return trip enabled) -->
-                <div class="return-trip-details" id="ride_now-return-details"
-                    style="display: {{ $isReturnTrip ? 'grid' : 'none' }};">
-                    <!-- Return Route Summary -->
-                    <div class="return-route-summary">
-                        <div class="route-badge">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-                                xmlns="http://www.w3.org/2000/svg">
-                                <path d="M9 5L16 12L9 19" stroke="currentColor" stroke-width="2"
-                                    stroke-linecap="round" stroke-linejoin="round" />
-                            </svg>
-                            <span class="route-text">
-                                <strong>Return:</strong>
-                                <span
-                                    id="return-dropoff-location">{{ $rideNowDropoff['address'] ?? 'Drop-off' }}</span>
-                                →
-                                <span id="return-pickup-location">{{ $rideNowPickup['address'] ?? 'Pickup' }}</span>
-                            </span>
+                        <!-- Return Trip Details (shown if return trip enabled) -->
+                        <div class="return-trip-details" id="ride_now-return-details"
+                            style="display: {{ $isReturnTrip ? 'grid' : 'none' }};">
+                            <!-- Return Route Summary -->
+                            <div class="return-route-summary">
+                                <div class="route-badge">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                        xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M9 5L16 12L9 19" stroke="currentColor" stroke-width="2"
+                                            stroke-linecap="round" stroke-linejoin="round" />
+                                    </svg>
+                                    <span class="route-text">
+                                        <strong>Return:</strong>
+                                        <span
+                                            id="return-dropoff-location">{{ $rideNowDropoff['address'] ?? 'Drop-off' }}</span>
+                                        &rarr;
+                                        <span
+                                            id="return-pickup-location">{{ $rideNowPickup['address'] ?? 'Pickup' }}</span>
+                                    </span>
+                                </div>
+                            </div>
+
+                            <!-- Return Date -->
+                            <div class="single-search-box date-field">
+                                <div class="d-flex align-items-center gap-2 py-1">
+                                    <label class="input-label">Return Date</label>
+                                    <svg width="15" height="15" viewBox="0 0 18 18"
+                                        xmlns="http://www.w3.org/2000/svg">
+                                        <path
+                                            d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z" />
+                                    </svg>
+                                </div>
+                                <input type="text" name="return_date" id="ride_now-return-date"
+                                    placeholder="DD/MM/YYYY"
+                                    class="custom-datepicker @error('return_date') is-invalid @enderror"
+                                    value="{{ $returnDate }}" autocomplete="off">
+                                @error('return_date')
+                                    <span class="text-danger small">{{ $message }}</span>
+                                @enderror
+                            </div>
+
+                            <!-- Return Time -->
+                            <div class="single-search-box">
+                                <div class="d-flex align-items-center gap-2 py-1">
+                                    <label class="input-label">Return Time</label>
+                                    <svg width="15" height="15" viewBox="0 0 18 18"
+                                        xmlns="http://www.w3.org/2000/svg">
+                                        <path
+                                            d="M9 0C4.03 0 0 4.03 0 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm.5-12H8v5l4.25 2.52.75-1.23-3.5-2.08V4z" />
+                                    </svg>
+                                </div>
+                                <div class="custom-select-dropdown">
+                                    <input type="time" name="return_time" id="ride_now-return-time"
+                                        value="{{ $returnTime }}"
+                                        class="@error('return_time') is-invalid @enderror">
+                                </div>
+                                @error('return_time')
+                                    <span class="text-danger small">{{ $message }}</span>
+                                @enderror
+                            </div>
+
+                            <!-- Return Pricing Info -->
+                            <div class="return-pricing-info" id="ride_now-return-pricing-info"
+                                style="display: {{ $isReturnTrip ? 'block' : 'none' }};">
+                                <div class="text-success">
+                                    <span class="" id="ride_now-return-discount-label">Same Day Return</span>
+                                    <span class="fw-bold" id="ride_now-return-discount-value">50% off return</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
+                @endif
 
+
+                <button type="submit" class="primary-btn1">
+                    <span>Search For Vehicles</span>
+                </button>
+            </form>
+        @endif
+
+        @if ($isFormEnabled('day_rental', $isEnabled('enable_day_rental')))
+            <!-- Day Rental Form -->
+            <form id="day_rental-form" class="filter-input {{ $currentFormServiceType === 'day_rental' ? 'show' : '' }}"
+                data-service="day_rental" data-uses-dropoff-time="{{ $dayRentalUsesDropoffTime ? '1' : '0' }}"
+                action="{{ route('booking.search') }}" method="GET">
+
+                <input type="hidden" name="service_type" value="day_rental">
+                <!-- Pickup Location -->
+                @php
+                    $dayRentalPickup = $getLocationForService('day_rental', true);
+                @endphp
+                <div class="single-search-box location-search-box">
+                    <div class="d-flex align-items-center gap-2 py-1">
+                        <label class="input-label">{{ $dayRentalPickupLabel }}</label>
+                        <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+                            <g>
+                                <path
+                                    d="M12.5944 8.99987C12.5944 10.988 10.9826 12.5998 8.99443 12.5998C7.00627 12.5998 5.39465 10.988 5.39465 8.99987C5.39465 7.0117 7.00627 5.40009 8.99443 5.40009C10.9826 5.40009 12.5944 7.0117 12.5944 8.99987Z" />
+                                <path
+                                    d="M17.4601 8.4599H16.2564C15.9858 4.86535 13.1291 2.00812 9.53458 1.7372V0.539976C9.53458 0.241723 9.29268 0 8.9946 0C8.69635 0 8.45462 0.241723 8.45462 0.539976V1.7372C4.85986 2.00812 2.00297 4.86535 1.73235 8.4599H0.540018C0.241723 8.4599 0 8.7017 0 8.99987C0 9.29813 0.241723 9.53985 0.539976 9.53985H1.73239C2.00297 13.1344 4.85991 15.9916 8.45441 16.2625V17.4601C8.45441 17.7583 8.69614 18 8.99439 18C9.29251 18 9.53428 17.7583 9.53428 17.4601V16.2625C13.1289 15.9918 15.9858 13.1346 16.2564 9.53985H17.4601C17.7583 9.53985 18 9.29813 18 8.99987C18 8.70175 17.7583 8.4599 17.4601 8.4599ZM8.99443 15.2096C5.56504 15.2094 2.78509 12.4291 2.78509 8.9997C2.78522 5.57014 5.56554 2.7902 8.99494 2.7902C12.4245 2.7902 15.2046 5.57048 15.2046 8.99987C15.2005 12.428 12.4225 15.2058 8.99443 15.2096Z" />
+                            </g>
+                        </svg>
+                    </div>
+                    <div class="custom-select-dropdown">
+                        <input type="text" name="pickup" placeholder="{{ $dayRentalPickupPlaceholder }}"
+                            class="location-search @error('pickup') is-invalid @enderror"
+                            value="{{ $safeOldOr('pickup', $dayRentalPickup['address'] ?? 'Colombo, Sri Lanka') }}"
+                            {{ $dayRentalPickupRequired ? 'required' : '' }}>
+                        <input type="hidden" name="pickup_lat" class="location-lat"
+                            value="{{ $safeOldOr('pickup_lat', $dayRentalPickup['lat'] ?? '6.9271') }}">
+                        <input type="hidden" name="pickup_lng" class="location-lng"
+                            value="{{ $safeOldOr('pickup_lng', $dayRentalPickup['lng'] ?? '79.8612') }}">
+                    </div>
+                    @error('pickup')
+                        <span class="text-danger small">{{ $message }}</span>
+                    @enderror
+                </div>
+
+                @php
+                    $dayRentalDropoff = $getLocationForService('day_rental', false);
+                @endphp
+                @if ($dayRentalHasDropoffLocation)
+                    <div class="single-search-box location-search-box">
+                        <div class="d-flex align-items-center gap-2 py-1">
+                            <label class="input-label">{{ $dayRentalDropoffLabel }}</label>
+                            <svg width="15" height="15" viewBox="0 0 18 18"
+                                xmlns="http://www.w3.org/2000/svg">
+                                <g>
+                                    <path
+                                        d="M12.5944 8.99987C12.5944 10.988 10.9826 12.5998 8.99443 12.5998C7.00627 12.5998 5.39465 10.988 5.39465 8.99987C5.39465 7.0117 7.00627 5.40009 8.99443 5.40009C10.9826 5.40009 12.5944 7.0117 12.5944 8.99987Z" />
+                                    <path
+                                        d="M17.4601 8.4599H16.2564C15.9858 4.86535 13.1291 2.00812 9.53458 1.7372V0.539976C9.53458 0.241723 9.29268 0 8.9946 0C8.69635 0 8.45462 0.241723 8.45462 0.539976V1.7372C4.85986 2.00812 2.00297 4.86535 1.73235 8.4599H0.540018C0.241723 8.4599 0 8.7017 0 8.99987C0 9.29813 0.241723 9.53985 0.539976 9.53985H1.73239C2.00297 13.1344 4.85991 15.9916 8.45441 16.2625V17.4601C8.45441 17.7583 8.69614 18 8.99439 18C9.29251 18 9.53428 17.7583 9.53428 17.4601V16.2625C13.1289 15.9918 15.9858 13.1346 16.2564 9.53985H17.4601C17.7583 9.53985 18 9.29813 18 8.99987C18 8.70175 17.7583 8.4599 17.4601 8.4599ZM8.99443 15.2096C5.56504 15.2094 2.78509 12.4291 2.78509 8.9997C2.78522 5.57014 5.56554 2.7902 8.99494 2.7902C12.4245 2.7902 15.2046 5.57048 15.2046 8.99987C15.2005 12.428 12.4225 15.2058 8.99443 15.2096Z" />
+                                </g>
+                            </svg>
+                        </div>
+                        <div class="custom-select-dropdown">
+                            <input type="text" name="dropoff" placeholder="{{ $dayRentalDropoffPlaceholder }}"
+                                class="location-search @error('dropoff') is-invalid @enderror"
+                                value="{{ $safeOldOr('dropoff', $dayRentalDropoff['address'] ?? 'Galle, Sri Lanka') }}"
+                                {{ $dayRentalDropoffLocationRequired ? 'required' : '' }}>
+                            <input type="hidden" name="dropoff_lat" class="location-lat"
+                                value="{{ $safeOldOr('dropoff_lat', $dayRentalDropoff['lat'] ?? '6.0535') }}">
+                            <input type="hidden" name="dropoff_lng" class="location-lng"
+                                value="{{ $safeOldOr('dropoff_lng', $dayRentalDropoff['lng'] ?? '80.221') }}">
+                        </div>
+                        @error('dropoff')
+                            <span class="text-danger small">{{ $message }}</span>
+                        @enderror
+                    </div>
+                @else
+                    <input type="hidden" name="dropoff"
+                        value="{{ $safeOldOr('dropoff', $dayRentalPickup['address'] ?? '') }}">
+                    <input type="hidden" name="dropoff_lat"
+                        value="{{ $safeOldOr('dropoff_lat', $dayRentalPickup['lat'] ?? '') }}">
+                    <input type="hidden" name="dropoff_lng"
+                        value="{{ $safeOldOr('dropoff_lng', $dayRentalPickup['lng'] ?? '') }}">
+                @endif
+
+                <!-- Pickup Date -->
+                @php
+                    $dayRentalPickupDate = $getDateForService('day_rental', true);
+                    $dayRentalPickupTime = $getTimeForService('day_rental', true);
+                @endphp
+                <div class="single-search-box date-field">
+                    <div class="d-flex align-items-center gap-2 py-1">
+                        <label class="input-label">{{ $dayRentalPickupDateLabel }}</label>
+                        <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+                            <path
+                                d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z" />
+                        </svg>
+                    </div>
+                    <input type="text" name="pickup_date" placeholder="DD/MM/YYYY"
+                        class="custom-datepicker @error('pickup_date') is-invalid @enderror"
+                        value="{{ old('pickup_date', $dayRentalPickupDate ? date('d/m/Y', strtotime($dayRentalPickupDate)) : date('d/m/Y')) }}"
+                        {{ $dayRentalPickupDateRequired ? 'required' : '' }} autocomplete="off">
+                    @error('pickup_date')
+                        <span class="text-danger small">{{ $message }}</span>
+                    @enderror
+                </div>
+
+                <!-- Pickup Time -->
+                <div class="single-search-box">
+                    <div class="d-flex align-items-center gap-2 py-1">
+                        <label class="input-label">{{ $dayRentalPickupTimeLabel }}</label>
+                        <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+                            <path
+                                d="M9 0C4.03 0 0 4.03 0 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm.5-12H8v5l4.25 2.52.75-1.23-3.5-2.08V4z" />
+                        </svg>
+                    </div>
+                    <div class="custom-select-dropdown">
+                        <input type="time" name="pickup_time"
+                            value="{{ old('pickup_time', $dayRentalPickupTime ?? '12:00') }}"
+                            class="@error('pickup_time') is-invalid @enderror"
+                            {{ $dayRentalPickupTimeRequired ? 'required' : '' }}>
+                    </div>
+                    @error('pickup_time')
+                        <span class="text-danger small">{{ $message }}</span>
+                    @enderror
+                </div>
+
+                @php
+                    $dayRentalDropoffDate = $getDateForService('day_rental', false);
+                    $dayRentalDropoffTime = $getTimeForService('day_rental', false);
+                @endphp
+                @if ($dayRentalDropoffDateEnabled)
+                    <div class="single-search-box date-field">
+                        <div class="d-flex align-items-center gap-2 py-1">
+                            <label class="input-label">{{ $dayRentalDropoffDateLabel }}</label>
+                            <svg width="15" height="15" viewBox="0 0 18 18"
+                                xmlns="http://www.w3.org/2000/svg">
+                                <path
+                                    d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z" />
+                            </svg>
+                        </div>
+                        <input type="text" name="dropoff_date" placeholder="DD/MM/YYYY"
+                            class="custom-datepicker @error('dropoff_date') is-invalid @enderror"
+                            value="{{ old('dropoff_date', $dayRentalDropoffDate ? date('d/m/Y', strtotime($dayRentalDropoffDate)) : date('d/m/Y')) }}"
+                            {{ $dayRentalDropoffDateRequired ? 'required' : '' }} autocomplete="off">
+                        @error('dropoff_date')
+                            <span class="text-danger small">{{ $message }}</span>
+                        @enderror
+                    </div>
+                @endif
+
+                @if ($dayRentalDropoffTimeEnabled)
+                    <div class="single-search-box">
+                        <div class="d-flex align-items-center gap-2 py-1">
+                            <label class="input-label">{{ $dayRentalDropoffTimeLabel }}</label>
+                            <svg width="15" height="15" viewBox="0 0 18 18"
+                                xmlns="http://www.w3.org/2000/svg">
+                                <path
+                                    d="M9 0C4.03 0 0 4.03 0 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm.5-12H8v5l4.25 2.52.75-1.23-3.5-2.08V4z" />
+                            </svg>
+                        </div>
+                        <div class="custom-select-dropdown">
+                            <input type="time" name="dropoff_time"
+                                value="{{ old('dropoff_time', $dayRentalDropoffTime ?? '12:00') }}"
+                                class="@error('dropoff_time') is-invalid @enderror"
+                                {{ $dayRentalDropoffTimeRequired ? 'required' : '' }}>
+                        </div>
+                        @error('dropoff_time')
+                            <span class="text-danger small">{{ $message }}</span>
+                        @enderror
+                    </div>
+                @endif
+
+                <div class="package-selector" id="day_rental-packages" style="display: none;"
+                    data-selected="{{ old('package_id', $getSearchProp('service_package_id', '')) }}">
+                    <div class="transfer-type-toggle package-selector-toggle">
+                        <!-- Packages will be dynamically loaded here as transfer-type-option labels -->
+                    </div>
+                    <div class="loading-packages" style="display: none;">
+                        <span>Loading packages...</span>
+                    </div>
+                </div>
+
+                <button type="submit" class="primary-btn1">
+                    <span>Search For Vehicles</span>
+                </button>
+            </form>
+        @endif
+
+        @if ($isFormEnabled('corporate', $isEnabled('enable_corporate', false)))
+            <!-- Corporate Form -->
+            <form id="corporate-form" class="filter-input {{ $currentFormServiceType === 'corporate' ? 'show' : '' }}"
+                data-service="corporate" action="{{ route('booking.enquiry') }}" method="POST">
+                @csrf
+                <input type="hidden" name="service_type" value="corporate">
+                <input type="hidden" name="inquiry_type" value="corporate">
+
+                <div class="single-search-box">
+                    <div class="d-flex align-items-center gap-2 py-1">
+                        <label class="input-label">Company Name</label>
+                    </div>
+                    <div class="custom-select-dropdown">
+                        <input type="text" name="company_name" placeholder="Your company name"
+                            class="@error('company_name') is-invalid @enderror"
+                            value="{{ old('company_name') }}" required>
+                    </div>
+                    @error('company_name')
+                        <span class="text-danger small">{{ $message }}</span>
+                    @enderror
+                </div>
+
+                <div class="single-search-box">
+                    <div class="d-flex align-items-center gap-2 py-1">
+                        <label class="input-label">Contact Person</label>
+                    </div>
+                    <div class="custom-select-dropdown">
+                        <input type="text" name="contact_person" placeholder="Contact person name"
+                            class="@error('contact_person') is-invalid @enderror"
+                            value="{{ old('contact_person') }}" required>
+                    </div>
+                    @error('contact_person')
+                        <span class="text-danger small">{{ $message }}</span>
+                    @enderror
+                </div>
+
+                <div class="single-search-box">
+                    <div class="d-flex align-items-center gap-2 py-1">
+                        <label class="input-label">Email</label>
+                    </div>
+                    <div class="custom-select-dropdown">
+                        <input type="email" name="email" placeholder="you@company.com"
+                            class="@error('email') is-invalid @enderror"
+                            value="{{ old('email') }}" required>
+                    </div>
+                    @error('email')
+                        <span class="text-danger small">{{ $message }}</span>
+                    @enderror
+                </div>
+
+                <div class="single-search-box">
+                    <div class="d-flex align-items-center gap-2 py-1">
+                        <label class="input-label">Phone</label>
+                    </div>
+                    <div class="custom-select-dropdown">
+                        <input type="text" name="phone" placeholder="+94 77 123 4567"
+                            class="@error('phone') is-invalid @enderror"
+                            value="{{ old('phone') }}" required>
+                    </div>
+                    @error('phone')
+                        <span class="text-danger small">{{ $message }}</span>
+                    @enderror
+                </div>
+
+                <div class="single-search-box">
+                    <div class="d-flex align-items-center gap-2 py-1">
+                        <label class="input-label">Service Type</label>
+                    </div>
+                    <div class="custom-select-dropdown">
+                        <select name="service_type_select" class="@error('service_type_select') is-invalid @enderror" required>
+                            <option value="">Select service type</option>
+                            <option value="airport_transfer" {{ old('service_type_select') === 'airport_transfer' ? 'selected' : '' }}>Airport Transfer</option>
+                            <option value="corporate_event" {{ old('service_type_select') === 'corporate_event' ? 'selected' : '' }}>Corporate Event</option>
+                            <option value="employee_shuttle" {{ old('service_type_select') === 'employee_shuttle' ? 'selected' : '' }}>Employee Shuttle</option>
+                            <option value="client_meeting" {{ old('service_type_select') === 'client_meeting' ? 'selected' : '' }}>Client Meeting</option>
+                            <option value="other" {{ old('service_type_select') === 'other' ? 'selected' : '' }}>Other</option>
+                        </select>
+                    </div>
+                    @error('service_type_select')
+                        <span class="text-danger small">{{ $message }}</span>
+                    @enderror
+                </div>
+
+                <div class="single-search-box">
+                    <div class="d-flex align-items-center gap-2 py-1">
+                        <label class="input-label">Other Service Type</label>
+                    </div>
+                    <div class="custom-select-dropdown">
+                        <input type="text" name="other_service_type" placeholder="Specify if other"
+                            class="@error('other_service_type') is-invalid @enderror"
+                            value="{{ old('other_service_type') }}">
+                    </div>
+                    @error('other_service_type')
+                        <span class="text-danger small">{{ $message }}</span>
+                    @enderror
+                </div>
+
+                <div class="single-search-box">
+                    <div class="d-flex align-items-center gap-2 py-1">
+                        <label class="input-label">Employee Strength</label>
+                    </div>
+                    <div class="custom-select-dropdown">
+                        <select name="employee_strength" class="@error('employee_strength') is-invalid @enderror" required>
+                            <option value="">Select employee strength</option>
+                            <option value="1-10" {{ old('employee_strength') === '1-10' ? 'selected' : '' }}>1-10</option>
+                            <option value="11-50" {{ old('employee_strength') === '11-50' ? 'selected' : '' }}>11-50</option>
+                            <option value="51-100" {{ old('employee_strength') === '51-100' ? 'selected' : '' }}>51-100</option>
+                            <option value="101-500" {{ old('employee_strength') === '101-500' ? 'selected' : '' }}>101-500</option>
+                            <option value="500+" {{ old('employee_strength') === '500+' ? 'selected' : '' }}>500+</option>
+                        </select>
+                    </div>
+                    @error('employee_strength')
+                        <span class="text-danger small">{{ $message }}</span>
+                    @enderror
+                </div>
+
+                <div class="single-search-box">
+                    <div class="d-flex align-items-center gap-2 py-1">
+                        <label class="input-label">City</label>
+                    </div>
+                    <div class="custom-select-dropdown">
+                        <input type="text" name="city_name" placeholder="City"
+                            class="@error('city_name') is-invalid @enderror"
+                            value="{{ old('city_name') }}" required>
+                    </div>
+                    @error('city_name')
+                        <span class="text-danger small">{{ $message }}</span>
+                    @enderror
+                </div>
+
+                <div class="single-search-box corporate-requirements-field">
+                    <div class="d-flex align-items-center gap-2 py-1">
+                        <label class="input-label">Requirements</label>
+                    </div>
+                    <div class="custom-select-dropdown">
+                        <textarea name="requirements" placeholder="Describe your transport requirements"
+                            class="@error('requirements') is-invalid @enderror" required>{{ old('requirements') }}</textarea>
+                    </div>
+                    @error('requirements')
+                        <span class="text-danger small">{{ $message }}</span>
+                    @enderror
+                </div>
+
+                <button type="submit" class="primary-btn1 corporate-submit-btn">
+                    <span>Submit Inquiry</span>
+                </button>
+            </form>
+        @endif
+
+        @if ($isFormEnabled('wedding_hire', $isEnabled('enable_wedding', false)))
+            <!-- Wedding Hire Form -->
+            <form id="wedding_hire-form"
+                class="filter-input {{ $currentFormServiceType === 'wedding_hire' ? 'show' : '' }}"
+                data-service="wedding_hire" action="{{ route('booking.search') }}" method="GET">
+                <input type="hidden" name="service_type" value="wedding_hire">
+
+                @php
+                    $weddingPickup = $getLocationForService('wedding_hire', true);
+                    $weddingPickupDate = $getDateForService('wedding_hire', true);
+                    $weddingPickupTime = $getTimeForService('wedding_hire', true);
+                @endphp
+
+                <!-- Pickup Location -->
+                <div class="single-search-box location-search-box">
+                    <div class="d-flex align-items-center gap-2 py-1">
+                        <label class="input-label">Event Location</label>
+                        <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+                            <g>
+                                <path
+                                    d="M12.5944 8.99987C12.5944 10.988 10.9826 12.5998 8.99443 12.5998C7.00627 12.5998 5.39465 10.988 5.39465 8.99987C5.39465 7.0117 7.00627 5.40009 8.99443 5.40009C10.9826 5.40009 12.5944 7.0117 12.5944 8.99987Z" />
+                                <path
+                                    d="M17.4601 8.4599H16.2564C15.9858 4.86535 13.1291 2.00812 9.53458 1.7372V0.539976C9.53458 0.241723 9.29268 0 8.9946 0C8.69635 0 8.45462 0.241723 8.45462 0.539976V1.7372C4.85986 2.00812 2.00297 4.86535 1.73235 8.4599H0.540018C0.241723 8.4599 0 8.7017 0 8.99987C0 9.29813 0.241723 9.53985 0.539976 9.53985H1.73239C2.00297 13.1344 4.85991 15.9916 8.45441 16.2625V17.4601C8.45441 17.7583 8.69614 18 8.99439 18C9.29251 18 9.53428 17.7583 9.53428 17.4601V16.2625C13.1289 15.9918 15.9858 13.1346 16.2564 9.53985H17.4601C17.7583 9.53985 18 9.29813 18 8.99987C18 8.70175 17.7583 8.4599 17.4601 8.4599ZM8.99443 15.2096C5.56504 15.2094 2.78509 12.4291 2.78509 8.9997C2.78522 5.57014 5.56554 2.7902 8.99494 2.7902C12.4245 2.7902 15.2046 5.57048 15.2046 8.99987C15.2005 12.428 12.4225 15.2058 8.99443 15.2096Z" />
+                            </g>
+                        </svg>
+                    </div>
+                    <div class="custom-select-dropdown">
+                        <input type="text" name="pickup" placeholder="Wedding Venue Location"
+                            class="location-search @error('pickup') is-invalid @enderror"
+                            value="{{ $safeOldOr('pickup', $weddingPickup['address'] ?? '') }}" required>
+                        <input type="hidden" name="pickup_lat" class="location-lat"
+                            value="{{ $safeOldOr('pickup_lat', $weddingPickup['lat'] ?? '6.9271') }}">
+                        <input type="hidden" name="pickup_lng" class="location-lng"
+                            value="{{ $safeOldOr('pickup_lng', $weddingPickup['lng'] ?? '79.8612') }}">
+                    </div>
+                    @error('pickup')
+                        <span class="text-danger small">{{ $message }}</span>
+                    @enderror
+                </div>
+
+                <!-- Date -->
+                <div class="single-search-box date-field">
+                    <div class="d-flex align-items-center gap-2 py-1">
+                        <label class="input-label">Wedding Date</label>
+                        <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+                            <path
+                                d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z" />
+                        </svg>
+                    </div>
+                    <input type="text" name="date" placeholder="DD/MM/YYYY"
+                        class="custom-datepicker @error('date') is-invalid @enderror"
+                        value="{{ old('date', $weddingPickupDate ? date('d/m/Y', strtotime($weddingPickupDate)) : '') }}"
+                        required autocomplete="off">
+                    @error('date')
+                        <span class="text-danger small">{{ $message }}</span>
+                    @enderror
+                </div>
+
+                <!-- Time -->
+                <div class="single-search-box">
+                    <div class="d-flex align-items-center gap-2 py-1">
+                        <label class="input-label">Event Time</label>
+                        <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+                            <path
+                                d="M9 0C4.03 0 0 4.03 0 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm.5-12H8v5l4.25 2.52.75-1.23-3.5-2.08V4z" />
+                        </svg>
+                    </div>
+                    <div class="custom-select-dropdown">
+                        <input type="time" name="time"
+                            value="{{ old('time', $weddingPickupTime ?? '10:00') }}"
+                            class="@error('time') is-invalid @enderror" required>
+                    </div>
+                    @error('time')
+                        <span class="text-danger small">{{ $message }}</span>
+                    @enderror
+                </div>
+
+                <button type="submit" class="primary-btn1">
+                    <span>Request Quote</span>
+                </button>
+            </form>
+        @endif
+
+        @if ($isFormEnabled('self_drive', $isEnabled('enable_selfdrive', false)))
+            <!-- Self Drive Form -->
+            <form id="self_drive-form" class="filter-input {{ $currentFormServiceType === 'self_drive' ? 'show' : '' }}"
+                data-service="self_drive" action="{{ route('booking.search') }}" method="GET">
+                <input type="hidden" name="service_type" value="self_drive">
+                <input type="hidden" name="rental_mode" value="self_drive">
+
+                @php
+                    $selfDrivePickup = $getLocationForService('self_drive', true);
+                    $selfDrivePickupDate = $getDateForService('self_drive', true);
+                    $selfDrivePickupTime = $getTimeForService('self_drive', true);
+                    $selfDriveDropoffDate = $getDateForService('self_drive', false);
+                    $selfDriveDropoffTime = $getTimeForService('self_drive', false);
+                @endphp
+
+                <!-- Pickup Location -->
+                <div class="single-search-box location-search-box">
+                    <div class="d-flex align-items-center gap-2 py-1">
+                        <label class="input-label">Pickup Location</label>
+                        <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+                            <g>
+                                <path
+                                    d="M12.5944 8.99987C12.5944 10.988 10.9826 12.5998 8.99443 12.5998C7.00627 12.5998 5.39465 10.988 5.39465 8.99987C5.39465 7.0117 7.00627 5.40009 8.99443 5.40009C10.9826 5.40009 12.5944 7.0117 12.5944 8.99987Z" />
+                                <path
+                                    d="M17.4601 8.4599H16.2564C15.9858 4.86535 13.1291 2.00812 9.53458 1.7372V0.539976C9.53458 0.241723 9.29268 0 8.9946 0C8.69635 0 8.45462 0.241723 8.45462 0.539976V1.7372C4.85986 2.00812 2.00297 4.86535 1.73235 8.4599H0.540018C0.241723 8.4599 0 8.7017 0 8.99987C0 9.29813 0.241723 9.53985 0.539976 9.53985H1.73239C2.00297 13.1344 4.85991 15.9916 8.45441 16.2625V17.4601C8.45441 17.7583 8.69614 18 8.99439 18C9.29251 18 9.53428 17.7583 9.53428 17.4601V16.2625C13.1289 15.9918 15.9858 13.1346 16.2564 9.53985H17.4601C17.7583 9.53985 18 9.29813 18 8.99987C18 8.70175 17.7583 8.4599 17.4601 8.4599ZM8.99443 15.2096C5.56504 15.2094 2.78509 12.4291 2.78509 8.9997C2.78522 5.57014 5.56554 2.7902 8.99494 2.7902C12.4245 2.7902 15.2046 5.57048 15.2046 8.99987C15.2005 12.428 12.4225 15.2058 8.99443 15.2096Z" />
+                            </g>
+                        </svg>
+                    </div>
+                    <div class="custom-select-dropdown">
+                        <input type="text" name="pickup" placeholder="Pick up Location"
+                            class="location-search @error('pickup') is-invalid @enderror"
+                            value="{{ $safeOldOr('pickup', $selfDrivePickup['address'] ?? 'Colombo, Sri Lanka') }}"
+                            required>
+                        <input type="hidden" name="pickup_lat" class="location-lat"
+                            value="{{ $safeOldOr('pickup_lat', $selfDrivePickup['lat'] ?? '6.9271') }}">
+                        <input type="hidden" name="pickup_lng" class="location-lng"
+                            value="{{ $safeOldOr('pickup_lng', $selfDrivePickup['lng'] ?? '79.8612') }}">
+                    </div>
+                    @error('pickup')
+                        <span class="text-danger small">{{ $message }}</span>
+                    @enderror
+                </div>
+
+                <!-- Pickup Date -->
+                <div class="single-search-box date-field">
+                    <div class="d-flex align-items-center gap-2 py-1">
+                        <label class="input-label">Pickup Date</label>
+                        <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+                            <path
+                                d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z" />
+                        </svg>
+                    </div>
+                    <input type="text" name="date" placeholder="DD/MM/YYYY"
+                        class="custom-datepicker @error('date') is-invalid @enderror"
+                        value="{{ old('date', $selfDrivePickupDate ? date('d/m/Y', strtotime($selfDrivePickupDate)) : date('d/m/Y')) }}"
+                        required autocomplete="off">
+                    @error('date')
+                        <span class="text-danger small">{{ $message }}</span>
+                    @enderror
+                </div>
+
+                <!-- Pickup Time -->
+                <div class="single-search-box">
+                    <div class="d-flex align-items-center gap-2 py-1">
+                        <label class="input-label">Pickup Time</label>
+                        <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+                            <path
+                                d="M9 0C4.03 0 0 4.03 0 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm.5-12H8v5l4.25 2.52.75-1.23-3.5-2.08V4z" />
+                        </svg>
+                    </div>
+                    <div class="custom-select-dropdown">
+                        <input type="time" name="time"
+                            value="{{ old('time', $selfDrivePickupTime ?? '09:00') }}"
+                            class="@error('time') is-invalid @enderror" required>
+                    </div>
+                    @error('time')
+                        <span class="text-danger small">{{ $message }}</span>
+                    @enderror
+                </div>
+
+                @if ($selfDriveUsesDropoffTime)
                     <!-- Return Date -->
                     <div class="single-search-box date-field">
                         <div class="d-flex align-items-center gap-2 py-1">
@@ -714,10 +1541,11 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
                                     d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z" />
                             </svg>
                         </div>
-                        <input type="text" name="return_date" id="ride_now-return-date" placeholder="DD/MM/YYYY"
-                            class="custom-datepicker @error('return_date') is-invalid @enderror"
-                            value="{{ $returnDate }}" autocomplete="off">
-                        @error('return_date')
+                        <input type="text" name="dropoff_date" placeholder="DD/MM/YYYY"
+                            class="custom-datepicker @error('dropoff_date') is-invalid @enderror"
+                            value="{{ old('dropoff_date', $selfDriveDropoffDate ? date('d/m/Y', strtotime($selfDriveDropoffDate)) : date('d/m/Y', strtotime('+1 day'))) }}"
+                            required autocomplete="off">
+                        @error('dropoff_date')
                             <span class="text-danger small">{{ $message }}</span>
                         @enderror
                     </div>
@@ -733,571 +1561,158 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
                             </svg>
                         </div>
                         <div class="custom-select-dropdown">
-                            <input type="time" name="return_time" id="ride_now-return-time"
-                                value="{{ $returnTime }}" class="@error('return_time') is-invalid @enderror">
+                            <input type="time" name="dropoff_time"
+                                value="{{ old('dropoff_time', $selfDriveDropoffTime ?? '09:00') }}"
+                                class="@error('dropoff_time') is-invalid @enderror" required>
                         </div>
-                        @error('return_time')
+                        @error('dropoff_time')
+                            <span class="text-danger small">{{ $message }}</span>
+                        @enderror
+                    </div>
+                @else
+                    <input type="hidden" name="dropoff_date"
+                        value="{{ old('dropoff_date', $selfDrivePickupDate ? date('d/m/Y', strtotime($selfDrivePickupDate)) : date('d/m/Y')) }}">
+                    <input type="hidden" name="dropoff_time"
+                        value="{{ old('dropoff_time', $selfDrivePickupTime ?? '09:00') }}">
+                @endif
+
+                <button type="submit" class="primary-btn1">
+                    <span>Search Vehicles</span>
+                </button>
+            </form>
+        @endif
+
+        @if ($isFormEnabled('with_driver', $isEnabled('enable_with_drive', false)))
+            <!-- With Driver Form - Similar to Self Drive but with driver -->
+            <form id="with_driver-form"
+                class="filter-input {{ $currentFormServiceType === 'with_driver' ? 'show' : '' }}"
+                data-service="with_driver" action="{{ route('booking.search') }}" method="GET">
+                <input type="hidden" name="service_type" value="with_driver">
+                <input type="hidden" name="rental_mode" value="with_driver">
+
+                @php
+                    $withDriverPickup = $getLocationForService('with_driver', true);
+                    $withDriverPickupDate = $getDateForService('with_driver', true);
+                    $withDriverPickupTime = $getTimeForService('with_driver', true);
+                    $withDriverDropoffDate = $getDateForService('with_driver', false);
+                    $withDriverDropoffTime = $getTimeForService('with_driver', false);
+                @endphp
+
+                <!-- Pickup Location -->
+                <div class="single-search-box location-search-box">
+                    <div class="d-flex align-items-center gap-2 py-1">
+                        <label class="input-label">Pickup Location</label>
+                        <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+                            <g>
+                                <path
+                                    d="M12.5944 8.99987C12.5944 10.988 10.9826 12.5998 8.99443 12.5998C7.00627 12.5998 5.39465 10.988 5.39465 8.99987C5.39465 7.0117 7.00627 5.40009 8.99443 5.40009C10.9826 5.40009 12.5944 7.0117 12.5944 8.99987Z" />
+                                <path
+                                    d="M17.4601 8.4599H16.2564C15.9858 4.86535 13.1291 2.00812 9.53458 1.7372V0.539976C9.53458 0.241723 9.29268 0 8.9946 0C8.69635 0 8.45462 0.241723 8.45462 0.539976V1.7372C4.85986 2.00812 2.00297 4.86535 1.73235 8.4599H0.540018C0.241723 8.4599 0 8.7017 0 8.99987C0 9.29813 0.241723 9.53985 0.539976 9.53985H1.73239C2.00297 13.1344 4.85991 15.9916 8.45441 16.2625V17.4601C8.45441 17.7583 8.69614 18 8.99439 18C9.29251 18 9.53428 17.7583 9.53428 17.4601V16.2625C13.1289 15.9918 15.9858 13.1346 16.2564 9.53985H17.4601C17.7583 9.53985 18 9.29813 18 8.99987C18 8.70175 17.7583 8.4599 17.4601 8.4599ZM8.99443 15.2096C5.56504 15.2094 2.78509 12.4291 2.78509 8.9997C2.78522 5.57014 5.56554 2.7902 8.99494 2.7902C12.4245 2.7902 15.2046 5.57048 15.2046 8.99987C15.2005 12.428 12.4225 15.2058 8.99443 15.2096Z" />
+                            </g>
+                        </svg>
+                    </div>
+                    <div class="custom-select-dropdown">
+                        <input type="text" name="pickup" placeholder="Pick up Location"
+                            class="location-search @error('pickup') is-invalid @enderror"
+                            value="{{ $safeOldOr('pickup', $withDriverPickup['address'] ?? 'Colombo, Sri Lanka') }}"
+                            required>
+                        <input type="hidden" name="pickup_lat" class="location-lat"
+                            value="{{ $safeOldOr('pickup_lat', $withDriverPickup['lat'] ?? '6.9271') }}">
+                        <input type="hidden" name="pickup_lng" class="location-lng"
+                            value="{{ $safeOldOr('pickup_lng', $withDriverPickup['lng'] ?? '79.8612') }}">
+                    </div>
+                    @error('pickup')
+                        <span class="text-danger small">{{ $message }}</span>
+                    @enderror
+                </div>
+
+                <!-- Pickup Date -->
+                <div class="single-search-box date-field">
+                    <div class="d-flex align-items-center gap-2 py-1">
+                        <label class="input-label">Pickup Date</label>
+                        <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+                            <path
+                                d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z" />
+                        </svg>
+                    </div>
+                    <input type="text" name="date" placeholder="DD/MM/YYYY"
+                        class="custom-datepicker @error('date') is-invalid @enderror"
+                        value="{{ old('date', $withDriverPickupDate ? date('d/m/Y', strtotime($withDriverPickupDate)) : date('d/m/Y')) }}"
+                        required autocomplete="off">
+                    @error('date')
+                        <span class="text-danger small">{{ $message }}</span>
+                    @enderror
+                </div>
+
+                <!-- Pickup Time -->
+                <div class="single-search-box">
+                    <div class="d-flex align-items-center gap-2 py-1">
+                        <label class="input-label">Pickup Time</label>
+                        <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+                            <path
+                                d="M9 0C4.03 0 0 4.03 0 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm.5-12H8v5l4.25 2.52.75-1.23-3.5-2.08V4z" />
+                        </svg>
+                    </div>
+                    <div class="custom-select-dropdown">
+                        <input type="time" name="time"
+                            value="{{ old('time', $withDriverPickupTime ?? '09:00') }}"
+                            class="@error('time') is-invalid @enderror" required>
+                    </div>
+                    @error('time')
+                        <span class="text-danger small">{{ $message }}</span>
+                    @enderror
+                </div>
+
+                @if ($withDriverUsesDropoffTime)
+                    <!-- Return Date -->
+                    <div class="single-search-box date-field">
+                        <div class="d-flex align-items-center gap-2 py-1">
+                            <label class="input-label">Return Date</label>
+                            <svg width="15" height="15" viewBox="0 0 18 18"
+                                xmlns="http://www.w3.org/2000/svg">
+                                <path
+                                    d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z" />
+                            </svg>
+                        </div>
+                        <input type="text" name="dropoff_date" placeholder="DD/MM/YYYY"
+                            class="custom-datepicker @error('dropoff_date') is-invalid @enderror"
+                            value="{{ old('dropoff_date', $withDriverDropoffDate ? date('d/m/Y', strtotime($withDriverDropoffDate)) : date('d/m/Y', strtotime('+1 day'))) }}"
+                            required autocomplete="off">
+                        @error('dropoff_date')
                             <span class="text-danger small">{{ $message }}</span>
                         @enderror
                     </div>
 
-                    <!-- Return Pricing Info -->
-                    <div class="return-pricing-info" id="ride_now-return-pricing-info"
-                        style="display: {{ $isReturnTrip ? 'block' : 'none' }};">
-                        <div class="text-success">
-                            <span class="" id="ride_now-return-discount-label">Same Day Return</span>
-                            <span class="fw-bold" id="ride_now-return-discount-value">50% off return</span>
+                    <!-- Return Time -->
+                    <div class="single-search-box">
+                        <div class="d-flex align-items-center gap-2 py-1">
+                            <label class="input-label">Return Time</label>
+                            <svg width="15" height="15" viewBox="0 0 18 18"
+                                xmlns="http://www.w3.org/2000/svg">
+                                <path
+                                    d="M9 0C4.03 0 0 4.03 0 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm.5-12H8v5l4.25 2.52.75-1.23-3.5-2.08V4z" />
+                            </svg>
                         </div>
+                        <div class="custom-select-dropdown">
+                            <input type="time" name="dropoff_time"
+                                value="{{ old('dropoff_time', $withDriverDropoffTime ?? '09:00') }}"
+                                class="@error('dropoff_time') is-invalid @enderror" required>
+                        </div>
+                        @error('dropoff_time')
+                            <span class="text-danger small">{{ $message }}</span>
+                        @enderror
                     </div>
-                </div>
-            </div>
+                @else
+                    <input type="hidden" name="dropoff_date"
+                        value="{{ old('dropoff_date', $withDriverPickupDate ? date('d/m/Y', strtotime($withDriverPickupDate)) : date('d/m/Y')) }}">
+                    <input type="hidden" name="dropoff_time"
+                        value="{{ old('dropoff_time', $withDriverPickupTime ?? '09:00') }}">
+                @endif
 
-
-            <button type="submit" class="primary-btn1">
-                <span>Search For Vehicles</span>
-            </button>
-        </form>
-        @endif
-
-        @if($isEnabled('enable_day_rental'))
-        <!-- Day Rental Form -->
-        <form id="day_rental-form" class="filter-input {{ $currentServiceType === 'day_rental' ? 'show' : '' }}"
-            data-service="day_rental" action="{{ route('booking.search') }}" method="GET">
-
-            <input type="hidden" name="service_type" value="day_rental">
-            <!-- Pickup Location -->
-            @php
-                $dayRentalPickup = $getLocationForService('day_rental', true);
-            @endphp
-            <div class="single-search-box location-search-box">
-                <div class="d-flex align-items-center gap-2 py-1">
-                    <label class="input-label">Pickup Location</label>
-                    <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                        <g>
-                            <path
-                                d="M12.5944 8.99987C12.5944 10.988 10.9826 12.5998 8.99443 12.5998C7.00627 12.5998 5.39465 10.988 5.39465 8.99987C5.39465 7.0117 7.00627 5.40009 8.99443 5.40009C10.9826 5.40009 12.5944 7.0117 12.5944 8.99987Z" />
-                            <path
-                                d="M17.4601 8.4599H16.2564C15.9858 4.86535 13.1291 2.00812 9.53458 1.7372V0.539976C9.53458 0.241723 9.29268 0 8.9946 0C8.69635 0 8.45462 0.241723 8.45462 0.539976V1.7372C4.85986 2.00812 2.00297 4.86535 1.73235 8.4599H0.540018C0.241723 8.4599 0 8.7017 0 8.99987C0 9.29813 0.241723 9.53985 0.539976 9.53985H1.73239C2.00297 13.1344 4.85991 15.9916 8.45441 16.2625V17.4601C8.45441 17.7583 8.69614 18 8.99439 18C9.29251 18 9.53428 17.7583 9.53428 17.4601V16.2625C13.1289 15.9918 15.9858 13.1346 16.2564 9.53985H17.4601C17.7583 9.53985 18 9.29813 18 8.99987C18 8.70175 17.7583 8.4599 17.4601 8.4599ZM8.99443 15.2096C5.56504 15.2094 2.78509 12.4291 2.78509 8.9997C2.78522 5.57014 5.56554 2.7902 8.99494 2.7902C12.4245 2.7902 15.2046 5.57048 15.2046 8.99987C15.2005 12.428 12.4225 15.2058 8.99443 15.2096Z" />
-                        </g>
-                    </svg>
-                </div>
-                <div class="custom-select-dropdown">
-                    <input type="text" name="pickup" placeholder="Pick up Location"
-                        class="location-search @error('pickup') is-invalid @enderror"
-                        value="{{ $safeOldOr('pickup', $dayRentalPickup['address'] ?? 'Colombo, Sri Lanka') }}"
-                        required>
-                    <input type="hidden" name="pickup_lat" class="location-lat"
-                        value="{{ $safeOldOr('pickup_lat', $dayRentalPickup['lat'] ?? '6.9271') }}">
-                    <input type="hidden" name="pickup_lng" class="location-lng"
-                        value="{{ $safeOldOr('pickup_lng', $dayRentalPickup['lng'] ?? '79.8612') }}">
-                </div>
-                @error('pickup')
-                    <span class="text-danger small">{{ $message }}</span>
-                @enderror
-            </div>
-
-            <!-- Drop Off Location -->
-            {{-- <div class="single-search-box location-search-box">
-                <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                    <g>
-                        <path
-                            d="M12.5944 8.99987C12.5944 10.988 10.9826 12.5998 8.99443 12.5998C7.00627 12.5998 5.39465 10.988 5.39465 8.99987C5.39465 7.0117 7.00627 5.40009 8.99443 5.40009C10.9826 5.40009 12.5944 7.0117 12.5944 8.99987Z" />
-                        <path
-                            d="M17.4601 8.4599H16.2564C15.9858 4.86535 13.1291 2.00812 9.53458 1.7372V0.539976C9.53458 0.241723 9.29268 0 8.9946 0C8.69635 0 8.45462 0.241723 8.45462 0.539976V1.7372C4.85986 2.00812 2.00297 4.86535 1.73235 8.4599H0.540018C0.241723 8.4599 0 8.7017 0 8.99987C0 9.29813 0.241723 9.53985 0.539976 9.53985H1.73239C2.00297 13.1344 4.85991 15.9916 8.45441 16.2625V17.4601C8.45441 17.7583 8.69614 18 8.99439 18C9.29251 18 9.53428 17.7583 9.53428 17.4601V16.2625C13.1289 15.9918 15.9858 13.1346 16.2564 9.53985H17.4601C17.7583 9.53985 18 9.29813 18 8.99987C18 8.70175 17.7583 8.4599 17.4601 8.4599ZM8.99443 15.2096C5.56504 15.2094 2.78509 12.4291 2.78509 8.9997C2.78522 5.57014 5.56554 2.7902 8.99494 2.7902C12.4245 2.7902 15.2046 5.57048 15.2046 8.99987C15.2005 12.428 12.4225 15.2058 8.99443 15.2096Z" />
-                    </g>
-                </svg>
-                <div class="custom-select-dropdown">
-                    <input type="text" name="dropoff" placeholder="Drop Off Location"
-                        class="location-search @error('dropoff') is-invalid @enderror"
-                        value="{{ $safeOldOr('dropoff', $dropoff['address'] ?? 'Galle, Sri Lanka') }}"
-                        required>
-                    <input type="hidden" name="dropoff_lat" class="location-lat"
-                        value="{{ $safeOldOr('dropoff_lat', $dropoff['lat'] ?? ($search->dropoff_latitude ?? '6.0535')) }}">
-                    <input type="hidden" name="dropoff_lng" class="location-lng"
-                        value="{{ $safeOldOr('dropoff_lng', $dropoff['lng'] ?? ($search->dropoff_longitude ?? '80.221')) }}">
-                </div>
-                @error('dropoff')
-                    <span class="text-danger small">{{ $message }}</span>
-                @enderror
-            </div> --}}
-
-            <!-- Pickup Date -->
-            @php
-                $dayRentalPickupDate = $getDateForService('day_rental', true);
-                $dayRentalPickupTime = $getTimeForService('day_rental', true);
-            @endphp
-            <div class="single-search-box date-field">
-                <div class="d-flex align-items-center gap-2 py-1">
-                    <label class="input-label">Pickup Date</label>
-                    <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                        <path
-                            d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z" />
-                    </svg>
-                </div>
-                <input type="text" name="pickup_date" placeholder="DD/MM/YYYY"
-                    class="custom-datepicker @error('pickup_date') is-invalid @enderror"
-                    value="{{ old('pickup_date', $dayRentalPickupDate ? date('d/m/Y', strtotime($dayRentalPickupDate)) : date('d/m/Y')) }}"
-                    required autocomplete="off">
-                @error('pickup_date')
-                    <span class="text-danger small">{{ $message }}</span>
-                @enderror
-            </div>
-
-            <!-- Pickup Time -->
-            <div class="single-search-box">
-                <div class="d-flex align-items-center gap-2 py-1">
-                    <label class="input-label">Pickup Time</label>
-                    <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                        <path
-                            d="M9 0C4.03 0 0 4.03 0 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm.5-12H8v5l4.25 2.52.75-1.23-3.5-2.08V4z" />
-                    </svg>
-                </div>
-                <div class="custom-select-dropdown">
-                    <input type="time" name="pickup_time"
-                        value="{{ old('pickup_time', $dayRentalPickupTime ?? '12:00') }}"
-                        class="@error('pickup_time') is-invalid @enderror" required>
-                </div>
-                @error('pickup_time')
-                    <span class="text-danger small">{{ $message }}</span>
-                @enderror
-            </div>
-
-            <!-- Drop Off Date -->
-            @php
-                $dayRentalDropoffDate = $getDateForService('day_rental', false);
-                $dayRentalDropoffTime = $getTimeForService('day_rental', false);
-            @endphp
-            <div class="single-search-box date-field">
-                <div class="d-flex align-items-center gap-2 py-1">
-                    <label class="input-label">Return Date</label>
-                    <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                        <path
-                            d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z" />
-                    </svg>
-                </div>
-                <input type="text" name="dropoff_date" placeholder="DD/MM/YYYY"
-                    class="custom-datepicker @error('dropoff_date') is-invalid @enderror"
-                    value="{{ old('dropoff_date', $dayRentalDropoffDate ? date('d/m/Y', strtotime($dayRentalDropoffDate)) : date('d/m/Y')) }}"
-                    required autocomplete="off">
-                @error('dropoff_date')
-                    <span class="text-danger small">{{ $message }}</span>
-                @enderror
-            </div>
-
-            <div class="single-search-box">
-                <div class="d-flex align-items-center gap-2 py-1">
-                    <label class="input-label">Return Time</label>
-                    <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                        <path
-                            d="M9 0C4.03 0 0 4.03 0 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm.5-12H8v5l4.25 2.52.75-1.23-3.5-2.08V4z" />
-                    </svg>
-                </div>
-                <div class="custom-select-dropdown">
-                    <input type="time" name="dropoff_time"
-                        value="{{ old('dropoff_time', $dayRentalDropoffTime ?? '12:00') }}"
-                        class="@error('dropoff_time') is-invalid @enderror" required>
-                </div>
-                @error('dropoff_time')
-                    <span class="text-danger small">{{ $message }}</span>
-                @enderror
-            </div>
-
-            <div class="package-selector" id="day_rental-packages" style="display: none;"
-                data-selected="{{ old('package_id', $getSearchProp('service_package_id', '')) }}">
-                <div class="transfer-type-toggle package-selector-toggle">
-                    <!-- Packages will be dynamically loaded here as transfer-type-option labels -->
-                </div>
-                <div class="loading-packages" style="display: none;">
-                    <span>Loading packages...</span>
-                </div>
-            </div>
-
-            <button type="submit" class="primary-btn1">
-                <span>Search For Vehicles</span>
-            </button>
-        </form>
-        @endif
-
-        @if($isEnabled('enable_corporate', false))
-        <!-- Corporate Form -->
-        {{-- <form id="corporate-form" class="filter-input {{ $currentServiceType === 'corporate' ? 'show' : '' }}"
-            data-service="corporate" action="{{ route('booking.search') }}" method="GET">
-            <input type="hidden" name="service_type" value="corporate">
-            
-            @php
-                $corporatePickup = $getLocationForService('corporate', true);
-                $corporatePickupDate = $getDateForService('corporate', true);
-                $corporatePickupTime = $getTimeForService('corporate', true);
-            @endphp
-            
-            <!-- Pickup Location -->
-            <div class="single-search-box location-search-box">
-                <div class="d-flex align-items-center gap-2 py-1">
-                    <label class="input-label">Pickup Location</label>
-                    <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                        <g>
-                            <path d="M12.5944 8.99987C12.5944 10.988 10.9826 12.5998 8.99443 12.5998C7.00627 12.5998 5.39465 10.988 5.39465 8.99987C5.39465 7.0117 7.00627 5.40009 8.99443 5.40009C10.9826 5.40009 12.5944 7.0117 12.5944 8.99987Z" />
-                            <path d="M17.4601 8.4599H16.2564C15.9858 4.86535 13.1291 2.00812 9.53458 1.7372V0.539976C9.53458 0.241723 9.29268 0 8.9946 0C8.69635 0 8.45462 0.241723 8.45462 0.539976V1.7372C4.85986 2.00812 2.00297 4.86535 1.73235 8.4599H0.540018C0.241723 8.4599 0 8.7017 0 8.99987C0 9.29813 0.241723 9.53985 0.539976 9.53985H1.73239C2.00297 13.1344 4.85991 15.9916 8.45441 16.2625V17.4601C8.45441 17.7583 8.69614 18 8.99439 18C9.29251 18 9.53428 17.7583 9.53428 17.4601V16.2625C13.1289 15.9918 15.9858 13.1346 16.2564 9.53985H17.4601C17.7583 9.53985 18 9.29813 18 8.99987C18 8.70175 17.7583 8.4599 17.4601 8.4599ZM8.99443 15.2096C5.56504 15.2094 2.78509 12.4291 2.78509 8.9997C2.78522 5.57014 5.56554 2.7902 8.99494 2.7902C12.4245 2.7902 15.2046 5.57048 15.2046 8.99987C15.2005 12.428 12.4225 15.2058 8.99443 15.2096Z" />
-                        </g>
-                    </svg>
-                </div>
-                <div class="custom-select-dropdown">
-                    <input type="text" name="pickup" placeholder="Pick up Location"
-                        class="location-search @error('pickup') is-invalid @enderror"
-                        value="{{ $safeOldOr('pickup', $corporatePickup['address'] ?? 'Colombo, Sri Lanka') }}" required>
-                    <input type="hidden" name="pickup_lat" class="location-lat"
-                        value="{{ $safeOldOr('pickup_lat', $corporatePickup['lat'] ?? '6.9271') }}">
-                    <input type="hidden" name="pickup_lng" class="location-lng"
-                        value="{{ $safeOldOr('pickup_lng', $corporatePickup['lng'] ?? '79.8612') }}">
-                </div>
-                @error('pickup')
-                    <span class="text-danger small">{{ $message }}</span>
-                @enderror
-            </div>
-
-            <!-- Date -->
-            <div class="single-search-box date-field">
-                <div class="d-flex align-items-center gap-2 py-1">
-                    <label class="input-label">Start Date</label>
-                    <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z" />
-                    </svg>
-                </div>
-                <input type="text" name="date" placeholder="DD/MM/YYYY"
-                    class="custom-datepicker @error('date') is-invalid @enderror"
-                    value="{{ old('date', $corporatePickupDate ? date('d/m/Y', strtotime($corporatePickupDate)) : date('d/m/Y')) }}"
-                    required autocomplete="off">
-                @error('date')
-                    <span class="text-danger small">{{ $message }}</span>
-                @enderror
-            </div>
-
-            <!-- Time -->
-            <div class="single-search-box">
-                <div class="d-flex align-items-center gap-2 py-1">
-                    <label class="input-label">Start Time</label>
-                    <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M9 0C4.03 0 0 4.03 0 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm.5-12H8v5l4.25 2.52.75-1.23-3.5-2.08V4z" />
-                    </svg>
-                </div>
-                <div class="custom-select-dropdown">
-                    <input type="time" name="time" value="{{ old('time', $corporatePickupTime ?? '09:00') }}"
-                        class="@error('time') is-invalid @enderror" required>
-                </div>
-                @error('time')
-                    <span class="text-danger small">{{ $message }}</span>
-                @enderror
-            </div>
-
-            <button type="submit" class="primary-btn1">
-                <span>Request Quote</span>
-            </button>
-        </form> --}}
-        @endif
-
-        @if($isEnabled('enable_wedding', false))
-        <!-- Wedding Hire Form -->
-        <form id="wedding_hire-form" class="filter-input {{ $currentServiceType === 'wedding_hire' ? 'show' : '' }}"
-            data-service="wedding_hire" action="{{ route('booking.search') }}" method="GET">
-            <input type="hidden" name="service_type" value="wedding_hire">
-            
-            @php
-                $weddingPickup = $getLocationForService('wedding_hire', true);
-                $weddingPickupDate = $getDateForService('wedding_hire', true);
-                $weddingPickupTime = $getTimeForService('wedding_hire', true);
-            @endphp
-            
-            <!-- Pickup Location -->
-            <div class="single-search-box location-search-box">
-                <div class="d-flex align-items-center gap-2 py-1">
-                    <label class="input-label">Event Location</label>
-                    <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                        <g>
-                            <path d="M12.5944 8.99987C12.5944 10.988 10.9826 12.5998 8.99443 12.5998C7.00627 12.5998 5.39465 10.988 5.39465 8.99987C5.39465 7.0117 7.00627 5.40009 8.99443 5.40009C10.9826 5.40009 12.5944 7.0117 12.5944 8.99987Z" />
-                            <path d="M17.4601 8.4599H16.2564C15.9858 4.86535 13.1291 2.00812 9.53458 1.7372V0.539976C9.53458 0.241723 9.29268 0 8.9946 0C8.69635 0 8.45462 0.241723 8.45462 0.539976V1.7372C4.85986 2.00812 2.00297 4.86535 1.73235 8.4599H0.540018C0.241723 8.4599 0 8.7017 0 8.99987C0 9.29813 0.241723 9.53985 0.539976 9.53985H1.73239C2.00297 13.1344 4.85991 15.9916 8.45441 16.2625V17.4601C8.45441 17.7583 8.69614 18 8.99439 18C9.29251 18 9.53428 17.7583 9.53428 17.4601V16.2625C13.1289 15.9918 15.9858 13.1346 16.2564 9.53985H17.4601C17.7583 9.53985 18 9.29813 18 8.99987C18 8.70175 17.7583 8.4599 17.4601 8.4599ZM8.99443 15.2096C5.56504 15.2094 2.78509 12.4291 2.78509 8.9997C2.78522 5.57014 5.56554 2.7902 8.99494 2.7902C12.4245 2.7902 15.2046 5.57048 15.2046 8.99987C15.2005 12.428 12.4225 15.2058 8.99443 15.2096Z" />
-                        </g>
-                    </svg>
-                </div>
-                <div class="custom-select-dropdown">
-                    <input type="text" name="pickup" placeholder="Wedding Venue Location"
-                        class="location-search @error('pickup') is-invalid @enderror"
-                        value="{{ $safeOldOr('pickup', $weddingPickup['address'] ?? '') }}" required>
-                    <input type="hidden" name="pickup_lat" class="location-lat"
-                        value="{{ $safeOldOr('pickup_lat', $weddingPickup['lat'] ?? '6.9271') }}">
-                    <input type="hidden" name="pickup_lng" class="location-lng"
-                        value="{{ $safeOldOr('pickup_lng', $weddingPickup['lng'] ?? '79.8612') }}">
-                </div>
-                @error('pickup')
-                    <span class="text-danger small">{{ $message }}</span>
-                @enderror
-            </div>
-
-            <!-- Date -->
-            <div class="single-search-box date-field">
-                <div class="d-flex align-items-center gap-2 py-1">
-                    <label class="input-label">Wedding Date</label>
-                    <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z" />
-                    </svg>
-                </div>
-                <input type="text" name="date" placeholder="DD/MM/YYYY"
-                    class="custom-datepicker @error('date') is-invalid @enderror"
-                    value="{{ old('date', $weddingPickupDate ? date('d/m/Y', strtotime($weddingPickupDate)) : '') }}"
-                    required autocomplete="off">
-                @error('date')
-                    <span class="text-danger small">{{ $message }}</span>
-                @enderror
-            </div>
-
-            <!-- Time -->
-            <div class="single-search-box">
-                <div class="d-flex align-items-center gap-2 py-1">
-                    <label class="input-label">Event Time</label>
-                    <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M9 0C4.03 0 0 4.03 0 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm.5-12H8v5l4.25 2.52.75-1.23-3.5-2.08V4z" />
-                    </svg>
-                </div>
-                <div class="custom-select-dropdown">
-                    <input type="time" name="time" value="{{ old('time', $weddingPickupTime ?? '10:00') }}"
-                        class="@error('time') is-invalid @enderror" required>
-                </div>
-                @error('time')
-                    <span class="text-danger small">{{ $message }}</span>
-                @enderror
-            </div>
-
-            <button type="submit" class="primary-btn1">
-                <span>Request Quote</span>
-            </button>
-        </form>
-        @endif
-
-        @if($isEnabled('enable_selfdrive', false))
-        <!-- Self Drive Form -->
-        <form id="self_drive-form" class="filter-input {{ $currentServiceType === 'self_drive' ? 'show' : '' }}"
-            data-service="self_drive" action="{{ route('booking.search') }}" method="GET">
-            <input type="hidden" name="service_type" value="day_rental">
-            <input type="hidden" name="rental_mode" value="self_drive">
-            
-            @php
-                $selfDrivePickup = $getLocationForService('self_drive', true);
-                $selfDrivePickupDate = $getDateForService('self_drive', true);
-                $selfDrivePickupTime = $getTimeForService('self_drive', true);
-                $selfDriveDropoffDate = $getDateForService('self_drive', false);
-                $selfDriveDropoffTime = $getTimeForService('self_drive', false);
-            @endphp
-            
-            <!-- Pickup Location -->
-            <div class="single-search-box location-search-box">
-                <div class="d-flex align-items-center gap-2 py-1">
-                    <label class="input-label">Pickup Location</label>
-                    <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                        <g>
-                            <path d="M12.5944 8.99987C12.5944 10.988 10.9826 12.5998 8.99443 12.5998C7.00627 12.5998 5.39465 10.988 5.39465 8.99987C5.39465 7.0117 7.00627 5.40009 8.99443 5.40009C10.9826 5.40009 12.5944 7.0117 12.5944 8.99987Z" />
-                            <path d="M17.4601 8.4599H16.2564C15.9858 4.86535 13.1291 2.00812 9.53458 1.7372V0.539976C9.53458 0.241723 9.29268 0 8.9946 0C8.69635 0 8.45462 0.241723 8.45462 0.539976V1.7372C4.85986 2.00812 2.00297 4.86535 1.73235 8.4599H0.540018C0.241723 8.4599 0 8.7017 0 8.99987C0 9.29813 0.241723 9.53985 0.539976 9.53985H1.73239C2.00297 13.1344 4.85991 15.9916 8.45441 16.2625V17.4601C8.45441 17.7583 8.69614 18 8.99439 18C9.29251 18 9.53428 17.7583 9.53428 17.4601V16.2625C13.1289 15.9918 15.9858 13.1346 16.2564 9.53985H17.4601C17.7583 9.53985 18 9.29813 18 8.99987C18 8.70175 17.7583 8.4599 17.4601 8.4599ZM8.99443 15.2096C5.56504 15.2094 2.78509 12.4291 2.78509 8.9997C2.78522 5.57014 5.56554 2.7902 8.99494 2.7902C12.4245 2.7902 15.2046 5.57048 15.2046 8.99987C15.2005 12.428 12.4225 15.2058 8.99443 15.2096Z" />
-                        </g>
-                    </svg>
-                </div>
-                <div class="custom-select-dropdown">
-                    <input type="text" name="pickup" placeholder="Pick up Location"
-                        class="location-search @error('pickup') is-invalid @enderror"
-                        value="{{ $safeOldOr('pickup', $selfDrivePickup['address'] ?? 'Colombo, Sri Lanka') }}" required>
-                    <input type="hidden" name="pickup_lat" class="location-lat"
-                        value="{{ $safeOldOr('pickup_lat', $selfDrivePickup['lat'] ?? '6.9271') }}">
-                    <input type="hidden" name="pickup_lng" class="location-lng"
-                        value="{{ $safeOldOr('pickup_lng', $selfDrivePickup['lng'] ?? '79.8612') }}">
-                </div>
-                @error('pickup')
-                    <span class="text-danger small">{{ $message }}</span>
-                @enderror
-            </div>
-
-            <!-- Pickup Date -->
-            <div class="single-search-box date-field">
-                <div class="d-flex align-items-center gap-2 py-1">
-                    <label class="input-label">Pickup Date</label>
-                    <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z" />
-                    </svg>
-                </div>
-                <input type="text" name="date" placeholder="DD/MM/YYYY"
-                    class="custom-datepicker @error('date') is-invalid @enderror"
-                    value="{{ old('date', $selfDrivePickupDate ? date('d/m/Y', strtotime($selfDrivePickupDate)) : date('d/m/Y')) }}"
-                    required autocomplete="off">
-                @error('date')
-                    <span class="text-danger small">{{ $message }}</span>
-                @enderror
-            </div>
-
-            <!-- Pickup Time -->
-            <div class="single-search-box">
-                <div class="d-flex align-items-center gap-2 py-1">
-                    <label class="input-label">Pickup Time</label>
-                    <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M9 0C4.03 0 0 4.03 0 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm.5-12H8v5l4.25 2.52.75-1.23-3.5-2.08V4z" />
-                    </svg>
-                </div>
-                <div class="custom-select-dropdown">
-                    <input type="time" name="time" value="{{ old('time', $selfDrivePickupTime ?? '09:00') }}"
-                        class="@error('time') is-invalid @enderror" required>
-                </div>
-                @error('time')
-                    <span class="text-danger small">{{ $message }}</span>
-                @enderror
-            </div>
-
-            <!-- Return Date -->
-            <div class="single-search-box date-field">
-                <div class="d-flex align-items-center gap-2 py-1">
-                    <label class="input-label">Return Date</label>
-                    <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z" />
-                    </svg>
-                </div>
-                <input type="text" name="dropoff_date" placeholder="DD/MM/YYYY"
-                    class="custom-datepicker @error('dropoff_date') is-invalid @enderror"
-                    value="{{ old('dropoff_date', $selfDriveDropoffDate ? date('d/m/Y', strtotime($selfDriveDropoffDate)) : date('d/m/Y', strtotime('+1 day'))) }}"
-                    required autocomplete="off">
-                @error('dropoff_date')
-                    <span class="text-danger small">{{ $message }}</span>
-                @enderror
-            </div>
-
-            <!-- Return Time -->
-            <div class="single-search-box">
-                <div class="d-flex align-items-center gap-2 py-1">
-                    <label class="input-label">Return Time</label>
-                    <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M9 0C4.03 0 0 4.03 0 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm.5-12H8v5l4.25 2.52.75-1.23-3.5-2.08V4z" />
-                    </svg>
-                </div>
-                <div class="custom-select-dropdown">
-                    <input type="time" name="dropoff_time" value="{{ old('dropoff_time', $selfDriveDropoffTime ?? '09:00') }}"
-                        class="@error('dropoff_time') is-invalid @enderror" required>
-                </div>
-                @error('dropoff_time')
-                    <span class="text-danger small">{{ $message }}</span>
-                @enderror
-            </div>
-
-            <button type="submit" class="primary-btn1">
-                <span>Search Vehicles</span>
-            </button>
-        </form>
-        @endif
-
-        @if($isEnabled('enable_with_drive', false))
-        <!-- With Driver Form - Similar to Self Drive but with driver -->
-        <form id="with_driver-form" class="filter-input {{ $currentServiceType === 'with_driver' ? 'show' : '' }}"
-            data-service="with_driver" action="{{ route('booking.search') }}" method="GET">
-            <input type="hidden" name="service_type" value="day_rental">
-            <input type="hidden" name="rental_mode" value="with_driver">
-            
-            @php
-                $withDriverPickup = $getLocationForService('with_driver', true);
-                $withDriverPickupDate = $getDateForService('with_driver', true);
-                $withDriverPickupTime = $getTimeForService('with_driver', true);
-                $withDriverDropoffDate = $getDateForService('with_driver', false);
-                $withDriverDropoffTime = $getTimeForService('with_driver', false);
-            @endphp
-            
-            <!-- Pickup Location -->
-            <div class="single-search-box location-search-box">
-                <div class="d-flex align-items-center gap-2 py-1">
-                    <label class="input-label">Pickup Location</label>
-                    <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                        <g>
-                            <path d="M12.5944 8.99987C12.5944 10.988 10.9826 12.5998 8.99443 12.5998C7.00627 12.5998 5.39465 10.988 5.39465 8.99987C5.39465 7.0117 7.00627 5.40009 8.99443 5.40009C10.9826 5.40009 12.5944 7.0117 12.5944 8.99987Z" />
-                            <path d="M17.4601 8.4599H16.2564C15.9858 4.86535 13.1291 2.00812 9.53458 1.7372V0.539976C9.53458 0.241723 9.29268 0 8.9946 0C8.69635 0 8.45462 0.241723 8.45462 0.539976V1.7372C4.85986 2.00812 2.00297 4.86535 1.73235 8.4599H0.540018C0.241723 8.4599 0 8.7017 0 8.99987C0 9.29813 0.241723 9.53985 0.539976 9.53985H1.73239C2.00297 13.1344 4.85991 15.9916 8.45441 16.2625V17.4601C8.45441 17.7583 8.69614 18 8.99439 18C9.29251 18 9.53428 17.7583 9.53428 17.4601V16.2625C13.1289 15.9918 15.9858 13.1346 16.2564 9.53985H17.4601C17.7583 9.53985 18 9.29813 18 8.99987C18 8.70175 17.7583 8.4599 17.4601 8.4599ZM8.99443 15.2096C5.56504 15.2094 2.78509 12.4291 2.78509 8.9997C2.78522 5.57014 5.56554 2.7902 8.99494 2.7902C12.4245 2.7902 15.2046 5.57048 15.2046 8.99987C15.2005 12.428 12.4225 15.2058 8.99443 15.2096Z" />
-                        </g>
-                    </svg>
-                </div>
-                <div class="custom-select-dropdown">
-                    <input type="text" name="pickup" placeholder="Pick up Location"
-                        class="location-search @error('pickup') is-invalid @enderror"
-                        value="{{ $safeOldOr('pickup', $withDriverPickup['address'] ?? 'Colombo, Sri Lanka') }}" required>
-                    <input type="hidden" name="pickup_lat" class="location-lat"
-                        value="{{ $safeOldOr('pickup_lat', $withDriverPickup['lat'] ?? '6.9271') }}">
-                    <input type="hidden" name="pickup_lng" class="location-lng"
-                        value="{{ $safeOldOr('pickup_lng', $withDriverPickup['lng'] ?? '79.8612') }}">
-                </div>
-                @error('pickup')
-                    <span class="text-danger small">{{ $message }}</span>
-                @enderror
-            </div>
-
-            <!-- Pickup Date -->
-            <div class="single-search-box date-field">
-                <div class="d-flex align-items-center gap-2 py-1">
-                    <label class="input-label">Pickup Date</label>
-                    <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z" />
-                    </svg>
-                </div>
-                <input type="text" name="date" placeholder="DD/MM/YYYY"
-                    class="custom-datepicker @error('date') is-invalid @enderror"
-                    value="{{ old('date', $withDriverPickupDate ? date('d/m/Y', strtotime($withDriverPickupDate)) : date('d/m/Y')) }}"
-                    required autocomplete="off">
-                @error('date')
-                    <span class="text-danger small">{{ $message }}</span>
-                @enderror
-            </div>
-
-            <!-- Pickup Time -->
-            <div class="single-search-box">
-                <div class="d-flex align-items-center gap-2 py-1">
-                    <label class="input-label">Pickup Time</label>
-                    <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M9 0C4.03 0 0 4.03 0 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm.5-12H8v5l4.25 2.52.75-1.23-3.5-2.08V4z" />
-                    </svg>
-                </div>
-                <div class="custom-select-dropdown">
-                    <input type="time" name="time" value="{{ old('time', $withDriverPickupTime ?? '09:00') }}"
-                        class="@error('time') is-invalid @enderror" required>
-                </div>
-                @error('time')
-                    <span class="text-danger small">{{ $message }}</span>
-                @enderror
-            </div>
-
-            <!-- Return Date -->
-            <div class="single-search-box date-field">
-                <div class="d-flex align-items-center gap-2 py-1">
-                    <label class="input-label">Return Date</label>
-                    <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M15 2h-1V0h-2v2H6V0H4v2H3C1.89 2 1 2.89 1 4v12c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.11-.9-2-2-2zm0 14H3V7h12v9z" />
-                    </svg>
-                </div>
-                <input type="text" name="dropoff_date" placeholder="DD/MM/YYYY"
-                    class="custom-datepicker @error('dropoff_date') is-invalid @enderror"
-                    value="{{ old('dropoff_date', $withDriverDropoffDate ? date('d/m/Y', strtotime($withDriverDropoffDate)) : date('d/m/Y', strtotime('+1 day'))) }}"
-                    required autocomplete="off">
-                @error('dropoff_date')
-                    <span class="text-danger small">{{ $message }}</span>
-                @enderror
-            </div>
-
-            <!-- Return Time -->
-            <div class="single-search-box">
-                <div class="d-flex align-items-center gap-2 py-1">
-                    <label class="input-label">Return Time</label>
-                    <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M9 0C4.03 0 0 4.03 0 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm.5-12H8v5l4.25 2.52.75-1.23-3.5-2.08V4z" />
-                    </svg>
-                </div>
-                <div class="custom-select-dropdown">
-                    <input type="time" name="dropoff_time" value="{{ old('dropoff_time', $withDriverDropoffTime ?? '09:00') }}"
-                        class="@error('dropoff_time') is-invalid @enderror" required>
-                </div>
-                @error('dropoff_time')
-                    <span class="text-danger small">{{ $message }}</span>
-                @enderror
-            </div>
-
-            <button type="submit" class="primary-btn1">
-                <span>Search Vehicles</span>
-            </button>
-        </form>
+                <button type="submit" class="primary-btn1">
+                    <span>Search Vehicles</span>
+                </button>
+            </form>
         @endif
 
 
@@ -1335,6 +1750,7 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
                 e.preventDefault();
 
                 const service = this.getAttribute('data-service');
+                const formService = this.getAttribute('data-form-service') || service;
                 const redirectUrl = this.getAttribute('data-redirect');
 
                 // If this tab has a redirect URL, navigate to it
@@ -1353,12 +1769,12 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
                     input.classList.remove('show');
                 });
 
-                const targetForm = document.querySelector(`[data-service="${service}"]`);
+                const targetForm = document.querySelector(`.filter-input[data-service="${formService}"]`);
                 if (targetForm) {
                     targetForm.classList.add('show');
 
                     // Initialize airport transfer form if it's the airport service
-                    if (service === 'airport_transfers') {
+                    if (formService === 'airport_transfers') {
                         initializeAirportTransferForm();
                     }
                 }
@@ -1586,13 +2002,23 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
 
         // Ensure the correct form tab is active on page load based on current service type
         document.addEventListener('DOMContentLoaded', function() {
-            const activeService = document.querySelector('.filter-item.active');
-            if (activeService) {
-                const service = activeService.getAttribute('data-service');
-                const targetForm = document.querySelector(`[data-service="${service}"]`);
-                if (targetForm && !targetForm.classList.contains('show')) {
-                    targetForm.classList.add('show');
-                }
+            const activeService = document.querySelector('.filter-item-list .single-item.active') ||
+                document.querySelector('.filter-item-list .single-item');
+
+            if (!activeService) {
+                return;
+            }
+
+            const service = activeService.getAttribute('data-service');
+            const formService = activeService.getAttribute('data-form-service') || service;
+
+            document.querySelectorAll('.filter-input').forEach((form) => {
+                form.classList.remove('show');
+            });
+
+            const targetForm = document.querySelector(`.filter-input[data-service="${formService}"]`);
+            if (targetForm) {
+                targetForm.classList.add('show');
             }
         });
 
@@ -1664,7 +2090,10 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
                 // Add loading state
                 submitBtn.disabled = true;
                 submitBtn.style.opacity = '0.7';
-                btnText.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Searching...';
+                const isInquiryForm = (form.getAttribute('action') || '').includes('/booking/enquiry');
+                btnText.innerHTML = isInquiryForm
+                    ? '<i class="fas fa-spinner fa-spin"></i> Submitting...'
+                    : '<i class="fas fa-spinner fa-spin"></i> Searching...';
 
                 // If form submission takes too long, restore button (fallback)
                 setTimeout(() => {
@@ -1760,7 +2189,8 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
          * Initialize service package loading for all services
          */
         function initializeServicePackages() {
-            const serviceTypes = ['airport_transfers', 'ride_now', 'point_to_point', 'day_rental'];
+            const serviceTypes = Array.from(document.querySelectorAll('.package-selector[id$="-packages"]'))
+                .map((selector) => selector.id.replace('-packages', ''));
 
             serviceTypes.forEach(serviceType => {
                 loadServicePackages(serviceType);
@@ -2859,17 +3289,16 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
         // Debug coordinate values on page load and form interactions
         function debugCoordinates() {
             console.log('=== COORDINATE DEBUG INFO ===');
-            const forms = ['airport_transfers-form', 'ride_now-form', 'day_rental-form', 'point_to_point-form'];
+            const forms = Array.from(document.querySelectorAll('form.filter-input[id$="-form"]'))
+                .map((form) => form.id);
 
             forms.forEach(formId => {
                 const form = document.getElementById(formId);
                 if (form) {
                     const fromLat = form.querySelector('input[name="pickup_lat"]');
                     const fromLng = form.querySelector('input[name="pickup_lng"]');
-                    const toLat = form.querySelector('input[name="pickup_lng"]');
-                    const toLng = form.querySelector('input[name="pickup_lat"]');
-                    // const toLat = form.querySelector('input[name="dropoff_lat"]');
-                    // const toLng = form.querySelector('input[name="dropoff_lng"]');
+                    const toLat = form.querySelector('input[name="dropoff_lat"]');
+                    const toLng = form.querySelector('input[name="dropoff_lng"]');
 
                     console.log(`${formId}:`, {
                         fromLat: fromLat ? fromLat.value : 'NOT FOUND',
@@ -2994,16 +3423,18 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
                     toLng: toLng?.value
                 });
             } else if ((formId === 'ride_now-form' || formId === 'day_rental-form' ||
-                    formId === 'day_rental-form')) {
+                    formId === 'self_drive-form' || formId === 'with_driver-form' || formId === 'wedding_hire-form')) {
                 const pickupLat = form.querySelector('input[name="pickup_lat"]');
                 const pickupLng = form.querySelector('input[name="pickup_lng"]');
                 const dropoffLat = form.querySelector('input[name="dropoff_lat"]');
                 const dropoffLng = form.querySelector('input[name="dropoff_lng"]');
 
-                hasValidCoordinates = (pickupLat && pickupLat.value && pickupLng && pickupLng.value &&
-                    dropoffLat && dropoffLat.value && dropoffLng && dropoffLng.value);
+                const hasPickupCoordinates = !!(pickupLat && pickupLat.value && pickupLng && pickupLng.value);
+                const hasDropoffInputs = !!(dropoffLat || dropoffLng);
+                const hasDropoffCoordinates = !hasDropoffInputs || !!(dropoffLat && dropoffLat.value && dropoffLng && dropoffLng.value);
+                hasValidCoordinates = hasPickupCoordinates && hasDropoffCoordinates;
 
-                console.log('Ride Now coordinates check:', {
+                console.log('Service coordinates check:', {
                     pickupLat: pickupLat?.value,
                     pickupLng: pickupLng?.value,
                     dropoffLat: dropoffLat?.value,
@@ -3015,7 +3446,7 @@ if ($returnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $returnDate)) {
                 console.warn('WARNING: Some coordinates are missing for form:', formId);
                 // Still allow submission but log the warning
             } else {
-                console.log('✓ All coordinates present for submission of form:', formId);
+                console.log('All coordinates present for submission of form:', formId);
             }
         });
     </script>

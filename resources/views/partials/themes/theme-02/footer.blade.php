@@ -1,11 +1,9 @@
-{{-- Theme-02 Footer Section --}}
-{{-- Based on travel-agency-02.html footer structure --}}
-{{-- Uses footer-section two class for subtle visual differences --}}
+{{-- Theme-02 Footer - Tailwind CSS - Dark modern footer --}}
 
-<!-- Footer Section Start-->
-<footer class="footer-section two">
+<!-- Footer Section Start -->
+<footer class="t2-footer footer-section two">
     <div class="container">
-        {{-- Optional Newsletter Section --}}
+        {{-- Newsletter Section --}}
         @if(($settings['theme02_footer_newsletter_enabled'] ?? false) || ($settings['footer_newsletter_enabled'] ?? false))
         <div class="newsletter-section mb-5">
             <div class="row align-items-center">
@@ -30,35 +28,24 @@
 
         <div class="footer-menu-wrap">
             <div class="row gy-md-4 gy-5">
-                {{-- Logo and Company Info Column --}}
+                {{-- Logo and Company Info --}}
                 <div class="col-lg-3 col-md-4 col-sm-6">
                     <div class="footer-logo-and-addition-info">
                         <a href="{{ route('home') }}" class="footer-logo">
-                            <img src="{{ s3_asset($settings['logo_footer'] ?? $settings['logo_header'] ?? 'assets/img/header-logo.png') }}" alt="{{ $settings['logo_footer_alt'] ?? $settings['site_name'] ?? 'TheTaxi' }}">
+                            <img src="{{ s3_asset($settings['logo_footer'] ?? $settings['logo_header'] ?? 'assets/img/header-logo.png') }}"
+                                 alt="{{ $settings['logo_footer_alt'] ?? $settings['site_name'] ?? 'TheTaxi' }}">
                         </a>
                         <div class="address-area">
                             <span>{{ $settings['footer_company_tagline'] ?? ($settings['site_tagline'] ?? 'TheTaxi Professional Services') }}</span>
                             <a href="#">{{ $settings['company_address'] ?? '123 Transport Avenue, Suite 100, Your City, State 12345, Country' }}</a>
                         </div>
                         <ul class="social-list">
-                            @if($settings['social_facebook'] ?? null)
-                            <li><a href="{{ $settings['social_facebook'] }}"><i class="bx bxl-facebook"></i></a></li>
-                            @endif
-                            @if($settings['social_linkedin'] ?? null)
-                            <li><a href="{{ $settings['social_linkedin'] }}"><i class="bx bxl-linkedin"></i></a></li>
-                            @endif
-                            @if($settings['social_youtube'] ?? null)
-                            <li><a href="{{ $settings['social_youtube'] }}"><i class="bx bxl-youtube"></i></a></li>
-                            @endif
-                            @if($settings['social_instagram'] ?? null)
-                            <li><a href="{{ $settings['social_instagram'] }}"><i class="bx bxl-instagram-alt"></i></a></li>
-                            @endif
-                            @if($settings['social_twitter'] ?? null)
-                            <li><a href="{{ $settings['social_twitter'] }}"><i class="bx bxl-twitter"></i></a></li>
-                            @endif
-                            @if($settings['social_tiktok'] ?? null)
-                            <li><a href="{{ $settings['social_tiktok'] }}"><i class="bx bxl-tiktok"></i></a></li>
-                            @endif
+                            @if($settings['social_facebook'] ?? null)<li><a href="{{ $settings['social_facebook'] }}"><i class="bx bxl-facebook"></i></a></li>@endif
+                            @if($settings['social_linkedin'] ?? null)<li><a href="{{ $settings['social_linkedin'] }}"><i class="bx bxl-linkedin"></i></a></li>@endif
+                            @if($settings['social_youtube'] ?? null)<li><a href="{{ $settings['social_youtube'] }}"><i class="bx bxl-youtube"></i></a></li>@endif
+                            @if($settings['social_instagram'] ?? null)<li><a href="{{ $settings['social_instagram'] }}"><i class="bx bxl-instagram-alt"></i></a></li>@endif
+                            @if($settings['social_twitter'] ?? null)<li><a href="{{ $settings['social_twitter'] }}"><i class="bx bxl-twitter"></i></a></li>@endif
+                            @if($settings['social_tiktok'] ?? null)<li><a href="{{ $settings['social_tiktok'] }}"><i class="bx bxl-tiktok"></i></a></li>@endif
                             @if(!($settings['social_facebook'] ?? null) && !($settings['social_linkedin'] ?? null) && !($settings['social_youtube'] ?? null) && !($settings['social_instagram'] ?? null))
                             <li><a href="https://www.facebook.com/"><i class="bx bxl-facebook"></i></a></li>
                             <li><a href="https://www.linkedin.com/"><i class="bx bxl-linkedin"></i></a></li>
@@ -69,25 +56,20 @@
                     </div>
                 </div>
 
-                {{-- Quick Links / Services Column --}}
+                {{-- Services Column --}}
                 <div class="col-lg-3 col-md-4 col-sm-6 d-flex justify-content-md-end">
                     <div class="footer-widget">
                         <div class="widget-title">
                             <h5>{{ $settings['footer_services_title'] ?? 'Our Services' }}</h5>
                         </div>
-
                         @php
                             $servicesLinks = [];
                             $i = 1;
                             while(isset($settings["footer_services_link_{$i}_text"]) && $settings["footer_services_link_{$i}_text"]) {
-                                $servicesLinks[] = [
-                                    'text' => $settings["footer_services_link_{$i}_text"],
-                                    'url' => $settings["footer_services_link_{$i}_url"] ?? '#'
-                                ];
+                                $servicesLinks[] = ['text' => $settings["footer_services_link_{$i}_text"], 'url' => $settings["footer_services_link_{$i}_url"] ?? '#'];
                                 $i++;
                             }
                         @endphp
-
                         @if(!empty($servicesLinks))
                             <ul class="widget-list">
                                 @foreach($servicesLinks as $link)
@@ -98,25 +80,20 @@
                     </div>
                 </div>
 
-                {{-- Popular Routes / Destinations Column --}}
+                {{-- Routes Column --}}
                 <div class="col-lg-3 col-md-4 col-sm-6 d-flex justify-content-md-end">
                     <div class="footer-widget">
                         <div class="widget-title">
                             <h5>{{ $settings['footer_routes_title'] ?? 'Popular Routes' }}</h5>
                         </div>
-
                         @php
                             $routesLinks = [];
                             $i = 1;
                             while(isset($settings["footer_routes_link_{$i}_text"]) && $settings["footer_routes_link_{$i}_text"]) {
-                                $routesLinks[] = [
-                                    'text' => $settings["footer_routes_link_{$i}_text"],
-                                    'url' => $settings["footer_routes_link_{$i}_url"] ?? '#'
-                                ];
+                                $routesLinks[] = ['text' => $settings["footer_routes_link_{$i}_text"], 'url' => $settings["footer_routes_link_{$i}_url"] ?? '#'];
                                 $i++;
                             }
                         @endphp
-
                         @if(!empty($routesLinks))
                             <ul class="widget-list">
                                 @foreach($routesLinks as $link)
@@ -127,7 +104,7 @@
                     </div>
                 </div>
 
-                {{-- Contact Info Column (Theme-02 specific: contact in widget instead of top bar) --}}
+                {{-- Contact Column --}}
                 <div class="col-lg-3 col-sm-6 d-flex justify-content-lg-end">
                     <div class="footer-widget">
                         <div class="widget-title">
@@ -177,18 +154,10 @@
                 <div class="payment-method-area">
                     <span>{{ $settings['footer_payment_methods_label'] ?? 'Accepted Payment Methods :' }}</span>
                     <ul>
-                        @if($settings['footer_payment_mastercard'] ?? true)
-                        <li><img src="{{ asset('assets/img/home1/icon/mastar-card-icon.svg') }}" alt="Mastercard"></li>
-                        @endif
-                        @if($settings['footer_payment_visa'] ?? true)
-                        <li><img src="{{ asset('assets/img/home1/icon/visa-icon.svg') }}" alt="Visa"></li>
-                        @endif
-                        @if($settings['footer_payment_paypal'] ?? false)
-                        <li><img src="{{ asset('assets/img/home1/icon/paypal-icon.svg') }}" alt="PayPal"></li>
-                        @endif
-                        @if($settings['footer_payment_gpay'] ?? false)
-                        <li><img src="{{ asset('assets/img/home1/icon/gpay-icon.svg') }}" alt="Google Pay"></li>
-                        @endif
+                        @if($settings['footer_payment_mastercard'] ?? true)<li><img src="{{ asset('assets/img/home1/icon/mastar-card-icon.svg') }}" alt="Mastercard"></li>@endif
+                        @if($settings['footer_payment_visa'] ?? true)<li><img src="{{ asset('assets/img/home1/icon/visa-icon.svg') }}" alt="Visa"></li>@endif
+                        @if($settings['footer_payment_paypal'] ?? false)<li><img src="{{ asset('assets/img/home1/icon/paypal-icon.svg') }}" alt="PayPal"></li>@endif
+                        @if($settings['footer_payment_gpay'] ?? false)<li><img src="{{ asset('assets/img/home1/icon/gpay-icon.svg') }}" alt="Google Pay"></li>@endif
                     </ul>
                 </div>
                 @endif
@@ -196,4 +165,4 @@
         </div>
     </div>
 </footer>
-<!-- Footer Section End-->
+<!-- Footer Section End -->

@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Models\Service\ServiceType;
 use App\Services\WebsiteSettingsService;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Log;
@@ -44,6 +45,28 @@ class BookingSearchRequest extends FormRequest
             $data['dropoff_date'] = $this->convertDDMMYYYYToYMD($data['dropoff_date']);
         }
 
+        $serviceType = $data['service_type'] ?? null;
+        if (in_array($serviceType, ['self_drive', 'with_driver'], true)) {
+            if (empty($data['pickup_date']) && !empty($data['date'])) {
+                $data['pickup_date'] = $data['date'];
+            }
+            if (empty($data['pickup_time']) && !empty($data['time'])) {
+                $data['pickup_time'] = $data['time'];
+            }
+            if (empty($data['rental_mode'])) {
+                $data['rental_mode'] = $serviceType;
+            }
+        }
+
+        if ($serviceType === 'wedding_hire') {
+            if (empty($data['pickup_date']) && !empty($data['date'])) {
+                $data['pickup_date'] = $data['date'];
+            }
+            if (empty($data['pickup_time']) && !empty($data['time'])) {
+                $data['pickup_time'] = $data['time'];
+            }
+        }
+
         $this->replace($data);
     }
 
@@ -63,13 +86,20 @@ class BookingSearchRequest extends FormRequest
                 return $this->dropPickupRules();
 
             case 'ride_now':
-                return $this->rentalPackagesRules();
+                return $this->rideNowRules();
             case 'day_rental':
                 return $this->dayRentalRules();
+            case 'self_drive':
+                return $this->dayRentalRules('self_drive');
+            case 'with_driver':
+                return $this->dayRentalRules('with_driver');
+            case 'wedding_hire':
+                return $this->weddingHireRules();
 
             case 'custom-tour':
                 return $this->customTourRules();
 
+            case 'corporate':
             case 'corporate-transport':
                 return $this->corporateTransportRules();
 
@@ -201,43 +231,225 @@ class BookingSearchRequest extends FormRequest
     /**
      * Rental packages validation rules.
      */
-    protected function rentalPackagesRules(): array
+    protected function rideNowRules(): array
     {
-        return [
+        [$fields, $usesDropoffTime, $allowReturnTrip] = $this->resolveServiceFormConfig('ride_now');
+
+        $pickupRequired = $this->isConfiguredFieldRequired($fields, 'pickup_location', true);
+        $dropoffEnabled = $this->isConfiguredFieldEnabled($fields, 'dropoff_location', true);
+        $dropoffRequired = $this->isConfiguredFieldRequired($fields, 'dropoff_location', true);
+        $pickupDateRequired = $this->isConfiguredFieldRequired($fields, 'pickup_date', true);
+        $pickupTimeRequired = $this->isConfiguredFieldRequired($fields, 'pickup_time', true);
+        $dropoffDateEnabled = $this->isConfiguredFieldEnabled($fields, 'dropoff_date', true);
+        $dropoffTimeEnabled = $this->isConfiguredFieldEnabled($fields, 'dropoff_time', true);
+        $dropoffDateRequired = $this->isConfiguredFieldRequired($fields, 'dropoff_date', true);
+        $dropoffTimeRequired = $this->isConfiguredFieldRequired($fields, 'dropoff_time', true);
+
+        $rules = [
             'service_type' => 'required|string',
-            'pickup' => 'required|string|max:255',
-            'dropoff' => 'required|string|max:255',
+            'pickup' => $pickupRequired ? 'required|string|max:255' : 'nullable|string|max:255',
             'pickup_lat' => 'nullable|numeric|between:-90,90',
             'pickup_lng' => 'nullable|numeric|between:-180,180',
-            'dropoff_lat' => 'nullable|numeric|between:-90,90',
-            'dropoff_lng' => 'nullable|numeric|between:-180,180',
-            'pickup_date' => 'required|date|after_or_equal:today',
-            'pickup_time' => 'required|date_format:H:i',
-            // 'dropoff_date' => 'required|date|after:pickup_date',
-            // 'dropoff_time' => 'required|date_format:H:i',
+            'pickup_date' => $pickupDateRequired ? 'required|date|after_or_equal:today' : 'nullable|date|after_or_equal:today',
+            'pickup_time' => $pickupTimeRequired ? 'required|date_format:H:i' : 'nullable|date_format:H:i',
             'package_type' => 'nullable|string|in:half-day,full-day,multi-day,hourly,daily',
             'package_id' => 'nullable|uuid|exists:service_packages,id',
-            // 'passengers' => 'required|integer|min:1|max:15'
         ];
+
+        if ($dropoffEnabled) {
+            $rules['dropoff'] = $dropoffRequired ? 'required|string|max:255' : 'nullable|string|max:255';
+            $rules['dropoff_lat'] = 'nullable|numeric|between:-90,90';
+            $rules['dropoff_lng'] = 'nullable|numeric|between:-180,180';
+        } else {
+            $rules['dropoff'] = 'nullable|string|max:255';
+            $rules['dropoff_lat'] = 'nullable|numeric|between:-90,90';
+            $rules['dropoff_lng'] = 'nullable|numeric|between:-180,180';
+        }
+
+        if ($usesDropoffTime) {
+            if ($dropoffDateEnabled) {
+                $rules['dropoff_date'] = $dropoffDateRequired
+                    ? 'required|date|after_or_equal:pickup_date'
+                    : 'nullable|date|after_or_equal:pickup_date';
+            }
+            if ($dropoffTimeEnabled) {
+                $rules['dropoff_time'] = $dropoffTimeRequired
+                    ? 'required|date_format:H:i'
+                    : 'nullable|date_format:H:i';
+            }
+        } else {
+            $rules['dropoff_date'] = 'nullable|date|after_or_equal:pickup_date';
+            $rules['dropoff_time'] = 'nullable|date_format:H:i';
+        }
+
+        if ($allowReturnTrip) {
+            $rules['is_return_trip'] = 'nullable|boolean';
+            $rules['return_date'] = 'required_if:is_return_trip,1|date|after_or_equal:pickup_date';
+            $rules['return_time'] = 'required_if:is_return_trip,1|date_format:H:i';
+        }
+
+        return $rules;
     }
 
     /**
      * Day rental validation rules.
      */
-    protected function dayRentalRules(): array
+    protected function dayRentalRules(string $serviceConfigCode = 'day_rental'): array
+    {
+        [$fields, $usesDropoffTime, $allowReturnTrip] = $this->resolveServiceFormConfig($serviceConfigCode);
+
+        $pickupRequired = $this->isConfiguredFieldRequired($fields, 'pickup_location', true);
+        $dropoffEnabled = $this->isConfiguredFieldEnabled($fields, 'dropoff_location', true);
+        $dropoffRequired = $this->isConfiguredFieldRequired($fields, 'dropoff_location', true);
+        $pickupDateRequired = $this->isConfiguredFieldRequired($fields, 'pickup_date', true);
+        $pickupTimeRequired = $this->isConfiguredFieldRequired($fields, 'pickup_time', true);
+        $dropoffDateEnabled = $this->isConfiguredFieldEnabled($fields, 'dropoff_date', true);
+        $dropoffTimeEnabled = $this->isConfiguredFieldEnabled($fields, 'dropoff_time', true);
+        $dropoffDateRequired = $this->isConfiguredFieldRequired($fields, 'dropoff_date', true);
+        $dropoffTimeRequired = $this->isConfiguredFieldRequired($fields, 'dropoff_time', true);
+
+        $rules = [
+            'service_type' => 'required|string',
+            'pickup' => $pickupRequired ? 'required|string|max:255' : 'nullable|string|max:255',
+            'pickup_lat' => 'nullable|numeric|between:-90,90',
+            'pickup_lng' => 'nullable|numeric|between:-180,180',
+            'pickup_date' => $pickupDateRequired ? 'required|date|after_or_equal:today' : 'nullable|date|after_or_equal:today',
+            'pickup_time' => $pickupTimeRequired ? 'required|date_format:H:i' : 'nullable|date_format:H:i',
+            'package_type' => 'nullable|string|in:half-day,full-day,multi-day,hourly,daily',
+            'package_id' => 'nullable|uuid|exists:service_packages,id',
+        ];
+
+        if ($dropoffEnabled) {
+            $rules['dropoff'] = $dropoffRequired ? 'required|string|max:255' : 'nullable|string|max:255';
+            $rules['dropoff_lat'] = 'nullable|numeric|between:-90,90';
+            $rules['dropoff_lng'] = 'nullable|numeric|between:-180,180';
+        }
+
+        if ($usesDropoffTime) {
+            if ($dropoffDateEnabled) {
+                $rules['dropoff_date'] = $dropoffDateRequired
+                    ? 'required|date|after_or_equal:pickup_date'
+                    : 'nullable|date|after_or_equal:pickup_date';
+            }
+            if ($dropoffTimeEnabled) {
+                $rules['dropoff_time'] = $dropoffTimeRequired
+                    ? 'required|date_format:H:i'
+                    : 'nullable|date_format:H:i';
+            }
+        } else {
+            $rules['dropoff_date'] = 'nullable|date|after_or_equal:pickup_date';
+            $rules['dropoff_time'] = 'nullable|date_format:H:i';
+        }
+
+        if ($allowReturnTrip) {
+            $rules['is_return_trip'] = 'nullable|boolean';
+            $rules['return_date'] = 'required_if:is_return_trip,1|date|after_or_equal:pickup_date';
+            $rules['return_time'] = 'required_if:is_return_trip,1|date_format:H:i';
+        }
+
+        return $rules;
+    }
+
+    /**
+     * Wedding hire search validation rules.
+     */
+    protected function weddingHireRules(): array
     {
         return [
             'service_type' => 'required|string',
             'pickup' => 'required|string|max:255',
             'pickup_lat' => 'nullable|numeric|between:-90,90',
             'pickup_lng' => 'nullable|numeric|between:-180,180',
-            'pickup_date' => 'required|date|after_or_equal:today',
-            'pickup_time' => 'required|date_format:H:i',
-            'dropoff_date' => 'required|date|after_or_equal:pickup_date', // Changed from 'after' to 'after_or_equal' to allow same-day
-            'dropoff_time' => 'required|date_format:H:i',
-            'package_type' => 'nullable|string|in:half-day,full-day,multi-day,hourly,daily',
+            'dropoff' => 'nullable|string|max:255',
+            'dropoff_lat' => 'nullable|numeric|between:-90,90',
+            'dropoff_lng' => 'nullable|numeric|between:-180,180',
+            'date' => 'required|date|after_or_equal:today',
+            'time' => 'required|date_format:H:i',
+            'package_hours' => 'nullable|integer|min:1',
             'package_id' => 'nullable|uuid|exists:service_packages,id',
         ];
+    }
+
+    /**
+     * Resolve service form config flags and dynamic fields.
+     */
+    protected function resolveServiceFormConfig(string $serviceCode): array
+    {
+        $candidateCodes = [$serviceCode];
+        $fallbackMap = [
+            'self_drive' => ['day_rental'],
+            'with_driver' => ['day_rental'],
+            'wedding_hire' => ['day_rental'],
+            'wedding' => ['wedding_hire', 'day_rental'],
+        ];
+
+        if (isset($fallbackMap[$serviceCode])) {
+            $candidateCodes = array_merge($candidateCodes, $fallbackMap[$serviceCode]);
+        }
+
+        $candidateCodes = array_values(array_unique(array_filter($candidateCodes)));
+
+        $serviceType = null;
+        foreach ($candidateCodes as $candidateCode) {
+            $serviceType = ServiceType::query()
+                ->where('code', $candidateCode)
+                ->where('is_active', true)
+                ->first();
+
+            if ($serviceType) {
+                break;
+            }
+        }
+
+        $usesDropoffTimeDefault = $serviceCode === 'ride_now' ? false : true;
+        $usesDropoffTime = $serviceType?->uses_dropoff_time ?? $usesDropoffTimeDefault;
+        $allowReturnTrip = $serviceType?->allow_return_trip ?? false;
+        $fields = [];
+
+        if (is_array($serviceType?->form_config)) {
+            $storedConfig = $serviceType->form_config;
+            $fieldConfig = isset($storedConfig['fields']) && is_array($storedConfig['fields'])
+                ? $storedConfig['fields']
+                : $storedConfig;
+
+            unset($fieldConfig['field_mappings']);
+
+            $fields = array_filter($fieldConfig, function ($config) {
+                return is_array($config)
+                    && isset($config['type'])
+                    && isset($config['label']);
+            });
+        }
+
+        return [$fields, $usesDropoffTime, $allowReturnTrip];
+    }
+
+    /**
+     * Determine whether a dynamic field is enabled for a service.
+     */
+    protected function isConfiguredFieldEnabled(array $fields, string $field, bool $default): bool
+    {
+        if (empty($fields)) {
+            return $default;
+        }
+
+        return array_key_exists($field, $fields);
+    }
+
+    /**
+     * Determine whether a dynamic field should be required.
+     */
+    protected function isConfiguredFieldRequired(array $fields, string $field, bool $default): bool
+    {
+        if (!$this->isConfiguredFieldEnabled($fields, $field, $default)) {
+            return false;
+        }
+
+        if (empty($fields)) {
+            return $default;
+        }
+
+        return (bool) ($fields[$field]['required'] ?? $default);
     }
 
     /**

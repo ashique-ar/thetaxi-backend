@@ -1776,16 +1776,22 @@
   $(document).ready(function () {
     $(".filter-item-list .single-item").on("click", function () {
       var $clickedItem = $(this);
-      var index = $clickedItem.index();
+      var formService =
+        $clickedItem.attr("data-form-service") ||
+        $clickedItem.attr("data-service");
 
       // Add 'active' class to clicked item and remove from others
       $clickedItem.addClass("active").siblings().removeClass("active");
 
-      // Show corresponding .filter-input by index
-      $(".filter-input-wrap .filter-input")
-        .removeClass("show")
-        .eq(index)
-        .addClass("show");
+      // Prefer explicit tab->form mapping when available; fallback to legacy index mapping.
+      var $forms = $(".filter-input-wrap .filter-input");
+      if (formService && $forms.filter('[data-service="' + formService + '"]').length) {
+        $forms.removeClass("show");
+        $forms.filter('[data-service="' + formService + '"]').first().addClass("show");
+      } else {
+        var index = $clickedItem.index();
+        $forms.removeClass("show").eq(index).addClass("show");
+      }
     });
   });
 

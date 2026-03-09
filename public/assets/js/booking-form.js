@@ -1173,26 +1173,47 @@
         serviceItems.forEach((item) => {
             item.addEventListener("click", function () {
                 const serviceType = this.getAttribute("data-service");
-                switchService(serviceType, serviceItems, forms);
+                const formServiceType =
+                    this.getAttribute("data-form-service") || serviceType;
+                switchService(
+                    serviceType,
+                    formServiceType,
+                    serviceItems,
+                    forms
+                );
             });
         });
+
+        // Ensure initial active tab always maps to the correct form on first render.
+        const initialItem =
+            document.querySelector(".filter-item-list .single-item.active") ||
+            serviceItems[0];
+        if (initialItem) {
+            const serviceType = initialItem.getAttribute("data-service");
+            const formServiceType =
+                initialItem.getAttribute("data-form-service") || serviceType;
+            switchService(serviceType, formServiceType, serviceItems, forms);
+        }
     }
 
     /**
      * Switch between service types
      */
-    function switchService(serviceType, items, forms) {
+    function switchService(serviceType, formServiceType, items, forms) {
         state.currentService = serviceType;
 
         // Update active state
         items.forEach((item) => item.classList.remove("active"));
-        document
-            .querySelector(`[data-service="${serviceType}"]`)
-            .classList.add("active");
+        const activeItem = document.querySelector(
+            `.filter-item-list .single-item[data-service="${serviceType}"]`
+        );
+        if (activeItem) {
+            activeItem.classList.add("active");
+        }
 
         // Show corresponding form
         forms.forEach((form) => {
-            if (form.getAttribute("data-service") === serviceType) {
+            if (form.getAttribute("data-service") === formServiceType) {
                 form.classList.add("show");
             } else {
                 form.classList.remove("show");
