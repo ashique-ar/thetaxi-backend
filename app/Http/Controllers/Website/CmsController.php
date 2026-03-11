@@ -316,18 +316,30 @@ class CmsController extends Controller
         }
 
         // Prepare search object for the view (compatible with booking-form component)
+        // Use structured location arrays so booking-form can extract address + lat/lng
+        $pickupLocationData = $searchParams['pickup_location'] ?? null;
+        $dropoffLocationData = $searchParams['dropoff_location'] ?? null;
+
         $search = (object) [
             'service_type' => $serviceTypeForView, // use canonical code for front-end
-            'pickup_location' => $pickupLocation,
-            'dropoff_location' => $dropoffLocation,
+            'pickup_location' => $pickupLocationData,
+            'dropoff_location' => $dropoffLocationData,
+            // Also provide flattened lat/lng for backward compatibility
+            'pickup_latitude' => is_array($pickupLocationData) ? ($pickupLocationData['latitude'] ?? null) : null,
+            'pickup_longitude' => is_array($pickupLocationData) ? ($pickupLocationData['longitude'] ?? null) : null,
+            'dropoff_latitude' => is_array($dropoffLocationData) ? ($dropoffLocationData['latitude'] ?? null) : null,
+            'dropoff_longitude' => is_array($dropoffLocationData) ? ($dropoffLocationData['longitude'] ?? null) : null,
             'from_date' => $pickupDate,
             'pickup_date' => $pickupDate, // Alias
             'from_time' => $pickupTime,
             'pickup_time' => $pickupTime, // Alias
-            'to_date' => $dropoffDate ?? ($searchParams['to_date'] ?? $pickupDate), // Fallback to computed dropoff or provided
-            'dropoff_date' => $dropoffDate ?? ($searchParams['to_date'] ?? $pickupDate), // Alias
+            'to_date' => $dropoffDate ?? ($searchParams['to_date'] ?? $pickupDate),
+            'dropoff_date' => $dropoffDate ?? ($searchParams['to_date'] ?? $pickupDate),
+            'to_time' => $searchParams['to_time'] ?? $pickupTime,
+            'dropoff_time' => $searchParams['to_time'] ?? $pickupTime,
             'passengers' => $searchParams['passengers'] ?? 1,
-            // Add lat/lng if available in content (assuming we might add those later or parse them)
+            'transfer_type' => $searchParams['transfer_type'] ?? null,
+            'rental_mode' => $searchParams['rental_mode'] ?? null,
         ];
 
         // Ensure we have a persistent search id so the vehicle cards can show Book Now and send the correct search context

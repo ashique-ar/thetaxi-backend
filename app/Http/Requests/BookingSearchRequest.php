@@ -56,6 +56,32 @@ class BookingSearchRequest extends FormRequest
             if (empty($data['rental_mode'])) {
                 $data['rental_mode'] = $serviceType;
             }
+
+            // If a predefined dropoff code is provided, resolve its address/coords
+            if (!empty($data['dropoff_predefined'])) {
+                try {
+                    $predefinedDropoff = \App\Models\PredefinedLocation::where('code', $data['dropoff_predefined'])
+                        ->where('is_active', true)
+                        ->first();
+                    if ($predefinedDropoff) {
+                        $data['dropoff'] = $data['dropoff'] ?: ($predefinedDropoff->address ?? $predefinedDropoff->name);
+                        $data['dropoff_lat'] = $data['dropoff_lat'] ?: (string) $predefinedDropoff->latitude;
+                        $data['dropoff_lng'] = $data['dropoff_lng'] ?: (string) $predefinedDropoff->longitude;
+                    }
+                } catch (\Exception $e) {
+                    Log::warning('Failed to resolve predefined dropoff location', [
+                        'code' => $data['dropoff_predefined'],
+                        'error' => $e->getMessage()
+                    ]);
+                }
+            }
+
+            // Fallback: if dropoff is still empty, copy from pickup
+            if (empty($data['dropoff']) && !empty($data['pickup'])) {
+                $data['dropoff'] = $data['pickup'];
+                $data['dropoff_lat'] = $data['dropoff_lat'] ?? ($data['pickup_lat'] ?? null);
+                $data['dropoff_lng'] = $data['dropoff_lng'] ?? ($data['pickup_lng'] ?? null);
+            }
         }
 
         if ($serviceType === 'wedding_hire') {
@@ -64,6 +90,36 @@ class BookingSearchRequest extends FormRequest
             }
             if (empty($data['pickup_time']) && !empty($data['time'])) {
                 $data['pickup_time'] = $data['time'];
+            }
+        }
+
+        // For dynamic service types: convert any remaining DD/MM/YYYY date fields
+        // This catches custom date field names from form_config that aren't handled above
+        foreach ($data as $key => $value) {
+            if (is_string($value) && $this->isValidDDMMYYYY($value) && !in_array($key, [
+                'from_date', 'to_date', 'date', 'return_date', 'pickup_date', 'dropoff_date'
+            ], true)) {
+                $data[$key] = $this->convertDDMMYYYYToYMD($value);
+            }
+        }
+
+        // For any service type: resolve predefined location codes to address/coords
+        // This handles dynamic forms that use predefined_or_custom location mode
+        foreach (['pickup', 'dropoff'] as $locPrefix) {
+            $predefinedKey = "{$locPrefix}_predefined";
+            if (!empty($data[$predefinedKey]) && empty($data[$locPrefix])) {
+                try {
+                    $predefined = \App\Models\PredefinedLocation::where('code', $data[$predefinedKey])
+                        ->where('is_active', true)
+                        ->first();
+                    if ($predefined) {
+                        $data[$locPrefix] = $predefined->address ?? $predefined->name;
+                        $data["{$locPrefix}_lat"] = $data["{$locPrefix}_lat"] ?: (string) $predefined->latitude;
+                        $data["{$locPrefix}_lng"] = $data["{$locPrefix}_lng"] ?: (string) $predefined->longitude;
+                    }
+                } catch (\Exception $e) {
+                    // Silently continue — formatLocation in controller will also try
+                }
             }
         }
 
@@ -77,14 +133,18 @@ class BookingSearchRequest extends FormRequest
     {
         $serviceType = $this->input('service_type');
 
-        // Service-specific validation rules
+        // Try dynamic rules first — if form_config exists, use it
+        $dynamicRules = $this->buildDynamicRules($serviceType);
+        if ($dynamicRules !== null) {
+            return $dynamicRules;
+        }
+
+        // Fallback to legacy hardcoded rules for backward compatibility
         switch ($serviceType) {
             case 'airport_transfers':
                 return $this->airportTransferRules();
-
             case 'point_to_point':
                 return $this->dropPickupRules();
-
             case 'ride_now':
                 return $this->rideNowRules();
             case 'day_rental':
@@ -95,17 +155,124 @@ class BookingSearchRequest extends FormRequest
                 return $this->dayRentalRules('with_driver');
             case 'wedding_hire':
                 return $this->weddingHireRules();
-
             case 'custom-tour':
                 return $this->customTourRules();
-
             case 'corporate':
             case 'corporate-transport':
                 return $this->corporateTransportRules();
-
             default:
                 return $this->defaultRules();
         }
+    }
+
+    /**
+     * Build validation rules dynamically from form_config.
+     * Returns null if no config found (falls back to legacy rules).
+     */
+    protected function buildDynamicRules(string $serviceCode): ?array
+    {
+        [$fields, $usesDropoffTime, $allowReturnTrip] = $this->resolveServiceFormConfig($serviceCode);
+
+        // If no fields configured, return null to use legacy rules
+        if (empty($fields)) {
+            return null;
+        }
+
+        $rules = ['service_type' => 'required|string'];
+
+        foreach ($fields as $fieldName => $config) {
+            $submitAs = $config['submit_as'] ?? $fieldName;
+            $required = (bool) ($config['required'] ?? false);
+            $type = $config['type'] ?? 'text';
+
+            switch ($type) {
+                case 'location':
+                    $rules[$submitAs] = $required ? 'required|string|max:255' : 'nullable|string|max:255';
+                    $rules[$submitAs . '_lat'] = 'nullable|numeric|between:-90,90';
+                    $rules[$submitAs . '_lng'] = 'nullable|numeric|between:-180,180';
+                    // Allow predefined location codes
+                    $rules[$submitAs . '_predefined'] = 'nullable|string';
+                    break;
+
+                case 'date':
+                    $isDropoff = str_contains($fieldName, 'dropoff') || str_contains($fieldName, 'return');
+                    if ($isDropoff) {
+                        // Dropoff/return dates must be after pickup date
+                        $rules[$submitAs] = $required
+                            ? 'required|date|after_or_equal:today'
+                            : 'nullable|date|after_or_equal:today';
+                    } else {
+                        $rules[$submitAs] = $required
+                            ? 'required|date|after_or_equal:today'
+                            : 'nullable|date|after_or_equal:today';
+                    }
+                    break;
+
+                case 'time':
+                    $rules[$submitAs] = $required
+                        ? 'required|date_format:H:i'
+                        : 'nullable|date_format:H:i';
+                    break;
+
+                case 'radio':
+                    $options = $config['options'] ?? [];
+                    $validValues = array_map(fn($o) => $o['value'], $options);
+                    $inRule = !empty($validValues) ? '|in:' . implode(',', $validValues) : '';
+                    $rules[$submitAs] = ($required ? 'required' : 'nullable') . '|string' . $inRule;
+                    break;
+
+                case 'select':
+                    $rules[$submitAs] = $required ? 'required|string' : 'nullable|string';
+                    break;
+
+                case 'checkbox':
+                    $rules[$submitAs] = 'nullable|boolean';
+                    break;
+
+                case 'number':
+                    $min = $config['validation']['min'] ?? null;
+                    $max = $config['validation']['max'] ?? null;
+                    $rule = $required ? 'required|numeric' : 'nullable|numeric';
+                    if ($min !== null) $rule .= '|min:' . $min;
+                    if ($max !== null) $rule .= '|max:' . $max;
+                    $rules[$submitAs] = $rule;
+                    break;
+
+                case 'textarea':
+                    $rules[$submitAs] = $required ? 'required|string|max:1000' : 'nullable|string|max:1000';
+                    break;
+
+                case 'package_select':
+                    $rules[$submitAs] = 'nullable|uuid|exists:service_packages,id';
+                    break;
+
+                default:
+                    $rules[$submitAs] = $required ? 'required|string|max:255' : 'nullable|string|max:255';
+                    break;
+            }
+        }
+
+        // Always allow common auxiliary fields
+        $rules['rental_mode'] = 'nullable|string';
+        $rules['package_id'] = 'nullable|uuid|exists:service_packages,id';
+        $rules['package_type'] = 'nullable|string';
+
+        // Allow dropoff fields for self_drive/with_driver even if not in config
+        if (in_array($serviceCode, ['self_drive', 'with_driver'])) {
+            $rules['dropoff'] = $rules['dropoff'] ?? 'nullable|string|max:255';
+            $rules['dropoff_lat'] = $rules['dropoff_lat'] ?? 'nullable|numeric|between:-90,90';
+            $rules['dropoff_lng'] = $rules['dropoff_lng'] ?? 'nullable|numeric|between:-180,180';
+            $rules['dropoff_predefined'] = $rules['dropoff_predefined'] ?? 'nullable|string';
+        }
+
+        // Return trip fields
+        if ($allowReturnTrip) {
+            $rules['is_return_trip'] = 'nullable|boolean';
+            $rules['return_date'] = 'required_if:is_return_trip,1|nullable|date|after_or_equal:today';
+            $rules['return_time'] = 'required_if:is_return_trip,1|nullable|date_format:H:i';
+        }
+
+        return $rules;
     }
 
     /**
@@ -311,6 +478,9 @@ class BookingSearchRequest extends FormRequest
         $rules = [
             'service_type' => 'required|string',
             'pickup' => $pickupRequired ? 'required|string|max:255' : 'nullable|string|max:255',
+            'pickup_custom' => 'nullable|string|max:255',
+            'pickup_predefined' => 'nullable|string|exists:predefined_locations,code',
+            'pickup_location_type' => 'nullable|in:predefined,custom',
             'pickup_lat' => 'nullable|numeric|between:-90,90',
             'pickup_lng' => 'nullable|numeric|between:-180,180',
             'pickup_date' => $pickupDateRequired ? 'required|date|after_or_equal:today' : 'nullable|date|after_or_equal:today',
@@ -321,6 +491,15 @@ class BookingSearchRequest extends FormRequest
 
         if ($dropoffEnabled) {
             $rules['dropoff'] = $dropoffRequired ? 'required|string|max:255' : 'nullable|string|max:255';
+            $rules['dropoff_custom'] = 'nullable|string|max:255';
+            $rules['dropoff_predefined'] = 'nullable|string|exists:predefined_locations,code';
+            $rules['dropoff_location_type'] = 'nullable|in:predefined,custom';
+            $rules['dropoff_lat'] = 'nullable|numeric|between:-90,90';
+            $rules['dropoff_lng'] = 'nullable|numeric|between:-180,180';
+        } else {
+            // Always allow dropoff fields for self_drive/with_driver (synced from pickup or entered by user)
+            $rules['dropoff'] = 'nullable|string|max:255';
+            $rules['dropoff_predefined'] = 'nullable|string';
             $rules['dropoff_lat'] = 'nullable|numeric|between:-90,90';
             $rules['dropoff_lng'] = 'nullable|numeric|between:-180,180';
         }
@@ -419,6 +598,11 @@ class BookingSearchRequest extends FormRequest
                     && isset($config['type'])
                     && isset($config['label']);
             });
+        }
+
+        // Fallback to defaults if no custom config
+        if (empty($fields)) {
+            $fields = \App\Services\DefaultFormConfigService::getDefaults($serviceCode);
         }
 
         return [$fields, $usesDropoffTime, $allowReturnTrip];

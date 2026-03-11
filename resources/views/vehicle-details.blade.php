@@ -52,14 +52,16 @@
             'to_date' => $returnDate,
             'from_time' => $pickupTime,
             'to_time' => $returnTime,
-            'pickup_location' => $searchData['pickup_location'] ?? 'Colombo, Sri Lanka',
-            'dropoff_location' => $searchData['dropoff_location'] ?? 'Colombo, Sri Lanka',
+            'pickup_location' => $searchData['pickup_location'] ?? ['address' => 'Colombo, Sri Lanka', 'latitude' => 6.9271, 'longitude' => 79.8612],
+            'dropoff_location' => $searchData['dropoff_location'] ?? ['address' => 'Colombo, Sri Lanka', 'latitude' => 6.9271, 'longitude' => 79.8612],
             'pickup_latitude' => $searchData['pickup_lat'] ?? 6.9271,
             'pickup_longitude' => $searchData['pickup_lng'] ?? 79.8612,
             'dropoff_latitude' => $searchData['dropoff_lat'] ?? 6.9271,
             'dropoff_longitude' => $searchData['dropoff_lng'] ?? 79.8612,
             'duration_days' => $numDays,
             'passengers' => 1,
+            'transfer_type' => $searchData['transfer_type'] ?? null,
+            'rental_mode' => $searchData['rental_mode'] ?? null,
         ];
 
         $mainImage = $vehicleGroup->thumbnail

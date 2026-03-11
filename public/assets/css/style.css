@@ -8517,7 +8517,7 @@ header.style-3.two .main-menu>ul>li.active>a i {
   color: var(--title-color);
   font-family: var(--font-poppins);
   font-weight: 600;
-  font-size: 16px;
+  font-size: 14px;
   line-height: 1;
   transition: 0.5s;
   cursor: pointer;

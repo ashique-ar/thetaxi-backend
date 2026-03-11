@@ -405,6 +405,11 @@ class BookingController extends Controller
                 $params['pickup_location'] = $this->formatLocation($requestData, 'pickup');
                 $params['contract_type'] = $requestData['contract_type'] ?? 'weekly';
                 break;
+
+            default:
+                // Dynamic handler: read form_config fields and map to internal format
+                $params = $this->transformDynamicSearchParams($requestData, $serviceType, $params);
+                break;
         }
 
         // Add common parameters
@@ -419,6 +424,187 @@ class BookingController extends Controller
                 'package_id' => $requestData['package_id'],
             ]);
         }
+
+        return $params;
+    }
+
+    /**
+     * Transform search params dynamically for service types not handled by hardcoded cases.
+     * Reads form_config fields and maps date/time/location to the internal format.
+     */
+    protected function transformDynamicSearchParams(
+        array $requestData,
+        ServiceType $serviceType,
+        array $params
+    ): array {
+        $formConfig = $this->resolveServiceFormConfiguration($serviceType);
+        $fields = $formConfig['fields'] ?? [];
+        $fieldMappings = $formConfig['field_mappings'] ?? [];
+        $usesDropoffTime = $formConfig['uses_dropoff_time'] ?? true;
+
+        // If no config at all, use DefaultFormConfigService
+        if (empty($fields)) {
+            $fields = \App\Services\DefaultFormConfigService::getDefaults($serviceType->code);
+        }
+
+        // Categorize fields by type and role (pickup vs dropoff)
+        $dateFields = [];
+        $timeFields = [];
+        $locationFields = [];
+
+        foreach ($fields as $fieldName => $config) {
+            $type = $config['type'] ?? 'text';
+            $submitAs = $config['submit_as'] ?? $fieldName;
+            $isDropoff = str_contains($fieldName, 'dropoff') || str_contains($fieldName, 'return')
+                || str_contains($submitAs, 'dropoff') || str_contains($submitAs, 'return')
+                || str_contains($submitAs, 'to_');
+
+            if ($type === 'date') {
+                $dateFields[] = ['name' => $fieldName, 'submit_as' => $submitAs, 'is_dropoff' => $isDropoff];
+            } elseif ($type === 'time') {
+                $timeFields[] = ['name' => $fieldName, 'submit_as' => $submitAs, 'is_dropoff' => $isDropoff];
+            } elseif ($type === 'location') {
+                $locationFields[] = ['name' => $fieldName, 'submit_as' => $submitAs, 'is_dropoff' => $isDropoff, 'config' => $config];
+            }
+        }
+
+        // --- Resolve dates ---
+        $pickupDateRaw = null;
+        $dropoffDateRaw = null;
+
+        // Try field_mappings first, then scan config fields
+        if (!empty($fieldMappings)) {
+            $pickupDateRaw = $this->getMappedFieldValue(
+                $requestData,
+                data_get($fieldMappings, 'dates.from_date'),
+                ['pickup_date', 'date', 'from_date']
+            );
+            $dropoffDateRaw = $this->getMappedFieldValue(
+                $requestData,
+                data_get($fieldMappings, 'dates.to_date'),
+                ['dropoff_date', 'to_date', 'return_date']
+            );
+        } else {
+            // Use submit_as keys from config fields
+            $pickupDateKeys = array_map(fn($f) => $f['submit_as'], array_filter($dateFields, fn($f) => !$f['is_dropoff']));
+            $dropoffDateKeys = array_map(fn($f) => $f['submit_as'], array_filter($dateFields, fn($f) => $f['is_dropoff']));
+
+            // Add common fallbacks
+            $pickupDateKeys = array_merge($pickupDateKeys, ['pickup_date', 'date', 'from_date']);
+            $dropoffDateKeys = array_merge($dropoffDateKeys, ['dropoff_date', 'to_date', 'return_date']);
+
+            $pickupDateRaw = $this->getMappedFieldValue($requestData, null, array_unique($pickupDateKeys));
+            $dropoffDateRaw = $this->getMappedFieldValue($requestData, null, array_unique($dropoffDateKeys));
+        }
+
+        $pickupDate = $this->parseDateValue($pickupDateRaw, now());
+        $params['from_date'] = $pickupDate->format('Y-m-d');
+
+        if ($usesDropoffTime && $dropoffDateRaw) {
+            $dropoffDate = $this->parseDateValue($dropoffDateRaw, $pickupDate);
+            $params['to_date'] = $dropoffDate->format('Y-m-d');
+        } else {
+            $params['to_date'] = $pickupDate->format('Y-m-d');
+        }
+
+        // --- Resolve times ---
+        $pickupTime = null;
+        $dropoffTime = null;
+
+        if (!empty($fieldMappings)) {
+            $pickupTime = $this->getMappedFieldValue(
+                $requestData,
+                data_get($fieldMappings, 'dates.from_time'),
+                ['pickup_time', 'time', 'from_time'],
+                '00:00'
+            );
+            $dropoffTime = $this->getMappedFieldValue(
+                $requestData,
+                data_get($fieldMappings, 'dates.to_time'),
+                ['dropoff_time', 'to_time', 'return_time'],
+                $pickupTime ?: '00:00'
+            );
+        } else {
+            $pickupTimeKeys = array_map(fn($f) => $f['submit_as'], array_filter($timeFields, fn($f) => !$f['is_dropoff']));
+            $dropoffTimeKeys = array_map(fn($f) => $f['submit_as'], array_filter($timeFields, fn($f) => $f['is_dropoff']));
+
+            $pickupTimeKeys = array_merge($pickupTimeKeys, ['pickup_time', 'time', 'from_time']);
+            $dropoffTimeKeys = array_merge($dropoffTimeKeys, ['dropoff_time', 'to_time', 'return_time']);
+
+            $pickupTime = $this->getMappedFieldValue($requestData, null, array_unique($pickupTimeKeys), '00:00');
+            $dropoffTime = $this->getMappedFieldValue($requestData, null, array_unique($dropoffTimeKeys), $pickupTime ?: '00:00');
+        }
+
+        $params['from_time'] = $pickupTime ?: '00:00';
+        $params['to_time'] = ($usesDropoffTime && $dropoffTime) ? $dropoffTime : ($pickupTime ?: '00:00');
+
+        // --- Resolve locations ---
+        if (!empty($fieldMappings)) {
+            $params['pickup_location'] = $this->formatLocationFromMapping(
+                $requestData,
+                data_get($fieldMappings, 'locations.pickup_location'),
+                'pickup'
+            );
+            $params['dropoff_location'] = $this->formatLocationFromMapping(
+                $requestData,
+                data_get($fieldMappings, 'locations.dropoff_location'),
+                'dropoff'
+            );
+        } else {
+            // Find pickup and dropoff location fields from config
+            $pickupLocField = null;
+            $dropoffLocField = null;
+            foreach ($locationFields as $lf) {
+                if (!$lf['is_dropoff'] && !$pickupLocField) {
+                    $pickupLocField = $lf;
+                } elseif ($lf['is_dropoff'] && !$dropoffLocField) {
+                    $dropoffLocField = $lf;
+                }
+            }
+
+            // Use the submit_as as the prefix for formatLocation
+            if ($pickupLocField) {
+                $params['pickup_location'] = $this->formatLocation($requestData, $pickupLocField['submit_as']);
+            } else {
+                $params['pickup_location'] = $this->formatLocation($requestData, 'pickup');
+            }
+
+            if ($dropoffLocField) {
+                $params['dropoff_location'] = $this->formatLocation($requestData, $dropoffLocField['submit_as']);
+            } else {
+                $params['dropoff_location'] = $this->formatLocation($requestData, 'dropoff');
+            }
+        }
+
+        // Fallback: if dropoff is empty, copy from pickup
+        if (
+            empty($params['dropoff_location']['address'])
+            && (empty($params['dropoff_location']['latitude']) || empty($params['dropoff_location']['longitude']))
+        ) {
+            $params['dropoff_location'] = $params['pickup_location'];
+        }
+
+        // Pass through rental_mode if present
+        $rentalMode = $requestData['rental_mode'] ?? null;
+        if ($rentalMode) {
+            $params['rental_mode'] = $rentalMode;
+        }
+
+        // Pass through any extra fields that don't map to standard params
+        // (e.g., transfer_type, contract_type, package_hours, etc.)
+        foreach ($fields as $fieldName => $config) {
+            $type = $config['type'] ?? 'text';
+            $submitAs = $config['submit_as'] ?? $fieldName;
+
+            // Skip types already handled above
+            if (in_array($type, ['date', 'time', 'location'], true)) continue;
+
+            if (isset($requestData[$submitAs]) && $requestData[$submitAs] !== '') {
+                $params[$submitAs] = $requestData[$submitAs];
+            }
+        }
+
+        $params['package_type'] = $requestData['package_type'] ?? 'multi-day';
 
         return $params;
     }
@@ -546,12 +732,36 @@ class BookingController extends Controller
      */
     protected function formatLocation(array $data, string $prefix): array
     {
+        // Check if this is a predefined location code
+        $predefinedCode = $data["{$prefix}_predefined"] ?? null;
+        if ($predefinedCode) {
+            try {
+                $predefinedLocation = \App\Models\PredefinedLocation::where('code', $predefinedCode)
+                    ->where('is_active', true)
+                    ->first();
+                
+                if ($predefinedLocation) {
+                    return [
+                        'address' => $predefinedLocation->address ?? $predefinedLocation->name,
+                        'latitude' => (float) $predefinedLocation->latitude,
+                        'longitude' => (float) $predefinedLocation->longitude,
+                    ];
+                }
+            } catch (\Exception $e) {
+                Log::warning('Failed to load predefined location', [
+                    'code' => $predefinedCode,
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+
         // Support multiple possible field names coming from various frontend forms
         // Primary keys: prefix (pickup/dropoff)
         $addressKeys = [
             $prefix,
             "{$prefix}_location",
             "{$prefix}_address",
+            "{$prefix}_custom", // Custom location input
         ];
 
         // Alternative keys used by airport transfers form: 'from' and 'to'
@@ -1628,9 +1838,7 @@ class BookingController extends Controller
     public function getServiceFormConfig(Request $request, string $serviceCode)
     {
         try {
-            $serviceType = ServiceType::where('code', $serviceCode)
-                ->orWhere('code', $serviceCode)
-                ->first();
+            $serviceType = ServiceType::where('code', $serviceCode)->first();
 
             if (!$serviceType) {
                 return response()->json([
@@ -1639,15 +1847,25 @@ class BookingController extends Controller
                 ], 404);
             }
 
-            // Return service type configuration for form building
+            // Extract stored form config or use defaults
+            $formConfig = $this->resolveServiceFormConfiguration($serviceType);
+            $fields = $formConfig['fields'] ?? [];
+
+            if (empty($fields)) {
+                $fields = \App\Services\DefaultFormConfigService::getDefaults($serviceCode);
+            }
+
             $config = [
                 'service_id' => $serviceType->id,
                 'service_name' => $serviceType->name,
                 'service_slug' => $serviceType->slug,
                 'service_code' => $serviceType->code,
                 'description' => $serviceType->description,
-                'form_type' => $this->getFormType($serviceType->code),
-                'fields' => $this->getFormFields($serviceType->code)
+                'uses_dropoff_time' => (bool) ($serviceType->uses_dropoff_time ?? true),
+                'allow_return_trip' => (bool) ($serviceType->allow_return_trip ?? false),
+                'is_inquiry' => (bool) ($serviceType->is_inquiry ?? false),
+                'fields' => $fields,
+                'field_mappings' => $formConfig['field_mappings'] ?? [],
             ];
 
             return response()->json([

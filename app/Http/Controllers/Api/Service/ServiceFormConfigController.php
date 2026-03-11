@@ -58,6 +58,77 @@ class ServiceFormConfigController extends Controller
     private function buildFormConfig(ServiceType $serviceType): array
     {
         $storedConfig = $this->extractStoredFormConfig($serviceType->form_config);
+        $defaults = \App\Services\DefaultFormConfigService::getDefaults($serviceType->code);
+
+        // Merge stored fields with defaults: DB values win, missing keys filled from defaults
+        $fields = $storedConfig['fields'];
+        if (empty($fields)) {
+            $fields = $defaults;
+        } else {
+            // Build lookup of defaults by both key and submit_as
+            $defaultsByKey = $defaults;
+            $defaultsBySubmitAs = [];
+            foreach ($defaults as $dKey => $dField) {
+                $dSubmitAs = $dField['submit_as'] ?? $dKey;
+                $defaultsBySubmitAs[$dSubmitAs] = $dField;
+            }
+
+            // Merge: DB fields take priority, missing keys filled from defaults
+            foreach ($fields as $key => &$field) {
+                $matchedDefault = null;
+                if (isset($defaultsByKey[$key])) {
+                    $matchedDefault = $defaultsByKey[$key];
+                } else {
+                    $fieldSubmitAs = $field['submit_as'] ?? $key;
+                    if (isset($defaultsBySubmitAs[$fieldSubmitAs])) {
+                        $matchedDefault = $defaultsBySubmitAs[$fieldSubmitAs];
+                    }
+                }
+                if ($matchedDefault && is_array($matchedDefault)) {
+                    $field = array_merge($matchedDefault, $field);
+                }
+            }
+            unset($field);
+
+            // Add any default fields completely missing from DB config
+            $existingSubmitAs = [];
+            foreach ($fields as $f) {
+                $existingSubmitAs[] = $f['submit_as'] ?? '';
+            }
+            foreach ($defaults as $dKey => $dField) {
+                $dSubmitAs = $dField['submit_as'] ?? $dKey;
+                if (!isset($fields[$dKey]) && !in_array($dSubmitAs, $existingSubmitAs, true)) {
+                    $fields[$dKey] = $dField;
+                }
+            }
+        }
+
+        // Inject airport options into conditional location fields
+        $airports = null;
+        foreach ($fields as $key => &$field) {
+            if (($field['type'] ?? '') !== 'location') continue;
+            $locationMode = $field['location_mode'] ?? ($field['location_type'] ?? '');
+            if ($locationMode === 'conditional' && !empty($field['conditions'])) {
+                foreach ($field['conditions'] as $condValue => &$condConfig) {
+                    if (($condConfig['type'] ?? '') === 'airport' && empty($condConfig['options'])) {
+                        if ($airports === null) {
+                            $airports = $this->getAirports();
+                        }
+                        $condConfig['options'] = $airports;
+                    }
+                }
+                unset($condConfig);
+                // Ensure location_type is set for Angular compatibility
+                if (empty($field['location_type'])) {
+                    $field['location_type'] = 'conditional';
+                }
+            } elseif ($locationMode === 'airport') {
+                if (empty($field['location_type'])) {
+                    $field['location_type'] = 'airport';
+                }
+            }
+        }
+        unset($field);
 
         $config = [
             'service_type' => [
@@ -73,12 +144,20 @@ class ServiceFormConfigController extends Controller
                 'frontend_category' => $serviceType->frontend_category,
                 'minimum_km' => $serviceType->minimum_km,
             ],
-            'fields' => $storedConfig['fields'] ?: $this->getFieldsConfig($serviceType),
+            'fields' => $fields,
             'field_mappings' => $storedConfig['field_mappings'] ?: $this->getDefaultFieldMappings($serviceType),
             'packages' => $this->getPackagesConfig($serviceType),
             'location_restrictions' => $this->getLocationRestrictions($serviceType),
             'validation_rules' => $this->getValidationRules($serviceType),
         ];
+
+        // Include airports at top level for Angular portal convenience
+        if ($airports === null) {
+            $airports = $this->getAirports();
+        }
+        if (!empty($airports)) {
+            $config['airports'] = $airports;
+        }
 
         return $config;
     }
@@ -518,6 +597,13 @@ class ServiceFormConfigController extends Controller
                 'form_config.*.row' => 'nullable|integer',
                 'form_config.*.placeholder' => 'nullable|string',
                 'form_config.*.hint' => 'nullable|string',
+                'form_config.*.submit_as' => 'nullable|string|max:50',
+                'form_config.*.location_mode' => 'nullable|string|in:autocomplete,airport,predefined_or_custom,conditional',
+                'form_config.*.sync_from' => 'nullable|string|max:50',
+                'form_config.*.visible_when' => 'nullable|array',
+                'form_config.*.default' => 'nullable|string',
+                'form_config.*.default_lat' => 'nullable|string',
+                'form_config.*.default_lng' => 'nullable|string',
                 'form_config.*.location_type' => 'nullable|string|in:default,airport,conditional',
                 'form_config.*.condition_field' => 'nullable|string',
                 'form_config.*.conditions' => 'nullable|array',
