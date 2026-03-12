@@ -1,0 +1,97 @@
+/**
+ * Package Button Selector Styling
+ * Button-style package selection (100 km, 200 km, etc.)
+ */
+
+.package-buttons-wrapper {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+}
+
+.package-button {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px 24px;
+    background: #fff;
+    border: 2px solid #e1e5eb;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    margin: 0;
+    min-width: 100px;
+}
+
+.package-button input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.package-button-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    pointer-events: none;
+}
+
+.package-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1a2332;
+    line-height: 1.2;
+}
+
+.package-detail {
+    font-size: 11px;
+    font-weight: 400;
+    color: #8896a6;
+    line-height: 1.2;
+}
+
+.package-button:hover {
+    border-color: var(--primary-color1);
+    background: rgba(var(--primary-color1-opc, 0), 0.05);
+}
+
+.package-button.active,
+.package-button:has(input:checked) {
+    background: var(--primary-color1);
+    border-color: var(--primary-color1);
+}
+
+.package-button.active .package-name,
+.package-button:has(input:checked) .package-name {
+    color: #fff;
+}
+
+.package-button.active .package-detail,
+.package-button:has(input:checked) .package-detail {
+    color: rgba(255, 255, 255, 0.9);
+}
+
+/* Mobile responsiveness */
+@media (max-width: 767px) {
+    .package-buttons-wrapper {
+        gap: 6px;
+    }
+    
+    .package-button {
+        padding: 10px 16px;
+        min-width: 80px;
+        flex: 1;
+    }
+    
+    .package-name {
+        font-size: 13px;
+    }
+    
+    .package-detail {
+        font-size: 10px;
+    }
+}

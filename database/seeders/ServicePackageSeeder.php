@@ -54,6 +54,14 @@ class ServicePackageSeeder extends Seeder
         // Ride Now Service Packages
         $this->seedRideNowPackages($rideNowServiceType, $vehicleGroups);
 
+        // Day Rental Service Packages (same as Ride Now)
+        if ($pointToPointServiceType) {
+            $dayRentalServiceType = ServiceType::where('code', 'day_rental')->first();
+            if ($dayRentalServiceType) {
+                $this->seedDayRentalPackages($dayRentalServiceType, $vehicleGroups);
+            }
+        }
+
         // Point to Point Service Packages  
         // $this->seedPointToPointPackages($pointToPointServiceType, $vehicleGroups);
 
@@ -194,6 +202,41 @@ class ServicePackageSeeder extends Seeder
         //         'sort_order' => 5,
         //     ],
         // ];
+
+        $this->createPackages($serviceType, $packages);
+    }
+
+    /**
+     * Seed Day Rental service packages (same as Ride Now)
+     */
+    private function seedDayRentalPackages(ServiceType $serviceType, $vehicleGroups): void
+    {
+        $this->command->info('📦 Creating Day Rental packages...');
+
+        $packages = [
+            [
+                'code' => 'day_rental_100',
+                'name' => '100 km',
+                'description' => '100 km package',
+                'max_km_per_package' => null,
+                'max_km_per_day' => 100.00,
+                'price_multiplier' => 1.0,
+                'rate_type' => 'flat',
+                'default_duration_hours' => null,
+                'sort_order' => 1,
+            ],
+            [
+                'code' => 'day_rental_200',
+                'name' => '200 km',
+                'description' => '200 km package',
+                'max_km_per_package' => null,
+                'max_km_per_day' => 200.00,
+                'price_multiplier' => 1.5,
+                'rate_type' => 'flat',
+                'default_duration_hours' => null,
+                'sort_order' => 2,
+            ],
+        ];
 
         $this->createPackages($serviceType, $packages);
     }

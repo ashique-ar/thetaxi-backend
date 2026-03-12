@@ -391,7 +391,7 @@
         @endforeach
 
         @if ($bookingAdvanceHours && $bookingAdvanceHours > 0)
-            <div class="booking-advance-note alert alert-warning d-flex align-items-center" role="note" style="margin-bottom:12px;">
+            <div class="booking-advance-note alert alert-warning d-flex align-items-center mt-3" role="note" style="margin-bottom:12px;">
                 <svg width="18" height="18" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin-right:8px;flex-shrink:0;">
                     <path d="M8 1.333c-3.683 0-6.667 2.984-6.667 6.667S4.317 14.667 8 14.667 14.667 11.683 14.667 8 11.683 1.333 8 1.333zm0 9.334a.667.667 0 110 1.334.667.667 0 010-1.334zM7.333 4.667h1.334V9.33H7.333V4.667z" fill="#856404" />
                 </svg>

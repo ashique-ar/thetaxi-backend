@@ -201,7 +201,11 @@
                    class="custom-datepicker @error($submitAs) is-invalid @enderror"
                    value="{{ $fieldValue ?: date('d/m/Y') }}"
                    {{ $required ? 'required' : '' }}
-                   autocomplete="off">
+                   data-enable-time="false"
+                   data-date-format="d/m/Y"
+                   data-min-date="today"
+                   autocomplete="off"
+                   readonly>
             @error($submitAs)
                 <span class="text-danger small">{{ $message }}</span>
             @enderror
@@ -264,7 +268,7 @@
             }
         @endphp
         <!-- DEBUG radio: submitAs={{ $submitAs }} fieldValue={{ json_encode($fieldValue) }} defaultValue={{ json_encode($defaultValue) }} checkedValue={{ json_encode($checkedValue) }} optionCount={{ count($options) }} options={{ json_encode($options) }} -->
-        <div class="{{ $isTransferType ? 'transfer-type-selector' : 'single-search-box radio-field' }}" id="{{ $elementId }}_wrapper">
+        <div class="{{ $isTransferType ? 'transfer-type-selector text-center' : 'single-search-box radio-field' }}" id="{{ $elementId }}_wrapper">
             @if(!$isTransferType)
                 <div class="d-flex align-items-center gap-2 py-1">
                     <label class="input-label">{{ $label }}</label>
@@ -346,22 +350,32 @@
 
     {{-- ===== PACKAGE SELECT (special) ===== --}}
     @case('package_select')
-        @if(isset($servicePackages) && $servicePackages->count() > 0)
-            <div class="single-search-box package-select-box" id="{{ $elementId }}_wrapper">
-                <div class="d-flex align-items-center gap-2 py-1">
-                    <label class="input-label">{{ $label }}</label>
+        @if(isset($servicePackages) && $servicePackages->count() > 1)
+            {{-- Only show package selector if there are 2 or more packages --}}
+
+                
+                {{-- Button-style package selector --}}
+                <div class="package-buttons-wrapper">
+                    @foreach($servicePackages as $pkg)
+                        <label class="package-button {{ $loop->first && !$fieldValue ? 'active' : ($fieldValue == $pkg->id ? 'active' : '') }}" data-package-id="{{ $pkg->id }}">
+                            <input type="radio" 
+                                   name="{{ $submitAs }}" 
+                                   value="{{ $pkg->id }}" 
+                                   class="package-radio-input"
+                                   {{ ($loop->first && !$fieldValue) || $fieldValue == $pkg->id ? 'checked' : '' }}
+                                   {{ $required ? 'required' : '' }}>
+                            <span class="package-button-content">
+                                <span class="package-name">{{ $pkg->name }}</span>
+                                @if($pkg->max_km_per_day)
+                                    <span class="package-detail">{{ number_format($pkg->max_km_per_day) }} km</span>
+                                @endif
+                            </span>
+                        </label>
+                    @endforeach
                 </div>
-                <div class="custom-select-dropdown">
-                    <select name="{{ $submitAs }}" id="{{ $elementId }}" class="no-nice">
-                        <option value="">{{ $placeholder ?: 'Select Package' }}</option>
-                        @foreach($servicePackages as $pkg)
-                            <option value="{{ $pkg->id }}" {{ $fieldValue == $pkg->id ? 'selected' : '' }}>
-                                {{ $pkg->name }}
-                            </option>
-                        @endforeach
-                    </select>
-                </div>
-            </div>
+        @elseif(isset($servicePackages) && $servicePackages->count() === 1)
+            {{-- If only one package, auto-select it with hidden input --}}
+            <input type="hidden" name="{{ $submitAs }}" value="{{ $servicePackages->first()->id }}">
         @endif
         @break
 

@@ -135,6 +135,14 @@ class DefaultFormConfigService
                 'submit_as' => 'pickup_time',
                 'default' => '09:00',
             ],
+            'package_id' => [
+                'type' => 'package_select',
+                'label' => 'Select Package',
+                'required' => false,
+                'order' => 5,
+                'submit_as' => 'package_id',
+                'placeholder' => 'Choose a package (optional)',
+            ],
         ];
     }
 
@@ -182,6 +190,14 @@ class DefaultFormConfigService
                 'order' => 5,
                 'submit_as' => 'dropoff_time',
                 'default' => '09:00',
+            ],
+            'package_id' => [
+                'type' => 'package_select',
+                'label' => 'Select Package',
+                'required' => false,
+                'order' => 6,
+                'submit_as' => 'package_id',
+                'placeholder' => 'Choose a package (optional)',
             ],
         ];
     }

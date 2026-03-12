@@ -506,9 +506,9 @@
     function getCoordInputs(input) {
         const form = input.closest("form");
         if (!form) return { latInput: null, lngInput: null };
-        
+
         let latName, lngName;
-        
+
         if (input.name === "from" || input.name === "pickup") {
             latName = "pickup_lat";
             lngName = "pickup_lng";
@@ -520,7 +520,7 @@
             latName = input.name + "_lat";
             lngName = input.name + "_lng";
         }
-        
+
         return {
             latInput: form.querySelector(`input[name="${latName}"]`),
             lngInput: form.querySelector(`input[name="${lngName}"]`)
@@ -634,10 +634,10 @@
         // NOTE: Do NOT show inline errors here — errors are shown on blur only.
         // Showing errors while typing creates a bad UX and causes the "still showing error
         // after selection" bug because the input event fires before place_changed.
-        input.addEventListener("input", function() {
+        input.addEventListener("input", function () {
             const currentValue = this.value.trim();
             const defaultValue = this.getAttribute("data-default-value") || "";
-            
+
             if (currentValue === "") {
                 this.setAttribute("data-place-selected", "false");
                 removeInlineError(this);
@@ -647,32 +647,32 @@
                 // User is typing something different from default - clear coordinates
                 if (latInput) latInput.value = "";
                 if (lngInput) lngInput.value = "";
-                
+
                 this.setAttribute("data-place-selected", "false");
                 this.setAttribute("data-is-default", "false");
-                
+
                 // Don't show error while typing — wait for blur
             }
-            
+
             // Don't call checkFormValidity while typing — it disables the button
             // prematurely. Validity is checked on blur and on place_changed.
         });
 
         // Handle blur - reset to default if empty, validate if has value
-        input.addEventListener("blur", function() {
+        input.addEventListener("blur", function () {
             const self = this;
             // 400ms delay: when user clicks a Google suggestion, blur fires first,
             // then place_changed fires ~200ms later. We wait long enough for that.
-            setTimeout(function() {
+            setTimeout(function () {
                 const currentValue = self.value.trim();
                 const defaultValue = self.getAttribute("data-default-value") || "";
                 // Prefer defaults from the input itself (set by server for conditional variants)
                 const defaultLat = self.getAttribute("data-default-lat") || latInput?.getAttribute("data-default-lat") || "";
                 const defaultLng = self.getAttribute("data-default-lng") || lngInput?.getAttribute("data-default-lng") || "";
-                
+
                 // Re-read state AFTER the delay (place_changed may have updated it)
                 const placeSelected = self.getAttribute("data-place-selected") === "true";
-                
+
                 if (currentValue === "") {
                     // Field is empty - reset to default
                     self.value = defaultValue;
@@ -694,7 +694,7 @@
                     self.style.borderColor = "#dc3545";
                     showInlineError(self, "Please select a location from the dropdown");
                 }
-                
+
                 checkFormValidity(form);
             }, 400);
         });
@@ -929,7 +929,7 @@
                 // Store default values — use getCoordInputs for correct field mapping
                 const form = input.closest("form");
                 const { latInput, lngInput } = getCoordInputs(input);
-                
+
                 // ALWAYS update to current values (handles search results)
                 input.setAttribute("data-default-value", input.value || "");
                 if (latInput) {
@@ -952,10 +952,10 @@
                 setTimeout(() => checkFormValidity(form), 100);
 
                 // When user starts typing — only clear coords, don't show errors
-                $(input).on("input", function() {
+                $(input).on("input", function () {
                     const currentValue = this.value.trim();
                     const defaultValue = this.getAttribute("data-default-value") || "";
-                    
+
                     if (currentValue === "") {
                         this.setAttribute("data-place-selected", "false");
                         removeInlineError(this);
@@ -965,7 +965,7 @@
                         // Clear coordinates immediately
                         if (latInput) latInput.value = "";
                         if (lngInput) lngInput.value = "";
-                        
+
                         this.setAttribute("data-place-selected", "false");
                         this.setAttribute("data-is-default", "false");
                         // Don't show error while typing — wait for blur
@@ -974,15 +974,15 @@
                 });
 
                 // Handle blur — validate after delay to allow autocomplete select to fire
-                $(input).on("blur", function() {
+                $(input).on("blur", function () {
                     const self = this;
-                    setTimeout(function() {
+                    setTimeout(function () {
                         const currentValue = self.value.trim();
                         const defaultValue = self.getAttribute("data-default-value") || "";
                         const defaultLat = latInput?.getAttribute("data-default-lat") || "";
                         const defaultLng = lngInput?.getAttribute("data-default-lng") || "";
                         const placeSelected = self.getAttribute("data-place-selected") === "true";
-                        
+
                         if (currentValue === "") {
                             // Reset to default
                             self.value = defaultValue;
@@ -1004,7 +1004,7 @@
                             self.style.borderColor = "#dc3545";
                             showInlineError(self, "Please select a location from the dropdown");
                         }
-                        
+
                         checkFormValidity(form);
                     }, 400);
                 });
@@ -1021,7 +1021,7 @@
             if (isAirportField) {
                 const form = input.closest("form");
                 const { latInput, lngInput } = getCoordInputs(input);
-                
+
                 // ALWAYS update to current values (handles search results)
                 input.setAttribute("data-default-value", input.value || "");
                 if (latInput) {
@@ -1042,8 +1042,8 @@
 
                 // Check form validity after initialization
                 setTimeout(() => checkFormValidity(form), 100);
-                
-                $(input).on("autocompleteselect", function() {
+
+                $(input).on("autocompleteselect", function () {
                     this.setAttribute("data-place-selected", "true");
                     this.setAttribute("data-is-default", "false");
                     this.classList.remove("error");
@@ -1052,10 +1052,10 @@
                     checkFormValidity(form);
                 });
 
-                $(input).on("input", function() {
+                $(input).on("input", function () {
                     const currentValue = this.value.trim();
                     const defaultValue = this.getAttribute("data-default-value") || "";
-                    
+
                     if (currentValue === "") {
                         this.setAttribute("data-place-selected", "false");
                         removeInlineError(this);
@@ -1071,15 +1071,15 @@
                     // Don't call checkFormValidity while typing
                 });
 
-                $(input).on("blur", function() {
+                $(input).on("blur", function () {
                     const self = this;
-                    setTimeout(function() {
+                    setTimeout(function () {
                         const currentValue = self.value.trim();
                         const defaultValue = self.getAttribute("data-default-value") || "";
                         const defaultLat = latInput?.getAttribute("data-default-lat") || "";
                         const defaultLng = lngInput?.getAttribute("data-default-lng") || "";
                         const placeSelected = self.getAttribute("data-place-selected") === "true";
-                        
+
                         if (currentValue === "") {
                             self.value = defaultValue;
                             if (latInput) latInput.value = defaultLat;
@@ -1099,7 +1099,7 @@
                             self.style.borderColor = "#dc3545";
                             showInlineError(self, "Please select a location from the dropdown");
                         }
-                        
+
                         checkFormValidity(form);
                     }, 400);
                 });
@@ -2833,17 +2833,100 @@
      * Initialize date pickers with proper value binding and validation
      */
     function initializeDatePickers() {
-        // If Flatpickr is loaded (from blade component), skip Bootstrap Datepicker init
-        // to avoid double-datepicker conflicts.
-        if (typeof flatpickr !== 'undefined') {
-            // Flatpickr is handling date pickers — just wire up validation on blur/change
+        // Use Litepicker for better UX with month/year selectors
+        if (typeof Litepicker !== 'undefined') {
+            $(".custom-datepicker").each(function () {
+                // Skip if already initialized
+                if (this._litepicker) {
+                    return;
+                }
+
+                const input = this;
+                const minDate = $(input).data('min-date') || new Date();
+                const maxDate = $(input).data('max-date') || null;
+
+                const picker = new Litepicker({
+                    element: input,
+                    format: 'DD/MM/YYYY',
+                    minDate: minDate,
+                    maxDate: maxDate,
+                    autoApply: true,
+                    singleMode: true,
+                    numberOfMonths: 1,
+                    numberOfColumns: 1,
+                    showTooltip: false,
+                    dropdowns: {
+                        minYear: new Date().getFullYear(),
+                        maxYear: new Date().getFullYear() + 2,
+                        months: true,
+                        years: true
+                    },
+                    buttonText: {
+                        apply: 'Select',
+                        cancel: 'Cancel'
+                    },
+                    setup: (picker) => {
+                        picker.on('selected', (date) => {
+                            $(input).trigger('change');
+                            validateDate(input);
+                        });
+                        picker.on('hide', () => {
+                            validateDate(input);
+                        });
+                    }
+                });
+
+                // Store reference
+                input._litepicker = picker;
+            });
+
+            // Add validation on blur/change
             $(".custom-datepicker").on("blur change", function () {
                 validateDate(this);
             });
             return;
         }
 
-        // Destroy existing datepickers first to prevent duplicates
+        // Fallback to Flatpickr if Litepicker not available
+        if (typeof flatpickr !== 'undefined') {
+            $(".custom-datepicker").each(function () {
+                if (this._flatpickr) {
+                    return;
+                }
+
+                const input = this;
+                const minDate = $(input).data('min-date') || 'today';
+                const maxDate = $(input).data('max-date') || null;
+                const dateFormat = $(input).data('date-format') || 'd/m/Y';
+
+                flatpickr(input, {
+                    dateFormat: dateFormat,
+                    minDate: minDate,
+                    maxDate: maxDate,
+                    allowInput: false,
+                    clickOpens: true,
+                    disableMobile: true,
+                    showMonths: 1,
+                    locale: {
+                        firstDayOfWeek: 1
+                    },
+                    onChange: function (selectedDates, dateStr, instance) {
+                        $(input).trigger('change');
+                        validateDate(input);
+                    },
+                    onClose: function (selectedDates, dateStr, instance) {
+                        validateDate(input);
+                    }
+                });
+            });
+
+            $(".custom-datepicker").on("blur change", function () {
+                validateDate(this);
+            });
+            return;
+        }
+
+        // Fallback to Bootstrap Datepicker if Flatpickr not available
         if (typeof $ !== "undefined" && $.fn.datepicker) {
             $(".custom-datepicker").each(function () {
                 if ($(this).data("datepicker")) {
@@ -3069,12 +3152,12 @@
                     e.preventDefault();
                     e.stopPropagation();
                     e.stopImmediatePropagation();
-                    
+
                     console.error('Form submission BLOCKED - validation failed');
                     showValidationMessage("Please select valid locations from the dropdown");
                     return false;
                 }
-                
+
                 // Debug: Log form data including coordinates before submission
                 const formData = new FormData(form);
                 const formDataObj = {};
@@ -3093,14 +3176,14 @@
                     console.warn('ensureCanonicalSearchFields failed', err);
                 }
             });
-            
+
             // Add visual feedback for required fields (success/error borders)
             const requiredInputs = form.querySelectorAll("input[required], select[required]");
             requiredInputs.forEach((input) => {
                 input.addEventListener("blur", validateField);
                 input.addEventListener("input", validateField);
             });
-            
+
             // Check form validity on load
             setTimeout(() => checkFormValidity(form), 500);
         });
@@ -3138,13 +3221,13 @@
             const placeSelected = input.getAttribute("data-place-selected") === "true";
             const isDefault = input.getAttribute("data-is-default") === "true";
             const hasValue = input.value.trim() !== "";
-            
+
             // If field has value but wasn't selected and isn't default, it's invalid
             if (hasValue && !placeSelected && !isDefault) {
                 isValid = false;
                 input.classList.add("error");
                 input.style.borderColor = "#dc3545";
-                
+
                 const fieldName = input.name === "pickup" ? "pickup location" : "destination";
                 errorMessages.push(`Please select your ${fieldName} from the search results dropdown.`);
             }
@@ -3155,42 +3238,42 @@
         // where coordinates are managed by the PLS component
         const pickupInput = form.querySelector('input[name="pickup"]:not([disabled])');
         const dropoffInput = form.querySelector('input[name="dropoff"]:not([disabled])');
-        
+
         if (pickupInput && pickupInput.value.trim()) {
             // Skip coordinate check if a predefined location is selected (backend resolves coords)
             const pickupPredefined = form.querySelector('input[name="pickup_predefined"]');
             if (!pickupPredefined || !pickupPredefined.value) {
                 const pickupLat = form.querySelector('input[name="pickup_lat"]');
                 const pickupLng = form.querySelector('input[name="pickup_lng"]');
-                
-                if (!pickupLat?.value || !pickupLng?.value || 
+
+                if (!pickupLat?.value || !pickupLng?.value ||
                     pickupLat.value === '0' || pickupLng.value === '0' ||
                     pickupLat.value === '' || pickupLng.value === '') {
                     isValid = false;
                     pickupInput.classList.add("error");
                     pickupInput.style.borderColor = "#dc3545";
-                    
+
                     if (!errorMessages.includes("Please select your pickup location from the search results dropdown.")) {
                         errorMessages.push("Please select your pickup location from the search results dropdown.");
                     }
                 }
             }
         }
-        
+
         if (dropoffInput && dropoffInput.value.trim()) {
             // Skip coordinate check if a predefined dropoff location is selected
             const dropoffPredefined = form.querySelector('input[name="dropoff_predefined"]');
             if (!dropoffPredefined || !dropoffPredefined.value) {
                 const dropoffLat = form.querySelector('input[name="dropoff_lat"]');
                 const dropoffLng = form.querySelector('input[name="dropoff_lng"]');
-                
-                if (!dropoffLat?.value || !dropoffLng?.value || 
+
+                if (!dropoffLat?.value || !dropoffLng?.value ||
                     dropoffLat.value === '0' || dropoffLng.value === '0' ||
                     dropoffLat.value === '' || dropoffLng.value === '') {
                     isValid = false;
                     dropoffInput.classList.add("error");
                     dropoffInput.style.borderColor = "#dc3545";
-                    
+
                     if (!errorMessages.includes("Please select your destination from the search results dropdown.")) {
                         errorMessages.push("Please select your destination from the search results dropdown.");
                     }
@@ -3244,41 +3327,115 @@
      * Setup enhanced date and time pickers
      */
     function setupDateTimePickers() {
-        // Enhance date pickers - fix direct click issue
+        // Enhance date pickers with Litepicker
         const datePickers = document.querySelectorAll(".custom-datepicker");
+
         datePickers.forEach((picker) => {
-            // Remove readonly to allow direct clicking
-            picker.removeAttribute("readonly");
+            // Skip if already initialized
+            if (picker._litepicker || picker._flatpickr) {
+                return;
+            }
 
-            // If Flatpickr is already attached, skip Bootstrap datepicker show logic
-            if (picker._flatpickr) return;
+            // Initialize Litepicker if available
+            if (typeof Litepicker !== 'undefined') {
+                const minDate = picker.dataset.minDate || new Date();
+                const maxDate = picker.dataset.maxDate || null;
 
-            picker.addEventListener("click", function (e) {
-                e.stopPropagation();
-                if (typeof $ !== "undefined" && $.fn.datepicker) {
+                const litepicker = new Litepicker({
+                    element: picker,
+                    format: 'DD/MM/YYYY',
+                    minDate: minDate,
+                    maxDate: maxDate,
+                    autoApply: true,
+                    singleMode: true,
+                    numberOfMonths: 1,
+                    numberOfColumns: 1,
+                    showTooltip: false,
+                    dropdowns: {
+                        minYear: new Date().getFullYear(),
+                        maxYear: new Date().getFullYear() + 2,
+                        months: true,
+                        years: true
+                    },
+                    setup: (pickerInstance) => {
+                        pickerInstance.on('selected', (date) => {
+                            $(picker).trigger('change');
+                            validateDate(picker);
+                        });
+                        pickerInstance.on('hide', () => {
+                            validateDate(picker);
+                        });
+                    }
+                });
+
+                picker._litepicker = litepicker;
+            } else if (typeof flatpickr !== 'undefined') {
+                // Fallback to Flatpickr
+                const minDate = picker.dataset.minDate || 'today';
+                const maxDate = picker.dataset.maxDate || null;
+                const dateFormat = picker.dataset.dateFormat || 'd/m/Y';
+
+                flatpickr(picker, {
+                    dateFormat: dateFormat,
+                    minDate: minDate,
+                    maxDate: maxDate,
+                    allowInput: false,
+                    clickOpens: true,
+                    disableMobile: true,
+                    showMonths: 1,
+                    locale: {
+                        firstDayOfWeek: 1
+                    },
+                    onChange: function (selectedDates, dateStr, instance) {
+                        $(picker).trigger('change');
+                        validateDate(picker);
+                    },
+                    onClose: function (selectedDates, dateStr, instance) {
+                        validateDate(picker);
+                    }
+                });
+            } else if (typeof $ !== "undefined" && $.fn.datepicker) {
+                // Fallback to Bootstrap Datepicker
+                picker.removeAttribute("readonly");
+                $(picker).datepicker({
+                    format: 'dd/mm/yyyy',
+                    autoclose: true,
+                    todayHighlight: true,
+                    startDate: new Date(),
+                    orientation: 'bottom auto'
+                }).on('changeDate', function () {
+                    validateDate(this);
+                });
+
+                picker.addEventListener("click", function (e) {
+                    e.stopPropagation();
                     $(this).datepicker("show");
-                } else {
-                    this.type = "date";
-                    this.showPicker();
-                }
-            });
+                });
 
-            picker.addEventListener("focus", function () {
-                if (typeof $ === "undefined" || !$.fn.datepicker) {
-                    this.type = "date";
-                    if (this.showPicker) {
-                        this.showPicker();
+                picker.addEventListener("focus", function () {
+                    if (typeof $ === "undefined" || !$.fn.datepicker) {
+                        this.type = "date";
+                        if (this.showPicker) {
+                            this.showPicker();
+                        }
                     }
-                }
-            });
+                });
 
-            picker.addEventListener("blur", function () {
-                if (typeof $ === "undefined" || !$.fn.datepicker) {
-                    if (!this.value) {
-                        this.type = "text";
+                picker.addEventListener("blur", function () {
+                    if (typeof $ === "undefined" || !$.fn.datepicker) {
+                        if (!this.value) {
+                            this.type = "text";
+                        }
                     }
-                }
-            });
+                });
+            } else {
+                // HTML5 fallback
+                picker.type = "date";
+                picker.min = new Date().toISOString().split("T")[0];
+                picker.addEventListener('change', function () {
+                    validateDate(this);
+                });
+            }
         });
 
         // Enhance time pickers
@@ -3391,7 +3548,7 @@
     function showInlineError(input, message) {
         // Remove existing error for this input
         removeInlineError(input);
-        
+
         // Create error message element
         const errorEl = document.createElement("div");
         errorEl.className = "inline-error-message";
@@ -3402,7 +3559,7 @@
             display: block;
         `;
         errorEl.textContent = message;
-        
+
         // Insert after the input's parent container
         const container = input.closest('.single-search-box') || input.closest('.custom-select-dropdown') || input.parentElement;
         if (container) {
@@ -3428,15 +3585,15 @@
      */
     function checkFormValidity(form) {
         if (!form) return;
-        
+
         const submitBtn = form.querySelector('button[type="submit"]');
         if (!submitBtn) return;
-        
+
         let isValid = true;
-        
+
         // Check all location inputs in this form
         const locationInputs = form.querySelectorAll('.location-search, input[name="pickup"], input[name="dropoff"], input[name="from"], input[name="to"]');
-        
+
         locationInputs.forEach((input) => {
             // Skip if input is disabled or hidden
             if (input.disabled || input.offsetParent === null) {
@@ -3444,27 +3601,27 @@
             }
             // Skip hidden inputs (managed by PLS component)
             if (input.type === 'hidden') return;
-            
+
             const placeSelected = input.getAttribute("data-place-selected") === "true";
             const hasValue = input.value.trim() !== "";
-            
+
             // Use the mapping helper to get the correct lat/lng fields
             const { latInput, lngInput } = getCoordInputs(input);
-            
-            const hasValidCoords = latInput?.value && lngInput?.value && 
-                                   latInput.value !== '0' && lngInput.value !== '0' &&
-                                   latInput.value !== '' && lngInput.value !== '';
+
+            const hasValidCoords = latInput?.value && lngInput?.value &&
+                latInput.value !== '0' && lngInput.value !== '0' &&
+                latInput.value !== '' && lngInput.value !== '';
 
             // Skip coordinate check if a predefined location is selected
             const predefinedInput = form.querySelector('input[name="' + input.name + '_predefined"]');
             if (predefinedInput && predefinedInput.value) return;
-            
+
             // Invalid if: has value but not selected AND missing valid coordinates
             if (hasValue && !placeSelected) {
                 isValid = false;
             }
         });
-        
+
         // Enable or disable submit button
         if (isValid) {
             submitBtn.disabled = false;
@@ -3730,27 +3887,69 @@
     }
 
     /**
-     * Initialize Bootstrap Datepicker for return date
+     * Initialize date picker for return date (Litepicker, Flatpickr or Bootstrap fallback)
      */
     function initReturnDatePicker() {
         const returnDateInput = document.getElementById('ride_now-return-date');
         if (!returnDateInput) return;
 
-        // If Flatpickr is already attached, skip Bootstrap Datepicker init
-        if (returnDateInput._flatpickr) return;
+        // If already attached, skip
+        if (returnDateInput._litepicker || returnDateInput._flatpickr) return;
 
-        if (typeof $ !== 'undefined' && $.fn.datepicker) {
-            // Destroy existing datepicker if any to prevent duplicates
+        // Get minimum date from pickup date
+        const pickupDateInput = document.querySelector('#ride_now-form input[name="pickup_date"]');
+        let startDate = new Date();
+        if (pickupDateInput && pickupDateInput.value) {
+            const parsed = parseDDMMYYYY(pickupDateInput.value);
+            if (parsed) startDate = parsed;
+        }
+
+        // Use Litepicker if available
+        if (typeof Litepicker !== 'undefined') {
+            const litepicker = new Litepicker({
+                element: returnDateInput,
+                format: 'DD/MM/YYYY',
+                minDate: startDate,
+                maxDate: null,
+                autoApply: true,
+                singleMode: true,
+                numberOfMonths: 1,
+                numberOfColumns: 1,
+                showTooltip: false,
+                dropdowns: {
+                    minYear: new Date().getFullYear(),
+                    maxYear: new Date().getFullYear() + 2,
+                    months: true,
+                    years: true
+                },
+                setup: (picker) => {
+                    picker.on('selected', (date) => {
+                        calculateReturnPricing();
+                    });
+                }
+            });
+
+            returnDateInput._litepicker = litepicker;
+        } else if (typeof flatpickr !== 'undefined') {
+            // Fallback to Flatpickr
+            flatpickr(returnDateInput, {
+                dateFormat: 'd/m/Y',
+                minDate: startDate,
+                allowInput: false,
+                clickOpens: true,
+                disableMobile: true,
+                showMonths: 1,
+                locale: {
+                    firstDayOfWeek: 1
+                },
+                onChange: function (selectedDates, dateStr, instance) {
+                    calculateReturnPricing();
+                }
+            });
+        } else if (typeof $ !== 'undefined' && $.fn.datepicker) {
+            // Fallback to Bootstrap Datepicker
             if ($(returnDateInput).data('datepicker')) {
                 $(returnDateInput).datepicker('destroy');
-            }
-
-            // Get minimum date from pickup date
-            const pickupDateInput = document.querySelector('#ride_now-form input[name="pickup_date"]');
-            let startDate = new Date();
-            if (pickupDateInput && pickupDateInput.value) {
-                const parsed = parseDDMMYYYY(pickupDateInput.value);
-                if (parsed) startDate = parsed;
             }
 
             $(returnDateInput).datepicker({
@@ -3759,7 +3958,7 @@
                 todayHighlight: true,
                 startDate: startDate,
                 orientation: 'bottom auto',
-                container: 'body', // Append to body to avoid z-index issues
+                container: 'body',
                 zIndexOffset: 9999
             }).on('changeDate', function () {
                 calculateReturnPricing();

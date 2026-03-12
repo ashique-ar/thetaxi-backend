@@ -297,7 +297,7 @@
     background: #f8fafc !important;
     border: 2px solid #e2e8f0 !important;
     border-radius: 14px !important;
-    padding: 12px 16px !important;
+    padding: 0 16px !important;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
     min-height: 56px !important;
 }
@@ -630,7 +630,6 @@
 /* Vehicle specs */
 .t2-vehicle-card .vehicle-specs {
     margin-bottom: 16px !important;
-    padding-bottom: 16px !important;
     border-bottom: 1px solid #f1f5f9 !important;
 }
 

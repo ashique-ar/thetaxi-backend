@@ -42,6 +42,7 @@
 
     <!-- Booking Form CSS -->
     <link rel="stylesheet" href="{{ assetVersion('assets/css/booking-form.css') }}">
+    <link rel="stylesheet" href="{{ assetVersion('assets/css/package-buttons.css') }}">
 
     <!-- Popup Modal CSS -->
     <link rel="stylesheet" href="{{ assetVersion('assets/css/popup-modal.css') }}">
@@ -291,6 +292,11 @@
     <script src="{{ asset('assets/js/jquery-ui.js') }}"></script>
     <script src="{{ asset('assets/js/moment.min.js') }}"></script>
     <script src="{{ asset('assets/js/daterangepicker.min.js') }}"></script>
+    
+    <!-- Litepicker for better date picking with month/year selectors -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/litepicker/dist/css/litepicker.css">
+    <script src="https://cdn.jsdelivr.net/npm/litepicker/dist/litepicker.js"></script>
+    <link rel="stylesheet" href="{{ assetVersion('assets/css/flatpickr-custom.css') }}">
 
     <script src="{{ asset('assets/js/bootstrap.min.js') }}"></script>
     <script src="{{ asset('assets/js/popper.min.js') }}"></script>
@@ -312,6 +318,7 @@
     <script src="{{ asset('assets/js/select-dropdown.js') }}"></script>
     <script src="{{ assetVersion('assets/js/custom.js') }}"></script>
     <script src="{{ assetVersion('assets/js/booking-form.js') }}"></script>
+    <script src="{{ assetVersion('assets/js/package-selector.js') }}"></script>
 
     <!-- Currency Switching JavaScript -->
     <script>

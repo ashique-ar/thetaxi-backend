@@ -11,7 +11,7 @@
 @include(theme_partial('hero'))
 
 <!-- Booking Form Section (Separate from Hero) -->
-<div class="home-booking-form-section mb-5 text-center">
+<div class="home-booking-form-section mb-5">
     <div class="container">
         @include('components.booking-form')
     </div>
