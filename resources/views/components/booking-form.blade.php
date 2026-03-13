@@ -13,11 +13,6 @@
         if (in_array($tabCode, $knownFormCodes, true)) {
             return $tabCode;
         }
-        $metadata = is_array($tab->metadata) ? $tab->metadata : [];
-        $rentalMode = $metadata['rental_mode'] ?? null;
-        if (in_array($rentalMode, ['self_drive', 'with_driver'], true)) {
-            return $rentalMode;
-        }
         $serviceTypeCode = $tab->service_type_code ?: null;
         if ($serviceTypeCode && in_array($serviceTypeCode, $knownFormCodes, true)) {
             return $serviceTypeCode;
@@ -48,27 +43,11 @@
 
     // Resolve current tab code
     $currentTabCodeRaw = (string) $getSearchProp('service_type', $defaultTabCode);
-    $currentRentalMode = (string) $getSearchProp('rental_mode', '');
     $currentTabCode = $currentTabCodeRaw;
 
-    if ($currentTabCodeRaw === 'day_rental' && in_array($currentRentalMode, ['self_drive', 'with_driver'], true)) {
-        $currentTabCode = $currentRentalMode;
-    }
-
     if (!$bookingTabsByCode->has($currentTabCode)) {
-        $mappedTab = $bookingTabs->first(function ($tab) use ($currentTabCodeRaw, $currentRentalMode) {
-            if (($tab->service_type_code ?: '') !== $currentTabCodeRaw) {
-                return false;
-            }
-            $metadata = is_array($tab->metadata) ? $tab->metadata : [];
-            $tabRentalMode = $metadata['rental_mode'] ?? null;
-            if ($tabRentalMode && $currentRentalMode) {
-                return $tabRentalMode === $currentRentalMode;
-            }
-            if ($tabRentalMode && !$currentRentalMode) {
-                return false;
-            }
-            return true;
+        $mappedTab = $bookingTabs->first(function ($tab) use ($currentTabCodeRaw) {
+            return ($tab->service_type_code ?: '') === $currentTabCodeRaw;
         });
         if ($mappedTab) {
             $currentTabCode = $mappedTab->code;
@@ -81,10 +60,6 @@
 
     $currentTab = $bookingTabsByCode->get($currentTabCode);
     $currentFormServiceType = $currentTab ? $getFormServiceCodeForTab($currentTab) : $currentTabCode;
-
-    if ($currentTabCodeRaw === 'day_rental' && in_array($currentRentalMode, ['self_drive', 'with_driver'], true)) {
-        $currentFormServiceType = $currentRentalMode;
-    }
 
     // For truly unknown service codes, keep as-is (dynamic forms handle them)
     if (!in_array($currentFormServiceType, $knownFormCodes, true)) {
@@ -271,8 +246,6 @@
                 }
                 unset($field);
 
-                // Add any default fields that are completely missing from DB config
-                // (e.g. transfer_type radio if DB doesn't have it)
                 $existingSubmitAs = [];
                 foreach ($fields as $f) {
                     $existingSubmitAs[] = $f['submit_as'] ?? '';
@@ -678,6 +651,9 @@
                     list.querySelectorAll('.pls-dropdown-option').forEach(function(o) { o.classList.remove('pls-selected'); });
                     option.classList.add('pls-selected');
                     var value = option.dataset.value;
+                    var lat = option.dataset.lat;
+                    var lng = option.dataset.lng;
+                    
                     if (value) {
                         currentLabel.textContent = option.textContent.trim();
                         currentLabel.classList.remove('pls-placeholder');
@@ -686,6 +662,29 @@
                         currentLabel.classList.add('pls-placeholder');
                     }
                     hiddenSelect.value = value;
+                    
+                    // Set coordinates in the shared conditional location hidden inputs
+                    // Find the parent conditional location wrapper
+                    var conditionalWrapper = dropdown.closest('.dynamic-conditional-location');
+                    if (conditionalWrapper) {
+                        var latInput = conditionalWrapper.querySelector('.conditional-lat');
+                        var lngInput = conditionalWrapper.querySelector('.conditional-lng');
+                        if (latInput && lat) latInput.value = lat;
+                        if (lngInput && lng) lngInput.value = lng;
+                    } else {
+                        // Fallback: try to find coordinate inputs by name pattern
+                        // Extract field name from selectId (e.g., 'at_pickup_from-airport' -> 'pickup')
+                        var form = dropdown.closest('form');
+                        if (form) {
+                            // Try to determine the field name from the hidden select name
+                            var fieldName = hiddenSelect.name; // e.g., 'pickup' or 'dropoff'
+                            var latInput = form.querySelector('input[name="' + fieldName + '_lat"]');
+                            var lngInput = form.querySelector('input[name="' + fieldName + '_lng"]');
+                            if (latInput && lat) latInput.value = lat;
+                            if (lngInput && lng) lngInput.value = lng;
+                        }
+                    }
+                    
                     hiddenSelect.dispatchEvent(new Event('change', { bubbles: true }));
                     dropdown.classList.remove('pls-open');
                     list.style.display = 'none';
@@ -700,11 +699,38 @@
                         matchedOption.classList.add('pls-selected');
                         currentLabel.textContent = matchedOption.textContent.trim();
                         currentLabel.classList.remove('pls-placeholder');
+                        
+                        // Also set coordinates when syncing
+                        var lat = matchedOption.dataset.lat;
+                        var lng = matchedOption.dataset.lng;
+                        var conditionalWrapper = dropdown.closest('.dynamic-conditional-location');
+                        if (conditionalWrapper) {
+                            var latInput = conditionalWrapper.querySelector('.conditional-lat');
+                            var lngInput = conditionalWrapper.querySelector('.conditional-lng');
+                            if (latInput && lat) latInput.value = lat;
+                            if (lngInput && lng) lngInput.value = lng;
+                        }
                     } else {
                         currentLabel.textContent = hiddenSelect.querySelector('option[value=""]')?.textContent?.trim() || 'Select Airport';
                         currentLabel.classList.add('pls-placeholder');
                     }
                 });
+                
+                // Initialize coordinates on page load if airport is pre-selected
+                if (hiddenSelect.value) {
+                    var selectedOption = list.querySelector('.pls-dropdown-option[data-value="' + hiddenSelect.value + '"]');
+                    if (selectedOption) {
+                        var lat = selectedOption.dataset.lat;
+                        var lng = selectedOption.dataset.lng;
+                        var conditionalWrapper = dropdown.closest('.dynamic-conditional-location');
+                        if (conditionalWrapper && lat && lng) {
+                            var latInput = conditionalWrapper.querySelector('.conditional-lat');
+                            var lngInput = conditionalWrapper.querySelector('.conditional-lng');
+                            if (latInput) latInput.value = lat;
+                            if (lngInput) lngInput.value = lng;
+                        }
+                    }
+                }
             });
 
             document.addEventListener('click', function(e) {

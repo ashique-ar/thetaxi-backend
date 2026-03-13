@@ -22,7 +22,6 @@
     $isInquiry = (bool) ($serviceTypeModel?->is_inquiry ?? false);
     $actionRoute = $isInquiry ? route('booking.enquiry') : route('booking.search');
     $submitLabel = $isInquiry ? 'Submit Inquiry' : 'Search Vehicles';
-    $rentalMode = in_array($serviceCode, ['self_drive', 'with_driver']) ? $serviceCode : null;
 
     // Resolve current values for location fields
     $pickupLoc = $getLocationForService($serviceCode, true);
@@ -68,9 +67,6 @@
       method="GET">
 
     <input type="hidden" name="service_type" value="{{ $serviceCode }}">
-    @if($rentalMode)
-        <input type="hidden" name="rental_mode" value="{{ $rentalMode }}">
-    @endif
 
     @foreach($sortedFields as $fieldName => $field)
         @php
@@ -175,9 +171,6 @@
         @if($fieldType === 'location' && $locationMode === 'predefined_or_custom' && $syncFrom)
             @php
                 $isDropoff = str_contains($fieldName, 'dropoff') || $submitAs === 'dropoff';
-                // Only add sync fields for the dropoff side — the pickup PLS dispatches events
-                // Actually, the sync is handled differently: pickup PLS dispatches, and setupDropoffSync
-                // in JS handles the hidden fields. We need the dropoff wrapper + hidden fields here.
             @endphp
         @endif
     @endforeach

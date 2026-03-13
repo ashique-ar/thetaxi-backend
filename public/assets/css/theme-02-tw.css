@@ -585,6 +585,7 @@
     position: absolute !important;
     top: 14px !important;
     left: 14px !important;
+    right: auto !important;
     background: #ef4444 !important;
     color: #fff !important;
     padding: 4px 12px !important;
@@ -599,6 +600,7 @@
     position: absolute !important;
     top: 14px !important;
     right: 14px !important;
+    left: auto !important;
     background: rgba(0,0,0,0.6) !important;
     backdrop-filter: blur(10px) !important;
     color: #fff !important;

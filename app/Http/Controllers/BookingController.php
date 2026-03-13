@@ -67,9 +67,9 @@ class BookingController extends Controller
             // Transform frontend request data to BookingFlowService format
             $searchParams = $this->transformSearchParams($request->all(), $serviceType, $frontendService);
 
-            if (in_array($frontendService, ['self_drive', 'with_driver'], true) && empty($searchParams['rental_mode'])) {
-                $searchParams['rental_mode'] = $frontendService;
-            }
+            // if (in_array($frontendService, ['self_drive', 'with_driver'], true) && empty($searchParams['rental_mode'])) {
+            //     $searchParams['rental_mode'] = $frontendService;
+            // }
 
             // Get package - either from request or default to first active package for service type
             $packageId = $request->input('package_id');
@@ -141,8 +141,6 @@ class BookingController extends Controller
         }
 
         $fallbackMap = [
-            'self_drive' => ['day_rental'],
-            'with_driver' => ['day_rental'],
             'wedding' => ['wedding_hire', 'day_rental'],
             'wedding_hire' => ['wedding_hire', 'day_rental'],
             'corporate_transport' => ['corporate'],
@@ -316,7 +314,127 @@ class BookingController extends Controller
                 }
                 break;
             case 'day_rental':
+                                $formConfig = $this->resolveServiceFormConfiguration($serviceType);
+                $fieldMappings = $formConfig['field_mappings'] ?? [];
+                $usesDropoffTime = $formConfig['uses_dropoff_time'] ?? true;
+
+                $pickupDateRaw = $this->getMappedFieldValue(
+                    $requestData,
+                    data_get($fieldMappings, 'dates.from_date'),
+                    ['pickup_date', 'date', 'from_date']
+                );
+                $pickupTime = $this->getMappedFieldValue(
+                    $requestData,
+                    data_get($fieldMappings, 'dates.from_time'),
+                    ['pickup_time', 'time', 'from_time'],
+                    '00:00'
+                );
+                $pickupDate = $this->parseDateValue($pickupDateRaw, now());
+
+                $params['from_date'] = $pickupDate->format('Y-m-d');
+                $params['from_time'] = $pickupTime;
+
+                if ($usesDropoffTime) {
+                    $dropoffDateRaw = $this->getMappedFieldValue(
+                        $requestData,
+                        data_get($fieldMappings, 'dates.to_date'),
+                        ['dropoff_date', 'to_date', 'pickup_date', 'date', 'from_date']
+                    );
+                    $dropoffTime = $this->getMappedFieldValue(
+                        $requestData,
+                        data_get($fieldMappings, 'dates.to_time'),
+                        ['dropoff_time', 'to_time', 'pickup_time', 'time', 'from_time'],
+                        $pickupTime ?: '00:00'
+                    );
+                    $dropoffDate = $this->parseDateValue($dropoffDateRaw, $pickupDate);
+                    $params['to_date'] = $dropoffDate->format('Y-m-d');
+                    $params['to_time'] = $dropoffTime ?: ($pickupTime ?: '00:00');
+                } else {
+                    $params['to_date'] = $pickupDate->format('Y-m-d');
+                    $params['to_time'] = $pickupTime ?: '00:00';
+                }
+
+                $params['pickup_location'] = $this->formatLocationFromMapping(
+                    $requestData,
+                    data_get($fieldMappings, 'locations.pickup_location'),
+                    'pickup'
+                );
+                $params['dropoff_location'] = $this->formatLocationFromMapping(
+                    $requestData,
+                    data_get($fieldMappings, 'locations.dropoff_location'),
+                    'dropoff'
+                );
+
+                if (
+                    empty($params['dropoff_location']['address'])
+                    && (empty($params['dropoff_location']['latitude']) || empty($params['dropoff_location']['longitude']))
+                ) {
+                    $params['dropoff_location'] = $params['pickup_location'];
+                }
+
+                $params['package_type'] = $requestData['package_type'] ?? 'multi-day';
+                break;
             case 'self_drive':
+                                $formConfig = $this->resolveServiceFormConfiguration($serviceType);
+                $fieldMappings = $formConfig['field_mappings'] ?? [];
+                $usesDropoffTime = $formConfig['uses_dropoff_time'] ?? true;
+
+                $pickupDateRaw = $this->getMappedFieldValue(
+                    $requestData,
+                    data_get($fieldMappings, 'dates.from_date'),
+                    ['pickup_date', 'date', 'from_date']
+                );
+                $pickupTime = $this->getMappedFieldValue(
+                    $requestData,
+                    data_get($fieldMappings, 'dates.from_time'),
+                    ['pickup_time', 'time', 'from_time'],
+                    '00:00'
+                );
+                $pickupDate = $this->parseDateValue($pickupDateRaw, now());
+
+                $params['from_date'] = $pickupDate->format('Y-m-d');
+                $params['from_time'] = $pickupTime;
+
+                if ($usesDropoffTime) {
+                    $dropoffDateRaw = $this->getMappedFieldValue(
+                        $requestData,
+                        data_get($fieldMappings, 'dates.to_date'),
+                        ['dropoff_date', 'to_date', 'pickup_date', 'date', 'from_date']
+                    );
+                    $dropoffTime = $this->getMappedFieldValue(
+                        $requestData,
+                        data_get($fieldMappings, 'dates.to_time'),
+                        ['dropoff_time', 'to_time', 'pickup_time', 'time', 'from_time'],
+                        $pickupTime ?: '00:00'
+                    );
+                    $dropoffDate = $this->parseDateValue($dropoffDateRaw, $pickupDate);
+                    $params['to_date'] = $dropoffDate->format('Y-m-d');
+                    $params['to_time'] = $dropoffTime ?: ($pickupTime ?: '00:00');
+                } else {
+                    $params['to_date'] = $pickupDate->format('Y-m-d');
+                    $params['to_time'] = $pickupTime ?: '00:00';
+                }
+
+                $params['pickup_location'] = $this->formatLocationFromMapping(
+                    $requestData,
+                    data_get($fieldMappings, 'locations.pickup_location'),
+                    'pickup'
+                );
+                $params['dropoff_location'] = $this->formatLocationFromMapping(
+                    $requestData,
+                    data_get($fieldMappings, 'locations.dropoff_location'),
+                    'dropoff'
+                );
+
+                if (
+                    empty($params['dropoff_location']['address'])
+                    && (empty($params['dropoff_location']['latitude']) || empty($params['dropoff_location']['longitude']))
+                ) {
+                    $params['dropoff_location'] = $params['pickup_location'];
+                }
+
+                $params['package_type'] = $requestData['package_type'] ?? 'multi-day';
+                break;
             case 'with_driver':
                 $formConfig = $this->resolveServiceFormConfiguration($serviceType);
                 $fieldMappings = $formConfig['field_mappings'] ?? [];
@@ -376,14 +494,6 @@ class BookingController extends Controller
                     $params['dropoff_location'] = $params['pickup_location'];
                 }
 
-                $rentalMode = $requestData['rental_mode'] ?? null;
-                if (in_array($code, ['self_drive', 'with_driver'], true)) {
-                    $rentalMode = $code;
-                }
-                if ($rentalMode) {
-                    $params['rental_mode'] = $rentalMode;
-                }
-
                 $params['package_type'] = $requestData['package_type'] ?? 'multi-day';
                 break;
 
@@ -408,7 +518,7 @@ class BookingController extends Controller
 
             default:
                 // Dynamic handler: read form_config fields and map to internal format
-                $params = $this->transformDynamicSearchParams($requestData, $serviceType, $params);
+                $params = $this->transformDynamicSearchParams($requestData, $serviceType, $params, $frontendServiceCode);
                 break;
         }
 
@@ -435,7 +545,8 @@ class BookingController extends Controller
     protected function transformDynamicSearchParams(
         array $requestData,
         ServiceType $serviceType,
-        array $params
+        array $params,
+        ?string $frontendServiceCode = null
     ): array {
         $formConfig = $this->resolveServiceFormConfiguration($serviceType);
         $fields = $formConfig['fields'] ?? [];
@@ -584,12 +695,6 @@ class BookingController extends Controller
             $params['dropoff_location'] = $params['pickup_location'];
         }
 
-        // Pass through rental_mode if present
-        $rentalMode = $requestData['rental_mode'] ?? null;
-        if ($rentalMode) {
-            $params['rental_mode'] = $rentalMode;
-        }
-
         // Pass through any extra fields that don't map to standard params
         // (e.g., transfer_type, contract_type, package_hours, etc.)
         foreach ($fields as $fieldName => $config) {
@@ -605,6 +710,20 @@ class BookingController extends Controller
         }
 
         $params['package_type'] = $requestData['package_type'] ?? 'multi-day';
+        
+        // Set is_self_driven based on service type
+        // self_drive service type = customer drives themselves (is_self_driven = true)
+        // with_driver service type = driver provided (is_self_driven = false)
+        // day_rental service type = driver provided (is_self_driven = false)
+        $frontendCode = $frontendServiceCode ?: $serviceType->code;
+        if ($frontendCode === 'self_drive') {
+            $params['is_self_driven'] = true;
+        } elseif (in_array($frontendCode, ['with_driver', 'day_rental'], true)) {
+            $params['is_self_driven'] = false;
+        } else {
+            // For other service types, default to false (driver provided)
+            $params['is_self_driven'] = $requestData['is_self_driven'] ?? false;
+        }
 
         return $params;
     }
@@ -938,7 +1057,6 @@ class BookingController extends Controller
                     'contract_type' => $searchParams['contract_type'] ?? null,
                     'service_package_id' => $searchParams['service_package_id'] ?? $searchParams['package_id'] ?? null,
                     'transfer_type' => $searchParams['transfer_type'] ?? null,
-                    'rental_mode' => $searchParams['rental_mode'] ?? null,
                     // Return trip data
                     'is_return_trip' => $searchParams['is_return_trip'] ?? false,
                     'return_date' => $searchParams['return_date'] ?? null,

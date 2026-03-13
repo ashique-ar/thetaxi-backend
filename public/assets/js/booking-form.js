@@ -3200,82 +3200,96 @@
         let errorMessages = [];
 
         requiredInputs.forEach((input) => {
+            // Skip disabled or hidden inputs (e.g., inactive conditional variants)
+            if (input.disabled || input.offsetParent === null) {
+                return;
+            }
+            
             if (!input.value.trim()) {
                 isValid = false;
                 input.classList.add("error");
                 input.style.borderColor = "#dc3545";
+                console.log('VALIDATION FAIL: Required field empty -', input.name, input.type, input.id);
             } else {
                 input.classList.remove("error");
                 input.style.borderColor = "";
             }
         });
+        
+        console.log('After required inputs check, isValid =', isValid);
 
         // Validate location inputs - ensure they were selected from autocomplete or are defaults
-        const locationInputs = form.querySelectorAll('.location-search, input[name="pickup"], input[name="dropoff"], input[name="from"], input[name="to"]');
-        locationInputs.forEach((input) => {
-            // Skip disabled inputs (e.g. PLS custom input when predefined is selected)
-            if (input.disabled) return;
-            // Skip hidden inputs managed by PLS (they carry data-place-selected)
-            if (input.type === 'hidden') return;
+        // Skip this validation for airport_transfers form (uses conditional location fields)
+        if (form.id !== 'airport_transfers-form') {
+            const locationInputs = form.querySelectorAll('.location-search, input[name="pickup"], input[name="dropoff"], input[name="from"], input[name="to"]');
+            locationInputs.forEach((input) => {
+                // Skip disabled inputs (e.g. PLS custom input when predefined is selected)
+                if (input.disabled) return;
+                // Skip hidden inputs managed by PLS (they carry data-place-selected)
+                if (input.type === 'hidden') return;
+                // Skip select elements (airport selects)
+                if (input.tagName === 'SELECT') return;
 
-            const placeSelected = input.getAttribute("data-place-selected") === "true";
-            const isDefault = input.getAttribute("data-is-default") === "true";
-            const hasValue = input.value.trim() !== "";
+                const placeSelected = input.getAttribute("data-place-selected") === "true";
+                const isDefault = input.getAttribute("data-is-default") === "true";
+                const hasValue = input.value.trim() !== "";
 
-            // If field has value but wasn't selected and isn't default, it's invalid
-            if (hasValue && !placeSelected && !isDefault) {
-                isValid = false;
-                input.classList.add("error");
-                input.style.borderColor = "#dc3545";
+                // If field has value but wasn't selected and isn't default, it's invalid
+                if (hasValue && !placeSelected && !isDefault) {
+                    isValid = false;
+                    input.classList.add("error");
+                    input.style.borderColor = "#dc3545";
 
-                const fieldName = input.name === "pickup" ? "pickup location" : "destination";
-                errorMessages.push(`Please select your ${fieldName} from the search results dropdown.`);
-            }
-        });
+                    const fieldName = input.name === "pickup" ? "pickup location" : "destination";
+                    errorMessages.push(`Please select your ${fieldName} from the search results dropdown.`);
+                }
+            });
+        }
 
         // Validate that coordinates are present for location fields (not empty or zero)
-        // Skip this check for forms using predefined location selectors (self_drive, with_driver)
-        // where coordinates are managed by the PLS component
-        const pickupInput = form.querySelector('input[name="pickup"]:not([disabled])');
-        const dropoffInput = form.querySelector('input[name="dropoff"]:not([disabled])');
+        // Skip this check for airport_transfers form (has its own validation below)
+        if (form.id !== 'airport_transfers-form') {
+            const pickupInput = form.querySelector('input[name="pickup"]:not([disabled])');
+            const dropoffInput = form.querySelector('input[name="dropoff"]:not([disabled])');
 
-        if (pickupInput && pickupInput.value.trim()) {
-            // Skip coordinate check if a predefined location is selected (backend resolves coords)
-            const pickupPredefined = form.querySelector('input[name="pickup_predefined"]');
-            if (!pickupPredefined || !pickupPredefined.value) {
-                const pickupLat = form.querySelector('input[name="pickup_lat"]');
-                const pickupLng = form.querySelector('input[name="pickup_lng"]');
+            if (pickupInput && pickupInput.value.trim()) {
+                // Skip coordinate check if a predefined location is selected (backend resolves coords)
+                const pickupPredefined = form.querySelector('input[name="pickup_predefined"]');
+                if (!pickupPredefined || !pickupPredefined.value) {
+                    const pickupLat = form.querySelector('input[name="pickup_lat"]');
+                    const pickupLng = form.querySelector('input[name="pickup_lng"]');
 
-                if (!pickupLat?.value || !pickupLng?.value ||
-                    pickupLat.value === '0' || pickupLng.value === '0' ||
-                    pickupLat.value === '' || pickupLng.value === '') {
-                    isValid = false;
-                    pickupInput.classList.add("error");
-                    pickupInput.style.borderColor = "#dc3545";
+                    if (!pickupLat?.value || !pickupLng?.value ||
+                        pickupLat.value === '0' || pickupLng.value === '0' ||
+                        pickupLat.value === '' || pickupLng.value === '') {
+                        isValid = false;
+                        pickupInput.classList.add("error");
+                        pickupInput.style.borderColor = "#dc3545";
 
-                    if (!errorMessages.includes("Please select your pickup location from the search results dropdown.")) {
-                        errorMessages.push("Please select your pickup location from the search results dropdown.");
+                        if (!errorMessages.includes("Please select your pickup location from the search results dropdown.")) {
+                            errorMessages.push("Please select your pickup location from the search results dropdown.");
+                        }
                     }
                 }
             }
-        }
 
-        if (dropoffInput && dropoffInput.value.trim()) {
-            // Skip coordinate check if a predefined dropoff location is selected
-            const dropoffPredefined = form.querySelector('input[name="dropoff_predefined"]');
-            if (!dropoffPredefined || !dropoffPredefined.value) {
-                const dropoffLat = form.querySelector('input[name="dropoff_lat"]');
-                const dropoffLng = form.querySelector('input[name="dropoff_lng"]');
+            if (dropoffInput && dropoffInput.value.trim()) {
+                // Skip coordinate check if a predefined dropoff location is selected
+                const dropoffPredefined = form.querySelector('input[name="dropoff_predefined"]');
+                if (!dropoffPredefined || !dropoffPredefined.value) {
+                    const dropoffLat = form.querySelector('input[name="dropoff_lat"]');
+                    const dropoffLng = form.querySelector('input[name="dropoff_lng"]');
 
-                if (!dropoffLat?.value || !dropoffLng?.value ||
-                    dropoffLat.value === '0' || dropoffLng.value === '0' ||
-                    dropoffLat.value === '' || dropoffLng.value === '') {
-                    isValid = false;
-                    dropoffInput.classList.add("error");
-                    dropoffInput.style.borderColor = "#dc3545";
+                    if (!dropoffLat?.value || !dropoffLng?.value ||
+                        dropoffLat.value === '0' || dropoffLng.value === '0' ||
+                        dropoffLat.value === '' || dropoffLng.value === '') {
+                        isValid = false;
+                        dropoffInput.classList.add("error");
+                        dropoffInput.style.borderColor = "#dc3545";
 
-                    if (!errorMessages.includes("Please select your destination from the search results dropdown.")) {
-                        errorMessages.push("Please select your destination from the search results dropdown.");
+                        if (!errorMessages.includes("Please select your destination from the search results dropdown.")) {
+                            errorMessages.push("Please select your destination from the search results dropdown.");
+                        }
                     }
                 }
             }
@@ -3288,22 +3302,27 @@
             const dropoffLat = form.querySelector('input[name="dropoff_lat"]');
             const dropoffLng = form.querySelector('input[name="dropoff_lng"]');
 
+            let missingFields = [];
+            
             if (!pickupLat?.value || pickupLat.value === '' || pickupLat.value === '0') {
                 isValid = false;
+                missingFields.push('pickup latitude');
             }
             if (!pickupLng?.value || pickupLng.value === '' || pickupLng.value === '0') {
                 isValid = false;
+                missingFields.push('pickup longitude');
             }
             if (!dropoffLat?.value || dropoffLat.value === '' || dropoffLat.value === '0') {
                 isValid = false;
+                missingFields.push('dropoff latitude');
             }
             if (!dropoffLng?.value || dropoffLng.value === '' || dropoffLng.value === '0') {
                 isValid = false;
+                missingFields.push('dropoff longitude');
             }
 
-            if (isValid) {
-            } else {
-                return false;
+            if (missingFields.length > 0) {
+                errorMessages.push("Please select valid locations from the dropdown");
             }
         }
 
