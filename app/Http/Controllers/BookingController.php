@@ -1280,10 +1280,17 @@ class BookingController extends Controller
                 'available_count' => $groupData['available_count'] ?? 0,
                 'total_count' => $groupData['total_count'] ?? 0,
                 'thumbnail' => $groupData['thumbnail'] ?? null,
-                'recommended' => false, // Can be enhanced later
+                'recommended' => false,
                 'service_features' => $this->getServiceFeatures($serviceType ?? 'airport_transfers'),
                 'savings_info' => [],
                 'payment_options' => $this->getAvailablePaymentOptions($formattedPricing),
+                // Quotation / booking flags from BookingFlowService
+                'quotation_only' => $groupData['quotation_only'] ?? false,
+                'allow_booking' => $groupData['allow_booking'] ?? true,
+                'quotation_only_reasons' => $groupData['quotation_only_reasons'] ?? [],
+                'is_group_active' => $groupData['is_group_active'] ?? true,
+                'is_inquiry_only' => $groupData['is_inquiry_only'] ?? false,
+                'service_requires_inquiry' => $groupData['service_requires_inquiry'] ?? false,
             ];
         }
         return $results;
@@ -1896,6 +1903,20 @@ class BookingController extends Controller
             'day_rental' => [
                 'No Hidden Charges',
                 'Free Cancellations',
+                'Flexible Drop-off',
+                'Insurance Included'
+            ],
+            'self_drive' => [
+                'No Hidden Charges',
+                'Free Cancellations',
+                'Flexible Drop-off',
+                'Insurance Included',
+                'Self Drive Freedom'
+            ],
+            'with_driver' => [
+                'No Hidden Charges',
+                'Free Cancellations',
+                'Professional Driver',
                 'Flexible Drop-off',
                 'Insurance Included'
             ],

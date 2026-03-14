@@ -3273,46 +3273,27 @@ class BookingFlowService
      */
     private function calculateFallbackPricing(array $params): array
     {
-        $serviceTypeId = $params['service_type_id'];
-
-        // Simple fallback calculation based on service type
-        $serviceType = ServiceType::find($serviceTypeId);
-        $baseRate = $this->getServiceTypeBaseRate($serviceType);
-
+        // Do NOT return fake prices — vehicles without proper pricing
+        // should show "Request Quotation" instead of misleading amounts
         return [
-            'base_amount' => $baseRate,
-            'total_amount' => $baseRate,
+            'base_amount' => 0,
+            'total_amount' => 0,
             'breakdown' => [],
             'calculation_metadata' => [
                 'fallback_used' => true,
-                'reason' => 'No active calculation definition found'
+                'requires_quotation' => true,
+                'reason' => 'No active calculation definition found for this service type'
             ]
         ];
     }
 
     /**
      * Get service type base rate for fallback calculations
+     * @deprecated No longer used — fallback now returns 0 to trigger quotation flow
      */
     private function getServiceTypeBaseRate(?ServiceType $serviceType): float
     {
-        if (!$serviceType) {
-            return 1000; // Default rate
-        }
-
-        // Define base rates by service type
-        $rates = [
-            'chauffeur_driven' => 1200,
-            'wedding_hire' => 2500,
-            'airport_drop' => 800,
-            'airport_pickup' => 800,
-            'transfers' => 900,
-            'break_down_service' => 1500,
-            'corporate' => 1400,
-            'corporate_self' => 1000,
-            'self_driven' => 800,
-        ];
-
-        return $rates[$serviceType->code] ?? 1000;
+        return 0;
     }
 
     /**
