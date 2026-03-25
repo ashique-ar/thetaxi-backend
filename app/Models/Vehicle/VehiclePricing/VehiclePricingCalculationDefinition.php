@@ -420,8 +420,8 @@ class VehiclePricingCalculationDefinition extends Model
                         });
                 });
             })
-            ->orderBy('min_hours')
-            ->orderBy('min_days')
+            ->orderByDesc('min_days')
+            ->orderByDesc('min_hours')
             ->first();
 
         if (!$slabDefinition) {
@@ -758,16 +758,26 @@ class VehiclePricingCalculationDefinition extends Model
                     return $customSlabBase;
                 }
 
+                $durationDaysForFallback = $inputs['duration_days'] ?? $inputs['days'] ?? 0;
                 $slabDefinition = VehiclePricingSlabDefinition::where('service_type_id', $this->service_type_id)
                     ->where('is_active', true)
-                    ->where(function ($query) use ($durationHours) {
-                        $query->where('min_hours', '<=', $durationHours)
-                            ->where(function ($q) use ($durationHours) {
-                                $q->whereNull('max_hours')
-                                    ->orWhere('max_hours', '>=', $durationHours);
-                            });
+                    ->where(function ($query) use ($durationHours, $durationDaysForFallback) {
+                        $query->when($durationDaysForFallback > 0, function ($q) use ($durationDaysForFallback) {
+                            return $q->where('min_days', '<=', $durationDaysForFallback)
+                                ->where(function ($subQ) use ($durationDaysForFallback) {
+                                    $subQ->whereNull('max_days')
+                                        ->orWhere('max_days', '>=', $durationDaysForFallback);
+                                });
+                        })->when($durationHours > 0 && $durationDaysForFallback == 0, function ($q) use ($durationHours) {
+                            return $q->where('min_hours', '<=', $durationHours)
+                                ->where(function ($subQ) use ($durationHours) {
+                                    $subQ->whereNull('max_hours')
+                                        ->orWhere('max_hours', '>=', $durationHours);
+                                });
+                        });
                     })
-                    ->orderBy('min_hours')
+                    ->orderByDesc('min_days')
+                    ->orderByDesc('min_hours')
                     ->first();
 
                 if (!$slabDefinition) {
