@@ -19,7 +19,7 @@
     </div>
 
     <!-- Booking Form Section -->
-    <div class="filter-wrapper text-center hotel mb-40">
+    <div class="filter-wrapper text-center hotel mb-5">
         <div class="container">
             @include('components.booking-form', ['search' => $search])
         </div>
@@ -345,9 +345,7 @@
                                     <small class="text-muted">Drop-off Location:</small>
                                     <p class="mb-1">
                                         @php
-                                            $dropoffDisplay =
-                                                $search->dropoff_location ??
-                                                ($search->pickup_location ?? 'Not specified');
+                                            $dropoffDisplay = $search->dropoff_location ?? ($search->pickup_location ?? 'Not specified');
                                             if (is_array($dropoffDisplay)) {
                                                 $dropoffDisplay = $dropoffDisplay['address'] ?? 'Not specified';
                                             } elseif (is_object($dropoffDisplay)) {

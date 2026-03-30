@@ -23,7 +23,7 @@
     <!-- End Breadcrumb section -->
 
     <!-- Booking Form Section -->
-    <div class="filter-wrapper text-center hotel mb-40">
+    <div class="filter-wrapper text-center hotel mb-5">
         <div class="container">
             @include('components.booking-form')
         </div>

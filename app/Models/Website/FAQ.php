@@ -11,7 +11,7 @@ class FAQ extends BaseModel
 {
     use SoftDeletes;
 
-    protected $table = 'f_a_q_s';
+    protected $table = 'faqs';
 
     protected $fillable = [
         'faq_category_id',
