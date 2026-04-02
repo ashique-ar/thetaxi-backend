@@ -222,71 +222,93 @@ class BookingFlowService
                     ->first();
 
                 if ($serviceTypeModel) {
-                    // Use dynamic pricing calculation for accurate results
+                    // Check if service type uses dropoff time
+                    $usesDropoffTime = $serviceTypeModel->uses_dropoff_time ?? true;
+                    
+                    // If service doesn't use dropoff time, set to_date = from_date
+                    $effectiveToDate = $usesDropoffTime ? $toDate : $fromDate;
+                    $effectiveToTime = $usesDropoffTime ? ($toTime ? $toTime->format('H:i') : null) : null;
+                    
+                    // Use the same comprehensive pricing calculation as the final pricing API
+                    // This ensures vehicle card prices match the final calculated prices
                     $pricingParams = [
                         'service_type_id' => $serviceTypeModel->id,
-                        'service_type' => $serviceType, // Pass service type for distance calculations
+                        'service_type' => $serviceType,
                         'vehicle_group_id' => $group->id,
-                        'duration_hours' => $durationInfo['total_hours'],
-                        'duration_days' => $durationInfo['days'],
+                        'from_date' => $fromDate->format('Y-m-d'),
+                        'to_date' => $effectiveToDate->format('Y-m-d'),
+                        'from_time' => $fromTime,
+                        'to_time' => $effectiveToTime,
                         'pickup_location' => $pickupLocation,
                         'dropoff_location' => $dropoffLocation,
-                        'package_id' => $params['package_id'] ?? null,
-                        'mode' => 'preview'
+                        'service_package_id' => $params['service_package_id'] ?? null,
+                        'customer_id' => $customerId,
+                        'currency' => 'LKR',
+                        'base_currency' => 'LKR',
+                        'is_preview_calculation' => true,
                     ];
 
                     // Debug logging for pricing params
-                    Log::debug('BookingFlowService: About to calculate pricing', [
+                    Log::debug('BookingFlowService: About to calculate pricing (using comprehensive method)', [
                         'vehicle_group_id' => $group->id,
                         'vehicle_group_name' => $group->name,
                         'service_type_id' => $serviceTypeModel->id,
                         'service_type_code' => $serviceTypeModel->code,
+                        'uses_dropoff_time' => $usesDropoffTime,
+                        'from_date' => $fromDate->format('Y-m-d'),
+                        'to_date' => $effectiveToDate->format('Y-m-d'),
+                        'service_package_id' => $pricingParams['service_package_id'],
                         'pricing_params' => $pricingParams,
-                        'pickup_location' => $pickupLocation,
-                        'dropoff_location' => $dropoffLocation,
                     ]);
 
-                    $basePricing = $this->calculateDynamicPricing($pricingParams);
+                    // Use the same calculatePricing method as the final pricing API
+                    $pricingResult = $this->calculatePricing($pricingParams);
 
                     // Debug logging for pricing result
-                    Log::debug('BookingFlowService: Pricing calculation result', [
+                    Log::debug('BookingFlowService: Pricing calculation result (comprehensive)', [
                         'vehicle_group_id' => $group->id,
                         'vehicle_group_name' => $group->name,
-                        'pricing_result' => $basePricing,
-                        'has_total_amount' => isset($basePricing['total_amount']),
-                        'total_amount' => $basePricing['total_amount'] ?? 0,
+                        'pricing_result' => $pricingResult,
+                        'has_summary' => isset($pricingResult['summary']),
+                        'summary_total' => $pricingResult['summary']['total'] ?? 0,
                     ]);
-                    if ($basePricing && isset($basePricing['total_amount']) && $basePricing['total_amount'] > 0) {
+                    
+                    if ($pricingResult && isset($pricingResult['summary']['total']) && $pricingResult['summary']['total'] > 0) {
                         $isPricingConfigured = true;
 
-                        // Get adjustment details for discount display
-                        $adjustmentDetails = $basePricing['adjustment_details'] ?? null;
+                        // Extract pricing information from the comprehensive result
+                        $summary = $pricingResult['summary'];
+                        $basePricingData = $pricingResult['base_pricing'] ?? [];
+                        $adjustmentDetails = $basePricingData['adjustment_details'] ?? null;
 
                         $pricingInfo = [
-                            'base_amount' => $basePricing['total_amount'],
-                            'currency' => 'LKR',
-                            'breakdown' => $basePricing['breakdown'] ?? [],
-                            'distance_details' => $basePricing['distance_details'] ?? null,
-                            'duration_info' => $durationInfo,
-                            'pricing_note' => $this->generatePricingNote($basePricing, $durationInfo),
+                            'base_amount' => $summary['total'], // Use the final total from summary
+                            'currency' => $pricingResult['currency'] ?? 'LKR',
+                            'breakdown' => $basePricingData['breakdown'] ?? [],
+                            'distance_details' => $basePricingData['distance_details'] ?? null,
+                            'duration_info' => $pricingResult['duration'] ?? $durationInfo,
+                            'pricing_note' => $this->generatePricingNote($basePricingData, $pricingResult['duration'] ?? $durationInfo),
                             // Include adjustment details for discount display on frontend
                             'adjustment_details' => $adjustmentDetails,
                             'has_discount' => $adjustmentDetails['has_discount'] ?? false,
-                            'original_amount' => $adjustmentDetails['original_amount'] ?? $basePricing['total_amount'],
+                            'original_amount' => $adjustmentDetails['original_amount'] ?? $summary['total'],
                             'discount_amount' => $adjustmentDetails['total_discount'] ?? 0,
                             'discount_percentage' => $adjustmentDetails['discount_percentage'] ?? 0,
                             'savings_display' => $adjustmentDetails['savings_display'] ?? null,
+                            // Include subtotal and addons for transparency
+                            'subtotal' => $summary['subtotal'] ?? $summary['total'],
+                            'addons_total' => $summary['addons_total'] ?? 0,
                         ];
 
-                        // Log for debugging distance_details and adjustment_details flow
-                        Log::debug('GetAvailableVehicleGroups - Pricing info built', [
+                        // Log for debugging
+                        Log::debug('GetAvailableVehicleGroups - Pricing info built (comprehensive)', [
                             'vehicle_group_id' => $group->id,
-                            'has_distance_details' => isset($basePricing['distance_details']),
-                            'distance_details' => $basePricing['distance_details'] ?? 'NOT SET',
+                            'base_amount' => $pricingInfo['base_amount'],
+                            'subtotal' => $pricingInfo['subtotal'],
+                            'addons_total' => $pricingInfo['addons_total'],
+                            'has_distance_details' => isset($basePricingData['distance_details']),
                             'has_adjustment_details' => isset($adjustmentDetails),
                             'has_discount' => $adjustmentDetails['has_discount'] ?? false,
-                            'discount_amount' => $adjustmentDetails['total_discount'] ?? 0,
-                            'base_amount' => $basePricing['total_amount'],
                         ]);
                     }
                 }
@@ -1749,10 +1771,41 @@ class BookingFlowService
 
                 // Create new booking items with their addons
                 foreach ($params['booking_items'] as $itemData) {
-                    // Calculate pricing for this item
+                    Log::info('Processing booking item for update', [
+                        'item_vehicle_group_id' => $itemData['vehicle_group_id'] ?? 'NOT SET',
+                        'item_vehicle_id' => $itemData['vehicle_id'] ?? 'NOT SET',
+                    ]);
+                    
+                    // IMPORTANT: When a specific vehicle is selected, we should use the vehicle_group_id
+                    // that was originally selected in the UI, NOT the vehicle's actual vehicle_group_id.
+                    // This is because the user explicitly chose a vehicle group for pricing purposes,
+                    // and selecting a specific vehicle is just for assignment, not for changing pricing.
+                    $vehicleGroupId = $itemData['vehicle_group_id'];
+                    
+                    // Only resolve vehicle_group_id if it's missing but vehicle_id is present
+                    if (empty($vehicleGroupId) && !empty($itemData['vehicle_id'])) {
+                        $vehicle = \App\Models\Vehicle\Vehicle::find($itemData['vehicle_id']);
+                        if ($vehicle && $vehicle->vehicle_group_id) {
+                            $vehicleGroupId = $vehicle->vehicle_group_id;
+                            Log::info('Resolved missing vehicle_group_id from vehicle_id', [
+                                'vehicle_id' => $itemData['vehicle_id'],
+                                'resolved_group_id' => $vehicleGroupId
+                            ]);
+                        }
+                    } else if (!empty($itemData['vehicle_id'])) {
+                        // Log when we're keeping the original vehicle_group_id despite having a vehicle_id
+                        Log::info('Keeping original vehicle_group_id for pricing (vehicle selected for assignment only)', [
+                            'vehicle_id' => $itemData['vehicle_id'],
+                            'vehicle_group_id' => $vehicleGroupId
+                        ]);
+                    }
+                    
+                    // Calculate pricing for this item - USE THE SELECTED vehicle_group_id
+                    // Pass vehicle_id for company distance calculations, but pricing is based on vehicle_group_id
                     $itemPricingParams = [
                         'service_type' => $itemData['service_type_id'] ?? $itemData['service_type'],
-                        'vehicle_group_id' => $itemData['vehicle_group_id'],
+                        'vehicle_group_id' => $vehicleGroupId, // Use the selected vehicle_group_id for pricing
+                        'vehicle_id' => $itemData['vehicle_id'] ?? null, // Pass for company distance calculation
                         'from_date' => $itemData['from_date'],
                         'to_date' => $itemData['to_date'],
                         'from_time' => $itemData['from_time'] ?? null,
@@ -1762,10 +1815,22 @@ class BookingFlowService
                         'is_self_driven' => $itemData['is_self_driven'] ?? false,
                         'selected_addons' => $itemData['addons'] ?? [],
                         'booking_id' => $bookingId,
+                        'preserve_custom_pricing' => $params['preserve_custom_pricing'] ?? false,
+                        'variable_customizations' => $params['variable_customizations'] ?? [],
                     ];
+
+                    Log::info('Calculating pricing for booking item', [
+                        'pricing_params' => $itemPricingParams,
+                        'vehicle_group_id_for_pricing' => $vehicleGroupId
+                    ]);
 
                     $itemPricing = $this->calculatePricing($itemPricingParams);
                     $itemTotals = $this->extractTotalsFromPricing($itemPricing);
+
+                    Log::info('Item pricing calculated', [
+                        'item_totals' => $itemTotals,
+                        'item_pricing' => $itemPricing
+                    ]);
 
                     // Extract location data
                     $pickupLocation = $itemData['pickup_location'] ?? null;
@@ -1790,11 +1855,19 @@ class BookingFlowService
                         $dropoffLandmark = $dropoffLocation['landmark'] ?? $dropoffLocation['name'] ?? null;
                     }
 
+                    // Log what we're about to save
+                    Log::info('Creating booking item with dates', [
+                        'from_date' => $itemData['from_date'],
+                        'to_date' => $itemData['to_date'],
+                        'from_time' => $itemData['from_time'] ?? null,
+                        'to_time' => $itemData['to_time'] ?? null,
+                    ]);
+
                     // Create booking item with addons stored in JSON
                     $bookingItem = BookingItem::create([
                         'booking_id' => $booking->id,
                         'service_type_id' => $itemData['service_type_id'] ?? $itemData['service_type'],
-                        'vehicle_group_id' => $itemData['vehicle_group_id'],
+                        'vehicle_group_id' => $vehicleGroupId, // Use resolved vehicle_group_id
                         'vehicle_id' => $itemData['vehicle_id'] ?? null,
                         'driver_id' => $itemData['driver_id'] ?? null,
                         'quantity' => 1,
@@ -2796,7 +2869,8 @@ class BookingFlowService
     public function calculateDynamicPricing(array $params): array
     {
         try {
-            $serviceTypeId = $params['service_type_id'];
+            // Support both service_type and service_type_id
+            $serviceTypeId = $params['service_type_id'] ?? $params['service_type'] ?? null;
             $mode = $params['mode'] ?? 'full_calculation';
             $appliedCustomizations = $params['applied_customizations'] ?? [];
 
@@ -3336,16 +3410,22 @@ class BookingFlowService
             // Check if this is multi-group selection or single group
             $isMultiGroup = !empty($params['vehicle_groups']) && count($params['vehicle_groups']) > 1;
             
-            // Robustify single group detection: if vehicle_group_id is missing but vehicle_id is present, resolve it
+            // IMPORTANT: Only resolve vehicle_group_id from vehicle_id if vehicle_group_id is NOT provided
+            // When both are provided, the vehicle_group_id takes precedence for pricing
             if (empty($params['vehicle_group_id']) && !empty($params['vehicle_id'])) {
                 $vehicle = \App\Models\Vehicle\Vehicle::find($params['vehicle_id']);
                 if ($vehicle) {
                     $params['vehicle_group_id'] = $vehicle->vehicle_group_id;
-                    Log::info('Resolved vehicle_group_id from vehicle_id in calculatePricing', [
+                    Log::info('Resolved vehicle_group_id from vehicle_id in calculatePricing (vehicle_group_id was missing)', [
                         'vehicle_id' => $params['vehicle_id'],
                         'resolved_group_id' => $params['vehicle_group_id']
                     ]);
                 }
+            } else if (!empty($params['vehicle_group_id']) && !empty($params['vehicle_id'])) {
+                Log::info('Using provided vehicle_group_id for pricing (not resolving from vehicle_id)', [
+                    'vehicle_id' => $params['vehicle_id'],
+                    'vehicle_group_id' => $params['vehicle_group_id']
+                ]);
             }
 
             // Also check 'vehicles' array (multi-select format but with only one item)
@@ -3513,10 +3593,8 @@ class BookingFlowService
             $duration = $this->calculateDurationInDaysAndHours($fromDate, $toDate);
 
             // Get item-specific addons and customizations
-            // Note: In the current payload structure, addons/customizations might be global or per-item.
-            // For now, assuming we filter by vehicle_group_id if available, or pass empty if not applicable per item context from frontend yet.
-            // Ideally, the frontend should structure addons inside booking_items or linked by some ID.
-            // As a fallback for the current request context, passing global params but forcing the correct vehicle group context.
+            // Addons can be in item['addons'] or item['selected_addons']
+            $itemAddons = $item['addons'] ?? $item['selected_addons'] ?? [];
             
             $itemParams = array_merge($params, $item, [
                 'vehicle_group_id' => $vehicleGroupId,
@@ -3527,6 +3605,8 @@ class BookingFlowService
                 // Overwrite top-level locations with item-specific locations
                 'pickup_location' => $item['pickup_location'] ?? $params['pickup_location'] ?? null,
                 'dropoff_location' => $item['dropoff_location'] ?? $params['dropoff_location'] ?? null,
+                // Use item-specific addons
+                'selected_addons' => $itemAddons,
             ]);
 
             $groupResult = $this->calculateSingleGroupPricing($itemParams, $duration, $baseCurrency, $targetCurrency);
@@ -3857,9 +3937,39 @@ class BookingFlowService
         $pickupLocation = $this->normalizeLocationInput($pickupLocation);
         $dropoffLocation = $this->normalizeLocationInput($dropoffLocation);
 
-        // Get the company location (specified company or default)
-        $vehicle = $specificVehicleId ? Vehicle::find($specificVehicleId) : null;
-        $company = $vehicle ? $vehicle->company : \App\Models\Company::getDefaultCompany();
+        // Check if this is a preview calculation
+        // For preview mode, always use default company to ensure consistent pricing
+        // For confirmed bookings, use the specific vehicle's company for accurate distance
+        $isPreviewMode = request()->input('is_preview_calculation', false);
+        
+        if ($isPreviewMode) {
+            // Always use default company for preview calculations to ensure consistent pricing
+            $company = \App\Models\Company::getDefaultCompany();
+            Log::info('calculateCompanyDistances: Using default company for preview pricing', [
+                'is_preview' => $isPreviewMode,
+                'vehicle_id_provided' => $specificVehicleId,
+                'company_id' => $company->id ?? null,
+                'company_name' => $company->name ?? null,
+            ]);
+        } else {
+            // For confirmed bookings, try to use vehicle-specific company
+            // If vehicle has no company or vehicle_id is not provided, fallback to default company
+            $vehicle = $specificVehicleId ? Vehicle::find($specificVehicleId) : null;
+            $vehicleCompany = $vehicle ? $vehicle->company : null;
+            
+            // IMPORTANT: Always fallback to default company if vehicle company is null
+            // This ensures consistent garage distance calculations for pricing
+            $company = $vehicleCompany ?? \App\Models\Company::getDefaultCompany();
+            
+            Log::info('calculateCompanyDistances: Using vehicle-specific company for confirmed booking', [
+                'is_preview' => $isPreviewMode,
+                'vehicle_id' => $specificVehicleId,
+                'vehicle_has_company' => $vehicleCompany !== null,
+                'using_default_fallback' => $vehicleCompany === null,
+                'company_id' => $company->id ?? null,
+                'company_name' => $company->name ?? null,
+            ]);
+        }
 
         // Get booking settings to check if garage distance should be included
         $bookingSettings = app(\App\Services\WebsiteSettingsService::class)->getBookingSettings();
@@ -5065,9 +5175,9 @@ class BookingFlowService
                 'addons' => $item->addons ?? [],
                 'customizations' => $item->customizations ?? [],
                 'discounts' => $item->discounts ?? [],
-                'from_date' => $item->from_date ? (is_string($item->from_date) ? $item->from_date : $item->from_date->toISOString()) : null,
+                'from_date' => $item->from_date ? (is_string($item->from_date) ? $item->from_date : $item->from_date->format('Y-m-d')) : null,
                 'from_time' => (string) ($item->from_time ?? ''),
-                'to_date' => $item->to_date ? (is_string($item->to_date) ? $item->to_date : $item->to_date->toISOString()) : null,
+                'to_date' => $item->to_date ? (is_string($item->to_date) ? $item->to_date : $item->to_date->format('Y-m-d')) : null,
                 'to_time' => (string) ($item->to_time ?? ''),
                 'pickup_location' => [
                     'address' => $item->pickup_location['address'] ?? '',
@@ -5179,8 +5289,8 @@ class BookingFlowService
             'service_details' => [
                 'service_type' => $booking->serviceType?->id ?? $booking->service_type_id,
                 'service_type_name' => $booking->serviceType?->name ?? null,
-                'from_date' => $booking->from_date ? (is_string($booking->from_date) ? $booking->from_date : $booking->from_date->toISOString()) : null,
-                'to_date' => $booking->to_date ? (is_string($booking->to_date) ? $booking->to_date : $booking->to_date->toISOString()) : null,
+                'from_date' => $booking->from_date ? (is_string($booking->from_date) ? $booking->from_date : $booking->from_date->format('Y-m-d')) : null,
+                'to_date' => $booking->to_date ? (is_string($booking->to_date) ? $booking->to_date : $booking->to_date->format('Y-m-d')) : null,
                 'from_time' => $booking->from_time ?? null,
                 'to_time' => $booking->to_time ?? null,
                 'pickup_location' => [
@@ -6382,8 +6492,8 @@ class BookingFlowService
         // service details
         $serviceDetails = [
             'service_type' => $booking->serviceType?->name ?? 'Unknown Service',
-            'from_date' => optional($booking->from_date)->toISOString() ?? (string) $booking->from_date,
-            'to_date' => optional($booking->to_date)->toISOString() ?? (string) $booking->to_date,
+            'from_date' => optional($booking->from_date)->format('Y-m-d') ?? (string) $booking->from_date,
+            'to_date' => optional($booking->to_date)->format('Y-m-d') ?? (string) $booking->to_date,
             'from_time' => property_exists($booking, 'from_time') ? (string) $booking->from_time : null,
             'to_time' => property_exists($booking, 'to_time') ? (string) $booking->to_time : null,
             'pickup_location' => [
@@ -6457,9 +6567,9 @@ class BookingFlowService
                 'addons' => $item->addons ?? [],
                 'customizations' => $item->customizations ?? [],
                 'discounts' => $item->discounts ?? [],
-                'from_date' => optional($item->from_date)->toISOString() ?? (string) $item->from_date,
+                'from_date' => optional($item->from_date)->format('Y-m-d') ?? (string) $item->from_date,
                 'from_time' => (string) ($item->from_time ?? ''),
-                'to_date' => optional($item->to_date)->toISOString() ?? (string) $item->to_date,
+                'to_date' => optional($item->to_date)->format('Y-m-d') ?? (string) $item->to_date,
                 'to_time' => (string) ($item->to_time ?? ''),
                 'pickup_location' => $item->pickup_location ?? null,
                 'dropoff_location' => $item->dropoff_location ?? null,
@@ -7396,8 +7506,8 @@ class BookingFlowService
             $conflicts[] = [
                 'booking_id' => $booking->id,
                 'customer_name' => $booking->customer->first_name . ' ' . $booking->customer->last_name,
-                'from' => $item->from_date->format('Y-m-d H:i'),
-                'to' => $item->to_date->format('Y-m-d H:i'),
+                'from' => is_string($item->from_date) ? $item->from_date : $item->from_date->format('Y-m-d H:i'),
+                'to' => is_string($item->to_date) ? $item->to_date : $item->to_date->format('Y-m-d H:i'),
                 'status' => $booking->status,
                 'type' => $item->service_type_id,
                 'overlap_type' => $overlapType,

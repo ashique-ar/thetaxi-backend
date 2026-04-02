@@ -62,8 +62,9 @@ class BookingItem extends BaseModel
         'metadata' => 'array',
         'pickup_location' => 'array',
         'dropoff_location' => 'array',
-        'from_date' => 'datetime',
-        'to_date' => 'datetime',
+        // Don't cast dates to prevent timezone conversion
+        // 'from_date' => 'datetime:Y-m-d H:i:s',
+        // 'to_date' => 'datetime:Y-m-d H:i:s',
         'approved_at' => 'datetime',
         'unit_price' => 'decimal:2',
         'total_price' => 'decimal:2',
@@ -78,6 +79,82 @@ class BookingItem extends BaseModel
         'requires_approval' => 'boolean',
         'is_self_driven' => 'boolean'
     ];
+
+    /**
+     * Custom accessor for from_date to return as Carbon without timezone conversion
+     */
+    public function getFromDateAttribute($value)
+    {
+        if (!$value) return null;
+        // Parse without timezone conversion
+        return \Carbon\Carbon::parse($value, config('app.timezone'));
+    }
+
+    /**
+     * Custom accessor for to_date to return as Carbon without timezone conversion
+     */
+    public function getToDateAttribute($value)
+    {
+        if (!$value) return null;
+        // Parse without timezone conversion
+        return \Carbon\Carbon::parse($value, config('app.timezone'));
+    }
+
+    /**
+     * Custom mutator for from_date to store without timezone conversion
+     */
+    public function setFromDateAttribute($value)
+    {
+        if (!$value) {
+            $this->attributes['from_date'] = null;
+            return;
+        }
+        
+        // Always store as-is without any timezone conversion
+        if (is_string($value)) {
+            // If it's already a datetime string, use it directly
+            $this->attributes['from_date'] = $value;
+        } else if ($value instanceof \DateTimeInterface) {
+            // If it's a DateTime object, format it without timezone conversion
+            $this->attributes['from_date'] = $value->format('Y-m-d H:i:s');
+        } else {
+            // Try to parse it
+            try {
+                $date = \Carbon\Carbon::parse($value);
+                $this->attributes['from_date'] = $date->format('Y-m-d H:i:s');
+            } catch (\Exception $e) {
+                $this->attributes['from_date'] = $value;
+            }
+        }
+    }
+
+    /**
+     * Custom mutator for to_date to store without timezone conversion
+     */
+    public function setToDateAttribute($value)
+    {
+        if (!$value) {
+            $this->attributes['to_date'] = null;
+            return;
+        }
+        
+        // Always store as-is without any timezone conversion
+        if (is_string($value)) {
+            // If it's already a datetime string, use it directly
+            $this->attributes['to_date'] = $value;
+        } else if ($value instanceof \DateTimeInterface) {
+            // If it's a DateTime object, format it without timezone conversion
+            $this->attributes['to_date'] = $value->format('Y-m-d H:i:s');
+        } else {
+            // Try to parse it
+            try {
+                $date = \Carbon\Carbon::parse($value);
+                $this->attributes['to_date'] = $date->format('Y-m-d H:i:s');
+            } catch (\Exception $e) {
+                $this->attributes['to_date'] = $value;
+            }
+        }
+    }
 
     /**
      * Get the booking that owns this item

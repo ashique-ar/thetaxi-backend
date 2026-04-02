@@ -34,6 +34,23 @@
     // Sort fields by order
     $sortedFields = collect($fields)->sortBy('order')->all();
 
+    // Backward-compatible return-trip UX for Ride Now.
+    // The frontend JS still targets legacy IDs/classes (ride_now-return-*).
+    $allowReturnTrip = (bool) ($serviceTypeModel?->allow_return_trip ?? false);
+    $useLegacyRideNowReturnBlock = ($serviceCode === 'ride_now' && $allowReturnTrip);
+    $rideNowReturnFieldKeys = [];
+    if ($useLegacyRideNowReturnBlock) {
+        foreach ($sortedFields as $key => $cfg) {
+            $submitAs = $cfg['submit_as'] ?? $key;
+            if (in_array($submitAs, ['is_return_trip', 'return_date', 'return_time'], true)) {
+                $rideNowReturnFieldKeys[] = $key;
+            }
+        }
+        foreach ($rideNowReturnFieldKeys as $returnFieldKey) {
+            unset($sortedFields[$returnFieldKey]);
+        }
+    }
+
     // Load service packages for this service type
     $servicePackages = collect();
     if ($serviceTypeModel) {
@@ -58,6 +75,45 @@
         'corporate' => 'co',
     ];
     $prefix = $prefixMap[$serviceCode] ?? substr(preg_replace('/[^a-z]/', '', strtolower($serviceCode)), 0, 3);
+
+    // Legacy Ride Now return values
+    $rideNowIsReturnTrip = old('is_return_trip');
+    if ($rideNowIsReturnTrip === null) {
+        if (isset($search) && is_object($search) && property_exists($search, 'is_return_trip')) {
+            $rideNowIsReturnTrip = $search->is_return_trip;
+        } elseif (isset($search) && is_array($search) && array_key_exists('is_return_trip', $search)) {
+            $rideNowIsReturnTrip = $search['is_return_trip'];
+        } else {
+            $rideNowIsReturnTrip = false;
+        }
+    }
+    $rideNowIsReturnTrip = filter_var($rideNowIsReturnTrip, FILTER_VALIDATE_BOOLEAN);
+
+    $rideNowReturnDate = old('return_date');
+    if ($rideNowReturnDate === null) {
+        if (isset($search) && is_object($search) && property_exists($search, 'return_date')) {
+            $rideNowReturnDate = $search->return_date;
+        } elseif (isset($search) && is_array($search) && array_key_exists('return_date', $search)) {
+            $rideNowReturnDate = $search['return_date'];
+        }
+    }
+    if ($rideNowReturnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $rideNowReturnDate)) {
+        $rideNowReturnDate = date('d/m/Y', strtotime($rideNowReturnDate));
+    }
+    if (!$rideNowReturnDate) {
+        $rideNowReturnDate = date('d/m/Y');
+    }
+
+    $rideNowReturnTime = old('return_time');
+    if ($rideNowReturnTime === null) {
+        if (isset($search) && is_object($search) && property_exists($search, 'return_time')) {
+            $rideNowReturnTime = $search->return_time;
+        } elseif (isset($search) && is_array($search) && array_key_exists('return_time', $search)) {
+            $rideNowReturnTime = $search['return_time'];
+        } else {
+            $rideNowReturnTime = '12:00';
+        }
+    }
 @endphp
 
 <form id="{{ $formId }}"
@@ -174,6 +230,93 @@
             @endphp
         @endif
     @endforeach
+
+    @if($useLegacyRideNowReturnBlock)
+        <div class="return-trip-section" id="ride_now-return-trip-section">
+            <div class="return-trip-toggle">
+                <label class="return-trip-checkbox-label">
+                    <input type="checkbox"
+                           name="is_return_trip"
+                           id="ride_now-return-toggle"
+                           value="1"
+                           {{ $rideNowIsReturnTrip ? 'checked' : '' }}>
+                    <span class="return-trip-text">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                             xmlns="http://www.w3.org/2000/svg">
+                            <path
+                                d="M7.5 21L3 16.5M3 16.5L7.5 12M3 16.5H16.5C18.9853 16.5 21 14.4853 21 12C21 9.51472 18.9853 7.5 16.5 7.5H15"
+                                stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                stroke-linejoin="round" />
+                        </svg>
+                        Add Return Trip
+                    </span>
+                </label>
+            </div>
+
+            <div class="return-trip-details"
+                 id="ride_now-return-details"
+                 style="display: {{ $rideNowIsReturnTrip ? 'grid' : 'none' }};">
+                <div class="return-route-summary">
+                    <div class="route-badge">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                             xmlns="http://www.w3.org/2000/svg">
+                            <path d="M9 5L16 12L9 19" stroke="currentColor" stroke-width="2"
+                                  stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                        <span class="route-text">
+                            <strong>Return:</strong>
+                            <span id="return-dropoff-location">{{ $dropoffLoc['address'] ?? 'Drop-off' }}</span>
+                            &rarr;
+                            <span id="return-pickup-location">{{ $pickupLoc['address'] ?? 'Pickup' }}</span>
+                        </span>
+                    </div>
+                </div>
+
+                <div class="single-search-box date-field">
+                    <div class="d-flex align-items-center gap-2 py-1">
+                        <label class="input-label">Return Date</label>
+                        @include('components.partials.calendar-icon')
+                    </div>
+                    <input type="text"
+                           name="return_date"
+                           id="ride_now-return-date"
+                           placeholder="DD/MM/YYYY"
+                           class="custom-datepicker @error('return_date') is-invalid @enderror"
+                           value="{{ $rideNowReturnDate }}"
+                           autocomplete="off">
+                    @error('return_date')
+                        <span class="text-danger small">{{ $message }}</span>
+                    @enderror
+                </div>
+
+                <div class="single-search-box">
+                    <div class="d-flex align-items-center gap-2 py-1">
+                        <label class="input-label">Return Time</label>
+                        @include('components.partials.clock-icon')
+                    </div>
+                    <div class="custom-select-dropdown">
+                        <input type="time"
+                               name="return_time"
+                               id="ride_now-return-time"
+                               value="{{ $rideNowReturnTime }}"
+                               class="@error('return_time') is-invalid @enderror">
+                    </div>
+                    @error('return_time')
+                        <span class="text-danger small">{{ $message }}</span>
+                    @enderror
+                </div>
+
+                <div class="return-pricing-info"
+                     id="ride_now-return-pricing-info"
+                     style="display: {{ $rideNowIsReturnTrip ? 'block' : 'none' }};">
+                    <div class="text-success">
+                        <span id="ride_now-return-discount-label">Same Day Return</span>
+                        <span class="fw-bold" id="ride_now-return-discount-value">50% off return</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    @endif
 
     {{-- Dropoff sync fields for self_drive/with_driver --}}
     @if(in_array($serviceCode, ['self_drive', 'with_driver']))

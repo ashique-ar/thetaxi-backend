@@ -609,38 +609,38 @@ class BookingFlowController extends Controller
 
             $request->validate([
                 'customer_id' => 'nullable|string',
-                'service_type' => 'required|string',
+                // 'service_type' => 'sometimes|string', // Optional at top level for multi-trip bookings
                 
                 // Multi-selection support
-                'vehicle_group_id' => 'sometimes|string',
-                'vehicle_groups' => 'sometimes|array',
-                'vehicle_groups.*.id' => 'required|string',
-                'vehicle_groups.*.quantity' => 'required|integer|min:1',
+                // 'vehicle_group_id' => 'sometimes|string',
+                // 'vehicle_groups' => 'sometimes|array',
+                // 'vehicle_groups.*.id' => 'required|string',
+                // 'vehicle_groups.*.quantity' => 'required|integer|min:1',
 
-                'vehicles' => 'sometimes|array',
-                'vehicles.*.id' => 'required|string',
-                'vehicles.*.group_id' => 'required|string',
+                // 'vehicles' => 'sometimes|array',
+                // 'vehicles.*.id' => 'required|string',
+                // 'vehicles.*.group_id' => 'required|string',
 
-                'drivers' => 'sometimes|array',
-                'drivers.*.id' => 'required|string',
+                // 'drivers' => 'sometimes|array',
+                // 'drivers.*.id' => 'required|string',
 
-                'vehicle_driver_assignments' => 'sometimes|array',
-                'vehicle_driver_assignments.*.vehicle_id' => 'required|string',
-                'vehicle_driver_assignments.*.driver_id' => 'nullable|string',
+                // 'vehicle_driver_assignments' => 'sometimes|array',
+                // 'vehicle_driver_assignments.*.vehicle_id' => 'required|string',
+                // 'vehicle_driver_assignments.*.driver_id' => 'nullable|string',
 
                 'booking_items' => 'sometimes|array',
 
-                'from_date' => 'required|date',
-                'to_date' => 'nullable|date',
-                'from_time' => 'required|string',
-                'to_time' => 'nullable|string',
+                // 'from_date' => 'sometimes|date',
+                // 'to_date' => 'nullable|date',
+                // 'from_time' => 'sometimes|string',
+                // 'to_time' => 'nullable|string',
                 
-                'pickup_location' => 'required|array',
-                'pickup_location.latitude' => 'required|numeric',
-                'pickup_location.longitude' => 'required|numeric',
-                'dropoff_location' => 'required|array',
-                'dropoff_location.latitude' => 'required|numeric',
-                'dropoff_location.longitude' => 'required|numeric',
+                // 'pickup_location' => 'sometimes|array',
+                // 'pickup_location.latitude' => 'sometimes|numeric',
+                // 'pickup_location.longitude' => 'sometimes|numeric',
+                // 'dropoff_location' => 'sometimes|array',
+                // 'dropoff_location.latitude' => 'sometimes|numeric',
+                // 'dropoff_location.longitude' => 'sometimes|numeric',
                 
                 'selected_addons' => 'sometimes|array',
                 'selected_addons.*.id' => 'required|string',
