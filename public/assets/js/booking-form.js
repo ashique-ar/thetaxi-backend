@@ -3123,11 +3123,18 @@
         // Dates / times - normalize to keys backend expects
         const date = getFirstValue(['date', 'from_date', 'pickup_date']);
         const toDate = getFirstValue(['to_date', 'return_date', 'dropoff_date']);
+        const fromTime = getFirstValue(['time', 'from_time', 'pickup_time']);
+        const toTime = getFirstValue(['to_time', 'return_time', 'dropoff_time']);
         ensureHidden('date', date);
         ensureHidden('from_date', date);
         ensureHidden('pickup_date', date);
         ensureHidden('to_date', toDate);
         ensureHidden('return_date', toDate);
+        ensureHidden('time', fromTime);
+        ensureHidden('from_time', fromTime);
+        ensureHidden('pickup_time', fromTime);
+        ensureHidden('to_time', toTime);
+        ensureHidden('return_time', toTime);
 
         // Service type
         const svc = getFirstValue(['service_type']) || form.getAttribute('data-service') || '';
@@ -4015,16 +4022,28 @@
         const rideNowForm = document.getElementById('ride_now-form');
         if (!rideNowForm) return;
 
-        // Get selected package
-        const packageInput = rideNowForm.querySelector('input[name="package_id"]:checked');
+        // Get selected package (supports radio/select/hidden and legacy/new names)
+        let packageId = '';
+        const packageInput = rideNowForm.querySelector('input[name="package_id"]:checked, input[name="service_package_id"]:checked');
+        if (packageInput) {
+            packageId = packageInput.value;
+        }
+        if (!packageId) {
+            const packageField = rideNowForm.querySelector(
+                'select[name="package_id"], select[name="service_package_id"], input[type="hidden"][name="package_id"], input[type="hidden"][name="service_package_id"]'
+            );
+            if (packageField && packageField.value) {
+                packageId = packageField.value;
+            }
+        }
+
         const pickupDateInput = rideNowForm.querySelector('input[name="pickup_date"]');
         const returnDateInput = document.getElementById('ride_now-return-date');
 
-        if (!packageInput || !pickupDateInput || !returnDateInput) {
+        if (!pickupDateInput || !returnDateInput) {
             return;
         }
 
-        const packageId = packageInput.value;
         const pickupDate = parseDDMMYYYY(pickupDateInput.value);
         const returnDate = parseDDMMYYYY(returnDateInput.value);
 

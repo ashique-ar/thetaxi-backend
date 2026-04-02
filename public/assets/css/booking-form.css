@@ -232,6 +232,124 @@
     to   { opacity: 1; transform: translateY(0); }
 }
 
+/* ==================== RIDE NOW RETURN TRIP (LEGACY-COMPAT) ==================== */
+.filter-wrapper .filter-input-wrap .filter-input > .primary-btn1 {
+    align-self: start !important;
+}
+
+.filter-wrapper .filter-input-wrap .filter-input .return-trip-section {
+    width: 100% !important;
+    grid-column: 1 / -1 !important;
+    margin-top: 8px !important;
+}
+
+.filter-wrapper .filter-input-wrap .filter-input .return-trip-toggle {
+    display: flex !important;
+    align-items: center !important;
+}
+
+.return-trip-checkbox-label {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    cursor: pointer !important;
+    font-size: 14px !important;
+    font-weight: 500 !important;
+    color: #2d3e50 !important;
+    user-select: none !important;
+    margin-bottom: 0 !important;
+}
+
+.return-trip-checkbox-label input[type="checkbox"] {
+    width: 16px !important;
+    height: 16px !important;
+    accent-color: var(--primary-color1) !important;
+    cursor: pointer !important;
+    margin: 0 !important;
+}
+
+.return-trip-text {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+}
+
+.return-trip-text svg {
+    color: var(--primary-color1) !important;
+}
+
+.filter-wrapper .filter-input-wrap .filter-input .return-trip-details {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 10px;
+    padding: 12px;
+    background: #f8fafc;
+    border: 1px solid #e6eaef;
+    border-radius: 10px;
+}
+
+.filter-wrapper .filter-input-wrap .filter-input .return-trip-details .return-route-summary {
+    grid-column: 1 / span 2;
+    background: linear-gradient(135deg, #c91c23, #a5161d);
+    border-radius: 8px;
+    padding: 10px 12px;
+}
+
+.filter-wrapper .filter-input-wrap .filter-input .route-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #fff;
+}
+
+.filter-wrapper .filter-input-wrap .filter-input .route-text {
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.filter-wrapper .filter-input-wrap .filter-input .return-trip-details .return-pricing-info {
+    grid-column: 4 / span 1;
+    display: flex;
+    align-items: center;
+    margin-top: 0;
+}
+
+#ride_now-form .primary-btn1 {
+    width: auto !important;
+    min-width: 220px !important;
+    justify-self: start !important;
+    align-self: start !important;
+}
+
+@media (max-width: 991px) {
+    .filter-wrapper .filter-input-wrap .filter-input .return-trip-details {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .filter-wrapper .filter-input-wrap .filter-input .return-trip-details .return-route-summary,
+    .filter-wrapper .filter-input-wrap .filter-input .return-trip-details .return-pricing-info {
+        grid-column: 1 / -1;
+    }
+
+    #ride_now-form .primary-btn1 {
+        width: 100% !important;
+        min-width: 0 !important;
+        justify-self: stretch !important;
+    }
+}
+
+@media (max-width: 576px) {
+    .filter-wrapper .filter-input-wrap .filter-input .return-trip-details {
+        grid-template-columns: 1fr;
+    }
+
+    .filter-wrapper .filter-input-wrap .filter-input .return-trip-details .return-route-summary,
+    .filter-wrapper .filter-input-wrap .filter-input .return-trip-details .return-pricing-info {
+        grid-column: 1 / -1;
+    }
+}
+
 /* ==================== DATE & TIME INPUTS ==================== */
 .custom-datepicker {
     cursor: pointer !important;
