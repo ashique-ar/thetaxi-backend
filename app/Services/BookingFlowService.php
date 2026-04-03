@@ -36,6 +36,21 @@ use App\Services\AssignmentService;
 
 class BookingFlowService
 {
+    private const CANONICAL_SUBMIT_AS_ALIASES = [
+        'from_date' => ['from_date', 'pickup_date', 'date'],
+        'from_time' => ['from_time', 'pickup_time', 'time'],
+        'to_date' => ['to_date', 'dropoff_date', 'return_date'],
+        'to_time' => ['to_time', 'dropoff_time', 'return_time'],
+        'pickup_location' => ['pickup_location', 'pickup', 'from', 'origin'],
+        'dropoff_location' => ['dropoff_location', 'dropoff', 'to', 'destination'],
+    ];
+
+    /**
+     * Request-scope cache for distance calculations to avoid repeated external calls
+     * when the same route is priced across multiple vehicle groups.
+     */
+    private array $companyDistanceCache = [];
+
     protected CurrencyService $currencyService;
     protected PricingVariableService $pricingVariableService;
     protected AssignmentService $assignmentService;
@@ -45,6 +60,520 @@ class BookingFlowService
         $this->currencyService = $currencyService;
         $this->pricingVariableService = $pricingVariableService;
         $this->assignmentService = $assignmentService;
+    }
+
+    /**
+     * Normalize dynamic form payload keys into canonical calculation keys.
+     */
+    public function normalizeDynamicCalculationParams(array $params): array
+    {
+        $context = $this->resolveDynamicFieldContext($params);
+        $fieldMappings = $context['field_mappings'];
+        $usesDropoffTime = $context['uses_dropoff_time'];
+
+        if (empty($params['service_type']) && !empty($context['service_type'])) {
+            $params['service_type'] = (string) ($context['service_type']->id ?? '');
+        }
+        if (empty($params['service_type_id']) && !empty($context['service_type'])) {
+            $params['service_type_id'] = (string) ($context['service_type']->id ?? '');
+        }
+
+        $fromDate = $this->resolveMappedValue(
+            $params,
+            'from_date',
+            data_get($fieldMappings, 'dates.from_date'),
+            ['pickup_date', 'date', 'from_date']
+        );
+        if ($this->hasFilledValue($fromDate)) {
+            $params['from_date'] = $fromDate;
+        }
+
+        $fromTime = $this->resolveMappedValue(
+            $params,
+            'from_time',
+            data_get($fieldMappings, 'dates.from_time'),
+            ['pickup_time', 'time', 'from_time'],
+            '00:00'
+        );
+        if ($this->hasFilledValue($fromTime)) {
+            $params['from_time'] = $fromTime;
+        }
+
+        if ($usesDropoffTime) {
+            $toDate = $this->resolveMappedValue(
+                $params,
+                'to_date',
+                data_get($fieldMappings, 'dates.to_date'),
+                ['dropoff_date', 'return_date', 'to_date']
+            );
+            $toTime = $this->resolveMappedValue(
+                $params,
+                'to_time',
+                data_get($fieldMappings, 'dates.to_time'),
+                ['dropoff_time', 'return_time', 'to_time']
+            );
+
+            // Match frontend behavior: if dropoff fields are absent in config, mirror pickup values.
+            $params['to_date'] = $this->hasFilledValue($toDate) ? $toDate : ($params['from_date'] ?? null);
+            $params['to_time'] = $this->hasFilledValue($toTime) ? $toTime : ($params['from_time'] ?? null);
+        } else {
+            $params['to_date'] = $params['from_date'] ?? ($params['to_date'] ?? null);
+            $params['to_time'] = $params['from_time'] ?? ($params['to_time'] ?? null);
+        }
+
+        $pickupLocation = $this->resolveMappedLocationValue(
+            $params,
+            'pickup_location',
+            data_get($fieldMappings, 'locations.pickup_location'),
+            ['pickup', 'from']
+        );
+        if ($pickupLocation !== null) {
+            $params['pickup_location'] = $pickupLocation;
+        }
+
+        $dropoffLocation = $this->resolveMappedLocationValue(
+            $params,
+            'dropoff_location',
+            data_get($fieldMappings, 'locations.dropoff_location'),
+            ['dropoff', 'to']
+        );
+        if ($dropoffLocation !== null) {
+            $params['dropoff_location'] = $dropoffLocation;
+        }
+
+        if (isset($params['additional_pickup_locations']) && is_string($params['additional_pickup_locations'])) {
+            $params['additional_pickup_locations'] = json_decode($params['additional_pickup_locations'], true) ?? [];
+        }
+        if (isset($params['additional_dropoff_locations']) && is_string($params['additional_dropoff_locations'])) {
+            $params['additional_dropoff_locations'] = json_decode($params['additional_dropoff_locations'], true) ?? [];
+        }
+        if (isset($params['ordered_additional_stops']) && is_string($params['ordered_additional_stops'])) {
+            $params['ordered_additional_stops'] = json_decode($params['ordered_additional_stops'], true) ?? [];
+        }
+        if (isset($params['vehicle_group_filter']) && is_string($params['vehicle_group_filter'])) {
+            $params['vehicle_group_filter'] = json_decode($params['vehicle_group_filter'], true) ?? null;
+        }
+        if (isset($params['pickup_location']) && is_string($params['pickup_location'])) {
+            $params['pickup_location'] = json_decode($params['pickup_location'], true) ?? null;
+        }
+        if (isset($params['dropoff_location']) && is_string($params['dropoff_location'])) {
+            $params['dropoff_location'] = json_decode($params['dropoff_location'], true) ?? null;
+        }
+
+        return $params;
+    }
+
+    /**
+     * Resolve validation requirements from service form configuration.
+     */
+    public function getDynamicCalculationRequirements(array $params): array
+    {
+        $context = $this->resolveDynamicFieldContext($params);
+
+        return [
+            'uses_dropoff_time' => $context['uses_dropoff_time'],
+            'pickup_location_required' => $context['pickup_location_required'],
+            'dropoff_location_required' => $context['dropoff_location_required'],
+        ];
+    }
+
+    /**
+     * Resolve service type config context for dynamic field canonicalization.
+     */
+    private function resolveDynamicFieldContext(array $params): array
+    {
+        $serviceType = $this->resolveServiceTypeFromParams($params);
+        $usesDropoffTime = (bool) ($serviceType?->uses_dropoff_time ?? true);
+
+        $storedConfig = is_array($serviceType?->form_config) ? $serviceType->form_config : [];
+        $fieldMappings = [];
+        if (isset($storedConfig['field_mappings']) && is_array($storedConfig['field_mappings'])) {
+            $fieldMappings = $storedConfig['field_mappings'];
+        } elseif (isset($storedConfig['fields']['field_mappings']) && is_array($storedConfig['fields']['field_mappings'])) {
+            $fieldMappings = $storedConfig['fields']['field_mappings'];
+        }
+
+        $fieldsCandidate = $storedConfig['fields'] ?? $storedConfig;
+        if (isset($fieldsCandidate['field_mappings'])) {
+            unset($fieldsCandidate['field_mappings']);
+        }
+
+        $fields = array_filter($fieldsCandidate, function ($fieldConfig) {
+            return is_array($fieldConfig)
+                && isset($fieldConfig['type'])
+                && isset($fieldConfig['label']);
+        });
+
+        $derivedFieldMappings = $this->deriveFieldMappingsFromFields($fields);
+        $defaultMappings = $serviceType
+            ? $this->getDefaultFieldMappingsForServiceType($serviceType)
+            : [];
+        $fieldMappings = $this->resolveFieldMappingsForContext(
+            $fields,
+            $fieldMappings,
+            $derivedFieldMappings,
+            $defaultMappings
+        );
+
+        $hasConfiguredFields = !empty($fields);
+        $pickupRequired = $this->resolveLocationFieldRequired(
+            $fields,
+            $fieldMappings,
+            'pickup_location',
+            $hasConfiguredFields ? true : true
+        );
+        $dropoffRequired = $this->resolveLocationFieldRequired(
+            $fields,
+            $fieldMappings,
+            'dropoff_location',
+            $hasConfiguredFields ? false : true
+        );
+
+        return [
+            'service_type' => $serviceType,
+            'uses_dropoff_time' => $usesDropoffTime,
+            'field_mappings' => $fieldMappings,
+            'fields' => $fields,
+            'pickup_location_required' => $pickupRequired,
+            'dropoff_location_required' => $dropoffRequired,
+        ];
+    }
+
+    private function resolveFieldMappingsForContext(
+        array $fields,
+        array $storedMappings,
+        array $derivedMappings,
+        array $defaultMappings
+    ): array {
+        $hasConfiguredFields = !empty($fields);
+        $mappingShape = [
+            'dates' => ['from_date', 'from_time', 'to_date', 'to_time'],
+            'locations' => ['pickup_location', 'dropoff_location'],
+        ];
+        $resolved = [
+            'dates' => [],
+            'locations' => [],
+        ];
+
+        foreach ($mappingShape as $group => $keys) {
+            foreach ($keys as $canonicalKey) {
+                $fieldName = $this->resolveMappedFieldNameForContext(
+                    $fields,
+                    data_get($storedMappings, "{$group}.{$canonicalKey}"),
+                    data_get($derivedMappings, "{$group}.{$canonicalKey}"),
+                    $hasConfiguredFields ? null : data_get($defaultMappings, "{$group}.{$canonicalKey}")
+                );
+
+                if ($fieldName !== null) {
+                    $resolved[$group][$canonicalKey] = $fieldName;
+                }
+            }
+        }
+
+        return $resolved;
+    }
+
+    private function resolveMappedFieldNameForContext(
+        array $fields,
+        $preferred,
+        $derived,
+        $fallback
+    ): ?string {
+        foreach ([$preferred, $derived, $fallback] as $candidate) {
+            $normalized = $this->normalizeCanonicalMappingValue($candidate);
+            if ($normalized === null) {
+                continue;
+            }
+
+            if (empty($fields) || array_key_exists($normalized, $fields)) {
+                return $normalized;
+            }
+        }
+
+        return null;
+    }
+
+    private function deriveFieldMappingsFromFields(array $fields): array
+    {
+        $derived = [
+            'dates' => [],
+            'locations' => [],
+        ];
+        $mappingShape = [
+            'dates' => ['from_date', 'from_time', 'to_date', 'to_time'],
+            'locations' => ['pickup_location', 'dropoff_location'],
+        ];
+
+        foreach ($mappingShape as $group => $keys) {
+            foreach ($keys as $canonicalKey) {
+                $fieldName = $this->findCanonicalFieldInConfig($fields, $canonicalKey);
+                if ($fieldName !== null) {
+                    $derived[$group][$canonicalKey] = $fieldName;
+                }
+            }
+        }
+
+        return $derived;
+    }
+
+    private function findCanonicalFieldInConfig(array $fields, string $canonicalKey): ?string
+    {
+        $aliases = self::CANONICAL_SUBMIT_AS_ALIASES[$canonicalKey] ?? [$canonicalKey];
+        $normalizedAliases = array_map(
+            fn($value) => strtolower(trim((string) $value)),
+            $aliases
+        );
+        $expectedTypes = $this->getExpectedFieldTypesForCanonicalKey($canonicalKey);
+
+        foreach ($fields as $fieldName => $fieldConfig) {
+            if (!$this->isFieldTypeCompatibleForCanonical($fieldConfig, $expectedTypes)) {
+                continue;
+            }
+
+            $submitAs = strtolower((string) ($this->normalizeCanonicalMappingValue($fieldConfig['submit_as'] ?? null) ?? ''));
+            if ($submitAs === strtolower($canonicalKey)) {
+                return $fieldName;
+            }
+        }
+
+        foreach ($fields as $fieldName => $fieldConfig) {
+            if (!$this->isFieldTypeCompatibleForCanonical($fieldConfig, $expectedTypes)) {
+                continue;
+            }
+
+            $submitAs = strtolower((string) ($this->normalizeCanonicalMappingValue($fieldConfig['submit_as'] ?? null) ?? ''));
+            if ($submitAs !== '' && in_array($submitAs, $normalizedAliases, true)) {
+                return $fieldName;
+            }
+        }
+
+        foreach ($fields as $fieldName => $fieldConfig) {
+            if (!$this->isFieldTypeCompatibleForCanonical($fieldConfig, $expectedTypes)) {
+                continue;
+            }
+
+            if (in_array(strtolower($fieldName), $normalizedAliases, true)) {
+                return $fieldName;
+            }
+        }
+
+        return null;
+    }
+
+    private function normalizeCanonicalMappingValue($value): ?string
+    {
+        if (!is_string($value)) {
+            return null;
+        }
+
+        $trimmed = trim($value);
+        return $trimmed !== '' ? $trimmed : null;
+    }
+
+    private function getExpectedFieldTypesForCanonicalKey(string $canonicalKey): array
+    {
+        if (in_array($canonicalKey, ['from_date', 'to_date'], true)) {
+            return ['date', 'datetime'];
+        }
+        if (in_array($canonicalKey, ['from_time', 'to_time'], true)) {
+            return ['time', 'datetime'];
+        }
+        if (in_array($canonicalKey, ['pickup_location', 'dropoff_location'], true)) {
+            return ['location'];
+        }
+        return [];
+    }
+
+    private function isFieldTypeCompatibleForCanonical($fieldConfig, array $expectedTypes): bool
+    {
+        if (empty($expectedTypes)) {
+            return true;
+        }
+        if (!is_array($fieldConfig)) {
+            return false;
+        }
+
+        $fieldType = strtolower((string) ($fieldConfig['type'] ?? ''));
+        return in_array($fieldType, $expectedTypes, true);
+    }
+
+    private function resolveServiceTypeFromParams(array $params): ?ServiceType
+    {
+        $candidate = $params['service_type_id'] ?? $params['service_type'] ?? null;
+        if (is_array($candidate)) {
+            $candidate = $candidate['id'] ?? $candidate['code'] ?? $candidate['name'] ?? null;
+        }
+        if (!$this->hasFilledValue($candidate)) {
+            return null;
+        }
+
+        $query = ServiceType::query();
+        $serviceType = $query->where('id', $candidate)
+            ->orWhere('code', $candidate)
+            ->orWhere('name', $candidate)
+            ->orWhere('slug', $candidate)
+            ->first();
+
+        return $serviceType;
+    }
+
+    private function getDefaultFieldMappingsForServiceType(ServiceType $serviceType): array
+    {
+        if ($serviceType->code === 'airport_transfers') {
+            return [
+                'dates' => [
+                    'from_date' => 'date',
+                    'from_time' => 'time',
+                    'to_date' => 'date',
+                    'to_time' => 'time',
+                ],
+                'locations' => [
+                    'pickup_location' => 'pickup_location',
+                    'dropoff_location' => 'dropoff_location',
+                ],
+            ];
+        }
+
+        return [
+            'dates' => [
+                'from_date' => 'pickup_date',
+                'from_time' => 'pickup_time',
+                'to_date' => 'dropoff_date',
+                'to_time' => 'dropoff_time',
+            ],
+            'locations' => [
+                'pickup_location' => 'pickup_location',
+                'dropoff_location' => 'dropoff_location',
+            ],
+        ];
+    }
+
+    private function resolveMappedValue(
+        array $params,
+        string $canonicalKey,
+        ?string $mappedKey,
+        array $fallbackKeys = [],
+        $default = null
+    ) {
+        $keys = array_values(array_filter(array_unique(array_merge(
+            [$canonicalKey],
+            $mappedKey ? [$mappedKey] : [],
+            $fallbackKeys
+        ))));
+
+        foreach ($keys as $key) {
+            if (array_key_exists($key, $params) && $this->hasFilledValue($params[$key])) {
+                return $params[$key];
+            }
+        }
+
+        return $default;
+    }
+
+    private function resolveMappedLocationValue(
+        array $params,
+        string $canonicalKey,
+        ?string $mappedKey,
+        array $fallbackPrefixes = []
+    ): ?array {
+        $keys = array_values(array_filter(array_unique(array_merge(
+            [$canonicalKey],
+            $mappedKey ? [$mappedKey] : [],
+            $fallbackPrefixes
+        ))));
+
+        foreach ($keys as $key) {
+            if (!array_key_exists($key, $params)) {
+                continue;
+            }
+
+            $raw = $params[$key];
+            if (is_string($raw)) {
+                $decoded = json_decode($raw, true);
+                if (is_array($decoded)) {
+                    $raw = $decoded;
+                } elseif ($this->hasFilledValue($raw)) {
+                    $raw = ['address' => $raw];
+                }
+            }
+
+            if (is_array($raw)) {
+                $normalized = $this->normalizeLocationInput($raw);
+                if ($this->isLocationPayloadUsable($normalized)) {
+                    return $normalized;
+                }
+            }
+        }
+
+        foreach ($keys as $prefix) {
+            $flatLocation = $this->extractFlatLocationByPrefix($params, $prefix);
+            if ($flatLocation !== null) {
+                return $flatLocation;
+            }
+        }
+
+        return null;
+    }
+
+    private function extractFlatLocationByPrefix(array $params, string $prefix): ?array
+    {
+        $address = $params[$prefix . '_address'] ?? null;
+        $latitude = $params[$prefix . '_latitude'] ?? null;
+        $longitude = $params[$prefix . '_longitude'] ?? null;
+
+        if (!$this->hasFilledValue($address) && !$this->hasFilledValue($latitude) && !$this->hasFilledValue($longitude)) {
+            return null;
+        }
+
+        return $this->normalizeLocationInput([
+            'address' => $address ?? '',
+            'latitude' => $latitude,
+            'longitude' => $longitude,
+            'city' => $params[$prefix . '_city'] ?? '',
+            'country' => $params[$prefix . '_country'] ?? '',
+            'place_id' => $params[$prefix . '_place_id'] ?? ($params[$prefix . '_placeId'] ?? ''),
+        ]);
+    }
+
+    private function resolveLocationFieldRequired(
+        array $fields,
+        array $fieldMappings,
+        string $canonicalKey,
+        bool $defaultWhenMissing
+    ): bool {
+        if (empty($fields)) {
+            return $defaultWhenMissing;
+        }
+
+        $mappedFieldName = data_get($fieldMappings, 'locations.' . $canonicalKey);
+        if (is_string($mappedFieldName) && isset($fields[$mappedFieldName])) {
+            return (bool) ($fields[$mappedFieldName]['required'] ?? false);
+        }
+
+        if (isset($fields[$canonicalKey])) {
+            return (bool) ($fields[$canonicalKey]['required'] ?? false);
+        }
+
+        return $defaultWhenMissing;
+    }
+
+    private function isLocationPayloadUsable(array $location): bool
+    {
+        $hasAddress = !empty(trim((string) ($location['address'] ?? '')));
+        $hasCoordinates = isset($location['latitude'], $location['longitude'])
+            && $location['latitude'] !== ''
+            && $location['longitude'] !== '';
+
+        return $hasAddress || $hasCoordinates;
+    }
+
+    private function hasFilledValue($value): bool
+    {
+        if (is_array($value)) {
+            return !empty($value);
+        }
+
+        return $value !== null && $value !== '';
     }
 
     public function buildVehicleSearchQuery(
@@ -128,6 +657,9 @@ class BookingFlowService
         $toTime = isset($params['to_time']) ? Carbon::parse($params['to_time']) : null;
         $pickupLocation = $params['pickup_location'] ?? null;
         $dropoffLocation = $params['dropoff_location'] ?? null;
+        $additionalPickupLocations = $this->extractAdditionalLocationsFromParams($params, 'pickup');
+        $additionalDropoffLocations = $this->extractAdditionalLocationsFromParams($params, 'dropoff');
+        $orderedAdditionalStops = $this->extractOrderedAdditionalStopsFromParams($params);
         $customerId = $params['customer_id'] ?? null;
         $excludeBookingId = $params['exclude_booking_id'] ?? null; // For edit mode
 
@@ -224,11 +756,11 @@ class BookingFlowService
                 if ($serviceTypeModel) {
                     // Check if service type uses dropoff time
                     $usesDropoffTime = $serviceTypeModel->uses_dropoff_time ?? true;
-                    
+
                     // If service doesn't use dropoff time, set to_date = from_date
                     $effectiveToDate = $usesDropoffTime ? $toDate : $fromDate;
                     $effectiveToTime = $usesDropoffTime ? ($toTime ? $toTime->format('H:i') : null) : null;
-                    
+
                     // Use the same comprehensive pricing calculation as the final pricing API
                     // This ensures vehicle card prices match the final calculated prices
                     $pricingParams = [
@@ -241,6 +773,9 @@ class BookingFlowService
                         'to_time' => $effectiveToTime,
                         'pickup_location' => $pickupLocation,
                         'dropoff_location' => $dropoffLocation,
+                        'additional_pickup_locations' => $additionalPickupLocations,
+                        'additional_dropoff_locations' => $additionalDropoffLocations,
+                        'ordered_additional_stops' => $orderedAdditionalStops,
                         'service_package_id' => $params['service_package_id'] ?? null,
                         'customer_id' => $customerId,
                         'currency' => 'LKR',
@@ -272,7 +807,7 @@ class BookingFlowService
                         'has_summary' => isset($pricingResult['summary']),
                         'summary_total' => $pricingResult['summary']['total'] ?? 0,
                     ]);
-                    
+
                     if ($pricingResult && isset($pricingResult['summary']['total']) && $pricingResult['summary']['total'] > 0) {
                         $isPricingConfigured = true;
 
@@ -486,7 +1021,7 @@ class BookingFlowService
         $minimumKmApplied = false;
         $minimumKm = null;
         $actualDistanceKm = null;
-        
+
         // Return trip distance tracking
         $outboundDistanceKm = null;
         $returnDistanceKm = null;
@@ -495,20 +1030,28 @@ class BookingFlowService
         $isReturnTrip = $params['is_return_trip'] ?? false;
 
         if ($pickupLocation && $dropoffLocation) {
-            $distanceData = $this->calculateCompanyDistances($pickupLocation, $dropoffLocation, $serviceType);
+            $distanceData = $this->calculateCompanyDistances(
+                $pickupLocation,
+                $dropoffLocation,
+                $serviceType,
+                null,
+                $additionalPickupLocations,
+                $additionalDropoffLocations,
+                $orderedAdditionalStops
+            );
             $outboundDistanceKm = $distanceData['journey_distance'] ?? null;
             $outboundDurationSeconds = $distanceData['journey_duration_seconds'] ?? null;
-            
+
             // For return trips, calculate the return journey distance (dropoff back to pickup)
             if ($isReturnTrip && $outboundDistanceKm) {
                 $returnDistanceData = $this->calculateCompanyDistances($dropoffLocation, $pickupLocation, $serviceType);
                 $returnDistanceKm = $returnDistanceData['journey_distance'] ?? null;
                 $returnDurationSeconds = $returnDistanceData['journey_duration_seconds'] ?? null;
-                
+
                 // Total distance is outbound + return
                 $totalJourneyDistance = $outboundDistanceKm + ($returnDistanceKm ?? 0);
                 $totalJourneyDuration = $outboundDurationSeconds + ($returnDurationSeconds ?? 0);
-                
+
                 Log::info('Return trip distance calculated', [
                     'outbound_km' => $outboundDistanceKm,
                     'return_km' => $returnDistanceKm,
@@ -535,14 +1078,14 @@ class BookingFlowService
                     ->orWhere('code', $serviceTypeId)
                     ->orWhere('name', $serviceTypeId)
                     ->first();
-                    
+
                 if ($serviceTypeModel && $serviceTypeModel->minimum_km > 0) {
                     $minimumKm = (float) $serviceTypeModel->minimum_km;
                     if ($totalJourneyDistance !== null && $totalJourneyDistance > 0 && $totalJourneyDistance < $minimumKm) {
                         $actualDistanceKm = $totalJourneyDistance;
                         $totalJourneyDistance = $minimumKm;
                         $minimumKmApplied = true;
-                        
+
                         Log::info('Minimum KM rule applied in getAvailableVehicleGroups', [
                             'actual_distance' => $actualDistanceKm,
                             'minimum_km' => $minimumKm,
@@ -703,6 +1246,8 @@ class BookingFlowService
                 'current_driver' => $enhancedAvailability['current_driver'],
                 'default_driver' => $enhancedAvailability['default_driver'],
                 'recommended_driver' => $enhancedAvailability['current_driver'] ?? $enhancedAvailability['default_driver'],
+                'default_driver_id' => $vehicle->default_driver_id,
+                'assigned_driver_id' => $enhancedAvailability['current_driver']['id'] ?? null,
                 'force_default_driver' => $vehicle->hasForceDefaultDriver(),
                 'auto_select_driver' => $enhancedAvailability['current_driver'] !== null || $enhancedAvailability['default_driver'] !== null,
 
@@ -1047,6 +1592,11 @@ class BookingFlowService
 
             // 2) Extract quick totals + snapshot from pricing
             $totals = $this->extractTotalsFromPricing($pricing);
+            $approvalTriggers = $this->resolveApprovalTriggers(
+                $params,
+                is_array($pricing['addons_pricing'] ?? null) ? $pricing['addons_pricing'] : null
+            );
+            $requiresApproval = !empty($approvalTriggers);
 
             // 3) Create the booking in "pending_approval"
             $booking = new Booking();
@@ -1065,21 +1615,31 @@ class BookingFlowService
             $booking->discounts = $params['applied_discounts'] ?? [];
 
             // status + approval flags
-            $booking->status = 'pending_approval';
-            $booking->requires_approval = true;
-            $booking->approval_status = 'pending';
-            $booking->approval_requested_by = Auth::id();
-            $booking->approval_requested_at = now();
+            $booking->status = $requiresApproval ? 'pending_approval' : 'confirmed';
+            $booking->confirmed = !$requiresApproval;
+            $booking->confirmed_at = $requiresApproval ? null : now();
+            $booking->requires_approval = $requiresApproval;
+            $booking->approval_status = $requiresApproval ? 'pending' : 'not_required';
+            $booking->approval_requested_by = $requiresApproval ? Auth::id() : null;
+            $booking->approval_requested_at = $requiresApproval ? now() : null;
 
-            $booking->override_reasons = $params['override_reasons'] ?? [];
-            $booking->has_overrides = !empty($booking->override_reasons);
+            if (!$requiresApproval && method_exists(Booking::class, 'generateConfirmationNumber')) {
+                $booking->confirmation_number = Booking::generateConfirmationNumber();
+            }
+
+            $overrideReasons = is_array($params['override_reasons'] ?? null) ? $params['override_reasons'] : [];
+            $booking->override_reasons = $this->mergeApprovalReasonValues(
+                $overrideReasons,
+                $approvalTriggers
+            );
+            $booking->has_overrides = in_array('has_overrides', $approvalTriggers, true);
             $booking->approval_justification = $params['approval_reason'] ?? ($params['review_notes']['booking_notes'] ?? null);
             $booking->review_notes = $params['review_notes'] ?? null;
 
-            $booking->workflow_step = 'pending_approval';
+            $booking->workflow_step = $requiresApproval ? 'pending_approval' : 'confirmed';
             $booking->workflow_data = [
-                'submitted_at' => now()->toISOString(),
-                'submitted_by' => Auth::id(),
+                ($requiresApproval ? 'submitted_at' : 'confirmed_at') => now()->toISOString(),
+                ($requiresApproval ? 'submitted_by' : 'confirmed_by') => Auth::id(),
                 'frontend_data' => $params,
             ];
 
@@ -1096,20 +1656,22 @@ class BookingFlowService
             }
 
             // 6) Handle vehicle and driver assignments
-            $this->createBookingAssignments($booking, $params);
+            $this->createBookingAssignments($booking, $params, $requiresApproval ? 'pending_approval' : 'active');
 
-            // 7) Open approval record + notify
-            $approval = new BookingApproval();
-            $approval->booking_id = $booking->id;
-            $approval->requested_by = Auth::id();
-            $approval->status = BookingApproval::STATUS_PENDING;
-            $approval->override_reasons = $booking->override_reasons ?? [];
-            $approval->justification = $booking->approval_justification ?? null;
-            $approval->priority = $this->determineApprovalPriority($params);
-            $approval->save();
+            // 7) Open approval record + notify when approval is required
+            if ($requiresApproval) {
+                $approval = new BookingApproval();
+                $approval->booking_id = $booking->id;
+                $approval->requested_by = Auth::id();
+                $approval->status = BookingApproval::STATUS_PENDING;
+                $approval->override_reasons = $booking->override_reasons ?? [];
+                $approval->justification = $booking->approval_justification ?? null;
+                $approval->priority = $this->determineApprovalPriority($params);
+                $approval->save();
 
-            if (method_exists($this, 'notifyApprovalRequested')) {
-                $this->notifyApprovalRequested($booking, $approval);
+                if (method_exists($this, 'notifyApprovalRequested')) {
+                    $this->notifyApprovalRequested($booking, $approval);
+                }
             }
 
             return $booking->load(['customer', 'vehicle', 'driver', 'serviceType', 'vehicleGroup', 'approvals']);
@@ -1171,11 +1733,11 @@ class BookingFlowService
         $packageId = $params['package_id'] ?? null;
         $vehicleGroupId = $params['vehicle_group_id'] ?? null;
         $oneWayFare = (float) ($params['one_way_fare'] ?? 0);
-        
+
         // Get kilometers from multiple possible parameter names
-        $kilometers = $params['kilometers'] 
-            ?? $params['journey_distance'] 
-            ?? $params['distance_km'] 
+        $kilometers = $params['kilometers']
+            ?? $params['journey_distance']
+            ?? $params['distance_km']
             ?? $params['total_journey_distance_km']
             ?? null;
 
@@ -1415,7 +1977,7 @@ class BookingFlowService
 
             $booking->customer_id = $params['customer_id'] ?? null;
             $booking->booking_date = now();
-            
+
             // Booking-level metadata only
             $booking->passenger_count = $params['passenger_count'] ?? 1;
             $booking->luggage_count = $params['luggage_count'] ?? null;
@@ -1463,7 +2025,7 @@ class BookingFlowService
             } else {
                 // Handle single group booking - create booking item
                 $this->createSingleGroupBookingItem($booking, $params, $pricing);
-                
+
                 // Legacy addon and customization handling
                 if (!empty($params['selected_addons'])) {
                     $this->syncBookingAddons($booking, $params['selected_addons']);
@@ -1543,20 +2105,20 @@ class BookingFlowService
                 // Extract location coordinates
                 $pickupLocation = $params['pickup_location'] ?? null;
                 $dropoffLocation = $params['dropoff_location'] ?? null;
-                
+
                 $pickupLatitude = null;
                 $pickupLongitude = null;
                 $pickupLandmark = null;
                 $dropoffLatitude = null;
                 $dropoffLongitude = null;
                 $dropoffLandmark = null;
-                
+
                 if (is_array($pickupLocation)) {
                     $pickupLatitude = $pickupLocation['latitude'] ?? $pickupLocation['lat'] ?? null;
                     $pickupLongitude = $pickupLocation['longitude'] ?? $pickupLocation['lng'] ?? null;
                     $pickupLandmark = $pickupLocation['landmark'] ?? $pickupLocation['name'] ?? null;
                 }
-                
+
                 if (is_array($dropoffLocation)) {
                     $dropoffLatitude = $dropoffLocation['latitude'] ?? $dropoffLocation['lat'] ?? null;
                     $dropoffLongitude = $dropoffLocation['longitude'] ?? $dropoffLocation['lng'] ?? null;
@@ -1643,7 +2205,7 @@ class BookingFlowService
         // Extract location data
         $pickupLocation = $params['pickup_location'] ?? null;
         $dropoffLocation = $params['dropoff_location'] ?? null;
-        
+
         // Extract coordinates from location arrays if available
         $pickupLatitude = null;
         $pickupLongitude = null;
@@ -1651,19 +2213,19 @@ class BookingFlowService
         $dropoffLatitude = null;
         $dropoffLongitude = null;
         $dropoffLandmark = null;
-        
+
         if (is_array($pickupLocation)) {
             $pickupLatitude = $pickupLocation['latitude'] ?? $pickupLocation['lat'] ?? null;
             $pickupLongitude = $pickupLocation['longitude'] ?? $pickupLocation['lng'] ?? null;
             $pickupLandmark = $pickupLocation['landmark'] ?? $pickupLocation['name'] ?? null;
         }
-        
+
         if (is_array($dropoffLocation)) {
             $dropoffLatitude = $dropoffLocation['latitude'] ?? $dropoffLocation['lat'] ?? null;
             $dropoffLongitude = $dropoffLocation['longitude'] ?? $dropoffLocation['lng'] ?? null;
             $dropoffLandmark = $dropoffLocation['landmark'] ?? $dropoffLocation['name'] ?? null;
         }
-        
+
         $bookingItem = BookingItem::create([
             'booking_id' => $booking->id,
             'vehicle_group_id' => $params['vehicle_group_id'] ?? null,
@@ -1758,12 +2320,15 @@ class BookingFlowService
             if (array_key_exists('review_notes', $params)) {
                 $booking->review_notes = $params['review_notes'];
             }
+            if (array_key_exists('applied_discounts', $params)) {
+                $booking->discounts = is_array($params['applied_discounts']) ? $params['applied_discounts'] : [];
+            }
 
             // 3) Handle booking items (NEW: support for multiple items with addons per item)
             if (array_key_exists('booking_items', $params) && is_array($params['booking_items'])) {
                 // Delete existing booking items
                 $booking->bookingItems()->delete();
-                
+
                 $totalBaseAmount = 0;
                 $totalAddonsCost = 0;
                 $totalDiscountAmount = 0;
@@ -1775,13 +2340,13 @@ class BookingFlowService
                         'item_vehicle_group_id' => $itemData['vehicle_group_id'] ?? 'NOT SET',
                         'item_vehicle_id' => $itemData['vehicle_id'] ?? 'NOT SET',
                     ]);
-                    
+
                     // IMPORTANT: When a specific vehicle is selected, we should use the vehicle_group_id
                     // that was originally selected in the UI, NOT the vehicle's actual vehicle_group_id.
                     // This is because the user explicitly chose a vehicle group for pricing purposes,
                     // and selecting a specific vehicle is just for assignment, not for changing pricing.
                     $vehicleGroupId = $itemData['vehicle_group_id'];
-                    
+
                     // Only resolve vehicle_group_id if it's missing but vehicle_id is present
                     if (empty($vehicleGroupId) && !empty($itemData['vehicle_id'])) {
                         $vehicle = \App\Models\Vehicle\Vehicle::find($itemData['vehicle_id']);
@@ -1799,7 +2364,7 @@ class BookingFlowService
                             'vehicle_group_id' => $vehicleGroupId
                         ]);
                     }
-                    
+
                     // Calculate pricing for this item - USE THE SELECTED vehicle_group_id
                     // Pass vehicle_id for company distance calculations, but pricing is based on vehicle_group_id
                     $itemPricingParams = [
@@ -1835,20 +2400,20 @@ class BookingFlowService
                     // Extract location data
                     $pickupLocation = $itemData['pickup_location'] ?? null;
                     $dropoffLocation = $itemData['dropoff_location'] ?? null;
-                    
+
                     $pickupLatitude = null;
                     $pickupLongitude = null;
                     $pickupLandmark = null;
                     $dropoffLatitude = null;
                     $dropoffLongitude = null;
                     $dropoffLandmark = null;
-                    
+
                     if (is_array($pickupLocation)) {
                         $pickupLatitude = $pickupLocation['latitude'] ?? $pickupLocation['lat'] ?? null;
                         $pickupLongitude = $pickupLocation['longitude'] ?? $pickupLocation['lng'] ?? null;
                         $pickupLandmark = $pickupLocation['landmark'] ?? $pickupLocation['name'] ?? null;
                     }
-                    
+
                     if (is_array($dropoffLocation)) {
                         $dropoffLatitude = $dropoffLocation['latitude'] ?? $dropoffLocation['lat'] ?? null;
                         $dropoffLongitude = $dropoffLocation['longitude'] ?? $dropoffLocation['lng'] ?? null;
@@ -1918,16 +2483,18 @@ class BookingFlowService
                 ];
             }
             // Legacy support: single item update (backward compatibility)
-            elseif (array_key_exists('vehicle_id', $params) || 
-                array_key_exists('driver_id', $params) || 
+            elseif (
+                array_key_exists('vehicle_id', $params) ||
+                array_key_exists('driver_id', $params) ||
                 array_key_exists('service_type', $params) ||
                 array_key_exists('service_type_id', $params) ||
                 array_key_exists('vehicle_group_id', $params) ||
                 array_key_exists('from_date', $params) ||
                 array_key_exists('to_date', $params) ||
                 array_key_exists('pickup_location', $params) ||
-                array_key_exists('dropoff_location', $params)) {
-                
+                array_key_exists('dropoff_location', $params)
+            ) {
+
                 // Recalculate pricing using the same flat payload
                 $pricing = $this->calculatePricing($params);
                 $totals = $this->extractTotalsFromPricing($pricing);
@@ -1941,36 +2508,36 @@ class BookingFlowService
                 $booking->duration_metrics = $totals['duration_metrics'] ?? $booking->duration_metrics;
                 $booking->distance_metrics = $totals['distance_metrics'] ?? $booking->distance_metrics;
                 $booking->discounts = $params['applied_discounts'] ?? ($booking->discounts ?? []);
-                
+
                 // Update primary booking item or create if doesn't exist
                 $primaryItem = $booking->bookingItems()->first();
-                
+
                 // Extract location data
                 $pickupLocation = $params['pickup_location'] ?? ($primaryItem?->pickup_location ?? null);
                 $dropoffLocation = $params['dropoff_location'] ?? ($primaryItem?->dropoff_location ?? null);
-                
+
                 $pickupLatitude = null;
                 $pickupLongitude = null;
                 $pickupLandmark = null;
                 $dropoffLatitude = null;
                 $dropoffLongitude = null;
                 $dropoffLandmark = null;
-                
+
                 if (is_array($pickupLocation)) {
                     $pickupLatitude = $pickupLocation['latitude'] ?? $pickupLocation['lat'] ?? ($primaryItem?->pickup_latitude ?? null);
                     $pickupLongitude = $pickupLocation['longitude'] ?? $pickupLocation['lng'] ?? ($primaryItem?->pickup_longitude ?? null);
                     $pickupLandmark = $pickupLocation['landmark'] ?? $pickupLocation['name'] ?? ($primaryItem?->pickup_landmark ?? null);
                 }
-                
+
                 if (is_array($dropoffLocation)) {
                     $dropoffLatitude = $dropoffLocation['latitude'] ?? $dropoffLocation['lat'] ?? ($primaryItem?->dropoff_latitude ?? null);
                     $dropoffLongitude = $dropoffLocation['longitude'] ?? $dropoffLocation['lng'] ?? ($primaryItem?->dropoff_longitude ?? null);
                     $dropoffLandmark = $dropoffLocation['landmark'] ?? $dropoffLocation['name'] ?? ($primaryItem?->dropoff_landmark ?? null);
                 }
-                
+
                 // Get addons for this item
                 $itemAddons = $params['selected_addons'] ?? [];
-                
+
                 if ($primaryItem) {
                     // Update existing item
                     $primaryItem->update([
@@ -2043,19 +2610,19 @@ class BookingFlowService
             // 5) Handle assignment updates when vehicle/driver or dates change
             $assignmentChanged = false;
             $bookingItems = $booking->bookingItems;
-            
+
             if ($bookingItems->isNotEmpty()) {
                 foreach ($bookingItems as $item) {
                     // Get original values before update
                     $originalItem = $item->getOriginal();
-                    
+
                     $itemAssignmentChanged = (
                         (isset($originalItem['vehicle_id']) && $originalItem['vehicle_id'] !== $item->vehicle_id) ||
                         (isset($originalItem['driver_id']) && $originalItem['driver_id'] !== $item->driver_id) ||
                         (isset($originalItem['from_date']) && optional($originalItem['from_date'])->toDateString() !== optional($item->from_date)->toDateString()) ||
                         (isset($originalItem['to_date']) && optional($originalItem['to_date'])->toDateString() !== optional($item->to_date)->toDateString())
                     );
-                    
+
                     if ($itemAssignmentChanged) {
                         $assignmentChanged = true;
                         break;
@@ -2068,70 +2635,61 @@ class BookingFlowService
                 $this->updateBookingAssignments($booking, $params, $original);
             }
 
-            // 6) Re-approval logic:
-            //    Trigger when pricing says so OR meaningful totals changed
-            $requiresApprovalByPricing = false;
-            $pricingChanged = false;
-            
-            // Check if any item pricing changed significantly
-            if ($bookingItems->isNotEmpty()) {
-                foreach ($bookingItems as $item) {
-                    $originalItem = $item->getOriginal();
-                    if ((float) ($originalItem['total_price'] ?? 0) !== (float) $item->total_price) {
-                        $pricingChanged = true;
-                        break;
-                    }
-                }
-            }
-            
-            // Also check booking-level pricing changes
-            $pricingChanged = $pricingChanged || (
-                (float) $original->base_amount !== (float) $booking->base_amount ||
-                (float) $original->addons_cost !== (float) $booking->addons_cost ||
-                (float) $original->discount_amount !== (float) $booking->discount_amount ||
-                (float) $original->total_estimated !== (float) $booking->total_estimated
-            );
-            
-            // Check if item-level details changed
-            $detailsChanged = false;
-            if ($bookingItems->isNotEmpty()) {
-                foreach ($bookingItems as $item) {
-                    $originalItem = $item->getOriginal();
-                    $itemDetailsChanged = (
-                        (isset($originalItem['from_date']) && optional($originalItem['from_date'])->toDateString() !== optional($item->from_date)->toDateString()) ||
-                        (isset($originalItem['to_date']) && optional($originalItem['to_date'])->toDateString() !== optional($item->to_date)->toDateString()) ||
-                        (isset($originalItem['vehicle_group_id']) && $originalItem['vehicle_group_id'] !== $item->vehicle_group_id) ||
-                        (isset($originalItem['vehicle_id']) && $originalItem['vehicle_id'] !== $item->vehicle_id) ||
-                        (isset($originalItem['driver_id']) && $originalItem['driver_id'] !== $item->driver_id)
-                    );
-                    
-                    if ($itemDetailsChanged) {
-                        $detailsChanged = true;
-                        break;
-                    }
-                }
-            }
+            // 6) Re-approval logic based on unified approval triggers.
+            $addonsPricingForApproval = isset($pricing) && is_array($pricing['addons_pricing'] ?? null)
+                ? $pricing['addons_pricing']
+                : null;
+            $approvalTriggers = $this->resolveApprovalTriggers($params, $addonsPricingForApproval, $booking);
+            $requiresApprovalNow = !empty($approvalTriggers);
 
-            if ($booking->status !== 'pending_approval' && ($requiresApprovalByPricing || $pricingChanged || $detailsChanged)) {
-                $booking->status = 'pending_approval';
+            $hasOverridesTrigger = in_array('has_overrides', $approvalTriggers, true);
+
+            if ($requiresApprovalNow) {
                 $booking->requires_approval = true;
                 $booking->approval_status = 'pending';
                 $booking->approval_requested_at = now();
                 $booking->approval_requested_by = Auth::id();
-                $booking->save();
+                $booking->confirmed = false;
+                $booking->confirmed_at = null;
+                $booking->has_overrides = $hasOverridesTrigger;
+                $booking->override_reasons = $this->mergeApprovalReasonValues(
+                    is_array($booking->override_reasons ?? null) ? $booking->override_reasons : [],
+                    $approvalTriggers
+                );
 
-                $approval = new BookingApproval();
-                $approval->booking_id = $booking->id;
-                $approval->requested_by = Auth::id();
-                $approval->status = BookingApproval::STATUS_PENDING;
-                $approval->override_reasons = $booking->override_reasons ?? [];
-                $approval->justification = $params['approval_reason'] ?? null;
-                $approval->priority = $this->determineApprovalPriority($params);
-                $approval->save();
+                if ($booking->status !== 'pending_approval') {
+                    $booking->status = 'pending_approval';
+                    $booking->save();
 
-                if (method_exists($this, 'notifyApprovalRequested')) {
-                    $this->notifyApprovalRequested($booking, $approval);
+                    $approval = new BookingApproval();
+                    $approval->booking_id = $booking->id;
+                    $approval->requested_by = Auth::id();
+                    $approval->status = BookingApproval::STATUS_PENDING;
+                    $approval->override_reasons = $booking->override_reasons ?? [];
+                    $approval->justification = $params['approval_reason'] ?? null;
+                    $approval->priority = $this->determineApprovalPriority($params);
+                    $approval->save();
+
+                    if (method_exists($this, 'notifyApprovalRequested')) {
+                        $this->notifyApprovalRequested($booking, $approval);
+                    }
+                } else {
+                    $booking->save();
                 }
+            } else {
+                $booking->requires_approval = false;
+                $booking->approval_status = 'not_required';
+                $booking->approval_requested_at = null;
+                $booking->approval_requested_by = null;
+                $booking->has_overrides = false;
+
+                if ($booking->status === 'pending_approval') {
+                    $booking->status = 'confirmed';
+                    $booking->confirmed = true;
+                    $booking->confirmed_at = $booking->confirmed_at ?? now();
+                }
+
+                $booking->save();
             }
 
             // 7) Optional: allow explicit status override if client sent it AND no approval needed
@@ -2141,6 +2699,11 @@ class BookingFlowService
                 $booking->confirmed_at = now();
                 $booking->save();
             }
+
+            $booking->bookingItems()->update([
+                'status' => $booking->status,
+                'requires_approval' => (bool) $booking->requires_approval,
+            ]);
 
             return $booking->load(['customer', 'vehicleGroup', 'bookingItems.vehicle', 'bookingItems.driver', 'bookingItems.serviceType', 'bookingItems.vehicleGroup', 'approvals']);
         });
@@ -2565,7 +3128,7 @@ class BookingFlowService
                                 ->where('assigned_to', '>=', $toDate);
                         });
                 })
-                ->whereIn('status', ['active', 'pending_approval']);
+                    ->whereIn('status', ['active', 'pending_approval']);
             },
             'user' => function ($query) use ($searchTerm) {
                 $query->Where('first_name', 'LIKE', "%{$searchTerm}%")
@@ -2982,11 +3545,11 @@ class BookingFlowService
                 });
             }
             $serviceType = $serviceTypeQuery->first();
-                
+
             if ($serviceType && $serviceType->minimum_km > 0) {
                 $minimumKm = (float) $serviceType->minimum_km;
                 $inputs['minimum_km'] = $minimumKm;
-                
+
                 Log::debug('prepareCalculationInputs: Minimum KM configured', [
                     'service_type_id' => $serviceType->id,
                     'service_type_code' => $serviceType->code,
@@ -3010,6 +3573,9 @@ class BookingFlowService
         if (isset($params['pickup_location']) && isset($params['dropoff_location'])) {
             $pickupLocation = $this->normalizeLocationInput($params['pickup_location']);
             $dropoffLocation = $this->normalizeLocationInput($params['dropoff_location']);
+            $additionalPickupLocations = $this->extractAdditionalLocationsFromParams($params, 'pickup');
+            $additionalDropoffLocations = $this->extractAdditionalLocationsFromParams($params, 'dropoff');
+            $orderedAdditionalStops = $this->extractOrderedAdditionalStopsFromParams($params);
 
             $pickupIsAirport = $this->isAirportLocation($pickupLocation);
             $dropoffIsAirport = $this->isAirportLocation($dropoffLocation);
@@ -3031,6 +3597,9 @@ class BookingFlowService
                 $dropoffLocation,
                 $serviceType,
                 $params['vehicle_id'] ?? null,
+                $additionalPickupLocations,
+                $additionalDropoffLocations,
+                $orderedAdditionalStops,
             );
 
             // Apply minimum KM rule: if journey distance is below minimum, use minimum for pricing
@@ -3043,7 +3612,7 @@ class BookingFlowService
                     $distanceCalculations['minimum_km'] = $minimumKm;
                     // Use minimum KM for pricing calculations
                     $distanceCalculations['journey_distance'] = $minimumKm;
-                    
+
                     // CRITICAL: Update total_distance to reflect minimum km
                     // If include_garage_distance is false, total_distance = journey_distance
                     // If include_garage_distance is true, total_distance = journey + pickup + delivery
@@ -3111,7 +3680,7 @@ class BookingFlowService
             $inputs['total_distance'] = $inputs['minimum_km'];
             $inputs['journey_distance'] = $inputs['minimum_km'];
             $inputs['minimum_km_applied'] = true;
-            
+
             Log::info('prepareCalculationInputs: Using minimum_km as fallback for total_distance', [
                 'minimum_km' => $inputs['minimum_km'],
                 'reason' => 'no_locations_provided',
@@ -3409,7 +3978,7 @@ class BookingFlowService
 
             // Check if this is multi-group selection or single group
             $isMultiGroup = !empty($params['vehicle_groups']) && count($params['vehicle_groups']) > 1;
-            
+
             // IMPORTANT: Only resolve vehicle_group_id from vehicle_id if vehicle_group_id is NOT provided
             // When both are provided, the vehicle_group_id takes precedence for pricing
             if (empty($params['vehicle_group_id']) && !empty($params['vehicle_id'])) {
@@ -3595,7 +4164,9 @@ class BookingFlowService
             // Get item-specific addons and customizations
             // Addons can be in item['addons'] or item['selected_addons']
             $itemAddons = $item['addons'] ?? $item['selected_addons'] ?? [];
-            
+
+            $itemMetadata = is_array($item['metadata'] ?? null) ? $item['metadata'] : [];
+
             $itemParams = array_merge($params, $item, [
                 'vehicle_group_id' => $vehicleGroupId,
                 'from_date' => $item['from_date'],
@@ -3605,6 +4176,19 @@ class BookingFlowService
                 // Overwrite top-level locations with item-specific locations
                 'pickup_location' => $item['pickup_location'] ?? $params['pickup_location'] ?? null,
                 'dropoff_location' => $item['dropoff_location'] ?? $params['dropoff_location'] ?? null,
+                // Route stops for multi-stop point-to-point calculations
+                'additional_pickup_locations' => $item['additional_pickup_locations']
+                    ?? $itemMetadata['multi_pickup_locations']
+                    ?? $params['additional_pickup_locations']
+                    ?? [],
+                'additional_dropoff_locations' => $item['additional_dropoff_locations']
+                    ?? $itemMetadata['multi_dropoff_locations']
+                    ?? $params['additional_dropoff_locations']
+                    ?? [],
+                'ordered_additional_stops' => $item['ordered_additional_stops']
+                    ?? $itemMetadata['multi_route_stop_order']
+                    ?? $params['ordered_additional_stops']
+                    ?? [],
                 // Use item-specific addons
                 'selected_addons' => $itemAddons,
             ]);
@@ -3740,6 +4324,8 @@ class BookingFlowService
         $totalAmount = $subtotal + $addonsTotal;
         $totalAmountWithoutCustomizations = $subtotalWithoutCustomizations + $addonsTotalWithoutCustomizations;
 
+        $approvalTriggers = $this->resolveApprovalTriggers($params, $addonsPricingResult);
+
         $result = [
             'success' => true,
             'currency' => $targetCurrency,
@@ -3759,7 +4345,9 @@ class BookingFlowService
                 'total_without_customizations' => $totalAmountWithoutCustomizations,
                 'exchange_rate' => $this->currencyService->getExchangeRate($baseCurrency, $targetCurrency)
             ],
-            'requires_approval' => $this->determineApprovalRequirement($params, $basePricingResult, $addonsPricingResult)
+            'requires_approval' => !empty($approvalTriggers),
+            'approval_triggers' => $approvalTriggers,
+            'approval_trigger_labels' => $this->formatApprovalTriggerLabels($approvalTriggers),
         ];
 
         $totalDiscountAmount = 0;
@@ -3868,29 +4456,323 @@ class BookingFlowService
      */
     private function determineApprovalRequirement(array $params, array $basePricing, array $addonsPricing): bool
     {
-        // Check for custom pricing
-        $hasCustomBasePricing = isset($params['custom_base_pricing']) && !empty($params['custom_base_pricing']);
-        $hasCustomAddonPricing = isset($params['custom_addon_pricing']) && !empty($params['custom_addon_pricing']);
+        return !empty($this->resolveApprovalTriggers($params, $addonsPricing));
+    }
 
-        // Check for high value
-        $totalAmount = ($basePricing['total_amount'] ?? 0) + ($addonsPricing['addons_total'] ?? 0);
-        $isHighValue = $totalAmount > 100000; // Configurable threshold
+    private function hasManualApprovalDiscounts(array $discounts): bool
+    {
+        foreach ($discounts as $discount) {
+            if (!is_array($discount)) {
+                continue;
+            }
 
-        // Check for large discounts
-        $hasLargeDiscount = false;
-        if (isset($params['discounts'])) {
-            foreach ($params['discounts'] as $discount) {
-                if (
-                    ($discount['type'] === 'percentage' && $discount['value'] > 20) ||
-                    ($discount['type'] === 'amount' && $discount['value'] > 50000)
-                ) {
-                    $hasLargeDiscount = true;
-                    break;
+            if ($this->isManualApprovalDiscount($discount)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function isManualApprovalDiscount(array $discount): bool
+    {
+        $type = strtolower((string) ($discount['type'] ?? $discount['discount_type'] ?? ''));
+        $source = strtolower((string) ($discount['source'] ?? ''));
+        $code = strtoupper((string) ($discount['code'] ?? ''));
+        $name = strtolower((string) ($discount['name'] ?? $discount['discount_name'] ?? ''));
+        $isManualFlag = filter_var(
+            $discount['is_manual'] ?? $discount['manual'] ?? false,
+            FILTER_VALIDATE_BOOLEAN
+        );
+
+        if ($type === 'loyalty' || $source === 'loyalty') {
+            return false;
+        }
+
+        if ($isManualFlag || $type === 'manual' || $source === 'manual' || $code === 'MANUAL') {
+            return true;
+        }
+
+        return $name !== '' && str_contains($name, 'manual');
+    }
+
+    public function getApprovalTriggersForBooking(Booking $booking, ?BookingItem $bookingItem = null): array
+    {
+        return $this->resolveApprovalTriggers([], null, $booking, $bookingItem);
+    }
+
+    public function formatApprovalTriggerLabels(array $triggers): array
+    {
+        $labels = [
+            'manual_discount' => 'Manual discount applied',
+            'has_overrides' => 'Override applied',
+            'custom_addons' => 'Custom add-on pricing applied',
+            'concurrent_assignments' => 'Concurrent assignment detected',
+        ];
+
+        return array_values(array_unique(array_map(
+            fn($trigger) => $labels[$trigger] ?? ucwords(str_replace('_', ' ', (string) $trigger)),
+            array_values(array_unique($triggers))
+        )));
+    }
+
+    private function resolveApprovalTriggers(
+        array $params = [],
+        ?array $addonsPricing = null,
+        ?Booking $booking = null,
+        ?BookingItem $bookingItem = null
+    ): array {
+        $triggers = [];
+        $discounts = $this->collectApprovalDiscounts($params, $booking);
+
+        if ($this->hasManualApprovalDiscounts($discounts)) {
+            $triggers[] = 'manual_discount';
+        }
+
+        if ($this->hasApprovalOverrides($params, $booking)) {
+            $triggers[] = 'has_overrides';
+        }
+
+        if ($this->hasCustomAddonPricingForApproval($params, $addonsPricing, $booking, $bookingItem)) {
+            $triggers[] = 'custom_addons';
+        }
+
+        if ($this->hasConcurrentAssignmentsForApproval($params, $booking)) {
+            $triggers[] = 'concurrent_assignments';
+        }
+
+        return array_values(array_unique($triggers));
+    }
+
+    private function collectApprovalDiscounts(array $params = [], ?Booking $booking = null): array
+    {
+        $discounts = [];
+        $hasDiscountPayload =
+            array_key_exists('applied_discounts', $params)
+            || array_key_exists('discounts', $params);
+
+        if (isset($params['applied_discounts']) && is_array($params['applied_discounts'])) {
+            $discounts = array_merge($discounts, $params['applied_discounts']);
+        }
+
+        if (isset($params['discounts']) && is_array($params['discounts'])) {
+            $discounts = array_merge($discounts, $params['discounts']);
+        }
+
+        if (!empty($params) && !$hasDiscountPayload) {
+            return $discounts;
+        }
+
+        if (!$hasDiscountPayload && $booking && is_array($booking->discounts ?? null)) {
+            $discounts = array_merge($discounts, $booking->discounts);
+        }
+
+        return $discounts;
+    }
+
+    private function hasApprovalOverrides(array $params = [], ?Booking $booking = null): bool
+    {
+        $hasOverridePayload =
+            array_key_exists('has_overrides', $params)
+            || array_key_exists('override_reasons', $params);
+        $hasOverridesFromParams = filter_var(
+            $params['has_overrides'] ?? false,
+            FILTER_VALIDATE_BOOLEAN
+        );
+        $overrideReasonsFromParams = array_values(array_filter(
+            array_map(fn($reason) => trim((string) $reason), (array) ($params['override_reasons'] ?? []))
+        ));
+
+        if (!empty($params)) {
+            return $hasOverridesFromParams || !empty($overrideReasonsFromParams);
+        }
+
+        if ($booking) {
+            return (bool) ($booking->has_overrides ?? false);
+        }
+
+        return false;
+    }
+
+    private function hasCustomAddonPricingForApproval(
+        array $params = [],
+        ?array $addonsPricing = null,
+        ?Booking $booking = null,
+        ?BookingItem $bookingItem = null
+    ): bool {
+        $hasAddonPayload =
+            array_key_exists('selected_addons', $params)
+            || array_key_exists('booking_items', $params);
+
+        if ($this->hasCustomAddonPricingInCollection((array) ($params['selected_addons'] ?? []))) {
+            return true;
+        }
+
+        if (isset($params['booking_items']) && is_array($params['booking_items'])) {
+            foreach ($params['booking_items'] as $item) {
+                if (!is_array($item)) {
+                    continue;
+                }
+
+                $itemAddons = $item['addons'] ?? $item['selected_addons'] ?? [];
+                if ($this->hasCustomAddonPricingInCollection((array) $itemAddons)) {
+                    return true;
                 }
             }
         }
 
-        return $hasCustomBasePricing || $hasCustomAddonPricing || $isHighValue || $hasLargeDiscount;
+        foreach ((array) ($addonsPricing['addons'] ?? []) as $addon) {
+            if (!is_array($addon)) {
+                continue;
+            }
+
+            $customFlag = filter_var(
+                $addon['is_custom_price'] ?? $addon['is_custom'] ?? false,
+                FILTER_VALIDATE_BOOLEAN
+            );
+            $customPriceProvided = array_key_exists('custom_price', $addon)
+                && !is_null($addon['custom_price'])
+                && $addon['custom_price'] !== '';
+
+            if ($customFlag || $customPriceProvided) {
+                return true;
+            }
+        }
+
+        if ($hasAddonPayload || is_array($addonsPricing)) {
+            return false;
+        }
+
+        if (!empty($params)) {
+            return false;
+        }
+
+        if ($bookingItem && $this->hasCustomAddonPricingInCollection((array) ($bookingItem->addons ?? []))) {
+            return true;
+        }
+
+        if ($booking) {
+            if ($booking->relationLoaded('bookingItems')) {
+                foreach ($booking->bookingItems as $item) {
+                    if ($this->hasCustomAddonPricingInCollection((array) ($item->addons ?? []))) {
+                        return true;
+                    }
+                }
+            }
+
+            if ($booking->relationLoaded('bookingAddons')) {
+                foreach ($booking->bookingAddons as $bookingAddon) {
+                    $baseAddonAmount = (float) ($bookingAddon->addon->amount ?? $bookingAddon->price ?? 0);
+                    $rate = (float) ($bookingAddon->rate ?? $bookingAddon->price ?? $baseAddonAmount);
+                    if (abs($rate - $baseAddonAmount) > 0.0001) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private function hasCustomAddonPricingInCollection(array $addons): bool
+    {
+        foreach ($addons as $addon) {
+            if (!is_array($addon)) {
+                continue;
+            }
+
+            $customFlag = filter_var(
+                $addon['is_custom_price'] ?? $addon['is_custom'] ?? $addon['custom'] ?? false,
+                FILTER_VALIDATE_BOOLEAN
+            );
+            $customPriceProvided = array_key_exists('custom_price', $addon)
+                && !is_null($addon['custom_price'])
+                && $addon['custom_price'] !== '';
+            $source = strtolower((string) ($addon['source'] ?? ''));
+
+            if ($customFlag || $customPriceProvided || $source === 'custom') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function hasConcurrentAssignmentsForApproval(array $params = [], ?Booking $booking = null): bool
+    {
+        $hasConcurrentPayload =
+            array_key_exists('concurrent_assignments', $params)
+            || array_key_exists('assignment_type', $params)
+            || array_key_exists('override_reasons', $params);
+
+        if (!empty($params['concurrent_assignments']) && is_array($params['concurrent_assignments'])) {
+            return true;
+        }
+
+        if (strtolower((string) ($params['assignment_type'] ?? '')) === 'concurrent') {
+            return true;
+        }
+
+        foreach ((array) ($params['override_reasons'] ?? []) as $reason) {
+            if (str_contains(strtolower((string) $reason), 'concurrent')) {
+                return true;
+            }
+        }
+
+        if (!empty($params) && !$hasConcurrentPayload) {
+            return false;
+        }
+
+        if ($hasConcurrentPayload) {
+            return false;
+        }
+
+        if (!$booking) {
+            return false;
+        }
+
+        if (!empty((array) ($booking->concurrent_assignments ?? []))) {
+            return true;
+        }
+
+        if ($booking->relationLoaded('vehicleAssignments')) {
+            if ($booking->vehicleAssignments->contains(fn($assignment) => ($assignment->assignment_type ?? null) === 'concurrent')) {
+                return true;
+            }
+        } else {
+            $hasConcurrentVehicleAssignments = VehicleAssignment::query()
+                ->where('booking_id', $booking->id)
+                ->where('assignment_type', 'concurrent')
+                ->exists();
+
+            if ($hasConcurrentVehicleAssignments) {
+                return true;
+            }
+        }
+
+        if ($booking->relationLoaded('driverAssignments')) {
+            return $booking->driverAssignments->contains(
+                fn($assignment) => ($assignment->assignment_type ?? null) === 'concurrent'
+            );
+        }
+
+        return DriverAssignment::query()
+            ->where('booking_id', $booking->id)
+            ->where('assignment_type', 'concurrent')
+            ->exists();
+    }
+
+    private function mergeApprovalReasonValues(array $existingReasons, array $approvalTriggers): array
+    {
+        $normalizedExisting = array_values(array_filter(array_map(
+            fn($reason) => trim((string) $reason),
+            $existingReasons
+        )));
+
+        return array_values(array_unique(array_merge(
+            $normalizedExisting,
+            $this->formatApprovalTriggerLabels($approvalTriggers)
+        )));
     }
 
     private function calculateDistance(array $from, array $to): ?array
@@ -3932,16 +4814,26 @@ class BookingFlowService
         }
     }
 
-    private function calculateCompanyDistances($pickupLocation, $dropoffLocation, ?string $serviceType = null, ?string $specificVehicleId = null): array
-    {
+    private function calculateCompanyDistances(
+        $pickupLocation,
+        $dropoffLocation,
+        ?string $serviceType = null,
+        ?string $specificVehicleId = null,
+        array $additionalPickupLocations = [],
+        array $additionalDropoffLocations = [],
+        array $orderedAdditionalStops = []
+    ): array {
         $pickupLocation = $this->normalizeLocationInput($pickupLocation);
         $dropoffLocation = $this->normalizeLocationInput($dropoffLocation);
+        $additionalPickupLocations = $this->normalizeLocationList($additionalPickupLocations);
+        $additionalDropoffLocations = $this->normalizeLocationList($additionalDropoffLocations);
+        $orderedAdditionalStops = $this->normalizeOrderedLocationList($orderedAdditionalStops);
 
         // Check if this is a preview calculation
         // For preview mode, always use default company to ensure consistent pricing
         // For confirmed bookings, use the specific vehicle's company for accurate distance
         $isPreviewMode = request()->input('is_preview_calculation', false);
-        
+
         if ($isPreviewMode) {
             // Always use default company for preview calculations to ensure consistent pricing
             $company = \App\Models\Company::getDefaultCompany();
@@ -3956,11 +4848,11 @@ class BookingFlowService
             // If vehicle has no company or vehicle_id is not provided, fallback to default company
             $vehicle = $specificVehicleId ? Vehicle::find($specificVehicleId) : null;
             $vehicleCompany = $vehicle ? $vehicle->company : null;
-            
+
             // IMPORTANT: Always fallback to default company if vehicle company is null
             // This ensures consistent garage distance calculations for pricing
             $company = $vehicleCompany ?? \App\Models\Company::getDefaultCompany();
-            
+
             Log::info('calculateCompanyDistances: Using vehicle-specific company for confirmed booking', [
                 'is_preview' => $isPreviewMode,
                 'vehicle_id' => $specificVehicleId,
@@ -3978,15 +4870,37 @@ class BookingFlowService
             FILTER_VALIDATE_BOOLEAN
         );
 
-        $journeyData = $this->calculateDistance($pickupLocation, $dropoffLocation);
+        $routePoints = $this->buildJourneyRoutePoints(
+            $pickupLocation,
+            $dropoffLocation,
+            $additionalPickupLocations,
+            $additionalDropoffLocations,
+            $orderedAdditionalStops
+        );
+
+        $cacheKey = md5(json_encode([
+            'service_type' => $serviceType,
+            'specific_vehicle_id' => $specificVehicleId,
+            'company_id' => $company->id ?? null,
+            'include_garage_distance' => $includeGarageDistance,
+            'is_preview_mode' => $isPreviewMode,
+            'route_points' => $routePoints,
+        ]));
+
+        if (isset($this->companyDistanceCache[$cacheKey])) {
+            return $this->companyDistanceCache[$cacheKey];
+        }
+
+        $journeyData = $this->calculateRouteDistanceAndDuration($routePoints);
 
         // Handle case when journey distance cannot be calculated
         if ($journeyData === null) {
-            return [
+            $result = [
                 'pickup_distance' => null,
                 'delivery_distance' => null,
                 'journey_distance' => null,
                 'journey_duration_seconds' => null,
+                'additional_stops_count' => max(0, count($routePoints) - 2),
                 'calculation_possible' => false,
                 'service_type_used' => $serviceType,
                 'include_garage_distance' => $includeGarageDistance,
@@ -4001,23 +4915,28 @@ class BookingFlowService
                 ] : null,
                 'company_id' => $company ? $company->id : null
             ];
+            $this->companyDistanceCache[$cacheKey] = $result;
+            return $result;
         }
 
         $journeyDistance = $journeyData['distance_km'];
         $journeyDuration = $journeyData['duration_seconds'];
+        $routeStart = $routePoints[0] ?? $pickupLocation;
+        $routeEnd = $routePoints[count($routePoints) - 1] ?? $dropoffLocation;
 
         if (!$company || !$company->latitude || !$company->longitude) {
             $fallbackPickup = 0.0;
             $fallbackDelivery = 0.0;
-            $totalDistance = $includeGarageDistance 
+            $totalDistance = $includeGarageDistance
                 ? round($journeyDistance + $fallbackPickup + $fallbackDelivery, 2)
                 : round($journeyDistance, 2);
 
-            return [
+            $result = [
                 'pickup_distance' => $fallbackPickup,
                 'delivery_distance' => $fallbackDelivery,
                 'journey_distance' => round($journeyDistance, 2),
                 'journey_duration_seconds' => $journeyDuration,
+                'additional_stops_count' => max(0, count($routePoints) - 2),
                 'total_distance' => $totalDistance,
                 'total_duration_seconds' => $journeyDuration,
                 'calculation_possible' => true,
@@ -4032,6 +4951,8 @@ class BookingFlowService
                 'company_location' => null,
                 'company_id' => $company->id ?? null
             ];
+            $this->companyDistanceCache[$cacheKey] = $result;
+            return $result;
         }
 
         $companyLocation = [
@@ -4049,8 +4970,8 @@ class BookingFlowService
             // With Driver Services:
             // - Pickup Distance: From company to customer's starting location (driver goes to pickup)
             // - Delivery Distance: From customer's drop-off location to company (driver returns)
-            $pickupData = $this->calculateDistance($companyLocation, $pickupLocation);
-            $deliveryData = $this->calculateDistance($dropoffLocation, $companyLocation);
+            $pickupData = $this->calculateDistance($companyLocation, $routeStart);
+            $deliveryData = $this->calculateDistance($routeEnd, $companyLocation);
 
             $distances['pickup_distance'] = $pickupData ? $pickupData['distance_km'] : null;
             $distances['delivery_distance'] = $deliveryData ? $deliveryData['distance_km'] : null;
@@ -4060,8 +4981,8 @@ class BookingFlowService
             // Self Drive Services:
             // - Pickup Distance: From customer's drop-off location to company (customer returns vehicle)
             // - Delivery Distance: From company to customer's starting location (vehicle delivery)
-            $pickupData = $this->calculateDistance($dropoffLocation, $companyLocation);
-            $deliveryData = $this->calculateDistance($companyLocation, $pickupLocation);
+            $pickupData = $this->calculateDistance($routeEnd, $companyLocation);
+            $deliveryData = $this->calculateDistance($companyLocation, $routeStart);
 
             $distances['pickup_distance'] = $pickupData ? $pickupData['distance_km'] : null;
             $distances['delivery_distance'] = $deliveryData ? $deliveryData['distance_km'] : null;
@@ -4071,11 +4992,12 @@ class BookingFlowService
 
         // Check if any distance calculation failed
         if ($distances['pickup_distance'] === null || $distances['delivery_distance'] === null) {
-            return [
+            $result = [
                 'pickup_distance' => $distances['pickup_distance'],
                 'delivery_distance' => $distances['delivery_distance'],
                 'journey_distance' => round($journeyDistance, 2),
                 'journey_duration_seconds' => $journeyDuration,
+                'additional_stops_count' => max(0, count($routePoints) - 2),
                 'total_distance' => round($journeyDistance, 2), // Fallback to journey distance only
                 'total_duration_seconds' => $journeyDuration,
                 'calculation_possible' => true, // Still possible to calculate based on journey
@@ -4090,12 +5012,14 @@ class BookingFlowService
                 'company_location' => $companyLocation,
                 'company_id' => $company->id ?? null
             ];
+            $this->companyDistanceCache[$cacheKey] = $result;
+            return $result;
         }
 
         // Calculate total distance based on setting
         // If include_garage_distance is true: total = journey + pickup + delivery (garage-to-garage)
         // If include_garage_distance is false: total = journey only
-        $totalDistance = $includeGarageDistance 
+        $totalDistance = $includeGarageDistance
             ? round($journeyDistance + $distances['pickup_distance'] + $distances['delivery_distance'], 2)
             : round($journeyDistance, 2);
 
@@ -4105,9 +5029,10 @@ class BookingFlowService
             : $journeyDuration;
 
         // Enhanced return structure with all required fields for pricing calculations (no costs here)
-        return [
+        $result = [
             'journey_distance' => round($journeyDistance, 2),
             'journey_duration_seconds' => $journeyDuration,
+            'additional_stops_count' => max(0, count($routePoints) - 2),
             'pickup_distance' => round($distances['pickup_distance'], 2),
             'pickup_duration_seconds' => $durations['pickup_duration_seconds'],
             'delivery_distance' => round($distances['delivery_distance'], 2),
@@ -4125,6 +5050,8 @@ class BookingFlowService
             'company_location' => $companyLocation,
             'company_id' => $company->id
         ];
+        $this->companyDistanceCache[$cacheKey] = $result;
+        return $result;
     }
 
     /**
@@ -4158,6 +5085,180 @@ class BookingFlowService
 
         return [
             'address' => '',
+        ];
+    }
+
+    /**
+     * Normalize list payload to a clean list of valid location arrays.
+     */
+    private function normalizeLocationList($locations): array
+    {
+        if (!is_array($locations)) {
+            return [];
+        }
+
+        $normalized = [];
+        foreach ($locations as $location) {
+            $item = $this->normalizeLocationInput($location);
+            if ($this->isValidLocationArray($item)) {
+                $normalized[] = $item;
+            }
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * Normalize ordered route stops payload (type + location + route_order).
+     */
+    private function normalizeOrderedLocationList($stops): array
+    {
+        if (is_string($stops)) {
+            $decoded = json_decode($stops, true);
+            $stops = is_array($decoded) ? $decoded : [];
+        }
+
+        if (!is_array($stops)) {
+            return [];
+        }
+
+        $normalized = [];
+        foreach ($stops as $index => $stop) {
+            if (!is_array($stop)) {
+                continue;
+            }
+
+            $typeRaw = strtolower((string) ($stop['type'] ?? $stop['stop_type'] ?? ''));
+            if (!in_array($typeRaw, ['pickup', 'dropoff'], true)) {
+                continue;
+            }
+
+            $rawLocation = $stop['location'] ?? $stop;
+            $location = $this->normalizeLocationInput($rawLocation);
+            if (!$this->isValidLocationArray($location)) {
+                continue;
+            }
+
+            $routeOrder = $stop['route_order'] ?? $stop['routeOrder'] ?? ($index + 1);
+            $routeOrder = is_numeric($routeOrder) ? (int) $routeOrder : ($index + 1);
+            if ($routeOrder <= 0) {
+                $routeOrder = $index + 1;
+            }
+
+            $normalized[] = [
+                'type' => $typeRaw,
+                'route_order' => $routeOrder,
+                'location' => $location,
+            ];
+        }
+
+        usort($normalized, function ($left, $right) {
+            return ($left['route_order'] ?? 0) <=> ($right['route_order'] ?? 0);
+        });
+
+        return $normalized;
+    }
+
+    /**
+     * Extract additional pickup/dropoff locations from top-level params and metadata.
+     */
+    private function extractAdditionalLocationsFromParams(array $params, string $type): array
+    {
+        $directKey = $type === 'pickup'
+            ? 'additional_pickup_locations'
+            : 'additional_dropoff_locations';
+        $legacyKey = $type === 'pickup'
+            ? 'multi_pickup_locations'
+            : 'multi_dropoff_locations';
+
+        $metadata = is_array($params['metadata'] ?? null) ? $params['metadata'] : [];
+        $rawLocations = $params[$directKey]
+            ?? $params[$legacyKey]
+            ?? $metadata[$legacyKey]
+            ?? [];
+
+        return $this->normalizeLocationList($rawLocations);
+    }
+
+    /**
+     * Extract ordered additional route stops from top-level params and metadata.
+     */
+    private function extractOrderedAdditionalStopsFromParams(array $params): array
+    {
+        $metadata = is_array($params['metadata'] ?? null) ? $params['metadata'] : [];
+        $rawStops = $params['ordered_additional_stops']
+            ?? $params['additional_route_stops']
+            ?? $metadata['multi_route_stop_order']
+            ?? [];
+
+        return $this->normalizeOrderedLocationList($rawStops);
+    }
+
+    /**
+     * Build ordered route points.
+     * If explicit ordered stops are provided, use:
+     * primary pickup -> ordered stops (in route_order) -> primary dropoff.
+     * Otherwise fallback to legacy order:
+     * primary pickup -> additional pickups -> additional dropoffs -> primary dropoff.
+     */
+    private function buildJourneyRoutePoints(
+        array $pickupLocation,
+        array $dropoffLocation,
+        array $additionalPickupLocations = [],
+        array $additionalDropoffLocations = [],
+        array $orderedAdditionalStops = []
+    ): array {
+        $points = [$pickupLocation];
+
+        if (!empty($orderedAdditionalStops)) {
+            foreach ($orderedAdditionalStops as $stop) {
+                if (!empty($stop['location']) && is_array($stop['location'])) {
+                    $points[] = $stop['location'];
+                }
+            }
+        } else {
+            foreach ($additionalPickupLocations as $location) {
+                $points[] = $location;
+            }
+
+            foreach ($additionalDropoffLocations as $location) {
+                $points[] = $location;
+            }
+        }
+
+        $points[] = $dropoffLocation;
+
+        return $points;
+    }
+
+    /**
+     * Calculate cumulative distance/duration across all route segments.
+     */
+    private function calculateRouteDistanceAndDuration(array $routePoints): ?array
+    {
+        if (count($routePoints) < 2) {
+            return null;
+        }
+
+        $totalDistance = 0.0;
+        $totalDuration = 0;
+
+        for ($i = 0; $i < count($routePoints) - 1; $i++) {
+            $from = $routePoints[$i];
+            $to = $routePoints[$i + 1];
+
+            $segment = $this->calculateDistance($from, $to);
+            if ($segment === null) {
+                return null;
+            }
+
+            $totalDistance += (float) ($segment['distance_km'] ?? 0);
+            $totalDuration += (int) ($segment['duration_seconds'] ?? 0);
+        }
+
+        return [
+            'distance_km' => round($totalDistance, 2),
+            'duration_seconds' => $totalDuration,
         ];
     }
 
@@ -5273,7 +6374,7 @@ class BookingFlowService
 
         return [
             'booking' => $booking,
-            
+
             // Customer details for form population
             'customer_details' => [
                 'customer_id' => (string) $booking->customer_id,
@@ -5284,7 +6385,7 @@ class BookingFlowService
                 'email' => $booking->customer?->user?->email ?? '',
                 'code' => $booking->customer?->code ?? null,
             ],
-            
+
             // Service details (legacy single-trip support)
             'service_details' => [
                 'service_type' => $booking->serviceType?->id ?? $booking->service_type_id,
@@ -5312,7 +6413,7 @@ class BookingFlowService
                     'country' => $booking->dropoff_location['country'] ?? 'Sri Lanka',
                 ] : null,
             ],
-            
+
             // Vehicle/driver selection (legacy single-trip support)
             'vehicle_driver' => [
                 'vehicle_group_id' => $booking->vehicle_group_id ? (string) $booking->vehicle_group_id : null,
@@ -5325,10 +6426,10 @@ class BookingFlowService
                 'needs_specific_driver' => !is_null($booking->driver_id),
                 'needs_specific_vehicle' => !is_null($booking->vehicle_id),
             ],
-            
+
             // Multi-trip booking items (primary data source for edit form)
             'booking_items' => $bookingItems,
-            
+
             // Addons data
             'addons' => [
                 'selected_addons' => $booking->bookingAddons->pluck('addon_id')->toArray(),
@@ -5346,9 +6447,8 @@ class BookingFlowService
                         ]
                     ];
                 })->toArray(),
-                'special_requests' => $booking->special_requests ?? '',
             ],
-            
+
             // Pricing data
             'pricing' => [
                 'base_amount' => (float) ($summary['subtotal'] ?? $booking->base_amount ?? 0),
@@ -5390,7 +6490,7 @@ class BookingFlowService
                 ],
                 'variable_customizations' => $variableCustomizations,
             ],
-            
+
             // State and status
             'state' => [
                 'status' => $booking->status ?? 'pending',
@@ -5400,7 +6500,7 @@ class BookingFlowService
                 'approval_status' => $booking->approval_status ?? null,
                 'requires_approval' => (bool) ($booking->requires_approval ?? $booking->requiresApproval()),
             ],
-            
+
             // Approval info
             'approval' => $booking->approvals->first() ? [
                 'status' => $booking->approval_status ?? 'pending',
@@ -5412,7 +6512,7 @@ class BookingFlowService
                 'justification' => $booking->approvals->first()->justification ?? null,
                 'comments' => $booking->approvals->first()->comments ?? null,
             ] : null,
-            
+
             // Meta info
             'meta' => [
                 'booking_number' => $booking->booking_number ?? null,
@@ -5761,6 +6861,28 @@ class BookingFlowService
                         ->orderBy('created_at', 'desc');
                 },
                 'booking.driverAssignments.driver.user:id,first_name,last_name,email,phone',
+                'booking.dispatch:id,booking_id,dispatch_status',
+                'booking.bookingItems' => function ($q) {
+                    $q->select([
+                        'id',
+                        'booking_id',
+                        'service_type_id',
+                        'pickup_location',
+                        'pickup_latitude',
+                        'pickup_longitude',
+                        'dropoff_location',
+                        'dropoff_latitude',
+                        'dropoff_longitude',
+                        'from_date',
+                        'from_time',
+                        'to_date',
+                        'to_time',
+                        'created_at',
+                    ])
+                        ->orderBy('from_date')
+                        ->orderBy('from_time')
+                        ->orderBy('created_at');
+                },
                 'serviceType:id,name',
                 'vehicle',
                 'vehicle.vehicleGroup:id,name',
@@ -5856,17 +6978,13 @@ class BookingFlowService
         $requiresApproval = $this->parseBooleanFilter($filters['requires_approval'] ?? null);
         if (!is_null($requiresApproval)) {
             if ($requiresApproval) {
-                $query->where(function ($approvalQuery) {
-                    $approvalQuery->where('booking_items.requires_approval', true)
-                        ->orWhereHas('booking', function ($bookingQuery) {
-                            $bookingQuery->where('requires_approval', true);
-                        });
+                $query->whereHas('booking', function ($bookingQuery) {
+                    $bookingQuery->where('requires_approval', true);
                 });
             } else {
-                $query->where('booking_items.requires_approval', false)
-                    ->whereHas('booking', function ($bookingQuery) {
-                        $bookingQuery->where('requires_approval', false);
-                    });
+                $query->whereHas('booking', function ($bookingQuery) {
+                    $bookingQuery->where('requires_approval', false);
+                });
             }
         }
 
@@ -6074,6 +7192,67 @@ class BookingFlowService
         return null;
     }
 
+    private function mapBookingListLocation($locationData, $latitude = null, $longitude = null): ?array
+    {
+        $normalized = [];
+        if (is_array($locationData)) {
+            $normalized = $locationData;
+        } elseif (is_string($locationData)) {
+            $trimmed = trim($locationData);
+            if ($trimmed !== '') {
+                $decoded = json_decode($trimmed, true);
+
+                // Handle double-encoded JSON strings.
+                if (is_string($decoded)) {
+                    $decoded = json_decode($decoded, true);
+                }
+
+                if (is_array($decoded)) {
+                    $normalized = $decoded;
+                } else {
+                    $normalized = ['address' => $trimmed];
+                }
+            }
+        }
+
+        if (isset($normalized['location']) && is_array($normalized['location'])) {
+            $normalized = array_merge($normalized, $normalized['location']);
+        }
+
+        $address = trim((string) ($normalized['address'] ?? ''));
+        if ($address === '') {
+            $address = trim((string) ($normalized['formatted_address'] ?? ''));
+        }
+        if ($address === '') {
+            $address = trim((string) ($normalized['name'] ?? ''));
+        }
+        if ($address === '') {
+            $parts = array_filter([
+                trim((string) ($normalized['city'] ?? '')),
+                trim((string) ($normalized['area'] ?? '')),
+                trim((string) ($normalized['country'] ?? '')),
+            ]);
+            $address = !empty($parts) ? implode(', ', $parts) : '';
+        }
+
+        $lat = $latitude
+            ?? ($normalized['latitude'] ?? null)
+            ?? ($normalized['lat'] ?? null);
+        $lng = $longitude
+            ?? ($normalized['longitude'] ?? null)
+            ?? ($normalized['lng'] ?? null);
+
+        if ($address === '' && is_null($lat) && is_null($lng)) {
+            return null;
+        }
+
+        return [
+            'address' => $address,
+            'latitude' => $lat,
+            'longitude' => $lng,
+        ];
+    }
+
     private function mapBookingListItem(BookingItem $item): array
     {
         $booking = $item->booking;
@@ -6151,6 +7330,84 @@ class BookingFlowService
 
         $hasConflicts = collect($vehicleAssignmentRows)->contains(fn($assignment) => !empty($assignment['overlap_type']))
             || collect($driverAssignmentRows)->contains(fn($assignment) => !empty($assignment['overlap_type']));
+        $dispatchStatusRaw = $booking?->dispatch?->dispatch_status;
+        $dispatchStatus = $dispatchStatusRaw instanceof \BackedEnum
+            ? $dispatchStatusRaw->value
+            : (is_string($dispatchStatusRaw) ? $dispatchStatusRaw : null);
+        $approvalTriggers = $booking ? $this->getApprovalTriggersForBooking($booking, $item) : [];
+        $approvalTriggerLabels = $this->formatApprovalTriggerLabels($approvalTriggers);
+        $requiresApproval = (bool) (($booking?->requires_approval ?? false) || (($booking?->status ?? null) === 'pending_approval'));
+        if ($requiresApproval && empty($approvalTriggerLabels)) {
+            $approvalTriggerLabels = ['Manager approval required'];
+        }
+
+        $bookingItems = collect($booking?->bookingItems ?? [])
+            ->sortBy(function ($bookingItem) {
+                $dateKey = (string) ($bookingItem->from_date ?? '');
+                $timeKey = (string) ($bookingItem->from_time ?? '');
+                $createdKey = optional($bookingItem->created_at)->timestamp ?? 0;
+
+                return sprintf('%s|%s|%010d', $dateKey, $timeKey, $createdKey);
+            })
+            ->values();
+
+        $itemCount = max(1, $bookingItems->count());
+        $itemSequenceIndex = $bookingItems->search(
+            fn($bookingItem) => (string) $bookingItem->id === (string) $item->id
+        );
+        $itemSequence = $itemSequenceIndex !== false ? ((int) $itemSequenceIndex + 1) : 1;
+
+        $tripCount = max(
+            1,
+            $bookingItems
+                ->map(function ($bookingItem) {
+                    $pickup = is_array($bookingItem->pickup_location) ? $bookingItem->pickup_location : [];
+                    $dropoff = is_array($bookingItem->dropoff_location) ? $bookingItem->dropoff_location : [];
+
+                    return md5(json_encode([
+                        'service_type_id' => (string) ($bookingItem->service_type_id ?? ''),
+                        'from_date' => (string) ($bookingItem->from_date ?? ''),
+                        'from_time' => (string) ($bookingItem->from_time ?? ''),
+                        'to_date' => (string) ($bookingItem->to_date ?? ''),
+                        'to_time' => (string) ($bookingItem->to_time ?? ''),
+                        'pickup_address' => (string) ($pickup['address'] ?? ''),
+                        'pickup_lat' => (string) ($bookingItem->pickup_latitude ?? ($pickup['latitude'] ?? '')),
+                        'pickup_lng' => (string) ($bookingItem->pickup_longitude ?? ($pickup['longitude'] ?? '')),
+                        'dropoff_address' => (string) ($dropoff['address'] ?? ''),
+                        'dropoff_lat' => (string) ($bookingItem->dropoff_latitude ?? ($dropoff['latitude'] ?? '')),
+                        'dropoff_lng' => (string) ($bookingItem->dropoff_longitude ?? ($dropoff['longitude'] ?? '')),
+                    ]));
+                })
+                ->unique()
+                ->count()
+        );
+
+        $firstTrip = $bookingItems->first();
+        $lastTrip = $bookingItems
+            ->sortBy(function ($bookingItem) {
+                $toDateKey = (string) ($bookingItem->to_date ?? $bookingItem->from_date ?? '');
+                $toTimeKey = (string) ($bookingItem->to_time ?? $bookingItem->from_time ?? '');
+                $createdKey = optional($bookingItem->created_at)->timestamp ?? 0;
+
+                return sprintf('%s|%s|%010d', $toDateKey, $toTimeKey, $createdKey);
+            })
+            ->last();
+
+        $listStartPoint = $this->mapBookingListLocation(
+            $firstTrip?->pickup_location ?? ($item->pickup_location ?? ($booking?->pickup_location ?? null)),
+            $firstTrip?->pickup_latitude ?? ($item->pickup_latitude ?? ($booking?->pickup_latitude ?? null)),
+            $firstTrip?->pickup_longitude ?? ($item->pickup_longitude ?? ($booking?->pickup_longitude ?? null)),
+        );
+
+        $listEndPoint = $this->mapBookingListLocation(
+            $lastTrip?->dropoff_location ?? ($item->dropoff_location ?? ($booking?->dropoff_location ?? null)),
+            $lastTrip?->dropoff_latitude ?? ($item->dropoff_latitude ?? ($booking?->dropoff_latitude ?? null)),
+            $lastTrip?->dropoff_longitude ?? ($item->dropoff_longitude ?? ($booking?->dropoff_longitude ?? null)),
+        );
+        $listFromDate = $firstTrip?->from_date ?? $item->from_date ?? null;
+        $listFromTime = $firstTrip?->from_time ?? $item->from_time ?? null;
+        $listToDate = $lastTrip?->to_date ?? $lastTrip?->from_date ?? $item->to_date ?? null;
+        $listToTime = $lastTrip?->to_time ?? $lastTrip?->from_time ?? $item->to_time ?? null;
 
         return [
             'id' => (string) $item->id,
@@ -6159,6 +7416,7 @@ class BookingFlowService
             'reference_number' => $booking?->confirmation_number ?? $booking?->invoice_number ?? $booking?->booking_number,
             'status' => $item->status ?? 'pending',
             'booking_status' => $booking?->status,
+            'dispatch_status' => $dispatchStatus,
             'service_type' => $itemServiceType ? [
                 'id' => (string) $itemServiceType->id,
                 'name' => $itemServiceType->name,
@@ -6205,6 +7463,26 @@ class BookingFlowService
             ] : null,
             'vehicle_assignments' => $vehicleAssignmentRows,
             'driver_assignments' => $driverAssignmentRows,
+            'pickup_location' => $this->mapBookingListLocation(
+                $item->pickup_location ?? ($booking?->pickup_location ?? null),
+                $item->pickup_latitude ?? ($booking?->pickup_latitude ?? null),
+                $item->pickup_longitude ?? ($booking?->pickup_longitude ?? null),
+            ),
+            'dropoff_location' => $this->mapBookingListLocation(
+                $item->dropoff_location ?? ($booking?->dropoff_location ?? null),
+                $item->dropoff_latitude ?? ($booking?->dropoff_latitude ?? null),
+                $item->dropoff_longitude ?? ($booking?->dropoff_longitude ?? null),
+            ),
+            'list_start_point' => $listStartPoint,
+            'list_end_point' => $listEndPoint,
+            'list_from_date' => $listFromDate,
+            'list_to_date' => $listToDate,
+            'list_from_time' => $listFromTime,
+            'list_to_time' => $listToTime,
+            'trip_count' => $tripCount,
+            'item_count' => $itemCount,
+            'item_sequence' => $itemSequence,
+            'is_multi_trip' => $tripCount > 1,
             'from_date' => $item->from_date,
             'to_date' => $item->to_date,
             'from_time' => $item->from_time,
@@ -6213,8 +7491,10 @@ class BookingFlowService
             'booking_total_amount' => (float) ($booking?->total_actual ?? $booking?->total_estimated ?? 0),
             'currency' => $item->currency ?? 'LKR',
             'created_at' => $item->created_at ?? $booking?->created_at,
-            'requires_approval' => (bool) ($item->requires_approval ?? false) || (bool) ($booking?->requires_approval ?? false),
-            'booking_requires_approval' => (bool) ($booking?->requires_approval ?? false),
+            'requires_approval' => $requiresApproval,
+            'booking_requires_approval' => $requiresApproval,
+            'approval_triggers' => $approvalTriggers,
+            'approval_trigger_labels' => $approvalTriggerLabels,
             'priority' => $booking?->approval_priority ?? 'normal',
             'item_type' => $item->item_type,
             'is_self_driven' => (bool) ($item->is_self_driven ?? false),
@@ -6321,7 +7601,7 @@ class BookingFlowService
             ],
             'final' => [
                 'final_amount' => $finalAmt,
-                'requires_approval' => (bool) ($pricingSnapshot['requires_approval'] ?? $booking->requires_approval ?? false),
+                'requires_approval' => (bool) ($booking->requires_approval ?? false),
             ],
             'signals' => [
                 'base_overrides' => (bool) ($detailed['customizations_applied']['base_overrides'] ?? ($afterBase !== $beforeBase)),
@@ -6726,11 +8006,11 @@ class BookingFlowService
             'approval' => $approval,
             // NEW: Include full approval history
             'approval_history' => $approvalHistory,
-            
+
             // NEW: Include dispatch and QC records
             'dispatch' => $dispatch,
             'qc' => $qc,
-            
+
             'override_reasons' => $overrideReasons,
             'review_notes' => $reviewNotes,
 
@@ -7761,9 +9041,18 @@ class BookingFlowService
             if (!empty($originalParams['duration'])) {
                 // Apply same duration calculations to original pricing
                 $duration = $originalParams['duration'];
+                $canRecalculateOriginalTotal = false;
                 if (isset($originalBasePricing['breakdown']) && is_array($originalBasePricing['breakdown'])) {
                     foreach ($originalBasePricing['breakdown'] as &$item) {
                         $rateType = strtolower($item['rate_type'] ?? '');
+                        if ($rateType === '') {
+                            // Pricing formulas already returned the duration-adjusted total.
+                            // Do not collapse it back to the unit/slab rate when the
+                            // breakdown row has no explicit rate type metadata.
+                            continue;
+                        }
+
+                        $canRecalculateOriginalTotal = true;
                         $originalAmount = $item['unit_amount'] ?? $item['amount'] ?? 0;
                         if (!isset($item['unit_amount'])) {
                             $item['unit_amount'] = $originalAmount;
@@ -7780,17 +9069,28 @@ class BookingFlowService
                         }
                     }
                 }
-                $originalBasePricing['total_amount'] = array_sum(array_column($originalBasePricing['breakdown'] ?? [], 'amount'));
+                if ($canRecalculateOriginalTotal) {
+                    $originalBasePricing['total_amount'] = array_sum(array_column($originalBasePricing['breakdown'] ?? [], 'amount'));
+                }
             }
         }
 
         // Apply duration multipliers to base pricing items
         if (!empty($params['duration'])) {
             $duration = $params['duration'];
+            $canRecalculateBaseTotal = false;
 
             if (isset($basePricing['breakdown']) && is_array($basePricing['breakdown'])) {
                 foreach ($basePricing['breakdown'] as &$item) {
                     $rateType = strtolower($item['rate_type'] ?? '');
+                    if ($rateType === '') {
+                        // The dynamic pricing formula has already applied duration.
+                        // Without an explicit rate_type, this row should be treated
+                        // as an already-final amount.
+                        continue;
+                    }
+
+                    $canRecalculateBaseTotal = true;
                     $originalAmount = $item['unit_amount'] ?? $item['amount'] ?? 0;
 
                     // Store original unit amount if not already present
@@ -7828,8 +9128,10 @@ class BookingFlowService
                 }
             }
 
-            // Recalculate total amount
-            $basePricing['total_amount'] = array_sum(array_column($basePricing['breakdown'] ?? [], 'amount'));
+            if ($canRecalculateBaseTotal) {
+                // Recalculate only when breakdown rows explicitly carry duration-aware metadata.
+                $basePricing['total_amount'] = array_sum(array_column($basePricing['breakdown'] ?? [], 'amount'));
+            }
         }
 
         // Add original pricing for comparison if customizations were applied
@@ -8438,7 +9740,7 @@ class BookingFlowService
     {
         return DB::transaction(function () use ($params) {
             $bookingId = $params['booking_id'] ?? null;
-            
+
             if ($bookingId) {
                 $booking = Booking::findOrFail($bookingId);
             } else {
@@ -8451,14 +9753,14 @@ class BookingFlowService
             $booking->customer_id = $params['customer_id'] ?? $booking->customer_id ?? null;
             $booking->booking_date = $booking->booking_date ?? now();
             $booking->status = 'draft';
-            
+
             // Extract pricing if available
             $pricing = [];
             try {
                 // Determine if we should call multi-trip or single-trip pricing
                 $pricing = $this->calculatePricing($params);
                 $totals = $this->extractTotalsFromPricing($pricing);
-                
+
                 $booking->pricing_snapshot = $totals['pricing_snapshot'];
                 $booking->base_amount = $totals['base_amount'];
                 $booking->addons_cost = $totals['addons_cost'];
@@ -8470,7 +9772,7 @@ class BookingFlowService
             }
 
             $booking->workflow_step = 'draft';
-            
+
             $existingWorkflowData = is_array($booking->workflow_data) ? $booking->workflow_data : [];
             $booking->workflow_data = array_merge($existingWorkflowData, [
                 'last_draft_save' => now()->toISOString(),
@@ -8483,7 +9785,7 @@ class BookingFlowService
             if (isset($params['booking_items']) && is_array($params['booking_items'])) {
                 // Delete existing items for draft to keep it clean
                 $booking->bookingItems()->delete();
-                
+
                 foreach ($params['booking_items'] as $itemData) {
                     $itemPricing = $pricing['items'][$itemData['id'] ?? ''] ?? $pricing;
                     $this->createSingleGroupBookingItem($booking, $itemData, $itemPricing);
