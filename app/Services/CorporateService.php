@@ -82,6 +82,7 @@ class CorporateService
     public function createDepartment(Corporate $corporate, array $data): CorporateDepartment
     {
         $data['corporate_id'] = $corporate->id;
+        $data['is_active'] = $data['is_active'] ?? true;
         $department = CorporateDepartment::create($data);
 
         $this->logAudit('create', 'CorporateDepartment', $department->id, [
@@ -126,6 +127,7 @@ class CorporateService
     public function createDivision(CorporateDepartment $dept, array $data): CorporateDivision
     {
         $data['department_id'] = $dept->id;
+        $data['is_active'] = $data['is_active'] ?? true;
         $division = CorporateDivision::create($data);
 
         $this->logAudit('create', 'CorporateDivision', $division->id, [

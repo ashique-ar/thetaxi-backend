@@ -7,6 +7,11 @@ use App\Services\BookingFlowService;
 use App\Services\DiscountService;
 use App\Http\Resources\Booking\BookingFlowResource;
 use App\Models\Booking\Booking;
+use App\Models\Corporate\Corporate;
+use App\Models\Corporate\CorporateDepartment;
+use App\Models\Corporate\CorporateDivision;
+use App\Models\Corporate\CorporateEmployee;
+use App\Models\Customer;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -14,8 +19,10 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 use App\Services\CurrencyService;
 use App\Services\AssignmentService;
+use App\Services\CorporateService;
 
 class BookingFlowController extends Controller
 {
@@ -23,17 +30,20 @@ class BookingFlowController extends Controller
     protected $currencyService;
     protected $discountService;
     protected $assignmentService;
+    protected $corporateService;
 
     public function __construct(
         BookingFlowService $bookingFlowService,
         CurrencyService $currencyService,
         DiscountService $discountService,
-        AssignmentService $assignmentService
+        AssignmentService $assignmentService,
+        CorporateService $corporateService
     ) {
         $this->bookingFlowService = $bookingFlowService;
         $this->currencyService = $currencyService;
         $this->discountService = $discountService;
         $this->assignmentService = $assignmentService;
+        $this->corporateService = $corporateService;
     }
 
     /**
@@ -308,6 +318,17 @@ class BookingFlowController extends Controller
             // Build validation rules dynamically
             $rules = [
                 'customer_id' => 'nullable|string',
+                'is_corporate_booking' => 'sometimes|boolean',
+                'corporate_account_id' => 'nullable|uuid|exists:corporates,id',
+                'employee_id' => 'nullable|uuid|exists:users,id',
+                'corporate_department_id' => 'nullable|uuid|exists:corporate_departments,id',
+                'corporate_division_id' => 'nullable|uuid|exists:corporate_divisions,id',
+                'cost_center' => 'nullable|string|max:255',
+                'project_code' => 'nullable|string|max:255',
+                'corporate_contact' => 'sometimes|array',
+                'corporate_contact.name' => 'nullable|string|max:255',
+                'corporate_contact.email' => 'nullable|email|max:255',
+                'corporate_contact.phone' => 'nullable|string|max:50',
                 'service_type' => 'required|string',
 
                 // Multi-selection support - accept both single and multiple
@@ -470,6 +491,17 @@ class BookingFlowController extends Controller
 
         $rules = [
             'customer_id' => 'nullable|string',
+            'is_corporate_booking' => 'sometimes|boolean',
+            'corporate_account_id' => 'nullable|uuid|exists:corporates,id',
+            'employee_id' => 'nullable|uuid|exists:users,id',
+            'corporate_department_id' => 'nullable|uuid|exists:corporate_departments,id',
+            'corporate_division_id' => 'nullable|uuid|exists:corporate_divisions,id',
+            'cost_center' => 'nullable|string|max:255',
+            'project_code' => 'nullable|string|max:255',
+            'corporate_contact' => 'sometimes|array',
+            'corporate_contact.name' => 'nullable|string|max:255',
+            'corporate_contact.email' => 'nullable|email|max:255',
+            'corporate_contact.phone' => 'nullable|string|max:50',
             'service_type' => 'required|string',
 
             // Multi-selection support - accept both single and multiple
@@ -574,6 +606,17 @@ class BookingFlowController extends Controller
 
         $rules = [
             'customer_id' => 'nullable|string',
+            'is_corporate_booking' => 'sometimes|boolean',
+            'corporate_account_id' => 'nullable|uuid|exists:corporates,id',
+            'employee_id' => 'nullable|uuid|exists:users,id',
+            'corporate_department_id' => 'nullable|uuid|exists:corporate_departments,id',
+            'corporate_division_id' => 'nullable|uuid|exists:corporate_divisions,id',
+            'cost_center' => 'nullable|string|max:255',
+            'project_code' => 'nullable|string|max:255',
+            'corporate_contact' => 'sometimes|array',
+            'corporate_contact.name' => 'nullable|string|max:255',
+            'corporate_contact.email' => 'nullable|email|max:255',
+            'corporate_contact.phone' => 'nullable|string|max:50',
             'service_type' => 'required|string',
 
             // Multi-selection support - accept both single and multiple
@@ -676,6 +719,17 @@ class BookingFlowController extends Controller
 
             $rules = [
                 'customer_id' => 'nullable|string',
+                'is_corporate_booking' => 'sometimes|boolean',
+                'corporate_account_id' => 'nullable|uuid|exists:corporates,id',
+                'employee_id' => 'nullable|uuid|exists:users,id',
+                'corporate_department_id' => 'nullable|uuid|exists:corporate_departments,id',
+                'corporate_division_id' => 'nullable|uuid|exists:corporate_divisions,id',
+                'cost_center' => 'nullable|string|max:255',
+                'project_code' => 'nullable|string|max:255',
+                'corporate_contact' => 'sometimes|array',
+                'corporate_contact.name' => 'nullable|string|max:255',
+                'corporate_contact.email' => 'nullable|email|max:255',
+                'corporate_contact.phone' => 'nullable|string|max:50',
                 'service_type' => 'sometimes|string',
                 'service_type_id' => 'sometimes|string',
                 
@@ -1376,6 +1430,248 @@ class BookingFlowController extends Controller
         }
     }
 
+    public function getCorporates(Request $request): JsonResponse
+    {
+        $perPage = min((int) $request->get('per_page', 100), 200);
+
+        $query = Corporate::query()->where('is_active', true)->orderBy('name');
+
+        if ($request->filled('search')) {
+            $query->where('name', 'like', '%' . $request->search . '%');
+        }
+
+        $corporates = $query->paginate($perPage);
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'corporates' => $corporates->getCollection()->map(fn (Corporate $corporate) => [
+                    'id' => (string) $corporate->id,
+                    'name' => $corporate->name,
+                    'contact_email' => $corporate->contact_email,
+                    'contact_phone' => $corporate->contact_phone,
+                    'approval_required' => (bool) $corporate->approval_required,
+                ])->values(),
+                'pagination' => [
+                    'current_page' => $corporates->currentPage(),
+                    'last_page' => $corporates->lastPage(),
+                    'per_page' => $corporates->perPage(),
+                    'total' => $corporates->total(),
+                ],
+            ],
+        ]);
+    }
+
+    public function getCorporateDepartments(Request $request, string $corporateId): JsonResponse
+    {
+        $departments = CorporateDepartment::query()
+            ->where('corporate_id', $corporateId)
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get()
+            ->map(fn (CorporateDepartment $department) => [
+                'id' => (string) $department->id,
+                'name' => $department->name,
+                'description' => $department->description,
+            ])
+            ->values();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => ['departments' => $departments],
+        ]);
+    }
+
+    public function createCorporateDepartment(Request $request, string $corporateId): JsonResponse
+    {
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'description' => ['nullable', 'string'],
+        ]);
+
+        $corporate = Corporate::findOrFail($corporateId);
+        $department = $this->corporateService->createDepartment($corporate, $validated);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Department created successfully',
+            'data' => [
+                'department' => [
+                    'id' => (string) $department->id,
+                    'name' => $department->name,
+                    'description' => $department->description,
+                ],
+            ],
+        ], 201);
+    }
+
+    public function getCorporateEmployees(Request $request, string $corporateId): JsonResponse
+    {
+        $query = CorporateEmployee::query()
+            ->where('corporate_id', $corporateId)
+            ->where('is_active', true)
+            ->with(['user', 'department', 'division'])
+            ->orderBy('created_at');
+
+        if ($request->filled('search')) {
+            $query->whereHas('user', function ($userQuery) use ($request) {
+                $userQuery->where('first_name', 'like', '%' . $request->search . '%')
+                    ->orWhere('last_name', 'like', '%' . $request->search . '%')
+                    ->orWhere('email', 'like', '%' . $request->search . '%')
+                    ->orWhere('phone', 'like', '%' . $request->search . '%');
+            });
+        }
+
+        $employees = $query->get();
+        $customerIdsByUserId = Customer::query()
+            ->whereIn('user_id', $employees->pluck('user_id')->filter()->values())
+            ->pluck('id', 'user_id');
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'employees' => $employees->map(function (CorporateEmployee $employee) use ($customerIdsByUserId) {
+                    $user = $employee->user;
+
+                    return [
+                        'id' => (string) $employee->id,
+                        'user_id' => (string) $employee->user_id,
+                        'customer_id' => $customerIdsByUserId[$employee->user_id] ?? null,
+                        'name' => trim(($user?->first_name ?? '') . ' ' . ($user?->last_name ?? '')),
+                        'email' => $user?->email,
+                        'phone' => $user?->phone,
+                        'employee_code' => $employee->employee_code,
+                        'department_id' => $employee->department_id ? (string) $employee->department_id : null,
+                        'department' => $employee->department?->name,
+                        'division_id' => $employee->division_id ? (string) $employee->division_id : null,
+                        'division' => $employee->division?->name,
+                        'user' => $user ? [
+                            'id' => (string) $user->id,
+                            'first_name' => $user->first_name,
+                            'last_name' => $user->last_name,
+                            'email' => $user->email,
+                            'phone' => $user->phone,
+                        ] : null,
+                    ];
+                })->values(),
+            ],
+        ]);
+    }
+
+    public function getCorporateDivisions(Request $request, string $corporateId, string $departmentId): JsonResponse
+    {
+        $department = CorporateDepartment::query()
+            ->where('corporate_id', $corporateId)
+            ->findOrFail($departmentId);
+
+        $divisions = CorporateDivision::query()
+            ->where('department_id', $department->id)
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get()
+            ->map(fn (CorporateDivision $division) => [
+                'id' => (string) $division->id,
+                'name' => $division->name,
+                'description' => $division->description,
+                'department_id' => (string) $division->department_id,
+            ])
+            ->values();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => ['divisions' => $divisions],
+        ]);
+    }
+
+    public function createCorporateDivision(Request $request, string $corporateId, string $departmentId): JsonResponse
+    {
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'description' => ['nullable', 'string'],
+        ]);
+
+        $department = CorporateDepartment::query()
+            ->where('corporate_id', $corporateId)
+            ->findOrFail($departmentId);
+
+        $division = $this->corporateService->createDivision($department, $validated);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Division created successfully',
+            'data' => [
+                'division' => [
+                    'id' => (string) $division->id,
+                    'name' => $division->name,
+                    'description' => $division->description,
+                    'department_id' => (string) $division->department_id,
+                ],
+            ],
+        ], 201);
+    }
+
+    public function createCorporateEmployee(Request $request, string $corporateId): JsonResponse
+    {
+        $validated = $request->validate([
+            'email' => ['required', 'email'],
+            'first_name' => ['required', 'string', 'max:255'],
+            'last_name' => ['required', 'string', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:50'],
+            'department_id' => [
+                'required',
+                'uuid',
+                Rule::exists('corporate_departments', 'id')->where(function ($query) use ($corporateId) {
+                    $query->where('corporate_id', $corporateId)->where('is_active', true);
+                }),
+            ],
+            'division_id' => [
+                'nullable',
+                'uuid',
+                Rule::exists('corporate_divisions', 'id')->where(function ($query) use ($request) {
+                    $query->where('department_id', $request->input('department_id'))->where('is_active', true);
+                }),
+            ],
+            'employee_code' => ['nullable', 'string', 'max:50'],
+            'role' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $corporate = Corporate::findOrFail($corporateId);
+
+        $employee = $this->corporateService->addEmployee($corporate, [
+            ...$validated,
+            'role' => $validated['role'] ?? 'Corporate_Employee',
+        ]);
+
+        $employee->load(['user', 'department', 'division']);
+        $customer = Customer::query()->where('user_id', $employee->user_id)->first();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Employee created successfully',
+            'data' => [
+                'employee' => [
+                    'id' => (string) $employee->id,
+                    'user_id' => (string) $employee->user_id,
+                    'customer_id' => $customer?->id ? (string) $customer->id : null,
+                    'name' => trim(($employee->user?->first_name ?? '') . ' ' . ($employee->user?->last_name ?? '')),
+                    'email' => $employee->user?->email,
+                    'phone' => $employee->user?->phone,
+                    'employee_code' => $employee->employee_code,
+                    'department_id' => $employee->department_id ? (string) $employee->department_id : null,
+                    'department' => $employee->department?->name,
+                    'division_id' => $employee->division_id ? (string) $employee->division_id : null,
+                    'division' => $employee->division?->name,
+                    'user' => $employee->user ? [
+                        'id' => (string) $employee->user->id,
+                        'first_name' => $employee->user->first_name,
+                        'last_name' => $employee->user->last_name,
+                        'email' => $employee->user->email,
+                        'phone' => $employee->user->phone,
+                    ] : null,
+                ],
+            ],
+        ], 201);
+    }
 
 
     /**

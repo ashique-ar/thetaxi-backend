@@ -14,6 +14,7 @@ use App\Models\Vehicle\VehicleAssignment;
 use App\Models\Driver\Driver;
 use App\Models\DriverAssignment;
 use App\Models\Customer;
+use App\Models\User;
 use App\Models\Service\ServiceType;
 use App\Models\Service\ServicePackage;
 use App\Models\Service\ServicePackageReturnRule;
@@ -1602,7 +1603,8 @@ class BookingFlowService
             $booking = new Booking();
 
             // (No normalization: we use $params directly)
-            $booking->customer_id = $params['customer_id'] ?? null;
+            $booking->customer_id = $this->resolveBookingCustomerId($params);
+            $this->applyCorporateBookingFields($booking, $params);
 
             // pricing snapshot + quick numbers
             $booking->pricing_snapshot = $totals['pricing_snapshot'];
@@ -1642,6 +1644,10 @@ class BookingFlowService
                 ($requiresApproval ? 'submitted_by' : 'confirmed_by') => Auth::id(),
                 'frontend_data' => $params,
             ];
+            $booking->workflow_data = $this->attachCorporateContactToWorkflowData(
+                $booking->workflow_data,
+                $params
+            );
 
             $booking->save();
 
@@ -1975,8 +1981,9 @@ class BookingFlowService
             // 3) Create confirmed booking (booking-level data only)
             $booking = new Booking();
 
-            $booking->customer_id = $params['customer_id'] ?? null;
+            $booking->customer_id = $this->resolveBookingCustomerId($params);
             $booking->booking_date = now();
+            $this->applyCorporateBookingFields($booking, $params);
 
             // Booking-level metadata only
             $booking->passenger_count = $params['passenger_count'] ?? 1;
@@ -2012,6 +2019,10 @@ class BookingFlowService
                 'frontend_data' => $params,
                 'is_multi_group' => $isMultiGroup,
             ];
+            $booking->workflow_data = $this->attachCorporateContactToWorkflowData(
+                $booking->workflow_data,
+                $params
+            );
 
             // initialize actuals with estimated
             $booking->total_actual = $booking->total_estimated;
@@ -2307,10 +2318,11 @@ class BookingFlowService
             $params['booking_id'] = $bookingId;
 
             // 2) Update booking-level fields
-            $booking->customer_id = $params['customer_id'] ?? $booking->customer_id;
+            $booking->customer_id = $this->resolveBookingCustomerId($params, $booking);
             $booking->passenger_count = $params['passenger_count'] ?? $booking->passenger_count;
             $booking->luggage_count = $params['luggage_count'] ?? $booking->luggage_count;
             $booking->special_requirements = $params['special_requirements'] ?? $booking->special_requirements;
+            $this->applyCorporateBookingFields($booking, $params);
 
             // Optional user-provided meta
             if (array_key_exists('override_reasons', $params)) {
@@ -2319,6 +2331,12 @@ class BookingFlowService
             }
             if (array_key_exists('review_notes', $params)) {
                 $booking->review_notes = $params['review_notes'];
+            }
+            if (array_key_exists('corporate_contact', $params)) {
+                $booking->workflow_data = $this->attachCorporateContactToWorkflowData(
+                    is_array($booking->workflow_data) ? $booking->workflow_data : [],
+                    $params
+                );
             }
             if (array_key_exists('applied_discounts', $params)) {
                 $booking->discounts = is_array($params['applied_discounts']) ? $params['applied_discounts'] : [];
@@ -6078,6 +6096,8 @@ class BookingFlowService
         $data['cost_center'] = $bookingData['cost_center'] ?? null;
         $data['project_code'] = $bookingData['project_code'] ?? null;
         $data['employee_id'] = $bookingData['employee_id'] ?? null;
+        $data['corporate_department_id'] = $bookingData['corporate_department_id'] ?? null;
+        $data['corporate_division_id'] = $bookingData['corporate_division_id'] ?? null;
 
         // Add emergency contact
         $data['emergency_contact_name'] = $bookingData['emergency_contact_name'] ?? null;
@@ -6397,6 +6417,23 @@ class BookingFlowService
                 'phone' => $booking->customer?->user?->phone ?? '',
                 'email' => $booking->customer?->user?->email ?? '',
                 'code' => $booking->customer?->code ?? null,
+            ],
+            'corporate_details' => [
+                'is_corporate_booking' => (bool) $booking->is_corporate_booking,
+                'corporate_account_id' => $booking->corporate_account_id ? (string) $booking->corporate_account_id : null,
+                'corporate_name' => $booking->corporateAccount?->name ?? null,
+                'employee_id' => $booking->employee_id ? (string) $booking->employee_id : null,
+                'employee_name' => $booking->employee
+                    ? trim(($booking->employee->user?->first_name ?? '') . ' ' . ($booking->employee->user?->last_name ?? ''))
+                    : null,
+                'corporate_department_id' => $booking->corporate_department_id ? (string) $booking->corporate_department_id : null,
+                'department' => $booking->corporateDepartment?->name ?? null,
+                'corporate_division_id' => $booking->corporate_division_id ? (string) $booking->corporate_division_id : null,
+                'division' => $booking->corporateDivision?->name ?? null,
+                'cost_center' => $booking->cost_center,
+                'project_code' => $booking->project_code,
+                'selection_mode' => $booking->employee_id ? 'employee' : 'general',
+                'contact' => $this->extractCorporateContactFromWorkflowData($booking),
             ],
 
             // Service details (legacy single-trip support)
@@ -8000,9 +8037,14 @@ class BookingFlowService
             'corporate' => $booking->is_corporate_booking ? [
                 'id' => (string) $booking->corporate_account_id,
                 'name' => $booking->corporateAccount?->name ?? null,
+                'employee_id' => $booking->employee_id ? (string) $booking->employee_id : null,
                 'department' => $booking->corporateDepartment?->name ?? null,
+                'department_id' => $booking->corporate_department_id ? (string) $booking->corporate_department_id : null,
                 'division' => $booking->corporateDivision?->name ?? null,
+                'division_id' => $booking->corporate_division_id ? (string) $booking->corporate_division_id : null,
                 'employee_name' => $booking->employee ? (trim(($booking->employee->user?->first_name ?? '') . ' ' . ($booking->employee->user?->last_name ?? ''))) : null,
+                'selection_mode' => $booking->employee_id ? 'employee' : 'general',
+                'contact' => $this->extractCorporateContactFromWorkflowData($booking),
                 'is_corporate_booking' => true,
             ] : null,
             'service_details' => $serviceDetails,
@@ -9763,9 +9805,10 @@ class BookingFlowService
                 }
             }
 
-            $booking->customer_id = $params['customer_id'] ?? $booking->customer_id ?? null;
+            $booking->customer_id = $this->resolveBookingCustomerId($params, $booking);
             $booking->booking_date = $booking->booking_date ?? now();
             $booking->status = 'draft';
+            $this->applyCorporateBookingFields($booking, $params);
 
             // Extract pricing if available
             $pricing = [];
@@ -9791,6 +9834,10 @@ class BookingFlowService
                 'last_draft_save' => now()->toISOString(),
                 'frontend_data' => $params
             ]);
+            $booking->workflow_data = $this->attachCorporateContactToWorkflowData(
+                $booking->workflow_data,
+                $params
+            );
 
             $booking->save();
 
@@ -9807,6 +9854,131 @@ class BookingFlowService
 
             return $booking->load(['customer', 'bookingItems']);
         });
+    }
+
+    private function resolveBookingCustomerId(array $params, ?Booking $booking = null): ?string
+    {
+        $candidate = $params['customer_id'] ?? null;
+
+        if (is_array($candidate)) {
+            $candidate = $candidate['id'] ?? null;
+        }
+
+        if (is_string($candidate) && trim($candidate) !== '') {
+            $customer = Customer::find($candidate);
+            if ($customer) {
+                return (string) $customer->id;
+            }
+        }
+
+        $isCorporateBooking = filter_var($params['is_corporate_booking'] ?? false, FILTER_VALIDATE_BOOL);
+        $employeeUserId = $params['employee_id'] ?? null;
+
+        if ($isCorporateBooking && is_string($employeeUserId) && trim($employeeUserId) !== '') {
+            return $this->ensureCustomerForUser($employeeUserId);
+        }
+
+        return $booking?->customer_id;
+    }
+
+    private function ensureCustomerForUser(string $userId): ?string
+    {
+        $user = User::find($userId);
+        if (!$user) {
+            return null;
+        }
+
+        $customer = Customer::firstOrCreate(
+            ['user_id' => $userId],
+            [
+                'user_id' => $userId,
+                'type' => 'business',
+                'sub_type' => 'local',
+                'category' => 'regular',
+                'created_user_id' => Auth::id(),
+                'updated_user_id' => Auth::id(),
+            ]
+        );
+
+        return (string) $customer->id;
+    }
+
+    private function applyCorporateBookingFields(Booking $booking, array $params): void
+    {
+        $isCorporateBooking = filter_var($params['is_corporate_booking'] ?? false, FILTER_VALIDATE_BOOL);
+
+        $booking->is_corporate_booking = $isCorporateBooking;
+
+        if (!$isCorporateBooking) {
+            $booking->corporate_account_id = null;
+            $booking->corporate_department_id = null;
+            $booking->corporate_division_id = null;
+            $booking->employee_id = null;
+            $booking->cost_center = null;
+            $booking->project_code = null;
+            return;
+        }
+
+        $booking->corporate_account_id = $params['corporate_account_id']
+            ?? $params['corporate_id']
+            ?? $booking->corporate_account_id;
+        $booking->corporate_department_id = array_key_exists('corporate_department_id', $params)
+            ? ($params['corporate_department_id'] ?: null)
+            : $booking->corporate_department_id;
+        $booking->corporate_division_id = array_key_exists('corporate_division_id', $params)
+            ? ($params['corporate_division_id'] ?: null)
+            : $booking->corporate_division_id;
+        $booking->employee_id = array_key_exists('employee_id', $params)
+            ? ($params['employee_id'] ?: null)
+            : $booking->employee_id;
+        $booking->cost_center = $params['cost_center'] ?? $booking->cost_center;
+        $booking->project_code = $params['project_code'] ?? $booking->project_code;
+    }
+
+    private function extractCorporateContactPayload(array $params): ?array
+    {
+        $contact = $params['corporate_contact'] ?? null;
+
+        if (is_string($contact)) {
+            $decoded = json_decode($contact, true);
+            $contact = is_array($decoded) ? $decoded : null;
+        }
+
+        if (!is_array($contact)) {
+            return null;
+        }
+
+        $normalized = array_filter([
+            'name' => trim((string) ($contact['name'] ?? '')) ?: null,
+            'email' => trim((string) ($contact['email'] ?? '')) ?: null,
+            'phone' => trim((string) ($contact['phone'] ?? '')) ?: null,
+        ], fn ($value) => $value !== null && $value !== '');
+
+        return !empty($normalized) ? $normalized : null;
+    }
+
+    private function attachCorporateContactToWorkflowData(array $workflowData, array $params): array
+    {
+        $contact = $this->extractCorporateContactPayload($params);
+
+        if ($contact !== null) {
+            $workflowData['corporate_contact'] = $contact;
+            return $workflowData;
+        }
+
+        if (array_key_exists('corporate_contact', $params)) {
+            unset($workflowData['corporate_contact']);
+        }
+
+        return $workflowData;
+    }
+
+    private function extractCorporateContactFromWorkflowData(Booking $booking): ?array
+    {
+        $workflowData = is_array($booking->workflow_data) ? $booking->workflow_data : [];
+        $contact = $workflowData['corporate_contact'] ?? null;
+
+        return is_array($contact) ? $contact : null;
     }
 
     /**

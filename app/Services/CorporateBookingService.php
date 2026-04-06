@@ -8,6 +8,7 @@ use App\Models\Booking\BookingApproval;
 use App\Models\Corporate\Corporate;
 use App\Models\Corporate\CorporateEmployee;
 use App\Models\Corporate\CorporateRateChart;
+use App\Models\Customer;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -40,7 +41,7 @@ class CorporateBookingService
             $needsApproval = $corporate->approval_required;
 
             $params = array_merge($data, [
-                'customer_id'            => $employee->user_id,
+                'customer_id'            => $this->resolveCustomerIdForEmployee($employee),
                 'is_corporate_booking'   => true,
                 'corporate_account_id'   => $corporate->id,
                 'employee_id'            => $employee->user_id,
@@ -112,7 +113,7 @@ class CorporateBookingService
             }
 
             $params = array_merge($data, [
-                'customer_id'            => $targetEmployee->user_id,
+                'customer_id'            => $this->resolveCustomerIdForEmployee($targetEmployee),
                 'is_corporate_booking'   => true,
                 'corporate_account_id'   => $corporate->id,
                 'employee_id'            => $targetEmployee->user_id,
@@ -395,6 +396,23 @@ class CorporateBookingService
     }
 
     // ─── Audit Logging ────────────────────────────────────────────────
+
+    private function resolveCustomerIdForEmployee(CorporateEmployee $employee): string
+    {
+        $customer = Customer::firstOrCreate(
+            ['user_id' => $employee->user_id],
+            [
+                'user_id' => $employee->user_id,
+                'type' => 'business',
+                'sub_type' => 'local',
+                'category' => 'regular',
+                'created_user_id' => Auth::id(),
+                'updated_user_id' => Auth::id(),
+            ]
+        );
+
+        return (string) $customer->id;
+    }
 
     private function logAudit(string $action, string $entity, ?string $entityId, array $details = []): void
     {

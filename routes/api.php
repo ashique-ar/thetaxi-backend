@@ -807,6 +807,22 @@ Route::middleware(['auth:api'])->group(function () {
             Route::post('generate-confirmation/{bookingId}', [BookingFlowController::class, 'generateBookingConfirmation'])
                 ->middleware('permission:bookings.view');
 
+            // Corporate booking context routes
+            Route::get('corporates', [BookingFlowController::class, 'getCorporates'])
+                ->middleware('permission:bookings.create');
+            Route::get('corporates/{corporateId}/departments', [BookingFlowController::class, 'getCorporateDepartments'])
+                ->middleware('permission:bookings.create');
+            Route::post('corporates/{corporateId}/departments', [BookingFlowController::class, 'createCorporateDepartment'])
+                ->middleware('permission:bookings.create');
+            Route::get('corporates/{corporateId}/departments/{departmentId}/divisions', [BookingFlowController::class, 'getCorporateDivisions'])
+                ->middleware('permission:bookings.create');
+            Route::post('corporates/{corporateId}/departments/{departmentId}/divisions', [BookingFlowController::class, 'createCorporateDivision'])
+                ->middleware('permission:bookings.create');
+            Route::get('corporates/{corporateId}/employees', [BookingFlowController::class, 'getCorporateEmployees'])
+                ->middleware('permission:bookings.create');
+            Route::post('corporates/{corporateId}/employees', [BookingFlowController::class, 'createCorporateEmployee'])
+                ->middleware('permission:bookings.create');
+
             // Company/System Routes
             Route::get('company/locations', [BookingFlowController::class, 'getCompanyLocations'])
                 ->middleware('permission:bookings.view');
