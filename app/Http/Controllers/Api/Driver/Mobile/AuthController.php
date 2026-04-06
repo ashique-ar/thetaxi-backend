@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers\Api\Driver\Mobile;
 
+use App\Enums\TripPhase;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Driver\Mobile\DriverLoginRequest;
 use App\Http\Resources\Driver\DriverResource;
 use App\Http\Resources\Driver\DriverDeviceResource;
 use App\Http\Resources\UserResource;
+use App\Models\DriverAssignment;
 use App\Services\Driver\DriverAuthService;
 use App\Services\Driver\MobileAssignmentService;
 use Illuminate\Http\JsonResponse;
