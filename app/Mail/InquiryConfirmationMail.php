@@ -50,7 +50,7 @@ class InquiryConfirmationMail extends Mailable
                 'intro' => $this->intro,
                 'contactName' => $this->inquiry->name ?? 'Valued Customer',
                 'supportEmail' => config('mail.from.address', 'info@thetaxi.lk'),
-                'supportPhone' => config('app.support_phone', '+94 71 1 615 615'),
+                'supportPhone' => config('app.support_phone', '+94 711 92 00 00'),
             ]
         );
     }

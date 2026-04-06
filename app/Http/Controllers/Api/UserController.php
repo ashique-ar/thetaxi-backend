@@ -6,7 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\User\CreateUserRequest;
 use App\Http\Requests\User\UpdateUserRequest;
 use App\Http\Resources\UserResource;
+use App\Models\ApiSession;
 use App\Models\User;
+use App\Services\AuthService;
 use App\Services\UserService;
 use App\Services\UserContextService;
 use Illuminate\Http\Request;
@@ -23,11 +25,13 @@ class UserController extends Controller
 {
     protected $userService;
     protected $contextService;
+    protected $authService;
 
-    public function __construct(UserService $userService, UserContextService $contextService)
+    public function __construct(UserService $userService, UserContextService $contextService, AuthService $authService)
     {
         $this->userService = $userService;
         $this->contextService = $contextService;
+        $this->authService = $authService;
         // $this->middleware('permission:permissions.view')->only(['index', 'show']);
         // $this->middleware('permission:permissions.create')->only(['store']);
         // $this->middleware('permission:permissions.edit')->only(['update']);
@@ -48,6 +52,17 @@ class UserController extends Controller
     {
         $users = $this->userService->getAllUsers($request->all());
         return UserResource::collection($users);
+    }
+
+    /**
+     * Get dynamic filter options for the user list.
+     */
+    public function filterOptions(): JsonResponse
+    {
+        return response()->json([
+            'status' => 'success',
+            'data' => $this->userService->getFilterOptions(),
+        ]);
     }
 
     /**
@@ -403,19 +418,89 @@ class UserController extends Controller
      */
     public function contexts(User $user): JsonResponse
     {
-        $activeContexts = $user->getActiveContexts()->map(function($ctx){
-            return array_merge($ctx->toArray(), ['roles' => $ctx->roles()->get()->map(function($r){ return ['id' => $r->id, 'name' => $r->name, 'display_name' => $r->display_name ?? $r->name]; })]);
-        });
+        $user->load([
+            'contexts.roles.permissions',
+            'contexts.corporateEmployee.user',
+            'contexts.corporateEmployee.corporate',
+            'contexts.corporateEmployee.department',
+            'contexts.corporateEmployee.division',
+            'roles.permissions',
+        ]);
+
+        $contextState = $this->contextService->buildUserContextState($user);
 
         return response()->json([
             'status' => 'success',
             'data' => [
-                'contexts' => $activeContexts,
+                'contexts' => $contextState['contexts'],
                 'available_contexts' => $this->contextService->getActivatableContexts($user),
-                'primary_role' => $this->contextService->getPrimaryRole($user),
-                'has_multiple_contexts' => $user->hasMultipleContexts()
+                'primary_role' => $contextState['primary_role'],
+                'has_multiple_contexts' => $contextState['has_multiple_contexts'],
             ]
         ]);
+    }
+
+    /**
+     * End the current session and return a fresh session for the selected user.
+     */
+    public function impersonate(Request $request, User $user): JsonResponse
+    {
+        $actor = $request->user();
+
+        if (!$actor) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Unauthenticated.',
+            ], 401);
+        }
+
+        if ($actor->id === $user->id) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'You are already signed in as this user.',
+            ], 422);
+        }
+
+        if (!$user->isActive()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Cannot sign in as an inactive user.',
+            ], 422);
+        }
+
+        try {
+            $currentToken = $actor->token();
+            $token = $this->authService->createTokenWithRefresh(
+                $user,
+                $request,
+                'Impersonated Session'
+            );
+
+            if ($currentToken) {
+                $currentToken->revoke();
+                ApiSession::where('token_id', $currentToken->id)->update(['current' => false]);
+            }
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Signed in as user successfully',
+                'data' => [
+                    'user' => $this->buildUserResponse($user, $request),
+                    'token' => $token,
+                    'impersonated_by' => [
+                        'id' => $actor->id,
+                        'email' => $actor->email,
+                        'full_name' => $actor->full_name,
+                    ],
+                ],
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to sign in as the selected user.',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
     }
 
     /**
@@ -763,12 +848,22 @@ class UserController extends Controller
      */
     public function profile(Request $request): JsonResponse
     {
-        $user = $request->user()->load(['role', 'agent', 'permissions', 'roles']);
+        $user = $request->user()->load([
+            'role',
+            'agent',
+            'permissions',
+            'roles.permissions',
+            'contexts.roles.permissions',
+            'contexts.corporateEmployee.user',
+            'contexts.corporateEmployee.corporate',
+            'contexts.corporateEmployee.department',
+            'contexts.corporateEmployee.division',
+        ]);
         
         return response()->json([
             'status' => 'success',
             'data' => [
-                'user' => new UserResource($user)
+                'user' => $this->buildSelfProfilePayload($user, $request),
             ]
         ]);
     }
@@ -792,12 +887,23 @@ class UserController extends Controller
         try {
             $user = $request->user();
             $user->update($request->only(['first_name', 'last_name', 'phone', 'timezone', 'language']));
+            $user->load([
+                'role',
+                'agent',
+                'permissions',
+                'roles.permissions',
+                'contexts.roles.permissions',
+                'contexts.corporateEmployee.user',
+                'contexts.corporateEmployee.corporate',
+                'contexts.corporateEmployee.department',
+                'contexts.corporateEmployee.division',
+            ]);
             
             return response()->json([
                 'status' => 'success',
                 'message' => 'Profile updated successfully',
                 'data' => [
-                    'user' => new UserResource($user->load(['role', 'agent', 'permissions', 'roles']))
+                    'user' => $this->buildSelfProfilePayload($user, $request),
                 ]
             ]);
         } catch (\Exception $e) {
@@ -898,5 +1004,96 @@ class UserController extends Controller
         }
 
         return array_values(array_unique(array_intersect($guards, ['web', 'api'])));
+    }
+
+    private function buildUserResponse(User $user, Request $request): array
+    {
+        $loadedUser = $user->loadMissing([
+            'role',
+            'agent',
+            'permissions',
+            'roles.permissions',
+            'contexts.roles.permissions',
+            'contexts.corporateEmployee.user',
+            'contexts.corporateEmployee.corporate',
+            'contexts.corporateEmployee.department',
+            'contexts.corporateEmployee.division',
+        ]);
+
+        $contextState = $this->contextService->buildUserContextState(
+            $loadedUser,
+            $request->header('X-Active-Context-Type'),
+            $request->header('X-Active-Context-Id'),
+            $request->header('X-Active-Portal-Profile')
+        );
+
+        return array_merge(
+            (new UserResource($loadedUser))->resolve($request),
+            $contextState
+        );
+    }
+
+    /**
+     * Build the self-profile payload and suppress access metadata for non-management contexts.
+     */
+    private function buildSelfProfilePayload(User $user, Request $request): array
+    {
+        $contextState = $this->contextService->buildUserContextState(
+            $user,
+            $request->header('X-Active-Context-Type'),
+            $request->header('X-Active-Context-Id'),
+            $request->header('X-Active-Portal-Profile')
+        );
+
+        $payload = (new UserResource($user))->resolve($request);
+
+        if (!$this->shouldExposeSelfProfileAccessDetails($contextState['active_context'] ?? null)) {
+            unset($payload['roles'], $payload['permissions']);
+        }
+
+        return $payload;
+    }
+
+    /**
+     * Roles and permissions on the self-profile are only visible for internal admin/management contexts.
+     */
+    private function shouldExposeSelfProfileAccessDetails(?array $activeContext): bool
+    {
+        if (!$activeContext) {
+            return false;
+        }
+
+        $roles = collect($activeContext['roles'] ?? [])
+            ->pluck('name')
+            ->filter()
+            ->map(fn ($role) => strtolower((string) $role))
+            ->values();
+
+        $permissions = collect($activeContext['permissions'] ?? [])
+            ->pluck('name')
+            ->filter()
+            ->map(fn ($permission) => strtolower((string) $permission))
+            ->values();
+
+        if ($roles->contains('admin')) {
+            return true;
+        }
+
+        $portalProfile = strtolower((string) ($activeContext['portal_profile'] ?? $activeContext['context_type'] ?? ''));
+
+        if ($portalProfile !== 'internal') {
+            return false;
+        }
+
+        return $permissions->intersect([
+            'users.view',
+            'users.manage',
+            'users.edit',
+            'roles.view',
+            'roles.manage',
+            'permissions.view',
+            'permissions.manage',
+            'corporates.manage',
+        ])->isNotEmpty();
     }
 }

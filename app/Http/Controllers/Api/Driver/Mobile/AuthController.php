@@ -97,7 +97,14 @@ class AuthController extends Controller
     public function logout(Request $request): JsonResponse
     {
         try {
-            $this->authService->logout($request->user());
+            $request->validate([
+                'device_uuid' => ['nullable', 'string', 'max:255'],
+            ]);
+
+            $this->authService->logout(
+                $request->user(),
+                $request->input('device_uuid')
+            );
 
             return response()->json([
                 'status' => 'success',

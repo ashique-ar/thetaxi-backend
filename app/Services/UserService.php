@@ -3,11 +3,13 @@
 namespace App\Services;
 
 use App\Models\User;
+use App\Models\UserContext;
 use App\Notifications\PasswordResetNotification;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Spatie\Permission\Models\Role;
 
 class UserService
 {
@@ -43,10 +45,23 @@ class UserService
         }
 
         if (!empty($filters['context'])) {
-            $query->whereHas('contexts', function ($q) use ($filters) {
-                $q->where('context_type', $filters['context'])
-                  ->where('is_active', true);
-            });
+            $context = $filters['context'];
+
+            if ($context === 'internal') {
+                $query->where(function ($q) {
+                    $q->whereHas('roles', function ($roleQuery) {
+                        $roleQuery->whereIn('name', ['admin', 'staff']);
+                    })->orWhereHas('contexts', function ($contextQuery) {
+                        $contextQuery->where('context_type', 'staff')
+                            ->where('is_active', true);
+                    });
+                });
+            } else {
+                $query->whereHas('contexts', function ($q) use ($context) {
+                    $q->where('context_type', $context)
+                        ->where('is_active', true);
+                });
+            }
         }
 
         if (!empty($filters['agent_id'])) {
@@ -69,6 +84,69 @@ class UserService
         // Paginate results
         $perPage = $filters['per_page'] ?? 15;
         return $query->paginate($perPage);
+    }
+
+    /**
+     * Get dynamic filter options for user management.
+     */
+    public function getFilterOptions(): array
+    {
+        $roles = Role::query()
+            ->select('id', 'name', 'guard_name')
+            ->orderBy('name')
+            ->get()
+            ->unique(fn ($role) => $role->name . '::' . $role->guard_name)
+            ->values()
+            ->map(function (Role $role) {
+                return [
+                    'id' => (string) $role->id,
+                    'name' => $role->name,
+                    'guard_name' => $role->guard_name,
+                ];
+            })
+            ->all();
+
+        $contextTypes = UserContext::query()
+            ->where('is_active', true)
+            ->distinct()
+            ->orderBy('context_type')
+            ->pluck('context_type')
+            ->filter()
+            ->values();
+
+        if (
+            User::whereHas('roles', function ($query) {
+                $query->whereIn('name', ['admin', 'staff']);
+            })->exists()
+        ) {
+            $contextTypes->prepend('internal');
+        }
+
+        $contextLabels = [
+            'internal' => 'Internal',
+            'customer' => 'Customer',
+            'driver' => 'Driver',
+            'staff' => 'Staff',
+            'agent' => 'Agent',
+            'vehicle_owner' => 'Vehicle Owner',
+            'corporate' => 'Corporate',
+        ];
+
+        $contexts = $contextTypes
+            ->unique()
+            ->values()
+            ->map(function (string $contextType) use ($contextLabels) {
+                return [
+                    'value' => $contextType,
+                    'label' => $contextLabels[$contextType] ?? ucfirst(str_replace('_', ' ', $contextType)),
+                ];
+            })
+            ->all();
+
+        return [
+            'roles' => $roles,
+            'contexts' => $contexts,
+        ];
     }
 
     /**

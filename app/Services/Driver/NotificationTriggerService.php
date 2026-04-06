@@ -399,6 +399,22 @@ class NotificationTriggerService
     private function pushToDriverDevices(Driver $driver, array $payload, string $title, string $body): array
     {
         try {
+            $driver->loadMissing('activeSession');
+
+            if (!$driver->is_online || !$driver->activeSession) {
+                Log::info('Skipping push delivery because driver has no active mobile session', [
+                    'driver_id' => $driver->id,
+                    'is_online' => $driver->is_online,
+                    'current_device_uuid' => $driver->current_device_uuid,
+                ]);
+
+                return [
+                    'success' => false,
+                    'eligible_devices' => 0,
+                    'delivered_devices' => 0,
+                ];
+            }
+
             $credentials = $this->getFirebaseCredentials();
             if (!$credentials) {
                 return [
@@ -428,13 +444,32 @@ class NotificationTriggerService
             }
 
             $sendUrl = $this->getFirebaseSendUrl($projectId);
-            $devices = $driver->activeDevices()
-                ->whereNotNull('push_token')
-                ->get();
+            $sessionDeviceUuid = $driver->activeSession->device_uuid;
+            $targetDeviceUuid = $driver->current_device_uuid ?: $sessionDeviceUuid;
+            $devicesQuery = $driver->activeDevices()->whereNotNull('push_token');
+
+            if ($targetDeviceUuid) {
+                $devicesQuery->where('device_uuid', $targetDeviceUuid);
+            }
+
+            if ($sessionDeviceUuid && $sessionDeviceUuid !== $targetDeviceUuid) {
+                $devicesQuery->orWhere(function ($query) use ($driver, $sessionDeviceUuid) {
+                    $query->where('driver_id', $driver->id)
+                        ->where('is_active', true)
+                        ->whereNotNull('push_token')
+                        ->where('device_uuid', $sessionDeviceUuid);
+                });
+            }
+
+            $devices = $devicesQuery->get();
 
             $eligibleDevices = $devices->count();
             if ($eligibleDevices === 0) {
-                Log::info('No push-capable device for driver ' . $driver->id);
+                Log::info('No push-capable device for the current active driver session', [
+                    'driver_id' => $driver->id,
+                    'target_device_uuid' => $targetDeviceUuid,
+                    'session_device_uuid' => $sessionDeviceUuid,
+                ]);
                 return [
                     'success' => false,
                     'eligible_devices' => 0,

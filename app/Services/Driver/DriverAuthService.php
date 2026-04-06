@@ -23,9 +23,15 @@ class DriverAuthService
      */
     protected DeviceService $deviceService;
 
-    public function __construct(DeviceService $deviceService)
+    /**
+     * @var SessionService
+     */
+    protected SessionService $sessionService;
+
+    public function __construct(DeviceService $deviceService, SessionService $sessionService)
     {
         $this->deviceService = $deviceService;
+        $this->sessionService = $sessionService;
     }
 
     /**
@@ -226,8 +232,32 @@ class DriverAuthService
      * 
      * @see Requirement 2.5 - Token revocation on logout
      */
-    public function logout(User $user): void
+    public function logout(User $user, ?string $deviceUuid = null): void
     {
+        $driver = $this->getDriver($user);
+        $logoutDeviceUuid = $deviceUuid;
+
+        if ($driver) {
+            $driver->loadMissing('activeSession');
+
+            $logoutDeviceUuid = $logoutDeviceUuid ?: $driver->current_device_uuid;
+
+            if ($driver->activeSession) {
+                $this->sessionService->endSession($driver, []);
+                $driver->refresh();
+            }
+
+            if ($logoutDeviceUuid) {
+                $this->deviceService->deactivateDevice($driver, $logoutDeviceUuid);
+            }
+
+            $driver->update([
+                'is_online' => false,
+                'current_device_uuid' => null,
+                'last_active_at' => now(),
+            ]);
+        }
+
         // Revoke the current access token
         $token = $user->token();
         if ($token) {

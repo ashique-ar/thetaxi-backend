@@ -500,7 +500,7 @@
                                     <tr>
                                         <td>💬 WhatsApp</td>
                                         <td><a href="https://wa.me/94711615615"
-                                                style="color: #BF2629; text-decoration: none;">+94 71 1 615 615</a></td>
+                                                style="color: #BF2629; text-decoration: none;">+94 711 92 00 00</a></td>
                                     </tr>
                                 </table>
                                 <p style="text-align: center; color: #717171; margin-top: 15px; font-size: 13px;">Our

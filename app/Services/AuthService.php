@@ -171,8 +171,29 @@ class AuthService
             throw new \Exception('Authentication failed');
         }
 
+        $tokens = $this->createTokenWithRefresh($user, $request, 'API Token with Refresh');
+
+        // Update user's last login
+        $user->updateLastLogin();
+
+        return [
+            'user' => $user,
+            'tokens' => $tokens,
+        ];
+    }
+
+    /**
+     * Create a token payload compatible with the refresh-token login flow.
+     *
+     * @param User $user
+     * @param mixed $request
+     * @param string $tokenName
+     * @return array
+     */
+    public function createTokenWithRefresh(User $user, $request = null, string $tokenName = 'API Token with Refresh'): array
+    {
         // Create a Personal Access Token (simpler approach)
-        $token = $user->createToken('API Token with Refresh');
+        $token = $user->createToken($tokenName);
 
         // If request available, log session metadata (mirror createToken behavior)
         try {
@@ -188,7 +209,7 @@ class AuthService
                 \App\Models\ApiSession::create([
                     'token_id' => $token->token->id,
                     'user_id' => $user->id,
-                    'name' => 'API Token with Refresh',
+                    'name' => $tokenName,
                     'ip_address' => $clientIp,
                     'user_agent' => $ua,
                     'device' => $parsed['device'] ?? null,
@@ -203,20 +224,14 @@ class AuthService
             \Log::warning('Failed to create api_session record (refresh flow): ' . $e->getMessage());
         }
 
-        // Update user's last login
-        $user->updateLastLogin();
-
         // For now, return a structure similar to OAuth2 response
         // We'll implement true refresh tokens later with a proper OAuth2 flow
         return [
-            'user' => $user,
-            'tokens' => [
-                'access_token' => $token->accessToken,
-                'token_type' => 'Bearer',
-                'expires_at' => $token->token->expires_at->toISOString(),
-                'refresh_token' => $token->token->id, // Use token ID as refresh identifier
-                'scope' => '*'
-            ]
+            'access_token' => $token->accessToken,
+            'token_type' => 'Bearer',
+            'expires_at' => $token->token->expires_at->toISOString(),
+            'refresh_token' => $token->token->id, // Use token ID as refresh identifier
+            'scope' => '*'
         ];
     }
 

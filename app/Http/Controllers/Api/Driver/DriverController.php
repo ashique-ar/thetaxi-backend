@@ -41,7 +41,7 @@ class DriverController extends Controller
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        $q = Driver::with('user');
+        $q = Driver::with(['user', 'licenseType']);
         if ($request->filled('search')) {
             $q->where('code', 'like', '%' . $request->search . '%');
         }
@@ -90,6 +90,7 @@ class DriverController extends Controller
 
                 $context = $this->contextService->switchContext($existingUser, 'driver', $contextData);
                 $driver = Driver::find($context->getAttribute('context_id'));
+                $driver?->load(['user', 'licenseType']);
 
                 return response()->json([
                     'status' => 'success',
@@ -127,6 +128,7 @@ class DriverController extends Controller
 
                 $context = $this->contextService->switchContext($user, 'driver', $contextData);
                 $driver = Driver::find($context->getAttribute('context_id'));
+                $driver?->load(['user', 'licenseType']);
 
                 return response()->json([
                     'status' => 'success',
@@ -178,7 +180,7 @@ class DriverController extends Controller
             $driver->update($driverData);
 
             // Reload the relationship to get updated data
-            $driver->load('user');
+            $driver->load(['user', 'licenseType']);
 
             return response()->json([
                 'status' => 'success',
