@@ -2,14 +2,19 @@
 
 namespace App\Services\Driver;
 
+use App\Enums\DispatchStatus;
 use App\Enums\TripPhase;
+use App\Enums\VehicleAvailabilityStatus;
 use App\Models\Booking\BookingItem;
 use App\Models\Driver\Driver;
 use App\Models\Driver\DriverSession;
 use App\Models\Driver\RoutePoint;
+use App\Models\Vehicle\Vehicle;
 use App\Models\DriverAssignment;
+use App\Services\BookingLifecycleService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Trip Tracking Service
@@ -25,7 +30,8 @@ class TripTrackingService
     private const NEAR_PICKUP_THRESHOLD_METERS = 200;
 
     public function __construct(
-        private WaitingTimeService $waitingTimeService
+        private WaitingTimeService $waitingTimeService,
+        private BookingLifecycleService $bookingLifecycleService
     ) {}
 
     /**
@@ -124,7 +130,15 @@ class TripTrackingService
         $assignment->update([
             'trip_phase' => TripPhase::IN_PROGRESS,
             'trip_started_at' => Carbon::now(),
+            'actual_start' => Carbon::now(),
         ]);
+
+        // Keep dispatch state aligned once the trip actually starts.
+        $assignment->loadMissing('booking.dispatch');
+        $dispatch = $assignment->booking?->dispatch;
+        if ($dispatch && $dispatch->dispatch_status === DispatchStatus::DISPATCHED) {
+            $dispatch->update(['dispatch_status' => DispatchStatus::IN_PROGRESS]);
+        }
     }
 
     /**
@@ -153,7 +167,9 @@ class TripTrackingService
 
             $assignment->update([
                 'trip_phase' => TripPhase::COMPLETED,
+                'status' => 'completed',
                 'trip_completed_at' => $now,
+                'actual_end' => $now,
                 'final_latitude' => $finalLocation['latitude'],
                 'final_longitude' => $finalLocation['longitude'],
                 'total_distance_km' => $totalDistance,
@@ -169,8 +185,12 @@ class TripTrackingService
                 }
             }
 
+            $this->syncBookingLifecycleAfterDriverTripCompletion($assignment, $finalLocation, $now);
+
             return [
                 'assignment_id' => $assignment->id,
+                'booking_id' => $assignment->booking_id,
+                'booking_item_id' => $assignment->booking_item_id,
                 'total_distance_km' => round($totalDistance, 2),
                 'total_duration_minutes' => $durationMinutes,
                 'total_waiting_time_seconds' => $waitingTime['total_waiting_time_seconds'],
@@ -184,8 +204,76 @@ class TripTrackingService
                     'longitude' => (float) $finalLocation['longitude'],
                 ],
                 'route_point_count' => $assignment->routePoints()->count(),
+                'hire_completed' => true,
             ];
         });
+    }
+
+    /**
+     * Driver-completed hire should finish lifecycle and immediately release vehicle
+     * without forcing QC/Maintenance flow.
+     */
+    private function syncBookingLifecycleAfterDriverTripCompletion(
+        DriverAssignment $assignment,
+        array $finalLocation,
+        Carbon $completedAt
+    ): void {
+        if (!$assignment->booking_id) {
+            return;
+        }
+
+        $assignment->loadMissing(['booking.dispatch', 'bookingItem']);
+        $booking = $assignment->booking;
+        if (!$booking) {
+            return;
+        }
+
+        // Primary path: use lifecycle service so dispatch + booking tracking stay consistent.
+        try {
+            if ($booking->dispatch) {
+                $this->bookingLifecycleService->processReturn((string) $booking->id, [
+                    'booking_item_id' => $assignment->booking_item_id,
+                    'actual_return_time' => $completedAt->toIso8601String(),
+                    'mileage' => $finalLocation['ending_mileage'] ?? null,
+                    'notes' => $finalLocation['notes'] ?? 'Completed via driver mobile app',
+                    'condition' => null,
+                    'damages' => [],
+                    'charges' => [],
+                    'late_fee' => 0,
+                    'completed_by_driver' => true,
+                    'skip_qc' => true,
+                ]);
+                return;
+            }
+        } catch (\Throwable $exception) {
+            Log::warning('Driver trip completion fallback: lifecycle return processing failed', [
+                'assignment_id' => $assignment->id,
+                'booking_id' => $booking->id,
+                'error' => $exception->getMessage(),
+            ]);
+        }
+
+        // Fallback path when dispatch is missing: still complete booking and release vehicle.
+        $vehicleId = $assignment->bookingItem?->vehicle_id ?? $booking->vehicle_id;
+        if ($vehicleId) {
+            Vehicle::where('id', $vehicleId)->update([
+                'availability_status' => VehicleAvailabilityStatus::AVAILABLE->value,
+            ]);
+        }
+
+        $booking->update([
+            'status' => 'completed',
+            'completed_at' => $completedAt,
+            'updated_user_id' => $assignment->driver?->user_id,
+            'workflow_data' => array_merge(
+                is_array($booking->workflow_data) ? $booking->workflow_data : [],
+                [
+                    'completed_via' => 'driver_mobile',
+                    'completed_at' => $completedAt->toIso8601String(),
+                    'qc_skipped' => true,
+                ]
+            ),
+        ]);
     }
 
     /**

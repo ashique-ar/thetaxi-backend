@@ -10,6 +10,15 @@ use Illuminate\Http\JsonResponse;
 
 class ServiceFormConfigController extends Controller
 {
+    private const CANONICAL_SUBMIT_AS_ALIASES = [
+        'from_date' => ['from_date', 'pickup_date', 'date'],
+        'from_time' => ['from_time', 'pickup_time', 'time'],
+        'to_date' => ['to_date', 'dropoff_date', 'return_date'],
+        'to_time' => ['to_time', 'dropoff_time', 'return_time'],
+        'pickup_location' => ['pickup_location', 'pickup', 'from', 'origin'],
+        'dropoff_location' => ['dropoff_location', 'dropoff', 'to', 'destination'],
+    ];
+
     /**
      * Get dynamic form configuration for a service type
      */
@@ -89,18 +98,8 @@ class ServiceFormConfigController extends Controller
                 }
             }
             unset($field);
-
-            // Add any default fields completely missing from DB config
-            $existingSubmitAs = [];
-            foreach ($fields as $f) {
-                $existingSubmitAs[] = $f['submit_as'] ?? '';
-            }
-            foreach ($defaults as $dKey => $dField) {
-                $dSubmitAs = $dField['submit_as'] ?? $dKey;
-                if (!isset($fields[$dKey]) && !in_array($dSubmitAs, $existingSubmitAs, true)) {
-                    $fields[$dKey] = $dField;
-                }
-            }
+            // IMPORTANT: Do not re-add missing default fields here.
+            // If an admin removes fields from saved form_config, those removals must persist.
         }
 
         // Inject airport options into conditional location fields
@@ -130,6 +129,12 @@ class ServiceFormConfigController extends Controller
         }
         unset($field);
 
+        $resolvedFieldMappings = $this->resolveFieldMappings(
+            $fields,
+            is_array($storedConfig['field_mappings'] ?? null) ? $storedConfig['field_mappings'] : [],
+            $serviceType
+        );
+
         $config = [
             'service_type' => [
                 'id' => $serviceType->id,
@@ -145,7 +150,7 @@ class ServiceFormConfigController extends Controller
                 'minimum_km' => $serviceType->minimum_km,
             ],
             'fields' => $fields,
-            'field_mappings' => $storedConfig['field_mappings'] ?: $this->getDefaultFieldMappings($serviceType),
+            'field_mappings' => $resolvedFieldMappings,
             'packages' => $this->getPackagesConfig($serviceType),
             'location_restrictions' => $this->getLocationRestrictions($serviceType),
             'validation_rules' => $this->getValidationRules($serviceType),
@@ -429,6 +434,173 @@ class ServiceFormConfigController extends Controller
     }
 
     /**
+     * Resolve stable canonical field mappings with this precedence:
+     * 1) explicitly provided/stored mapping (if points to existing field)
+     * 2) derived mapping from fields + submit_as aliases
+     * 3) default mapping (only when no fields are configured)
+     */
+    private function resolveFieldMappings(array $fields, array $storedMappings, ServiceType $serviceType): array
+    {
+        $derivedMappings = $this->deriveFieldMappingsFromFields($fields);
+        $defaultMappings = $this->getDefaultFieldMappings($serviceType);
+        $hasConfiguredFields = !empty($fields);
+
+        $mappingShape = [
+            'dates' => ['from_date', 'from_time', 'to_date', 'to_time'],
+            'locations' => ['pickup_location', 'dropoff_location'],
+        ];
+
+        $resolved = [
+            'dates' => [],
+            'locations' => [],
+        ];
+
+        foreach ($mappingShape as $group => $keys) {
+            foreach ($keys as $canonicalKey) {
+                $value = $this->resolveMappedFieldName(
+                    $fields,
+                    $storedMappings[$group][$canonicalKey] ?? null,
+                    $derivedMappings[$group][$canonicalKey] ?? null,
+                    $hasConfiguredFields ? null : ($defaultMappings[$group][$canonicalKey] ?? null)
+                );
+
+                if ($value !== null) {
+                    $resolved[$group][$canonicalKey] = $value;
+                }
+            }
+        }
+
+        return $resolved;
+    }
+
+    private function deriveFieldMappingsFromFields(array $fields): array
+    {
+        $derived = [
+            'dates' => [],
+            'locations' => [],
+        ];
+
+        $mappingShape = [
+            'dates' => ['from_date', 'from_time', 'to_date', 'to_time'],
+            'locations' => ['pickup_location', 'dropoff_location'],
+        ];
+
+        foreach ($mappingShape as $group => $keys) {
+            foreach ($keys as $canonicalKey) {
+                $fieldName = $this->findCanonicalFieldInConfig($fields, $canonicalKey);
+                if ($fieldName !== null) {
+                    $derived[$group][$canonicalKey] = $fieldName;
+                }
+            }
+        }
+
+        return $derived;
+    }
+
+    private function findCanonicalFieldInConfig(array $fields, string $canonicalKey): ?string
+    {
+        $aliases = self::CANONICAL_SUBMIT_AS_ALIASES[$canonicalKey] ?? [$canonicalKey];
+        $normalizedAliases = array_map(fn($value) => strtolower(trim((string) $value)), $aliases);
+        $expectedTypes = $this->getExpectedFieldTypes($canonicalKey);
+
+        // 1) submit_as exact canonical + compatible type
+        foreach ($fields as $fieldName => $fieldConfig) {
+            if (!$this->isFieldTypeCompatible($fieldConfig, $expectedTypes)) {
+                continue;
+            }
+
+            $submitAs = strtolower((string) ($this->normalizeMappingValue($fieldConfig['submit_as'] ?? null) ?? ''));
+            if ($submitAs === strtolower($canonicalKey)) {
+                return $fieldName;
+            }
+        }
+
+        // 2) submit_as alias + compatible type
+        foreach ($fields as $fieldName => $fieldConfig) {
+            if (!$this->isFieldTypeCompatible($fieldConfig, $expectedTypes)) {
+                continue;
+            }
+
+            $submitAs = strtolower((string) ($this->normalizeMappingValue($fieldConfig['submit_as'] ?? null) ?? ''));
+            if ($submitAs !== '' && in_array($submitAs, $normalizedAliases, true)) {
+                return $fieldName;
+            }
+        }
+
+        // 3) field name alias + compatible type
+        foreach ($fields as $fieldName => $fieldConfig) {
+            if (!$this->isFieldTypeCompatible($fieldConfig, $expectedTypes)) {
+                continue;
+            }
+
+            if (in_array(strtolower($fieldName), $normalizedAliases, true)) {
+                return $fieldName;
+            }
+        }
+
+        return null;
+    }
+
+    private function resolveMappedFieldName(
+        array $fields,
+        $preferred,
+        $derived,
+        $fallback
+    ): ?string {
+        $candidates = [$preferred, $derived, $fallback];
+
+        foreach ($candidates as $candidate) {
+            $normalized = $this->normalizeMappingValue($candidate);
+            if ($normalized === null) {
+                continue;
+            }
+
+            if (empty($fields) || array_key_exists($normalized, $fields)) {
+                return $normalized;
+            }
+        }
+
+        return null;
+    }
+
+    private function normalizeMappingValue($value): ?string
+    {
+        if (!is_string($value)) {
+            return null;
+        }
+
+        $trimmed = trim($value);
+        return $trimmed !== '' ? $trimmed : null;
+    }
+
+    private function getExpectedFieldTypes(string $canonicalKey): array
+    {
+        if (in_array($canonicalKey, ['from_date', 'to_date'], true)) {
+            return ['date', 'datetime'];
+        }
+        if (in_array($canonicalKey, ['from_time', 'to_time'], true)) {
+            return ['time', 'datetime'];
+        }
+        if (in_array($canonicalKey, ['pickup_location', 'dropoff_location'], true)) {
+            return ['location'];
+        }
+        return [];
+    }
+
+    private function isFieldTypeCompatible($fieldConfig, array $expectedTypes): bool
+    {
+        if (empty($expectedTypes)) {
+            return true;
+        }
+        if (!is_array($fieldConfig)) {
+            return false;
+        }
+
+        $fieldType = strtolower((string) ($fieldConfig['type'] ?? ''));
+        return in_array($fieldType, $expectedTypes, true);
+    }
+
+    /**
      * Get packages configuration
      */
     private function getPackagesConfig(ServiceType $serviceType): array
@@ -623,18 +795,34 @@ class ServiceFormConfigController extends Controller
 
             $serviceType = ServiceType::findOrFail($serviceTypeId);
 
-            $formConfig = $validated['form_config'] ?? null;
-            if (!empty($validated['field_mappings'])) {
-                $formConfig = is_array($formConfig) ? $formConfig : [];
-                $formConfig['field_mappings'] = $validated['field_mappings'];
+            $formConfig = is_array($validated['form_config'] ?? null) ? $validated['form_config'] : [];
+
+            // Clean up user-entered mapping values before saving.
+            foreach ($formConfig as $fieldName => $fieldConfig) {
+                if (!is_array($fieldConfig)) {
+                    continue;
+                }
+                if (array_key_exists('submit_as', $fieldConfig)) {
+                    $formConfig[$fieldName]['submit_as'] = $this->normalizeMappingValue($fieldConfig['submit_as']);
+                }
+                if (array_key_exists('sync_from', $fieldConfig)) {
+                    $formConfig[$fieldName]['sync_from'] = $this->normalizeMappingValue($fieldConfig['sync_from']);
+                }
             }
-            
+
+            $storedMappings = is_array($validated['field_mappings'] ?? null) ? $validated['field_mappings'] : [];
+            $resolvedFieldMappings = $this->resolveFieldMappings($formConfig, $storedMappings, $serviceType);
+
+            if (!empty($resolvedFieldMappings['dates']) || !empty($resolvedFieldMappings['locations'])) {
+                $formConfig['field_mappings'] = $resolvedFieldMappings;
+            }
+             
             $serviceType->update([
                 'uses_dropoff_time' => $validated['uses_dropoff_time'] ?? true,
                 'allow_return_trip' => $validated['allow_return_trip'] ?? false,
                 'allow_multiple_pickup_locations' => $validated['allow_multiple_pickup_locations'] ?? false,
                 'allow_multiple_dropoff_locations' => $validated['allow_multiple_dropoff_locations'] ?? false,
-                'form_config' => $formConfig,
+                'form_config' => !empty($formConfig) ? $formConfig : null,
             ]);
 
             return response()->json([

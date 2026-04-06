@@ -169,6 +169,14 @@ class WebsiteSettingSeeder extends Seeder
                 'type' => 'booking_base_currency',
                 'value' => 'LKR',
             ],
+            [
+                'type' => 'assignment_enable_qc_stage',
+                'value' => 'false',
+            ],
+            [
+                'type' => 'assignment_enable_maintenance_stage',
+                'value' => 'false',
+            ],
         ];
 
         foreach ($settings as $setting) {

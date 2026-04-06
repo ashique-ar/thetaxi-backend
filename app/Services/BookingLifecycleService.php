@@ -6,7 +6,10 @@ use App\Models\Booking\Booking;
 use App\Models\Booking\BookingItem;
 use App\Models\Booking\BookingDispatch;
 use App\Models\Booking\BookingQC;
+use App\Models\DriverAssignment;
 use App\Models\Vehicle\Vehicle;
+use App\Models\Website\WebsiteSetting;
+use App\Services\Driver\NotificationTriggerService;
 use App\Models\User;
 use App\Enums\BookingLifecycleStatus;
 use App\Enums\DispatchStatus;
@@ -15,6 +18,7 @@ use App\Enums\VehicleAvailabilityStatus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Schema;
 use Carbon\Carbon;
 
 /**
@@ -28,15 +32,69 @@ class BookingLifecycleService
     protected AssignmentService $assignmentService;
     protected BookingFlowService $bookingFlowService;
     protected CurrencyService $currencyService;
+    protected NotificationTriggerService $notificationTriggerService;
 
     public function __construct(
         AssignmentService $assignmentService,
         BookingFlowService $bookingFlowService,
-        CurrencyService $currencyService
+        CurrencyService $currencyService,
+        NotificationTriggerService $notificationTriggerService
     ) {
         $this->assignmentService = $assignmentService;
         $this->bookingFlowService = $bookingFlowService;
         $this->currencyService = $currencyService;
+        $this->notificationTriggerService = $notificationTriggerService;
+    }
+
+    /**
+     * Resolve selected booking item context for lifecycle/assignment operations.
+     */
+    private function resolveLifecycleContext(Booking $booking, ?string $bookingItemId = null): array
+    {
+        if (!$booking->relationLoaded('bookingItems')) {
+            $booking->load([
+                'bookingItems.serviceType',
+                'bookingItems.vehicle',
+                'bookingItems.driver.user',
+            ]);
+        }
+
+        $bookingItems = $booking->bookingItems
+            ->sortBy(function ($item) {
+                return sprintf(
+                    '%08d-%s',
+                    (int) ($item->trip_number ?? 0),
+                    (string) ($item->id ?? '')
+                );
+            })
+            ->values();
+
+        $selectedBookingItem = null;
+        if (!empty($bookingItemId)) {
+            $selectedBookingItem = $bookingItems->firstWhere('id', $bookingItemId);
+            if (!$selectedBookingItem) {
+                throw new \InvalidArgumentException('Selected booking item does not belong to this booking');
+            }
+        }
+
+        if (!$selectedBookingItem) {
+            $selectedBookingItem = $bookingItems->first();
+        }
+
+        $selectedVehicleId = $selectedBookingItem?->vehicle_id ?: $booking->vehicle_id;
+        $selectedDriverId = $selectedBookingItem?->driver_id ?: $booking->driver_id;
+        $isSelfDriven = (bool) ($selectedBookingItem?->is_self_driven ?? $booking->is_self_driven);
+
+        return [
+            'booking_item' => $selectedBookingItem,
+            'booking_item_id' => $selectedBookingItem?->id,
+            'trip_number' => $selectedBookingItem?->trip_number,
+            'vehicle_id' => $selectedVehicleId,
+            'driver_id' => $selectedDriverId,
+            'is_self_driven' => $isSelfDriven,
+            'vehicle' => $selectedBookingItem?->vehicle,
+            'driver' => $selectedBookingItem?->driver,
+        ];
     }
 
     // ========================
@@ -278,26 +336,171 @@ class BookingLifecycleService
     public function dispatchVehicle(string $bookingId, array $dispatchData): BookingDispatch
     {
         return DB::transaction(function () use ($bookingId, $dispatchData) {
-            $booking = Booking::findOrFail($bookingId);
+            $booking = Booking::with(['dispatch', 'bookingItems.vehicle', 'bookingItems.driver.user'])->findOrFail($bookingId);
+            $context = $this->resolveLifecycleContext($booking, $dispatchData['booking_item_id'] ?? null);
             $dispatch = $booking->dispatch;
+            $vehicleId = $context['vehicle_id'];
+            $driverId = $context['driver_id'];
+            $isSelfDriven = (bool) $context['is_self_driven'];
+
+            if (!$vehicleId) {
+                throw new \Exception('Vehicle must be assigned before dispatch');
+            }
+
+            if (!$isSelfDriven && !$driverId) {
+                throw new \Exception('Driver must be assigned before dispatch');
+            }
+
+            if (!$isSelfDriven && $driverId) {
+                $this->ensureDriverAssignmentForDispatch($booking, $context);
+            }
 
             if (!$dispatch) {
-                throw new \Exception('Dispatch record not found');
+                $dispatch = $booking->dispatch()->create([
+                    'vehicle_id' => $vehicleId,
+                    'driver_id' => $driverId,
+                    'dispatch_status' => DispatchStatus::NOT_DISPATCHED,
+                    'expected_return_at' => $booking->to_date,
+                    'is_self_driven' => $isSelfDriven,
+                    'dispatch_notes' => $dispatchData['notes'] ?? null,
+                    'agreements_signed' => (bool) ($dispatchData['agreements_signed'] ?? false),
+                    'created_user_id' => Auth::id(),
+                ]);
+            } elseif (
+                (string) $dispatch->vehicle_id !== (string) $vehicleId
+                || (string) ($dispatch->driver_id ?? '') !== (string) ($driverId ?? '')
+            ) {
+                $dispatch->update([
+                    'vehicle_id' => $vehicleId,
+                    'driver_id' => $driverId,
+                    'is_self_driven' => $isSelfDriven,
+                ]);
             }
 
             // Mark vehicle as dispatched
             $dispatch->markDispatched(Auth::id(), $dispatchData);
 
             // Update vehicle availability
-            $vehicle = Vehicle::findOrFail($booking->vehicle_id);
+            $vehicle = Vehicle::findOrFail($vehicleId);
             $vehicle->update(['availability_status' => VehicleAvailabilityStatus::ON_HIRE->value]);
 
             $booking->transitionToStatus(BookingLifecycleStatus::DISPATCH_OUT, Auth::id(), $dispatchData);
 
             $this->logLifecycleTransition($booking, BookingLifecycleStatus::DISPATCH_READY, BookingLifecycleStatus::DISPATCH_OUT, $dispatchData);
+            DB::afterCommit(function () use ($booking, $driverId, $context) {
+                $this->triggerDriverDispatchNotification(
+                    (string) $booking->id,
+                    $driverId ? (string) $driverId : null,
+                    $context['booking_item_id'] ? (string) $context['booking_item_id'] : null
+                );
+            });
 
             return $dispatch;
         });
+    }
+
+    private function triggerDriverDispatchNotification(string $bookingId, ?string $driverId, ?string $bookingItemId = null): void
+    {
+        if (!$driverId) {
+            return;
+        }
+
+        $driverAssignmentsQuery = DriverAssignment::where('booking_id', $bookingId)
+            ->where('driver_id', $driverId)
+            ->whereIn('status', ['active', 'pending_approval', 'approved', 'confirmed'])
+            ->orderByDesc('updated_at');
+
+        $driverAssignments = $driverAssignmentsQuery
+            ->when(!empty($bookingItemId), function ($query) use ($bookingItemId) {
+                $query->where('booking_item_id', $bookingItemId);
+            })
+            ->get();
+
+        // Fallback for legacy records where booking_item_id might be null/mismatched.
+        if ($driverAssignments->isEmpty() && !empty($bookingItemId)) {
+            $driverAssignments = DriverAssignment::where('booking_id', $bookingId)
+                ->where('driver_id', $driverId)
+                ->whereIn('status', ['active', 'pending_approval', 'approved', 'confirmed'])
+                ->orderByDesc('updated_at')
+                ->get();
+        }
+
+        if ($driverAssignments->isEmpty()) {
+            Log::warning('Dispatch notification skipped: no matching driver assignments', [
+                'booking_id' => $bookingId,
+                'driver_id' => $driverId,
+            ]);
+            return;
+        }
+
+        foreach ($driverAssignments as $assignment) {
+            try {
+                $this->notificationTriggerService->sendAssignmentNotification($assignment);
+            } catch (\Throwable $exception) {
+                Log::warning('Failed to send dispatch notification to driver app', [
+                    'booking_id' => $bookingId,
+                    'assignment_id' => $assignment->id,
+                    'error' => $exception->getMessage(),
+                ]);
+            }
+        }
+    }
+
+    private function ensureDriverAssignmentForDispatch(Booking $booking, array $context): void
+    {
+        $driverId = $context['driver_id'] ?? null;
+        if (!$driverId) {
+            return;
+        }
+
+        $bookingItemId = $context['booking_item_id'] ?? null;
+        $selectedItem = $context['booking_item'] ?? null;
+
+        $existingQuery = DriverAssignment::where('booking_id', $booking->id)
+            ->where('driver_id', $driverId)
+            ->whereIn('status', ['active', 'pending_approval', 'approved', 'confirmed']);
+
+        if ($bookingItemId) {
+            $existingQuery->where('booking_item_id', $bookingItemId);
+        }
+
+        if ($existingQuery->exists()) {
+            return;
+        }
+
+        $booking->loadMissing([
+            'customer.user',
+            'serviceType',
+            'bookingItems.serviceType',
+        ]);
+
+        $customerName = trim((string) (
+            ($booking->customer?->user?->first_name ?? '') . ' ' . ($booking->customer?->user?->last_name ?? '')
+        ));
+        if ($customerName === '') {
+            $customerName = (string) ($booking->customer?->name ?? 'Customer');
+        }
+
+        $serviceTypeName = (string) (
+            $selectedItem?->serviceType?->name
+                ?? $booking->serviceType?->name
+                ?? 'Booking Service'
+        );
+
+        $assignedFrom = $selectedItem?->from_date ?? $booking->from_date ?? now();
+        $assignedTo = $selectedItem?->to_date ?? $booking->to_date ?? $assignedFrom;
+
+        $this->assignmentService->createDriverAssignment([
+            'driver_id' => $driverId,
+            'booking_id' => $booking->id,
+            'booking_item_id' => $bookingItemId,
+            'customer_name' => $customerName,
+            'service_type' => $serviceTypeName,
+            'assigned_from' => $assignedFrom,
+            'assigned_to' => $assignedTo,
+            'assignment_type' => 'primary',
+            'status' => 'active',
+        ]);
     }
 
     // ========================
@@ -386,27 +589,87 @@ class BookingLifecycleService
     public function processReturn(string $bookingId, array $returnData): BookingDispatch
     {
         return DB::transaction(function () use ($bookingId, $returnData) {
-            $booking = Booking::findOrFail($bookingId);
+            $booking = Booking::with(['dispatch', 'bookingItems'])->findOrFail($bookingId);
+            $context = $this->resolveLifecycleContext($booking, $returnData['booking_item_id'] ?? null);
             $dispatch = $booking->dispatch;
+            $fromStatus = $booking->getLifecycleStatus();
+            $actorUserId = $returnData['returned_by']
+                ?? Auth::id()
+                ?? $booking->updated_user_id
+                ?? $booking->created_user_id
+                ?? $dispatch?->dispatched_by;
 
             if (!$dispatch) {
                 throw new \Exception('Dispatch record not found');
             }
+            if (!$actorUserId) {
+                throw new \Exception('Authenticated user is required to process return');
+            }
 
             // Mark as returned
-            $dispatch->markReturned(Auth::id(), $returnData);
+            $dispatch->markReturned((string) $actorUserId, $returnData);
 
             // Update vehicle availability (pending QC)
-            $vehicle = Vehicle::findOrFail($booking->vehicle_id);
-            $vehicle->update(['availability_status' => VehicleAvailabilityStatus::UNAVAILABLE_QC->value]);
+            $vehicleId = $dispatch->vehicle_id ?: $context['vehicle_id'];
+            if (!$vehicleId) {
+                throw new \Exception('Vehicle not found for return processing');
+            }
+            $workflowSettings = $this->getLifecycleWorkflowSettings();
+            $forceSkipQc = (bool) ($returnData['skip_qc'] ?? false) || (bool) ($returnData['completed_by_driver'] ?? false);
+            $isQcEnabled = !$forceSkipQc && (bool) ($workflowSettings['enable_qc_stage'] ?? true);
 
-            $lifecycleStatus = $dispatch->isOverdue()
-                ? BookingLifecycleStatus::RETURN_LATE
-                : BookingLifecycleStatus::RETURN_COMPLETED;
+            if ($isQcEnabled) {
+                $vehicle = Vehicle::findOrFail($vehicleId);
+                $vehicle->update(['availability_status' => VehicleAvailabilityStatus::UNAVAILABLE_QC->value]);
 
-            $booking->transitionToStatus($lifecycleStatus, Auth::id(), $returnData);
+                $lifecycleStatus = $dispatch->isOverdue()
+                    ? BookingLifecycleStatus::RETURN_LATE
+                    : BookingLifecycleStatus::RETURN_COMPLETED;
 
-            $this->logLifecycleTransition($booking, BookingLifecycleStatus::RETURN_SCHEDULED, $lifecycleStatus, $returnData);
+                $booking->transitionToStatus($lifecycleStatus, (string) $actorUserId, $returnData);
+
+                $this->logLifecycleTransition(
+                    $booking,
+                    $fromStatus,
+                    $lifecycleStatus,
+                    $returnData
+                );
+            } else {
+                // Skip QC stage for businesses that disable it in website settings.
+                $this->makeVehicleAvailable($vehicleId);
+                $completionMeta = array_merge(
+                    $returnData,
+                    [
+                        'qc_skipped' => true,
+                        'maintenance_stage_enabled' => (bool) ($workflowSettings['enable_maintenance_stage'] ?? true),
+                    ]
+                );
+                $transitioned = $booking->transitionToStatus(
+                    BookingLifecycleStatus::COMPLETED,
+                    (string) $actorUserId,
+                    $completionMeta
+                );
+                if (!$transitioned) {
+                    $existingWorkflowData = is_array($booking->workflow_data) ? $booking->workflow_data : [];
+                    $booking->update([
+                        'status' => 'completed',
+                        'completed_at' => now(),
+                        'updated_user_id' => $actorUserId,
+                        'workflow_data' => array_merge($existingWorkflowData, [
+                            'qc_skipped' => true,
+                            'completed_via' => !empty($returnData['completed_by_driver']) ? 'driver_mobile' : 'return_processing',
+                            'completed_at' => now()->toIso8601String(),
+                        ]),
+                    ]);
+                }
+
+                $this->logLifecycleTransition(
+                    $booking,
+                    $fromStatus,
+                    BookingLifecycleStatus::COMPLETED,
+                    array_merge($returnData, ['qc_skipped' => true])
+                );
+            }
 
             return $dispatch;
         });
@@ -419,19 +682,28 @@ class BookingLifecycleService
     /**
      * Start QC inspection
      */
-    public function startQCInspection(string $bookingId, string $inspectorId): BookingQC
+    public function startQCInspection(string $bookingId, ?string $inspectorId = null, ?string $bookingItemId = null): BookingQC
     {
-        return DB::transaction(function () use ($bookingId, $inspectorId) {
-            $booking = Booking::findOrFail($bookingId);
+        return DB::transaction(function () use ($bookingId, $inspectorId, $bookingItemId) {
+            $booking = Booking::with(['dispatch', 'bookingItems'])->findOrFail($bookingId);
+            $context = $this->resolveLifecycleContext($booking, $bookingItemId);
+            $vehicleId = $booking->dispatch?->vehicle_id ?: $context['vehicle_id'];
+            if (!$vehicleId) {
+                throw new \Exception('Vehicle must be assigned before QC inspection');
+            }
+            $resolvedInspectorId = $inspectorId ?: Auth::id();
+            if (!$resolvedInspectorId) {
+                throw new \Exception('Inspector is required to start QC inspection');
+            }
 
             // Create or get QC record
             $qc = $booking->qc ?: $booking->qc()->create([
-                'vehicle_id' => $booking->vehicle_id,
+                'vehicle_id' => $vehicleId,
                 'dispatch_id' => $booking->dispatch?->id,
                 'qc_status' => QCStatus::PENDING,
             ]);
 
-            $qc->startInspection($inspectorId);
+            $qc->startInspection((string) $resolvedInspectorId);
 
             $booking->transitionToStatus(BookingLifecycleStatus::QC_IN_PROGRESS, Auth::id());
 
@@ -444,10 +716,11 @@ class BookingLifecycleService
     /**
      * Complete QC inspection
      */
-    public function completeQCInspection(string $bookingId, array $inspectionData): BookingQC
+    public function completeQCInspection(string $bookingId, array $inspectionData, ?string $bookingItemId = null): BookingQC
     {
-        return DB::transaction(function () use ($bookingId, $inspectionData) {
+        return DB::transaction(function () use ($bookingId, $inspectionData, $bookingItemId) {
             $booking = Booking::findOrFail($bookingId);
+            $this->resolveLifecycleContext($booking, $bookingItemId);
             $qc = $booking->qc;
 
             if (!$qc) {
@@ -466,12 +739,17 @@ class BookingLifecycleService
             $this->logLifecycleTransition($booking, BookingLifecycleStatus::QC_IN_PROGRESS, $nextStatus, $inspectionData);
 
             // If no repair needed, make vehicle available
+            $vehicleId = $qc->vehicle_id ?: $booking->vehicle_id;
             if (!$qc->needsRepair()) {
-                $this->makeVehicleAvailable($booking->vehicle_id);
+                if ($vehicleId) {
+                    $this->makeVehicleAvailable($vehicleId);
+                }
             } else {
                 // Update vehicle to repair status
-                $vehicle = Vehicle::findOrFail($booking->vehicle_id);
-                $vehicle->update(['availability_status' => VehicleAvailabilityStatus::UNAVAILABLE_REPAIR->value]);
+                if ($vehicleId) {
+                    $vehicle = Vehicle::findOrFail($vehicleId);
+                    $vehicle->update(['availability_status' => VehicleAvailabilityStatus::UNAVAILABLE_REPAIR->value]);
+                }
             }
 
             return $qc;
@@ -481,10 +759,11 @@ class BookingLifecycleService
     /**
      * Complete repairs and finish QC
      */
-    public function completeRepairs(string $bookingId, array $repairData = []): BookingQC
+    public function completeRepairs(string $bookingId, array $repairData = [], ?string $bookingItemId = null): BookingQC
     {
-        return DB::transaction(function () use ($bookingId, $repairData) {
+        return DB::transaction(function () use ($bookingId, $repairData, $bookingItemId) {
             $booking = Booking::findOrFail($bookingId);
+            $this->resolveLifecycleContext($booking, $bookingItemId);
             $qc = $booking->qc;
 
             if (!$qc) {
@@ -498,7 +777,10 @@ class BookingLifecycleService
             $this->logLifecycleTransition($booking, BookingLifecycleStatus::QC_REPAIR_NEEDED, BookingLifecycleStatus::QC_COMPLETED, $repairData);
 
             // Make vehicle available
-            $this->makeVehicleAvailable($booking->vehicle_id);
+            $vehicleId = $qc->vehicle_id ?: $booking->vehicle_id;
+            if ($vehicleId) {
+                $this->makeVehicleAvailable($vehicleId);
+            }
 
             return $qc;
         });
@@ -511,10 +793,11 @@ class BookingLifecycleService
     /**
      * Complete booking lifecycle
      */
-    public function completeBooking(string $bookingId, array $completionData = []): Booking
+    public function completeBooking(string $bookingId, array $completionData = [], ?string $bookingItemId = null): Booking
     {
-        return DB::transaction(function () use ($bookingId, $completionData) {
+        return DB::transaction(function () use ($bookingId, $completionData, $bookingItemId) {
             $booking = Booking::findOrFail($bookingId);
+            $this->resolveLifecycleContext($booking, $bookingItemId);
 
             $booking->transitionToStatus(BookingLifecycleStatus::COMPLETED, Auth::id(), $completionData);
 
@@ -554,6 +837,48 @@ class BookingLifecycleService
         $vehicle->update(['availability_status' => VehicleAvailabilityStatus::AVAILABLE->value]);
     }
 
+    private function getLifecycleWorkflowSettings(): array
+    {
+        $enableQc = $this->normalizeSettingBoolean(
+            WebsiteSetting::getValue('assignment_enable_qc_stage', 'false'),
+            false
+        );
+        $enableMaintenance = $this->normalizeSettingBoolean(
+            WebsiteSetting::getValue('assignment_enable_maintenance_stage', 'false'),
+            false
+        );
+
+        return [
+            'enable_qc_stage' => $enableQc,
+            'enable_maintenance_stage' => $enableMaintenance,
+        ];
+    }
+
+    private function normalizeSettingBoolean(mixed $value, bool $default = false): bool
+    {
+        if ($value === null) {
+            return $default;
+        }
+
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if (is_numeric($value)) {
+            return ((int) $value) === 1;
+        }
+
+        $normalized = strtolower(trim((string) $value));
+        if (in_array($normalized, ['1', 'true', 'yes', 'on', 'enabled'], true)) {
+            return true;
+        }
+        if (in_array($normalized, ['0', 'false', 'no', 'off', 'disabled'], true)) {
+            return false;
+        }
+
+        return $default;
+    }
+
     /**
      * Check if allocation requires approval
      */
@@ -587,15 +912,39 @@ class BookingLifecycleService
     /**
      * Get booking lifecycle summary
      */
-    public function getLifecycleSummary(string $bookingId): array
+    public function getLifecycleSummary(string $bookingId, ?string $bookingItemId = null): array
     {
-        $booking = Booking::with(['dispatch', 'qc', 'customer', 'vehicle', 'driver'])->findOrFail($bookingId);
+        $booking = Booking::with([
+            'dispatch.vehicle',
+            'dispatch.driver.user',
+            'dispatch.dispatchedBy',
+            'dispatch.returnedBy',
+            'qc.inspector',
+            'customer',
+            'bookingItems.serviceType',
+            'bookingItems.vehicle',
+            'bookingItems.driver.user',
+        ])->findOrFail($bookingId);
+        $context = $this->resolveLifecycleContext($booking, $bookingItemId);
+        $approvalTriggers = $this->bookingFlowService->getApprovalTriggersForBooking(
+            $booking,
+            $context['booking_item']
+        );
+        $approvalReasonLabels = $this->bookingFlowService->formatApprovalTriggerLabels($approvalTriggers);
+        $requiresApproval = (bool) (($booking->requires_approval ?? false) || (($booking->status ?? null) === 'pending_approval'));
+        if ($requiresApproval && empty($approvalReasonLabels)) {
+            $approvalReasonLabels = ['Manager approval required'];
+        }
 
         $currentStatus = $booking->getLifecycleStatus();
         $nextActions = $booking->getNextActions();
+        $workflowSettings = $this->getLifecycleWorkflowSettings();
 
         return [
             'booking' => $booking,
+            'selected_booking_item_id' => $context['booking_item_id'],
+            'selected_trip_number' => $context['trip_number'],
+            'selected_booking_item' => $context['booking_item'],
             'current_status' => [
                 'value' => $currentStatus->value,
                 'stage' => $currentStatus->getStage(),
@@ -608,6 +957,14 @@ class BookingLifecycleService
             'next_actions' => $nextActions,
             'stage_progress' => $this->getStageProgress($booking),
             'timeline' => $this->getLifecycleTimeline($booking),
+            'workflow_settings' => $workflowSettings,
+            'approval_context' => [
+                'requires_approval' => $requiresApproval,
+                'triggers' => $approvalTriggers,
+                'reasons' => $approvalReasonLabels,
+                'justification' => $booking->approval_justification,
+                'status' => $booking->approval_status,
+            ],
         ];
     }
 
@@ -717,99 +1074,201 @@ class BookingLifecycleService
      */
     public function getAvailableInspectors(): array
     {
-        // Get users with QC inspector role or permission
-        $inspectors = User::query()
-            ->where('status', 'active')
-            ->whereHas('roles', function ($query) {
-                $query->where('name', 'qc_inspector')
-                    ->orWhere('name', 'admin')
-                    ->orWhere('name', 'operations_manager');
-            })
-            ->select(['id', 'name', 'email'])
-            ->orderBy('name')
-            ->get();
+        try {
+            $baseQuery = User::query();
 
-        return $inspectors->toArray();
+            // Prefer explicit boolean active flag if available.
+            if (Schema::hasColumn('users', 'is_active')) {
+                $baseQuery->where('is_active', true);
+            } elseif (Schema::hasColumn('users', 'status')) {
+                $baseQuery->where(function ($statusQuery) {
+                    $statusQuery
+                        ->whereIn('status', ['active', 'enabled', 'approved'])
+                        ->orWhereNull('status');
+                });
+            }
+
+            $selectColumns = ['id', 'email'];
+            if (Schema::hasColumn('users', 'first_name')) {
+                $selectColumns[] = 'first_name';
+            }
+            if (Schema::hasColumn('users', 'last_name')) {
+                $selectColumns[] = 'last_name';
+            }
+            if (Schema::hasColumn('users', 'name')) {
+                $selectColumns[] = 'name';
+            }
+
+            $orderColumn = Schema::hasColumn('users', 'first_name')
+                ? 'first_name'
+                : (Schema::hasColumn('users', 'name') ? 'name' : 'email');
+
+            $inspectorsQuery = clone $baseQuery;
+            if (Schema::hasTable('roles') && Schema::hasTable('model_has_roles')) {
+                $inspectorsQuery->whereHas('roles', function ($roleQuery) {
+                    $roleQuery->whereIn('name', [
+                        'qc_inspector',
+                        'admin',
+                        'operations_manager',
+                    ]);
+                });
+            }
+
+            $inspectors = $inspectorsQuery
+                ->select($selectColumns)
+                ->orderBy($orderColumn)
+                ->get();
+
+            // Fallback 1: any active user with a role assignment.
+            if ($inspectors->isEmpty() && Schema::hasTable('roles') && Schema::hasTable('model_has_roles')) {
+                $fallbackRoleQuery = clone $baseQuery;
+                $inspectors = $fallbackRoleQuery
+                    ->whereHas('roles')
+                    ->select($selectColumns)
+                    ->orderBy($orderColumn)
+                    ->get();
+            }
+
+            // Fallback 2: any active user.
+            if ($inspectors->isEmpty()) {
+                $fallbackAllQuery = clone $baseQuery;
+                $inspectors = $fallbackAllQuery
+                    ->select($selectColumns)
+                    ->orderBy($orderColumn)
+                    ->get();
+            }
+
+            return $inspectors->map(function (User $user) {
+                $name = trim((string) (
+                    ($user->first_name ?? '') . ' ' . ($user->last_name ?? '')
+                ));
+
+                if ($name === '') {
+                    $name = (string) ($user->name ?? $user->email ?? 'Unknown Inspector');
+                }
+
+                return [
+                    'id' => $user->id,
+                    'name' => $name,
+                    'email' => $user->email,
+                ];
+            })->toArray();
+        } catch (\Throwable $exception) {
+            Log::warning('Unable to load available inspectors', [
+                'error' => $exception->getMessage(),
+            ]);
+
+            return [];
+        }
     }
 
     /**
      * Get ongoing details for a booking
      */
-    public function getOngoingDetails(string $bookingId): array
+    public function getOngoingDetails(string $bookingId, ?string $bookingItemId = null): array
     {
         $booking = Booking::with([
-            'dispatch',
-            'assignments.vehicle',
-            'assignments.driver',
-            'customer'
+            'dispatch.vehicle',
+            'dispatch.driver.user',
+            'customer',
+            'bookingItems.vehicle',
+            'bookingItems.driver.user',
         ])->findOrFail($bookingId);
+        $context = $this->resolveLifecycleContext($booking, $bookingItemId);
 
         $dispatch = $booking->dispatch;
-
         if (!$dispatch) {
             throw new \Exception('No dispatch found for this booking');
         }
 
+        $vehicle = $dispatch->vehicle ?: $context['vehicle'];
+        $driver = $dispatch->driver ?: $context['driver'];
+        $isOverdue = $dispatch->isOverdue();
+
         return [
             'booking_id' => $booking->id,
-            'customer_name' => $booking->customer->full_name,
-            'vehicle' => $booking->assignments->first()?->vehicle,
-            'driver' => $booking->assignments->first()?->driver,
+            'selected_booking_item_id' => $context['booking_item_id'],
+            'selected_trip_number' => $context['trip_number'],
+            'customer_name' => $booking->customer->name ?? 'Unknown Customer',
+            'vehicle' => $vehicle ? [
+                'id' => $vehicle->id,
+                'name' => $vehicle->title ?? $vehicle->name ?? 'Vehicle',
+                'license_plate' => $vehicle->license_plate,
+                'make' => $vehicle->make ?? null,
+                'model' => $vehicle->model ?? null,
+            ] : null,
+            'driver' => $driver ? [
+                'id' => $driver->id,
+                'name' => trim(($driver->user->first_name ?? '') . ' ' . ($driver->user->last_name ?? '')) ?: ($driver->name ?? 'Unknown Driver'),
+                'phone' => $driver->user->phone ?? null,
+            ] : null,
             'dispatch_details' => [
                 'dispatched_at' => $dispatch->dispatched_at,
-                'handover_time' => $dispatch->handover_time,
-                'handover_location' => $dispatch->handover_location,
-                'dispatch_notes' => $dispatch->dispatched_notes,
+                'dispatch_notes' => $dispatch->dispatch_notes,
+                'fuel_level_out' => $dispatch->fuel_level_out,
+                'mileage_out' => $dispatch->mileage_out,
             ],
-            'expected_return' => $booking->to_date . ' ' . $booking->to_time,
-            'contact_info' => [
-                'customer_phone' => $booking->customer->phone,
-                'driver_phone' => $booking->assignments->first()?->driver->phone,
-            ],
-            'status' => $booking->lifecycle_status->value,
-            'duration_hours' => now()->diffInHours($dispatch->dispatched_at),
+            'expected_return' => $dispatch->expected_return_at ?? ($context['booking_item']?->to_date ?? $booking->to_date),
+            'status' => $isOverdue ? 'overdue' : (($dispatch->dispatch_status?->value) ?? 'dispatched'),
+            'duration_hours' => $dispatch->dispatched_at ? now()->diffInHours($dispatch->dispatched_at) : 0,
         ];
     }
 
     /**
      * Get dispatch details for a booking
      */
-    public function getDispatchDetails(string $bookingId): array
+    public function getDispatchDetails(string $bookingId, ?string $bookingItemId = null): array
     {
         $booking = Booking::with([
-            'dispatch',
-            'assignments.vehicle',
-            'assignments.driver'
+            'dispatch.vehicle',
+            'dispatch.driver.user',
+            'bookingItems.vehicle',
+            'bookingItems.driver.user',
         ])->findOrFail($bookingId);
+        $context = $this->resolveLifecycleContext($booking, $bookingItemId);
 
         $dispatch = $booking->dispatch;
-
         if (!$dispatch) {
             throw new \Exception('No dispatch found for this booking');
         }
 
+        $vehicle = $dispatch->vehicle ?: $context['vehicle'];
+        $driver = $dispatch->driver ?: $context['driver'];
+
         return [
             'id' => $dispatch->id,
             'booking_id' => $booking->id,
-            'status' => $dispatch->status->value,
-            'vehicle' => $booking->assignments->first()?->vehicle,
-            'driver' => $booking->assignments->first()?->driver,
+            'selected_booking_item_id' => $context['booking_item_id'],
+            'selected_trip_number' => $context['trip_number'],
+            'dispatch_status' => $dispatch->dispatch_status?->value,
+            'vehicle' => $vehicle ? [
+                'id' => $vehicle->id,
+                'name' => $vehicle->title ?? $vehicle->name ?? 'Vehicle',
+                'license_plate' => $vehicle->license_plate,
+                'make' => $vehicle->make ?? null,
+                'model' => $vehicle->model ?? null,
+            ] : null,
+            'driver' => $driver ? [
+                'id' => $driver->id,
+                'name' => trim(($driver->user->first_name ?? '') . ' ' . ($driver->user->last_name ?? '')) ?: ($driver->name ?? 'Unknown Driver'),
+                'phone' => $driver->user->phone ?? null,
+            ] : null,
             'dispatch_details' => [
                 'dispatched_at' => $dispatch->dispatched_at,
-                'handover_time' => $dispatch->handover_time,
-                'handover_location' => $dispatch->handover_location,
-                'dispatch_notes' => $dispatch->dispatched_notes,
-                'vehicle_condition_notes' => $dispatch->vehicle_condition_notes,
-                'dispatch_fuel_level' => $dispatch->dispatch_fuel_level,
-                'dispatch_mileage' => $dispatch->dispatch_mileage,
+                'handover_time' => $dispatch->dispatched_at,
+                'handover_location' => null,
+                'dispatch_notes' => $dispatch->dispatch_notes,
+                'vehicle_condition_notes' => data_get($dispatch->vehicle_condition_out, 'notes'),
+                'dispatch_fuel_level' => $dispatch->fuel_level_out,
+                'dispatch_mileage' => $dispatch->mileage_out,
             ],
             'return_details' => [
-                'returned_at' => $dispatch->returned_at,
-                'return_condition_notes' => $dispatch->return_condition_notes,
-                'return_fuel_level' => $dispatch->return_fuel_level,
-                'return_mileage' => $dispatch->return_mileage,
+                'returned_at' => $dispatch->actual_return_at,
+                'return_condition_notes' => data_get($dispatch->vehicle_condition_in, 'notes'),
+                'return_fuel_level' => $dispatch->fuel_level_in,
+                'return_mileage' => $dispatch->mileage_in,
                 'return_notes' => $dispatch->return_notes,
-                'damages' => $dispatch->damages,
+                'damages' => $dispatch->damages_reported,
                 'additional_charges' => $dispatch->additional_charges,
                 'late_return_fee' => $dispatch->late_return_fee,
             ],
@@ -821,9 +1280,14 @@ class BookingLifecycleService
     /**
      * Get QC details for a booking
      */
-    public function getQCDetails(string $bookingId): array
+    public function getQCDetails(string $bookingId, ?string $bookingItemId = null): array
     {
-        $booking = Booking::with(['qc.repairItems'])->findOrFail($bookingId);
+        $booking = Booking::with([
+            'qc.repairItems',
+            'qc.inspector',
+            'bookingItems',
+        ])->findOrFail($bookingId);
+        $context = $this->resolveLifecycleContext($booking, $bookingItemId);
 
         $qc = $booking->qc;
 
@@ -834,15 +1298,17 @@ class BookingLifecycleService
         return [
             'id' => $qc->id,
             'booking_id' => $booking->id,
-            'status' => $qc->status->value,
+            'selected_booking_item_id' => $context['booking_item_id'],
+            'selected_trip_number' => $context['trip_number'],
+            'status' => $qc->qc_status?->value,
             'inspector' => $qc->inspector ? [
                 'id' => $qc->inspector->id,
                 'name' => $qc->inspector->name,
                 'email' => $qc->inspector->email,
             ] : null,
             'inspection_details' => [
-                'started_at' => $qc->started_at,
-                'completed_at' => $qc->completed_at,
+                'started_at' => $qc->inspection_started_at,
+                'completed_at' => $qc->inspection_completed_at,
                 'cleanliness_rating' => $qc->cleanliness_rating,
                 'fuel_level' => $qc->fuel_level,
                 'mileage' => $qc->mileage,

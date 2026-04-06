@@ -136,6 +136,7 @@ class AssignmentService
                 'id' => Str::uuid(),
                 'driver_id' => $params['driver_id'],
                 'booking_id' => $params['booking_id'],
+                'booking_item_id' => $params['booking_item_id'] ?? null,
                 'parent_assignment_id' => $params['parent_assignment_id'] ?? null,
                 'customer_name' => $params['customer_name'],
                 'service_type' => $params['service_type'],
@@ -166,8 +167,32 @@ class AssignmentService
             $vehicleId = $params['vehicle_id'] ?? null;
             $driverId = $params['driver_id'] ?? null;
             $bookingId = $params['booking_id'];
+            $requestedBookingItemId = $params['booking_item_id'] ?? null;
             $assignmentType = $params['assignment_type'] ?? 'primary';
             $overrideReasons = $params['override_reasons'] ?? [];
+            $requiresApprovalForAssignment = $assignmentType !== 'primary';
+            $assignmentStatus = $requiresApprovalForAssignment ? 'pending_approval' : 'active';
+
+            $booking = Booking::with('bookingItems')->findOrFail($bookingId);
+            $bookingItem = null;
+
+            if (!empty($requestedBookingItemId)) {
+                $bookingItem = $booking->bookingItems->firstWhere('id', $requestedBookingItemId);
+
+                if (!$bookingItem) {
+                    throw new \InvalidArgumentException('Selected booking item does not belong to this booking');
+                }
+            } else {
+                $bookingItem = $booking->bookingItems
+                    ->sortBy(function ($item) {
+                        return sprintf(
+                            '%08d-%s',
+                            (int) ($item->trip_number ?? 0),
+                            (string) ($item->id ?? '')
+                        );
+                    })
+                    ->first();
+            }
             
             $fromDate = Carbon::parse($params['from_date']);
             $toDate = Carbon::parse($params['to_date']);
@@ -185,8 +210,8 @@ class AssignmentService
                     'assigned_from' => $fromDate,
                     'assigned_to' => $toDate,
                     'assignment_type' => $assignmentType,
-                    'status' => 'pending_approval',
-                    'requires_approval' => $assignmentType !== 'primary',
+                    'status' => $assignmentStatus,
+                    'requires_approval' => $requiresApprovalForAssignment,
                     'override_reasons' => $overrideReasons,
                 ];
 
@@ -198,7 +223,7 @@ class AssignmentService
                 $vehicleAssignment = $this->createVehicleAssignment($vehicleAssignmentParams);
                 $assignments['vehicle'] = $vehicleAssignment;
 
-                if ($assignmentType !== 'primary') {
+                if ($requiresApprovalForAssignment) {
                     $requiresApproval = true;
                 }
             }
@@ -208,13 +233,14 @@ class AssignmentService
                 $driverAssignmentParams = [
                     'driver_id' => $driverId,
                     'booking_id' => $bookingId,
+                    'booking_item_id' => $bookingItem?->id,
                     'customer_name' => $params['customer_name'],
                     'service_type' => $params['service_type'],
                     'assigned_from' => $fromDate,
                     'assigned_to' => $toDate,
                     'assignment_type' => $assignmentType,
-                    'status' => 'pending_approval',
-                    'requires_approval' => $assignmentType !== 'primary',
+                    'status' => $assignmentStatus,
+                    'requires_approval' => $requiresApprovalForAssignment,
                     'override_reasons' => $overrideReasons,
                 ];
 
@@ -225,9 +251,32 @@ class AssignmentService
                 $driverAssignment = $this->createDriverAssignment($driverAssignmentParams);
                 $assignments['driver'] = $driverAssignment;
 
-                if ($assignmentType !== 'primary') {
+                if ($requiresApprovalForAssignment) {
                     $requiresApproval = true;
                 }
+            }
+
+            // Persist current selection so Assignment Management can restore it after refresh.
+            $bookingItemUpdates = [];
+            $bookingUpdates = [];
+
+            if ($vehicleId) {
+                $bookingItemUpdates['vehicle_id'] = $vehicleId;
+                $bookingUpdates['vehicle_id'] = $vehicleId;
+            }
+
+            if ($driverId) {
+                $bookingItemUpdates['driver_id'] = $driverId;
+                $bookingUpdates['driver_id'] = $driverId;
+            }
+
+            if ($bookingItem && !empty($bookingItemUpdates)) {
+                $bookingItem->update($bookingItemUpdates);
+            }
+
+            // Keep legacy booking-level fields in sync for single-item bookings.
+            if ((!$bookingItem || $booking->bookingItems->count() <= 1) && !empty($bookingUpdates)) {
+                $booking->update($bookingUpdates);
             }
 
             return [

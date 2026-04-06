@@ -218,14 +218,17 @@ class LocationService
         }
 
         $count = 0;
+        $activeAssignmentId = $this->getActiveAssignmentId($driver);
 
-        DB::transaction(function () use ($driver, $session, $locations, &$count) {
+        DB::transaction(function () use ($driver, $session, $locations, $activeAssignmentId, &$count) {
             $now = Carbon::now();
             $latestLocation = null;
 
             foreach ($locations as $locationData) {
                 RoutePoint::create([
                     'session_id' => $session->id,
+                    // Preserve trip linkage for map replay/history when sent in batches.
+                    'assignment_id' => $locationData['assignment_id'] ?? $activeAssignmentId,
                     'latitude' => $locationData['latitude'],
                     'longitude' => $locationData['longitude'],
                     'altitude' => $locationData['altitude'] ?? null,

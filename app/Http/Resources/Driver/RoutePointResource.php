@@ -25,6 +25,7 @@ class RoutePointResource extends JsonResource
         return [
             'id' => $this->id,
             'session_id' => $this->session_id,
+            'assignment_id' => $this->assignment_id,
             'latitude' => (float) $this->latitude,
             'longitude' => (float) $this->longitude,
             'altitude' => $this->altitude !== null ? (float) $this->altitude : null,

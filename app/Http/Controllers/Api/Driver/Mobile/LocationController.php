@@ -5,8 +5,11 @@ namespace App\Http\Controllers\Api\Driver\Mobile;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Driver\Mobile\LocationUpdateRequest;
 use App\Http\Resources\Driver\RoutePointResource;
+use App\Models\Driver\DriverSession;
+use App\Models\DriverAssignment;
 use App\Services\Driver\DriverAuthService;
 use App\Services\Driver\LocationService;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -114,22 +117,85 @@ class LocationController extends Controller
                 ], 403);
             }
 
-            $session = $driver->activeSession;
+            $assignmentId = $request->query('assignment_id');
+            $sessionId = $request->query('session_id');
+            $limit = (int) $request->query('limit', 5000);
+            $limit = max(1, min($limit, 10000));
+            $from = $request->query('from');
+            $to = $request->query('to');
+
+            if ($assignmentId) {
+                $assignment = DriverAssignment::where('id', $assignmentId)
+                    ->where('driver_id', $driver->id)
+                    ->first();
+
+                if (!$assignment) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'Assignment not found',
+                        'error_code' => 'LOCATION_ASSIGNMENT_NOT_FOUND'
+                    ], 404);
+                }
+
+                $query = $assignment->routePoints()->orderBy('recorded_at', 'asc');
+                $this->applyRecordedAtFilters($query, $from, $to);
+                $routePoints = $query->limit($limit)->get();
+
+                return response()->json([
+                    'status' => 'success',
+                    'data' => [
+                        'scope' => 'assignment',
+                        'assignment_id' => $assignment->id,
+                        'trip_phase' => $assignment->trip_phase?->value,
+                        'session_id' => $routePoints->first()?->session_id,
+                        'route_points' => RoutePointResource::collection($routePoints),
+                        'total_points' => $routePoints->count(),
+                    ]
+                ]);
+            }
+
+            $session = null;
+            if ($sessionId) {
+                $session = DriverSession::where('id', $sessionId)
+                    ->where('driver_id', $driver->id)
+                    ->first();
+
+                if (!$session) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'Session not found',
+                        'error_code' => 'LOCATION_SESSION_NOT_FOUND'
+                    ], 404);
+                }
+            } else {
+                // Keep existing behavior (prefer active session), but allow history after trip/session end.
+                $session = $driver->activeSession()
+                    ->first() ?? $driver->sessions()->orderByDesc('start_time')->first();
+            }
 
             if (!$session) {
                 return response()->json([
-                    'status' => 'error',
-                    'message' => 'No active session',
-                    'error_code' => 'LOCATION_NO_SESSION'
-                ], 400);
+                    'status' => 'success',
+                    'data' => [
+                        'scope' => 'session',
+                        'session_id' => null,
+                        'route_points' => [],
+                        'total_points' => 0
+                    ]
+                ]);
             }
 
-            $routePoints = $this->locationService->getSessionRoutePoints($session);
+            $query = $session->routePoints()->orderBy('recorded_at', 'asc');
+            $this->applyRecordedAtFilters($query, $from, $to);
+            $routePoints = $query->limit($limit)->get();
 
             return response()->json([
                 'status' => 'success',
                 'data' => [
+                    'scope' => 'session',
                     'session_id' => $session->id,
+                    'assignment_id' => $session->assignment_id,
+                    'session_status' => $session->status,
                     'route_points' => RoutePointResource::collection($routePoints),
                     'total_points' => $routePoints->count()
                 ]
@@ -141,6 +207,17 @@ class LocationController extends Controller
                 'error_code' => 'LOCATION_HISTORY_FAILED',
                 'error' => $e->getMessage()
             ], 500);
+        }
+    }
+
+    private function applyRecordedAtFilters($query, ?string $from, ?string $to): void
+    {
+        if ($from) {
+            $query->where('recorded_at', '>=', Carbon::parse($from));
+        }
+
+        if ($to) {
+            $query->where('recorded_at', '<=', Carbon::parse($to));
         }
     }
 }

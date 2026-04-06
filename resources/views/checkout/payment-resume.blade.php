@@ -691,20 +691,20 @@
         .btn {
             display: inline-block;
             padding: 14px 32px;
-            background: linear-gradient(135deg, #BF2629 0%, #a02123 100%);
+            background: linear-gradient(135deg, #15803d 0%, #166534 100%);
             color: #ffffff !important;
             text-decoration: none;
             font-size: 15px;
             font-weight: 600;
             border-radius: 8px;
             transition: all 0.3s ease;
-            box-shadow: 0 4px 12px rgba(191, 38, 41, 0.25);
+            box-shadow: 0 4px 12px rgba(21, 128, 61, 0.24);
             border: none;
             cursor: pointer;
         }
 
         .btn:hover {
-            background: linear-gradient(135deg, #a02123 0%, #8f1d1f 100%);
+            background: linear-gradient(135deg, #166534 0%, #14532d 100%);
         }
 
         .btn-secondary {

@@ -4,13 +4,11 @@ namespace App\Http\Controllers\Api\Booking;
 
 use App\Http\Controllers\Controller;
 use App\Services\BookingLifecycleService;
-use App\Models\Booking\Booking;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Gate;
 
 class BookingLifecycleController extends Controller
 {
@@ -24,10 +22,13 @@ class BookingLifecycleController extends Controller
     /**
      * Get booking lifecycle summary
      */
-    public function getLifecycleSummary(string $bookingId): JsonResponse
+    public function getLifecycleSummary(Request $request, string $bookingId): JsonResponse
     {
         try {
-            $summary = $this->lifecycleService->getLifecycleSummary($bookingId);
+            $summary = $this->lifecycleService->getLifecycleSummary(
+                $bookingId,
+                $request->query('booking_item_id')
+            );
 
             return response()->json([
                 'status' => 'success',
@@ -55,31 +56,44 @@ class BookingLifecycleController extends Controller
     {
         $request->validate([
             'booking_id' => 'required|string',
-            'vehicle_condition_notes' => 'required|string',
-            'fuel_level' => 'required|integer|min:0|max:10',
-            'mileage' => 'required|integer|min:0',
+            'booking_item_id' => 'nullable|string',
+            // Legacy payload support
+            'vehicle_condition_notes' => 'nullable|string',
+            'fuel_level' => 'nullable|numeric|min:0|max:100',
+            'mileage' => 'nullable|integer|min:0',
             'dispatched_notes' => 'nullable|string',
-            'handover_time' => 'required|date',
-            'handover_location' => 'required|string',
+            'handover_time' => 'nullable|date',
+            'handover_location' => 'nullable|string',
+            // Current frontend payload support
+            'fuel_level_out' => 'nullable|numeric|min:0|max:100',
+            'mileage_out' => 'nullable|integer|min:0',
+            'vehicle_condition_out' => 'nullable|array',
+            'dispatch_notes' => 'nullable|string',
+            'agreements_signed' => 'nullable|boolean',
+            'notes' => 'nullable|string',
+            'condition' => 'nullable|array',
         ]);
 
         try {
             DB::beginTransaction();
 
-            // Check authorization
-            $booking = Booking::findOrFail($request->booking_id);
-            Gate::authorize('manage-booking', $booking);
+            $condition = $request->input('condition', $request->input('vehicle_condition_out'));
+            if (!$condition && $request->filled('vehicle_condition_notes')) {
+                $condition = ['notes' => $request->input('vehicle_condition_notes')];
+            }
 
             $dispatch = $this->lifecycleService->dispatchVehicle(
                 $request->booking_id,
-                array_merge($request->only([
-                    'vehicle_condition_notes',
-                    'fuel_level',
-                    'mileage',
-                    'dispatched_notes',
-                    'handover_time',
-                    'handover_location'
-                ]), [
+                array_merge([
+                    'notes' => $request->input('notes', $request->input('dispatch_notes', $request->input('dispatched_notes'))),
+                    'fuel_level' => $request->input('fuel_level', $request->input('fuel_level_out')),
+                    'mileage' => $request->input('mileage', $request->input('mileage_out')),
+                    'condition' => $condition,
+                    'agreements_signed' => (bool) $request->boolean('agreements_signed', false),
+                    'handover_time' => $request->input('handover_time'),
+                    'handover_location' => $request->input('handover_location'),
+                    'booking_item_id' => $request->input('booking_item_id'),
+                ], [
                     'dispatched_by' => Auth::id()
                 ])
             );
@@ -114,11 +128,12 @@ class BookingLifecycleController extends Controller
     {
         $request->validate([
             'booking_id' => 'required|string',
-            'return_condition_notes' => 'required|string',
-            'fuel_level' => 'required|integer|min:0|max:10',
-            'mileage' => 'required|integer|min:0',
+            'booking_item_id' => 'nullable|string',
+            'return_condition_notes' => 'nullable|string',
+            'fuel_level' => 'nullable|numeric|min:0|max:10',
+            'mileage' => 'nullable|integer|min:0',
             'return_notes' => 'nullable|string',
-            'actual_return_time' => 'required|date',
+            'actual_return_time' => 'nullable|date',
             'damages' => 'nullable|array',
             'damages.*.type' => 'required_with:damages|string',
             'damages.*.description' => 'required_with:damages|string',
@@ -132,10 +147,6 @@ class BookingLifecycleController extends Controller
         try {
             DB::beginTransaction();
 
-            // Check authorization
-            $booking = Booking::findOrFail($request->booking_id);
-            Gate::authorize('manage-booking', $booking);
-
             $dispatch = $this->lifecycleService->processReturn(
                 $request->booking_id,
                 array_merge($request->only([
@@ -147,6 +158,11 @@ class BookingLifecycleController extends Controller
                     'damages',
                     'charges'
                 ]), [
+                    'notes' => $request->input('return_notes'),
+                    'condition' => $request->filled('return_condition_notes')
+                        ? ['notes' => $request->input('return_condition_notes')]
+                        : null,
+                    'booking_item_id' => $request->input('booking_item_id'),
                     'returned_by' => Auth::id()
                 ])
             );
@@ -181,19 +197,18 @@ class BookingLifecycleController extends Controller
     {
         $request->validate([
             'booking_id' => 'required|string',
-            'inspector_id' => 'required|exists:users,id',
+            'booking_item_id' => 'nullable|string',
+            'inspector_id' => 'nullable|exists:users,id',
         ]);
 
         try {
             DB::beginTransaction();
-
-            // Check authorization
-            $booking = Booking::findOrFail($request->booking_id);
-            Gate::authorize('manage-booking', $booking);
+            $inspectorId = $request->input('inspector_id') ?: Auth::id();
 
             $qc = $this->lifecycleService->startQCInspection(
                 $request->booking_id,
-                $request->inspector_id
+                $inspectorId,
+                $request->input('booking_item_id')
             );
 
             DB::commit();
@@ -207,7 +222,7 @@ class BookingLifecycleController extends Controller
             DB::rollBack();
             Log::error('Error starting QC inspection', [
                 'booking_id' => $request->booking_id,
-                'inspector_id' => $request->inspector_id,
+                'inspector_id' => $request->input('inspector_id'),
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
@@ -226,41 +241,39 @@ class BookingLifecycleController extends Controller
     {
         $request->validate([
             'booking_id' => 'required|string',
-            'cleanliness_rating' => 'required|integer|min:1|max:5',
-            'fuel_level' => 'required|integer|min:0|max:10',
-            'mileage' => 'required|integer|min:0',
-            'interior_condition' => 'required|array',
-            'interior_condition.cleanliness' => 'required|in:excellent,good,fair,poor',
-            'interior_condition.wear_tear' => 'required|in:none,minor,moderate,major',
-            'interior_condition.damages' => 'required|in:none,minor,moderate,major',
-            'exterior_condition' => 'required|array',
-            'exterior_condition.body_condition' => 'required|in:excellent,good,fair,poor',
-            'exterior_condition.paint_condition' => 'required|in:excellent,good,fair,poor',
-            'exterior_condition.tire_condition' => 'required|in:excellent,good,fair,poor',
-            'mechanical_condition' => 'required|array',
-            'mechanical_condition.engine' => 'required|in:excellent,good,fair,poor',
-            'mechanical_condition.brakes' => 'required|in:excellent,good,fair,poor',
-            'mechanical_condition.transmission' => 'required|in:excellent,good,fair,poor',
-            'repair_required' => 'required|boolean',
+            'booking_item_id' => 'nullable|string',
+            'cleanliness_rating' => 'nullable|integer|min:1|max:5',
+            'fuel_level' => 'nullable|numeric|min:0|max:10',
+            'mileage' => 'nullable|integer|min:0',
+            'interior_condition' => 'nullable|array',
+            'interior_condition.cleanliness' => 'nullable|in:excellent,good,fair,poor',
+            'interior_condition.wear_tear' => 'nullable|in:none,minor,moderate,major',
+            'interior_condition.damages' => 'nullable|in:none,minor,moderate,major',
+            'exterior_condition' => 'nullable|array',
+            'exterior_condition.body_condition' => 'nullable|in:excellent,good,fair,poor',
+            'exterior_condition.paint_condition' => 'nullable|in:excellent,good,fair,poor',
+            'exterior_condition.tire_condition' => 'nullable|in:excellent,good,fair,poor',
+            'mechanical_condition' => 'nullable|array',
+            'mechanical_condition.engine' => 'nullable|in:excellent,good,fair,poor',
+            'mechanical_condition.brakes' => 'nullable|in:excellent,good,fair,poor',
+            'mechanical_condition.transmission' => 'nullable|in:excellent,good,fair,poor',
+            'repair_required' => 'nullable|boolean',
             'estimated_repair_cost' => 'nullable|numeric|min:0',
             'repair_notes' => 'nullable|string',
             'qc_notes' => 'nullable|string',
-            'requires_maintenance' => 'required|boolean',
+            'requires_maintenance' => 'nullable|boolean',
             'next_maintenance_due' => 'nullable|date',
         ]);
 
         try {
             DB::beginTransaction();
 
-            // Check authorization
-            $booking = Booking::findOrFail($request->booking_id);
-            Gate::authorize('manage-booking', $booking);
-
             $qc = $this->lifecycleService->completeQCInspection(
                 $request->booking_id,
-                array_merge($request->except(['booking_id']), [
+                array_merge($request->except(['booking_id', 'booking_item_id']), [
                     'completed_by' => Auth::id()
-                ])
+                ]),
+                $request->input('booking_item_id')
             );
 
             DB::commit();
@@ -293,20 +306,18 @@ class BookingLifecycleController extends Controller
     {
         $request->validate([
             'booking_id' => 'required|string',
+            'booking_item_id' => 'nullable|string',
         ]);
 
         try {
             DB::beginTransaction();
 
-            // Check authorization
-            $booking = Booking::findOrFail($request->booking_id);
-            Gate::authorize('manage-booking', $booking);
-
             $qc = $this->lifecycleService->completeRepairs(
                 $request->booking_id,
                 [
                     'completed_by' => Auth::id()
-                ]
+                ],
+                $request->input('booking_item_id')
             );
 
             DB::commit();
@@ -339,20 +350,18 @@ class BookingLifecycleController extends Controller
     {
         $request->validate([
             'booking_id' => 'required|string',
+            'booking_item_id' => 'nullable|string',
         ]);
 
         try {
             DB::beginTransaction();
 
-            // Check authorization
-            $booking = Booking::findOrFail($request->booking_id);
-            Gate::authorize('manage-booking', $booking);
-
             $result = $this->lifecycleService->completeBooking(
                 $request->booking_id,
                 [
                     'completed_by' => Auth::id()
-                ]
+                ],
+                $request->input('booking_item_id')
             );
 
             DB::commit();
@@ -407,10 +416,13 @@ class BookingLifecycleController extends Controller
     /**
      * Get ongoing details for a booking
      */
-    public function getOngoingDetails(string $bookingId): JsonResponse
+    public function getOngoingDetails(Request $request, string $bookingId): JsonResponse
     {
         try {
-            $details = $this->lifecycleService->getOngoingDetails($bookingId);
+            $details = $this->lifecycleService->getOngoingDetails(
+                $bookingId,
+                $request->query('booking_item_id')
+            );
 
             return response()->json([
                 'status' => 'success',
@@ -434,10 +446,13 @@ class BookingLifecycleController extends Controller
     /**
      * Get dispatch details for a booking
      */
-    public function getDispatchDetails(string $bookingId): JsonResponse
+    public function getDispatchDetails(Request $request, string $bookingId): JsonResponse
     {
         try {
-            $details = $this->lifecycleService->getDispatchDetails($bookingId);
+            $details = $this->lifecycleService->getDispatchDetails(
+                $bookingId,
+                $request->query('booking_item_id')
+            );
 
             return response()->json([
                 'status' => 'success',
@@ -461,10 +476,13 @@ class BookingLifecycleController extends Controller
     /**
      * Get QC details for a booking
      */
-    public function getQCDetails(string $bookingId): JsonResponse
+    public function getQCDetails(Request $request, string $bookingId): JsonResponse
     {
         try {
-            $details = $this->lifecycleService->getQCDetails($bookingId);
+            $details = $this->lifecycleService->getQCDetails(
+                $bookingId,
+                $request->query('booking_item_id')
+            );
 
             return response()->json([
                 'status' => 'success',
@@ -503,9 +521,6 @@ class BookingLifecycleController extends Controller
 
         try {
             DB::beginTransaction();
-
-            $booking = Booking::findOrFail($request->booking_id);
-            Gate::authorize('manage-booking', $booking);
 
             $replacement = $this->lifecycleService->processReplacement(
                 $request->booking_id,

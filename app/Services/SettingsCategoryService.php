@@ -754,6 +754,16 @@ class SettingsCategoryService
                     'type' => 'toggle',
                     'description' => 'When enabled, pricing includes distance from garage to pickup and dropoff to garage (garage-to-garage). When disabled, only the journey distance is used for pricing calculations.'
                 ],
+                'assignment_enable_qc_stage' => [
+                    'label' => 'Enable QC Stage in Assignment Flow',
+                    'type' => 'toggle',
+                    'description' => 'When enabled, Assignment Management includes the QC/Inspection stage after return.'
+                ],
+                'assignment_enable_maintenance_stage' => [
+                    'label' => 'Enable Maintenance Stage in Assignment Flow',
+                    'type' => 'toggle',
+                    'description' => 'When enabled, Assignment Management shows the Maintenance stage/tab.'
+                ],
                 'booking_max_days' => [
                     'label' => 'Maximum Advance Booking (days)',
                     'type' => 'number',

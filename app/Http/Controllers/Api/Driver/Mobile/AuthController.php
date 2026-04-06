@@ -7,9 +7,8 @@ use App\Http\Requests\Driver\Mobile\DriverLoginRequest;
 use App\Http\Resources\Driver\DriverResource;
 use App\Http\Resources\Driver\DriverDeviceResource;
 use App\Http\Resources\UserResource;
-use App\Enums\TripPhase;
-use App\Models\DriverAssignment;
 use App\Services\Driver\DriverAuthService;
+use App\Services\Driver\MobileAssignmentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -30,7 +29,8 @@ class AuthController extends Controller
      * @param DriverAuthService $authService
      */
     public function __construct(
-        private DriverAuthService $authService
+        private DriverAuthService $authService,
+        private MobileAssignmentService $assignmentService
     ) {}
 
     /**
@@ -53,16 +53,9 @@ class AuthController extends Controller
             // Clear rate limit on successful login
             $request->clearRateLimit();
 
-            // Get current active assignment and trip phase for the driver
+            // Get current or nearest upcoming assignment for the driver
             $driver = $result['driver'];
-            $activeAssignment = DriverAssignment::where('driver_id', $driver->id)
-                ->whereIn('trip_phase', [
-                    TripPhase::ACCEPTED,
-                    TripPhase::PICKUP_ARRIVED,
-                    TripPhase::IN_PROGRESS,
-                ])
-                ->with(['booking', 'bookingItem'])
-                ->first();
+            $activeAssignment = $this->assignmentService->getCurrentAssignment($driver);
 
             return response()->json([
                 'status' => 'success',

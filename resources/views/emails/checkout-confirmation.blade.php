@@ -418,7 +418,7 @@
                 <div class="btn-container" style="margin: 20px 0;">
                     @if (!$isFallbackPaymentLink)
                         <a href="{{ $paymentLink }}" class="btn"
-                            style="display: inline-block; background-color: #BF2629; color: #FFFFFF; padding: 15px 40px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
+                            style="display: inline-block; background-color: #15803d; background-image: linear-gradient(135deg, #15803d 0%, #166534 100%); box-shadow: 0 4px 12px rgba(21, 128, 61, 0.24); color: #FFFFFF; padding: 15px 40px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
                             🔒 Pay
                             {{ $currencySymbol }}
                             {{ number_format($booking->amount_to_pay ?? $booking->total_estimated, 2) }}

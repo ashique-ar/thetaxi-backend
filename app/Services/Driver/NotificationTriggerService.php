@@ -8,6 +8,7 @@ use App\Models\Booking\BookingDispatch;
 use App\Models\Driver\Driver;
 use App\Models\DriverAssignment;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -29,6 +30,20 @@ class NotificationTriggerService
      */
     public function sendAssignmentNotification(DriverAssignment $assignment): void
     {
+        SendAssignmentNotificationJob::dispatch($assignment, 1)
+            ->onQueue(config('services.firebase.queue', 'driver-notifications'));
+
+        Log::info('Queued assignment notification', [
+            'assignment_id' => $assignment->id,
+            'queue' => config('services.firebase.queue', 'driver-notifications'),
+        ]);
+    }
+
+    /**
+     * Process one queued notification delivery attempt.
+     */
+    public function processAssignmentNotificationAttempt(DriverAssignment $assignment, int $attempt = 1): void
+    {
         $assignment->loadMissing(['driver', 'booking', 'bookingItem']);
 
         $driver = $assignment->driver;
@@ -38,21 +53,67 @@ class NotificationTriggerService
         }
 
         $payload = $this->buildPayload($assignment);
+        $channels = [];
 
-        // Attempt WebSocket delivery first
-        $channel = $this->deliverViaWebSocket($driver, $payload);
-
-        if (!$channel) {
-            // Fall back to push notification
-            $channel = $this->deliverViaPush($driver, $payload);
+        $websocketChannel = $this->deliverViaWebSocket($driver, $payload);
+        if ($websocketChannel) {
+            $channels[] = $websocketChannel;
         }
 
-        if ($channel) {
-            $this->recordDelivery($assignment, $channel, Carbon::now());
-        } else {
-            // Queue first retry attempt
-            $this->queueRetry($assignment, 1);
+        // Always attempt push as well so mobile app gets a system notification.
+        $pushChannel = $this->deliverViaPush($driver, $payload);
+        if ($pushChannel) {
+            $channels[] = $pushChannel;
         }
+
+        if (!empty($channels)) {
+            $this->recordDelivery($assignment, implode('+', array_unique($channels)), Carbon::now());
+            return;
+        }
+
+        $this->queueRetry($assignment, $attempt + 1);
+    }
+
+    /**
+     * Send a manual test notification to a driver's mobile app/devices.
+     *
+     * Used by admin portal "test notification" action in driver detail page.
+     */
+    public function sendDriverTestNotification(Driver $driver, array $context = []): array
+    {
+        $title = trim((string) ($context['title'] ?? 'Driver Notification Test'));
+        $body = trim((string) ($context['body'] ?? 'This is a test notification from TheTaxi admin portal.'));
+
+        $payload = [
+            'event_type' => 'driver_test_notification',
+            'driver_id' => $driver->id,
+            'title' => $title,
+            'message' => $body,
+            'triggered_at' => Carbon::now()->toIso8601String(),
+            'triggered_by' => $context['triggered_by'] ?? null,
+        ];
+
+        $channels = [];
+
+        $websocketChannel = $this->deliverViaWebSocket($driver, $payload);
+        if ($websocketChannel) {
+            $channels[] = $websocketChannel;
+        }
+
+        $pushResult = $this->pushToDriverDevices($driver, $payload, $title, $body);
+        if ($pushResult['success']) {
+            $channels[] = 'push';
+        }
+
+        return [
+            'title' => $title,
+            'body' => $body,
+            'channels' => array_values(array_unique($channels)),
+            'websocket_delivered' => in_array('websocket', $channels, true),
+            'push_delivered' => $pushResult['success'],
+            'eligible_devices' => $pushResult['eligible_devices'],
+            'delivered_devices' => $pushResult['delivered_devices'],
+        ];
     }
 
     /**
@@ -116,33 +177,14 @@ class NotificationTriggerService
      */
     public function deliverViaPush(Driver $driver, array $payload): string|false
     {
-        try {
-            // Get the driver's active device with push token
-            $device = $driver->activeDevices()
-                ->whereNotNull('push_token')
-                ->first();
+        $result = $this->pushToDriverDevices(
+            $driver,
+            $payload,
+            (string) config('services.firebase.assignment_title', 'New Booking Assigned'),
+            (string) config('services.firebase.assignment_body', 'A new booking has been assigned to you.')
+        );
 
-            if (!$device) {
-                Log::info('No push-capable device for driver ' . $driver->id);
-                return false;
-            }
-
-            // Dispatch push notification via FCM/APNs
-            // Actual implementation depends on the push provider configured
-            // in the project (e.g., laravel-notification-channels/fcm).
-            Log::info('Push notification sent to driver ' . $driver->id, [
-                'device_uuid' => $device->device_uuid,
-                'payload' => $payload,
-            ]);
-
-            return 'push';
-        } catch (\Exception $e) {
-            Log::warning('Push delivery failed for driver ' . $driver->id, [
-                'error' => $e->getMessage(),
-            ]);
-
-            return false;
-        }
+        return $result['success'] ? 'push' : false;
     }
 
     /**
@@ -163,6 +205,7 @@ class NotificationTriggerService
         }
 
         SendAssignmentNotificationJob::dispatch($assignment, $attempt)
+            ->onQueue(config('services.firebase.queue', 'driver-notifications'))
             ->delay(now()->addSeconds(SendAssignmentNotificationJob::RETRY_DELAY_SECONDS));
 
         Log::info('Queued notification retry for assignment ' . $assignment->id, [
@@ -195,6 +238,118 @@ class NotificationTriggerService
             ]);
         } else {
             Log::info('No BookingDispatch found for booking ' . $assignment->booking_id . ', skipping delivery record');
+        }
+    }
+
+    private function normalizePayloadForPush(array $payload): array
+    {
+        $normalized = [];
+        foreach ($payload as $key => $value) {
+            if (is_array($value)) {
+                $normalized[$key] = json_encode($value);
+                continue;
+            }
+            if (is_bool($value)) {
+                $normalized[$key] = $value ? '1' : '0';
+                continue;
+            }
+            $normalized[$key] = $value === null ? '' : (string) $value;
+        }
+
+        return $normalized;
+    }
+
+    private function pushToDriverDevices(Driver $driver, array $payload, string $title, string $body): array
+    {
+        try {
+            $serverKey = trim((string) config('services.firebase.server_key', ''));
+            if ($serverKey === '') {
+                Log::warning('FCM push skipped: FIREBASE_SERVER_KEY is not configured');
+                return [
+                    'success' => false,
+                    'eligible_devices' => 0,
+                    'delivered_devices' => 0,
+                ];
+            }
+
+            $devices = $driver->activeDevices()
+                ->whereNotNull('push_token')
+                ->get();
+
+            $eligibleDevices = $devices->count();
+            if ($eligibleDevices === 0) {
+                Log::info('No push-capable device for driver ' . $driver->id);
+                return [
+                    'success' => false,
+                    'eligible_devices' => 0,
+                    'delivered_devices' => 0,
+                ];
+            }
+
+            $fcmUrl = (string) config('services.firebase.fcm_send_url', 'https://fcm.googleapis.com/fcm/send');
+            $delivered = 0;
+
+            foreach ($devices as $device) {
+                $response = Http::withHeaders([
+                    'Authorization' => 'key=' . $serverKey,
+                    'Content-Type' => 'application/json',
+                ])->timeout(10)->post($fcmUrl, [
+                    'to' => $device->push_token,
+                    'priority' => 'high',
+                    'notification' => [
+                        'title' => $title,
+                        'body' => $body,
+                        'sound' => 'default',
+                    ],
+                    'data' => $this->normalizePayloadForPush($payload),
+                ]);
+
+                if (!$response->successful()) {
+                    Log::warning('FCM request failed', [
+                        'driver_id' => $driver->id,
+                        'device_uuid' => $device->device_uuid,
+                        'status' => $response->status(),
+                        'response' => $response->body(),
+                    ]);
+                    continue;
+                }
+
+                $responseData = $response->json();
+                $successCount = (int) ($responseData['success'] ?? 0);
+
+                if ($successCount > 0) {
+                    $delivered++;
+                    continue;
+                }
+
+                $errorCode = $responseData['results'][0]['error'] ?? null;
+                if (in_array($errorCode, ['InvalidRegistration', 'NotRegistered'], true)) {
+                    $device->update(['push_token' => null]);
+                }
+
+                Log::warning('FCM delivery returned failure', [
+                    'driver_id' => $driver->id,
+                    'device_uuid' => $device->device_uuid,
+                    'error_code' => $errorCode,
+                    'response' => $responseData,
+                ]);
+            }
+
+            return [
+                'success' => $delivered > 0,
+                'eligible_devices' => $eligibleDevices,
+                'delivered_devices' => $delivered,
+            ];
+        } catch (\Exception $e) {
+            Log::warning('Push delivery failed for driver ' . $driver->id, [
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'success' => false,
+                'eligible_devices' => 0,
+                'delivered_devices' => 0,
+            ];
         }
     }
 }

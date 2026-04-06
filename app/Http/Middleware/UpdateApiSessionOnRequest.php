@@ -2,17 +2,44 @@
 
 namespace App\Http\Middleware;
 
+use App\Services\CurrencyService;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
 class UpdateApiSessionOnRequest
 {
+    public function __construct(protected CurrencyService $currencyService)
+    {
+    }
+
     /**
      * Handle an incoming request.
      */
     public function handle(Request $request, Closure $next)
     {
+        try {
+            $requestedCurrency = strtoupper((string) (
+                $request->header('X-Currency-Code')
+                ?: $request->header('X-Selected-Currency')
+                ?: $request->header('X-Display-Currency')
+                ?: $request->input('currency')
+                ?: ''
+            ));
+
+            if ($requestedCurrency !== '' && $this->currencyService->isValidCurrency($requestedCurrency)) {
+                $this->currencyService->setSelectedCurrency($requestedCurrency);
+
+                // Keep request payload aligned for endpoints that read request('currency')
+                // but where frontend sends currency context via headers.
+                if (!$request->filled('currency')) {
+                    $request->merge(['currency' => $requestedCurrency]);
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Failed applying selected currency from request headers: ' . $e->getMessage());
+        }
+
         $response = $next($request);
 
         try {

@@ -4,13 +4,16 @@ namespace App\Http\Controllers\Api\Driver;
 
 use App\Http\Controllers\Controller;
 use App\Models\Driver\Driver;
+use App\Models\Driver\DriverLog;
 use App\Models\Driver\DriverSession;
 use App\Http\Requests\Driver\Driver\CreateDriverRequest;
 use App\Http\Requests\Driver\Driver\UpdateDriverRequest;
 use App\Http\Resources\Driver\DriverResource;
 use App\Http\Resources\Driver\DriverSessionResource;
 use App\Http\Resources\Driver\RoutePointResource;
+use App\Models\DriverAssignment;
 use App\Models\User;
+use App\Services\Driver\NotificationTriggerService;
 use App\Services\UserContextService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -21,13 +24,18 @@ use Carbon\Carbon;
 class DriverController extends Controller
 {
     private $contextService;
+    private NotificationTriggerService $notificationService;
 
-    public function __construct(UserContextService $contextService)
+    public function __construct(
+        UserContextService $contextService,
+        NotificationTriggerService $notificationService
+    )
     {
         $this->contextService = $contextService;
-        $this->middleware('permission:drivers.view')->only(['index', 'show', 'status', 'sessions', 'sessionRoute', 'locations', 'analytics', 'devices']);
+        $this->notificationService = $notificationService;
+        $this->middleware('permission:drivers.view')->only(['index', 'show', 'status', 'activity', 'sessions', 'sessionRoute', 'locations', 'analytics', 'devices']);
         $this->middleware('permission:drivers.create')->only(['store']);
-        $this->middleware('permission:drivers.edit')->only(['update', 'deactivateDevice', 'removeDevice']);
+        $this->middleware('permission:drivers.edit')->only(['update', 'deactivateDevice', 'removeDevice', 'testNotification']);
         $this->middleware('permission:drivers.delete')->only(['destroy']);
     }
 
@@ -214,6 +222,156 @@ class DriverController extends Controller
                     ? new DriverSessionResource($driver->activeSession) 
                     : null,
             ]
+        ]);
+    }
+
+    /**
+     * Send a test mobile notification to a specific driver.
+     *
+     * POST /api/drivers/{driver}/test-notification
+     */
+    public function testNotification(Request $request, Driver $driver): JsonResponse
+    {
+        $validated = $request->validate([
+            'title' => 'nullable|string|max:120',
+            'body' => 'nullable|string|max:500',
+        ]);
+
+        try {
+            $result = $this->notificationService->sendDriverTestNotification($driver, [
+                'title' => $validated['title'] ?? null,
+                'body' => $validated['body'] ?? null,
+                'triggered_by' => $request->user()?->id,
+            ]);
+
+            if (empty($result['channels'])) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Test notification could not be delivered. Check push token and Firebase configuration.',
+                    'data' => $result,
+                ], 422);
+            }
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Test notification sent successfully',
+                'data' => $result,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to send test notification',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Get a unified driver activity timeline.
+     *
+     * Combines mobile session events, assignment lifecycle events, and manual
+     * driver logbook entries into a single paginated feed for the admin portal.
+     *
+     * GET /api/drivers/{driver}/activity
+     */
+    public function activity(Request $request, Driver $driver): JsonResponse
+    {
+        $page = max((int) $request->input('page', 1), 1);
+        $perPage = min(max((int) $request->input('per_page', 15), 1), 100);
+
+        $activity = collect();
+
+        $sessions = $driver->sessions()
+            ->orderBy('start_time', 'desc')
+            ->limit(100)
+            ->get();
+
+        foreach ($sessions as $session) {
+            $occurredAt = $session->end_time ?? $session->start_time ?? $session->created_at;
+            if (!$occurredAt) {
+                continue;
+            }
+
+            $activity->push([
+                'id' => 'session:' . $session->id,
+                'source' => 'session',
+                'event_type' => $this->getSessionEventType($session),
+                'title' => $this->getSessionActivityTitle($session),
+                'message' => $this->getSessionActivityMessage($session),
+                'status' => $session->status,
+                'reference' => $session->id,
+                'booking_id' => null,
+                'booking_number' => null,
+                'occurred_at' => $occurredAt->toIso8601String(),
+                'metadata' => [
+                    'session_id' => $session->id,
+                    'start_time' => $session->start_time?->toIso8601String(),
+                    'end_time' => $session->end_time?->toIso8601String(),
+                    'total_distance_km' => $session->total_distance_km !== null ? (float) $session->total_distance_km : null,
+                ],
+            ]);
+        }
+
+        $assignments = DriverAssignment::where('driver_id', $driver->id)
+            ->with(['booking:id,booking_number'])
+            ->orderBy('updated_at', 'desc')
+            ->limit(100)
+            ->get();
+
+        foreach ($assignments as $assignment) {
+            $activity = $activity->merge($this->mapAssignmentActivity($assignment));
+        }
+
+        $logbookEntries = DriverLog::where('driver_id', $driver->id)
+            ->with(['booking:id,booking_number'])
+            ->orderBy('created_at', 'desc')
+            ->limit(100)
+            ->get();
+
+        foreach ($logbookEntries as $logEntry) {
+            $occurredAt = $logEntry->created_at ?? $logEntry->log_date;
+            if (!$occurredAt) {
+                continue;
+            }
+
+            $activity->push([
+                'id' => 'logbook:' . $logEntry->id,
+                'source' => 'logbook',
+                'event_type' => 'logbook_submitted',
+                'title' => 'Logbook entry submitted',
+                'message' => $this->getLogbookActivityMessage($logEntry),
+                'status' => $logEntry->status,
+                'reference' => $logEntry->log_code ?: $logEntry->id,
+                'booking_id' => $logEntry->booking_id,
+                'booking_number' => $logEntry->booking?->booking_number,
+                'occurred_at' => $occurredAt->toIso8601String(),
+                'metadata' => [
+                    'log_id' => $logEntry->id,
+                    'log_date' => $logEntry->log_date?->toDateString(),
+                    'start_time' => $logEntry->start_time,
+                    'end_time' => $logEntry->end_time,
+                    'start_km' => $logEntry->start_km,
+                    'end_km' => $logEntry->end_km,
+                ],
+            ]);
+        }
+
+        $sorted = $activity
+            ->sortByDesc(fn(array $item) => $item['occurred_at'] ?? '')
+            ->values();
+
+        $total = $sorted->count();
+        $paginated = $sorted->forPage($page, $perPage)->values();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $paginated,
+            'meta' => [
+                'current_page' => $page,
+                'last_page' => max(1, (int) ceil($total / $perPage)),
+                'per_page' => $perPage,
+                'total' => $total,
+            ],
         ]);
     }
 
@@ -500,5 +658,210 @@ class DriverController extends Controller
                 ],
             ]
         ]);
+    }
+
+    private function getSessionEventType(DriverSession $session): string
+    {
+        return match ($session->status) {
+            'active' => 'session_active',
+            'auto_closed' => 'session_auto_closed',
+            default => 'session_completed',
+        };
+    }
+
+    private function getSessionActivityTitle(DriverSession $session): string
+    {
+        return match ($session->status) {
+            'active' => 'Driver went online',
+            'auto_closed' => 'Session auto-closed',
+            default => 'Driver went offline',
+        };
+    }
+
+    private function getSessionActivityMessage(DriverSession $session): string
+    {
+        $parts = [];
+
+        if ($session->start_time && $session->end_time) {
+            $parts[] = 'Duration ' . $this->formatDuration($session->end_time->diffInSeconds($session->start_time));
+        }
+
+        if ($session->total_distance_km !== null) {
+            $parts[] = 'Distance ' . number_format((float) $session->total_distance_km, 2) . ' km';
+        }
+
+        if (empty($parts)) {
+            return 'Session status: ' . ucfirst(str_replace('_', ' ', $session->status));
+        }
+
+        return implode(' | ', $parts);
+    }
+
+    private function mapAssignmentActivity(DriverAssignment $assignment): array
+    {
+        $bookingNumber = $assignment->booking?->booking_number;
+        $bookingReference = $bookingNumber ? 'Booking #' . $bookingNumber : 'Assignment ' . $assignment->id;
+        $events = [];
+
+        if ($assignment->created_at) {
+            $events[] = [
+                'id' => 'assignment:' . $assignment->id . ':assigned',
+                'source' => 'assignment',
+                'event_type' => 'assignment_assigned',
+                'title' => 'Booking assigned',
+                'message' => $bookingReference . ' assigned to driver',
+                'status' => $assignment->status,
+                'reference' => $assignment->id,
+                'booking_id' => $assignment->booking_id,
+                'booking_number' => $bookingNumber,
+                'occurred_at' => $assignment->created_at->toIso8601String(),
+                'metadata' => [
+                    'assignment_id' => $assignment->id,
+                    'trip_phase' => $assignment->trip_phase?->value,
+                ],
+            ];
+        }
+
+        if ($assignment->confirmed_at) {
+            $events[] = [
+                'id' => 'assignment:' . $assignment->id . ':accepted',
+                'source' => 'assignment',
+                'event_type' => 'assignment_accepted',
+                'title' => 'Assignment accepted',
+                'message' => $bookingReference . ' accepted in driver app',
+                'status' => $assignment->status,
+                'reference' => $assignment->id,
+                'booking_id' => $assignment->booking_id,
+                'booking_number' => $bookingNumber,
+                'occurred_at' => $assignment->confirmed_at->toIso8601String(),
+                'metadata' => [
+                    'assignment_id' => $assignment->id,
+                    'trip_phase' => $assignment->trip_phase?->value,
+                ],
+            ];
+        }
+
+        if ($assignment->status === 'declined' || ($assignment->trip_phase?->value === 'declined')) {
+            $declinedAt = $assignment->updated_at ?? $assignment->created_at;
+            if ($declinedAt) {
+                $events[] = [
+                    'id' => 'assignment:' . $assignment->id . ':declined',
+                    'source' => 'assignment',
+                    'event_type' => 'assignment_declined',
+                    'title' => 'Assignment declined',
+                    'message' => $bookingReference . ($assignment->decline_reason ? ' declined: ' . $assignment->decline_reason : ' declined in driver app'),
+                    'status' => $assignment->status,
+                    'reference' => $assignment->id,
+                    'booking_id' => $assignment->booking_id,
+                    'booking_number' => $bookingNumber,
+                    'occurred_at' => $declinedAt->toIso8601String(),
+                    'metadata' => [
+                        'assignment_id' => $assignment->id,
+                        'trip_phase' => $assignment->trip_phase?->value,
+                    ],
+                ];
+            }
+        }
+
+        if ($assignment->trip_started_at) {
+            $events[] = [
+                'id' => 'assignment:' . $assignment->id . ':trip_started',
+                'source' => 'assignment',
+                'event_type' => 'trip_started',
+                'title' => 'Trip started',
+                'message' => $bookingReference . ' trip started',
+                'status' => $assignment->status,
+                'reference' => $assignment->id,
+                'booking_id' => $assignment->booking_id,
+                'booking_number' => $bookingNumber,
+                'occurred_at' => $assignment->trip_started_at->toIso8601String(),
+                'metadata' => [
+                    'assignment_id' => $assignment->id,
+                    'trip_phase' => $assignment->trip_phase?->value,
+                ],
+            ];
+        }
+
+        if ($assignment->pickup_arrived_at) {
+            $events[] = [
+                'id' => 'assignment:' . $assignment->id . ':pickup_arrived',
+                'source' => 'assignment',
+                'event_type' => 'pickup_arrived',
+                'title' => 'Pickup arrived',
+                'message' => $bookingReference . ' driver marked pickup arrived',
+                'status' => $assignment->status,
+                'reference' => $assignment->id,
+                'booking_id' => $assignment->booking_id,
+                'booking_number' => $bookingNumber,
+                'occurred_at' => $assignment->pickup_arrived_at->toIso8601String(),
+                'metadata' => [
+                    'assignment_id' => $assignment->id,
+                    'trip_phase' => $assignment->trip_phase?->value,
+                ],
+            ];
+        }
+
+        if ($assignment->trip_completed_at) {
+            $distance = $assignment->total_distance_km !== null
+                ? ' | Distance ' . number_format((float) $assignment->total_distance_km, 2) . ' km'
+                : '';
+
+            $events[] = [
+                'id' => 'assignment:' . $assignment->id . ':trip_completed',
+                'source' => 'assignment',
+                'event_type' => 'trip_completed',
+                'title' => 'Trip completed',
+                'message' => $bookingReference . ' trip completed' . $distance,
+                'status' => $assignment->status,
+                'reference' => $assignment->id,
+                'booking_id' => $assignment->booking_id,
+                'booking_number' => $bookingNumber,
+                'occurred_at' => $assignment->trip_completed_at->toIso8601String(),
+                'metadata' => [
+                    'assignment_id' => $assignment->id,
+                    'trip_phase' => $assignment->trip_phase?->value,
+                    'total_distance_km' => $assignment->total_distance_km !== null ? (float) $assignment->total_distance_km : null,
+                ],
+            ];
+        }
+
+        return $events;
+    }
+
+    private function getLogbookActivityMessage(DriverLog $logEntry): string
+    {
+        $parts = [];
+
+        if ($logEntry->log_date) {
+            $parts[] = 'Date ' . $logEntry->log_date->toDateString();
+        }
+
+        if ($logEntry->start_time || $logEntry->end_time) {
+            $parts[] = 'Hours ' . ($logEntry->start_time ?? '--') . ' - ' . ($logEntry->end_time ?? '--');
+        }
+
+        if ($logEntry->start_km !== null || $logEntry->end_km !== null) {
+            $parts[] = 'KM ' . ($logEntry->start_km ?? '--') . ' - ' . ($logEntry->end_km ?? '--');
+        }
+
+        if ($logEntry->booking?->booking_number) {
+            $parts[] = 'Booking #' . $logEntry->booking->booking_number;
+        }
+
+        $parts[] = 'Status ' . ucfirst($logEntry->status ?? 'pending');
+
+        return implode(' | ', $parts);
+    }
+
+    private function formatDuration(int $seconds): string
+    {
+        $hours = intdiv($seconds, 3600);
+        $minutes = intdiv($seconds % 3600, 60);
+
+        if ($hours > 0) {
+            return sprintf('%dh %dm', $hours, $minutes);
+        }
+
+        return sprintf('%dm', $minutes);
     }
 }

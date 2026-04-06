@@ -1,1570 +1,1716 @@
-{
-	"info": {
-		"_postman_id": "driver-mobile-api-v1",
-		"name": "TheTaxi Driver Mobile API",
-		"description": "Complete API collection for TheTaxi Driver Mobile Application. Includes authentication, status management, location tracking, sessions, device management, booking assignments, and trip tracking.",
-		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-		"_exporter_id": "thetaxi-driver-api"
-	},
-	"item": [
-		{
-			"name": "Authentication",
-			"item": [
-				{
-					"name": "Login",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"if (pm.response.code === 200) {",
-									"    const response = pm.response.json();",
-									"    if (response.data && response.data.token) {",
-									"        pm.environment.set('access_token', response.data.token.access_token);",
-									"        pm.environment.set('refresh_token', response.data.token.refresh_token);",
-									"        pm.environment.set('driver_id', response.data.driver.id);",
-									"        pm.environment.set('user_id', response.data.user.id);",
-									"        if (response.data.device && response.data.device.device_uuid) {",
-									"            pm.environment.set('device_uuid', response.data.device.device_uuid);",
-									"        }",
-									"        if (response.data.current_assignment) {",
-									"            pm.environment.set('assignment_id', response.data.current_assignment.id);",
-									"        }",
-									"        console.log('✅ Tokens saved to environment');",
-									"    }",
-									"}"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							},
-							{
-								"key": "Accept",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"email\": \"{{driver_email}}\",\n    \"password\": \"{{driver_password}}\",\n    \"device_fingerprint\": \"{{device_fingerprint}}\",\n    \"device_name\": \"{{device_name}}\",\n    \"device_model\": \"{{device_model}}\",\n    \"device_manufacturer\": \"{{device_manufacturer}}\",\n    \"platform\": \"{{platform}}\",\n    \"os_version\": \"{{os_version}}\",\n    \"app_version\": \"{{app_version}}\",\n    \"app_build\": \"{{app_build}}\",\n    \"push_token\": \"{{push_token}}\",\n    \"push_provider\": \"{{push_provider}}\",\n    \"locale\": \"en_US\",\n    \"timezone\": \"Asia/Colombo\"\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
-						"url": {
-							"raw": "{{base_url}}/api/driver/auth/login",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"api",
-								"driver",
-								"auth",
-								"login"
-							]
-						},
-						"description": "Authenticate a driver and receive access and refresh tokens.\n\nResponse now includes `current_assignment` (active DriverAssignment with booking/booking_item details, or null) and `trip_phase` (current trip lifecycle phase: accepted, pickup_arrived, in_progress, or null)."
-					},
-					"response": [
-						{
-							"name": "Login Success (With Active Assignment)",
-							"status": "OK",
-							"code": 200,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-							"cookie": [],
-							"body": "{\n    \"status\": \"success\",\n    \"message\": \"Login successful\",\n    \"data\": {\n        \"user\": { \"id\": \"user-uuid\", \"email\": \"driver@example.com\", \"name\": \"John Driver\" },\n        \"driver\": { \"id\": \"driver-uuid\", \"name\": \"John Driver\", \"phone\": \"+94771234567\" },\n        \"device\": { \"id\": \"device-uuid\", \"device_uuid\": \"550e8400-e29b-41d4-a716-446655440000\", \"platform\": \"ios\", \"is_active\": true },\n        \"token\": { \"access_token\": \"eyJ0eXAi...\", \"token_type\": \"Bearer\", \"expires_at\": \"2026-03-15T10:30:00Z\", \"refresh_token\": \"token-id\" },\n        \"current_assignment\": {\n            \"id\": \"assignment-uuid\",\n            \"driver_id\": \"driver-uuid\",\n            \"booking_id\": \"booking-uuid\",\n            \"status\": \"active\",\n            \"trip_phase\": \"accepted\",\n            \"booking\": { \"id\": \"booking-uuid\", \"booking_number\": \"BK-2026-0001\" },\n            \"booking_item\": { \"id\": \"item-uuid\", \"pickup_location\": \"Colombo Airport\", \"dropoff_location\": \"Hilton Colombo\" }\n        },\n        \"trip_phase\": \"accepted\"\n    }\n}"
-						},
-						{
-							"name": "Login Success (No Active Assignment)",
-							"status": "OK",
-							"code": 200,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-							"cookie": [],
-							"body": "{\n    \"status\": \"success\",\n    \"message\": \"Login successful\",\n    \"data\": {\n        \"user\": { \"id\": \"user-uuid\", \"email\": \"driver@example.com\", \"name\": \"John Driver\" },\n        \"driver\": { \"id\": \"driver-uuid\", \"name\": \"John Driver\" },\n        \"device\": { \"id\": \"device-uuid\", \"device_uuid\": \"550e8400-e29b-41d4-a716-446655440000\" },\n        \"token\": { \"access_token\": \"eyJ0eXAi...\", \"token_type\": \"Bearer\" },\n        \"current_assignment\": null,\n        \"trip_phase\": null\n    }\n}"
-						}
-					]
-				},
-				{
-					"name": "Get Profile",
-					"request": {
-						"auth": {
-							"type": "bearer",
-							"bearer": [
-								{
-									"key": "token",
-									"value": "{{access_token}}",
-									"type": "string"
-								}
-							]
-						},
-						"method": "GET",
-						"header": [
-							{
-								"key": "Accept",
-								"value": "application/json"
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/api/driver/auth/profile",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"api",
-								"driver",
-								"auth",
-								"profile"
-							]
-						},
-						"description": "Retrieve the authenticated driver's profile. Response now includes `assignment_statistics` with total_assignments, active_assignments, and completed_assignments counts."
-					},
-					"response": [
-						{
-							"name": "Profile With Assignment Statistics",
-							"status": "OK",
-							"code": 200,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-							"cookie": [],
-							"body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"user\": { \"id\": \"user-uuid\", \"email\": \"driver@example.com\", \"first_name\": \"John\", \"last_name\": \"Doe\" },\n        \"driver\": { \"id\": \"driver-uuid\", \"code\": \"DRV001\", \"license_no\": \"B1234567\", \"is_online\": true, \"rating\": 4.8 },\n        \"assignment_statistics\": { \"total_assignments\": 25, \"active_assignments\": 2, \"completed_assignments\": 20 }\n    }\n}"
-						}
-					]
-				},
-				{
-					"name": "Refresh Token",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"if (pm.response.code === 200) {",
-									"    const response = pm.response.json();",
-									"    if (response.data) {",
-									"        pm.environment.set('access_token', response.data.access_token);",
-									"        pm.environment.set('refresh_token', response.data.refresh_token);",
-									"        console.log('✅ Tokens refreshed');",
-									"    }",
-									"}"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"auth": {
-							"type": "bearer",
-							"bearer": [
-								{
-									"key": "token",
-									"value": "{{access_token}}",
-									"type": "string"
-								}
-							]
-						},
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							},
-							{
-								"key": "Accept",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"refresh_token\": \"{{refresh_token}}\"\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/api/driver/auth/refresh",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"api",
-								"driver",
-								"auth",
-								"refresh"
-							]
-						},
-						"description": "Refresh the access token using the refresh token."
-					},
-					"response": []
-				},
-				{
-					"name": "Logout",
-					"request": {
-						"auth": {
-							"type": "bearer",
-							"bearer": [
-								{
-									"key": "token",
-									"value": "{{access_token}}",
-									"type": "string"
-								}
-							]
-						},
-						"method": "POST",
-						"header": [
-							{
-								"key": "Accept",
-								"value": "application/json"
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/api/driver/auth/logout",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"api",
-								"driver",
-								"auth",
-								"logout"
-							]
-						},
-						"description": "Logout the authenticated driver by revoking their current token."
-					},
-					"response": []
-				}
-			],
-			"description": "Driver authentication endpoints including login, logout, profile, and token refresh."
-		},
-		{
-			"name": "Status Management",
-			"item": [
-				{
-					"name": "Go Online",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"if (pm.response.code === 200) {",
-									"    const response = pm.response.json();",
-									"    if (response.data && response.data.session && response.data.session.id) {",
-									"        pm.environment.set('session_id', response.data.session.id);",
-									"        console.log('✅ Session started:', response.data.session.id);",
-									"    }",
-									"    if (response.data.pending_assignments && response.data.pending_assignments.length > 0) {",
-									"        console.log('📋 Pending assignments:', response.data.pending_assignments.length);",
-									"    }",
-									"}"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"auth": {
-							"type": "bearer",
-							"bearer": [
-								{
-									"key": "token",
-									"value": "{{access_token}}",
-									"type": "string"
-								}
-							]
-						},
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							},
-							{
-								"key": "Accept",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"device_uuid\": \"{{device_uuid}}\",\n    \"latitude\": {{start_latitude}},\n    \"longitude\": {{start_longitude}},\n    \"metadata\": {\n        \"app_version\": \"{{app_version}}\",\n        \"os\": \"{{platform}} {{os_version}}\"\n    }\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/api/driver/status/online",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"api",
-								"driver",
-								"status",
-								"online"
-							]
-						},
-						"description": "Set the driver's status to online and start a new session.\n\nResponse now includes `pending_assignments` — an array of DriverAssignments in active/pending_approval status with booking and booking_item details."
-					},
-					"response": [
-						{
-							"name": "Go Online With Pending Assignments",
-							"status": "OK",
-							"code": 200,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-							"cookie": [],
-							"body": "{\n    \"status\": \"success\",\n    \"message\": \"Driver is now online\",\n    \"data\": {\n        \"session\": {\n            \"id\": \"session-uuid\",\n            \"driver_id\": \"driver-uuid\",\n            \"status\": \"active\",\n            \"start_time\": \"2026-03-01T08:00:00Z\",\n            \"start_latitude\": 6.9271,\n            \"start_longitude\": 79.8612\n        },\n        \"pending_assignments\": [\n            {\n                \"id\": \"assignment-uuid\",\n                \"status\": \"active\",\n                \"trip_phase\": \"active\",\n                \"booking\": { \"id\": \"booking-uuid\", \"booking_number\": \"BK-2026-0001\" },\n                \"booking_item\": { \"id\": \"item-uuid\", \"pickup_location\": \"Colombo Airport\", \"dropoff_location\": \"Hilton Colombo\" }\n            }\n        ]\n    }\n}"
-						}
-					]
-				},
-				{
-					"name": "Go Offline",
-					"request": {
-						"auth": {
-							"type": "bearer",
-							"bearer": [
-								{
-									"key": "token",
-									"value": "{{access_token}}",
-									"type": "string"
-								}
-							]
-						},
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							},
-							{
-								"key": "Accept",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"latitude\": {{end_latitude}},\n    \"longitude\": {{end_longitude}}\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/api/driver/status/offline",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"api",
-								"driver",
-								"status",
-								"offline"
-							]
-						},
-						"description": "Set the driver's status to offline and close the active session.\n\nIf a trip tracking session is active, the trip remains active and the response includes a `trip_warning` message and `active_trip` details."
-					},
-					"response": [
-						{
-							"name": "Go Offline With Active Trip Warning",
-							"status": "OK",
-							"code": 200,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-							"cookie": [],
-							"body": "{\n    \"status\": \"success\",\n    \"message\": \"Driver is now offline. Warning: trip is still in progress.\",\n    \"data\": {\n        \"session\": { \"id\": \"session-uuid\", \"status\": \"completed\", \"total_distance_km\": 45.67 },\n        \"trip_warning\": \"Trip is still in progress. The trip tracking session remains active.\",\n        \"active_trip\": { \"assignment_id\": \"assignment-uuid\", \"trip_phase\": \"in_progress\" }\n    }\n}"
-						}
-					]
-				},
-				{
-					"name": "Get Current Status",
-					"request": {
-						"auth": {
-							"type": "bearer",
-							"bearer": [
-								{
-									"key": "token",
-									"value": "{{access_token}}",
-									"type": "string"
-								}
-							]
-						},
-						"method": "GET",
-						"header": [
-							{
-								"key": "Accept",
-								"value": "application/json"
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/api/driver/status",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"api",
-								"driver",
-								"status"
-							]
-						},
-						"description": "Retrieve the driver's current online/offline status and active session information."
-					},
-					"response": []
-				}
-			],
-			"description": "Endpoints for managing driver online/offline status and sessions."
-		},
-		{
-			"name": "Heartbeat",
-			"item": [
-				{
-					"name": "Send Heartbeat",
-					"request": {
-						"auth": {
-							"type": "bearer",
-							"bearer": [
-								{
-									"key": "token",
-									"value": "{{access_token}}",
-									"type": "string"
-								}
-							]
-						},
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							},
-							{
-								"key": "Accept",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{}"
-						},
-						"url": {
-							"raw": "{{base_url}}/api/driver/heartbeat",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"api",
-								"driver",
-								"heartbeat"
-							]
-						},
-						"description": "Send a heartbeat signal to indicate the driver is still active. Should be sent every 60 seconds while online.\n\nWhen a trip tracking session is active, the response includes `trip_phase` and `assignment_id`."
-					},
-					"response": [
-						{
-							"name": "Heartbeat With Active Trip",
-							"status": "OK",
-							"code": 200,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-							"cookie": [],
-							"body": "{\n    \"status\": \"success\",\n    \"message\": \"Heartbeat received\",\n    \"data\": {\n        \"last_active_at\": \"2026-03-01T10:35:00Z\",\n        \"is_online\": true,\n        \"trip_phase\": \"in_progress\",\n        \"assignment_id\": \"assignment-uuid\"\n    }\n}"
-						},
-						{
-							"name": "Heartbeat Without Active Trip",
-							"status": "OK",
-							"code": 200,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-							"cookie": [],
-							"body": "{\n    \"status\": \"success\",\n    \"message\": \"Heartbeat received\",\n    \"data\": {\n        \"last_active_at\": \"2026-03-01T10:35:00Z\",\n        \"is_online\": true\n    }\n}"
-						}
-					]
-				}
-			],
-			"description": "Heartbeat endpoint to maintain driver's active status."
-		},
-		{
-			"name": "Location Tracking",
-			"item": [
-				{
-					"name": "Update Location",
-					"request": {
-						"auth": {
-							"type": "bearer",
-							"bearer": [
-								{
-									"key": "token",
-									"value": "{{access_token}}",
-									"type": "string"
-								}
-							]
-						},
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							},
-							{
-								"key": "Accept",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"latitude\": {{current_latitude}},\n    \"longitude\": {{current_longitude}},\n    \"altitude\": 15.5,\n    \"speed\": 45.2,\n    \"heading\": 180.5,\n    \"accuracy\": 10.0,\n    \"recorded_at\": \"{{$isoTimestamp}}\"\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/api/driver/location",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"api",
-								"driver",
-								"location"
-							]
-						},
-						"description": "Send the driver's current GPS location. Creates a route point for the active session. During an active trip, the route point is also linked to the assignment_id. Should be sent every 10 seconds while moving."
-					},
-					"response": []
-				},
-				{
-					"name": "Get Location History",
-					"request": {
-						"auth": {
-							"type": "bearer",
-							"bearer": [
-								{
-									"key": "token",
-									"value": "{{access_token}}",
-									"type": "string"
-								}
-							]
-						},
-						"method": "GET",
-						"header": [
-							{
-								"key": "Accept",
-								"value": "application/json"
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/api/driver/location/history",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"api",
-								"driver",
-								"location",
-								"history"
-							]
-						},
-						"description": "Retrieve route points for the current active session."
-					},
-					"response": []
-				}
-			],
-			"description": "Endpoints for tracking and retrieving driver location data."
-		},
-		{
-			"name": "Sessions",
-			"item": [
-				{
-					"name": "List Sessions",
-					"request": {
-						"auth": {
-							"type": "bearer",
-							"bearer": [
-								{
-									"key": "token",
-									"value": "{{access_token}}",
-									"type": "string"
-								}
-							]
-						},
-						"method": "GET",
-						"header": [
-							{
-								"key": "Accept",
-								"value": "application/json"
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/api/driver/sessions?page=1&per_page=15",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"api",
-								"driver",
-								"sessions"
-							],
-							"query": [
-								{
-									"key": "page",
-									"value": "1",
-									"description": "Page number"
-								},
-								{
-									"key": "per_page",
-									"value": "15",
-									"description": "Items per page (max 100)"
-								},
-								{
-									"key": "status",
-									"value": "completed",
-									"description": "Filter by status: active, completed, auto_closed",
-									"disabled": true
-								}
-							]
-						},
-						"description": "Retrieve paginated list of driver's session history."
-					},
-					"response": []
-				},
-				{
-					"name": "Get Session Details",
-					"request": {
-						"auth": {
-							"type": "bearer",
-							"bearer": [
-								{
-									"key": "token",
-									"value": "{{access_token}}",
-									"type": "string"
-								}
-							]
-						},
-						"method": "GET",
-						"header": [
-							{
-								"key": "Accept",
-								"value": "application/json"
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/api/driver/sessions/{{session_id}}",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"api",
-								"driver",
-								"sessions",
-								"{{session_id}}"
-							]
-						},
-						"description": "Retrieve detailed information about a specific session including route points and statistics."
-					},
-					"response": []
-				}
-			],
-			"description": "Endpoints for viewing session history and details."
-		},
-		{
-			"name": "Device Management",
-			"item": [
-				{
-					"name": "List Devices",
-					"request": {
-						"auth": {
-							"type": "bearer",
-							"bearer": [
-								{
-									"key": "token",
-									"value": "{{access_token}}",
-									"type": "string"
-								}
-							]
-						},
-						"method": "GET",
-						"header": [
-							{
-								"key": "Accept",
-								"value": "application/json"
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/api/driver/devices",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"api",
-								"driver",
-								"devices"
-							]
-						},
-						"description": "Retrieve all devices registered for the authenticated driver."
-					},
-					"response": []
-				},
-				{
-					"name": "Get Current Device",
-					"request": {
-						"auth": {
-							"type": "bearer",
-							"bearer": [
-								{
-									"key": "token",
-									"value": "{{access_token}}",
-									"type": "string"
-								}
-							]
-						},
-						"method": "GET",
-						"header": [
-							{
-								"key": "Accept",
-								"value": "application/json"
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/api/driver/devices/current",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"api",
-								"driver",
-								"devices",
-								"current"
-							]
-						},
-						"description": "Retrieve information about the current device."
-					},
-					"response": []
-				},
-				{
-					"name": "Update Device",
-					"request": {
-						"auth": {
-							"type": "bearer",
-							"bearer": [
-								{
-									"key": "token",
-									"value": "{{access_token}}",
-									"type": "string"
-								}
-							]
-						},
-						"method": "PUT",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							},
-							{
-								"key": "Accept",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"device_name\": \"{{device_name}}\",\n    \"app_version\": \"{{app_version}}\",\n    \"app_build\": \"{{app_build}}\",\n    \"os_version\": \"{{os_version}}\",\n    \"locale\": \"en_US\",\n    \"timezone\": \"Asia/Colombo\"\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/api/driver/devices",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"api",
-								"driver",
-								"devices"
-							]
-						},
-						"description": "Update device information (app version, push token, etc.)."
-					},
-					"response": []
-				},
-				{
-					"name": "Update Push Token",
-					"request": {
-						"auth": {
-							"type": "bearer",
-							"bearer": [
-								{
-									"key": "token",
-									"value": "{{access_token}}",
-									"type": "string"
-								}
-							]
-						},
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							},
-							{
-								"key": "Accept",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"push_token\": \"{{push_token}}\",\n    \"push_provider\": \"{{push_provider}}\"\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/api/driver/devices/push-token",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"api",
-								"driver",
-								"devices",
-								"push-token"
-							]
-						},
-						"description": "Update the push notification token for the current device."
-					},
-					"response": []
-				},
-				{
-					"name": "Deactivate Device",
-					"request": {
-						"auth": {
-							"type": "bearer",
-							"bearer": [
-								{
-									"key": "token",
-									"value": "{{access_token}}",
-									"type": "string"
-								}
-							]
-						},
-						"method": "POST",
-						"header": [
-							{
-								"key": "Accept",
-								"value": "application/json"
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/api/driver/devices/{{device_uuid}}/deactivate",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"api",
-								"driver",
-								"devices",
-								"{{device_uuid}}",
-								"deactivate"
-							]
-						},
-						"description": "Deactivate a specific device."
-					},
-					"response": []
-				},
-				{
-					"name": "Remove Device",
-					"request": {
-						"auth": {
-							"type": "bearer",
-							"bearer": [
-								{
-									"key": "token",
-									"value": "{{access_token}}",
-									"type": "string"
-								}
-							]
-						},
-						"method": "DELETE",
-						"header": [
-							{
-								"key": "Accept",
-								"value": "application/json"
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/api/driver/devices/{{device_uuid}}",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"api",
-								"driver",
-								"devices",
-								"{{device_uuid}}"
-							]
-						},
-						"description": "Remove a device from the driver's account."
-					},
-					"response": []
-				}
-			],
-			"description": "Endpoints for managing driver devices and push notifications."
-		},
-		{
-			"name": "Booking Assignments",
-			"item": [
-				{
-					"name": "List Assignments",
-					"request": {
-						"auth": {
-							"type": "bearer",
-							"bearer": [
-								{
-									"key": "token",
-									"value": "{{access_token}}",
-									"type": "string"
-								}
-							]
-						},
-						"method": "GET",
-						"header": [
-							{
-								"key": "Accept",
-								"value": "application/json"
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/api/driver/assignments?page=1&per_page=15",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"api",
-								"driver",
-								"assignments"
-							],
-							"query": [
-								{
-									"key": "page",
-									"value": "1",
-									"description": "Page number"
-								},
-								{
-									"key": "per_page",
-									"value": "15",
-									"description": "Items per page (max 100)"
-								},
-								{
-									"key": "status",
-									"value": "active",
-									"description": "Filter by status: active, completed, pending_approval, cancelled",
-									"disabled": true
-								}
-							]
-						},
-						"description": "Retrieve a paginated list of booking assignments for the authenticated driver. Each assignment includes the associated Booking, BookingItem (with pickup/dropoff locations, dates), Vehicle details (with owner info), and Dispatch details.\n\nSupports optional `status` query parameter to filter by assignment status."
-					},
-					"response": [
-						{
-							"name": "Assignment List Success",
-							"status": "OK",
-							"code": 200,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-							"cookie": [],
-							"body": "{\n    \"status\": \"success\",\n    \"data\": [\n        {\n            \"id\": \"assignment-uuid\",\n            \"driver_id\": \"driver-uuid\",\n            \"booking_id\": \"booking-uuid\",\n            \"status\": \"active\",\n            \"trip_phase\": \"accepted\",\n            \"assigned_from\": \"2026-03-01T08:00:00Z\",\n            \"assigned_to\": \"2026-03-01T18:00:00Z\",\n            \"booking\": {\n                \"id\": \"booking-uuid\",\n                \"booking_number\": \"BK-2026-0001\",\n                \"customer_name\": \"Customer Name\"\n            },\n            \"booking_item\": {\n                \"id\": \"item-uuid\",\n                \"service_type_id\": \"service-uuid\",\n                \"pickup_location\": \"Colombo Airport\",\n                \"dropoff_location\": \"Hilton Colombo\",\n                \"pickup_latitude\": 7.1808,\n                \"pickup_longitude\": 79.8841,\n                \"dropoff_latitude\": 6.9344,\n                \"dropoff_longitude\": 79.8428,\n                \"from_date\": \"2026-03-01\",\n                \"from_time\": \"08:00\",\n                \"to_date\": \"2026-03-01\",\n                \"to_time\": \"18:00\"\n            },\n            \"vehicle\": {\n                \"id\": \"vehicle-uuid\",\n                \"license_plate\": \"CAB-1234\",\n                \"make\": \"Toyota\",\n                \"model\": \"Prius\",\n                \"vehicle_group\": \"Sedan\",\n                \"fuel_type\": \"Hybrid\",\n                \"transmission\": \"Automatic\",\n                \"owner_type\": \"company\",\n                \"owner_name\": \"TheTaxi Fleet\"\n            },\n            \"dispatch\": {\n                \"dispatch_status\": \"dispatched\",\n                \"dispatched_at\": \"2026-03-01T07:30:00Z\",\n                \"fuel_level_out\": 85.0,\n                \"mileage_out\": 45230\n            }\n        }\n    ],\n    \"meta\": {\n        \"current_page\": 1,\n        \"last_page\": 1,\n        \"per_page\": 15,\n        \"total\": 1\n    }\n}"
-						}
-					]
-				},
-				{
-					"name": "Get Current Assignment",
-					"request": {
-						"auth": {
-							"type": "bearer",
-							"bearer": [
-								{
-									"key": "token",
-									"value": "{{access_token}}",
-									"type": "string"
-								}
-							]
-						},
-						"method": "GET",
-						"header": [
-							{
-								"key": "Accept",
-								"value": "application/json"
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/api/driver/assignments/current",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"api",
-								"driver",
-								"assignments",
-								"current"
-							]
-						},
-						"description": "Get the current active assignment where the current time falls within the assigned_from and assigned_to range and status is 'active'. Returns null data with HTTP 200 if no active assignment exists."
-					},
-					"response": [
-						{
-							"name": "Current Assignment Found",
-							"status": "OK",
-							"code": 200,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-							"cookie": [],
-							"body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"id\": \"assignment-uuid\",\n        \"driver_id\": \"driver-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"status\": \"active\",\n        \"trip_phase\": \"active\",\n        \"assigned_from\": \"2026-03-01T08:00:00Z\",\n        \"assigned_to\": \"2026-03-01T18:00:00Z\",\n        \"booking\": { \"id\": \"booking-uuid\", \"booking_number\": \"BK-2026-0001\" },\n        \"booking_item\": { \"id\": \"item-uuid\", \"pickup_location\": \"Colombo Airport\", \"dropoff_location\": \"Hilton Colombo\" }\n    }\n}"
-						},
-						{
-							"name": "No Active Assignment",
-							"status": "OK",
-							"code": 200,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-							"cookie": [],
-							"body": "{\n    \"status\": \"success\",\n    \"data\": null\n}"
-						}
-					]
-				},
-				{
-					"name": "Accept Assignment",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"if (pm.response.code === 200) {",
-									"    const response = pm.response.json();",
-									"    if (response.data && response.data.id) {",
-									"        pm.environment.set('assignment_id', response.data.id);",
-									"        console.log('✅ Assignment accepted:', response.data.id);",
-									"    }",
-									"}"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"auth": {
-							"type": "bearer",
-							"bearer": [
-								{
-									"key": "token",
-									"value": "{{access_token}}",
-									"type": "string"
-								}
-							]
-						},
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							},
-							{
-								"key": "Accept",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{}"
-						},
-						"url": {
-							"raw": "{{base_url}}/api/driver/assignments/{{assignment_id}}/accept",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"api",
-								"driver",
-								"assignments",
-								"{{assignment_id}}",
-								"accept"
-							]
-						},
-						"description": "Accept a booking assignment. Sets status to 'confirmed', records confirmed_at timestamp and confirmed_by user ID, transitions trip_phase to 'accepted', and initiates trip tracking.\n\nThe assignment must be in 'active' or 'pending_approval' status.\n\nError codes:\n- ASSIGNMENT_INVALID_STATE (400): Assignment not in active/pending_approval status\n- ASSIGNMENT_ALREADY_CONFIRMED (400): Assignment already confirmed\n- ASSIGNMENT_NOT_FOUND (404): Assignment not found or doesn't belong to driver"
-					},
-					"response": [
-						{
-							"name": "Accept Success",
-							"status": "OK",
-							"code": 200,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-							"cookie": [],
-							"body": "{\n    \"status\": \"success\",\n    \"message\": \"Assignment accepted\",\n    \"data\": {\n        \"id\": \"assignment-uuid\",\n        \"driver_id\": \"driver-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"status\": \"confirmed\",\n        \"trip_phase\": \"accepted\",\n        \"confirmed_at\": \"2026-03-01T08:05:00Z\",\n        \"confirmed_by\": \"user-uuid\"\n    }\n}"
-						},
-						{
-							"name": "Invalid State Error",
-							"status": "Bad Request",
-							"code": 400,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-							"cookie": [],
-							"body": "{\n    \"status\": \"error\",\n    \"message\": \"Assignment is not in a valid state for acceptance\",\n    \"error_code\": \"ASSIGNMENT_INVALID_STATE\",\n    \"errors\": {}\n}"
-						},
-						{
-							"name": "Already Confirmed Error",
-							"status": "Bad Request",
-							"code": 400,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-							"cookie": [],
-							"body": "{\n    \"status\": \"error\",\n    \"message\": \"Assignment has already been confirmed\",\n    \"error_code\": \"ASSIGNMENT_ALREADY_CONFIRMED\",\n    \"errors\": {}\n}"
-						}
-					]
-				},
-				{
-					"name": "Decline Assignment",
-					"request": {
-						"auth": {
-							"type": "bearer",
-							"bearer": [
-								{
-									"key": "token",
-									"value": "{{access_token}}",
-									"type": "string"
-								}
-							]
-						},
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							},
-							{
-								"key": "Accept",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"decline_reason\": \"Vehicle not available at the scheduled time\"\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
-						"url": {
-							"raw": "{{base_url}}/api/driver/assignments/{{assignment_id}}/decline",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"api",
-								"driver",
-								"assignments",
-								"{{assignment_id}}",
-								"decline"
-							]
-						},
-						"description": "Decline a booking assignment with a reason. Sets status to 'declined', records the decline_reason, and transitions trip_phase to 'declined'.\n\nThe assignment must be in 'active' or 'pending_approval' status.\n\nRequest body:\n- `decline_reason` (required, string, max 1000 chars): Reason for declining\n\nError codes:\n- ASSIGNMENT_INVALID_STATE (400): Assignment not in active/pending_approval status\n- ASSIGNMENT_NOT_FOUND (404): Assignment not found or doesn't belong to driver"
-					},
-					"response": [
-						{
-							"name": "Decline Success",
-							"status": "OK",
-							"code": 200,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-							"cookie": [],
-							"body": "{\n    \"status\": \"success\",\n    \"message\": \"Assignment declined\",\n    \"data\": {\n        \"id\": \"assignment-uuid\",\n        \"driver_id\": \"driver-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"status\": \"declined\",\n        \"trip_phase\": \"declined\",\n        \"decline_reason\": \"Vehicle not available at the scheduled time\"\n    }\n}"
-						}
-					]
-				}
-			],
-			"description": "Booking assignment management endpoints. Drivers can list their assignments, view the current active assignment, and accept or decline assignments. Accepting initiates trip tracking; declining records the reason."
-		},
-		{
-			"name": "Trip Tracking",
-			"item": [
-				{
-					"name": "Get Trip Status",
-					"request": {
-						"auth": {
-							"type": "bearer",
-							"bearer": [
-								{
-									"key": "token",
-									"value": "{{access_token}}",
-									"type": "string"
-								}
-							]
-						},
-						"method": "GET",
-						"header": [
-							{
-								"key": "Accept",
-								"value": "application/json"
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/api/driver/trip/status",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"api",
-								"driver",
-								"trip",
-								"status"
-							]
-						},
-						"description": "Get the current trip status including trip phase, pickup location, distance to pickup, near_pickup flag, cumulative distance, waiting time totals, and route point count.\n\nReturns null data with HTTP 200 if no active trip exists.\n\nActive trip = assignment in accepted, pickup_arrived, or in_progress phase."
-					},
-					"response": [
-						{
-							"name": "Trip Status - Accepted Phase",
-							"status": "OK",
-							"code": 200,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-							"cookie": [],
-							"body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"trip_phase\": \"accepted\",\n        \"pickup_location\": {\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841,\n            \"landmark\": \"Colombo Airport\"\n        },\n        \"pickup_arrival\": null,\n        \"trip_started_at\": null,\n        \"estimated_distance_to_pickup_km\": 2.5,\n        \"near_pickup\": false,\n        \"cumulative_distance_km\": 0,\n        \"total_waiting_time_seconds\": 0,\n        \"waiting_period_count\": 0,\n        \"route_point_count\": 5\n    }\n}"
-						},
-						{
-							"name": "Trip Status - In Progress Phase",
-							"status": "OK",
-							"code": 200,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-							"cookie": [],
-							"body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"trip_phase\": \"in_progress\",\n        \"pickup_location\": {\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841,\n            \"landmark\": \"Colombo Airport\"\n        },\n        \"pickup_arrival\": {\n            \"arrived_at\": \"2026-03-01T08:15:00Z\",\n            \"latitude\": 7.1810,\n            \"longitude\": 79.8839\n        },\n        \"trip_started_at\": \"2026-03-01T08:20:00Z\",\n        \"estimated_distance_to_pickup_km\": null,\n        \"near_pickup\": false,\n        \"cumulative_distance_km\": 12.5,\n        \"total_waiting_time_seconds\": 300,\n        \"waiting_period_count\": 1,\n        \"route_point_count\": 75\n    }\n}"
-						},
-						{
-							"name": "No Active Trip",
-							"status": "OK",
-							"code": 200,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-							"cookie": [],
-							"body": "{\n    \"status\": \"success\",\n    \"data\": null\n}"
-						}
-					]
-				},
-				{
-					"name": "Confirm Pickup Arrival",
-					"request": {
-						"auth": {
-							"type": "bearer",
-							"bearer": [
-								{
-									"key": "token",
-									"value": "{{access_token}}",
-									"type": "string"
-								}
-							]
-						},
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							},
-							{
-								"key": "Accept",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"latitude\": 7.1810,\n    \"longitude\": 79.8839\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
-						"url": {
-							"raw": "{{base_url}}/api/driver/trip/pickup-arrived",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"api",
-								"driver",
-								"trip",
-								"pickup-arrived"
-							]
-						},
-						"description": "Confirm arrival at the pickup location. Transitions trip phase from 'accepted' to 'pickup_arrived' and records the actual arrival coordinates and timestamp.\n\nRequest body:\n- `latitude` (required, numeric, -90 to 90): Arrival latitude\n- `longitude` (required, numeric, -180 to 180): Arrival longitude\n\nThe arrival coordinates are stored separately from the BookingItem's planned pickup location.\n\nError codes:\n- TRIP_NO_ACTIVE_SESSION (400): No active trip found\n- ASSIGNMENT_INVALID_STATE (400): Trip not in 'accepted' phase"
-					},
-					"response": [
-						{
-							"name": "Pickup Arrival Confirmed",
-							"status": "OK",
-							"code": 200,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-							"cookie": [],
-							"body": "{\n    \"status\": \"success\",\n    \"message\": \"Pickup arrival confirmed\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"trip_phase\": \"pickup_arrived\",\n        \"pickup_location\": {\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841,\n            \"landmark\": \"Colombo Airport\"\n        },\n        \"pickup_arrival\": {\n            \"arrived_at\": \"2026-03-01T08:15:00Z\",\n            \"latitude\": 7.1810,\n            \"longitude\": 79.8839\n        },\n        \"trip_started_at\": null,\n        \"estimated_distance_to_pickup_km\": null,\n        \"near_pickup\": true,\n        \"cumulative_distance_km\": 0,\n        \"total_waiting_time_seconds\": 0,\n        \"waiting_period_count\": 0,\n        \"route_point_count\": 15\n    }\n}"
-						}
-					]
-				},
-				{
-					"name": "Start Trip",
-					"request": {
-						"auth": {
-							"type": "bearer",
-							"bearer": [
-								{
-									"key": "token",
-									"value": "{{access_token}}",
-									"type": "string"
-								}
-							]
-						},
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							},
-							{
-								"key": "Accept",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{}"
-						},
-						"url": {
-							"raw": "{{base_url}}/api/driver/trip/start",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"api",
-								"driver",
-								"trip",
-								"start"
-							]
-						},
-						"description": "Start the trip after confirming pickup arrival. Transitions trip phase from 'pickup_arrived' to 'in_progress' and records the trip start timestamp.\n\nNo request body required.\n\nError codes:\n- TRIP_NO_ACTIVE_SESSION (400): No active trip found\n- TRIP_PICKUP_NOT_CONFIRMED (400): Pickup arrival must be confirmed first (trip not in 'pickup_arrived' phase)"
-					},
-					"response": [
-						{
-							"name": "Trip Started",
-							"status": "OK",
-							"code": 200,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-							"cookie": [],
-							"body": "{\n    \"status\": \"success\",\n    \"message\": \"Trip started\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"trip_phase\": \"in_progress\",\n        \"pickup_location\": {\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841,\n            \"landmark\": \"Colombo Airport\"\n        },\n        \"pickup_arrival\": {\n            \"arrived_at\": \"2026-03-01T08:15:00Z\",\n            \"latitude\": 7.1810,\n            \"longitude\": 79.8839\n        },\n        \"trip_started_at\": \"2026-03-01T08:20:00Z\",\n        \"estimated_distance_to_pickup_km\": null,\n        \"near_pickup\": false,\n        \"cumulative_distance_km\": 0,\n        \"total_waiting_time_seconds\": 0,\n        \"waiting_period_count\": 0,\n        \"route_point_count\": 18\n    }\n}"
-						},
-						{
-							"name": "Pickup Not Confirmed Error",
-							"status": "Bad Request",
-							"code": 400,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-							"cookie": [],
-							"body": "{\n    \"status\": \"error\",\n    \"message\": \"Pickup arrival must be confirmed before starting the trip\",\n    \"error_code\": \"TRIP_PICKUP_NOT_CONFIRMED\",\n    \"errors\": {}\n}"
-						}
-					]
-				},
-				{
-					"name": "End Trip",
-					"request": {
-						"auth": {
-							"type": "bearer",
-							"bearer": [
-								{
-									"key": "token",
-									"value": "{{access_token}}",
-									"type": "string"
-								}
-							]
-						},
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							},
-							{
-								"key": "Accept",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"latitude\": 6.9344,\n    \"longitude\": 79.8428\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
-						"url": {
-							"raw": "{{base_url}}/api/driver/trip/end",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"api",
-								"driver",
-								"trip",
-								"end"
-							]
-						},
-						"description": "End the trip and receive a trip summary. Transitions trip phase to 'completed', records final location and timestamp, closes all open waiting time records, and calculates total trip distance.\n\nRequest body:\n- `latitude` (required, numeric, -90 to 90): Final dropoff latitude\n- `longitude` (required, numeric, -180 to 180): Final dropoff longitude\n\nError codes:\n- TRIP_NO_ACTIVE_SESSION (400): No active trip found\n- TRIP_NOT_IN_PROGRESS (400): Trip is not in 'in_progress' phase"
-					},
-					"response": [
-						{
-							"name": "Trip Completed - Summary",
-							"status": "OK",
-							"code": 200,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-							"cookie": [],
-							"body": "{\n    \"status\": \"success\",\n    \"message\": \"Trip completed\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"total_distance_km\": 45.2,\n        \"total_duration_minutes\": 95,\n        \"total_waiting_time_seconds\": 600,\n        \"waiting_period_count\": 2,\n        \"pickup_coordinates\": {\n            \"latitude\": 7.1810,\n            \"longitude\": 79.8839\n        },\n        \"dropoff_coordinates\": {\n            \"latitude\": 6.9344,\n            \"longitude\": 79.8428\n        },\n        \"route_point_count\": 570\n    }\n}"
-						},
-						{
-							"name": "Trip Not In Progress Error",
-							"status": "Bad Request",
-							"code": 400,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-							"cookie": [],
-							"body": "{\n    \"status\": \"error\",\n    \"message\": \"Trip is not in progress\",\n    \"error_code\": \"TRIP_NOT_IN_PROGRESS\",\n    \"errors\": {}\n}"
-						}
-					]
-				}
-			],
-			"description": "Trip lifecycle tracking endpoints. Manage the full trip flow: check status, confirm pickup arrival, start trip, and end trip with summary. Waiting time is automatically detected during in_progress phase."
-		}
-	],
-	"event": [
-		{
-			"listen": "prerequest",
-			"script": {
-				"type": "text/javascript",
-				"exec": [
-					""
-				]
-			}
-		},
-		{
-			"listen": "test",
-			"script": {
-				"type": "text/javascript",
-				"exec": [
-					""
-				]
-			}
-		}
-	],
-	"variable": [
-		{
-			"key": "base_url",
-			"value": "http://localhost:8000",
-			"type": "string"
-		}
-	]
+﻿{
+    "info": {
+        "_postman_id": "driver-mobile-api-v1",
+        "name": "TheTaxi Driver Mobile API",
+        "description": "Complete API collection for TheTaxi Driver Mobile Application. Includes authentication, status, location tracking, sessions, device management, booking assignments, hires, earnings, and trip lifecycle endpoints (with assignment-scoped canonical lifecycle endpoints).",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+        "_exporter_id": "thetaxi-driver-api"
+    },
+    "item": [
+        {
+            "name": "Authentication",
+            "item": [
+                {
+                    "name": "Login",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "if (pm.response.code === 200) {",
+                                    "    const response = pm.response.json();",
+                                    "    if (response.data \u0026\u0026 response.data.token) {",
+                                    "        pm.environment.set(\u0027access_token\u0027, response.data.token.access_token);",
+                                    "        pm.environment.set(\u0027refresh_token\u0027, response.data.token.refresh_token);",
+                                    "        pm.environment.set(\u0027driver_id\u0027, response.data.driver.id);",
+                                    "        pm.environment.set(\u0027user_id\u0027, response.data.user.id);",
+                                    "        if (response.data.device \u0026\u0026 response.data.device.device_uuid) {",
+                                    "            pm.environment.set(\u0027device_uuid\u0027, response.data.device.device_uuid);",
+                                    "        }",
+                                    "        if (response.data.current_assignment) {",
+                                    "            pm.environment.set(\u0027assignment_id\u0027, response.data.current_assignment.id);",
+                                    "        }",
+                                    "        console.log(\u0027âœ… Tokens saved to environment\u0027);",
+                                    "    }",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"email\": \"{{driver_email}}\",\n    \"password\": \"{{driver_password}}\",\n    \"device_fingerprint\": \"{{device_fingerprint}}\",\n    \"device_name\": \"{{device_name}}\",\n    \"device_model\": \"{{device_model}}\",\n    \"device_manufacturer\": \"{{device_manufacturer}}\",\n    \"platform\": \"{{platform}}\",\n    \"os_version\": \"{{os_version}}\",\n    \"app_version\": \"{{app_version}}\",\n    \"app_build\": \"{{app_build}}\",\n    \"push_token\": \"{{push_token}}\",\n    \"push_provider\": \"{{push_provider}}\",\n    \"locale\": \"en_US\",\n    \"timezone\": \"Asia/Colombo\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/auth/login",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "auth",
+                                "login"
+                            ]
+                        },
+                        "description": "Authenticate a driver and receive access and refresh tokens.\n\nResponse now includes `current_assignment` (active DriverAssignment with booking/booking_item details, or null) and `trip_phase` (current trip lifecycle phase: accepted, pickup_arrived, in_progress, or null)."
+                    },
+                    "response": [
+                        {
+                            "name": "Login Success (With Active Assignment)",
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Login successful\",\n    \"data\": {\n        \"user\": { \"id\": \"user-uuid\", \"email\": \"driver@example.com\", \"name\": \"John Driver\" },\n        \"driver\": { \"id\": \"driver-uuid\", \"name\": \"John Driver\", \"phone\": \"+94771234567\" },\n        \"device\": { \"id\": \"device-uuid\", \"device_uuid\": \"550e8400-e29b-41d4-a716-446655440000\", \"platform\": \"ios\", \"is_active\": true },\n        \"token\": { \"access_token\": \"eyJ0eXAi...\", \"token_type\": \"Bearer\", \"expires_at\": \"2026-03-15T10:30:00Z\", \"refresh_token\": \"token-id\" },\n        \"current_assignment\": {\n            \"id\": \"assignment-uuid\",\n            \"driver_id\": \"driver-uuid\",\n            \"booking_id\": \"booking-uuid\",\n            \"status\": \"active\",\n            \"trip_phase\": \"accepted\",\n            \"booking\": { \"id\": \"booking-uuid\", \"booking_number\": \"BK-2026-0001\" },\n            \"booking_item\": { \"id\": \"item-uuid\", \"pickup_location\": \"Colombo Airport\", \"dropoff_location\": \"Hilton Colombo\" }\n        },\n        \"trip_phase\": \"accepted\"\n    }\n}"
+                        },
+                        {
+                            "name": "Login Success (No Active Assignment)",
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Login successful\",\n    \"data\": {\n        \"user\": { \"id\": \"user-uuid\", \"email\": \"driver@example.com\", \"name\": \"John Driver\" },\n        \"driver\": { \"id\": \"driver-uuid\", \"name\": \"John Driver\" },\n        \"device\": { \"id\": \"device-uuid\", \"device_uuid\": \"550e8400-e29b-41d4-a716-446655440000\" },\n        \"token\": { \"access_token\": \"eyJ0eXAi...\", \"token_type\": \"Bearer\" },\n        \"current_assignment\": null,\n        \"trip_phase\": null\n    }\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "Get Profile",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/auth/profile",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "auth",
+                                "profile"
+                            ]
+                        },
+                        "description": "Retrieve the authenticated driver\u0027s profile. Response now includes `assignment_statistics` with total_assignments, active_assignments, and completed_assignments counts."
+                    },
+                    "response": [
+                        {
+                            "name": "Profile With Assignment Statistics",
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"user\": { \"id\": \"user-uuid\", \"email\": \"driver@example.com\", \"first_name\": \"John\", \"last_name\": \"Doe\" },\n        \"driver\": { \"id\": \"driver-uuid\", \"code\": \"DRV001\", \"license_no\": \"B1234567\", \"is_online\": true, \"rating\": 4.8 },\n        \"assignment_statistics\": { \"total_assignments\": 25, \"active_assignments\": 2, \"completed_assignments\": 20 }\n    }\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "Refresh Token",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "if (pm.response.code === 200) {",
+                                    "    const response = pm.response.json();",
+                                    "    if (response.data) {",
+                                    "        pm.environment.set(\u0027access_token\u0027, response.data.access_token);",
+                                    "        pm.environment.set(\u0027refresh_token\u0027, response.data.refresh_token);",
+                                    "        console.log(\u0027âœ… Tokens refreshed\u0027);",
+                                    "    }",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"refresh_token\": \"{{refresh_token}}\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/auth/refresh",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "auth",
+                                "refresh"
+                            ]
+                        },
+                        "description": "Refresh the access token using the refresh token."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Logout",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/auth/logout",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "auth",
+                                "logout"
+                            ]
+                        },
+                        "description": "Logout the authenticated driver by revoking their current token."
+                    },
+                    "response": []
+                }
+            ],
+            "description": "Driver authentication endpoints including login, logout, profile, and token refresh."
+        },
+        {
+            "name": "Status Management",
+            "item": [
+                {
+                    "name": "Go Online",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "if (pm.response.code === 200) {",
+                                    "    const response = pm.response.json();",
+                                    "    if (response.data \u0026\u0026 response.data.session \u0026\u0026 response.data.session.id) {",
+                                    "        pm.environment.set(\u0027session_id\u0027, response.data.session.id);",
+                                    "        console.log(\u0027âœ… Session started:\u0027, response.data.session.id);",
+                                    "    }",
+                                    "    if (response.data.pending_assignments \u0026\u0026 response.data.pending_assignments.length \u003e 0) {",
+                                    "        console.log(\u0027ðŸ“‹ Pending assignments:\u0027, response.data.pending_assignments.length);",
+                                    "    }",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"device_uuid\": \"{{device_uuid}}\",\n    \"latitude\": {{start_latitude}},\n    \"longitude\": {{start_longitude}},\n    \"metadata\": {\n        \"app_version\": \"{{app_version}}\",\n        \"os\": \"{{platform}} {{os_version}}\"\n    }\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/status/online",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "status",
+                                "online"
+                            ]
+                        },
+                        "description": "Set the driver\u0027s status to online and start a new session.\n\nResponse now includes `pending_assignments` â€” an array of DriverAssignments in active/pending_approval status with booking and booking_item details."
+                    },
+                    "response": [
+                        {
+                            "name": "Go Online With Pending Assignments",
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Driver is now online\",\n    \"data\": {\n        \"session\": {\n            \"id\": \"session-uuid\",\n            \"driver_id\": \"driver-uuid\",\n            \"status\": \"active\",\n            \"start_time\": \"2026-03-01T08:00:00Z\",\n            \"start_latitude\": 6.9271,\n            \"start_longitude\": 79.8612\n        },\n        \"pending_assignments\": [\n            {\n                \"id\": \"assignment-uuid\",\n                \"status\": \"active\",\n                \"trip_phase\": \"active\",\n                \"booking\": { \"id\": \"booking-uuid\", \"booking_number\": \"BK-2026-0001\" },\n                \"booking_item\": { \"id\": \"item-uuid\", \"pickup_location\": \"Colombo Airport\", \"dropoff_location\": \"Hilton Colombo\" }\n            }\n        ]\n    }\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "Go Offline",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"latitude\": {{end_latitude}},\n    \"longitude\": {{end_longitude}}\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/status/offline",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "status",
+                                "offline"
+                            ]
+                        },
+                        "description": "Set the driver\u0027s status to offline and close the active session.\n\nIf a trip tracking session is active, the trip remains active and the response includes a `trip_warning` message and `active_trip` details."
+                    },
+                    "response": [
+                        {
+                            "name": "Go Offline With Active Trip Warning",
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Driver is now offline. Warning: trip is still in progress.\",\n    \"data\": {\n        \"session\": { \"id\": \"session-uuid\", \"status\": \"completed\", \"total_distance_km\": 45.67 },\n        \"trip_warning\": \"Trip is still in progress. The trip tracking session remains active.\",\n        \"active_trip\": { \"assignment_id\": \"assignment-uuid\", \"trip_phase\": \"in_progress\" }\n    }\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "Get Current Status",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/status",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "status"
+                            ]
+                        },
+                        "description": "Retrieve the driver\u0027s current online/offline status and active session information."
+                    },
+                    "response": []
+                }
+            ],
+            "description": "Endpoints for managing driver online/offline status and sessions."
+        },
+        {
+            "name": "Heartbeat",
+            "item": [
+                {
+                    "name": "Send Heartbeat",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/heartbeat",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "heartbeat"
+                            ]
+                        },
+                        "description": "Send a heartbeat signal to indicate the driver is still active. Should be sent every 60 seconds while online.\n\nWhen a trip tracking session is active, the response includes `trip_phase` and `assignment_id`."
+                    },
+                    "response": [
+                        {
+                            "name": "Heartbeat With Active Trip",
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Heartbeat received\",\n    \"data\": {\n        \"last_active_at\": \"2026-03-01T10:35:00Z\",\n        \"is_online\": true,\n        \"trip_phase\": \"in_progress\",\n        \"assignment_id\": \"assignment-uuid\"\n    }\n}"
+                        },
+                        {
+                            "name": "Heartbeat Without Active Trip",
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Heartbeat received\",\n    \"data\": {\n        \"last_active_at\": \"2026-03-01T10:35:00Z\",\n        \"is_online\": true\n    }\n}"
+                        }
+                    ]
+                }
+            ],
+            "description": "Heartbeat endpoint to maintain driver\u0027s active status."
+        },
+        {
+            "name": "Location Tracking",
+            "item": [
+                {
+                    "name": "Update Location",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"latitude\": {{current_latitude}},\n    \"longitude\": {{current_longitude}},\n    \"altitude\": 15.5,\n    \"speed\": 45.2,\n    \"heading\": 180.5,\n    \"accuracy\": 10.0,\n    \"recorded_at\": \"{{$isoTimestamp}}\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/location",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "location"
+                            ]
+                        },
+                        "description": "Send the driver\u0027s current GPS location. Creates a route point for the active session. During an active trip, the route point is also linked to the assignment_id. Should be sent every 10 seconds while moving."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Location History",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/location/history?assignment_id={{history_assignment_id}}&session_id={{history_session_id}}&from={{history_from}}&to={{history_to}}&limit={{history_limit}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "location",
+                                "history"
+                            ],
+                            "query": [
+                                {
+                                    "key": "assignment_id",
+                                    "value": "{{history_assignment_id}}",
+                                    "description": "Optional. Fetch trip-specific route points for a given assignment.",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "session_id",
+                                    "value": "{{history_session_id}}",
+                                    "description": "Optional. Fetch route points for a specific driver session.",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "from",
+                                    "value": "{{history_from}}",
+                                    "description": "Optional ISO datetime lower bound for recorded_at (e.g. 2026-04-04T00:00:00Z).",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "to",
+                                    "value": "{{history_to}}",
+                                    "description": "Optional ISO datetime upper bound for recorded_at.",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "limit",
+                                    "value": "{{history_limit}}",
+                                    "description": "Optional max points to return (1-10000, default 5000).",
+                                    "disabled": true
+                                }
+                            ]
+                        },
+                        "description": "Retrieve driver location history using the same endpoint for both live and replay use cases.\n\nDefault behavior:\n- Returns active session route points.\n- If no active session exists, returns the latest session route points.\n\nOptional filters:\n- assignment_id: get trip-specific route points (works after trip end)\n- session_id: get route points for a specific session\n- from/to: recorded_at time window\n- limit: max points (1-10000)\n\nEach route point includes assignment_id so maps can distinguish trip-linked vs general movement."
+                    },
+                    "response": [
+                        {
+                            "name": "History By Assignment",
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"scope\": \"assignment\",\n        \"assignment_id\": \"assignment-uuid\",\n        \"trip_phase\": \"completed\",\n        \"session_id\": \"session-uuid\",\n        \"route_points\": [\n            {\n                \"id\": \"point-1\",\n                \"session_id\": \"session-uuid\",\n                \"assignment_id\": \"assignment-uuid\",\n                \"latitude\": 6.9271,\n                \"longitude\": 79.8612,\n                \"speed\": 34.5,\n                \"accuracy\": 8.1,\n                \"recorded_at\": \"2026-04-04T05:30:10Z\"\n            }\n        ],\n        \"total_points\": 1\n    }\n}"
+                        },
+                        {
+                            "name": "History By Session",
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"scope\": \"session\",\n        \"session_id\": \"session-uuid\",\n        \"assignment_id\": null,\n        \"session_status\": \"completed\",\n        \"route_points\": [\n            {\n                \"id\": \"point-1\",\n                \"session_id\": \"session-uuid\",\n                \"assignment_id\": null,\n                \"latitude\": 6.9285,\n                \"longitude\": 79.8625,\n                \"speed\": 0,\n                \"accuracy\": 12.0,\n                \"recorded_at\": \"2026-04-04T06:00:10Z\"\n            }\n        ],\n        \"total_points\": 1\n    }\n}"
+                        }
+                    ]
+                }
+            ],
+            "description": "Endpoints for tracking and retrieving driver location data."
+        },
+        {
+            "name": "Sessions",
+            "item": [
+                {
+                    "name": "List Sessions",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/sessions?page=1\u0026per_page=15",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "sessions"
+                            ],
+                            "query": [
+                                {
+                                    "key": "page",
+                                    "value": "1",
+                                    "description": "Page number"
+                                },
+                                {
+                                    "key": "per_page",
+                                    "value": "15",
+                                    "description": "Items per page (max 100)"
+                                },
+                                {
+                                    "key": "status",
+                                    "value": "completed",
+                                    "description": "Filter by status: active, completed, auto_closed",
+                                    "disabled": true
+                                }
+                            ]
+                        },
+                        "description": "Retrieve paginated list of driver\u0027s session history."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Session Details",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/sessions/{{session_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "sessions",
+                                "{{session_id}}"
+                            ]
+                        },
+                        "description": "Retrieve detailed information about a specific session including route points and statistics."
+                    },
+                    "response": []
+                }
+            ],
+            "description": "Endpoints for viewing session history and details."
+        },
+        {
+            "name": "Device Management",
+            "item": [
+                {
+                    "name": "List Devices",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/devices",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "devices"
+                            ]
+                        },
+                        "description": "Retrieve all devices registered for the authenticated driver."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Current Device",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/devices/current",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "devices",
+                                "current"
+                            ]
+                        },
+                        "description": "Retrieve information about the current device."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update Device",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"device_name\": \"{{device_name}}\",\n    \"app_version\": \"{{app_version}}\",\n    \"app_build\": \"{{app_build}}\",\n    \"os_version\": \"{{os_version}}\",\n    \"locale\": \"en_US\",\n    \"timezone\": \"Asia/Colombo\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/devices",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "devices"
+                            ]
+                        },
+                        "description": "Update device information (app version, push token, etc.)."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update Push Token",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"push_token\": \"{{push_token}}\",\n    \"push_provider\": \"{{push_provider}}\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/devices/push-token",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "devices",
+                                "push-token"
+                            ]
+                        },
+                        "description": "Update the push notification token for the current device."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Deactivate Device",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/devices/{{device_uuid}}/deactivate",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "devices",
+                                "{{device_uuid}}",
+                                "deactivate"
+                            ]
+                        },
+                        "description": "Deactivate a specific device."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Remove Device",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/devices/{{device_uuid}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "devices",
+                                "{{device_uuid}}"
+                            ]
+                        },
+                        "description": "Remove a device from the driver\u0027s account."
+                    },
+                    "response": []
+                }
+            ],
+            "description": "Endpoints for managing driver devices and push notifications."
+        },
+        {
+            "name": "Booking Assignments",
+            "item": [
+                {
+                    "name": "List Assignments",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/assignments?page=1\u0026per_page=15\u0026status={{assignment_status}}\u0026date={{filter_date}}\u0026from={{filter_from}}\u0026to={{filter_to}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "assignments"
+                            ],
+                            "query": [
+                                {
+                                    "key": "page",
+                                    "value": "1"
+                                },
+                                {
+                                    "key": "per_page",
+                                    "value": "15"
+                                },
+                                {
+                                    "key": "status",
+                                    "value": "{{assignment_status}}"
+                                },
+                                {
+                                    "key": "date",
+                                    "value": "{{filter_date}}"
+                                },
+                                {
+                                    "key": "from",
+                                    "value": "{{filter_from}}"
+                                },
+                                {
+                                    "key": "to",
+                                    "value": "{{filter_to}}"
+                                }
+                            ]
+                        },
+                        "description": "List driver assignments with optional status/date/range filters."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Current Assignment",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/assignments/current",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "assignments",
+                                "current"
+                            ]
+                        },
+                        "description": "Get current active assignment for the authenticated driver."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Accept Assignment",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/assignments/{{assignment_id}}/accept",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "assignments",
+                                "{{assignment_id}}",
+                                "accept"
+                            ]
+                        },
+                        "description": "Accept a driver assignment.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Decline Assignment",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/assignments/{{assignment_id}}/decline",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "assignments",
+                                "{{assignment_id}}",
+                                "decline"
+                            ]
+                        },
+                        "description": "Decline a driver assignment with a reason.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"decline_reason\": \"Unable to take this trip\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "List Hires (Completed)",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/hires?page=1\u0026per_page=15\u0026date={{filter_date}}\u0026from={{filter_from}}\u0026to={{filter_to}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "hires"
+                            ],
+                            "query": [
+                                {
+                                    "key": "page",
+                                    "value": "1"
+                                },
+                                {
+                                    "key": "per_page",
+                                    "value": "15"
+                                },
+                                {
+                                    "key": "date",
+                                    "value": "{{filter_date}}"
+                                },
+                                {
+                                    "key": "from",
+                                    "value": "{{filter_from}}"
+                                },
+                                {
+                                    "key": "to",
+                                    "value": "{{filter_to}}"
+                                }
+                            ]
+                        },
+                        "description": "List completed hire history for the authenticated driver."
+                    },
+                    "response": []
+                }
+            ],
+            "description": "Booking assignment and completed hire history endpoints."
+        },
+        {
+            "name": "Trip Tracking",
+            "item": [
+                {
+                    "name": "Get Trip Status",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/assignments/{{assignment_id}}/status",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "assignments",
+                                "{{assignment_id}}",
+                                "status"
+                            ]
+                        },
+                        "description": "Canonical endpoint: get trip status for a specific assignment."
+                    },
+                    "response": [
+                        {
+                            "name": "Trip Status - Accepted Phase",
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"trip_phase\": \"accepted\",\n        \"pickup_location\": {\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841,\n            \"landmark\": \"Colombo Airport\"\n        },\n        \"pickup_arrival\": null,\n        \"trip_started_at\": null,\n        \"estimated_distance_to_pickup_km\": 2.5,\n        \"near_pickup\": false,\n        \"cumulative_distance_km\": 0,\n        \"total_waiting_time_seconds\": 0,\n        \"waiting_period_count\": 0,\n        \"route_point_count\": 5\n    }\n}"
+                        },
+                        {
+                            "name": "Trip Status - In Progress Phase",
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"trip_phase\": \"in_progress\",\n        \"pickup_location\": {\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841,\n            \"landmark\": \"Colombo Airport\"\n        },\n        \"pickup_arrival\": {\n            \"arrived_at\": \"2026-03-01T08:15:00Z\",\n            \"latitude\": 7.1810,\n            \"longitude\": 79.8839\n        },\n        \"trip_started_at\": \"2026-03-01T08:20:00Z\",\n        \"estimated_distance_to_pickup_km\": null,\n        \"near_pickup\": false,\n        \"cumulative_distance_km\": 12.5,\n        \"total_waiting_time_seconds\": 300,\n        \"waiting_period_count\": 1,\n        \"route_point_count\": 75\n    }\n}"
+                        },
+                        {
+                            "name": "No Active Trip",
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": null\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "Confirm Pickup Arrival",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"latitude\": 7.1810,\n    \"longitude\": 79.8839\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/assignments/{{assignment_id}}/arrived",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "assignments",
+                                "{{assignment_id}}",
+                                "arrived"
+                            ]
+                        },
+                        "description": "Canonical endpoint: mark pickup arrival for a specific assignment."
+                    },
+                    "response": [
+                        {
+                            "name": "Pickup Arrival Confirmed",
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Pickup arrival confirmed\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"trip_phase\": \"pickup_arrived\",\n        \"pickup_location\": {\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841,\n            \"landmark\": \"Colombo Airport\"\n        },\n        \"pickup_arrival\": {\n            \"arrived_at\": \"2026-03-01T08:15:00Z\",\n            \"latitude\": 7.1810,\n            \"longitude\": 79.8839\n        },\n        \"trip_started_at\": null,\n        \"estimated_distance_to_pickup_km\": null,\n        \"near_pickup\": true,\n        \"cumulative_distance_km\": 0,\n        \"total_waiting_time_seconds\": 0,\n        \"waiting_period_count\": 0,\n        \"route_point_count\": 15\n    }\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "Start Trip",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/assignments/{{assignment_id}}/start",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "assignments",
+                                "{{assignment_id}}",
+                                "start"
+                            ]
+                        },
+                        "description": "Canonical endpoint: start trip for a specific assignment."
+                    },
+                    "response": [
+                        {
+                            "name": "Trip Started",
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Trip started\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"trip_phase\": \"in_progress\",\n        \"pickup_location\": {\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841,\n            \"landmark\": \"Colombo Airport\"\n        },\n        \"pickup_arrival\": {\n            \"arrived_at\": \"2026-03-01T08:15:00Z\",\n            \"latitude\": 7.1810,\n            \"longitude\": 79.8839\n        },\n        \"trip_started_at\": \"2026-03-01T08:20:00Z\",\n        \"estimated_distance_to_pickup_km\": null,\n        \"near_pickup\": false,\n        \"cumulative_distance_km\": 0,\n        \"total_waiting_time_seconds\": 0,\n        \"waiting_period_count\": 0,\n        \"route_point_count\": 18\n    }\n}"
+                        },
+                        {
+                            "name": "Pickup Not Confirmed Error",
+                            "status": "Bad Request",
+                            "code": 400,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"error\",\n    \"message\": \"Pickup arrival must be confirmed before starting the trip\",\n    \"error_code\": \"TRIP_PICKUP_NOT_CONFIRMED\",\n    \"errors\": {}\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "End Trip",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"latitude\": 6.9344,\n  \"longitude\": 79.8428,\n  \"ending_mileage\": {{ending_mileage}},\n  \"notes\": \"{{trip_end_notes}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/assignments/{{assignment_id}}/complete",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "assignments",
+                                "{{assignment_id}}",
+                                "complete"
+                            ]
+                        },
+                        "description": "Canonical endpoint: complete trip for a specific assignment."
+                    },
+                    "response": [
+                        {
+                            "name": "Trip Completed - Summary",
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Trip completed\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"total_distance_km\": 45.2,\n        \"total_duration_minutes\": 95,\n        \"total_waiting_time_seconds\": 600,\n        \"waiting_period_count\": 2,\n        \"pickup_coordinates\": {\n            \"latitude\": 7.1810,\n            \"longitude\": 79.8839\n        },\n        \"dropoff_coordinates\": {\n            \"latitude\": 6.9344,\n            \"longitude\": 79.8428\n        },\n        \"route_point_count\": 570\n    }\n}"
+                        },
+                        {
+                            "name": "Trip Not In Progress Error",
+                            "status": "Bad Request",
+                            "code": 400,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"error\",\n    \"message\": \"Trip is not in progress\",\n    \"error_code\": \"TRIP_NOT_IN_PROGRESS\",\n    \"errors\": {}\n}"
+                        }
+                    ]
+                }
+            ],
+            "description": "Trip lifecycle tracking endpoints. Manage the full trip flow: check status, confirm pickup arrival, start trip, and end trip with summary. Waiting time is automatically detected during in_progress phase."
+        },
+        {
+            "name": "Earnings",
+            "item": [
+                {
+                    "name": "Get Earnings Summary",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/earnings/summary",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "earnings",
+                                "summary"
+                            ]
+                        },
+                        "description": "Get earnings summary for today/this week/this month."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Daily Earnings",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/earnings/daily?date={{filter_date}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "earnings",
+                                "daily"
+                            ],
+                            "query": [
+                                {
+                                    "key": "date",
+                                    "value": "{{filter_date}}"
+                                }
+                            ]
+                        },
+                        "description": "Get earnings breakdown for a specific date."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Range Earnings",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/earnings/range?from={{filter_from}}\u0026to={{filter_to}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "earnings",
+                                "range"
+                            ],
+                            "query": [
+                                {
+                                    "key": "from",
+                                    "value": "{{filter_from}}"
+                                },
+                                {
+                                    "key": "to",
+                                    "value": "{{filter_to}}"
+                                }
+                            ]
+                        },
+                        "description": "Get earnings breakdown for a custom date range."
+                    },
+                    "response": []
+                }
+            ],
+            "description": "Driver earnings summary endpoints."
+        }
+    ],
+    "event": [
+        {
+            "listen": "prerequest",
+            "script": {
+                "type": "text/javascript",
+                "exec": [
+                    ""
+                ]
+            }
+        },
+        {
+            "listen": "test",
+            "script": {
+                "type": "text/javascript",
+                "exec": [
+                    ""
+                ]
+            }
+        }
+    ],
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "http://localhost:8000",
+            "type": "string"
+        }
+    ]
 }

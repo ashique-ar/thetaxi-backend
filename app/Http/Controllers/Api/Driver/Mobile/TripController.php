@@ -12,13 +12,6 @@ use App\Services\Driver\TripTrackingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
-/**
- * Driver Mobile Trip Controller
- *
- * Manages the trip lifecycle: status, pickup arrival, start, and end.
- *
- * @see Requirements 5.2–5.4, 6.1–6.5, 7.4, 8.1–8.5
- */
 class TripController extends Controller
 {
     public function __construct(
@@ -27,14 +20,10 @@ class TripController extends Controller
     ) {}
 
     /**
-     * Get current trip status.
-     *
-     * Returns trip phase, pickup location, distance, waiting time, etc.
-     * Returns null data with 200 if no active trip.
-     *
-     * @see Requirements 5.2, 5.3, 5.4, 7.4
+     * Canonical endpoint: assignment-scoped trip status.
+     * GET /api/driver/assignments/{id}/status
      */
-    public function status(Request $request): JsonResponse
+    public function statusForAssignment(Request $request, string $id): JsonResponse
     {
         try {
             $driver = $this->authService->getDriver($request->user());
@@ -47,20 +36,19 @@ class TripController extends Controller
                 ], 403);
             }
 
-            $assignment = $this->getActiveTrip($driver->id);
+            $assignment = $this->getAnyAssignmentByDriverAndId($driver->id, $id);
 
             if (!$assignment) {
                 return response()->json([
-                    'status' => 'success',
-                    'data' => null,
-                ]);
+                    'status' => 'error',
+                    'message' => 'Assignment not found',
+                    'error_code' => 'TRIP_ASSIGNMENT_NOT_FOUND'
+                ], 404);
             }
-
-            $tripStatus = $this->tripTrackingService->getTripStatus($assignment);
 
             return response()->json([
                 'status' => 'success',
-                'data' => $tripStatus,
+                'data' => $this->tripTrackingService->getTripStatus($assignment),
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -73,11 +61,30 @@ class TripController extends Controller
     }
 
     /**
-     * Confirm arrival at pickup location.
-     *
-     * @see Requirements 6.1, 6.4
+     * Canonical endpoint: /assignments/{id}/arrived
      */
-    public function pickupArrived(PickupArrivedRequest $request): JsonResponse
+    public function pickupArrivedForAssignment(PickupArrivedRequest $request, string $id): JsonResponse
+    {
+        return $this->pickupArrivedByAssignment($request, $id);
+    }
+
+    /**
+     * Canonical endpoint: /assignments/{id}/start
+     */
+    public function startTripForAssignment(Request $request, string $id): JsonResponse
+    {
+        return $this->startTripByAssignment($request, $id);
+    }
+
+    /**
+     * Canonical endpoint: /assignments/{id}/complete
+     */
+    public function endTripForAssignment(EndTripRequest $request, string $id): JsonResponse
+    {
+        return $this->endTripByAssignment($request, $id);
+    }
+
+    private function pickupArrivedByAssignment(PickupArrivedRequest $request, string $assignmentId): JsonResponse
     {
         try {
             $driver = $this->authService->getDriver($request->user());
@@ -90,14 +97,14 @@ class TripController extends Controller
                 ], 403);
             }
 
-            $assignment = $this->getActiveTrip($driver->id);
+            $assignment = $this->getAnyAssignmentByDriverAndId($driver->id, $assignmentId);
 
             if (!$assignment) {
                 return response()->json([
                     'status' => 'error',
-                    'message' => 'No active trip found',
-                    'error_code' => 'TRIP_NO_ACTIVE_SESSION'
-                ], 400);
+                    'message' => 'Assignment not found or not active',
+                    'error_code' => 'TRIP_ASSIGNMENT_NOT_FOUND'
+                ], 404);
             }
 
             $this->tripTrackingService->confirmPickupArrival($assignment, $request->validated());
@@ -124,12 +131,7 @@ class TripController extends Controller
         }
     }
 
-    /**
-     * Start the trip after pickup.
-     *
-     * @see Requirements 6.2, 6.5
-     */
-    public function startTrip(Request $request): JsonResponse
+    private function startTripByAssignment(Request $request, string $assignmentId): JsonResponse
     {
         try {
             $driver = $this->authService->getDriver($request->user());
@@ -142,14 +144,14 @@ class TripController extends Controller
                 ], 403);
             }
 
-            $assignment = $this->getActiveTrip($driver->id);
+            $assignment = $this->getAnyAssignmentByDriverAndId($driver->id, $assignmentId);
 
             if (!$assignment) {
                 return response()->json([
                     'status' => 'error',
-                    'message' => 'No active trip found',
-                    'error_code' => 'TRIP_NO_ACTIVE_SESSION'
-                ], 400);
+                    'message' => 'Assignment not found or not active',
+                    'error_code' => 'TRIP_ASSIGNMENT_NOT_FOUND'
+                ], 404);
             }
 
             $this->tripTrackingService->startTrip($assignment);
@@ -176,12 +178,7 @@ class TripController extends Controller
         }
     }
 
-    /**
-     * End the trip and return summary.
-     *
-     * @see Requirements 8.1–8.5
-     */
-    public function endTrip(EndTripRequest $request): JsonResponse
+    private function endTripByAssignment(EndTripRequest $request, string $assignmentId): JsonResponse
     {
         try {
             $driver = $this->authService->getDriver($request->user());
@@ -194,14 +191,14 @@ class TripController extends Controller
                 ], 403);
             }
 
-            $assignment = $this->getActiveTrip($driver->id);
+            $assignment = $this->getAnyAssignmentByDriverAndId($driver->id, $assignmentId);
 
             if (!$assignment) {
                 return response()->json([
                     'status' => 'error',
-                    'message' => 'No active trip found',
-                    'error_code' => 'TRIP_NO_ACTIVE_SESSION'
-                ], 400);
+                    'message' => 'Assignment not found or not active',
+                    'error_code' => 'TRIP_ASSIGNMENT_NOT_FOUND'
+                ], 404);
             }
 
             $summary = $this->tripTrackingService->endTrip($assignment, $request->validated());
@@ -228,15 +225,13 @@ class TripController extends Controller
         }
     }
 
-    /**
-     * Get the active trip assignment for a driver.
-     *
-     * Active trip = assignment in accepted, pickup_arrived, or in_progress phase.
-     */
-    private function getActiveTrip(string $driverId): ?DriverAssignment
+    private function getAnyAssignmentByDriverAndId(string $driverId, string $assignmentId): ?DriverAssignment
     {
-        return DriverAssignment::where('driver_id', $driverId)
+        return DriverAssignment::where('id', $assignmentId)
+            ->where('driver_id', $driverId)
             ->whereIn('trip_phase', [
+                TripPhase::ACTIVE,
+                TripPhase::CONFIRMED,
                 TripPhase::ACCEPTED,
                 TripPhase::PICKUP_ARRIVED,
                 TripPhase::IN_PROGRESS,

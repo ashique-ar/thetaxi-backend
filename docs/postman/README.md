@@ -2,7 +2,7 @@
 
 ## Overview
 
-This Postman collection provides complete API testing for the TheTaxi Driver Mobile Application, including authentication, device management, status tracking, and location services.
+This Postman collection provides complete API testing for the TheTaxi Driver Mobile Application, including authentication, assignments, hires, earnings, device management, status tracking, and location services.
 
 ## Files
 
@@ -28,7 +28,7 @@ This Postman collection provides complete API testing for the TheTaxi Driver Mob
 Click the eye icon next to the environment dropdown and update:
 
 ```
-base_url: http://localhost:8000 (or your API URL)
+base_url: http://thetaxi.test (or your API URL)
 driver_email: your-driver@example.com
 driver_password: your-password
 device_fingerprint: (auto-generated on login, or use test value)
@@ -130,6 +130,11 @@ The `device_uuid` is automatically saved to the environment for subsequent reque
 - `current_longitude` - Current location longitude
 - `end_latitude` - Session end latitude
 - `end_longitude` - Session end longitude
+- `history_assignment_id` - Optional assignment ID for trip-specific replay
+- `history_session_id` - Optional session ID for session-specific replay
+- `history_from` - Optional ISO datetime lower bound for history window
+- `history_to` - Optional ISO datetime upper bound for history window
+- `history_limit` - Optional max route points to return (default `5000`)
 
 ### Session
 - `session_id` - Active session UUID (auto-set on go online)
@@ -137,10 +142,10 @@ The `device_uuid` is automatically saved to the environment for subsequent reque
 ## API Endpoints
 
 ### Authentication
-- **POST** `/api/driver/mobile/auth/login` - Login with credentials
-- **GET** `/api/driver/mobile/auth/profile` - Get driver profile
-- **POST** `/api/driver/mobile/auth/refresh` - Refresh access token
-- **POST** `/api/driver/mobile/auth/logout` - Logout and revoke token
+- **POST** `/api/driver/auth/login` - Login with credentials
+- **GET** `/api/driver/auth/profile` - Get driver profile
+- **POST** `/api/driver/auth/refresh` - Refresh access token
+- **POST** `/api/driver/auth/logout` - Logout and revoke token
 
 ### Status Management
 - **POST** `/api/driver/status/online` - Go online (start session)
@@ -152,7 +157,7 @@ The `device_uuid` is automatically saved to the environment for subsequent reque
 
 ### Location Tracking
 - **POST** `/api/driver/location` - Update location (every 10s)
-- **GET** `/api/driver/location/history` - Get location history
+- **GET** `/api/driver/location/history` - Get location history (active/latest session by default, optional `assignment_id`, `session_id`, `from`, `to`, `limit`)
 
 ### Sessions
 - **GET** `/api/driver/sessions` - List session history
@@ -166,9 +171,25 @@ The `device_uuid` is automatically saved to the environment for subsequent reque
 - **POST** `/api/driver/devices/{uuid}/deactivate` - Deactivate device
 - **DELETE** `/api/driver/devices/{uuid}` - Remove device
 
-### Assignments (Placeholder)
-- **GET** `/api/driver/assignments` - List assignments
+### Assignments
+- **GET** `/api/driver/assignments` - List assignments (supports `status`, `date`, `from`, `to`, `page`, `per_page`)
 - **GET** `/api/driver/assignments/current` - Get current assignment
+- **POST** `/api/driver/assignments/{id}/accept` - Accept assignment
+- **POST** `/api/driver/assignments/{id}/decline` - Decline assignment
+
+### Hires
+- **GET** `/api/driver/hires` - Completed hire history (`date`, `from`, `to`, pagination supported)
+
+### Earnings
+- **GET** `/api/driver/earnings/summary` - Today/week/month summary
+- **GET** `/api/driver/earnings/daily?date=YYYY-MM-DD` - Daily breakdown
+- **GET** `/api/driver/earnings/range?from=YYYY-MM-DD&to=YYYY-MM-DD` - Date-range breakdown
+
+### Trip Tracking
+- **GET** `/api/driver/assignments/{id}/status` - Trip status for an assignment
+- **POST** `/api/driver/assignments/{id}/arrived` - Mark pickup arrived
+- **POST** `/api/driver/assignments/{id}/start` - Start trip
+- **POST** `/api/driver/assignments/{id}/complete` - Complete trip (supports optional `ending_mileage`, `notes`)
 
 ## Testing Workflow
 

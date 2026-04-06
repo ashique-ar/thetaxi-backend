@@ -75,7 +75,7 @@ class BookingFlowRequest extends FormRequest
             // Review / overrides / meta
             'review_notes' => 'sometimes|nullable|array',
             'review_notes.booking_notes' => 'sometimes|nullable|string',
-            'review_notes.terms_accepted' => 'sometimes|nullable|boolean',
+            // 'review_notes.terms_accepted' => 'sometimes|nullable|boolean',
             'override_reasons' => 'sometimes|nullable|array',
             'override_reasons.*' => 'string',
             'status' => 'sometimes|string|in:pending,pending_approval,approved,confirmed,cancelled,completed',

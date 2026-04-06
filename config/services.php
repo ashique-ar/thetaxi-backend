@@ -46,4 +46,12 @@ return [
         'model' => env('OPENAI_MODEL', 'gpt-5-mini'),
     ],
 
+    'firebase' => [
+        'server_key' => env('FIREBASE_SERVER_KEY'),
+        'fcm_send_url' => env('FIREBASE_FCM_SEND_URL', 'https://fcm.googleapis.com/fcm/send'),
+        'queue' => env('FIREBASE_NOTIFICATION_QUEUE', 'driver-notifications'),
+        'assignment_title' => env('FIREBASE_ASSIGNMENT_TITLE', 'New Booking Assigned'),
+        'assignment_body' => env('FIREBASE_ASSIGNMENT_BODY', 'A new booking has been assigned to you.'),
+    ],
+
 ];

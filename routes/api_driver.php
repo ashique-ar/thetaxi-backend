@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\Driver\Mobile\SessionController;
 use App\Http\Controllers\Api\Driver\Mobile\AssignmentController;
 use App\Http\Controllers\Api\Driver\Mobile\DeviceController;
 use App\Http\Controllers\Api\Driver\Mobile\TripController;
+use App\Http\Controllers\Api\Driver\Mobile\EarningsController;
 
 /*
 |--------------------------------------------------------------------------
@@ -74,13 +75,20 @@ Route::middleware(['auth:api', 'ensure.driver'])->group(function () {
         Route::get('current', [AssignmentController::class, 'current']);
         Route::post('{id}/accept', [AssignmentController::class, 'accept']);
         Route::post('{id}/decline', [AssignmentController::class, 'decline']);
+        // Canonical assignment lifecycle (single-track)
+        Route::get('{id}/status', [TripController::class, 'statusForAssignment']);
+        Route::post('{id}/arrived', [TripController::class, 'pickupArrivedForAssignment']);
+        Route::post('{id}/start', [TripController::class, 'startTripForAssignment']);
+        Route::post('{id}/complete', [TripController::class, 'endTripForAssignment']);
     });
-    
-    // Trip tracking routes
-    Route::prefix('trip')->group(function () {
-        Route::get('status', [TripController::class, 'status']);
-        Route::post('pickup-arrived', [TripController::class, 'pickupArrived']);
-        Route::post('start', [TripController::class, 'startTrip']);
-        Route::post('end', [TripController::class, 'endTrip']);
+
+    // Hire history route
+    Route::get('hires', [AssignmentController::class, 'hires']);
+
+    // Earnings routes
+    Route::prefix('earnings')->group(function () {
+        Route::get('summary', [EarningsController::class, 'summary']);
+        Route::get('daily', [EarningsController::class, 'daily']);
+        Route::get('range', [EarningsController::class, 'range']);
     });
 });

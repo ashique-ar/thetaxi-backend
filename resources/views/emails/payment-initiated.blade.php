@@ -155,7 +155,7 @@
     <div class="btn-container">
         @if (!$isFallbackPaymentLink)
             <a href="{{ $paymentLink }}" class="btn"
-                style="display: inline-block; background-color: #BF2629; color: #FFFFFF; padding: 15px 40px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 20px 0; font-size: 16px;">
+                style="display: inline-block; background-color: #15803d; background-image: linear-gradient(135deg, #15803d 0%, #166534 100%); box-shadow: 0 4px 12px rgba(21, 128, 61, 0.24); color: #FFFFFF; padding: 15px 40px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 20px 0; font-size: 16px;">
                 🔒 Pay {{ $currencySymbol }} {{ number_format($amount, 2) }} with WebXPay
             </a>
             <p style="text-align: center; color: #717171; font-size: 13px; margin: 10px 0;">

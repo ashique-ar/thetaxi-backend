@@ -795,7 +795,9 @@ class WebsiteSettingsService
             'enable_wedding',
             'enable_corporate',
             'show_return_trip_toggle',
-            'include_garage_distance_in_pricing'
+            'include_garage_distance_in_pricing',
+            'assignment_enable_qc_stage',
+            'assignment_enable_maintenance_stage'
         ];
 
         return $this->getMultiple($types);

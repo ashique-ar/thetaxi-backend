@@ -645,6 +645,8 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('drivers/locations', [DriverController::class, 'locations']);
         Route::get('drivers/with-status', [\App\Http\Controllers\Api\Admin\BookingAssignmentController::class, 'driversWithStatus']);
         Route::get('drivers/{driver}/status', [DriverController::class, 'status']);
+        Route::post('drivers/{driver}/test-notification', [DriverController::class, 'testNotification']);
+        Route::get('drivers/{driver}/activity', [DriverController::class, 'activity']);
         Route::apiResource('drivers', DriverController::class);
         Route::apiResource('driver-logs', DriverLogController::class);
         Route::get('drivers/{driver}/sessions', [DriverController::class, 'sessions']);

@@ -21,10 +21,10 @@ class BookingFlowUpdateRequest extends FormRequest
             'vehicle_id' => 'sometimes|string',
             'driver_id' => 'sometimes|string',
 
-            'from_date' => 'sometimes|date',
-            'to_date' => 'sometimes|date|after_or_equal:from_date',
-            'from_time' => 'sometimes|string',
-            'to_time' => 'sometimes|string',
+            'from_date' => 'sometimes|nullable|date',
+            'to_date' => 'sometimes|nullable|date|after_or_equal:from_date',
+            'from_time' => 'sometimes|nullable|string',
+            'to_time' => 'sometimes|nullable|string',
 
             'pickup_location' => 'sometimes|array',
             'pickup_location.latitude' => 'required_with:pickup_location|numeric',
@@ -69,7 +69,7 @@ class BookingFlowUpdateRequest extends FormRequest
 
             'review_notes' => 'sometimes|array',
             'review_notes.booking_notes' => 'sometimes|string',
-            'review_notes.terms_accepted' => 'sometimes|boolean',
+            // 'review_notes.terms_accepted' => 'sometimes|boolean',
             'override_reasons' => 'sometimes|array',
             'override_reasons.*' => 'string',
             'status' => 'sometimes|string|in:pending,pending_approval,approved,confirmed,cancelled,completed',

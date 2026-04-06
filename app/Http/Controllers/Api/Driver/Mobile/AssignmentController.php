@@ -49,13 +49,17 @@ class AssignmentController extends Controller
             $filters = [
                 'status' => $request->query('status'),
                 'per_page' => $request->query('per_page', 15),
+                'date' => $request->query('date'),
+                'from' => $request->query('from'),
+                'to' => $request->query('to'),
             ];
 
             $assignments = $this->assignmentService->getDriverAssignments($driver, $filters);
+            $payload = $this->assignmentService->mapAssignmentsForMobile($assignments->items());
 
             return response()->json([
                 'status' => 'success',
-                'data' => $assignments->items(),
+                'data' => $payload,
                 'meta' => [
                     'current_page' => $assignments->currentPage(),
                     'last_page' => $assignments->lastPage(),
@@ -97,7 +101,7 @@ class AssignmentController extends Controller
 
             return response()->json([
                 'status' => 'success',
-                'data' => $assignment,
+                'data' => $this->assignmentService->buildAssignmentPayload($assignment),
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -144,7 +148,7 @@ class AssignmentController extends Controller
             return response()->json([
                 'status' => 'success',
                 'message' => 'Assignment accepted',
-                'data' => $updated,
+                'data' => $this->assignmentService->buildAssignmentPayload($updated),
             ]);
         } catch (\InvalidArgumentException $e) {
             $code = $e->getMessage();
@@ -210,7 +214,7 @@ class AssignmentController extends Controller
             return response()->json([
                 'status' => 'success',
                 'message' => 'Assignment declined',
-                'data' => $updated,
+                'data' => $this->assignmentService->buildAssignmentPayload($updated),
             ]);
         } catch (\InvalidArgumentException $e) {
             return response()->json([
@@ -224,6 +228,52 @@ class AssignmentController extends Controller
                 'status' => 'error',
                 'message' => 'Failed to decline assignment',
                 'error_code' => 'ASSIGNMENT_DECLINE_FAILED',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get completed hire history for the authenticated driver.
+     */
+    public function hires(Request $request): JsonResponse
+    {
+        try {
+            $driver = $this->authService->getDriver($request->user());
+
+            if (!$driver) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'User is not registered as a driver',
+                    'error_code' => 'ASSIGNMENT_NOT_DRIVER'
+                ], 403);
+            }
+
+            $filters = [
+                'per_page' => $request->query('per_page', 15),
+                'date' => $request->query('date'),
+                'from' => $request->query('from'),
+                'to' => $request->query('to'),
+            ];
+
+            $hires = $this->assignmentService->getDriverHires($driver, $filters);
+            $payload = $this->assignmentService->mapAssignmentsForMobile($hires->items());
+
+            return response()->json([
+                'status' => 'success',
+                'data' => $payload,
+                'meta' => [
+                    'current_page' => $hires->currentPage(),
+                    'last_page' => $hires->lastPage(),
+                    'per_page' => $hires->perPage(),
+                    'total' => $hires->total(),
+                ],
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to retrieve hire history',
+                'error_code' => 'ASSIGNMENT_HIRES_FAILED',
                 'error' => $e->getMessage()
             ], 500);
         }

@@ -160,9 +160,20 @@ class BookingDispatch extends BaseModel
      */
     public function markReturned(string $userId, array $returnData = []): void
     {
+        $actualReturnAt = $returnData['actual_return_time'] ?? null;
+        if (!empty($actualReturnAt)) {
+            try {
+                $actualReturnAt = \Illuminate\Support\Carbon::parse($actualReturnAt);
+            } catch (\Throwable $exception) {
+                $actualReturnAt = now();
+            }
+        } else {
+            $actualReturnAt = now();
+        }
+
         $this->update([
             'dispatch_status' => DispatchStatus::RETURNED,
-            'actual_return_at' => now(),
+            'actual_return_at' => $actualReturnAt,
             'returned_by' => $userId,
             'return_notes' => $returnData['notes'] ?? null,
             'fuel_level_in' => $returnData['fuel_level'] ?? null,
@@ -170,7 +181,9 @@ class BookingDispatch extends BaseModel
             'vehicle_condition_in' => $returnData['condition'] ?? null,
             'damages_reported' => $returnData['damages'] ?? null,
             'additional_charges' => $returnData['charges'] ?? null,
-            'late_return_fee' => $returnData['late_fee'] ?? null,
+            'late_return_fee' => isset($returnData['late_fee'])
+                ? (float) $returnData['late_fee']
+                : 0.0,
         ]);
     }
 

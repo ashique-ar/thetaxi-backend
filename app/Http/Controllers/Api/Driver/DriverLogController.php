@@ -23,7 +23,22 @@ class DriverLogController extends Controller
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        $q = DriverLog::with('driver');
+        $q = DriverLog::with(['driver', 'booking', 'createdBy']);
+
+        if ($request->filled('driver_id')) {
+            $q->where('driver_id', $request->driver_id);
+        }
+
+        if ($request->filled('booking_id')) {
+            $q->where('booking_id', $request->booking_id);
+        }
+
+        if ($request->filled('status')) {
+            $q->where('status', $request->status);
+        }
+
+        $q->orderByDesc('created_at');
+
         return DriverLogResource::collection($q->paginate($request->per_page ?? 15));
     }
 

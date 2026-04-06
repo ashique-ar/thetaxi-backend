@@ -42,6 +42,7 @@ class DatabaseSeeder extends Seeder
             // VehicleSeeder::class,
             // DrivingLiscenceTypeSeeder::class,
             // ComprehensivePricingSeeder::class,
+            // PointToPointPricingSeeder::class,
             // VehicleAddonSeeder::class,
             // VehicleAddonDependencySeeder::class,
             // AgentSeeder::class,
