@@ -23,15 +23,16 @@ class UserContextController extends Controller
     public function getAvailableContexts(Request $request): JsonResponse
     {
         $user = $request->user();
-        $contexts = $this->contextService->getAvailableContexts($user);
+        $contextState = $this->contextService->buildUserContextState(
+            $user,
+            $request->header('X-Active-Context-Type'),
+            $request->header('X-Active-Context-Id'),
+            $request->header('X-Active-Portal-Profile')
+        );
 
         return response()->json([
             'status' => 'success',
-            'data' => [
-                'contexts' => $contexts,
-                'primary_role' => $this->contextService->getPrimaryRole($user),
-                'has_multiple_contexts' => $user->hasMultipleContexts()
-            ]
+            'data' => $contextState,
         ]);
     }
 
@@ -41,27 +42,83 @@ class UserContextController extends Controller
     public function switchContext(Request $request): JsonResponse
     {
         $request->validate([
-            'context_type' => 'required|string|in:customer,vehicle_owner,staff,agent,driver',
-            'context_data' => 'sometimes|array' // Additional data for context creation
+            'context_type' => 'required|string|in:internal,customer,vehicle_owner,staff,agent,driver,corporate',
+            'context_id' => 'sometimes|nullable|string',
+            'context_data' => 'sometimes|array',
         ]);
 
         try {
             $user = $request->user();
+            $contextType = (string) $request->get('context_type');
+            $contextId = $request->input('context_id');
             $contextData = $request->get('context_data', []);
-            
-            $context = $this->contextService->switchContext(
-                $user, 
-                $request->get('context_type'), 
-                $contextData
+
+            if (!is_array($contextData)) {
+                $contextData = [];
+            }
+
+            if ($contextId) {
+                $contextData['context_id'] = $contextId;
+            }
+
+            if ($contextType !== 'internal') {
+                if ($contextType === 'corporate' && !$contextId) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'A corporate context must be selected.',
+                    ], 422);
+                }
+
+                if (!$contextId) {
+                    $this->contextService->switchContext(
+                        $user,
+                        $contextType,
+                        $contextData
+                    );
+                }
+            }
+
+            $contextState = $this->contextService->buildUserContextState(
+                $user->fresh([
+                    'role',
+                    'agent',
+                    'permissions',
+                    'roles.permissions',
+                    'contexts.roles.permissions',
+                    'contexts.corporateEmployee.user',
+                    'contexts.corporateEmployee.corporate',
+                    'contexts.corporateEmployee.department',
+                    'contexts.corporateEmployee.division',
+                ]),
+                $contextType,
+                $contextId ? (string) $contextId : null,
+                $contextType === 'internal' ? 'internal' : null
             );
+
+            $activeContext = $contextState['active_context'];
+            $matchesRequested = $activeContext
+                && (
+                    ($contextId
+                        && (string) $activeContext['context_type'] === $contextType
+                        && (string) $activeContext['id'] === (string) $contextId)
+                    || (!$contextId
+                        && (
+                            (string) $activeContext['context_type'] === $contextType
+                            || (string) $activeContext['portal_profile'] === $contextType
+                        ))
+                );
+
+            if (!$matchesRequested) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'The selected context is not available for this user.',
+                ], 422);
+            }
 
             return response()->json([
                 'status' => 'success',
                 'message' => 'Context switched successfully',
-                'data' => [
-                    'context' => $context,
-                    'available_contexts' => $this->contextService->getAvailableContexts($user)
-                ]
+                'data' => $contextState,
             ]);
 
         } catch (\Exception $e) {
@@ -79,7 +136,7 @@ class UserContextController extends Controller
     public function deactivateContext(Request $request): JsonResponse
     {
         $request->validate([
-            'context_type' => 'required|string|in:customer,vehicle_owner,staff,agent,driver'
+            'context_type' => 'required|string|in:customer,vehicle_owner,staff,agent,driver,corporate'
         ]);
 
         try {
@@ -90,9 +147,7 @@ class UserContextController extends Controller
                 return response()->json([
                     'status' => 'success',
                     'message' => 'Context deactivated successfully',
-                    'data' => [
-                        'available_contexts' => $this->contextService->getAvailableContexts($user)
-                    ]
+                    'data' => $this->contextService->buildUserContextState($user->fresh(), null, null, null),
                 ]);
             } else {
                 return response()->json([
@@ -115,7 +170,24 @@ class UserContextController extends Controller
      */
     public function getUserProfile(Request $request): JsonResponse
     {
-        $user = $request->user()->load(['contexts.context']);
+        $user = $request->user()->load([
+            'role',
+            'agent',
+            'permissions',
+            'roles.permissions',
+            'contexts.roles.permissions',
+            'contexts.corporateEmployee.user',
+            'contexts.corporateEmployee.corporate',
+            'contexts.corporateEmployee.department',
+            'contexts.corporateEmployee.division',
+        ]);
+
+        $contextState = $this->contextService->buildUserContextState(
+            $user,
+            $request->header('X-Active-Context-Type'),
+            $request->header('X-Active-Context-Id'),
+            $request->header('X-Active-Portal-Profile')
+        );
         
         return response()->json([
             'status' => 'success',
@@ -129,8 +201,10 @@ class UserContextController extends Controller
                     'roles' => $user->getRoleNames(),
                     'primary_role' => $this->contextService->getPrimaryRole($user),
                 ],
-                'contexts' => $user->getActiveContexts(),
-                'available_contexts' => $this->contextService->getAvailableContexts($user)
+                'contexts' => $contextState['contexts'],
+                'available_contexts' => $contextState['available_contexts'],
+                'active_context' => $contextState['active_context'],
+                'has_multiple_contexts' => $contextState['has_multiple_contexts'],
             ]
         ]);
     }

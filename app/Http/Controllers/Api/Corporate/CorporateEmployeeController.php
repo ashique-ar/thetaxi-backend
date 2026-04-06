@@ -23,7 +23,7 @@ class CorporateEmployeeController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = CorporateEmployee::where('corporate_id', $request->corporate_id)
-            ->with(['user', 'department', 'division']);
+            ->with(['user', 'department', 'division', 'userContext.roles']);
 
         if ($request->filled('search')) {
             $query->whereHas('user', function ($q) use ($request) {
@@ -39,6 +39,12 @@ class CorporateEmployeeController extends Controller
 
         if ($request->filled('division_id')) {
             $query->where('division_id', $request->division_id);
+        }
+
+        if ($request->filled('role')) {
+            $query->whereHas('userContext.roles', function ($roleQuery) use ($request) {
+                $roleQuery->where('roles.name', $request->role);
+            });
         }
 
         // Only apply is_active filter if explicitly set (not 'all')
@@ -64,14 +70,14 @@ class CorporateEmployeeController extends Controller
         return response()->json([
             'status'  => 'success',
             'message' => 'Employee added successfully',
-            'data'    => ['employee' => $employee->load(['user', 'department', 'division'])],
+            'data'    => ['employee' => $employee->load(['user', 'department', 'division', 'userContext.roles'])],
         ], 201);
     }
 
     public function show(Request $request, string $id): JsonResponse
     {
         $employee = CorporateEmployee::where('corporate_id', $request->corporate_id)
-            ->with(['user', 'department', 'division', 'userContext'])
+            ->with(['user', 'department', 'division', 'userContext.roles'])
             ->findOrFail($id);
 
         return response()->json([
@@ -86,19 +92,23 @@ class CorporateEmployeeController extends Controller
             'department_id'  => ['sometimes', 'uuid', 'exists:corporate_departments,id'],
             'division_id'    => ['nullable', 'uuid', 'exists:corporate_divisions,id'],
             'employee_code'  => ['nullable', 'string', 'max:50'],
+            'first_name'     => ['sometimes', 'string', 'max:255'],
+            'last_name'      => ['sometimes', 'string', 'max:255'],
+            'phone'          => ['nullable', 'string', 'max:50'],
+            'role'           => ['nullable', 'string', 'max:255'],
         ]);
 
         $employee = CorporateEmployee::where('corporate_id', $request->corporate_id)
             ->findOrFail($id);
 
         $employee = $this->corporateService->updateEmployee($employee, $request->only([
-            'department_id', 'division_id', 'employee_code',
+            'department_id', 'division_id', 'employee_code', 'first_name', 'last_name', 'phone', 'role',
         ]));
 
         return response()->json([
             'status'  => 'success',
             'message' => 'Employee updated successfully',
-            'data'    => ['employee' => $employee->load(['user', 'department', 'division'])],
+            'data'    => ['employee' => $employee->load(['user', 'department', 'division', 'userContext.roles'])],
         ]);
     }
 
@@ -158,7 +168,7 @@ class CorporateEmployeeController extends Controller
         return response()->json([
             'status'  => 'success',
             'message' => 'Role assigned successfully',
-            'data'    => ['employee' => $employee->load(['user', 'department', 'division'])],
+            'data'    => ['employee' => $employee->load(['user', 'department', 'division', 'userContext.roles'])],
         ]);
     }
 }

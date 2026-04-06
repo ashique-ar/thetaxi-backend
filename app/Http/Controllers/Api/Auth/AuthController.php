@@ -11,6 +11,7 @@ use App\Http\Requests\Auth\ChangePasswordRequest;
 use App\Http\Resources\UserResource;
 use App\Models\User;
 use App\Services\AuthService;
+use App\Services\UserContextService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
@@ -23,13 +24,16 @@ class AuthController extends Controller
 {
     protected $authService;
     protected $tokenRepository;
+    protected $contextService;
 
     public function __construct(
         AuthService $authService,
-        TokenRepository $tokenRepository
+        TokenRepository $tokenRepository,
+        UserContextService $contextService
     ) {
         $this->authService = $authService;
         $this->tokenRepository = $tokenRepository;
+        $this->contextService = $contextService;
     }
 
     /**
@@ -48,7 +52,7 @@ class AuthController extends Controller
                 'status' => 'success',
                 'message' => 'User registered successfully',
                 'data' => [
-                    'user' => new UserResource($user),
+                    'user' => $this->buildUserResponse($user, $request),
                     'token' => $token
                 ]
             ], 201);
@@ -87,7 +91,7 @@ class AuthController extends Controller
                 'status' => 'success',
                 'message' => 'Login successful',
                 'data' => [
-                    'user' => new UserResource($user),
+                    'user' => $this->buildUserResponse($user, $request),
                     'token' => $token
                 ]
             ]);
@@ -122,7 +126,7 @@ class AuthController extends Controller
                 'status' => 'success',
                 'message' => 'Login successful',
                 'data' => [
-                    'user' => new UserResource($result['user']),
+                    'user' => $this->buildUserResponse($result['user'], $request),
                     'token' => $result['tokens']
                 ]
             ], 200);
@@ -231,11 +235,22 @@ class AuthController extends Controller
     public function profile(Request $request): JsonResponse
     {
         try {
-            $user = $request->user()->load(['role', 'agent', 'permissions', 'roles']);
+            $user = $request->user()->load([
+                'role',
+                'agent',
+                'permissions',
+                'roles.permissions',
+                'contexts.roles.permissions',
+                'contexts.corporateEmployee.user',
+                'contexts.corporateEmployee.corporate',
+                'contexts.corporateEmployee.department',
+                'contexts.corporateEmployee.division',
+            ]);
+
             return response()->json([
                 'status' => 'success',
                 'data' => [
-                    'user' => new UserResource($user)
+                    'user' => $this->buildUserResponse($user, $request)
                 ]
             ]);
         } catch (\Exception $e) {
@@ -433,5 +448,32 @@ class AuthController extends Controller
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    private function buildUserResponse(User $user, Request $request): array
+    {
+        $loadedUser = $user->loadMissing([
+            'role',
+            'agent',
+            'permissions',
+            'roles.permissions',
+            'contexts.roles.permissions',
+            'contexts.corporateEmployee.user',
+            'contexts.corporateEmployee.corporate',
+            'contexts.corporateEmployee.department',
+            'contexts.corporateEmployee.division',
+        ]);
+
+        $contextState = $this->contextService->buildUserContextState(
+            $loadedUser,
+            $request->header('X-Active-Context-Type'),
+            $request->header('X-Active-Context-Id'),
+            $request->header('X-Active-Portal-Profile')
+        );
+
+        return array_merge(
+            (new UserResource($loadedUser))->resolve($request),
+            $contextState
+        );
     }
 }

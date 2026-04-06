@@ -47,8 +47,9 @@ return [
     ],
 
     'firebase' => [
-        'server_key' => env('FIREBASE_SERVER_KEY'),
-        'fcm_send_url' => env('FIREBASE_FCM_SEND_URL', 'https://fcm.googleapis.com/fcm/send'),
+        'project_id' => env('FIREBASE_PROJECT_ID'),
+        'credentials' => env('FIREBASE_CREDENTIALS'),
+        'http_v1_url' => env('FIREBASE_FCM_HTTP_V1_URL'),
         'queue' => env('FIREBASE_NOTIFICATION_QUEUE', 'driver-notifications'),
         'assignment_title' => env('FIREBASE_ASSIGNMENT_TITLE', 'New Booking Assigned'),
         'assignment_body' => env('FIREBASE_ASSIGNMENT_BODY', 'A new booking has been assigned to you.'),

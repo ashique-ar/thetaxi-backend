@@ -265,6 +265,13 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('profile', [UserContextController::class, 'getUserProfile']);
     });
 
+    Route::prefix('contexts')->group(function () {
+        Route::get('available', [UserContextController::class, 'getAvailableContexts']);
+        Route::post('switch', [UserContextController::class, 'switchContext']);
+        Route::post('deactivate', [UserContextController::class, 'deactivateContext']);
+        Route::get('profile', [UserContextController::class, 'getUserProfile']);
+    });
+
     /*
     |--------------------------------------------------------------------------
     | Customer Management Routes

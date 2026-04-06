@@ -14,7 +14,10 @@ class StoreDepartmentRequest extends FormRequest
 
     public function rules(): array
     {
-        $corporateId = $this->input('corporate_id') ?? $this->route('corporate');
+        $corporateRoute = $this->route('corporate');
+        $departmentRoute = $this->route('department');
+        $corporateId = $this->input('corporate_id') ?? (is_object($corporateRoute) ? $corporateRoute->id : $corporateRoute);
+        $departmentId = is_object($departmentRoute) ? $departmentRoute->id : $departmentRoute;
 
         return [
             'name' => [
@@ -23,6 +26,7 @@ class StoreDepartmentRequest extends FormRequest
                 'max:255',
                 Rule::unique('corporate_departments', 'name')
                     ->where('corporate_id', $corporateId)
+                    ->ignore($departmentId)
                     ->whereNull('deleted_at'),
             ],
             'description' => ['nullable', 'string'],

@@ -14,7 +14,12 @@ class StoreDivisionRequest extends FormRequest
 
     public function rules(): array
     {
-        $departmentId = $this->route('department') ?? $this->input('department_id');
+        $departmentRoute = $this->route('department');
+        $divisionRoute = $this->route('division');
+        $departmentId = is_object($departmentRoute)
+            ? $departmentRoute->id
+            : ($departmentRoute ?? (is_object($divisionRoute) ? $divisionRoute->department_id : $this->input('department_id')));
+        $divisionId = is_object($divisionRoute) ? $divisionRoute->id : $divisionRoute;
 
         return [
             'name' => [
@@ -23,6 +28,7 @@ class StoreDivisionRequest extends FormRequest
                 'max:255',
                 Rule::unique('corporate_divisions', 'name')
                     ->where('department_id', $departmentId)
+                    ->ignore($divisionId)
                     ->whereNull('deleted_at'),
             ],
             'description' => ['nullable', 'string'],

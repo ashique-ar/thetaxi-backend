@@ -27,6 +27,10 @@ class CorporateEmployee extends BaseModel
         'is_active' => 'boolean',
     ];
 
+    protected $appends = [
+        'role',
+    ];
+
     // Relationships
 
     public function user()
@@ -53,5 +57,22 @@ class CorporateEmployee extends BaseModel
     {
         return $this->hasOne(UserContext::class, 'context_id')
             ->where('context_type', 'corporate');
+    }
+
+    public function getRoleAttribute(): ?string
+    {
+        $userContext = $this->relationLoaded('userContext')
+            ? $this->getRelation('userContext')
+            : $this->userContext()->with('roles')->first();
+
+        if (!$userContext) {
+            return null;
+        }
+
+        $roles = $userContext->relationLoaded('roles')
+            ? $userContext->getRelation('roles')
+            : $userContext->roles;
+
+        return $roles->pluck('name')->first();
     }
 }

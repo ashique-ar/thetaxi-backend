@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Models\UserContext;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Models\Role;
 
 class CorporateService
@@ -172,6 +173,12 @@ class CorporateService
     public function addEmployee(Corporate $corporate, array $data): CorporateEmployee
     {
         return DB::transaction(function () use ($corporate, $data) {
+            [$department, $division] = $this->resolveEmployeeHierarchy(
+                $corporate,
+                $data['department_id'],
+                $data['division_id'] ?? null
+            );
+
             // Check if a user with this email already exists
             $user = User::where('email', $data['email'])->first();
             $isExistingUser = $user !== null;
@@ -191,8 +198,8 @@ class CorporateService
             $employee = CorporateEmployee::create([
                 'user_id'       => $user->id,
                 'corporate_id'  => $corporate->id,
-                'department_id' => $data['department_id'],
-                'division_id'   => $data['division_id'] ?? null,
+                'department_id' => $department->id,
+                'division_id'   => $division?->id,
                 'employee_code' => $data['employee_code'] ?? null,
                 'is_active'     => true,
             ]);
@@ -215,8 +222,8 @@ class CorporateService
                 'user_id'        => $user->id,
                 'email'          => $data['email'],
                 'existing_user'  => $isExistingUser,
-                'department_id'  => $data['department_id'],
-                'division_id'    => $data['division_id'] ?? null,
+                'department_id'  => $department->id,
+                'division_id'    => $division?->id,
                 'role'           => $data['role'] ?? null,
             ]);
 
@@ -226,20 +233,58 @@ class CorporateService
 
     public function updateEmployee(CorporateEmployee $employee, array $data): CorporateEmployee
     {
-        $updatable = array_intersect_key($data, array_flip([
-            'department_id', 'division_id', 'employee_code',
-        ]));
+        return DB::transaction(function () use ($employee, $data) {
+            if (array_key_exists('department_id', $data) || array_key_exists('division_id', $data)) {
+                $departmentId = $data['department_id'] ?? $employee->department_id;
+                $divisionId = array_key_exists('division_id', $data) ? $data['division_id'] : $employee->division_id;
 
-        $before = $employee->only(array_keys($updatable));
-        $employee->update($updatable);
-        $employee->refresh();
+                [$department, $division] = $this->resolveEmployeeHierarchy(
+                    $employee->corporate,
+                    $departmentId,
+                    $divisionId
+                );
 
-        $this->logAudit('update', 'CorporateEmployee', $employee->id, [
-            'before' => $before,
-            'after'  => $employee->only(array_keys($updatable)),
-        ]);
+                $data['department_id'] = $department->id;
+                $data['division_id'] = $division?->id;
+            }
 
-        return $employee;
+            $employeeUpdates = array_intersect_key($data, array_flip([
+                'department_id', 'division_id', 'employee_code',
+            ]));
+            $userUpdates = array_intersect_key($data, array_flip([
+                'first_name', 'last_name', 'phone',
+            ]));
+
+            $before = [
+                'employee' => $employee->only(array_keys($employeeUpdates)),
+                'user' => $employee->user?->only(array_keys($userUpdates)) ?? [],
+            ];
+
+            if (!empty($employeeUpdates)) {
+                $employee->update($employeeUpdates);
+            }
+
+            if (!empty($userUpdates) && $employee->user) {
+                $employee->user->update($userUpdates);
+            }
+
+            if (!empty($data['role'])) {
+                $this->assignEmployeeRole($employee, $data['role']);
+            }
+
+            $employee->refresh()->load(['user', 'department', 'division', 'userContext.roles']);
+
+            $this->logAudit('update', 'CorporateEmployee', $employee->id, [
+                'before' => $before,
+                'after'  => [
+                    'employee' => $employee->only(array_keys($employeeUpdates)),
+                    'user' => $employee->user?->only(array_keys($userUpdates)) ?? [],
+                    'role' => $data['role'] ?? $employee->role,
+                ],
+            ]);
+
+            return $employee;
+        });
     }
 
     public function toggleEmployeeStatus(CorporateEmployee $employee): CorporateEmployee
@@ -290,6 +335,35 @@ class CorporateService
     }
 
     // ─── Audit Logging ────────────────────────────────────────────────
+
+    private function resolveEmployeeHierarchy(
+        Corporate $corporate,
+        string $departmentId,
+        ?string $divisionId = null
+    ): array {
+        $department = CorporateDepartment::where('corporate_id', $corporate->id)
+            ->find($departmentId);
+
+        if (!$department) {
+            throw ValidationException::withMessages([
+                'department_id' => 'Selected department does not belong to the chosen corporate.',
+            ]);
+        }
+
+        $division = null;
+        if ($divisionId) {
+            $division = CorporateDivision::where('department_id', $department->id)
+                ->find($divisionId);
+
+            if (!$division) {
+                throw ValidationException::withMessages([
+                    'division_id' => 'Selected division does not belong to the chosen department.',
+                ]);
+            }
+        }
+
+        return [$department, $division];
+    }
 
     private function logAudit(string $action, string $entity, ?string $entityId, array $details = []): void
     {

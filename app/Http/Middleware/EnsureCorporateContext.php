@@ -33,16 +33,32 @@ class EnsureCorporateContext
             ], 401);
         }
 
-        // Find the active corporate UserContext for this user
-        $corporateContext = $user->contexts()
+        $requestedContextType = $request->header('X-Active-Context-Type');
+        $requestedContextId = $request->header('X-Active-Context-Id');
+
+        if ($requestedContextType && $requestedContextType !== 'corporate') {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'A corporate context must be selected for this portal.',
+            ], 403);
+        }
+
+        $corporateContexts = $user->contexts()
             ->where('context_type', 'corporate')
-            ->where('is_active', true)
-            ->first();
+            ->where('is_active', true);
+
+        if ($requestedContextId) {
+            $corporateContexts->where('id', $requestedContextId);
+        }
+
+        $corporateContext = $corporateContexts->first();
 
         if (!$corporateContext) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'No corporate context found.',
+                'message' => $requestedContextId
+                    ? 'The selected corporate context is not available for this user.'
+                    : 'No corporate context found.',
             ], 403);
         }
 

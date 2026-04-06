@@ -411,7 +411,7 @@ class UserController extends Controller
             'status' => 'success',
             'data' => [
                 'contexts' => $activeContexts,
-                'available_contexts' => $this->contextService->getAvailableContexts($user),
+                'available_contexts' => $this->contextService->getActivatableContexts($user),
                 'primary_role' => $this->contextService->getPrimaryRole($user),
                 'has_multiple_contexts' => $user->hasMultipleContexts()
             ]
@@ -565,7 +565,7 @@ class UserController extends Controller
                     'status' => 'success',
                     'message' => 'Context deactivated successfully',
                     'data' => [
-                        'available_contexts' => $this->contextService->getAvailableContexts($user)
+                        'available_contexts' => $this->contextService->getActivatableContexts($user)
                     ]
                 ]);
             }
@@ -608,7 +608,7 @@ class UserController extends Controller
                 'message' => 'Context activated successfully',
                 'data' => [
                     'context' => $userContext,
-                    'available_contexts' => $this->contextService->getAvailableContexts($user)
+                    'available_contexts' => $this->contextService->getActivatableContexts($user)
                 ]
             ]);
         } catch (\Exception $e) {
