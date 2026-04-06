@@ -223,7 +223,7 @@
                     @switch($booking->payment_method)
                         @case('webxpay')
                         @case('online')
-                            WebXPay Secure Gateway
+                            Online Payment
                         @break
 
                         @case('bank_transfer')

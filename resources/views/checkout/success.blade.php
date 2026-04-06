@@ -408,9 +408,8 @@
                                         <div class="btn-container" style="margin: 20px 0;">
                                             @if (!$isFallbackPaymentLink)
                                                 <a href="{{ $paymentLink }}" class="btn btn-new">
-                                                    🔒 Pay {{ $currencySymbol }}
+                                                Pay {{ $currencySymbol }}
                                                     {{ number_format($booking->amount_to_pay ?? $booking->total_estimated, 2) }}
-                                                    with WebXPay
                                                 </a>
                                                 <p
                                                     style="text-align: center; color: #717171; font-size: 13px; margin: 10px 0;">

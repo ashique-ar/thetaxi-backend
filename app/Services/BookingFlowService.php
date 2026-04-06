@@ -154,12 +154,8 @@ class BookingFlowService
         if (isset($params['vehicle_group_filter']) && is_string($params['vehicle_group_filter'])) {
             $params['vehicle_group_filter'] = json_decode($params['vehicle_group_filter'], true) ?? null;
         }
-        if (isset($params['pickup_location']) && is_string($params['pickup_location'])) {
-            $params['pickup_location'] = json_decode($params['pickup_location'], true) ?? null;
-        }
-        if (isset($params['dropoff_location']) && is_string($params['dropoff_location'])) {
-            $params['dropoff_location'] = json_decode($params['dropoff_location'], true) ?? null;
-        }
+        $params = $this->sanitizeCanonicalLocationParam($params, 'pickup_location');
+        $params = $this->sanitizeCanonicalLocationParam($params, 'dropoff_location');
 
         return $params;
     }
@@ -197,6 +193,14 @@ class BookingFlowService
         $fieldsCandidate = $storedConfig['fields'] ?? $storedConfig;
         if (isset($fieldsCandidate['field_mappings'])) {
             unset($fieldsCandidate['field_mappings']);
+        }
+
+        $defaultFields = $serviceType
+            ? \App\Services\DefaultFormConfigService::getDefaults((string) $serviceType->code)
+            : [];
+
+        if (empty($fieldsCandidate) && !empty($defaultFields)) {
+            $fieldsCandidate = $defaultFields;
         }
 
         $fields = array_filter($fieldsCandidate, function ($fieldConfig) {
@@ -575,6 +579,35 @@ class BookingFlowService
         }
 
         return $value !== null && $value !== '';
+    }
+
+    private function sanitizeCanonicalLocationParam(array $params, string $key): array
+    {
+        if (!array_key_exists($key, $params)) {
+            return $params;
+        }
+
+        $raw = $params[$key];
+
+        if (is_string($raw)) {
+            $decoded = json_decode($raw, true);
+            $raw = is_array($decoded) ? $decoded : null;
+        }
+
+        if (!is_array($raw)) {
+            unset($params[$key]);
+            return $params;
+        }
+
+        $normalized = $this->normalizeLocationInput($raw);
+
+        if ($this->isLocationPayloadUsable($normalized)) {
+            $params[$key] = $normalized;
+            return $params;
+        }
+
+        unset($params[$key]);
+        return $params;
     }
 
     public function buildVehicleSearchQuery(

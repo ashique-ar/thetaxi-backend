@@ -399,7 +399,7 @@
                                 <!-- Payment CTA -->
                                 <div class="btn-container" style="margin: 30px 0;">
                                     <button type="submit" class="btn">
-                                        🔒 Pay {{ $currencySymbol }} {{ number_format($amountDue, 2) }} with WebXPay
+                                        Pay {{ $currencySymbol }} {{ number_format($amountDue, 2) }}
                                     </button>
                                     <p style="text-align: center; color: #717171; font-size: 13px; margin: 10px 0;">
                                         <span style="color: #28a745;">✓ Secure SSL Encryption</span> •
