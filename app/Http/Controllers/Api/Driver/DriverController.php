@@ -72,14 +72,20 @@ class DriverController extends Controller
                 }
 
                 $contextData = [
-                    'owner_type_id' => $data['owner_type_id'] ?? null,
+                    'code' => $data['code'] ?? null,
+                    'nic' => $data['nic'] ?? null,
+                    'license_no' => $data['license_no'] ?? null,
+                    'license_type' => $data['license_type'] ?? null,
+                    'license_expiry' => $data['license_expiry'] ?? null,
+                    'dob' => $data['dob'] ?? null,
                     'address' => $data['address'] ?? null,
                     'country_id' => $data['country_id'] ?? null,
                     'state_id' => $data['state_id'] ?? null,
                     'city' => $data['city'] ?? null,
-                    'license_number' => $data['license_number'] ?? null,
-                    'license_expiry' => $data['license_expiry'] ?? null,
-                    'notes' => $data['notes'] ?? null,
+                    'postal_code' => $data['postal_code'] ?? null,
+                    'default_vehicle_id' => $data['default_vehicle_id'] ?? null,
+                    'remarks' => $data['remarks'] ?? null,
+                    'is_active' => $data['is_active'] ?? true,
                 ];
 
                 $context = $this->contextService->switchContext($existingUser, 'driver', $contextData);
@@ -94,29 +100,29 @@ class DriverController extends Controller
             } else {
                 $user = User::create([
                     'first_name' => $data['first_name'],
-                    'last_name' => $data['last_name'],
+                    'last_name' => $data['last_name'] ?? null,
                     'email' => $data['email'],
                     'password' => bcrypt($data['password'] ?? Str::random(12)),
-                    'phone' => $data['phone'],
+                    'phone' => $data['phone'] ?? null,
                     'email_verified_at' => now(),
                     'is_active' => true,
                 ]);
 
                 $contextData = [
+                    'code' => $data['code'] ?? null,
+                    'nic' => $data['nic'] ?? null,
                     'license_no' => $data['license_no'] ?? null,
-                    'license_type' => $data['license_type_id'] ?? null,
+                    'license_type' => $data['license_type'] ?? null,
                     'license_expiry' => $data['license_expiry'] ?? null,
+                    'dob' => $data['dob'] ?? null,
                     'country_id' => $data['country_id'] ?? null,
                     'state_id' => $data['state_id'] ?? null,
                     'address' => $data['address'] ?? null,
                     'city' => $data['city'] ?? null,
                     'postal_code' => $data['postal_code'] ?? null,
-                    'emergency_contact_name' => $data['emergency_contact_name'] ?? null,
-                    'emergency_contact_phone' => $data['emergency_contact_phone'] ?? null,
-                    'blood_group' => $data['blood_group'] ?? null,
-                    'medical_conditions' => $data['medical_conditions'] ?? null,
-                    'hire_date' => $data['hire_date'] ?? null,
-                    'is_active' => $data['is_active'] ?? null,
+                    'default_vehicle_id' => $data['default_vehicle_id'] ?? null,
+                    'remarks' => $data['remarks'] ?? null,
+                    'is_active' => $data['is_active'] ?? true,
                 ];
 
                 $context = $this->contextService->switchContext($user, 'driver', $contextData);
@@ -183,7 +189,7 @@ class DriverController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Failed to update vehicle owner',
+                'message' => 'Failed to update driver',
                 'error' => $e->getMessage()
             ], 500);
         }

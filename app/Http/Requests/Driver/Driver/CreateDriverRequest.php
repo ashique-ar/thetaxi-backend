@@ -16,22 +16,23 @@ class CreateDriverRequest extends FormRequest
     {
         return [
             'first_name' => ['required', 'string', 'max:255'],
-            'last_name' => ['required', 'string', 'max:255'],
+            'last_name' => ['nullable', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255'],
-            'phone' => ['required', 'string', 'max:20'],
-            'code' => ['required', 'string', 'max:50', 'unique:drivers,code'],
-            'nic' => ['required', 'string', 'max:20'],
-            'license_no' => ['required', 'string', 'max:100'],
-            'license_expiry' => ['required', 'date'],
-            'license_type' => ['required', 'string', 'max:50'],
-            'dob' => ['required', 'date'],
-            'address' => ['required', 'string'],
-            'country_id' => ['required', 'uuid'],
-            'state_id' => ['required', 'uuid'],
-            'city' => ['required', 'string'],
-            'postal_code' => ['required', 'string', 'max:20'],
+            'phone' => ['nullable', 'string', 'max:20'],
+            'code' => ['nullable', 'string', 'max:50', 'unique:drivers,code'],
+            'nic' => ['nullable', 'string', 'max:20'],
+            'license_no' => ['nullable', 'string', 'max:100'],
+            'license_expiry' => ['nullable', 'date'],
+            'license_type' => ['nullable', 'string', 'max:50'],
+            'dob' => ['nullable', 'date'],
+            'address' => ['nullable', 'string'],
+            'country_id' => ['nullable', 'uuid'],
+            'state_id' => ['nullable', 'uuid'],
+            'city' => ['nullable', 'string'],
+            'postal_code' => ['nullable', 'string', 'max:20'],
+            'default_vehicle_id' => ['nullable', 'exists:vehicles,id'],
             'remarks' => ['nullable', 'string'],
-            'is_active' => ['required', 'boolean']
+            'is_active' => ['nullable', 'boolean']
         ];
     }
 

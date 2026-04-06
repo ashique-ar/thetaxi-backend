@@ -4,7 +4,9 @@
 namespace App\Http\Controllers\Api\Vehicle;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\Driver\DriverResource;
 use App\Models\User;
+use App\Models\Driver\Driver;
 use App\Models\Vehicle\VehicleOwner;
 use App\Http\Requests\Vehicle\VehicleOwner\CreateVehicleOwnerRequest;
 use App\Http\Requests\Vehicle\VehicleOwner\UpdateVehicleOwnerRequest;
@@ -12,6 +14,7 @@ use App\Http\Resources\Vehicle\VehicleOwnerResource;
 use App\Services\UserContextService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class VehicleOwnerController extends Controller
@@ -46,75 +49,56 @@ class VehicleOwnerController extends Controller
         $data['created_user_id'] = $request->user()->id;
 
         try {
-            $existingUser = User::where('email', $data['email'])->first();
-            
-            if ($existingUser) {
-                $existingContext = \App\Models\UserContext::where('user_id', $existingUser->id)
-                    ->where('context_type', 'vehicle_owner')
-                    ->where('is_active', true)
-                    ->first();
-                
-                if ($existingContext) {
-                    return response()->json([
-                        'status' => 'error',
-                        'message' => 'This user is already registered as a vehicle owner.',
-                        'errors' => [
-                            'email' => ['This email is already registered as a vehicle owner.']
-                        ]
-                    ], 422);
+            $payload = DB::transaction(function () use ($data, $request) {
+                $user = User::where('email', $data['email'])->first();
+                $isExistingUser = (bool) $user;
+
+                if (!$user) {
+                    $user = User::create([
+                        'first_name' => $data['first_name'],
+                        'last_name' => $data['last_name'] ?? null,
+                        'email' => $data['email'],
+                        'password' => bcrypt($data['password'] ?? Str::random(12)),
+                        'phone' => $data['phone'] ?? null,
+                        'email_verified_at' => now(),
+                        'is_active' => true,
+                    ]);
                 }
 
-                $contextData = [
-                    'owner_type_id' => $data['owner_type_id'] ?? null,
-                    'address' => $data['address'] ?? null,
-                    'country_id' => $data['country_id'] ?? null,
-                    'state_id' => $data['state_id'] ?? null,
-                    'city' => $data['city'] ?? null,
-                    'license_number' => $data['license_number'] ?? null,
-                    'license_expiry' => $data['license_expiry'] ?? null,
-                    'notes' => $data['notes'] ?? null,
+                $ownerContext = $this->contextService->switchContext(
+                    $user,
+                    'vehicle_owner',
+                    $this->buildOwnerContextData($data, $request->user()->id)
+                );
+
+                $vehicleOwner = VehicleOwner::with('user')->findOrFail(
+                    $ownerContext->getAttribute('context_id')
+                );
+
+                $driver = null;
+                if ($request->boolean('create_driver_profile')) {
+                    $driver = $this->upsertDriverContext($user, $data, $request->user()->id);
+                }
+
+                return [
+                    'message' => $isExistingUser
+                        ? 'Vehicle owner context created for existing user'
+                        : 'Vehicle owner created successfully',
+                    'owner' => $vehicleOwner,
+                    'driver' => $driver,
                 ];
+            });
 
-                $context = $this->contextService->switchContext($existingUser, 'vehicle_owner', $contextData);
-                $vehicleOwner = VehicleOwner::find($context->getAttribute('context_id'));
-
-                return response()->json([
-                    'status' => 'success', 
-                    'message' => 'Vehicle owner context created for existing user', 
-                    'data' => ['owner' => new VehicleOwnerResource($vehicleOwner)]
-                ], 201);
-
-            } else {
-                $user = User::create([
-                    'first_name' => $data['first_name'],
-                    'last_name' => $data['last_name'],
-                    'email' => $data['email'],
-                    'password' => bcrypt($data['password'] ?? Str::random(12)),
-                    'phone' => $data['phone'],
-                    'email_verified_at' => now(),
-                    'is_active' => true,
-                ]);
-
-                $contextData = [
-                    'owner_type_id' => $data['owner_type_id'] ?? null,
-                    'address' => $data['address'] ?? null,
-                    'country_id' => $data['country_id'] ?? null,
-                    'state_id' => $data['state_id'] ?? null,
-                    'city' => $data['city'] ?? null,
-                    'license_number' => $data['license_number'] ?? null,
-                    'license_expiry' => $data['license_expiry'] ?? null,
-                    'notes' => $data['notes'] ?? null,
-                ];
-
-                $context = $this->contextService->switchContext($user, 'vehicle_owner', $contextData);
-                $vehicleOwner = VehicleOwner::find($context->getAttribute('context_id'));
-
-                return response()->json([
-                    'status' => 'success', 
-                    'message' => 'Vehicle owner created successfully', 
-                    'data' => ['owner' => new VehicleOwnerResource($vehicleOwner)]
-                ], 201);
-            }
+            return response()->json([
+                'status' => 'success',
+                'message' => $payload['message'],
+                'data' => [
+                    'owner' => new VehicleOwnerResource($payload['owner']),
+                    'driver' => $payload['driver']
+                        ? new DriverResource($payload['driver'])
+                        : null,
+                ],
+            ], 201);
 
         } catch (\Exception $e) {
             return response()->json([
@@ -134,30 +118,51 @@ class VehicleOwnerController extends Controller
     {
         try {
             $data = $request->validated();
-            $data['updated_user_id'] = $request->user()->id;
+            $updatedPayload = DB::transaction(function () use ($data, $request, $vehicleOwner) {
+                $data['updated_user_id'] = $request->user()->id;
 
-            // Separate user data from vehicle owner data
-            $userData = array_intersect_key($data, array_flip([
-                'first_name', 'last_name', 'email', 'phone'
-            ]));
+                $userData = array_intersect_key($data, array_flip([
+                    'first_name', 'last_name', 'email', 'phone'
+                ]));
 
-            $vehicleOwnerData = array_diff_key($data, $userData);
+                $vehicleOwnerData = array_diff_key($this->buildOwnerContextData($data, $request->user()->id), [
+                    'roles' => true,
+                ]);
 
-            // Update user data if provided
-            if (!empty($userData)) {
-                $vehicleOwner->user->update($userData);
-            }
+                if (!empty($userData)) {
+                    $vehicleOwner->user->update($userData);
+                }
 
-            // Update vehicle owner data
-            $vehicleOwner->update($vehicleOwnerData);
+                if (!empty($vehicleOwnerData)) {
+                    $vehicleOwner->update($vehicleOwnerData);
+                }
 
-            // Reload the relationship to get updated data
-            $vehicleOwner->load('user');
+                $driver = null;
+                if ($request->boolean('create_driver_profile')) {
+                    $driver = $this->upsertDriverContext(
+                        $vehicleOwner->user,
+                        $data,
+                        $request->user()->id
+                    );
+                }
+
+                $vehicleOwner->load('user');
+
+                return [
+                    'owner' => $vehicleOwner,
+                    'driver' => $driver,
+                ];
+            });
 
             return response()->json([
                 'status' => 'success', 
                 'message' => 'Vehicle owner updated successfully', 
-                'data' => ['owner' => new VehicleOwnerResource($vehicleOwner)]
+                'data' => [
+                    'owner' => new VehicleOwnerResource($updatedPayload['owner']),
+                    'driver' => $updatedPayload['driver']
+                        ? new DriverResource($updatedPayload['driver'])
+                        : null,
+                ]
             ]);
 
         } catch (\Exception $e) {
@@ -167,6 +172,54 @@ class VehicleOwnerController extends Controller
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    private function buildOwnerContextData(array $data, string $actorUserId): array
+    {
+        return [
+            'owner_type_id' => $data['owner_type_id'] ?? null,
+            'address' => $data['address'] ?? null,
+            'country_id' => $data['country_id'] ?? null,
+            'state_id' => $data['state_id'] ?? null,
+            'city' => $data['city'] ?? null,
+            'postal_code' => $data['postal_code'] ?? null,
+            'dob' => $data['dob'] ?? null,
+            'license_number' => $data['license_number'] ?? null,
+            'license_expiry' => $data['license_expiry'] ?? null,
+            'notes' => $data['notes'] ?? null,
+            'updated_user_id' => $actorUserId,
+        ];
+    }
+
+    private function buildDriverContextData(array $data, string $actorUserId): array
+    {
+        return [
+            'code' => $data['driver_code'] ?? null,
+            'nic' => $data['driver_nic'] ?? null,
+            'license_no' => $data['license_number'] ?? null,
+            'license_type' => $data['driver_license_type'] ?? null,
+            'license_expiry' => $data['license_expiry'] ?? null,
+            'dob' => $data['dob'] ?? null,
+            'address' => $data['address'] ?? null,
+            'country_id' => $data['country_id'] ?? null,
+            'state_id' => $data['state_id'] ?? null,
+            'city' => $data['city'] ?? null,
+            'postal_code' => $data['postal_code'] ?? null,
+            'remarks' => $data['notes'] ?? null,
+            'is_active' => $data['driver_is_active'] ?? true,
+            'updated_user_id' => $actorUserId,
+        ];
+    }
+
+    private function upsertDriverContext(User $user, array $data, string $actorUserId): Driver
+    {
+        $contextData = $this->buildDriverContextData($data, $actorUserId);
+        $driverContext = $this->contextService->switchContext($user, 'driver', $contextData);
+        $driver = Driver::findOrFail($driverContext->getAttribute('context_id'));
+        $driver->fill($contextData);
+        $driver->save();
+
+        return $driver->load(['user', 'country', 'state', 'licenseType']);
     }
 
     public function destroy(VehicleOwner $vehicleOwner): JsonResponse

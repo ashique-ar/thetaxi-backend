@@ -1683,7 +1683,7 @@ class BookingFlowService
      */
     private function getServicePackageInformation(array $inputs): ?array
     {
-        $packageId = $inputs['package_id'] ?? null;
+        $packageId = $inputs['package_id'] ?? ($inputs['service_package_id'] ?? null);
 
         if (!$packageId) {
             return null;
@@ -3786,7 +3786,7 @@ class BookingFlowService
             'actual_journey_distance' => $kmCalculations['actual_journey_distance'] ?? ($kmCalculations['journey_distance'] ?? 0),
             'minimum_km' => $kmCalculations['minimum_km'] ?? null,
             'minimum_km_applied' => $kmCalculations['minimum_km_applied'] ?? false,
-            'allowed_total_km' => $kmCalculations['allowed_km'] ?? 0,
+            'allowed_total_km' => null,
             'extra_km' => $kmCalculations['extra_km'] ?? 0,
             'extra_km_price' => null,
             'calculation_type' => $kmCalculations['calculation_type'] ?? 'none',
@@ -3795,6 +3795,15 @@ class BookingFlowService
             'free_km_per_package' => null,
             'journey_duration_seconds' => $durationSeconds,
         ];
+
+        $allowedKm = $kmCalculations['allowed_km'] ?? null;
+        if (
+            $allowedKm !== null
+            && (float) $allowedKm > 0
+            && in_array($distanceDetails['calculation_type'], ['daily', 'package'], true)
+        ) {
+            $distanceDetails['allowed_total_km'] = (float) $allowedKm;
+        }
 
         // Extract per-day or per-package limits from slab info
         if ($slabInfo) {
@@ -3963,6 +3972,10 @@ class BookingFlowService
     public function calculatePricing(array $params): array
     {
         try {
+            if (empty($params['package_id']) && !empty($params['service_package_id'])) {
+                $params['package_id'] = $params['service_package_id'];
+            }
+
             // Get base currency and target currency
             $baseCurrency = $params['base_currency'] ?? 'LKR';
             $targetCurrency = $params['currency'] ?? $baseCurrency;

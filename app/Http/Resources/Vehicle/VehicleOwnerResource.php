@@ -19,6 +19,8 @@ class VehicleOwnerResource extends JsonResource
             'city' => $this->city,
             'first_name' => $this->user?->first_name,
             'last_name' => $this->user?->last_name,
+            'email' => $this->user?->email,
+            'phone' => $this->user?->phone,
             'user' => new UserResource($this->whenLoaded('user')),
             'postal_code' => $this->postal_code,
             'license_number' => $this->license_number,

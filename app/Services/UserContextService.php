@@ -34,6 +34,14 @@ class UserContextService
                 ->first();
 
             if ($existingContext) {
+                $rolesToAssign = !empty($contextData['roles'])
+                    ? $contextData['roles']
+                    : $this->getDefaultRolesForContext($contextType);
+
+                if (!empty($rolesToAssign)) {
+                    $this->assignRolesToContext($user, $existingContext, $rolesToAssign);
+                }
+
                 DB::commit();
                 return $existingContext;
             }

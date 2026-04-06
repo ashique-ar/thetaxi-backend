@@ -18,17 +18,23 @@ class CreateVehicleOwnerRequest extends FormRequest
         return [
             'owner_type_id' => ['required', 'exists:vehicle_owner_types,id'],
             'first_name' => ['required', 'string', 'max:255'],
-            'last_name' => ['required', 'string', 'max:255'],
+            'last_name' => ['nullable', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255'],
-            'phone' => ['required', 'string', 'max:20'],
+            'phone' => ['nullable', 'string', 'max:20'],
             'country_id' => ['nullable', 'exists:countries,id'],
             'state_id' => ['nullable', 'exists:states,id'],
             'city' => ['nullable', 'string'],
             'address' => ['nullable', 'string'],
             'license_number' => ['nullable', 'string'],
             'license_expiry' => ['nullable', 'string'],
+            'postal_code' => ['nullable', 'string', 'max:20'],
             'notes' => ['nullable', 'string'],
             'dob' => ['nullable', 'string'],
+            'create_driver_profile' => ['nullable', 'boolean'],
+            'driver_code' => ['nullable', 'string', 'max:50', 'unique:drivers,code'],
+            'driver_nic' => ['nullable', 'string', 'max:20'],
+            'driver_license_type' => ['nullable', 'exists:driving_license_types,id'],
+            'driver_is_active' => ['nullable', 'boolean'],
         ];
     }
 
@@ -67,6 +73,7 @@ class CreateVehicleOwnerRequest extends FormRequest
                     }
                 }
             }
+
         });
     }
 
@@ -79,10 +86,8 @@ class CreateVehicleOwnerRequest extends FormRequest
             'owner_type_id.required' => 'Vehicle owner type is required.',
             'owner_type_id.exists' => 'Selected vehicle owner type is invalid.',
             'first_name.required' => 'First name is required.',
-            'last_name.required' => 'Last name is required.',
             'email.required' => 'Email address is required.',
             'email.email' => 'Please provide a valid email address.',
-            'phone.required' => 'Phone number is required.',
         ];
     }
 }

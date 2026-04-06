@@ -72,13 +72,16 @@ class BookingController extends Controller
             // }
 
             // Get package - either from request or default to first active package for service type
-            $packageId = $request->input('package_id');
+            $packageId = $request->input('package_id') ?? $request->input('service_package_id');
             if ($packageId) {
                 $searchParams['package_type'] = $serviceType->packages()->find($packageId)?->toArray();
             } else {
                 // Fallback to first active package for service type (important for ride_now with return trip)
                 $defaultPackage = $serviceType->packages()->where('is_active', true)->first();
                 $searchParams['package_type'] = $defaultPackage?->toArray();
+            }
+            if ($packageId && empty($searchParams['package_id'])) {
+                $searchParams['package_id'] = $packageId;
             }
             $searchParams['service_package_id'] = $searchParams['package_type']['id'] ?? null;
 
@@ -526,12 +529,14 @@ class BookingController extends Controller
         $params['passengers'] = (int) ($requestData['passengers'] ?? 1);
 
         // Add ServicePackage support if provided
-        if (!empty($requestData['package_id'])) {
-            $params['package_id'] = $requestData['package_id'];
+        $selectedPackageId = $requestData['package_id'] ?? $requestData['service_package_id'] ?? null;
+        if (!empty($selectedPackageId)) {
+            $params['package_id'] = $selectedPackageId;
+            $params['service_package_id'] = $selectedPackageId;
 
             Log::info('ServicePackage selected in booking search', [
                 'service_type' => $serviceType->code,
-                'package_id' => $requestData['package_id'],
+                'package_id' => $selectedPackageId,
             ]);
         }
 

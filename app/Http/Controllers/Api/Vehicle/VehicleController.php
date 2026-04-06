@@ -26,6 +26,7 @@ class VehicleController extends Controller
         $q = Vehicle::with(['owner', 'grade', 'group.class', 'group.fuelType', 'group.transmission', 'group.category', 'group.make', 'group.model', 'group.grade', 'contractType']);
         if ($request->filled('search')) {
             $q->where('title', 'like', '%' . $request->search . '%')
+                ->orWhere('license_plate', 'like', '%' . $request->search . '%')
                 ->orWhere('registration_no', 'like', '%' . $request->search . '%');
         }
 
@@ -75,7 +76,7 @@ class VehicleController extends Controller
 
     public function store(CreateVehicleRequest $request): JsonResponse
     {
-        $data = $request->validated();
+        $data = $this->normalizeVehicleIdentifierPayload($request->validated());
         $data['created_user_id'] = $request->user()->id;
         $vehicle = Vehicle::create($data);
 
@@ -98,7 +99,7 @@ class VehicleController extends Controller
 
     public function update(UpdateVehicleRequest $request, Vehicle $vehicle): JsonResponse
     {
-        $data = $request->validated();
+        $data = $this->normalizeVehicleIdentifierPayload($request->validated());
         $data['updated_user_id'] = $request->user()->id;
         $vehicle->update($data);
 
@@ -117,6 +118,18 @@ class VehicleController extends Controller
             'status' => 'success',
             'message' => 'Vehicle deleted',
         ]);
+    }
+
+    private function normalizeVehicleIdentifierPayload(array $data): array
+    {
+        $identifier = $data['license_plate'] ?? $data['registration_no'] ?? null;
+
+        if ($identifier !== null) {
+            $data['license_plate'] = $identifier;
+            $data['registration_no'] = $identifier;
+        }
+
+        return $data;
     }
 
     /**

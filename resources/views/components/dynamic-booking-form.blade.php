@@ -190,6 +190,19 @@
                 $isPickupTime = str_contains($fieldName, 'pickup') || $submitAs === 'time';
                 $rawTime = $isPickupTime ? $pickupTime : $dropoffTime;
                 $currentValue = old($submitAs, $rawTime ?? ($fieldDefault ?: '09:00'));
+            } elseif ($fieldType === 'package_select') {
+                $searchPackageValue = null;
+                if (isset($search) && is_object($search)) {
+                    $searchPackageValue = $search->$submitAs
+                        ?? ($search->package_id ?? null)
+                        ?? ($search->service_package_id ?? null);
+                } elseif (isset($search) && is_array($search)) {
+                    $searchPackageValue = $search[$submitAs]
+                        ?? ($search['package_id'] ?? null)
+                        ?? ($search['service_package_id'] ?? null);
+                }
+
+                $currentValue = old($submitAs, $searchPackageValue ?? $fieldDefault);
             } elseif ($fieldType === 'radio') {
                 if ($submitAs === 'transfer_type') {
                     $currentValue = old($submitAs, $airportTransferType ?? ($fieldDefault ?: ''));

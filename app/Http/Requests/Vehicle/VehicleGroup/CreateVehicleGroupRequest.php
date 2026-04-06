@@ -11,12 +11,12 @@ class CreateVehicleGroupRequest extends FormRequest
     public function rules()
     {
         return [
-            'grade_id' => ['required', 'exists:vehicle_grades,id'],
-            'make_id' => ['required', 'exists:vehicle_makes,id'],
-            'model_id' => ['required', 'exists:vehicle_models,id'],
-            'transmission_id' => ['required', 'exists:vehicle_transmissions,id'],
-            'fuel_type_id' => ['required', 'exists:vehicle_fuel_types,id'],
-            'category_id' => ['required', 'exists:vehicle_categories,id'],
+            'grade_id' => ['nullable', 'exists:vehicle_grades,id'],
+            'make_id' => ['nullable', 'exists:vehicle_makes,id'],
+            'model_id' => ['nullable', 'exists:vehicle_models,id'],
+            'transmission_id' => ['nullable', 'exists:vehicle_transmissions,id'],
+            'fuel_type_id' => ['nullable', 'exists:vehicle_fuel_types,id'],
+            'category_id' => ['nullable', 'exists:vehicle_categories,id'],
             'class_id' => ['nullable', 'exists:vehicle_classes,id'],
             'name' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
