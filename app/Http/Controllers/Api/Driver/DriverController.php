@@ -1288,11 +1288,18 @@ class DriverController extends Controller
     }
 
     private function extractMappedLocation(
-        ?array $location,
+        mixed $location,
         mixed $latitude = null,
         mixed $longitude = null,
         array $extra = []
     ): ?array {
+        if (is_string($location)) {
+            $decoded = json_decode($location, true);
+            $location = is_array($decoded) ? $decoded : null;
+        } elseif (!is_array($location)) {
+            $location = null;
+        }
+
         $resolvedLatitude = $this->normalizeNullableFloat($latitude ?? ($location['latitude'] ?? null));
         $resolvedLongitude = $this->normalizeNullableFloat($longitude ?? ($location['longitude'] ?? null));
 
