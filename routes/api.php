@@ -660,6 +660,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::apiResource('driver-logs', DriverLogController::class);
         Route::get('drivers/{driver}/sessions', [DriverController::class, 'sessions']);
         Route::get('drivers/{driver}/sessions/{session}/route', [DriverController::class, 'sessionRoute']);
+        Route::get('drivers/{driver}/movement-map', [DriverController::class, 'movementMap']);
         Route::get('drivers/{driver}/analytics', [DriverController::class, 'analytics']);
 
         // Default vehicle management for drivers

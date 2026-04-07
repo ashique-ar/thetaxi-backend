@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Driver;
 use App\Http\Controllers\Controller;
 use App\Models\Driver\Driver;
 use App\Models\Driver\DriverLog;
+use App\Models\Driver\RoutePoint;
 use App\Models\Driver\DriverSession;
 use App\Http\Requests\Driver\Driver\CreateDriverRequest;
 use App\Http\Requests\Driver\Driver\UpdateDriverRequest;
@@ -33,7 +34,7 @@ class DriverController extends Controller
     {
         $this->contextService = $contextService;
         $this->notificationService = $notificationService;
-        $this->middleware('permission:drivers.view')->only(['index', 'show', 'status', 'activity', 'sessions', 'sessionRoute', 'locations', 'analytics', 'devices']);
+        $this->middleware('permission:drivers.view')->only(['index', 'show', 'status', 'activity', 'sessions', 'sessionRoute', 'movementMap', 'locations', 'analytics', 'devices']);
         $this->middleware('permission:drivers.create')->only(['store']);
         $this->middleware('permission:drivers.edit')->only(['update', 'deactivateDevice', 'removeDevice', 'testNotification']);
         $this->middleware('permission:drivers.delete')->only(['destroy']);
@@ -450,6 +451,199 @@ class DriverController extends Controller
                 'route_points' => RoutePointResource::collection($routePoints),
                 'point_count' => $routePoints->count(),
             ]
+        ]);
+    }
+
+    /**
+     * Get a driver day-view movement map with roaming and booking route overlays.
+     *
+     * GET /api/drivers/{driver}/movement-map?date=YYYY-MM-DD
+     */
+    public function movementMap(Request $request, Driver $driver): JsonResponse
+    {
+        $validated = $request->validate([
+            'date' => ['nullable', 'date'],
+        ]);
+
+        $targetDate = isset($validated['date'])
+            ? Carbon::parse($validated['date'], config('app.timezone'))
+            : now(config('app.timezone'));
+        $dayStart = $targetDate->copy()->startOfDay();
+        $dayEnd = $targetDate->copy()->endOfDay();
+        $isToday = $targetDate->isSameDay(now(config('app.timezone')));
+
+        $sessions = DriverSession::query()
+            ->where('driver_id', $driver->id)
+            ->where(function ($query) use ($dayStart, $dayEnd) {
+                $query->whereBetween('start_time', [$dayStart, $dayEnd])
+                    ->orWhereBetween('end_time', [$dayStart, $dayEnd])
+                    ->orWhere(function ($activeQuery) use ($dayStart, $dayEnd) {
+                        $activeQuery->where('start_time', '<=', $dayEnd)
+                            ->where(function ($openEndedQuery) use ($dayStart) {
+                                $openEndedQuery->whereNull('end_time')
+                                    ->orWhere('end_time', '>=', $dayStart);
+                            });
+                    });
+            })
+            ->orderBy('start_time')
+            ->get();
+
+        $assignments = DriverAssignment::query()
+            ->where('driver_id', $driver->id)
+            ->with([
+                'booking:id,booking_number,status,trip_status',
+                'booking.bookingItems:id,booking_id,service_type_id,from_date,from_time,to_date,to_time,pickup_location,dropoff_location,pickup_latitude,pickup_longitude,dropoff_latitude,dropoff_longitude',
+                'booking.bookingItems.serviceType:id,name',
+                'bookingItem:id,booking_id,service_type_id,from_date,from_time,to_date,to_time,pickup_location,dropoff_location,pickup_latitude,pickup_longitude,dropoff_latitude,dropoff_longitude',
+                'bookingItem.serviceType:id,name',
+            ])
+            ->where(function ($query) use ($dayStart, $dayEnd) {
+                $query->whereBetween('assigned_from', [$dayStart, $dayEnd])
+                    ->orWhereBetween('assigned_to', [$dayStart, $dayEnd])
+                    ->orWhereBetween('trip_started_at', [$dayStart, $dayEnd])
+                    ->orWhereBetween('trip_completed_at', [$dayStart, $dayEnd])
+                    ->orWhereBetween('pickup_arrived_at', [$dayStart, $dayEnd])
+                    ->orWhereBetween('created_at', [$dayStart, $dayEnd])
+                    ->orWhere(function ($activeQuery) use ($dayStart, $dayEnd) {
+                        $activeQuery->where('assigned_from', '<=', $dayEnd)
+                            ->where(function ($openEndedQuery) use ($dayStart) {
+                                $openEndedQuery->whereNull('assigned_to')
+                                    ->orWhere('assigned_to', '>=', $dayStart);
+                            });
+                    });
+            })
+            ->orderBy('assigned_from')
+            ->orderBy('created_at')
+            ->get();
+
+        $routePoints = RoutePoint::query()
+            ->whereBetween('recorded_at', [$dayStart, $dayEnd])
+            ->whereHas('session', function ($query) use ($driver) {
+                $query->where('driver_id', $driver->id);
+            })
+            ->with([
+                'assignment.booking:id,booking_number,status,trip_status',
+                'assignment.booking.bookingItems:id,booking_id,service_type_id,from_date,from_time,to_date,to_time,pickup_location,dropoff_location,pickup_latitude,pickup_longitude,dropoff_latitude,dropoff_longitude',
+                'assignment.booking.bookingItems.serviceType:id,name',
+                'assignment.bookingItem:id,booking_id,service_type_id,from_date,from_time,to_date,to_time,pickup_location,dropoff_location,pickup_latitude,pickup_longitude,dropoff_latitude,dropoff_longitude',
+                'assignment.bookingItem.serviceType:id,name',
+            ])
+            ->orderBy('recorded_at')
+            ->get();
+
+        $assignmentPointCounts = $routePoints
+            ->filter(fn(RoutePoint $point) => !empty($point->assignment_id))
+            ->groupBy('assignment_id')
+            ->map(fn($points) => $points->count());
+
+        $segments = $this->buildMovementSegments($routePoints);
+        $markers = $this->buildMovementMarkers(
+            $driver,
+            $sessions,
+            $assignments,
+            $dayStart,
+            $dayEnd,
+            $isToday
+        );
+
+        $assignmentPayload = $assignments->map(function (DriverAssignment $assignment) use ($assignmentPointCounts) {
+            $booking = $assignment->booking;
+            $bookingItem = $this->resolveAssignmentBookingItem($assignment);
+            $pickup = $this->extractMappedLocation(
+                $bookingItem?->pickup_location,
+                $bookingItem?->pickup_latitude,
+                $bookingItem?->pickup_longitude
+            );
+            $dropoff = $this->extractMappedLocation(
+                $bookingItem?->dropoff_location,
+                $bookingItem?->dropoff_latitude,
+                $bookingItem?->dropoff_longitude
+            );
+
+            return [
+                'assignment_id' => $assignment->id,
+                'booking_id' => $assignment->booking_id,
+                'booking_number' => $booking?->booking_number,
+                'booking_status' => $booking?->status,
+                'trip_status' => $booking?->trip_status,
+                'assignment_status' => $assignment->status,
+                'trip_phase' => $assignment->trip_phase?->value,
+                'trip_phase_label' => $assignment->trip_phase?->getDisplayName(),
+                'service_type_name' => $bookingItem?->serviceType?->name,
+                'assigned_from' => $assignment->assigned_from?->toIso8601String(),
+                'assigned_to' => $assignment->assigned_to?->toIso8601String(),
+                'confirmed_at' => $assignment->confirmed_at?->toIso8601String(),
+                'trip_started_at' => $assignment->trip_started_at?->toIso8601String(),
+                'pickup_arrived_at' => $assignment->pickup_arrived_at?->toIso8601String(),
+                'trip_completed_at' => $assignment->trip_completed_at?->toIso8601String(),
+                'pickup_location' => $pickup,
+                'dropoff_location' => $dropoff,
+                'pickup_arrived_location' => $this->buildCoordinatePayload(
+                    $assignment->pickup_arrival_latitude,
+                    $assignment->pickup_arrival_longitude
+                ),
+                'completed_location' => $this->buildCoordinatePayload(
+                    $assignment->final_latitude,
+                    $assignment->final_longitude
+                ),
+                'total_distance_km' => $assignment->total_distance_km !== null
+                    ? (float) $assignment->total_distance_km
+                    : null,
+                'route_point_count' => (int) ($assignmentPointCounts[$assignment->id] ?? 0),
+            ];
+        })->values();
+
+        $summary = [
+            'total_route_points' => $routePoints->count(),
+            'booking_route_points' => $routePoints->whereNotNull('assignment_id')->count(),
+            'roaming_route_points' => $routePoints->whereNull('assignment_id')->count(),
+            'total_segments' => count($segments),
+            'booking_segments' => count(array_filter($segments, fn(array $segment) => $segment['segment_type'] === 'booking')),
+            'roaming_segments' => count(array_filter($segments, fn(array $segment) => $segment['segment_type'] === 'roaming')),
+            'booking_count' => $assignments->count(),
+            'active_booking_count' => $assignments->filter(function (DriverAssignment $assignment) {
+                return in_array($assignment->trip_phase?->value, ['accepted', 'pickup_arrived', 'in_progress', 'active', 'confirmed'], true);
+            })->count(),
+            'completed_booking_count' => $assignments->filter(fn(DriverAssignment $assignment) => $assignment->trip_phase?->value === 'completed')->count(),
+            'session_count' => $sessions->count(),
+        ];
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'date' => $targetDate->toDateString(),
+                'timezone' => config('app.timezone'),
+                'summary' => $summary,
+                'current_location' => $isToday
+                    ? $this->buildCoordinatePayload($driver->current_latitude, $driver->current_longitude, [
+                        'recorded_at' => $driver->last_active_at?->toIso8601String(),
+                        'label' => 'Current location',
+                        'is_online' => (bool) $driver->is_online,
+                    ])
+                    : null,
+                'sessions' => $sessions->map(function (DriverSession $session) {
+                    return [
+                        'session_id' => $session->id,
+                        'status' => $session->status,
+                        'start_time' => $session->start_time?->toIso8601String(),
+                        'end_time' => $session->end_time?->toIso8601String(),
+                        'start_location' => $this->buildCoordinatePayload(
+                            $session->start_latitude,
+                            $session->start_longitude
+                        ),
+                        'end_location' => $this->buildCoordinatePayload(
+                            $session->end_latitude,
+                            $session->end_longitude
+                        ),
+                        'total_distance_km' => $session->total_distance_km !== null
+                            ? (float) $session->total_distance_km
+                            : null,
+                    ];
+                })->values(),
+                'segments' => $segments,
+                'markers' => $markers,
+                'assignments' => $assignmentPayload,
+            ],
         ]);
     }
 
@@ -871,5 +1065,276 @@ class DriverController extends Controller
         }
 
         return sprintf('%dm', $minutes);
+    }
+
+    private function buildMovementSegments(\Illuminate\Support\Collection $routePoints): array
+    {
+        $segments = [];
+        $currentSegment = null;
+
+        foreach ($routePoints as $point) {
+            $assignment = $point->assignment;
+            $bookingItem = $assignment ? $this->resolveAssignmentBookingItem($assignment) : null;
+            $segmentType = $assignment ? 'booking' : 'roaming';
+            $assignmentId = $assignment?->id;
+
+            if (
+                $currentSegment === null ||
+                $currentSegment['segment_type'] !== $segmentType ||
+                $currentSegment['assignment_id'] !== $assignmentId
+            ) {
+                if ($currentSegment !== null) {
+                    $segments[] = $currentSegment;
+                }
+
+                $currentSegment = [
+                    'segment_id' => $assignmentId ?: 'roaming:' . (count($segments) + 1),
+                    'segment_type' => $segmentType,
+                    'assignment_id' => $assignmentId,
+                    'booking_id' => $assignment?->booking_id,
+                    'booking_number' => $assignment?->booking?->booking_number,
+                    'assignment_status' => $assignment?->status,
+                    'trip_phase' => $assignment?->trip_phase?->value,
+                    'trip_phase_label' => $assignment?->trip_phase?->getDisplayName(),
+                    'service_type_name' => $bookingItem?->serviceType?->name,
+                    'start_at' => $point->recorded_at?->toIso8601String(),
+                    'end_at' => $point->recorded_at?->toIso8601String(),
+                    'point_count' => 0,
+                    'points' => [],
+                ];
+            }
+
+            $currentSegment['points'][] = [
+                'id' => $point->id,
+                'session_id' => $point->session_id,
+                'assignment_id' => $point->assignment_id,
+                'booking_id' => $assignment?->booking_id,
+                'booking_number' => $assignment?->booking?->booking_number,
+                'latitude' => (float) $point->latitude,
+                'longitude' => (float) $point->longitude,
+                'speed' => $point->speed !== null ? (float) $point->speed : null,
+                'heading' => $point->heading !== null ? (float) $point->heading : null,
+                'accuracy' => $point->accuracy !== null ? (float) $point->accuracy : null,
+                'recorded_at' => $point->recorded_at?->toIso8601String(),
+            ];
+            $currentSegment['point_count']++;
+            $currentSegment['end_at'] = $point->recorded_at?->toIso8601String();
+        }
+
+        if ($currentSegment !== null) {
+            $segments[] = $currentSegment;
+        }
+
+        return array_values($segments);
+    }
+
+    private function buildMovementMarkers(
+        Driver $driver,
+        \Illuminate\Support\Collection $sessions,
+        \Illuminate\Support\Collection $assignments,
+        Carbon $dayStart,
+        Carbon $dayEnd,
+        bool $includeCurrentLocation
+    ): array {
+        $markers = [];
+
+        foreach ($sessions as $session) {
+            $startMarker = $this->buildCoordinatePayload(
+                $session->start_latitude,
+                $session->start_longitude,
+                [
+                    'marker_id' => 'session-start:' . $session->id,
+                    'marker_type' => 'session_start',
+                    'label' => 'Session started',
+                    'recorded_at' => $session->start_time?->toIso8601String(),
+                    'session_id' => $session->id,
+                    'status' => $session->status,
+                ]
+            );
+            if ($startMarker && $session->start_time && $session->start_time->between($dayStart, $dayEnd)) {
+                $markers[] = $startMarker;
+            }
+
+            $endMarker = $this->buildCoordinatePayload(
+                $session->end_latitude,
+                $session->end_longitude,
+                [
+                    'marker_id' => 'session-end:' . $session->id,
+                    'marker_type' => 'session_end',
+                    'label' => 'Session ended',
+                    'recorded_at' => $session->end_time?->toIso8601String(),
+                    'session_id' => $session->id,
+                    'status' => $session->status,
+                ]
+            );
+            if ($endMarker && $session->end_time && $session->end_time->between($dayStart, $dayEnd)) {
+                $markers[] = $endMarker;
+            }
+        }
+
+        foreach ($assignments as $assignment) {
+            $booking = $assignment->booking;
+            $bookingItem = $this->resolveAssignmentBookingItem($assignment);
+
+            $pickupMarker = $this->extractMappedLocation(
+                $bookingItem?->pickup_location,
+                $bookingItem?->pickup_latitude,
+                $bookingItem?->pickup_longitude,
+                [
+                    'marker_id' => 'pickup:' . $assignment->id,
+                    'marker_type' => 'pickup',
+                    'label' => 'Planned pickup',
+                    'booking_id' => $assignment->booking_id,
+                    'booking_number' => $booking?->booking_number,
+                    'assignment_id' => $assignment->id,
+                    'trip_phase' => $assignment->trip_phase?->value,
+                    'recorded_at' => $bookingItem?->from_date?->format('Y-m-d') && $bookingItem?->from_time
+                        ? $bookingItem->from_date->format('Y-m-d') . 'T' . $bookingItem->from_time
+                        : null,
+                ]
+            );
+            if ($pickupMarker) {
+                $markers[] = $pickupMarker;
+            }
+
+            $dropoffMarker = $this->extractMappedLocation(
+                $bookingItem?->dropoff_location,
+                $bookingItem?->dropoff_latitude,
+                $bookingItem?->dropoff_longitude,
+                [
+                    'marker_id' => 'dropoff:' . $assignment->id,
+                    'marker_type' => 'dropoff',
+                    'label' => 'Planned drop-off',
+                    'booking_id' => $assignment->booking_id,
+                    'booking_number' => $booking?->booking_number,
+                    'assignment_id' => $assignment->id,
+                    'trip_phase' => $assignment->trip_phase?->value,
+                    'recorded_at' => $bookingItem?->to_date?->format('Y-m-d') && $bookingItem?->to_time
+                        ? $bookingItem->to_date->format('Y-m-d') . 'T' . $bookingItem->to_time
+                        : null,
+                ]
+            );
+            if ($dropoffMarker) {
+                $markers[] = $dropoffMarker;
+            }
+
+            $pickupArrivedMarker = $this->buildCoordinatePayload(
+                $assignment->pickup_arrival_latitude,
+                $assignment->pickup_arrival_longitude,
+                [
+                    'marker_id' => 'pickup-arrived:' . $assignment->id,
+                    'marker_type' => 'pickup_arrived',
+                    'label' => 'Pickup arrived',
+                    'booking_id' => $assignment->booking_id,
+                    'booking_number' => $booking?->booking_number,
+                    'assignment_id' => $assignment->id,
+                    'trip_phase' => $assignment->trip_phase?->value,
+                    'recorded_at' => $assignment->pickup_arrived_at?->toIso8601String(),
+                ]
+            );
+            if ($pickupArrivedMarker) {
+                $markers[] = $pickupArrivedMarker;
+            }
+
+            $completedMarker = $this->buildCoordinatePayload(
+                $assignment->final_latitude,
+                $assignment->final_longitude,
+                [
+                    'marker_id' => 'trip-completed:' . $assignment->id,
+                    'marker_type' => 'trip_completed',
+                    'label' => 'Trip completed',
+                    'booking_id' => $assignment->booking_id,
+                    'booking_number' => $booking?->booking_number,
+                    'assignment_id' => $assignment->id,
+                    'trip_phase' => $assignment->trip_phase?->value,
+                    'recorded_at' => $assignment->trip_completed_at?->toIso8601String(),
+                ]
+            );
+            if ($completedMarker) {
+                $markers[] = $completedMarker;
+            }
+        }
+
+        if ($includeCurrentLocation && $driver->current_latitude !== null && $driver->current_longitude !== null) {
+            $markers[] = $this->buildCoordinatePayload(
+                $driver->current_latitude,
+                $driver->current_longitude,
+                [
+                    'marker_id' => 'current-location:' . $driver->id,
+                    'marker_type' => 'current_location',
+                    'label' => 'Current location',
+                    'recorded_at' => $driver->last_active_at?->toIso8601String(),
+                    'is_online' => (bool) $driver->is_online,
+                ]
+            );
+        }
+
+        return array_values(array_filter($markers));
+    }
+
+    private function resolveAssignmentBookingItem(DriverAssignment $assignment): mixed
+    {
+        if ($assignment->relationLoaded('bookingItem') && $assignment->bookingItem) {
+            return $assignment->bookingItem;
+        }
+
+        if ($assignment->relationLoaded('booking') && $assignment->booking?->relationLoaded('bookingItems')) {
+            return $assignment->booking->bookingItems
+                ->sortBy(fn($item) => $item->from_date?->timestamp ?? PHP_INT_MAX)
+                ->first();
+        }
+
+        return null;
+    }
+
+    private function extractMappedLocation(
+        ?array $location,
+        mixed $latitude = null,
+        mixed $longitude = null,
+        array $extra = []
+    ): ?array {
+        $resolvedLatitude = $this->normalizeNullableFloat($latitude ?? ($location['latitude'] ?? null));
+        $resolvedLongitude = $this->normalizeNullableFloat($longitude ?? ($location['longitude'] ?? null));
+
+        if ($resolvedLatitude === null || $resolvedLongitude === null) {
+            return null;
+        }
+
+        $payload = [
+            'latitude' => $resolvedLatitude,
+            'longitude' => $resolvedLongitude,
+            'address' => isset($location['address']) ? trim((string) $location['address']) : null,
+        ];
+
+        return array_merge($payload, $extra);
+    }
+
+    private function buildCoordinatePayload(
+        mixed $latitude,
+        mixed $longitude,
+        array $extra = []
+    ): ?array {
+        $resolvedLatitude = $this->normalizeNullableFloat($latitude);
+        $resolvedLongitude = $this->normalizeNullableFloat($longitude);
+
+        if ($resolvedLatitude === null || $resolvedLongitude === null) {
+            return null;
+        }
+
+        return array_merge([
+            'latitude' => $resolvedLatitude,
+            'longitude' => $resolvedLongitude,
+        ], $extra);
+    }
+
+    private function normalizeNullableFloat(mixed $value): ?float
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $numericValue = (float) $value;
+
+        return is_finite($numericValue) ? $numericValue : null;
     }
 }
