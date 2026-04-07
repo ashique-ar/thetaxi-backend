@@ -30,7 +30,8 @@ class RateChartController extends Controller
     {
         try {
             // Get day rental service type (correct code is 'day_rental')
-            $dayRentalService = ServiceType::where('code', 'day_rental')
+            $dayRentalService = ServiceType::publicContext()
+                ->where('code', 'day_rental')
                 ->where('is_active', true)
                 ->first();
 

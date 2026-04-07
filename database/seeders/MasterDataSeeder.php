@@ -29,6 +29,10 @@ class MasterDataSeeder extends Seeder
         $this->command->info('🔗 Seeding vehicle addon dependencies...');
         $this->call(VehicleAddonDependencySeeder::class);
 
+        // 4. Clone public-context service types into portal context
+        // $this->command->info('Cloning public service types into portal context...');
+        // $this->call(ClonePublicServiceTypesToPortalSeeder::class);
+
         // 4. Agents (requires users)
         $this->command->info('👥 Seeding agents...');
         $this->call(AgentSeeder::class);

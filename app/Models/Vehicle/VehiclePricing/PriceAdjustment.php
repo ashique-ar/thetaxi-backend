@@ -103,22 +103,16 @@ class PriceAdjustment extends BaseModel
     public function scopeForService(Builder $query, string $serviceTypeId): Builder
     {
         return $query->where(function (Builder $q) use ($serviceTypeId) {
-            $q->where('scope', 'global')
-                ->orWhere(function (Builder $q2) use ($serviceTypeId) {
-                    $q2->where('scope', 'service')
-                        ->where('service_type_id', $serviceTypeId);
-                });
+            $q->whereNull('service_type_id')
+                ->orWhere('service_type_id', $serviceTypeId);
         });
     }
 
     public function scopeForVehicleGroup(Builder $query, string $vehicleGroupId): Builder
     {
         return $query->where(function (Builder $q) use ($vehicleGroupId) {
-            $q->where('scope', 'global')
-                ->orWhere(function (Builder $q2) use ($vehicleGroupId) {
-                    $q2->where('scope', 'vehicle_group')
-                        ->where('vehicle_group_id', $vehicleGroupId);
-                });
+            $q->whereNull('vehicle_group_id')
+                ->orWhere('vehicle_group_id', $vehicleGroupId);
         });
     }
 
@@ -132,7 +126,17 @@ class PriceAdjustment extends BaseModel
 
     public function scopeOrderByPriority(Builder $query): Builder
     {
-        return $query->orderBy('priority', 'desc')->orderBy('created_at', 'asc');
+        return $query
+            ->orderByRaw("
+                CASE
+                    WHEN service_type_id IS NOT NULL AND vehicle_group_id IS NOT NULL THEN 1
+                    WHEN service_type_id IS NOT NULL AND vehicle_group_id IS NULL THEN 2
+                    WHEN service_type_id IS NULL AND vehicle_group_id IS NOT NULL THEN 3
+                    ELSE 4
+                END ASC
+            ")
+            ->orderBy('priority', 'desc')
+            ->orderBy('created_at', 'asc');
     }
 
     public function scopeCumulative(Builder $query): Builder
@@ -297,24 +301,16 @@ class PriceAdjustment extends BaseModel
             ->forAmount($amount)
             ->where('applies_to', $priceComponent);
 
-        // Apply scope filtering
-        if ($serviceTypeId && $vehicleGroupId) {
-            // Both service and vehicle group specified
-            $query->where(function (Builder $q) use ($serviceTypeId, $vehicleGroupId) {
-                $q->where('scope', 'global')
-                    ->orWhere(function (Builder $q2) use ($serviceTypeId) {
-                        $q2->where('scope', 'service')->where('service_type_id', $serviceTypeId);
-                    })
-                    ->orWhere(function (Builder $q3) use ($vehicleGroupId) {
-                        $q3->where('scope', 'vehicle_group')->where('vehicle_group_id', $vehicleGroupId);
-                    });
-            });
-        } elseif ($serviceTypeId) {
+        if ($serviceTypeId) {
             $query->forService($serviceTypeId);
-        } elseif ($vehicleGroupId) {
+        } else {
+            $query->whereNull('service_type_id');
+        }
+
+        if ($vehicleGroupId) {
             $query->forVehicleGroup($vehicleGroupId);
         } else {
-            $query->forScope('global');
+            $query->whereNull('vehicle_group_id');
         }
 
         return $query->orderByPriority()->get();
@@ -448,7 +444,7 @@ class PriceAdjustment extends BaseModel
             'adjustment_type' => 'required|in:percentage,fixed_amount',
             'percentage_change' => 'nullable|numeric|required_if:adjustment_type,percentage',
             'fixed_amount_change' => 'nullable|numeric|required_if:adjustment_type,fixed_amount',
-            'applies_to' => 'required|in:base_price,total_price,km_charges',
+            'applies_to' => 'nullable|in:base_price,total_price,km_charges',
             'minimum_booking_amount' => 'nullable|numeric|min:0',
             'maximum_discount_amount' => 'nullable|numeric|min:0',
             'priority' => 'integer|min:0',

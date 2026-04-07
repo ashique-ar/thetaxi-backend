@@ -4,6 +4,7 @@
 namespace App\Http\Controllers\Api\Vehicle;
 
 use App\Http\Controllers\Controller;
+use App\Models\Service\ServiceType;
 use App\Models\Vehicle\Vehicle;
 use App\Http\Requests\Vehicle\Vehicle\CreateVehicleRequest;
 use App\Http\Requests\Vehicle\Vehicle\UpdateVehicleRequest;
@@ -328,9 +329,15 @@ class VehicleController extends Controller
     /**
      * Get service types
      */
-    public function getServiceTypes()
+    public function getServiceTypes(Request $request)
     {
-        $serviceTypes = ServiceType::where('is_active', true)->get();
+        $context = (string) $request->input('context', 'portal');
+        $ownerType = (string) $request->input('owner_type', ($context === 'corporate' ? 'corporate' : ''));
+        $ownerId = (string) $request->input('owner_id', '');
+
+        $serviceTypes = ServiceType::forContext($context, $ownerType, $ownerId)
+            ->where('is_active', true)
+            ->get();
 
         return response()->json([
             'status' => 'success',

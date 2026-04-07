@@ -140,12 +140,18 @@ class CheckoutController extends Controller
 
         foreach ($serviceCodes as $code) {
             // First, try to find ServiceType records that match the cart code
-            $serviceTypes = ServiceType::where('code', $code)->get();
+            $serviceTypes = ServiceType::publicContext()->where('code', $code)->get();
 
             // If this service code maps to a legacy grouping (eg. vehicle_rental), also try to find matching service types
             $mapped = $serviceMap[$code] ?? null;
             if ($mapped) {
-                $serviceTypes = $serviceTypes->merge(ServiceType::where('code', $mapped)->orWhere('type', $mapped)->get());
+                $serviceTypes = $serviceTypes->merge(
+                    ServiceType::publicContext()
+                        ->where(function ($query) use ($mapped) {
+                            $query->where('code', $mapped)->orWhere('type', $mapped);
+                        })
+                        ->get()
+                );
             }
 
             // Prefer fetching terms by service_type_id for discovered service types
@@ -435,7 +441,9 @@ class CheckoutController extends Controller
             $fromDate = $firstItem['pickup_date'] ?? now();
             $toDate = $firstItem['return_date'] ?? now()->addDays(1);
 
-            $serviceTypeId = ServiceType::where('code', $firstItem['service_type'] ?? null)->value('id');
+            $serviceTypeId = ServiceType::publicContext()
+                ->where('code', $firstItem['service_type'] ?? null)
+                ->value('id');
             // return $firstItem;
             // Step 2: Create booking record linked to customer
 

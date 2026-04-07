@@ -27,7 +27,8 @@ class ServicePackageController extends Controller
     public function getPackagesByService(Request $request, string $serviceCode): JsonResponse
     {
         try {
-            $serviceType = ServiceType::where('code', $serviceCode)
+            $serviceType = ServiceType::publicContext()
+                ->where('code', $serviceCode)
                 ->where('is_active', true)
                 ->first();
 

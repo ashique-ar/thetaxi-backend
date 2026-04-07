@@ -22,6 +22,7 @@ class DatabaseSeeder extends Seeder
 
                 // Service type defaults for frontend behavior and duration handling
             // ServiceTypeDefaultsSeeder::class,
+            // ClonePublicServiceTypesToPortalSeeder::class,
 
             // Admin/other seeders can remain commented; enable as needed for local dev
             // CountrySeeder::class,

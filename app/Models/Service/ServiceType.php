@@ -44,6 +44,10 @@ class ServiceType extends BaseModel
     protected $fillable = [
         'code',
         'name',
+        'context',
+        'owner_type',
+        'owner_id',
+        'parent_service_type_id',
         'description',
         'type', // self_drive or with_driver
         'slug',
@@ -82,6 +86,9 @@ class ServiceType extends BaseModel
         'pricing_mode' => 'string',
         'frontend_category' => 'string',
         'category' => 'string',
+        'context' => 'string',
+        'owner_type' => 'string',
+        'owner_id' => 'string',
         'form_config' => 'array',
     ];
 
@@ -122,6 +129,16 @@ class ServiceType extends BaseModel
         return $this->hasMany(ServicePackage::class);
     }
 
+    public function parentServiceType()
+    {
+        return $this->belongsTo(self::class, 'parent_service_type_id');
+    }
+
+    public function clonedServiceTypes()
+    {
+        return $this->hasMany(self::class, 'parent_service_type_id');
+    }
+
     /**
      * Get all bookings for this service type.
      *
@@ -156,5 +173,28 @@ class ServiceType extends BaseModel
     public function scopeActive($query)
     {
         return $query->where('is_active', true)->whereNull('deleted_at');
+    }
+
+    public function scopeForContext($query, string $context, string $ownerType = '', string $ownerId = '')
+    {
+        return $query
+            ->where('context', $context)
+            ->where('owner_type', $ownerType)
+            ->where('owner_id', $ownerId);
+    }
+
+    public function scopePublicContext($query)
+    {
+        return $query->forContext('public');
+    }
+
+    public function scopePortalContext($query)
+    {
+        return $query->forContext('portal');
+    }
+
+    public function scopeCorporateContext($query, string $corporateId)
+    {
+        return $query->forContext('corporate', 'corporate', $corporateId);
     }
 }

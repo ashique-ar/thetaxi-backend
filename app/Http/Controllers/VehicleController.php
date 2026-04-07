@@ -98,7 +98,7 @@ class VehicleController extends Controller
         }
         
         $configuredDefaultServiceType = (string) $this->websiteSettingsService->get('default_service_type', 'day_rental');
-        $defaultServiceTypeQuery = ServiceType::where('is_active', true);
+        $defaultServiceTypeQuery = ServiceType::publicContext()->where('is_active', true);
         if (Str::isUuid($configuredDefaultServiceType)) {
             $defaultServiceTypeQuery->where('id', $configuredDefaultServiceType);
         } else {
@@ -127,7 +127,8 @@ class VehicleController extends Controller
         }
 
         // Get available service types
-        $serviceTypes = ServiceType::whereNull('deleted_at')
+        $serviceTypes = ServiceType::publicContext()
+            ->whereNull('deleted_at')
             ->select('id', 'code', 'name', 'description')
             ->get();
 
@@ -250,7 +251,7 @@ class VehicleController extends Controller
             return null;
         }
 
-        $query = ServiceType::query();
+        $query = ServiceType::publicContext();
         if (Str::isUuid($serviceTypeValue)) {
             $query->where('id', $serviceTypeValue);
         } else {

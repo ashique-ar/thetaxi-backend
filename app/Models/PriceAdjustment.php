@@ -143,16 +143,15 @@ class PriceAdjustment extends BaseModel
 
     public function isApplicableForScope($serviceTypeId = null, $vehicleGroupId = null): bool
     {
-        switch ($this->scope_type) {
-            case 'global':
-                return true;
-            case 'service':
-                return $this->service_type_id == $serviceTypeId;
-            case 'vehicle_group':
-                return $this->vehicle_group_id == $vehicleGroupId;
-            default:
-                return false;
+        if ($this->service_type_id && $this->service_type_id != $serviceTypeId) {
+            return false;
         }
+
+        if ($this->vehicle_group_id && $this->vehicle_group_id != $vehicleGroupId) {
+            return false;
+        }
+
+        return true;
     }
 
     public function canBeApplied($serviceTypeId = null, $vehicleGroupId = null, $date = null): bool
@@ -225,21 +224,30 @@ class PriceAdjustment extends BaseModel
         return self::active()
             ->validForDate($date)
             ->withinUsageLimit()
-            ->where(function ($query) use ($serviceTypeId, $vehicleGroupId) {
-                $query->where('scope_type', 'global')
-                    ->orWhere(function ($q) use ($serviceTypeId) {
-                        if ($serviceTypeId) {
-                            $q->where('scope_type', 'service')
-                                ->where('service_type_id', $serviceTypeId);
-                        }
-                    })
-                    ->orWhere(function ($q) use ($vehicleGroupId) {
-                        if ($vehicleGroupId) {
-                            $q->where('scope_type', 'vehicle_group')
-                                ->where('vehicle_group_id', $vehicleGroupId);
-                        }
-                    });
+            ->when($serviceTypeId, function ($query) use ($serviceTypeId) {
+                $query->where(function ($q) use ($serviceTypeId) {
+                    $q->whereNull('service_type_id')
+                        ->orWhere('service_type_id', $serviceTypeId);
+                });
+            }, function ($query) {
+                $query->whereNull('service_type_id');
             })
+            ->when($vehicleGroupId, function ($query) use ($vehicleGroupId) {
+                $query->where(function ($q) use ($vehicleGroupId) {
+                    $q->whereNull('vehicle_group_id')
+                        ->orWhere('vehicle_group_id', $vehicleGroupId);
+                });
+            }, function ($query) {
+                $query->whereNull('vehicle_group_id');
+            })
+            ->orderByRaw('
+                CASE
+                    WHEN service_type_id IS NOT NULL AND vehicle_group_id IS NOT NULL THEN 1
+                    WHEN service_type_id IS NOT NULL AND vehicle_group_id IS NULL THEN 2
+                    WHEN service_type_id IS NULL AND vehicle_group_id IS NOT NULL THEN 3
+                    ELSE 4
+                END
+            ')
             ->orderBy('adjustment_type', 'desc') // Markups first, then discounts
             ->orderBy('created_at', 'desc')
             ->get();

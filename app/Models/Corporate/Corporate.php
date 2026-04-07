@@ -41,7 +41,8 @@ class Corporate extends BaseModel
 
     public function vehicleGroups()
     {
-        return $this->belongsToMany(VehicleGroup::class, 'corporate_vehicle_groups', 'corporate_id', 'vehicle_group_id');
+        return $this->belongsToMany(VehicleGroup::class, 'corporate_vehicle_groups', 'corporate_id', 'vehicle_group_id')
+            ->withInactive();
     }
 
     public function rateCharts()

@@ -7,39 +7,44 @@ use App\Models\Service\ServiceType;
 use App\Http\Requests\ServiceType\CreateServiceTypeRequest;
 use App\Http\Requests\ServiceType\UpdateServiceTypeRequest;
 use App\Http\Resources\ServiceTypeResource;
+use App\Services\ServiceTypeCloneService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Str;
 
 class ServiceTypeController extends Controller
 {
-    public function __construct()
+    public function __construct(private readonly ServiceTypeCloneService $cloneService)
     {
         $this->middleware('permission:service-types.view')->only(['index','show']);
-        $this->middleware('permission:service-types.create')->only(['store']);
+        $this->middleware('permission:service-types.create')->only(['store', 'clone']);
         $this->middleware('permission:service-types.edit')->only(['update']);
         $this->middleware('permission:service-types.delete')->only(['destroy']);
     }
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        $q = ServiceType::withInactive();
-        if ($request->filled('search')) {
-            $q->where('name','like','%'.$request->search.'%')
-              ->orWhere('code','like','%'.$request->search.'%');
+        [$context, $ownerType, $ownerId] = $this->resolveScope($request);
+        $q = $this->buildScopedIndexQuery($request, $context, $ownerType, $ownerId);
+
+        $fallbackContext = (string) $request->input('fallback_context', '');
+        if ($fallbackContext !== '' && !(clone $q)->exists()) {
+            [$fallbackContext, $fallbackOwnerType, $fallbackOwnerId] = $this->resolveFallbackScope($request);
+            $q = $this->buildScopedIndexQuery($request, $fallbackContext, $fallbackOwnerType, $fallbackOwnerId);
         }
-        
-        // Only apply is_active filter if explicitly set
-        if ($request->filled('is_active') && $request->is_active !== '' && $request->is_active !== 'all') {
-            $q->where('is_active', $request->boolean('is_active'));
-        }
-        
+
         return ServiceTypeResource::collection($q->paginate($request->per_page ?? 15));
     }
 
     public function store(CreateServiceTypeRequest $request): JsonResponse
     {
         $data = $request->validated();
+        [$context, $ownerType, $ownerId] = $this->resolveScope($request);
+        $data['context'] = $data['context'] ?? $context;
+        $data['owner_type'] = $data['owner_type'] ?? $ownerType;
+        $data['owner_id'] = $data['owner_id'] ?? $ownerId;
+        $data['slug'] = $data['slug'] ?? Str::slug($data['code']);
         $data['created_user_id'] = $request->user()->id;
         $svc = ServiceType::create($data);
 
@@ -61,19 +66,30 @@ class ServiceTypeController extends Controller
     public function update(UpdateServiceTypeRequest $request, ServiceType $serviceType): JsonResponse
     {
         $data = $request->validated();
+        [$context, $ownerType, $ownerId] = $this->resolveScope($request, $serviceType);
+        $data['context'] = $data['context'] ?? $context;
+        $data['owner_type'] = $data['owner_type'] ?? $ownerType;
+        $data['owner_id'] = $data['owner_id'] ?? $ownerId;
         $data['updated_user_id'] = $request->user()->id;
         $serviceType->update($data);
 
-        if (ServiceType::where('code', $serviceType->code)->where('id', '!=', $serviceType->id)->exists()) {
+        if (
+            ServiceType::where('code', $serviceType->code)
+                ->where('context', $serviceType->context)
+                ->where('owner_type', $serviceType->owner_type)
+                ->where('owner_id', $serviceType->owner_id)
+                ->where('id', '!=', $serviceType->id)
+                ->exists()
+        ) {
             return response()->json([
                 'status' => 'error',
                 'message' => 'Service type code must be unique.',
             ], 422);
         }
-        // Format the code to be lowercase and replace spaces with underscores
-        if (!isset($data['code']) || $data['code'] !== $serviceType->code) {
-            $serviceType->code = strtolower(str_replace(' ', '_', $serviceType->code));
-        }   
+        $serviceType->code = strtolower(str_replace(' ', '_', $serviceType->code));
+        if (!$serviceType->slug) {
+            $serviceType->slug = Str::slug($serviceType->code);
+        }
         $serviceType->save();
         return response()->json([
             'status'=>'success',
@@ -102,5 +118,78 @@ class ServiceTypeController extends Controller
             'status'=>'success',
             'message'=>'Service type deleted'
         ]);
+    }
+
+    public function clone(Request $request, ServiceType $serviceType): JsonResponse
+    {
+        $payload = $request->validate([
+            'code' => ['required', 'string', 'max:50'],
+            'name' => ['nullable', 'string', 'max:255'],
+            'slug' => ['nullable', 'string', 'max:255'],
+            'context' => ['nullable', 'string', 'max:50'],
+            'owner_type' => ['nullable', 'string', 'max:100'],
+            'owner_id' => ['nullable', 'string', 'max:100'],
+        ]);
+
+        [$context, $ownerType, $ownerId] = $this->resolveScope($request, $serviceType);
+        $payload['context'] = $payload['context'] ?? $context;
+        $payload['owner_type'] = $payload['owner_type'] ?? $ownerType;
+        $payload['owner_id'] = $payload['owner_id'] ?? $ownerId;
+
+        $cloned = $this->cloneService->clone($serviceType, $payload, $request->user()?->id);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Service type cloned successfully',
+            'data' => ['service_type' => new ServiceTypeResource($cloned)],
+        ], 201);
+    }
+
+    private function resolveScope(Request $request, ?ServiceType $serviceType = null): array
+    {
+        $context = (string) $request->input('context', $serviceType?->context ?? 'portal');
+        $ownerType = (string) $request->input('owner_type', $serviceType?->owner_type ?? '');
+        $ownerId = (string) $request->input('owner_id', $serviceType?->owner_id ?? '');
+
+        if ($context === 'corporate') {
+            $ownerType = $ownerType !== '' ? $ownerType : 'corporate';
+        }
+
+        return [$context, $ownerType, $ownerId];
+    }
+
+    private function resolveFallbackScope(Request $request): array
+    {
+        $context = (string) $request->input('fallback_context', 'portal');
+        $ownerType = (string) $request->input('fallback_owner_type', '');
+        $ownerId = (string) $request->input('fallback_owner_id', '');
+
+        if ($context === 'corporate') {
+            $ownerType = $ownerType !== '' ? $ownerType : 'corporate';
+        }
+
+        return [$context, $ownerType, $ownerId];
+    }
+
+    private function buildScopedIndexQuery(Request $request, string $context, string $ownerType, string $ownerId)
+    {
+        $query = ServiceType::withInactive();
+
+        if ($context !== 'all') {
+            $query->forContext($context, $ownerType, $ownerId);
+        }
+
+        if ($request->filled('search')) {
+            $query->where(function ($builder) use ($request) {
+                $builder->where('name', 'like', '%' . $request->search . '%')
+                    ->orWhere('code', 'like', '%' . $request->search . '%');
+            });
+        }
+
+        if ($request->filled('is_active') && $request->is_active !== '' && $request->is_active !== 'all') {
+            $query->where('is_active', $request->boolean('is_active'));
+        }
+
+        return $query;
     }
 }

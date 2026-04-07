@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Models\UserContext;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Models\Role;
 
@@ -62,7 +63,39 @@ class CorporateService
 
     public function assignVehicleGroups(Corporate $corporate, array $vehicleGroupIds): void
     {
-        $corporate->vehicleGroups()->sync($vehicleGroupIds);
+        $vehicleGroupIds = collect($vehicleGroupIds)
+            ->filter(fn ($id) => is_string($id) && trim($id) !== '')
+            ->map(fn ($id) => trim($id))
+            ->unique()
+            ->values()
+            ->all();
+
+        DB::transaction(function () use ($corporate, $vehicleGroupIds) {
+            DB::table('corporate_vehicle_groups')
+                ->where('corporate_id', $corporate->id)
+                ->whereNotIn('vehicle_group_id', $vehicleGroupIds ?: ['__none__'])
+                ->delete();
+
+            $existingVehicleGroupIds = DB::table('corporate_vehicle_groups')
+                ->where('corporate_id', $corporate->id)
+                ->pluck('vehicle_group_id')
+                ->all();
+
+            $newVehicleGroupIds = array_values(array_diff($vehicleGroupIds, $existingVehicleGroupIds));
+
+            if (!empty($newVehicleGroupIds)) {
+                $timestamp = now();
+                $rows = array_map(fn ($vehicleGroupId) => [
+                    'id' => (string) Str::uuid(),
+                    'corporate_id' => $corporate->id,
+                    'vehicle_group_id' => $vehicleGroupId,
+                    'created_at' => $timestamp,
+                    'updated_at' => $timestamp,
+                ], $newVehicleGroupIds);
+
+                DB::table('corporate_vehicle_groups')->insert($rows);
+            }
+        });
 
         $this->logAudit('assign_vehicle_groups', 'Corporate', $corporate->id, [
             'vehicle_group_ids' => $vehicleGroupIds,

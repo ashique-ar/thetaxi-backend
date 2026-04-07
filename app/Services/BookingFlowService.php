@@ -7,6 +7,7 @@ use App\Models\Booking\BookingApproval;
 use App\Models\Booking\BookingAddon;
 use App\Models\Booking\BookingItem;
 use App\Models\Booking\BookingVariableCustomization;
+use App\Models\Corporate\Corporate;
 use App\Models\Vehicle\VehicleAddon;
 use App\Models\Vehicle\VehicleGroup;
 use App\Models\Vehicle\Vehicle;
@@ -659,7 +660,9 @@ class BookingFlowService
             });
         };
 
-        $query = VehicleGroup::query();
+        $query = $isPublic
+            ? VehicleGroup::query()
+            : VehicleGroup::withInactive();
 
 
         if ($isPublic) {
@@ -750,6 +753,28 @@ class BookingFlowService
         }
         if (!empty($gradeId)) {
             $baseQuery->where('grade_id', $gradeId);
+        }
+
+        $corporateAccountId = $params['corporate_account_id'] ?? null;
+        if (!empty($corporateAccountId)) {
+            $corporate = Corporate::with('vehicleGroups:id')->find($corporateAccountId);
+            $assignedVehicleGroupIds = $corporate?->vehicleGroups?->pluck('id')->filter()->values()->all() ?? [];
+
+            if (empty($assignedVehicleGroupIds)) {
+                return [
+                    'data' => [],
+                    'pagination' => [
+                        'current_page' => $page,
+                        'per_page' => $perPage,
+                        'total' => 0,
+                        'last_page' => 1,
+                        'from' => null,
+                        'to' => null,
+                    ],
+                ];
+            }
+
+            $baseQuery->whereIn('id', $assignedVehicleGroupIds);
         }
 
         // Get total count for pagination

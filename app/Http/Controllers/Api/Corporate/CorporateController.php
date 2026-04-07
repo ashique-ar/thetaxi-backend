@@ -123,7 +123,7 @@ class CorporateController extends Controller
     public function assignVehicleGroups(Request $request, Corporate $corporate): JsonResponse
     {
         $request->validate([
-            'vehicle_group_ids'   => ['required', 'array', 'min:1'],
+            'vehicle_group_ids'   => ['required', 'array'],
             'vehicle_group_ids.*' => ['uuid', 'exists:vehicle_groups,id'],
         ]);
 

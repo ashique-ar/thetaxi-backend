@@ -390,8 +390,11 @@ class CartController extends Controller
             );
             try {
                 // Get service type
-                $serviceTypeModel = ServiceType::where('code', $serviceType)
-                    ->orWhere('name', $serviceType)
+                $serviceTypeModel = ServiceType::publicContext()
+                    ->where(function ($query) use ($serviceType) {
+                        $query->where('code', $serviceType)
+                            ->orWhere('name', $serviceType);
+                    })
                     ->first();
                 Log::info('Service type lookup', [
                     'service_type' => $serviceType,
@@ -999,8 +1002,11 @@ class CartController extends Controller
     {
         try {
             $serviceType = $request->get('service_type');
-            $serviceTypeId = ServiceType::where('code', $serviceType)
-                ->orWhere('name', $serviceType)
+            $serviceTypeId = ServiceType::publicContext()
+                ->where(function ($query) use ($serviceType) {
+                    $query->where('code', $serviceType)
+                        ->orWhere('name', $serviceType);
+                })
                 ->value('id');
             $addons = $this->cartService->getAvailableAddons($serviceTypeId);
 

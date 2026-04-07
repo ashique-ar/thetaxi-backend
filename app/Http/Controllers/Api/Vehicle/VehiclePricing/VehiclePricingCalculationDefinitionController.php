@@ -395,10 +395,15 @@ class VehiclePricingCalculationDefinitionController extends Controller
     /**
      * Get available service types for dropdown.
      */
-    public function getServiceTypes(): JsonResponse
+    public function getServiceTypes(Request $request): JsonResponse
     {
         try {
-            $serviceTypes = ServiceType::where('is_active', true)
+            $context = (string) $request->input('context', 'portal');
+            $ownerType = (string) $request->input('owner_type', ($context === 'corporate' ? 'corporate' : ''));
+            $ownerId = (string) $request->input('owner_id', '');
+
+            $serviceTypes = ServiceType::forContext($context, $ownerType, $ownerId)
+                ->where('is_active', true)
                 ->select('id', 'name', 'description')
                 ->orderBy('name')
                 ->get();

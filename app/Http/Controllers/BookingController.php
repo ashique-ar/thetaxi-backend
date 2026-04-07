@@ -124,7 +124,8 @@ class BookingController extends Controller
      */
     protected function resolveServiceType(string $code): ?ServiceType
     {
-        $serviceType = ServiceType::where('code', $code)
+        $serviceType = ServiceType::publicContext()
+            ->where('code', $code)
             ->where('is_active', true)
             ->first();
 
@@ -158,7 +159,7 @@ class BookingController extends Controller
             return null;
         }
 
-        $candidateServiceTypes = ServiceType::query()
+        $candidateServiceTypes = ServiceType::publicContext()
             ->whereIn('code', $candidateCodes)
             ->where('is_active', true)
             ->get()
@@ -1951,7 +1952,8 @@ class BookingController extends Controller
     {
         try {
             // Get all active service types from database
-            $serviceTypes = ServiceType::where('is_active', true)
+            $serviceTypes = ServiceType::publicContext()
+                ->where('is_active', true)
                 ->get(['id', 'name', 'slug', 'description', 'code'])
                 ->groupBy('code')
                 ->toArray();
@@ -1982,7 +1984,9 @@ class BookingController extends Controller
     public function getServiceFormConfig(Request $request, string $serviceCode)
     {
         try {
-            $serviceType = ServiceType::where('code', $serviceCode)->first();
+            $serviceType = ServiceType::publicContext()
+                ->where('code', $serviceCode)
+                ->first();
 
             if (!$serviceType) {
                 return response()->json([

@@ -361,6 +361,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('website-settings/appearance/settings', [WebsiteSettingController::class, 'appearance']);
         Route::apiResource('vip-types', VipTypeController::class);
         Route::apiResource('service-types', ServiceTypeController::class);
+        Route::post('service-types/{serviceType}/clone', [ServiceTypeController::class, 'clone']);
         Route::apiResource('service-packages', ServicePackageController::class);
 
         // Service Form Configuration

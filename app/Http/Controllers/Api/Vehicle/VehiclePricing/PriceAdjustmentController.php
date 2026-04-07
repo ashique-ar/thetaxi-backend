@@ -15,6 +15,24 @@ use Carbon\Carbon;
 
 class PriceAdjustmentController extends Controller
 {
+    private function normalizeAdjustmentPayload(Request $request): array
+    {
+        $payload = $request->all();
+        $payload['applies_to'] = $payload['applies_to'] ?? 'total_price';
+        if (($payload['scope'] ?? null) === 'service_vehicle_group') {
+            $payload['scope'] = 'vehicle_group';
+        }
+
+        if (($payload['scope'] ?? null) === 'global') {
+            $payload['service_type_id'] = null;
+            $payload['vehicle_group_id'] = null;
+        } elseif (($payload['scope'] ?? null) === 'service') {
+            $payload['vehicle_group_id'] = null;
+        }
+
+        return $payload;
+    }
+
     /**
      * Display a listing of price adjustments
      */
@@ -24,7 +42,7 @@ class PriceAdjustmentController extends Controller
             'page' => 'integer|min:1',
             'per_page' => 'integer|min:1|max:100',
             'search' => 'string|max:255',
-            'scope' => 'in:global,service,vehicle_group',
+            'scope' => 'in:global,service,vehicle_group,service_vehicle_group',
             'service_type_id' => 'uuid|exists:service_types,id',
             'vehicle_group_id' => 'uuid|exists:vehicle_groups,id',
             'adjustment_type' => 'in:percentage,fixed_amount',
@@ -47,15 +65,78 @@ class PriceAdjustmentController extends Controller
 
             // Apply filters
             if ($request->filled('search')) {
-                $search = $request->search;
+                $search = trim((string) $request->search);
+                $normalizedSearch = mb_strtolower($search);
+
                 $query->where(function (Builder $q) use ($search) {
                     $q->where('name', 'like', "%{$search}%")
                         ->orWhere('description', 'like', "%{$search}%");
+                })->where(function (Builder $q) use ($search, $normalizedSearch) {
+                    $q->where(function (Builder $sub) use ($search) {
+                        $sub->where('name', 'like', "%{$search}%")
+                            ->orWhere('description', 'like', "%{$search}%")
+                            ->orWhereHas('serviceType', function (Builder $serviceQuery) use ($search) {
+                                $serviceQuery->where('name', 'like', "%{$search}%")
+                                    ->orWhere('code', 'like', "%{$search}%");
+                            })
+                            ->orWhereHas('vehicleGroup', function (Builder $groupQuery) use ($search) {
+                                $groupQuery->where('name', 'like', "%{$search}%")
+                                    ->orWhere('description', 'like', "%{$search}%");
+                            });
+                    });
+
+                    if (
+                        str_contains($normalizedSearch, 'global') ||
+                        str_contains($normalizedSearch, 'all services') ||
+                        $normalizedSearch === 'all'
+                    ) {
+                        $q->orWhere(function (Builder $scopeQuery) {
+                            $scopeQuery->whereNull('service_type_id')
+                                ->whereNull('vehicle_group_id');
+                        });
+                    }
+
+                    if (
+                        str_contains($normalizedSearch, 'service') &&
+                        !str_contains($normalizedSearch, 'vehicle')
+                    ) {
+                        $q->orWhere(function (Builder $scopeQuery) {
+                            $scopeQuery->whereNotNull('service_type_id')
+                                ->whereNull('vehicle_group_id');
+                        });
+                    }
+
+                    if (
+                        str_contains($normalizedSearch, 'vehicle group') &&
+                        !str_contains($normalizedSearch, 'service')
+                    ) {
+                        $q->orWhere(function (Builder $scopeQuery) {
+                            $scopeQuery->whereNull('service_type_id')
+                                ->whereNotNull('vehicle_group_id');
+                        });
+                    }
+
+                    if (
+                        str_contains('service vehicle group service + vehicle group vehicle group in service type', $normalizedSearch) ||
+                        str_contains($normalizedSearch, 'service vehicle') ||
+                        str_contains($normalizedSearch, 'vehicle group in')
+                    ) {
+                        $q->orWhere(function (Builder $scopeQuery) {
+                            $scopeQuery->whereNotNull('service_type_id')
+                                ->whereNotNull('vehicle_group_id');
+                        });
+                    }
                 });
             }
 
             if ($request->filled('scope')) {
-                $query->where('scope', $request->scope);
+                if ($request->scope === 'service_vehicle_group') {
+                    $query->where('scope', 'vehicle_group')
+                        ->whereNotNull('service_type_id')
+                        ->whereNotNull('vehicle_group_id');
+                } else {
+                    $query->where('scope', $request->scope);
+                }
             }
 
             if ($request->filled('service_type_id')) {
@@ -117,7 +198,8 @@ class PriceAdjustmentController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
-        $validator = Validator::make($request->all(), PriceAdjustment::validationRules());
+        $payload = $this->normalizeAdjustmentPayload($request);
+        $validator = Validator::make($payload, PriceAdjustment::validationRules());
 
         if ($validator->fails()) {
             return response()->json([
@@ -180,7 +262,8 @@ class PriceAdjustmentController extends Controller
      */
     public function update(Request $request, string $id): JsonResponse
     {
-        $validator = Validator::make($request->all(), PriceAdjustment::validationRules());
+        $payload = $this->normalizeAdjustmentPayload($request);
+        $validator = Validator::make($payload, PriceAdjustment::validationRules());
 
         if ($validator->fails()) {
             return response()->json([
@@ -400,10 +483,15 @@ class PriceAdjustmentController extends Controller
     /**
      * Get service types for dropdown
      */
-    public function getServiceTypes(): JsonResponse
+    public function getServiceTypes(Request $request): JsonResponse
     {
         try {
-            $serviceTypes = ServiceType::select('id', 'name', 'code')
+            $context = (string) $request->input('context', 'public');
+            $ownerType = (string) $request->input('owner_type', ($context === 'corporate' ? 'corporate' : ''));
+            $ownerId = (string) $request->input('owner_id', '');
+
+            $serviceTypes = ServiceType::forContext($context, $ownerType, $ownerId)
+                ->select('id', 'name', 'code', 'context', 'owner_type', 'owner_id')
                 ->where('is_active', true)
                 ->orderBy('name')
                 ->get();
