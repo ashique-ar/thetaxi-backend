@@ -21,7 +21,7 @@ use Illuminate\Support\Facades\DB;
  */
 class LocationService
 {
-    private const MIN_UPDATE_INTERVAL_SECONDS = 1;
+    private const MIN_UPDATE_INTERVAL_SECONDS = 0;
 
     public function __construct(
         private ?WaitingTimeService $waitingTimeService = null
