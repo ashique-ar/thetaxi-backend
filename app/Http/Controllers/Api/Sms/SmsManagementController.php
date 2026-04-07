@@ -1,0 +1,262 @@
+<?php
+
+namespace App\Http\Controllers\Api\Sms;
+
+use App\Http\Controllers\Controller;
+use App\Models\Sms\SmsCampaign;
+use App\Models\Sms\SmsMessage;
+use App\Services\Sms\SmsService;
+use App\Services\Sms\SmsSettingsService;
+use App\Services\WebsiteSettingsService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Validator;
+use Throwable;
+
+class SmsManagementController extends Controller
+{
+    public function __construct(
+        private SmsService $smsService,
+        private SmsSettingsService $smsSettingsService,
+        private WebsiteSettingsService $websiteSettingsService
+    ) {
+        $this->middleware('permission:communication.view')->only([
+            'overview',
+            'settings',
+            'messages',
+            'campaigns',
+            'showCampaign',
+            'balance',
+        ]);
+        $this->middleware('permission:communication.manage')->only([
+            'updateSettings',
+            'send',
+            'sendTest',
+            'createCampaign',
+            'launchCampaign',
+            'retryMessage',
+        ]);
+    }
+
+    public function overview(): JsonResponse
+    {
+        return response()->json([
+            'status' => 'success',
+            'data' => $this->smsService->getOverview(),
+        ]);
+    }
+
+    public function settings(): JsonResponse
+    {
+        return response()->json([
+            'status' => 'success',
+            'data' => $this->smsSettingsService->getSettings(),
+        ]);
+    }
+
+    public function updateSettings(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'sms_enabled' => ['required', 'boolean'],
+            'sms_provider' => ['required', 'string'],
+            'sms_default_sender_mask' => ['nullable', 'string', 'max:50'],
+            'sms_allow_mask_override' => ['required', 'boolean'],
+            'sms_queue_enabled' => ['required', 'boolean'],
+            'sms_bulk_chunk_size' => ['required', 'integer', 'min:1', 'max:1000'],
+            'sms_webhook_secret' => ['nullable', 'string', 'max:255'],
+            'sms_booking_status_enabled' => ['required', 'boolean'],
+            'sms_esms_base_url' => ['nullable', 'url'],
+            'sms_esms_username' => ['nullable', 'string', 'max:255'],
+            'sms_esms_password' => ['nullable', 'string', 'max:255'],
+            'sms_esms_api_key' => ['nullable', 'string', 'max:5000'],
+            'sms_esms_delivery_callback_url' => ['nullable', 'url'],
+        ]);
+
+        foreach ($data as $type => $value) {
+            $this->websiteSettingsService->set($type, $value);
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'SMS settings updated successfully',
+            'data' => $this->smsSettingsService->getSettings(),
+        ]);
+    }
+
+    public function send(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'message' => ['required', 'string'],
+            'sender_mask' => ['nullable', 'string', 'max:50'],
+            'channel' => ['nullable', 'string', 'in:single,bulk,transactional,test'],
+            'recipient' => ['nullable', 'string'],
+            'recipients' => ['nullable', 'array'],
+            'recipients.*' => ['string'],
+            'context_type' => ['nullable', 'string'],
+            'context_id' => ['nullable', 'string'],
+            'template_key' => ['nullable', 'string'],
+            'scheduled_at' => ['nullable', 'date'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation failed',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $data = $validator->validated();
+        $messages = !empty($data['recipient'])
+            ? [$this->smsService->queueSingleMessage($data)]
+            : $this->smsService->queueBulkMessages($data)->all();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'SMS queued successfully',
+            'data' => ['messages' => $messages],
+        ], 201);
+    }
+
+    public function sendTest(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'recipient' => ['required', 'string'],
+            'message' => ['nullable', 'string'],
+            'sender_mask' => ['nullable', 'string', 'max:50'],
+        ]);
+
+        $message = $this->smsService->queueSingleMessage([
+            'recipient' => $data['recipient'],
+            'message' => $data['message'] ?: 'TheTaxi SMS test message',
+            'sender_mask' => $data['sender_mask'] ?? null,
+            'channel' => 'test',
+            'template_key' => 'sms.test',
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Test SMS queued successfully',
+            'data' => ['message' => $message],
+        ], 201);
+    }
+
+    public function messages(Request $request): JsonResponse
+    {
+        $messages = $this->smsService->getMessages($request->all());
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $messages->items(),
+            'meta' => [
+                'current_page' => $messages->currentPage(),
+                'last_page' => $messages->lastPage(),
+                'per_page' => $messages->perPage(),
+                'total' => $messages->total(),
+            ],
+        ]);
+    }
+
+    public function retryMessage(SmsMessage $smsMessage): JsonResponse
+    {
+        return response()->json([
+            'status' => 'success',
+            'message' => 'SMS re-queued successfully',
+            'data' => [
+                'message' => $this->smsService->retryFailedMessage($smsMessage),
+            ],
+        ]);
+    }
+
+    public function campaigns(Request $request): JsonResponse
+    {
+        $campaigns = $this->smsService->getCampaigns($request->all());
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $campaigns->items(),
+            'meta' => [
+                'current_page' => $campaigns->currentPage(),
+                'last_page' => $campaigns->lastPage(),
+                'per_page' => $campaigns->perPage(),
+                'total' => $campaigns->total(),
+            ],
+        ]);
+    }
+
+    public function createCampaign(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'message' => ['required', 'string'],
+            'sender_mask' => ['nullable', 'string', 'max:50'],
+            'audience_type' => ['required', 'string', 'in:manual,customers,drivers,users'],
+            'audience_filters' => ['nullable', 'array'],
+            'recipients' => ['nullable', 'array'],
+            'recipients.*' => ['string'],
+            'scheduled_at' => ['nullable', 'date'],
+            'launch_now' => ['nullable', 'boolean'],
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'SMS campaign created successfully',
+            'data' => [
+                'campaign' => $this->smsService->createCampaign($data),
+            ],
+        ], 201);
+    }
+
+    public function showCampaign(SmsCampaign $smsCampaign): JsonResponse
+    {
+        $smsCampaign->load('messages');
+
+        return response()->json([
+            'status' => 'success',
+            'data' => ['campaign' => $smsCampaign],
+        ]);
+    }
+
+    public function launchCampaign(SmsCampaign $smsCampaign): JsonResponse
+    {
+        $this->smsService->scheduleCampaignLaunch($smsCampaign);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Campaign launch scheduled successfully',
+            'data' => ['campaign' => $smsCampaign->fresh()],
+        ]);
+    }
+
+    public function balance(): JsonResponse
+    {
+        try {
+            return response()->json([
+                'status' => 'success',
+                'data' => $this->smsService->getBalance(),
+            ]);
+        } catch (Throwable $exception) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to fetch SMS provider balance',
+                'error' => $exception->getMessage(),
+            ], 422);
+        }
+    }
+
+    public function deliveryCallback(Request $request): JsonResponse
+    {
+        $secret = $this->smsSettingsService->getSettings()['webhook_secret'];
+        if ($secret && $request->query('secret') !== $secret) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Invalid webhook secret',
+            ], 403);
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $this->smsService->markDelivery($request->all()),
+        ]);
+    }
+}

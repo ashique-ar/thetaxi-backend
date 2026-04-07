@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Driver\Mobile;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Driver\Mobile\BulkLocationUpdateRequest;
 use App\Http\Requests\Driver\Mobile\LocationUpdateRequest;
 use App\Http\Resources\Driver\RoutePointResource;
 use App\Models\Driver\DriverSession;
@@ -205,6 +206,60 @@ class LocationController extends Controller
                 'status' => 'error',
                 'message' => 'Failed to retrieve location history',
                 'error_code' => 'LOCATION_HISTORY_FAILED',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Upload buffered location points collected while the device was offline.
+     *
+     * Saves non-duplicate points and skips entries where recorded_at + latitude
+     * + longitude are identical to an existing or repeated point.
+     */
+    public function bulkUpdate(BulkLocationUpdateRequest $request): JsonResponse
+    {
+        try {
+            $driver = $this->authService->getDriver($request->user());
+
+            if (!$driver) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'User is not registered as a driver',
+                    'error_code' => 'LOCATION_NOT_DRIVER'
+                ], 403);
+            }
+
+            $result = $this->locationService->syncBufferedLocations(
+                $driver,
+                $request->validated()['locations']
+            );
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Buffered locations processed successfully',
+                'data' => [
+                    'saved_count' => $result['saved_count'],
+                    'skipped_count' => $result['skipped_count'],
+                    'duplicate_count' => $result['duplicate_count'],
+                    'latest_saved_point' => $result['latest_saved_point']
+                        ? new RoutePointResource($result['latest_saved_point'])
+                        : null,
+                ],
+            ]);
+        } catch (\Exception $e) {
+            if ($e->getMessage() === 'No active session') {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'No active session',
+                    'error_code' => 'LOCATION_NO_SESSION'
+                ], 400);
+            }
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to process buffered locations',
+                'error_code' => 'LOCATION_BULK_UPDATE_FAILED',
                 'error' => $e->getMessage()
             ], 500);
         }

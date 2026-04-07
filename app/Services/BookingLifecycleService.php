@@ -435,7 +435,7 @@ class BookingLifecycleService
 
         foreach ($driverAssignments as $assignment) {
             try {
-                $this->notificationTriggerService->sendAssignmentNotification($assignment);
+                $this->notificationTriggerService->processAssignmentNotificationAttempt($assignment, 1);
             } catch (\Throwable $exception) {
                 Log::warning('Failed to send dispatch notification to driver app', [
                     'booking_id' => $bookingId,

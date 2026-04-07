@@ -55,7 +55,9 @@ class AuthController extends Controller
             // Clear rate limit on successful login
             $request->clearRateLimit();
 
-            // Get current or nearest upcoming assignment for the driver
+            // Only return a truly current assignment here. Upcoming hires are
+            // available from the assignments list endpoint and should not be
+            // treated as current before their scheduled time.
             $driver = $result['driver'];
             $activeAssignment = $this->assignmentService->getCurrentAssignment($driver);
 

@@ -775,6 +775,30 @@ class WebsiteSettingsService
     }
 
     /**
+     * Get all SMS settings
+     */
+    public function getSmsSettings(): array
+    {
+        $types = [
+            'sms_enabled',
+            'sms_provider',
+            'sms_default_sender_mask',
+            'sms_allow_mask_override',
+            'sms_queue_enabled',
+            'sms_bulk_chunk_size',
+            'sms_webhook_secret',
+            'sms_booking_status_enabled',
+            'sms_esms_base_url',
+            'sms_esms_username',
+            'sms_esms_password',
+            'sms_esms_api_key',
+            'sms_esms_delivery_callback_url',
+        ];
+
+        return $this->getMultiple($types);
+    }
+
+    /**
      * Get all booking settings
      */
     public function getBookingSettings(): array
@@ -1039,6 +1063,7 @@ class WebsiteSettingsService
             'booking' => $this->getBookingSettings(),
             'security' => $this->getSecuritySettings(),
             'email' => $this->getEmailSettings(),
+            'sms' => $this->getSmsSettings(),
             'appearance' => $this->getAppearanceSettings(),
             'branding' => $this->getBrandingSettings(),
         ];

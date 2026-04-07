@@ -34,6 +34,7 @@ use App\Http\Controllers\Api\PhoneCallController;
 use App\Http\Controllers\Api\ServiceTypeController;
 use App\Http\Controllers\Api\Service\ServicePackageController;
 use App\Http\Controllers\Api\Service\ServiceFormConfigController;
+use App\Http\Controllers\Api\Sms\SmsManagementController;
 use App\Http\Controllers\Api\AirportController;
 use App\Http\Controllers\Api\StateController;
 use App\Http\Controllers\Api\Vehicle\VehicleAddonController;
@@ -157,6 +158,8 @@ Route::prefix('public')->group(function () {
     Route::get('branding', [\App\Http\Controllers\Api\Website\WebsiteSettingController::class, 'branding']);
 });
 
+Route::match(['get', 'post'], 'sms/webhooks/delivery-report', [SmsManagementController::class, 'deliveryCallback']);
+
 /*
 |--------------------------------------------------------------------------
 | User Management Routes
@@ -227,6 +230,21 @@ Route::middleware(['auth:api'])->group(function () {
         Route::put('', [UserController::class, 'updateProfile']);
         Route::post('/change-password', [UserController::class, 'changePassword']);
         Route::put('/status', [UserController::class, 'updateStatus']);
+    });
+
+    Route::prefix('sms')->group(function () {
+        Route::get('overview', [SmsManagementController::class, 'overview']);
+        Route::get('settings', [SmsManagementController::class, 'settings']);
+        Route::put('settings', [SmsManagementController::class, 'updateSettings']);
+        Route::post('send', [SmsManagementController::class, 'send']);
+        Route::post('test', [SmsManagementController::class, 'sendTest']);
+        Route::get('messages', [SmsManagementController::class, 'messages']);
+        Route::post('messages/{smsMessage}/retry', [SmsManagementController::class, 'retryMessage']);
+        Route::get('campaigns', [SmsManagementController::class, 'campaigns']);
+        Route::post('campaigns', [SmsManagementController::class, 'createCampaign']);
+        Route::get('campaigns/{smsCampaign}', [SmsManagementController::class, 'showCampaign']);
+        Route::post('campaigns/{smsCampaign}/launch', [SmsManagementController::class, 'launchCampaign']);
+        Route::get('balance', [SmsManagementController::class, 'balance']);
     });
 
     /*

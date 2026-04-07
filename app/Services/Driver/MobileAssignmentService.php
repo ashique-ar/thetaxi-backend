@@ -104,7 +104,7 @@ class MobileAssignmentService
     {
         $now = Carbon::now();
 
-        $current = $this->baseAssignmentQuery($driver)
+        return $this->baseAssignmentQuery($driver)
             ->whereIn('status', ['active', 'confirmed', 'approved'])
             ->where('assigned_from', '<=', $now)
             ->where(function (Builder $query) use ($now) {
@@ -112,19 +112,6 @@ class MobileAssignmentService
                     ->orWhere('assigned_to', '>=', $now);
             })
             ->orderByDesc('assigned_from')
-            ->first();
-
-        if ($current) {
-            return $current;
-        }
-
-        // Fallback: return the nearest upcoming assignment so mobile can show
-        // newly dispatched hires before start time.
-        return $this->baseAssignmentQuery($driver)
-            ->whereIn('status', ['active', 'pending_approval', 'confirmed', 'approved'])
-            ->whereIn('trip_phase', [TripPhase::ACTIVE, TripPhase::ACCEPTED, TripPhase::PICKUP_ARRIVED, TripPhase::IN_PROGRESS])
-            ->where('assigned_from', '>', $now)
-            ->orderBy('assigned_from')
             ->first();
     }
 

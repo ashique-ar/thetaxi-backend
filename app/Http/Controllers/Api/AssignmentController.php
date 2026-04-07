@@ -367,6 +367,7 @@ class AssignmentController extends Controller
             'latest_point' => null,
             'reference_points' => [
                 'accept' => null,
+                'current_driver' => null,
                 'pickup' => null,
                 'dropoff' => null,
                 'stops' => [],
@@ -479,6 +480,7 @@ class AssignmentController extends Controller
                     'latest_point' => $latestPoint,
                     'reference_points' => [
                         'accept' => null,
+                        'current_driver' => null,
                         'pickup' => null,
                         'dropoff' => null,
                         'stops' => [],
@@ -505,21 +507,42 @@ class AssignmentController extends Controller
             $stopPoints = $this->extractStopPointsFromBookingItem($bookingItem);
 
             $acceptPoint = null;
-            if ($firstPoint && $this->isValidCoordinate($firstPoint['latitude'] ?? null, $firstPoint['longitude'] ?? null)) {
-                $acceptPoint = [
-                    'label' => 'Driver Accepted',
-                    'latitude' => (float) $firstPoint['latitude'],
-                    'longitude' => (float) $firstPoint['longitude'],
-                    'timestamp' => $tripAssignment->assigned_from?->toIso8601String(),
-                    'source' => 'route_point',
-                ];
-            } elseif ($this->isValidCoordinate($livePayload['latitude'], $livePayload['longitude'])) {
-                $acceptPoint = [
-                    'label' => 'Driver Accepted',
+            if ($tripAssignment->confirmed_at) {
+                if ($firstPoint && $this->isValidCoordinate($firstPoint['latitude'] ?? null, $firstPoint['longitude'] ?? null)) {
+                    $acceptPoint = [
+                        'label' => 'Driver Accepted',
+                        'latitude' => (float) $firstPoint['latitude'],
+                        'longitude' => (float) $firstPoint['longitude'],
+                        'timestamp' => $tripAssignment->confirmed_at->toIso8601String(),
+                        'source' => 'route_point',
+                    ];
+                } elseif ($this->isValidCoordinate($livePayload['latitude'], $livePayload['longitude'])) {
+                    $acceptPoint = [
+                        'label' => 'Driver Accepted',
+                        'latitude' => (float) $livePayload['latitude'],
+                        'longitude' => (float) $livePayload['longitude'],
+                        'timestamp' => $tripAssignment->confirmed_at->toIso8601String(),
+                        'source' => 'driver_live_location',
+                    ];
+                }
+            }
+
+            $currentDriverPoint = null;
+            if ($this->isValidCoordinate($livePayload['latitude'], $livePayload['longitude'])) {
+                $currentDriverPoint = [
+                    'label' => $tripAssignment->confirmed_at ? 'Driver Current Location' : 'Driver Live Location',
                     'latitude' => (float) $livePayload['latitude'],
                     'longitude' => (float) $livePayload['longitude'],
-                    'timestamp' => $tripAssignment->assigned_from?->toIso8601String(),
+                    'timestamp' => $livePayload['last_active_at'],
                     'source' => 'driver_live_location',
+                ];
+            } elseif ($latestPoint && $this->isValidCoordinate($latestPoint['latitude'] ?? null, $latestPoint['longitude'] ?? null)) {
+                $currentDriverPoint = [
+                    'label' => $tripAssignment->confirmed_at ? 'Driver Current Location' : 'Driver Last Known Location',
+                    'latitude' => (float) $latestPoint['latitude'],
+                    'longitude' => (float) $latestPoint['longitude'],
+                    'timestamp' => $latestPoint['recorded_at'] ?? null,
+                    'source' => 'route_point',
                 ];
             }
 
@@ -559,6 +582,7 @@ class AssignmentController extends Controller
 
             $routePayload['reference_points'] = [
                 'accept' => $acceptPoint,
+                'current_driver' => $currentDriverPoint,
                 'pickup' => $pickupReference,
                 'dropoff' => $dropoffReference,
                 'stops' => $stopPoints,
@@ -582,6 +606,13 @@ class AssignmentController extends Controller
 
             $routePayload['reference_points'] = [
                 'accept' => null,
+                'current_driver' => $this->isValidCoordinate($livePayload['latitude'], $livePayload['longitude']) ? [
+                    'label' => 'Driver Live Location',
+                    'latitude' => (float) $livePayload['latitude'],
+                    'longitude' => (float) $livePayload['longitude'],
+                    'timestamp' => $livePayload['last_active_at'],
+                    'source' => 'driver_live_location',
+                ] : null,
                 'pickup' => $pickupPoint ? [
                     ...$pickupPoint,
                     'timestamp' => null,

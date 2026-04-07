@@ -211,48 +211,142 @@ class LocationService
      */
     public function batchUpdateLocations(Driver $driver, array $locations): int
     {
+        return $this->syncBufferedLocations($driver, $locations)['saved_count'];
+    }
+
+    /**
+     * Save buffered location samples uploaded after temporary network issues.
+     *
+     * Duplicate points are skipped when recorded_at + latitude + longitude
+     * match an already stored session point or another point in the same payload.
+     */
+    public function syncBufferedLocations(Driver $driver, array $locations): array
+    {
         $session = $driver->activeSession;
 
         if (!$session) {
             throw new \Exception('No active session');
         }
 
-        $count = 0;
         $activeAssignmentId = $this->getActiveAssignmentId($driver);
+        $normalizedLocations = collect($locations)
+            ->map(function (array $locationData) use ($activeAssignmentId) {
+                $recordedAt = Carbon::parse($locationData['recorded_at']);
 
-        DB::transaction(function () use ($driver, $session, $locations, $activeAssignmentId, &$count) {
-            $now = Carbon::now();
-            $latestLocation = null;
-
-            foreach ($locations as $locationData) {
-                RoutePoint::create([
-                    'session_id' => $session->id,
-                    // Preserve trip linkage for map replay/history when sent in batches.
+                return [
+                    'session_id' => null,
                     'assignment_id' => $locationData['assignment_id'] ?? $activeAssignmentId,
+                    'latitude' => (float) $locationData['latitude'],
+                    'longitude' => (float) $locationData['longitude'],
+                    'altitude' => array_key_exists('altitude', $locationData) ? $locationData['altitude'] : null,
+                    'speed' => array_key_exists('speed', $locationData) ? $locationData['speed'] : null,
+                    'heading' => array_key_exists('heading', $locationData) ? $locationData['heading'] : null,
+                    'accuracy' => array_key_exists('accuracy', $locationData) ? $locationData['accuracy'] : null,
+                    'recorded_at' => $recordedAt,
+                    'dedupe_key' => $this->buildLocationDedupeKey(
+                        $recordedAt,
+                        (float) $locationData['latitude'],
+                        (float) $locationData['longitude']
+                    ),
+                ];
+            })
+            ->sortBy(function (array $locationData) {
+                return $locationData['recorded_at']->timestamp;
+            })
+            ->values();
+
+        if ($normalizedLocations->isEmpty()) {
+            return [
+                'saved_count' => 0,
+                'skipped_count' => 0,
+                'duplicate_count' => 0,
+                'latest_saved_point' => null,
+            ];
+        }
+
+        $recordedAtValues = $normalizedLocations
+            ->map(fn (array $locationData) => $locationData['recorded_at']->format('Y-m-d H:i:s'))
+            ->unique()
+            ->values();
+
+        $existingKeys = RoutePoint::query()
+            ->where('session_id', $session->id)
+            ->whereIn('recorded_at', $recordedAtValues)
+            ->get(['recorded_at', 'latitude', 'longitude'])
+            ->map(fn (RoutePoint $point) => $this->buildLocationDedupeKey(
+                Carbon::parse($point->recorded_at),
+                (float) $point->latitude,
+                (float) $point->longitude
+            ))
+            ->flip();
+
+        $payloadSeenKeys = [];
+        $savedCount = 0;
+        $duplicateCount = 0;
+        $latestSavedPoint = null;
+
+        DB::transaction(function () use (
+            $driver,
+            $session,
+            $normalizedLocations,
+            $existingKeys,
+            &$payloadSeenKeys,
+            &$savedCount,
+            &$duplicateCount,
+            &$latestSavedPoint
+        ) {
+            $now = Carbon::now();
+
+            foreach ($normalizedLocations as $locationData) {
+                $dedupeKey = $locationData['dedupe_key'];
+
+                if (isset($payloadSeenKeys[$dedupeKey]) || $existingKeys->has($dedupeKey)) {
+                    $duplicateCount++;
+                    continue;
+                }
+
+                $payloadSeenKeys[$dedupeKey] = true;
+
+                $routePoint = RoutePoint::create([
+                    'session_id' => $session->id,
+                    'assignment_id' => $locationData['assignment_id'],
                     'latitude' => $locationData['latitude'],
                     'longitude' => $locationData['longitude'],
-                    'altitude' => $locationData['altitude'] ?? null,
-                    'speed' => $locationData['speed'] ?? null,
-                    'heading' => $locationData['heading'] ?? null,
-                    'accuracy' => $locationData['accuracy'] ?? null,
-                    'recorded_at' => $locationData['recorded_at'] ?? $now,
+                    'altitude' => $locationData['altitude'],
+                    'speed' => $locationData['speed'],
+                    'heading' => $locationData['heading'],
+                    'accuracy' => $locationData['accuracy'],
+                    'recorded_at' => $locationData['recorded_at'],
                 ]);
 
-                $latestLocation = $locationData;
-                $count++;
+                $savedCount++;
+                $latestSavedPoint = $routePoint;
             }
 
-            // Update driver with the latest location
-            if ($latestLocation) {
+            if ($latestSavedPoint) {
                 $driver->update([
-                    'current_latitude' => $latestLocation['latitude'],
-                    'current_longitude' => $latestLocation['longitude'],
+                    'current_latitude' => $latestSavedPoint->latitude,
+                    'current_longitude' => $latestSavedPoint->longitude,
                     'last_active_at' => $now,
                 ]);
             }
         });
 
-        return $count;
+        return [
+            'saved_count' => $savedCount,
+            'skipped_count' => $duplicateCount,
+            'duplicate_count' => $duplicateCount,
+            'latest_saved_point' => $latestSavedPoint,
+        ];
+    }
+
+    private function buildLocationDedupeKey(Carbon $recordedAt, float $latitude, float $longitude): string
+    {
+        return implode('|', [
+            $recordedAt->format('Y-m-d H:i:s'),
+            number_format($latitude, 8, '.', ''),
+            number_format($longitude, 8, '.', ''),
+        ]);
     }
 
     /**
