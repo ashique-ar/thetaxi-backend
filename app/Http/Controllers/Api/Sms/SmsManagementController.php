@@ -20,21 +20,33 @@ class SmsManagementController extends Controller
         private SmsSettingsService $smsSettingsService,
         private WebsiteSettingsService $websiteSettingsService
     ) {
-        $this->middleware('permission:communication.view')->only([
+        $this->middleware('permission:communication.view|communication.manage|sms.overview.view')->only([
             'overview',
+        ]);
+        $this->middleware('permission:communication.view|communication.manage|sms.settings.view|sms.settings.manage')->only([
             'settings',
-            'messages',
-            'campaigns',
-            'showCampaign',
             'balance',
         ]);
-        $this->middleware('permission:communication.manage')->only([
+        $this->middleware('permission:communication.manage|sms.settings.manage')->only([
             'updateSettings',
+        ]);
+        $this->middleware('permission:communication.manage|sms.sending.manage')->only([
             'send',
             'sendTest',
+        ]);
+        $this->middleware('permission:communication.view|communication.manage|sms.messages.view|sms.messages.manage')->only([
+            'messages',
+        ]);
+        $this->middleware('permission:communication.manage|sms.messages.manage')->only([
+            'retryMessage',
+        ]);
+        $this->middleware('permission:communication.view|communication.manage|sms.campaigns.view|sms.campaigns.manage')->only([
+            'campaigns',
+            'showCampaign',
+        ]);
+        $this->middleware('permission:communication.manage|sms.campaigns.manage')->only([
             'createCampaign',
             'launchCampaign',
-            'retryMessage',
         ]);
     }
 

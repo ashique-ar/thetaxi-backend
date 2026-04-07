@@ -18,6 +18,7 @@ class DatabaseSeeder extends Seeder
                 // RolesAndPermissionsSeeder::class,
                 // CorporatePermissionsSeeder::class,
                 // AdminUserSeeder::class,
+                // SmsManagementPermissionsSeeder::class,
 
                 // Service type defaults for frontend behavior and duration handling
             // ServiceTypeDefaultsSeeder::class,
