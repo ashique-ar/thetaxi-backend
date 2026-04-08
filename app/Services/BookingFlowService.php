@@ -807,9 +807,13 @@ class BookingFlowService
                 $durationInfo = $this->calculateDurationInDaysAndHours($fromDate, $toDate);
 
                 // Get service type model to ensure we have correct ID
-                $serviceTypeModel = ServiceType::where('id', $serviceType)
-                    ->orWhere('code', $serviceType)
-                    ->orWhere('name', $serviceType)
+                $serviceTypeQuery = $isPublic ? ServiceType::publicContext() : ServiceType::query();
+                $serviceTypeModel = $serviceTypeQuery
+                    ->where(function ($query) use ($serviceType) {
+                        $query->where('id', $serviceType)
+                            ->orWhere('code', $serviceType)
+                            ->orWhere('name', $serviceType);
+                    })
                     ->first();
 
                 if ($serviceTypeModel) {
@@ -835,7 +839,9 @@ class BookingFlowService
                         'additional_pickup_locations' => $additionalPickupLocations,
                         'additional_dropoff_locations' => $additionalDropoffLocations,
                         'ordered_additional_stops' => $orderedAdditionalStops,
-                        'service_package_id' => $params['service_package_id'] ?? null,
+                        'service_package_id' => $params['service_package_id'] ?? ($params['package_id'] ?? null),
+                        'package_id' => $params['package_id'] ?? ($params['service_package_id'] ?? null),
+                        'package_type' => $params['package_type'] ?? null,
                         'customer_id' => $customerId,
                         'currency' => 'LKR',
                         'base_currency' => 'LKR',
@@ -3575,7 +3581,7 @@ class BookingFlowService
 
             ]);
             // Transform result to standard pricing structure
-            return $this->transformCalculationResult($calculationResult, $params, $mode);
+            return $this->transformCalculationResult($calculationResult, $params, $mode, $servicePackageInfo);
 
         } catch (\Exception $e) {
             Log::error("Dynamic pricing calculation failed: " . $e->getMessage(), [
@@ -3778,19 +3784,29 @@ class BookingFlowService
      * Transform calculation result to standard pricing structure
      * Enhanced to properly extract distance_details and adjustment_details for frontend consumption
      */
-    private function transformCalculationResult(array $calculationResult, array $params, string $mode): array
+    private function transformCalculationResult(
+        array $calculationResult,
+        array $params,
+        string $mode,
+        ?array $resolvedServicePackageInfo = null
+    ): array
     {
         $totalAmount = $calculationResult['total_amount'] ?? 0;
         $totalAmountWithoutCustomizations = $calculationResult['total_amount_without_customizations'] ?? 0;
         $breakdown = $calculationResult['breakdown'] ?? [];
         $kmCalculations = $calculationResult['km_calculations'] ?? [];
         $slabInfo = $calculationResult['slab_info'] ?? [];
+        $servicePackageInfo = $calculationResult['service_package_info']
+            ?? $resolvedServicePackageInfo
+            ?? $this->resolveServicePackageInfoFromParams($params);
         $adjustmentDetails = $calculationResult['adjustment_details'] ?? [];
 
-        // Build distance_details from km_calculations and slab_info
+        // Build distance_details from km_calculations, selected service package, and slab info.
+        // For day packages the selected service package is the canonical source of allowed KM.
         $distanceDetails = $this->buildDistanceDetails(
             $kmCalculations,
             $slabInfo,
+            $servicePackageInfo,
             $params['service_type_id'] ?? null,
             $params['vehicle_group_id'] ?? null,
             $params['duration_seconds'] ?? null
@@ -3802,6 +3818,11 @@ class BookingFlowService
                 'type' => $slabInfo['type'] ?? null,
                 'max_km_per_day' => $slabInfo['max_km_per_day'] ?? null,
                 'max_km_per_package' => $slabInfo['max_km_per_package'] ?? null,
+            ] : null,
+            'service_package_info' => $servicePackageInfo ? [
+                'id' => $servicePackageInfo['id'] ?? null,
+                'max_km_per_day' => $servicePackageInfo['max_km_per_day'] ?? null,
+                'max_km_per_package' => $servicePackageInfo['max_km_per_package'] ?? null,
             ] : null,
             'distance_details' => $distanceDetails,
             'adjustment_details' => $adjustmentDetails,
@@ -3835,6 +3856,33 @@ class BookingFlowService
         return $result;
     }
 
+    private function resolveServicePackageInfoFromParams(array $params): ?array
+    {
+        $packageType = $params['package_type'] ?? null;
+        if (is_array($packageType) && !empty($packageType)) {
+            return [
+                'id' => $packageType['id'] ?? null,
+                'name' => $packageType['name'] ?? null,
+                'code' => $packageType['code'] ?? null,
+                'service_package' => null,
+                'max_km_per_day' => $packageType['max_km_per_day'] ?? null,
+                'max_km_per_package' => $packageType['max_km_per_package'] ?? null,
+                'price_multiplier' => $packageType['price_multiplier'] ?? null,
+                'rate_type' => $packageType['rate_type'] ?? null,
+                'default_duration_hours' => $packageType['default_duration_hours'] ?? null,
+            ];
+        }
+
+        $packageId = $params['package_id'] ?? ($params['service_package_id'] ?? null);
+        if (!$packageId) {
+            return null;
+        }
+
+        return $this->getServicePackageInformation([
+            'package_id' => $packageId,
+        ]);
+    }
+
     /**
      * Build distance_details structure for frontend consumption
      * 
@@ -3853,6 +3901,7 @@ class BookingFlowService
     private function buildDistanceDetails(
         array $kmCalculations,
         ?array $slabInfo,
+        ?array $servicePackageInfo,
         ?string $serviceTypeId,
         ?string $vehicleGroupId,
         ?int $durationSeconds = null
@@ -3881,19 +3930,31 @@ class BookingFlowService
             $distanceDetails['allowed_total_km'] = (float) $allowedKm;
         }
 
-        // Extract per-day or per-package limits from slab info
+        // Extract per-day or per-package limits.
+        // Prefer the selected service package when present because day-package searches
+        // can have package KM that differs from generic slab limits.
+        if ($servicePackageInfo) {
+            if (isset($servicePackageInfo['max_km_per_day']) && $servicePackageInfo['max_km_per_day'] > 0) {
+                $distanceDetails['free_km_per_day'] = (float) $servicePackageInfo['max_km_per_day'];
+            }
+
+            if (isset($servicePackageInfo['max_km_per_package']) && $servicePackageInfo['max_km_per_package'] > 0) {
+                $distanceDetails['free_km_per_package'] = (float) $servicePackageInfo['max_km_per_package'];
+            }
+        }
+
         if ($slabInfo) {
             $slabDefinition = $slabInfo['slab_definition'] ?? null;
 
-            if (isset($slabInfo['max_km_per_day']) && $slabInfo['max_km_per_day'] > 0) {
+            if ($distanceDetails['free_km_per_day'] === null && isset($slabInfo['max_km_per_day']) && $slabInfo['max_km_per_day'] > 0) {
                 $distanceDetails['free_km_per_day'] = (float) $slabInfo['max_km_per_day'];
-            } elseif ($slabDefinition && isset($slabDefinition->max_km_per_day) && $slabDefinition->max_km_per_day > 0) {
+            } elseif ($distanceDetails['free_km_per_day'] === null && $slabDefinition && isset($slabDefinition->max_km_per_day) && $slabDefinition->max_km_per_day > 0) {
                 $distanceDetails['free_km_per_day'] = (float) $slabDefinition->max_km_per_day;
             }
 
-            if (isset($slabInfo['max_km_per_package']) && $slabInfo['max_km_per_package'] > 0) {
+            if ($distanceDetails['free_km_per_package'] === null && isset($slabInfo['max_km_per_package']) && $slabInfo['max_km_per_package'] > 0) {
                 $distanceDetails['free_km_per_package'] = (float) $slabInfo['max_km_per_package'];
-            } elseif ($slabDefinition && isset($slabDefinition->max_km_per_package) && $slabDefinition->max_km_per_package > 0) {
+            } elseif ($distanceDetails['free_km_per_package'] === null && $slabDefinition && isset($slabDefinition->max_km_per_package) && $slabDefinition->max_km_per_package > 0) {
                 $distanceDetails['free_km_per_package'] = (float) $slabDefinition->max_km_per_package;
             }
         }

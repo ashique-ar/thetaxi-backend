@@ -398,13 +398,13 @@ class VehiclePricingCalculationDefinitionController extends Controller
     public function getServiceTypes(Request $request): JsonResponse
     {
         try {
-            $context = (string) $request->input('context', 'portal');
+            $context = (string) $request->input('context', 'public');
             $ownerType = (string) $request->input('owner_type', ($context === 'corporate' ? 'corporate' : ''));
             $ownerId = (string) $request->input('owner_id', '');
 
             $serviceTypes = ServiceType::forContext($context, $ownerType, $ownerId)
                 ->where('is_active', true)
-                ->select('id', 'name', 'description')
+                ->select('id', 'name', 'description', 'code', 'context', 'owner_type', 'owner_id')
                 ->orderBy('name')
                 ->get();
 

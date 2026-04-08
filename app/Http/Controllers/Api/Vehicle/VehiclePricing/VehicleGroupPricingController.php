@@ -36,6 +36,9 @@ class VehicleGroupPricingController extends Controller
         // Get filters and pagination params
         $serviceTypeId = $request->input('service_type_id');
         $vehicleGroupId = $request->input('vehicle_group_id');
+        $context = (string) $request->input('context', 'public');
+        $ownerType = (string) $request->input('owner_type', ($context === 'corporate' ? 'corporate' : ''));
+        $ownerId = (string) $request->input('owner_id', '');
         $includeInactive = $request->boolean('include_inactive', false);
         $page = $request->input('page', 1);
         $perPage = $request->input('per_page', 50);
@@ -45,6 +48,9 @@ class VehicleGroupPricingController extends Controller
         $cacheKey = 'unified_pricing_' . md5(serialize([
             'service_type_id' => $serviceTypeId,
             'vehicle_group_id' => $vehicleGroupId,
+            'context' => $context,
+            'owner_type' => $ownerType,
+            'owner_id' => $ownerId,
             'include_inactive' => $includeInactive,
             'page' => $page,
             'per_page' => $perPage,
@@ -61,10 +67,10 @@ class VehicleGroupPricingController extends Controller
 
         try {
             // Get all service types with optimized query (no pagination for service types)
-            $serviceTypes = ServiceType::query()
+            $serviceTypes = ServiceType::forContext($context, $ownerType, $ownerId)
                 ->when($serviceTypeId, fn($q) => $q->where('id', $serviceTypeId))
                 ->when(!$includeInactive, fn($q) => $q->where('is_active', true))
-                ->select(['id', 'name', 'description', 'is_active'])
+                ->select(['id', 'name', 'description', 'code', 'context', 'owner_type', 'owner_id', 'is_active'])
                 ->orderBy('priority')
                 ->get();
 
@@ -104,6 +110,9 @@ class VehicleGroupPricingController extends Controller
                         'filters_applied' => [
                             'service_type_id' => $serviceTypeId,
                             'vehicle_group_id' => $vehicleGroupId,
+                            'context' => $context,
+                            'owner_type' => $ownerType,
+                            'owner_id' => $ownerId,
                             'include_inactive' => $includeInactive,
                             'search' => $search
                         ]

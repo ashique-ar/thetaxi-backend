@@ -384,12 +384,12 @@ class KmRangePricingController extends Controller
     public function getServiceTypes(Request $request): JsonResponse
     {
         try {
-            $context = (string) $request->input('context', 'portal');
+            $context = (string) $request->input('context', 'public');
             $ownerType = (string) $request->input('owner_type', ($context === 'corporate' ? 'corporate' : ''));
             $ownerId = (string) $request->input('owner_id', '');
 
             $serviceTypes = ServiceType::forContext($context, $ownerType, $ownerId)
-                ->select('id', 'name', 'code')
+                ->select('id', 'name', 'code', 'context', 'owner_type', 'owner_id')
                 ->where('is_active', true)
                 ->orderBy('name')
                 ->get();

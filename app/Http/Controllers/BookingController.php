@@ -74,7 +74,19 @@ class BookingController extends Controller
             // Get package - either from request or default to first active package for service type
             $packageId = $request->input('package_id') ?? $request->input('service_package_id');
             if ($packageId) {
-                $searchParams['package_type'] = $serviceType->packages()->find($packageId)?->toArray();
+                $selectedPackage = $serviceType->packages()->find($packageId);
+
+                if (!$selectedPackage) {
+                    $selectedPackage = ServicePackage::query()
+                        ->where('id', $packageId)
+                        ->where('is_active', true)
+                        ->whereHas('serviceType', function ($query) use ($serviceType) {
+                            $query->where('code', $serviceType->code);
+                        })
+                        ->first();
+                }
+
+                $searchParams['package_type'] = $selectedPackage?->toArray();
             } else {
                 // Fallback to first active package for service type (important for ride_now with return trip)
                 $defaultPackage = $serviceType->packages()->where('is_active', true)->first();
@@ -1010,6 +1022,20 @@ class BookingController extends Controller
             // Transform results for view (add public-specific enhancements)
             $transformedData = $this->transformResultsForPublicView($vehicleGroups, $searchParams, $pricingContext);
 
+            Log::debug('[km-debug] Search results prepared for view', [
+                'frontend_service' => $frontendService,
+                'service_type_id' => $searchParams['service_type_id'] ?? $searchParams['service_type'] ?? null,
+                'service_package_id' => $searchParams['service_package_id'] ?? $searchParams['package_id'] ?? null,
+                'package_type' => !empty($searchParams['package_type']) ? [
+                    'id' => $searchParams['package_type']['id'] ?? null,
+                    'name' => $searchParams['package_type']['name'] ?? null,
+                    'max_km_per_day' => $searchParams['package_type']['max_km_per_day'] ?? null,
+                    'max_km_per_package' => $searchParams['package_type']['max_km_per_package'] ?? null,
+                ] : null,
+                'results_count' => count($transformedData),
+                'first_result_distance_details' => $transformedData[0]['pricing_info']['distance_details'] ?? null,
+            ]);
+
             // Wrap results in expected structure for blade template
             $results = [
                 'data' => $transformedData,
@@ -1165,7 +1191,7 @@ class BookingController extends Controller
             $serviceType = null;
             if (isset($searchParams['service_type'])) {
                 $serviceTypeId = $searchParams['service_type'];
-                $serviceTypeModel = ServiceType::find($serviceTypeId);
+                $serviceTypeModel = ServiceType::publicContext()->find($serviceTypeId);
                 $serviceType = $serviceTypeModel ? $serviceTypeModel->code : 'point_to_point';
             }
 
@@ -1257,6 +1283,19 @@ class BookingController extends Controller
                 'distance_details' => $pricingInfo['distance_details'] ?? null,
                 'base_amount' => $formattedPricing['base_amount'] ?? 0,
                 'is_return_trip' => $isReturnTrip,
+            ]);
+
+            Log::debug('[km-debug] Public result transformation', [
+                'vehicle_group_id' => $groupData['id'],
+                'vehicle_group_name' => $groupData['name'] ?? null,
+                'service_type' => $serviceType,
+                'selected_package_id' => $packageId,
+                'selected_package_km' => !empty($searchParams['package_type']) ? [
+                    'max_km_per_day' => $searchParams['package_type']['max_km_per_day'] ?? null,
+                    'max_km_per_package' => $searchParams['package_type']['max_km_per_package'] ?? null,
+                ] : null,
+                'raw_distance_details' => $pricingInfo['distance_details'] ?? null,
+                'formatted_distance_details' => $formattedPricing['distance_details'] ?? null,
             ]);
 
             // Build result using the ACTUAL structure from BookingFlowService

@@ -446,6 +446,19 @@
 
             // Define perDayKm from distance details
             $perDayKm = $distanceDetails['free_km_per_day'] ?? null;
+
+            \Illuminate\Support\Facades\Log::debug('[km-debug] Vehicle card render', [
+                'vehicle_group_id' => $vehicle['id'] ?? null,
+                'vehicle_name' => $vehicle['name'] ?? null,
+                'service_type' => $serviceType ?? null,
+                'duration_days' => $durationDays,
+                'distance_details' => $distanceDetails,
+                'has_free_km_per_day' => $hasFreeKmPerDay,
+                'has_free_km_per_package' => $hasFreeKmPerPackage,
+                'has_allowed_km' => $hasAllowedKm,
+                'has_extra_km_price' => $hasExtraKmPrice,
+                'show_distance_details' => $showDistanceDetails,
+            ]);
         @endphp
 
         @if ($showDistanceDetails || $showDurationDetails)
