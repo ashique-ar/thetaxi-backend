@@ -200,6 +200,7 @@ class BookingController extends Controller
         $params = [
             'service_type' => $serviceType->id,
             'service_type_id' => $serviceType->id,
+            'service_type_context' => 'public',
             'page' => 1,
             'per_page' => 50,
         ];

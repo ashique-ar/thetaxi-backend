@@ -413,7 +413,9 @@ class BookingFlowService
             return null;
         }
 
-        $query = ServiceType::query();
+        $query = $this->shouldUsePublicServiceContext($params)
+            ? ServiceType::publicContext()
+            : ServiceType::query();
         $serviceType = $query->where('id', $candidate)
             ->orWhere('code', $candidate)
             ->orWhere('name', $candidate)
@@ -807,7 +809,9 @@ class BookingFlowService
                 $durationInfo = $this->calculateDurationInDaysAndHours($fromDate, $toDate);
 
                 // Get service type model to ensure we have correct ID
-                $serviceTypeQuery = $isPublic ? ServiceType::publicContext() : ServiceType::query();
+                $serviceTypeQuery = ($isPublic || $this->shouldUsePublicServiceContext($params))
+                    ? ServiceType::publicContext()
+                    : ServiceType::query();
                 $serviceTypeModel = $serviceTypeQuery
                     ->where(function ($query) use ($serviceType) {
                         $query->where('id', $serviceType)
@@ -3617,7 +3621,9 @@ class BookingFlowService
 
         if ($serviceTypeId) {
             // Avoid UUID comparison errors in PostgreSQL when service type is passed as code.
-            $serviceTypeQuery = ServiceType::query();
+            $serviceTypeQuery = $this->shouldUsePublicServiceContext($params)
+                ? ServiceType::publicContext()
+                : ServiceType::query();
             if (is_string($serviceTypeId) && Str::isUuid($serviceTypeId)) {
                 $serviceTypeQuery->where('id', $serviceTypeId);
             } else {
@@ -3778,6 +3784,17 @@ class BookingFlowService
         ]);
 
         return $inputs;
+    }
+
+    private function shouldUsePublicServiceContext(array $params): bool
+    {
+        $flag = $params['service_type_context'] ?? $params['service_context'] ?? $params['request_context'] ?? null;
+
+        if (is_string($flag)) {
+            return strtolower(trim($flag)) === 'public';
+        }
+
+        return $flag === true;
     }
 
     /**

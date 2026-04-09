@@ -272,6 +272,7 @@ class VehicleController extends Controller
         $params = [
             'service_type' => $serviceType->id,
             'service_type_id' => $serviceType->id,
+            'service_type_context' => 'public',
             'vehicle_group_id' => $vehicleGroup->id,
             'pickup_location' => $this->formatLocationFromInput($input, 'pickup'),
             'dropoff_location' => $this->formatLocationFromInput($input, 'dropoff'),

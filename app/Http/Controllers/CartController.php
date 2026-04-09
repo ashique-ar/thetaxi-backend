@@ -218,7 +218,9 @@ class CartController extends Controller
             $input['dropoff_time'] = $this->normalizeTimeInput($input['dropoff_time'] ?? null);
             $input['return_time'] = $this->normalizeTimeInput($input['return_time'] ?? null);
             $input['time'] = $this->normalizeTimeInput($input['time'] ?? null);
-            $input['service_package_id'] = $this->normalizeTimeInput($input['package_id'] ?? null);
+            $input['service_package_id'] = $this->normalizeTimeInput(
+                $input['service_package_id'] ?? ($input['package_id'] ?? null)
+            );
             $input['return_trip_date'] = $this->normalizeDateInput($input['return_trip_date'] ?? null);
             $input['return_trip_time'] = $this->normalizeTimeInput($input['return_trip_time'] ?? null);
 
@@ -441,6 +443,8 @@ class CartController extends Controller
 
                     $pricingParams = [
                         'service_type' => $serviceTypeModel->id,
+                        'service_type_id' => $serviceTypeModel->id,
+                        'service_type_context' => 'public',
                         'vehicle_groups' => [$vehicleId],
                         'from_date' => $pickupDate,
                         'from_time' => $fromTime,
@@ -461,7 +465,7 @@ class CartController extends Controller
                     ]);
 
                     // Get pricing from BookingFlowService
-                    $availabilityData = $this->bookingFlowService->getAvailableVehicleGroups($pricingParams);
+                    $availabilityData = $this->bookingFlowService->getAvailableVehicleGroups($pricingParams, true);
 
                     $availabilityData = isset($availabilityData) && isset($availabilityData['data']) ? $availabilityData['data'] : [];
 
@@ -630,11 +634,15 @@ class CartController extends Controller
                 'from_time' => $fromTime,
                 'to_time' => $toTime,
                 'pickup_location' => $pickupLocation,
+                'pickup_lat' => $pickupLat,
+                'pickup_lng' => $pickupLng,
                 'pickup_latitude' => $pickupLat,
                 'pickup_longitude' => $pickupLng,
                 'dropoff_location' => $returnLocation,
+                'dropoff_lat' => $returnLat,
+                'dropoff_lng' => $returnLng,
                 'dropoff_latitude' => $returnLat,
-                'return_longitude' => $returnLng,
+                'dropoff_longitude' => $returnLng,
                 'service_type' => $serviceType,
                 'service_type_data' => $serviceTypeModel,
                 'service_package_id' => $servicePackageId,
