@@ -859,23 +859,35 @@
             }
 
             function buildCartPayload() {
+                const form = getActiveBookingForm();
                 const values = getActiveFormValues();
-
-                const payload = new FormData();
+                const payload = form ? new FormData(form) : new FormData();
                 payload.append('vehicle_group_id', '{{ $vehicleGroup->id }}');
                 payload.append('group_name', '{{ addslashes($vehicleGroup->name ?? 'Vehicle') }}');
-                payload.append('service_type', values.serviceType);
-                payload.append('pickup', values.pickup);
-                payload.append('dropoff', values.dropoff);
-                payload.append('pickup_date', values.pickupDate);
-                payload.append('return_date', values.returnDate);
-                payload.append('pickup_time', values.pickupTime);
-                payload.append('return_time', values.returnTime);
-                payload.append('pickup_lat', values.pickupLat);
-                payload.append('pickup_lng', values.pickupLng);
-                payload.append('dropoff_lat', values.dropoffLat);
-                payload.append('dropoff_lng', values.dropoffLng);
-                if (values.packageId) payload.append('package_id', values.packageId);
+                payload.set('service_type', values.serviceType);
+                payload.set('pickup', values.pickup);
+                payload.set('dropoff', values.dropoff);
+                payload.set('pickup_location', values.pickup);
+                payload.set('dropoff_location', values.dropoff);
+                payload.set('pickup_date', values.pickupDate);
+                payload.set('return_date', values.returnDate);
+                payload.set('pickup_time', values.pickupTime);
+                payload.set('return_time', values.returnTime);
+                payload.set('pickup_lat', values.pickupLat);
+                payload.set('pickup_lng', values.pickupLng);
+                payload.set('dropoff_lat', values.dropoffLat);
+                payload.set('dropoff_lng', values.dropoffLng);
+                payload.set('num_days', values.numDays);
+
+                const rawReturnDate = payload.get('return_date') || values.returnDate;
+                const rawReturnTime = payload.get('return_time') || values.returnTime;
+                if (rawReturnDate) payload.set('return_trip_date', toYmd(rawReturnDate));
+                if (rawReturnTime) payload.set('return_trip_time', rawReturnTime);
+
+                if (values.packageId) {
+                    payload.set('package_id', values.packageId);
+                    payload.set('service_package_id', values.packageId);
+                }
 
                 return payload;
             }

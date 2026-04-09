@@ -380,16 +380,6 @@
                     {{ $currencySymbol }}
                     {{ number_format($booking->total_estimated - ($booking->amount_to_pay ?? 0), 2) }}
                 </p>
-                {{-- <p style="margin-bottom: 8px;"><strong>Important Reminders:</strong></p>
-                <ul>
-                    <li>Bring valid government-issued ID/Passport</li>
-                    <li>Bring a valid driver's license</li>
-                    <li>A credit card may be required for security deposit</li>
-                    <li>Arrive 15 minutes before scheduled pickup time</li>
-                    <li><strong>Pay remaining balance at pickup: {{ $currencySymbol }}
-                            {{ number_format($booking->total_estimated - ($booking->amount_to_pay ?? 0), 2) }}</strong>
-                    </li>
-                </ul> --}}
             </div>
         @elseif($booking->payment_type === 'checkin')
             <div class="highlight-box success">
@@ -397,13 +387,6 @@
                 <p>Your booking is confirmed. Please pay the full amount when you check-in to collect the vehicle.</p>
                 <p><strong>Amount Due at Check-in:</strong> {{ $currencySymbol }}
                     {{ number_format($booking->total_estimated, 2) }}</p>
-                {{-- <p style="margin-bottom: 8px;"><strong>Important Reminders:</strong></p>
-                <ul>
-                    <li>Bring valid government-issued ID/Passport</li>
-                    <li>Bring a valid driver's license</li>
-                    <li>A credit card may be required for security deposit</li>
-                    <li>Arrive 15 minutes before scheduled pickup time</li>
-                </ul> --}}
             </div>
         @elseif($booking->payment_status === 'pending')
             @php
@@ -457,13 +440,6 @@
                 </p>
                 <p>Driver Details will be shared with you before 3 hours of pickup time.
                 </p>
-                {{-- <p style="margin-bottom: 8px;"><strong>Important Reminders:</strong></p>
-                <ul>
-                    <li>Bring valid government-issued ID/Passport</li>
-                    <li>Bring a valid driver's license</li>
-                    <li>A credit card may be required for security deposit</li>
-                    <li>Arrive 15 minutes before scheduled pickup time</li>
-                </ul> --}}
             </div>
         @else
             <div class="highlight-box success">
@@ -473,13 +449,6 @@
                 </p>
                 <p>Driver Details will be shared with you before 3 hours of pickup time.
                 </p>
-                {{-- <p style="margin-bottom: 8px;"><strong>Important Reminders:</strong></p>
-                <ul>
-                    <li>Bring valid government-issued ID/Passport</li>
-                    <li>Bring a valid driver's license</li>
-                    <li>A credit card may be required for security deposit</li>
-                    <li>Arrive 15 minutes before scheduled pickup time</li>
-                </ul> --}}
             </div>
         @endif
     </div>

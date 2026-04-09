@@ -10,6 +10,7 @@ use App\Services\BookingFlowService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 use Carbon\Carbon;
 
 class CartController extends Controller
@@ -392,9 +393,14 @@ class CartController extends Controller
                 // Get service type
                 $serviceTypeModel = ServiceType::publicContext()
                     ->where(function ($query) use ($serviceType) {
-                        $query->where('code', $serviceType)
+                        if (Str::isUuid($serviceType)) {
+                            $query->where('id', $serviceType);
+                        }
+
+                        $query->orWhere('code', $serviceType)
                             ->orWhere('name', $serviceType);
                     })
+                    ->where('is_active', true)
                     ->first();
                 Log::info('Service type lookup', [
                     'service_type' => $serviceType,
@@ -588,7 +594,10 @@ class CartController extends Controller
             $isPackageService = in_array($serviceType, ['wedding_hire', 'airport_transfers']);
 
             // Get service package info if provided in search_data
-            $servicePackageId = $searchData['service_package_id'] ?? $request->input('service_package_id');
+            $servicePackageId = $searchData['service_package_id']
+                ?? $searchData['package_id']
+                ?? $request->input('service_package_id')
+                ?? $request->input('package_id');
             $servicePackageInfo = null;
             if ($servicePackageId) {
                 $servicePackage = \App\Models\Service\ServicePackage::find($servicePackageId);
