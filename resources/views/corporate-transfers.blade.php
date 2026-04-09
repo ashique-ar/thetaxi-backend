@@ -241,7 +241,7 @@
                                         <hr class="flex-grow-1">
                                     </div>
                                 </div>
-                                <a href="tel:+94711615615" class="text-primary fw-bold">+94 71 1 615 615</a> /
+                                <a href="tel:+94717680000" class="text-primary fw-bold">+94 71 768 00 00</a> /
                                 <a href="mailto:zufer@thetaxi.lk" class="text-primary fw-bold">zufer@thetaxi.lk</a>
                             </form>
                         </div>

@@ -438,7 +438,7 @@
                                 </tr>
                                 <tr>
                                     <td>💬 WhatsApp</td>
-                                    <td><a href="https://wa.me/9471615615"
+                                    <td><a href="https://wa.me/94711920000"
                                             style="color: #BF2629; text-decoration: none;">+94 711 92 00 00</a></td>
                                 </tr>
                             </table>
