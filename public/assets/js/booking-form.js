@@ -3122,25 +3122,19 @@
 
         // Dates / times - normalize to keys backend expects
         const date = getFirstValue(['date', 'from_date', 'pickup_date']);
-        const dropoffDate = getFirstValue(['dropoff_date', 'to_date']);
-        const returnDate = getFirstValue(['return_date']);
-        const toDate = dropoffDate || returnDate;
+        const toDate = getFirstValue(['to_date', 'return_date', 'dropoff_date']);
         const fromTime = getFirstValue(['time', 'from_time', 'pickup_time']);
-        const dropoffTime = getFirstValue(['dropoff_time', 'to_time']);
-        const returnTime = getFirstValue(['return_time']);
-        const toTime = dropoffTime || returnTime;
+        const toTime = getFirstValue(['to_time', 'return_time', 'dropoff_time']);
         ensureHidden('date', date);
         ensureHidden('from_date', date);
         ensureHidden('pickup_date', date);
         ensureHidden('to_date', toDate);
-        ensureHidden('dropoff_date', toDate);
-        ensureHidden('return_date', returnDate || toDate);
+        ensureHidden('return_date', toDate);
         ensureHidden('time', fromTime);
         ensureHidden('from_time', fromTime);
         ensureHidden('pickup_time', fromTime);
         ensureHidden('to_time', toTime);
-        ensureHidden('dropoff_time', toTime);
-        ensureHidden('return_time', returnTime || toTime);
+        ensureHidden('return_time', toTime);
 
         // Service type
         const svc = getFirstValue(['service_type']) || form.getAttribute('data-service') || '';

@@ -84,8 +84,8 @@ class PriceAdjustment extends BaseModel
         $startDate = $startDate ?? now();
         $endDate = $endDate ?? $startDate;
 
-        return $query->where('valid_from', '<=', $endDate)
-            ->where('valid_to', '>=', $startDate);
+        return $query->where('valid_from', '<=', $startDate)
+            ->where('valid_to', '>=', $endDate);
     }
 
     public function scopeWithinUsageLimit(Builder $query): Builder
@@ -162,7 +162,7 @@ class PriceAdjustment extends BaseModel
         $startDate = $startDate ?? now();
         $endDate = $endDate ?? $startDate;
 
-        $withinValidPeriod = $startDate->lte($this->valid_to) && $endDate->gte($this->valid_from);
+        $withinValidPeriod = $startDate->gte($this->valid_from) && $endDate->lte($this->valid_to);
         $withinUsageLimit = $this->usage_limit === null || $this->usage_count < $this->usage_limit;
 
         return $this->is_active && $withinValidPeriod && $withinUsageLimit;
