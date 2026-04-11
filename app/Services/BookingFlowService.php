@@ -3611,6 +3611,24 @@ class BookingFlowService
             'number_of_days' => $params['duration_days'] ?? 1,
         ];
 
+        // Preserve the booking/search date window for downstream pricing rules
+        // such as price adjustment validity checks.
+        if (!empty($params['from_date'])) {
+            $inputs['from_date'] = $params['from_date'];
+        }
+        if (!empty($params['to_date'])) {
+            $inputs['to_date'] = $params['to_date'];
+        }
+        if (!empty($params['pickup_date'])) {
+            $inputs['pickup_date'] = $params['pickup_date'];
+        }
+        if (!empty($params['dropoff_date'])) {
+            $inputs['dropoff_date'] = $params['dropoff_date'];
+        }
+        if (!empty($params['return_date'])) {
+            $inputs['return_date'] = $params['return_date'];
+        }
+
         // Detect airport locations (for applying airport pricing rules)
         $pickupIsAirport = false;
         $dropoffIsAirport = false;
