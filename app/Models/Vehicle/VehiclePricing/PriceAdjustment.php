@@ -79,12 +79,13 @@ class PriceAdjustment extends BaseModel
         return $query->where('is_active', true);
     }
 
-    public function scopeValid(Builder $query, Carbon $date = null): Builder
+    public function scopeValid(Builder $query, Carbon $startDate = null, Carbon $endDate = null): Builder
     {
-        $date = $date ?? now();
+        $startDate = $startDate ?? now();
+        $endDate = $endDate ?? $startDate;
 
-        return $query->where('valid_from', '<=', $date)
-            ->where('valid_to', '>=', $date);
+        return $query->where('valid_from', '<=', $endDate)
+            ->where('valid_to', '>=', $startDate);
     }
 
     public function scopeWithinUsageLimit(Builder $query): Builder
@@ -156,11 +157,12 @@ class PriceAdjustment extends BaseModel
     /**
      * Check if this adjustment is currently valid
      */
-    public function isValid(Carbon $date = null): bool
+    public function isValid(Carbon $startDate = null, Carbon $endDate = null): bool
     {
-        $date = $date ?? now();
+        $startDate = $startDate ?? now();
+        $endDate = $endDate ?? $startDate;
 
-        $withinValidPeriod = $date->gte($this->valid_from) && $date->lte($this->valid_to);
+        $withinValidPeriod = $startDate->lte($this->valid_to) && $endDate->gte($this->valid_from);
         $withinUsageLimit = $this->usage_limit === null || $this->usage_count < $this->usage_limit;
 
         return $this->is_active && $withinValidPeriod && $withinUsageLimit;
@@ -169,13 +171,13 @@ class PriceAdjustment extends BaseModel
     /**
      * Check if this adjustment applies to given booking amount
      */
-    public function appliesTo(float $bookingAmount): bool
+    public function appliesTo(float $bookingAmount, Carbon $startDate = null, Carbon $endDate = null): bool
     {
         if ($this->minimum_booking_amount !== null && $bookingAmount < $this->minimum_booking_amount) {
             return false;
         }
 
-        return $this->isValid();
+        return $this->isValid($startDate, $endDate);
     }
 
     /**
@@ -186,9 +188,14 @@ class PriceAdjustment extends BaseModel
      * For fixed_amount: User enters value like -500 for LKR 500 discount or 200 for LKR 200 increase.
      * Negative values = discounts, Positive values = increases
      */
-    public function calculateAdjustment(float $amount, string $priceComponent = null): array
+    public function calculateAdjustment(
+        float $amount,
+        string $priceComponent = null,
+        Carbon $startDate = null,
+        Carbon $endDate = null
+    ): array
     {
-        if (!$this->appliesTo($amount)) {
+        if (!$this->appliesTo($amount, $startDate, $endDate)) {
             return [
                 'applicable' => false,
                 'adjustment_amount' => 0,
@@ -293,10 +300,11 @@ class PriceAdjustment extends BaseModel
         ?string $serviceTypeId = null,
         ?string $vehicleGroupId = null,
         string $priceComponent = 'total_price',
-        Carbon $date = null
+        Carbon $date = null,
+        Carbon $endDate = null
     ): \Illuminate\Database\Eloquent\Collection {
         $query = static::active()
-            ->valid($date)
+            ->valid($date, $endDate)
             ->withinUsageLimit()
             ->forAmount($amount)
             ->where('applies_to', $priceComponent);
@@ -335,7 +343,8 @@ class PriceAdjustment extends BaseModel
         ?string $serviceTypeId = null,
         ?string $vehicleGroupId = null,
         string $priceComponent = 'total_price',
-        Carbon $date = null
+        Carbon $date = null,
+        Carbon $endDate = null
     ): array {
         $originalAmount = $amount;
 
@@ -344,7 +353,8 @@ class PriceAdjustment extends BaseModel
             $serviceTypeId,
             $vehicleGroupId,
             $priceComponent,
-            $date
+            $date,
+            $endDate
         );
 
         if ($adjustments->isEmpty()) {
@@ -375,7 +385,7 @@ class PriceAdjustment extends BaseModel
         // Apply the best non-cumulative adjustment first (highest priority)
         if ($nonCumulativeAdjustments->isNotEmpty()) {
             $bestAdjustment = $nonCumulativeAdjustments->first();
-            $result = $bestAdjustment->calculateAdjustment($currentAmount, $priceComponent);
+            $result = $bestAdjustment->calculateAdjustment($currentAmount, $priceComponent, $date, $endDate);
 
             if ($result['applicable']) {
                 $appliedAdjustments[] = $result;
@@ -392,7 +402,7 @@ class PriceAdjustment extends BaseModel
 
         // Apply cumulative adjustments
         foreach ($cumulativeAdjustments as $adjustment) {
-            $result = $adjustment->calculateAdjustment($currentAmount, $priceComponent);
+            $result = $adjustment->calculateAdjustment($currentAmount, $priceComponent, $date, $endDate);
 
             if ($result['applicable']) {
                 $appliedAdjustments[] = $result;

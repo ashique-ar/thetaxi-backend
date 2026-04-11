@@ -1029,6 +1029,16 @@ class VehiclePricingCalculationDefinition extends Model
 
         $vehicleGroupId = $inputs['vehicle_group_id'] ?? null;
         $totalDistance = $kmCalculations['journey_distance'] ?? 0;
+        $pricingStartDate = $this->resolvePricingAdjustmentDate($inputs, [
+            'from_date',
+            'pickup_date',
+            'date',
+        ]);
+        $pricingEndDate = $this->resolvePricingAdjustmentDate($inputs, [
+            'to_date',
+            'dropoff_date',
+            'return_date',
+        ]) ?? $pricingStartDate;
 
         $totalKmAdjustment = 0;
         if ($vehicleGroupId && $totalDistance > 0) {
@@ -1077,7 +1087,9 @@ class VehiclePricingCalculationDefinition extends Model
             $currentAmount,
             $this->service_type_id,
             $vehicleGroupId,
-            'total_price'
+            'total_price',
+            $pricingStartDate,
+            $pricingEndDate
         );
 
         if (!empty($priceAdjustmentResult['adjustments_applied'])) {
@@ -1126,6 +1138,33 @@ class VehiclePricingCalculationDefinition extends Model
                 ? round(($totalDiscount / $baseAmount) * 100, 1)
                 : 0,
         ];
+    }
+
+    private function resolvePricingAdjustmentDate(array $inputs, array $keys): ?Carbon
+    {
+        foreach ($keys as $key) {
+            $value = $inputs[$key] ?? null;
+
+            if (empty($value)) {
+                continue;
+            }
+
+            if ($value instanceof Carbon) {
+                return $value->copy();
+            }
+
+            try {
+                return Carbon::parse($value);
+            } catch (\Throwable $exception) {
+                Log::warning('Failed to parse pricing adjustment date', [
+                    'key' => $key,
+                    'value' => $value,
+                    'error' => $exception->getMessage(),
+                ]);
+            }
+        }
+
+        return null;
     }
 
     /**
