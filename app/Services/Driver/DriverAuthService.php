@@ -117,21 +117,16 @@ class DriverAuthService
         // Update last login timestamp
         $user->updateLastLogin();
 
-        // Register/update device information FIRST
-        $device = null;
-        // Device UUID is now optional - backend generates if not provided
-        if (isset($credentials['device_uuid']) || isset($credentials['device_fingerprint']) || isset($credentials['platform'])) {
-            $deviceData = $this->extractDeviceData($credentials);
-            $device = $this->deviceService->registerDevice($driver, $deviceData);
+        // Always resolve a device for mobile login so the app receives a device UUID.
+        $device = $this->resolveLoginDevice($driver, $credentials);
 
-            // Update driver's current device UUID
-            $driver->update([
-                'current_device_uuid' => $device->device_uuid
-            ]);
+        // Update driver's current device UUID
+        $driver->update([
+            'current_device_uuid' => $device->device_uuid
+        ]);
 
-            // Deactivate other devices for single-session enforcement AFTER registration
-            $this->deviceService->deactivateOtherDevices($driver, $device->device_uuid);
-        }
+        // Deactivate other devices for single-session enforcement AFTER registration
+        $this->deviceService->deactivateOtherDevices($driver, $device->device_uuid);
 
         return [
             'user' => $user,
@@ -171,6 +166,55 @@ class DriverAuthService
             'timezone' => $credentials['timezone'] ?? null,
             'ip_address' => request()->ip(),
         ];
+    }
+
+    /**
+     * Resolve the device to associate with a login.
+     *
+     * If the request contains device details, register or update that device.
+     * Otherwise, reuse the driver's current device when available; if none exists,
+     * create a new backend-generated device and return it.
+     *
+     * @param Driver $driver
+     * @param array $credentials
+     * @return \App\Models\Driver\DriverDevice
+     */
+    protected function resolveLoginDevice(Driver $driver, array $credentials)
+    {
+        $deviceData = $this->extractDeviceData($credentials);
+
+        if ($this->hasDeviceIdentifier($credentials)) {
+            return $this->deviceService->registerDevice($driver, $deviceData);
+        }
+
+        if ($driver->current_device_uuid) {
+            $existingDevice = $this->deviceService->getDevice($driver, $driver->current_device_uuid);
+
+            if ($existingDevice) {
+                $this->deviceService->touchDevice($driver, $existingDevice->device_uuid);
+                return $existingDevice->fresh();
+            }
+        }
+
+        return $this->deviceService->registerDevice($driver, $deviceData);
+    }
+
+    /**
+     * Determine whether the login payload includes enough device information
+     * to identify or update a concrete client device record.
+     *
+     * @param array $credentials
+     * @return bool
+     */
+    protected function hasDeviceIdentifier(array $credentials): bool
+    {
+        return !empty($credentials['device_uuid'])
+            || !empty($credentials['device_fingerprint'])
+            || !empty($credentials['device_name'])
+            || !empty($credentials['device_model'])
+            || !empty($credentials['device_manufacturer'])
+            || !empty($credentials['platform'])
+            || !empty($credentials['push_token']);
     }
 
     /**
