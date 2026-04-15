@@ -18,10 +18,62 @@
         </div>
     </div>
 
+    @php
+        $serviceType = $search->service_type ?? 'point_to_point';
+
+        $durationDays = 1;
+        if ($search->from_date && $search->to_date) {
+            $fromDate = \Carbon\Carbon::parse($search->from_date);
+            $toDate = \Carbon\Carbon::parse($search->to_date);
+            $durationDays = max(1, $fromDate->diffInDays($toDate) + 1);
+        } else {
+            $durationDays = $search->duration_days ?? 1;
+        }
+
+        $packageHours = $search->package_hours ?? null;
+
+        $getPrimaryLocationName = function ($location) {
+            if (empty($location)) {
+                return '';
+            }
+            if (is_array($location)) {
+                $location = $location['address'] ?? '';
+            }
+            if (is_object($location)) {
+                $location = $location->address ?? '';
+            }
+            $parts = explode(',', $location);
+            return trim($parts[0]);
+        };
+
+        $pickupSummary = $getPrimaryLocationName($search->pickup_location ?? 'Pickup');
+        $dropoffSummary = $getPrimaryLocationName($search->dropoff_location ?? '');
+
+        if ($serviceType === 'wedding_hire' && $packageHours) {
+            $durationText = $packageHours . ' Hour Package';
+            $durationIcon = 'bi-clock';
+        } elseif (in_array($serviceType, ['airport_transfers', 'ride_now'], true)) {
+            $durationText = $pickupSummary . ($dropoffSummary && $dropoffSummary !== $pickupSummary ? ' → ' . $dropoffSummary : '');
+            $durationIcon = $serviceType === 'airport_transfers' ? 'bi-airplane' : 'bi-lightning-charge';
+        } else {
+            $durationText = $pickupSummary . ($dropoffSummary && $dropoffSummary !== $pickupSummary ? ' → ' . $dropoffSummary : '');
+            $durationText .= ' (' . $durationDays . ' Day' . ($durationDays !== 1 ? 's' : '') . ')';
+            $durationIcon = 'bi-calendar-event';
+        }
+
+        $searchDateText = null;
+        if ($search->from_date && $search->to_date) {
+            $searchDateText = \Carbon\Carbon::parse($search->from_date)->format('M d') . ' - ' .
+                \Carbon\Carbon::parse($search->to_date)->format('M d, Y');
+        }
+    @endphp
+
     <!-- Booking Form Section -->
-    <div class="filter-wrapper text-center hotel mb-5">
-        <div class="container">
-            @include('components.booking-form', ['search' => $search])
+    <div class="search-booking-section mb-5" id="searchBookingSection">
+        <div class="search-booking-panel" id="searchBookingFormPanel">
+            <div class="container">
+                @include('components.booking-form', ['search' => $search])
+            </div>
         </div>
     </div>
     <!-- End Booking Form Section -->
@@ -185,6 +237,13 @@
                         <div class="vehicle-groups-info d-flex justify-content-end align-items-center gap-3 flex-wrap">
 
                             <div class="vehicle-search-box d-flex align-items-center gap-2 flex-wrap">
+                                <button type="button"
+                                    class="btn btn-light btn-sm text-nowrap mobile-summary-modify-btn d-lg-none"
+                                    id="toggleSearchFormBtn" aria-expanded="false"
+                                    aria-controls="searchBookingFormPanel">
+                                    <i class="bi bi-pencil-square"></i>
+                                    <span>Modify Search</span>
+                                </button>
                                 <div class="sort-dropdown">
                                     <select class="form-select form-select-sm" id="sortResults" style="min-width: 180px;">
                                         <option value="price_low" selected>Price: Low to High</option>
@@ -404,6 +463,28 @@
             color: white;
         }
 
+        .search-booking-section {
+            position: relative;
+        }
+
+        .mobile-summary-modify-btn {
+            border: 0;
+            border-radius: 999px;
+            padding: 10px 16px;
+            font-weight: 600;
+            color: var(--primary-color);
+            box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
+            white-space: nowrap;
+        }
+
+        .mobile-summary-modify-btn i {
+            margin-right: 6px;
+        }
+
+        .search-booking-panel {
+            transition: max-height 0.3s ease, opacity 0.25s ease, margin-top 0.25s ease;
+        }
+
         .search-summary-header {
             display: flex;
             justify-content: space-between;
@@ -489,6 +570,21 @@
         }
 
         @media (max-width: 768px) {
+            .search-booking-section:not(.is-open) .search-booking-panel {
+                max-height: 0;
+                opacity: 0;
+                overflow: hidden;
+                margin-top: 0;
+                pointer-events: none;
+            }
+
+            .search-booking-section.is-open .search-booking-panel {
+                max-height: 5000px;
+                opacity: 1;
+                overflow: visible;
+                pointer-events: auto;
+            }
+
             .search-summary-header {
                 flex-direction: column;
                 align-items: flex-start;
@@ -994,6 +1090,55 @@
         };
 
         $(document).ready(function() {
+            const $searchBookingSection = $('#searchBookingSection');
+            const $toggleSearchFormBtn = $('#toggleSearchFormBtn');
+
+            function syncMobileSearchFormState(forceOpen) {
+                if (!$searchBookingSection.length || !$toggleSearchFormBtn.length) {
+                    return;
+                }
+
+                if (window.innerWidth > 768) {
+                    $searchBookingSection.addClass('is-open');
+                    $toggleSearchFormBtn.attr('aria-expanded', 'true');
+                    $toggleSearchFormBtn.find('span').text('Modify Search');
+                    return;
+                }
+
+                if (typeof forceOpen === 'boolean') {
+                    $searchBookingSection.toggleClass('is-open', forceOpen);
+                }
+
+                const isOpen = $searchBookingSection.hasClass('is-open');
+                $toggleSearchFormBtn.attr('aria-expanded', isOpen ? 'true' : 'false');
+                $toggleSearchFormBtn.find('span').text(isOpen ? 'Hide Search' : 'Modify Search');
+            }
+
+            syncMobileSearchFormState(false);
+
+            $toggleSearchFormBtn.on('click', function() {
+                const willOpen = !$searchBookingSection.hasClass('is-open');
+                $searchBookingSection.toggleClass('is-open', willOpen);
+                syncMobileSearchFormState();
+
+                if (willOpen) {
+                    setTimeout(function() {
+                        const bookingFormOffset = $('#searchBookingFormPanel').offset();
+                        const bookingFormTop = bookingFormOffset ? bookingFormOffset.top : null;
+                        if (typeof bookingFormTop === 'number') {
+                            window.scrollTo({
+                                top: Math.max(bookingFormTop - 12, 0),
+                                behavior: 'smooth'
+                            });
+                        }
+                    }, 50);
+                }
+            });
+
+            $(window).on('resize', function() {
+                syncMobileSearchFormState(false);
+            });
+
             // Sort functionality
             $('#sortResults').on('change', function() {
                 sortVehicleResults($(this).val());
