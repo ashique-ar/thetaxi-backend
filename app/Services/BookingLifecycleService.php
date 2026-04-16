@@ -336,13 +336,19 @@ class BookingLifecycleService
     public function dispatchVehicle(string $bookingId, array $dispatchData): BookingDispatch
     {
         return DB::transaction(function () use ($bookingId, $dispatchData) {
-            $booking = Booking::with(['dispatch', 'bookingItems.vehicle', 'bookingItems.driver.user'])->findOrFail($bookingId);
+            $booking = Booking::with(['dispatch', 'qc.repairItems', 'bookingItems.vehicle', 'bookingItems.driver.user'])->findOrFail($bookingId);
             $context = $this->resolveLifecycleContext($booking, $dispatchData['booking_item_id'] ?? null);
             $dispatch = $booking->dispatch;
             $vehicleId = $context['vehicle_id'];
             $driverId = $context['driver_id'];
             $isSelfDriven = (bool) $context['is_self_driven'];
-            $isRepeatDispatch = (bool) ($dispatch && $dispatch->isActive());
+            $hasPreviousDispatch = (bool) ($dispatch && (
+                $dispatch->dispatched_at !== null ||
+                $dispatch->isActive() ||
+                $dispatch->isReturned()
+            ));
+            $isRepeatDispatch = $hasPreviousDispatch;
+            $isReopeningCompletedHire = (bool) ($dispatch && !$dispatch->isActive());
             $allowRepeatDispatchForTesting = (bool) ($dispatchData['allow_repeat_dispatch_for_testing'] ?? false);
 
             if (!$vehicleId) {
@@ -359,6 +365,10 @@ class BookingLifecycleService
 
             if ($isRepeatDispatch && !$allowRepeatDispatchForTesting) {
                 throw new \Exception('Repeat dispatch is blocked unless allow_repeat_dispatch_for_testing is true');
+            }
+
+            if ($isReopeningCompletedHire) {
+                $this->resetBookingAfterCompletedHireForRedispatch($booking);
             }
 
             if (!$dispatch) {
@@ -415,6 +425,23 @@ class BookingLifecycleService
 
             return $dispatch;
         });
+    }
+
+    private function resetBookingAfterCompletedHireForRedispatch(Booking $booking): void
+    {
+        if ($booking->qc) {
+            $booking->qc->repairItems()->delete();
+            $booking->qc()->delete();
+            $booking->unsetRelation('qc');
+        }
+
+        if ((string) $booking->status === 'completed' || $booking->completed_at) {
+            $booking->update([
+                'status' => 'confirmed',
+                'completed_at' => null,
+                'updated_user_id' => Auth::id(),
+            ]);
+        }
     }
 
     private function triggerDriverDispatchNotification(string $bookingId, ?string $driverId, ?string $bookingItemId = null, array $notificationContext = []): void
