@@ -34,7 +34,7 @@ class NotificationTriggerService
      */
     public function sendAssignmentNotification(DriverAssignment $assignment): void
     {
-        SendAssignmentNotificationJob::dispatch($assignment, 1)
+        SendAssignmentNotificationJob::dispatch($assignment, 1, [])
             ->onQueue(config('services.firebase.queue', 'driver-notifications'));
 
         Log::info('Queued assignment notification', [
@@ -46,7 +46,7 @@ class NotificationTriggerService
     /**
      * Process one queued notification delivery attempt.
      */
-    public function processAssignmentNotificationAttempt(DriverAssignment $assignment, int $attempt = 1): void
+    public function processAssignmentNotificationAttempt(DriverAssignment $assignment, int $attempt = 1, array $context = []): void
     {
         $assignment->loadMissing(['driver', 'booking', 'bookingItem']);
 
@@ -56,7 +56,7 @@ class NotificationTriggerService
             return;
         }
 
-        $payload = $this->buildPayload($assignment);
+        $payload = $this->buildPayload($assignment, $context);
         $channels = [];
 
         $websocketChannel = $this->deliverViaWebSocket($driver, $payload);
@@ -75,7 +75,7 @@ class NotificationTriggerService
             return;
         }
 
-        $this->queueRetry($assignment, $attempt + 1);
+        $this->queueRetry($assignment, $attempt + 1, $context);
     }
 
     /**
@@ -128,18 +128,27 @@ class NotificationTriggerService
      *
      * @see Requirement 14.3
      */
-    public function buildPayload(DriverAssignment $assignment): array
+    public function buildPayload(DriverAssignment $assignment, array $context = []): array
     {
         $bookingItem = $assignment->bookingItem;
+        $dispatch = BookingDispatch::where('booking_id', $assignment->booking_id)->latest('updated_at')->first();
 
-        return [
+        return array_merge([
+            'event_type' => 'assignment_created',
+            'notification_type' => 'assignment_created',
             'booking_id' => $assignment->booking_id,
             'booking_item_id' => $assignment->booking_item_id,
             'assignment_id' => $assignment->id,
+            'driver_id' => $assignment->driver_id,
             'pickup_location' => $bookingItem?->pickup_location,
             'dropoff_location' => $bookingItem?->dropoff_location,
             'scheduled_datetime' => $assignment->assigned_from?->toIso8601String(),
-        ];
+            'dispatch_id' => $dispatch?->id,
+            'dispatch_status' => $dispatch?->dispatch_status?->value,
+            'dispatched_at' => $dispatch?->dispatched_at?->toIso8601String(),
+            'dispatch_action' => $dispatch?->isActive() ? 'dispatch' : null,
+            'is_repeat_dispatch' => false,
+        ], $context);
     }
 
     /**
@@ -199,7 +208,7 @@ class NotificationTriggerService
      *
      * @see Requirement 14.7
      */
-    public function queueRetry(DriverAssignment $assignment, int $attempt = 1): void
+    public function queueRetry(DriverAssignment $assignment, int $attempt = 1, array $context = []): void
     {
         if ($attempt > SendAssignmentNotificationJob::MAX_ATTEMPTS) {
             Log::error('Notification delivery exhausted all retries for assignment ' . $assignment->id, [
@@ -208,7 +217,7 @@ class NotificationTriggerService
             return;
         }
 
-        SendAssignmentNotificationJob::dispatch($assignment, $attempt)
+        SendAssignmentNotificationJob::dispatch($assignment, $attempt, $context)
             ->onQueue(config('services.firebase.queue', 'driver-notifications'))
             ->delay(now()->addSeconds(SendAssignmentNotificationJob::RETRY_DELAY_SECONDS));
 

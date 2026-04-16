@@ -37,11 +37,12 @@ class SendAssignmentNotificationJob implements ShouldQueue
 
     public function __construct(
         public DriverAssignment $assignment,
-        public int $attempt = 1
+        public int $attempt = 1,
+        public array $context = []
     ) {}
 
     public function handle(NotificationTriggerService $service): void
     {
-        $service->processAssignmentNotificationAttempt($this->assignment, $this->attempt);
+        $service->processAssignmentNotificationAttempt($this->assignment, $this->attempt, $this->context);
     }
 }

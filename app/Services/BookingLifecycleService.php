@@ -342,6 +342,8 @@ class BookingLifecycleService
             $vehicleId = $context['vehicle_id'];
             $driverId = $context['driver_id'];
             $isSelfDriven = (bool) $context['is_self_driven'];
+            $isRepeatDispatch = (bool) ($dispatch && $dispatch->isActive());
+            $allowRepeatDispatchForTesting = (bool) ($dispatchData['allow_repeat_dispatch_for_testing'] ?? false);
 
             if (!$vehicleId) {
                 throw new \Exception('Vehicle must be assigned before dispatch');
@@ -353,6 +355,10 @@ class BookingLifecycleService
 
             if (!$isSelfDriven && $driverId) {
                 $this->ensureDriverAssignmentForDispatch($booking, $context);
+            }
+
+            if ($isRepeatDispatch && !$allowRepeatDispatchForTesting) {
+                throw new \Exception('Repeat dispatch is blocked unless allow_repeat_dispatch_for_testing is true');
             }
 
             if (!$dispatch) {
@@ -384,14 +390,26 @@ class BookingLifecycleService
             $vehicle = Vehicle::findOrFail($vehicleId);
             $vehicle->update(['availability_status' => VehicleAvailabilityStatus::ON_HIRE->value]);
 
-            $booking->transitionToStatus(BookingLifecycleStatus::DISPATCH_OUT, Auth::id(), $dispatchData);
+            if (!$isRepeatDispatch) {
+                $booking->transitionToStatus(BookingLifecycleStatus::DISPATCH_OUT, Auth::id(), $dispatchData);
+                $this->logLifecycleTransition($booking, BookingLifecycleStatus::DISPATCH_READY, BookingLifecycleStatus::DISPATCH_OUT, $dispatchData);
+            }
 
-            $this->logLifecycleTransition($booking, BookingLifecycleStatus::DISPATCH_READY, BookingLifecycleStatus::DISPATCH_OUT, $dispatchData);
-            DB::afterCommit(function () use ($booking, $driverId, $context) {
+            DB::afterCommit(function () use ($booking, $driverId, $context, $dispatch, $isRepeatDispatch) {
                 $this->triggerDriverDispatchNotification(
                     (string) $booking->id,
                     $driverId ? (string) $driverId : null,
-                    $context['booking_item_id'] ? (string) $context['booking_item_id'] : null
+                    $context['booking_item_id'] ? (string) $context['booking_item_id'] : null,
+                    [
+                        'event_type' => 'booking_dispatch',
+                        'notification_type' => 'booking_dispatch',
+                        'dispatch_action' => $isRepeatDispatch ? 'redispatch' : 'dispatch',
+                        'dispatch_id' => (string) $dispatch->id,
+                        'dispatch_status' => $dispatch->dispatch_status?->value,
+                        'dispatched_at' => $dispatch->dispatched_at?->toIso8601String(),
+                        'is_repeat_dispatch' => $isRepeatDispatch,
+                        'allow_repeat_dispatch_for_testing' => $isRepeatDispatch,
+                    ]
                 );
             });
 
@@ -399,7 +417,7 @@ class BookingLifecycleService
         });
     }
 
-    private function triggerDriverDispatchNotification(string $bookingId, ?string $driverId, ?string $bookingItemId = null): void
+    private function triggerDriverDispatchNotification(string $bookingId, ?string $driverId, ?string $bookingItemId = null, array $notificationContext = []): void
     {
         if (!$driverId) {
             return;
@@ -435,7 +453,7 @@ class BookingLifecycleService
 
         foreach ($driverAssignments as $assignment) {
             try {
-                $this->notificationTriggerService->processAssignmentNotificationAttempt($assignment, 1);
+                $this->notificationTriggerService->processAssignmentNotificationAttempt($assignment, 1, $notificationContext);
             } catch (\Throwable $exception) {
                 Log::warning('Failed to send dispatch notification to driver app', [
                     'booking_id' => $bookingId,
