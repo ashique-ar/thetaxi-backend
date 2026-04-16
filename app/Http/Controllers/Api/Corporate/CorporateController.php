@@ -18,12 +18,12 @@ class CorporateController extends Controller
     {
         $this->corporateService = $corporateService;
 
-        $this->middleware('permission:corporates.view')->only(['index', 'show']);
-        $this->middleware('permission:corporates.create')->only(['store']);
-        $this->middleware('permission:corporates.edit')->only(['update']);
-        $this->middleware('permission:corporates.manage')->only([
-            'activate', 'deactivate', 'assignVehicleGroups', 'removeVehicleGroup', 'createInitialAdmin',
-        ]);
+        // $this->middleware('permission:corporates.view')->only(['index', 'show']);
+        // $this->middleware('permission:corporates.create')->only(['store']);
+        // $this->middleware('permission:corporates.edit')->only(['update']);
+        // $this->middleware('permission:corporates.manage')->only([
+        //     'activate', 'deactivate', 'assignVehicleGroups', 'removeVehicleGroup', 'createInitialAdmin',
+        // ]);
     }
 
     public function index(Request $request): JsonResponse
