@@ -47,7 +47,7 @@ class GooglePlacesController extends Controller
         }
 
         // Cache key
-        $cacheKey = "places_autocomplete:" . md5($query . $countryCode . $limit);
+        $cacheKey = "places_autocomplete:v2:" . md5($query . $countryCode . $limit);
         if ($cached = Cache::get($cacheKey)) {
             return response()->json([
                 'status' => 'success',
@@ -64,13 +64,13 @@ class GooglePlacesController extends Controller
         }
 
         try {
-            // Build Autocomplete request - removed problematic parameters
+            // Leave `types` unset so Google can return addresses, landmarks,
+            // businesses, and other place predictions instead of geocodes only.
             $params = [
                 'input' => $query,
                 'key' => $this->googleApiKey,
                 'components' => 'country:' . $countryCode,
-                'types' => 'geocode',
-                'language' => 'en', // Add language preference
+                'language' => 'en',
             ];
 
             Log::info('Google Places Autocomplete Request', [

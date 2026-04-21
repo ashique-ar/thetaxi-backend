@@ -79,7 +79,7 @@
     <!-- End Booking Form Section -->
 
     <!-- Vehicle Results Section -->
-    <div class="package-standard-wrapper">
+    <div class="package-standard-wrapper" id="vehicleResultsSection">
         <div class="container">
             <!-- Search Summary & Duration Display -->
             <div class="row mb-4">
@@ -1092,6 +1092,23 @@
         $(document).ready(function() {
             const $searchBookingSection = $('#searchBookingSection');
             const $toggleSearchFormBtn = $('#toggleSearchFormBtn');
+            const mobileVehicleResultsTarget = document.getElementById('vehicleResultsSection');
+
+            function autoScrollToVehiclesOnMobile() {
+                if (window.innerWidth > 767 || !mobileVehicleResultsTarget || window.location.hash) {
+                    return;
+                }
+
+                window.requestAnimationFrame(function() {
+                    setTimeout(function() {
+                        const top = mobileVehicleResultsTarget.getBoundingClientRect().top + window.scrollY - 16;
+                        window.scrollTo({
+                            top: Math.max(top, 0),
+                            behavior: 'smooth'
+                        });
+                    }, 250);
+                });
+            }
 
             function syncMobileSearchFormState(forceOpen) {
                 if (!$searchBookingSection.length || !$toggleSearchFormBtn.length) {
@@ -1115,6 +1132,7 @@
             }
 
             syncMobileSearchFormState(false);
+            autoScrollToVehiclesOnMobile();
 
             $toggleSearchFormBtn.on('click', function() {
                 const willOpen = !$searchBookingSection.hasClass('is-open');

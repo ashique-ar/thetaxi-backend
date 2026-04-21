@@ -24,6 +24,10 @@
             padding: 60px 0;
         }
 
+        .cms-article-page {
+            padding-top: 110px;
+        }
+
         .article-image img {
             width: 100%;
             height: auto;
@@ -118,10 +122,37 @@
             margin: 12px 0;
         }
 
+        .cms-booking-section {
+            margin-top: 48px;
+            padding-top: 8px;
+        }
+
+        .cms-booking-header {
+            margin-bottom: 22px;
+        }
+
+        .cms-booking-header h2 {
+            margin-bottom: 8px;
+            font-size: 2rem;
+            font-weight: 700;
+            color: #1f2937;
+        }
+
+        .cms-booking-header p {
+            margin-bottom: 0;
+            color: #6b7280;
+        }
+
         @media (max-width:991px) {
             .article-sidebar {
                 position: static;
                 top: auto;
+            }
+        }
+
+        @media (max-width: 1199px) {
+            .cms-article-page {
+                padding-top: 90px;
             }
         }
     </style>
@@ -131,7 +162,7 @@
 
     <div class="reading-progress" id="readingProgress" aria-hidden="true"></div>
 
-    <section class="article-page">
+    <section class="article-page cms-article-page">
         <div class="container">
             <div class="row">
                 <main class="col-xl-8 col-lg-8">
@@ -269,102 +300,87 @@
             </div>
 
             {{-- Booking Integration --}}
-            @if ($content->pickup_location)
-                <!-- Booking header styled like search page (breadcrumb + hero) -->
-                <div class="breadcrumb-section three"
-                    style="background-image:linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url('{{ $content->thumbnail ? s3_asset($content->thumbnail) : asset('assets/img/innerpages/breadcrumb-bg.jpg') }}'); margin-bottom: 20px;">
-                    <div class="container">
-                        <div class="banner-content text-center">
-                            <h1>Book Your Ride</h1>
-                            <ul class="breadcrumb-list">
-                                <li><a href="{{ route('home') }}">Home</a></li>
-                                <li><a href="{{ route('cms.index', [$contentType->slug]) }}">{{ $contentType->title }}</a>
-                                </li>
-                                <li>{{ $content->title }}</li>
-                            </ul>
-                        </div>
-                    </div>
-                </div>
+            <div class="booking-section cms-booking-section mb-5" id="booking-section">
 
-                <div class="booking-section pt-5 mb-5" id="booking-section">
+                {{-- Prepare search object from content when location defaults are available --}}
+                @php
+                    $hasContentBookingLocations = !empty($content->pickup_location) || !empty($content->dropoff_location);
 
-                    {{-- Prepare search object from content if not provided --}}
-                    @php
-                        if (!isset($search) && isset($content)) {
-                            $search = new \stdClass();
-                            $search->service_type = $content->service_type;
+                    if (!isset($search) && isset($content) && $hasContentBookingLocations) {
+                        $search = new \stdClass();
+                        $search->service_type = $content->service_type;
 
-                            // Pickup
-                            $search->pickup_location = [
-                                'address' => $content->pickup_location,
-                                'lat' => $content->pickup_lat,
-                                'lng' => $content->pickup_lng,
-                            ];
+                        $search->pickup_location = [
+                            'address' => $content->pickup_location,
+                            'lat' => $content->pickup_lat,
+                            'lng' => $content->pickup_lng,
+                        ];
 
-                            // Dropoff
-                            $search->dropoff_location = [
-                                'address' => $content->dropoff_location,
-                                'lat' => $content->dropoff_lat,
-                                'lng' => $content->dropoff_lng,
-                            ];
+                        $search->dropoff_location = [
+                            'address' => $content->dropoff_location,
+                            'lat' => $content->dropoff_lat,
+                            'lng' => $content->dropoff_lng,
+                        ];
 
-                            // Dates: default pickup to today and compute dropoff from min_days
-                            $search->pickup_date = now()->format('Y-m-d');
-                            $minDays = $content->min_days ?? 1;
-                            if ((int) $minDays > 1) {
-                                $search->dropoff_date = now()
-                                    ->addDays($minDays - 1)
-                                    ->format('Y-m-d');
-                            } else {
-                                $search->dropoff_date = $search->pickup_date;
-                            }
-
-                            // No default pickup/dropoff time stored on content
-                            $search->pickup_time = null;
-                            $search->dropoff_time = null;
+                        $search->pickup_date = now()->format('Y-m-d');
+                        $minDays = $content->min_days ?? 1;
+                        if ((int) $minDays > 1) {
+                            $search->dropoff_date = now()
+                                ->addDays($minDays - 1)
+                                ->format('Y-m-d');
+                        } else {
+                            $search->dropoff_date = $search->pickup_date;
                         }
-                    @endphp
-                    {{-- Booking Form Component --}}
 
-                    <div class="filter-wrapper text-center hotel mb-5">
-                        <div class="container">
-                            @include('components.booking-form', ['search' => $search ?? null])
+                        $search->pickup_time = null;
+                        $search->dropoff_time = null;
+                    }
+                @endphp
+
+                <div class="cms-booking-header">
+                    <h2>Book Your Ride</h2>
+                    <p>
+                        {{ $hasContentBookingLocations
+                            ? 'The form is prefilled from this page where location data is available.'
+                            : 'Use the standard booking form with the same default values used on the home page.' }}
+                    </p>
+                </div>
+
+                <div class="filter-wrapper text-center hotel mb-5">
+                    @include('components.booking-form', ['search' => $search ?? null])
+                </div>
+
+                {{-- Suggested Vehicles --}}
+                @if ($hasContentBookingLocations && isset($suggestedVehicles) && count($suggestedVehicles) > 0)
+                    <div class="suggested-vehicles mt-5">
+                        <h4 class="mb-4">Recommended Vehicles for Your Journey</h4>
+                        <div class="row g-4">
+                            @foreach ($suggestedVehicles as $index => $vehicleData)
+                                <div class="col-lg-3 col-md-4 col-sm-6">
+                                    <x-vehicle-card :vehicle="$vehicleData" :pricing="$vehicleData['pricing_info'] ?? ($vehicleData['pricing'] ?? [])" :enhancedPricing="$vehicleData['enhanced_pricing'] ?? []"
+                                        :serviceFeatures="$vehicleData['service_features'] ?? []" :availability="[
+                                            'available' =>
+                                                $vehicleData['available_count'] ??
+                                                ($vehicleData['availability']['available'] ?? 0),
+                                            'total' =>
+                                                $vehicleData['total_count'] ??
+                                                ($vehicleData['availability']['total'] ?? 0),
+                                        ]" :searchId="session('current_search_id')" :showBookNow="true"
+                                        :showViewDetails="false" />
+                                </div>
+                            @endforeach
                         </div>
                     </div>
-
-
-                    {{-- Suggested Vehicles --}}
-                    @if (isset($suggestedVehicles) && count($suggestedVehicles) > 0)
-                        <div class="suggested-vehicles mt-5">
-                            <h4 class="mb-4">Recommended Vehicles for Your Journey</h4>
-                            <div class="row g-4">
-                                @foreach ($suggestedVehicles as $index => $vehicleData)
-                                    <div class="col-lg-3 col-md-4 col-sm-6">
-                                        <x-vehicle-card :vehicle="$vehicleData" :pricing="$vehicleData['pricing_info'] ?? ($vehicleData['pricing'] ?? [])" :enhancedPricing="$vehicleData['enhanced_pricing'] ?? []"
-                                            :serviceFeatures="$vehicleData['service_features'] ?? []" :availability="[
-                                                'available' =>
-                                                    $vehicleData['available_count'] ??
-                                                    ($vehicleData['availability']['available'] ?? 0),
-                                                'total' =>
-                                                    $vehicleData['total_count'] ??
-                                                    ($vehicleData['availability']['total'] ?? 0),
-                                            ]" :searchId="session('current_search_id')" :showBookNow="true"
-                                            :showViewDetails="false" />
-                                    </div>
-                                @endforeach
-                            </div>
+                @elseif($hasContentBookingLocations && isset($search) && !empty($search->from_date))
+                    <div class="suggested-vehicles mt-5">
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle me-2"></i>
+                            No vehicles found matching the criteria from this content. Please adjust the search
+                            above.
                         </div>
-                    @elseif(isset($search) && !empty($search->from_date))
-                        <div class="suggested-vehicles mt-5">
-                            <div class="alert alert-info">
-                                <i class="bi bi-info-circle me-2"></i>
-                                No vehicles found matching the criteria from this content. Please adjust the search
-                                above.
-                            </div>
-                        </div>
-                    @endif
-                </div>
-            @endif
+                    </div>
+                @endif
+            </div>
         </div>
     </section>
 
@@ -415,6 +431,26 @@
 
 @push('scripts')
     <script>
+        (function() {
+            const enforceCmsHeaderState = () => {
+                const header = document.querySelector('header.header-area.style-2.travel-agency3');
+                if (!header) return;
+                header.classList.add('sticky');
+            };
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', enforceCmsHeaderState, {
+                    once: true
+                });
+            } else {
+                enforceCmsHeaderState();
+            }
+
+            window.addEventListener('scroll', enforceCmsHeaderState, {
+                passive: true
+            });
+        })();
+
         // Reading progress bar
         (function() {
             const progress = document.getElementById('readingProgress');

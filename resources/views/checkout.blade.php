@@ -91,7 +91,7 @@
     @endphp
 
     <!-- Checkout Page Start-->
-    <div class="checkout-page">
+    <div class="checkout-page" id="checkoutContentStart">
         <div class="container">
             @if (empty($cart))
                 <div class="alert alert-warning text-center">
@@ -1756,6 +1756,20 @@
 @push('scripts')
     <script>
         $(document).ready(function() {
+            const mobileCheckoutTarget = document.getElementById('checkoutContentStart');
+
+            if (window.innerWidth <= 767 && mobileCheckoutTarget && !window.location.hash) {
+                window.requestAnimationFrame(function() {
+                    setTimeout(function() {
+                        const top = mobileCheckoutTarget.getBoundingClientRect().top + window.scrollY - 16;
+                        window.scrollTo({
+                            top: Math.max(top, 0),
+                            behavior: 'smooth'
+                        });
+                    }, 250);
+                });
+            }
+
             // Get PHP variables from blade
             const currencySymbol = '{{ $currencySymbol }}';
             const total = {{ $total }};

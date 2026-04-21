@@ -35,11 +35,16 @@
         bottom: 20px;
         right: 20px;
         width: 350px;
-        background: var(--primary-color);
+        background: var(--primary-color, #111827);
         border-radius: 16px;
         box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
         z-index: 1050;
         animation: cartSummaryFloatSlideInUp 0.4s ease-out;
+        overflow: hidden;
+    }
+
+    .cart-summary-float .cart-float-content {
+        background: var(--primary-color, #111827);
     }
 
     /* Slide-in animation for cart float appearance */
@@ -76,6 +81,7 @@
         max-height: 300px;
         overflow-y: auto;
         color: white;
+        background: var(--primary-color, #111827);
     }
 
     /* Individual cart item styling */
@@ -93,6 +99,7 @@
     .cart-summary-float .cart-float-footer {
         padding: 16px 20px;
         border-top: 1px solid rgba(255, 255, 255, 0.2);
+        background: var(--primary-color, #111827);
     }
 
     /* Cart total row styling */

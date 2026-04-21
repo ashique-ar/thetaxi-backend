@@ -27,7 +27,7 @@
     <!-- End Booking Form Section -->
 
     <!-- Cart Page Start-->
-    <div class="cart-page">
+    <div class="cart-page" id="cartContentStart">
         <div class="container">
             @php
                 // Get cart items from database via CartService with currency conversion
@@ -1499,6 +1499,20 @@
 @push('scripts')
     <script>
         $(document).ready(function() {
+            const mobileCartTarget = document.getElementById('cartContentStart');
+
+            if (window.innerWidth <= 767 && mobileCartTarget && !window.location.hash) {
+                window.requestAnimationFrame(function() {
+                    setTimeout(function() {
+                        const top = mobileCartTarget.getBoundingClientRect().top + window.scrollY - 16;
+                        window.scrollTo({
+                            top: Math.max(top, 0),
+                            behavior: 'smooth'
+                        });
+                    }, 250);
+                });
+            }
+
             // Success notification helper function
             function showSuccessNotification(message, duration = 3000) {
                 const alert = $(`
