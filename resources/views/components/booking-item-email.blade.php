@@ -171,22 +171,6 @@
     $returnDropoff = $item->metadata['return_dropoff_location'] ?? ($item['return_dropoff_location'] ?? null);
     $isReturnTrip = $item->metadata['is_return_trip'] ?? ($item['is_return_trip'] ?? false);
 
-    $showReturnLocations = !empty($returnPickup) || !empty($returnDropoff) || $isReturnTrip;
-
-    if ($showReturnLocations && empty($returnPickup)) {
-        $returnPickup = $dropoffLoc;
-    }
-    if ($showReturnLocations && empty($returnDropoff)) {
-        $returnDropoff = $pickupLoc;
-    }
-
-    $returnPickupAddress = is_array($returnPickup)
-        ? $returnPickup['address'] ?? 'Same as Dropoff'
-        : $returnPickup ?? 'Same as Dropoff';
-    $returnDropoffAddress = is_array($returnDropoff)
-        ? $returnDropoff['address'] ?? 'Same as Pickup'
-        : $returnDropoff ?? 'Same as Pickup';
-
     $oneWayPrice = $item->one_way_price ?? ($item->metadata['one_way_price'] ?? null);
     $returnPrice = $item->return_price ?? ($item->metadata['return_price'] ?? null);
     $returnDiscountPct =
@@ -210,9 +194,12 @@
         }
 
         if ($cartItem) {
+            $isReturnTrip = $isReturnTrip || !empty($cartItem['is_return_trip']);
             $oneWayPrice = $oneWayPrice ?? ($cartItem['one_way_price'] ?? null);
             $returnPrice = $returnPrice ?? ($cartItem['return_price'] ?? null);
             $returnDiscountPct = $returnDiscountPct ?? ($cartItem['return_discount_percentage'] ?? 0);
+            $returnPickup = $returnPickup ?? ($cartItem['return_pickup_location'] ?? null);
+            $returnDropoff = $returnDropoff ?? ($cartItem['return_dropoff_location'] ?? null);
         }
     }
 
@@ -242,12 +229,35 @@
     }
 
     $isDayPackage = $servicePricingMode === 'day';
+    $showReturnLocations = !$isDayPackage && ($isReturnTrip || !empty($returnPickup) || !empty($returnDropoff));
+
+    if ($showReturnLocations && empty($returnPickup)) {
+        $returnPickup = $dropoffLoc;
+    }
+    if ($showReturnLocations && empty($returnDropoff)) {
+        $returnDropoff = $pickupLoc;
+    }
+
+    $returnPickupAddress = is_array($returnPickup)
+        ? $returnPickup['address'] ?? 'Same as Dropoff'
+        : $returnPickup ?? 'Same as Dropoff';
+    $returnDropoffAddress = is_array($returnDropoff)
+        ? $returnDropoff['address'] ?? 'Same as Pickup'
+        : $returnDropoff ?? 'Same as Pickup';
+
     $packageKmLabel = null;
     if ($isDayPackage) {
         $packageKmValue = $freeKmPerPackage ?? $allowedTotalKm ?? $freeKmPerDay;
         if (!empty($packageKmValue)) {
             $packageKmLabel = number_format((float) $packageKmValue, 0) . ' km package';
         }
+    }
+
+    $tripTypeLabel = 'Drop-off only';
+    if ($isDayPackage) {
+        $tripTypeLabel = $isReturnTrip ? 'With return to pickup location' : 'Without return';
+    } elseif ($isReturnTrip) {
+        $tripTypeLabel = 'With return';
     }
 
     $routeSummaryLines = [];
@@ -324,6 +334,14 @@
                 </div>
             </td>
         </tr>
+        <tr>
+            <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; width: 30%;">
+                Trip Type
+            </td>
+            <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
+                {{ $tripTypeLabel }}
+            </td>
+        </tr>
         @if (!$isDayPackage)
             <tr>
                 <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; width: 30%;">
@@ -346,7 +364,7 @@
                 </td>
             </tr>
         @endif
-        @if ($item->serviceType?->uses_dropoff_time ?? true)
+        @if ($isReturnTrip)
             <tr>
                 <td
                     style="padding: 4px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; width: 30%;">
