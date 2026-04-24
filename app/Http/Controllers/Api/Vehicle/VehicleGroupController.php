@@ -32,24 +32,45 @@ class VehicleGroupController extends Controller
             'category',
             'class'
         );
+
         if ($request->filled('search')) {
-            $q->where('name', 'like', '%' . $request->search . '%');
+            $search = trim((string) $request->search);
+
+            $q->where(function ($query) use ($search) {
+                $query->where('name', 'like', '%' . $search . '%')
+                    ->orWhere('description', 'like', '%' . $search . '%')
+                    ->orWhereHas('grade', function ($gradeQuery) use ($search) {
+                        $gradeQuery->where('name', 'like', '%' . $search . '%');
+                    })
+                    ->orWhereHas('make', function ($makeQuery) use ($search) {
+                        $makeQuery->where('name', 'like', '%' . $search . '%');
+                    })
+                    ->orWhereHas('model', function ($modelQuery) use ($search) {
+                        $modelQuery->where('name', 'like', '%' . $search . '%');
+                    })
+                    ->orWhereHas('category', function ($categoryQuery) use ($search) {
+                        $categoryQuery->where('name', 'like', '%' . $search . '%');
+                    })
+                    ->orWhereHas('class', function ($classQuery) use ($search) {
+                        $classQuery->where('name', 'like', '%' . $search . '%');
+                    });
+            });
         }
 
         $filters = [
             'grade_id',
+            'make_id',
+            'is_active',
             'class_id',
             'fuel_type_id',
             'transmission_id',
             'category_id',
             'model_id',
-            'is_premium',
         ];
 
         foreach ($filters as $field) {
             if ($request->filled($field)) {
-                // cast booleans if needed
-                $value = in_array($field, ['is_active', 'is_premium'])
+                $value = in_array($field, ['is_active'])
                     ? filter_var($request->get($field), FILTER_VALIDATE_BOOL)
                     : $request->get($field);
 
@@ -57,10 +78,23 @@ class VehicleGroupController extends Controller
             }
         }
 
-        // Optional sorting
         if ($request->filled('sort') && $request->filled('direction')) {
+            $allowedSorts = [
+                'name',
+                'created_at',
+                'updated_at',
+                'is_active',
+                'make_id',
+                'model_id',
+                'grade_id',
+                'category_id',
+                'class_id',
+            ];
             $direction = strtolower($request->direction) === 'desc' ? 'desc' : 'asc';
-            $q->orderBy($request->sort, $direction);
+            $sort = in_array($request->sort, $allowedSorts, true) ? $request->sort : 'created_at';
+            $q->orderBy($sort, $direction);
+        } else {
+            $q->orderBy('created_at', 'desc');
         }
 
         $perPage = (int) $request->get('per_page', 15);
