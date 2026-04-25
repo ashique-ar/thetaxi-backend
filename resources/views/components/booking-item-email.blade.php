@@ -186,17 +186,39 @@
 
     $cartItem = null;
     $cartIndex = $item->metadata['item_index'] ?? null;
+    $cartKey = $item->metadata['cart_key'] ?? null;
     $workflow = is_string($item->booking->workflow_data ?? null)
         ? json_decode($item->booking->workflow_data, true)
         : $item->booking->workflow_data ?? [];
     $workflow = is_array($workflow) ? $workflow : [];
-    if (!is_null($cartIndex) && isset($workflow['cart_items'][$cartIndex])) {
+    if (!empty($cartKey) && isset($workflow['cart_items'][$cartKey])) {
+        $cartItem = $workflow['cart_items'][$cartKey];
+    } elseif (!is_null($cartIndex) && isset($workflow['cart_items'][$cartIndex])) {
         $cartItem = $workflow['cart_items'][$cartIndex];
     } else {
+        $bestScore = -1;
+        $itemFromDate = $item->from_date ? \Carbon\Carbon::parse($item->from_date)->format('Y-m-d') : null;
+        $itemToDate = $item->to_date ? \Carbon\Carbon::parse($item->to_date)->format('Y-m-d') : null;
         foreach ($workflow['cart_items'] ?? [] as $ci) {
             if (isset($ci['vehicle_group_id']) && $ci['vehicle_group_id'] == $item->vehicle_group_id) {
-                $cartItem = $ci;
-                break;
+                $score = 0;
+                $ciTotal = (float) ($ci['total_price'] ?? ($ci['total'] ?? ($ci['amount'] ?? 0)));
+                if ($ciTotal > 0 && abs($ciTotal - (float) $totalPrice) < 0.01) {
+                    $score += 10;
+                }
+                if (!empty($ci['pickup_date']) && $itemFromDate && $ci['pickup_date'] === $itemFromDate) {
+                    $score += 2;
+                }
+                if (!empty($ci['return_date']) && $itemToDate && $ci['return_date'] === $itemToDate) {
+                    $score += 2;
+                }
+                if (!empty($ci['service_type']) && !empty($serviceCode) && $ci['service_type'] === $serviceCode) {
+                    $score += 1;
+                }
+                if ($score > $bestScore) {
+                    $bestScore = $score;
+                    $cartItem = $ci;
+                }
             }
         }
     }

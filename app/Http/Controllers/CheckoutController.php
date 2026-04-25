@@ -635,6 +635,15 @@ class CheckoutController extends Controller
                         'calculation_type' => $item['distance_details']['calculation_type'] ?? null,
                         'effective_days' => $item['distance_details']['effective_days'] ?? null,
                         'journey_duration_seconds' => $item['distance_details']['journey_duration_seconds'] ?? null,
+                        'is_return_trip' => $item['is_return_trip'] ?? false,
+                        'return_trip_date' => $item['return_trip_date'] ?? null,
+                        'return_trip_time' => $item['return_trip_time'] ?? null,
+                        'return_trip_pricing' => $item['return_trip_pricing'] ?? null,
+                        'one_way_price' => $item['one_way_price'] ?? null,
+                        'return_price' => $item['return_price'] ?? null,
+                        'return_discount_percentage' => $item['return_discount_percentage'] ?? null,
+                        'return_pickup_location' => $item['return_pickup_location'] ?? ($item['dropoff_location'] ?? null),
+                        'return_dropoff_location' => $item['return_dropoff_location'] ?? ($item['pickup_location'] ?? null),
                     ]
                 ]);
 
