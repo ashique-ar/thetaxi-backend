@@ -23,15 +23,21 @@
         $pickupDateTime = $pickupBase->format('M d, Y h:i A');
     }
 
-    $returnDateTime = 'N/A';
-    if ($item->to_date) {
-        $returnBase = \Carbon\Carbon::parse($item->to_date);
-        if (!empty($toTime) && preg_match('/^\d{2}:\d{2}(:\d{2})?$/', (string) $toTime)) {
-            [$returnHour, $returnMinute, $returnSecond] = array_pad(explode(':', (string) $toTime), 3, '00');
-            $returnBase->setTime((int) $returnHour, (int) $returnMinute, (int) $returnSecond);
+    $formatDateTime = function ($date, $time = null) {
+        if (empty($date)) {
+            return 'N/A';
         }
-        $returnDateTime = $returnBase->format('M d, Y h:i A');
-    }
+
+        $dateTime = \Carbon\Carbon::parse($date);
+        if (!empty($time) && preg_match('/^\d{2}:\d{2}(:\d{2})?$/', (string) $time)) {
+            [$hour, $minute, $second] = array_pad(explode(':', (string) $time), 3, '00');
+            $dateTime->setTime((int) $hour, (int) $minute, (int) $second);
+        }
+
+        return $dateTime->format('M d, Y h:i A');
+    };
+
+    $returnDateTime = $formatDateTime($item->to_date, $toTime);
 
     $vehicleGroupName = $item->vehicleGroup?->name ?? 'N/A';
     $serviceTypeName = $item->serviceType?->name ?? 'N/A';
@@ -169,6 +175,8 @@
 
     $returnPickup = $item->metadata['return_pickup_location'] ?? ($item['return_pickup_location'] ?? null);
     $returnDropoff = $item->metadata['return_dropoff_location'] ?? ($item['return_dropoff_location'] ?? null);
+    $returnTripDate = $item->metadata['return_trip_date'] ?? ($item['return_trip_date'] ?? null);
+    $returnTripTime = $item->metadata['return_trip_time'] ?? ($item['return_trip_time'] ?? null);
     $isReturnTrip = $item->metadata['is_return_trip'] ?? ($item['is_return_trip'] ?? false);
 
     $oneWayPrice = $item->one_way_price ?? ($item->metadata['one_way_price'] ?? null);
@@ -178,29 +186,37 @@
 
     $cartItem = null;
     $cartIndex = $item->metadata['item_index'] ?? null;
-    if (is_null($oneWayPrice) || is_null($returnPrice)) {
-        $workflow = is_string($item->booking->workflow_data ?? null)
-            ? json_decode($item->booking->workflow_data, true)
-            : $item->booking->workflow_data ?? [];
-        if (!is_null($cartIndex) && isset($workflow['cart_items'][$cartIndex])) {
-            $cartItem = $workflow['cart_items'][$cartIndex];
-        } else {
-            foreach ($workflow['cart_items'] ?? [] as $ci) {
-                if (isset($ci['vehicle_group_id']) && $ci['vehicle_group_id'] == $item->vehicle_group_id) {
-                    $cartItem = $ci;
-                    break;
-                }
+    $workflow = is_string($item->booking->workflow_data ?? null)
+        ? json_decode($item->booking->workflow_data, true)
+        : $item->booking->workflow_data ?? [];
+    $workflow = is_array($workflow) ? $workflow : [];
+    if (!is_null($cartIndex) && isset($workflow['cart_items'][$cartIndex])) {
+        $cartItem = $workflow['cart_items'][$cartIndex];
+    } else {
+        foreach ($workflow['cart_items'] ?? [] as $ci) {
+            if (isset($ci['vehicle_group_id']) && $ci['vehicle_group_id'] == $item->vehicle_group_id) {
+                $cartItem = $ci;
+                break;
             }
         }
+    }
 
-        if ($cartItem) {
-            $isReturnTrip = $isReturnTrip || !empty($cartItem['is_return_trip']);
-            $oneWayPrice = $oneWayPrice ?? ($cartItem['one_way_price'] ?? null);
-            $returnPrice = $returnPrice ?? ($cartItem['return_price'] ?? null);
-            $returnDiscountPct = $returnDiscountPct ?? ($cartItem['return_discount_percentage'] ?? 0);
-            $returnPickup = $returnPickup ?? ($cartItem['return_pickup_location'] ?? null);
-            $returnDropoff = $returnDropoff ?? ($cartItem['return_dropoff_location'] ?? null);
-        }
+    if ($cartItem) {
+        $isReturnTrip =
+            filter_var($isReturnTrip, FILTER_VALIDATE_BOOLEAN) ||
+            filter_var($cartItem['is_return_trip'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $oneWayPrice = $oneWayPrice ?? ($cartItem['one_way_price'] ?? null);
+        $returnPrice = $returnPrice ?? ($cartItem['return_price'] ?? null);
+        $returnDiscountPct = $returnDiscountPct ?: ($cartItem['return_discount_percentage'] ?? 0);
+        $returnPickup = $returnPickup ?? ($cartItem['return_pickup_location'] ?? null);
+        $returnDropoff = $returnDropoff ?? ($cartItem['return_dropoff_location'] ?? null);
+        $returnTripDate = $returnTripDate ?? ($cartItem['return_trip_date'] ?? null);
+        $returnTripTime = $returnTripTime ?? ($cartItem['return_trip_time'] ?? null);
+    }
+
+    $isReturnTrip = filter_var($isReturnTrip, FILTER_VALIDATE_BOOLEAN);
+    if ($isReturnTrip) {
+        $returnDateTime = $formatDateTime($returnTripDate ?: $item->to_date, $returnTripTime ?: $toTime);
     }
 
     $allowedTotalKm = $distanceDetails['allowed_total_km'] ?? null;
@@ -253,12 +269,7 @@
         }
     }
 
-    $tripTypeLabel = 'Drop-off only';
-    if ($isDayPackage) {
-        $tripTypeLabel = $isReturnTrip ? 'With return to pickup location' : 'Without return';
-    } elseif ($isReturnTrip) {
-        $tripTypeLabel = 'With return';
-    }
+    $tripTypeLabel = $isReturnTrip ? 'With return' : 'Drop-off only';
 
     $routeSummaryLines = [];
     if (!$isDayPackage && $hasReturnKmData) {
@@ -334,14 +345,16 @@
                 </div>
             </td>
         </tr>
-        <tr>
-            <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; width: 30%;">
-                Trip Type
-            </td>
-            <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
-                {{ $tripTypeLabel }}
-            </td>
-        </tr>
+        @if (!$isDayPackage)
+            <tr>
+                <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; width: 30%;">
+                    Trip Type
+                </td>
+                <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
+                    {{ $tripTypeLabel }}
+                </td>
+            </tr>
+        @endif
         @if (!$isDayPackage)
             <tr>
                 <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; width: 30%;">
