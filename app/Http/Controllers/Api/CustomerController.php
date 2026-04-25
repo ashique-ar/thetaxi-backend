@@ -31,11 +31,14 @@ class CustomerController extends Controller
     {
         $q = Customer::with('user');
         if ($request->filled('search')) {
-            $q->whereHas('user', function($query) use ($request) {
-                $query->where('first_name', 'like', '%' . $request->get('search') . '%')
-                      ->orWhere('last_name', 'like', '%' . $request->get('search') . '%')
-                      ->orWhere('email', 'like', '%' . $request->get('search') . '%');
-            })->orWhere('code', 'like', '%' . $request->get('search') . '%');
+            $search = $request->get('search');
+            $q->where(function ($builder) use ($search) {
+                $builder->whereHas('user', function ($query) use ($search) {
+                    $query->whereLikeInsensitive('first_name', $search)
+                        ->orWhereLikeInsensitive('last_name', $search)
+                        ->orWhereLikeInsensitive('email', $search);
+                })->orWhereLikeInsensitive('code', $search);
+            });
         }
         return CustomerResource::collection(
             $q->paginate($request->per_page ?? 15)

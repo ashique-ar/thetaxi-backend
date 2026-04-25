@@ -25,7 +25,7 @@ class VehicleOwnerTypeController extends Controller
     {
         $q = VehicleOwnerType::query();
         if ($request->filled('search')) {
-            $q->where('name','like','%'.$request->search.'%');
+            $q->whereLikeInsensitive('name', $request->search);
         }
         return VehicleOwnerTypeResource::collection($q->paginate($request->per_page ?? 15));
     }

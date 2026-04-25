@@ -25,7 +25,7 @@ class VehicleCategoryController extends Controller
     {
         $q = VehicleCategory::withInactive();
         if ($request->filled('search')) {
-            $q->where('name', 'like', '%' . $request->search . '%');
+            $q->whereLikeInsensitive('name', $request->search);
         }
         
         // Only apply is_active filter if explicitly set

@@ -35,9 +35,9 @@ class VehicleOwnerController extends Controller
         $q = VehicleOwner::with('user');
         if ($request->filled('search')) {
             $q->whereHas('user', function($query) use ($request) {
-                $query->where('first_name', 'like', '%' . $request->get('search') . '%')
-                      ->orWhere('last_name', 'like', '%' . $request->get('search') . '%')
-                      ->orWhere('email', 'like', '%' . $request->get('search') . '%');
+                $query->whereLikeInsensitive('first_name', $request->get('search'))
+                      ->orWhereLikeInsensitive('last_name', $request->get('search'))
+                      ->orWhereLikeInsensitive('email', $request->get('search'));
             });
         }
         return VehicleOwnerResource::collection($q->paginate($request->per_page ?? 15));

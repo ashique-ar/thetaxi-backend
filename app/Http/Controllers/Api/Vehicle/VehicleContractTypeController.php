@@ -25,7 +25,7 @@ class VehicleContractTypeController extends Controller
     {
         $q = VehicleContractType::query();
         if ($request->filled('search')) {
-            $q->where('name', 'like', '%' . $request->search . '%');
+            $q->whereLikeInsensitive('name', $request->search);
         }
         return VehicleContractTypeResource::collection($q->paginate($request->per_page ?? 15));
     }

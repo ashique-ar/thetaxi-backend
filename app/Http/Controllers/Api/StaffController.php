@@ -25,8 +25,10 @@ class StaffController extends Controller
     {
         $q = Staff::with('user');
         if ($request->filled('search')) {
-            $q->where('staff_type','like','%'.$request->search.'%')
-              ->orWhere('code','like','%'.$request->search.'%');
+            $q->where(function ($query) use ($request) {
+                $query->whereLikeInsensitive('staff_type', $request->search)
+                    ->orWhereLikeInsensitive('code', $request->search);
+            });
         }
         return StaffResource::collection(
             $q->paginate($request->per_page ?? 15)

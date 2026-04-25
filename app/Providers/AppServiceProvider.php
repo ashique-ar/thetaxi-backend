@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Services\WebsiteSettingsService;
+use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\Request;
@@ -33,6 +34,33 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        EloquentBuilder::macro('whereLikeInsensitive', function (string $column, string $value, string $boolean = 'and') {
+            $query = $this->getQuery();
+            $driver = $query->getConnection()->getDriverName();
+            $wrappedColumn = $query->getGrammar()->wrap($column);
+            $searchValue = '%' . $value . '%';
+
+            if ($driver === 'pgsql') {
+                return $this->whereRaw("CAST({$wrappedColumn} AS TEXT) ILIKE ?", [$searchValue], $boolean);
+            }
+
+            $castType = match ($driver) {
+                'sqlsrv' => 'NVARCHAR(MAX)',
+                'mysql', 'mariadb' => 'CHAR',
+                default => 'TEXT',
+            };
+
+            return $this->whereRaw(
+                "LOWER(CAST({$wrappedColumn} AS {$castType})) LIKE ?",
+                [mb_strtolower($searchValue)],
+                $boolean
+            );
+        });
+
+        EloquentBuilder::macro('orWhereLikeInsensitive', function (string $column, string $value) {
+            return $this->whereLikeInsensitive($column, $value, 'or');
+        });
+
         // Register model observers
         Driver::observe(DriverObserver::class);
 

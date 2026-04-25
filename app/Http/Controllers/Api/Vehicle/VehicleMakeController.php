@@ -25,9 +25,7 @@ class VehicleMakeController extends Controller
     {
         $q = VehicleMake::withInactive();
         if ($request->filled('search')) {
-            // Case-insensitive search for name
-            $search = mb_strtolower($request->search);
-            $q->whereRaw('LOWER(name) LIKE ?', ['%' . $search . '%']);
+            $q->whereLikeInsensitive('name', $request->search);
         }
         
         // Only apply is_active filter if explicitly set

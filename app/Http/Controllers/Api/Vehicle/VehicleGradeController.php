@@ -25,7 +25,7 @@ class VehicleGradeController extends Controller
     {
         $q = VehicleGrade::query();
         if ($request->filled('search')) {
-            $q->where('name','like','%'.$request->search.'%');
+            $q->whereLikeInsensitive('name', $request->search);
         }
         return VehicleGradeResource::collection($q->paginate($request->per_page ?? 15));
     }

@@ -37,22 +37,22 @@ class VehicleGroupController extends Controller
             $search = trim((string) $request->search);
 
             $q->where(function ($query) use ($search) {
-                $query->where('name', 'like', '%' . $search . '%')
-                    ->orWhere('description', 'like', '%' . $search . '%')
+                $query->whereLikeInsensitive('name', $search)
+                    ->orWhereLikeInsensitive('description', $search)
                     ->orWhereHas('grade', function ($gradeQuery) use ($search) {
-                        $gradeQuery->where('name', 'like', '%' . $search . '%');
+                        $gradeQuery->whereLikeInsensitive('name', $search);
                     })
                     ->orWhereHas('make', function ($makeQuery) use ($search) {
-                        $makeQuery->where('name', 'like', '%' . $search . '%');
+                        $makeQuery->whereLikeInsensitive('name', $search);
                     })
                     ->orWhereHas('model', function ($modelQuery) use ($search) {
-                        $modelQuery->where('name', 'like', '%' . $search . '%');
+                        $modelQuery->whereLikeInsensitive('name', $search);
                     })
                     ->orWhereHas('category', function ($categoryQuery) use ($search) {
-                        $categoryQuery->where('name', 'like', '%' . $search . '%');
+                        $categoryQuery->whereLikeInsensitive('name', $search);
                     })
                     ->orWhereHas('class', function ($classQuery) use ($search) {
-                        $classQuery->where('name', 'like', '%' . $search . '%');
+                        $classQuery->whereLikeInsensitive('name', $search);
                     });
             });
         }

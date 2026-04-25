@@ -26,7 +26,7 @@ class CountryController extends Controller
     {
         $q = Country::query();
         if ($request->filled('search')) {
-            $q->where('name', 'like', '%' . $request->search . '%');
+            $q->whereLikeInsensitive('name', $request->search);
         }
         return CountryResource::collection(
             $q->paginate($request->per_page ?? 15)

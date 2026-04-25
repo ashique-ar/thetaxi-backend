@@ -26,8 +26,10 @@ class CurrencyController extends Controller
     {
         $q = Currency::with('country');
         if ($request->filled('search')) {
-            $q->where('name', 'like', '%' . $request->search . '%')
-                ->orWhere('code', 'like', '%' . $request->search . '%');
+            $q->where(function ($query) use ($request) {
+                $query->whereLikeInsensitive('name', $request->search)
+                    ->orWhereLikeInsensitive('code', $request->search);
+            });
         }
         return CurrencyResource::collection(
             $q->paginate($request->per_page ?? 15)

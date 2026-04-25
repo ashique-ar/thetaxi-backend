@@ -26,7 +26,7 @@ class StateController extends Controller
     {
         $q = State::with('country');
         if ($request->filled('search')) {
-            $q->where('name', 'like', '%' . $request->search . '%');
+            $q->whereLikeInsensitive('name', $request->search);
         }
         return StateResource::collection(
             $q->paginate($request->per_page ?? 15)

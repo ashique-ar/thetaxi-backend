@@ -25,7 +25,7 @@ class CompanyController extends Controller
     {
         $q = Company::with(['region', 'country', 'district', 'city']);
         if ($request->filled('search')) {
-            $q->where('name', 'like', '%' . $request->search . '%');
+            $q->whereLikeInsensitive('name', $request->search);
         }
         return CompanyResource::collection(
             $q->paginate($request->per_page ?? 15)

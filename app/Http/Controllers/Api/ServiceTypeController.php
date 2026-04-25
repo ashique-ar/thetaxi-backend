@@ -181,8 +181,8 @@ class ServiceTypeController extends Controller
 
         if ($request->filled('search')) {
             $query->where(function ($builder) use ($request) {
-                $builder->where('name', 'like', '%' . $request->search . '%')
-                    ->orWhere('code', 'like', '%' . $request->search . '%');
+                $builder->whereLikeInsensitive('name', $request->search)
+                    ->orWhereLikeInsensitive('code', $request->search);
             });
         }
 
