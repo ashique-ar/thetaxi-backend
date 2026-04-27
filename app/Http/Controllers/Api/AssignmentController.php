@@ -48,6 +48,7 @@ class AssignmentController extends Controller
                 'vehicleAssignments.vehicle',
                 'driverAssignments.driver.user',
                 'bookingItems.serviceType',
+                'bookingItems.vehicleGroup',
                 'bookingItems.vehicle.vehicleGroup',
                 'bookingItems.driver.user',
             ])->findOrFail($bookingId);
@@ -78,6 +79,8 @@ class AssignmentController extends Controller
 
             $selectedVehicle = $selectedBookingItem?->vehicle ?? $booking->vehicle;
             $selectedDriver = $selectedBookingItem?->driver ?? $booking->driver;
+            $selectedVehicleGroup = $selectedBookingItem?->vehicleGroup
+                ?? $selectedVehicle?->vehicleGroup;
             $selectedServiceType = $selectedBookingItem?->serviceType
                 ?? $booking->bookingItems
                     ->filter(fn ($item) => !empty($item->service_type_id))
@@ -205,6 +208,10 @@ class AssignmentController extends Controller
                         'id' => $selectedVehicle->vehicleGroup->id,
                         'name' => $selectedVehicle->vehicleGroup->name,
                     ] : null,
+                ] : null,
+                'current_vehicle_group' => $selectedVehicleGroup ? [
+                    'id' => $selectedVehicleGroup->id,
+                    'name' => $selectedVehicleGroup->name,
                 ] : null,
                 'current_driver' => $selectedDriver ? [
                     'id' => $selectedDriver->id,
