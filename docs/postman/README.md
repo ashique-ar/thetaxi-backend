@@ -198,6 +198,9 @@ The `device_uuid` is automatically saved to the environment for subsequent reque
 Multi-stop data is returned in assignment and status responses:
 - Assignment list/current payloads include `is_multi_stop` and `route_stops`.
 - Trip status includes `stops`, `current_stop`, and `allowed_actions`.
+- Use `current_stop.id` / `route_stops[].id` as `{stopId}` in stop action endpoints.
+- Use `booking_stop_id`, `type_sequence`, and `display_label` to show exactly which booking pickup/dropoff is being handled, for example `Pickup 2` or `Drop-off 1`.
+- Stop action responses include `processed_stop` for the stop just changed and `current_stop` for the next actionable stop.
 - Stop statuses are `pending`, `arrived`, `picked_up`, `dropped_off`, or `skipped`.
 - For multi-stop hires, call `start` at the starting place first. The starting pickup is auto-completed, then process each remaining stop in order. `complete` is blocked until every stop is completed or skipped.
 

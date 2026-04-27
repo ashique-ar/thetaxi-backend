@@ -12,8 +12,10 @@ class DriverAssignmentStop extends BaseModel
         'assignment_id',
         'booking_id',
         'booking_item_id',
+        'booking_stop_id',
         'stop_type',
         'route_order',
+        'type_sequence',
         'status',
         'location',
         'label',
@@ -36,6 +38,7 @@ class DriverAssignmentStop extends BaseModel
     protected $casts = [
         'location' => 'array',
         'route_order' => 'integer',
+        'type_sequence' => 'integer',
         'latitude' => 'decimal:8',
         'longitude' => 'decimal:8',
         'arrived_at' => 'datetime',

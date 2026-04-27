@@ -701,6 +701,11 @@ class AssignmentController extends Controller
                 ?? null;
 
             $normalized[] = [
+                'booking_stop_id' => $stop['stop_id']
+                    ?? $stop['stopId']
+                    ?? $location['stop_id']
+                    ?? $location['stopId']
+                    ?? null,
                 'type' => $type,
                 'route_order' => $routeOrder,
                 'label' => ucfirst($type) . ' Stop ' . $routeOrder,
@@ -714,6 +719,16 @@ class AssignmentController extends Controller
             return (int) ($left['route_order'] ?? 0) <=> (int) ($right['route_order'] ?? 0);
         });
 
+        $typeCounters = [];
+        foreach ($normalized as $index => $stop) {
+            $type = (string) ($stop['type'] ?? 'stop');
+            $typeCounters[$type] = ($typeCounters[$type] ?? 0) + 1;
+            $labelPrefix = $type === 'pickup' ? 'Pickup' : ($type === 'dropoff' ? 'Drop-off' : 'Stop');
+            $normalized[$index]['type_sequence'] = $typeCounters[$type];
+            $normalized[$index]['label'] = "{$labelPrefix} {$typeCounters[$type]}";
+            $normalized[$index]['display_label'] = $normalized[$index]['label'];
+        }
+
         return array_values($normalized);
     }
 
@@ -725,12 +740,21 @@ class AssignmentController extends Controller
 
         return $assignment->stops
             ->map(function ($stop) {
+                $displayLabel = $stop->label ?: (
+                    $stop->stop_type === 'pickup'
+                        ? 'Pickup ' . ($stop->type_sequence ?: $stop->route_order)
+                        : 'Drop-off ' . ($stop->type_sequence ?: $stop->route_order)
+                );
+
                 return [
                     'id' => $stop->id,
+                    'booking_stop_id' => $stop->booking_stop_id,
                     'type' => $stop->stop_type,
+                    'type_sequence' => $stop->type_sequence !== null ? (int) $stop->type_sequence : null,
                     'route_order' => (int) $stop->route_order,
                     'status' => $stop->status,
-                    'label' => $stop->label,
+                    'label' => $displayLabel,
+                    'display_label' => $displayLabel,
                     'address' => $stop->address,
                     'latitude' => $stop->latitude !== null ? (float) $stop->latitude : null,
                     'longitude' => $stop->longitude !== null ? (float) $stop->longitude : null,

@@ -5333,6 +5333,11 @@ class BookingFlowService
             $normalized[] = [
                 'type' => $typeRaw,
                 'route_order' => $routeOrder,
+                'stop_id' => $stop['stop_id']
+                    ?? $stop['stopId']
+                    ?? $location['stop_id']
+                    ?? $location['stopId']
+                    ?? null,
                 'location' => $location,
             ];
         }

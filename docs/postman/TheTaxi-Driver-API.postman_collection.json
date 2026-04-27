@@ -1,4 +1,4 @@
-﻿{
+{
     "info": {
         "_postman_id": "driver-mobile-api-v1",
         "name": "TheTaxi Driver Mobile API",
@@ -19,18 +19,18 @@
                                 "exec": [
                                     "if (pm.response.code === 200) {",
                                     "    const response = pm.response.json();",
-                                    "    if (response.data \u0026\u0026 response.data.token) {",
-                                    "        pm.environment.set(\u0027access_token\u0027, response.data.token.access_token);",
-                                    "        pm.environment.set(\u0027refresh_token\u0027, response.data.token.refresh_token);",
-                                    "        pm.environment.set(\u0027driver_id\u0027, response.data.driver.id);",
-                                    "        pm.environment.set(\u0027user_id\u0027, response.data.user.id);",
-                                    "        if (response.data.device \u0026\u0026 response.data.device.device_uuid) {",
-                                    "            pm.environment.set(\u0027device_uuid\u0027, response.data.device.device_uuid);",
+                                    "    if (response.data && response.data.token) {",
+                                    "        pm.environment.set('access_token', response.data.token.access_token);",
+                                    "        pm.environment.set('refresh_token', response.data.token.refresh_token);",
+                                    "        pm.environment.set('driver_id', response.data.driver.id);",
+                                    "        pm.environment.set('user_id', response.data.user.id);",
+                                    "        if (response.data.device && response.data.device.device_uuid) {",
+                                    "            pm.environment.set('device_uuid', response.data.device.device_uuid);",
                                     "        }",
                                     "        if (response.data.current_assignment) {",
-                                    "            pm.environment.set(\u0027assignment_id\u0027, response.data.current_assignment.id);",
+                                    "            pm.environment.set('assignment_id', response.data.current_assignment.id);",
                                     "        }",
-                                    "        console.log(\u0027âœ… Tokens saved to environment\u0027);",
+                                    "        console.log('âœ… Tokens saved to environment');",
                                     "    }",
                                     "}"
                                 ],
@@ -136,7 +136,7 @@
                                 "profile"
                             ]
                         },
-                        "description": "Retrieve the authenticated driver\u0027s profile. Response now includes `assignment_statistics` with total_assignments, active_assignments, and completed_assignments counts."
+                        "description": "Retrieve the authenticated driver's profile. Response now includes `assignment_statistics` with total_assignments, active_assignments, and completed_assignments counts."
                     },
                     "response": [
                         {
@@ -165,9 +165,9 @@
                                     "if (pm.response.code === 200) {",
                                     "    const response = pm.response.json();",
                                     "    if (response.data) {",
-                                    "        pm.environment.set(\u0027access_token\u0027, response.data.access_token);",
-                                    "        pm.environment.set(\u0027refresh_token\u0027, response.data.refresh_token);",
-                                    "        console.log(\u0027âœ… Tokens refreshed\u0027);",
+                                    "        pm.environment.set('access_token', response.data.access_token);",
+                                    "        pm.environment.set('refresh_token', response.data.refresh_token);",
+                                    "        console.log('âœ… Tokens refreshed');",
                                     "    }",
                                     "}"
                                 ],
@@ -268,12 +268,12 @@
                                 "exec": [
                                     "if (pm.response.code === 200) {",
                                     "    const response = pm.response.json();",
-                                    "    if (response.data \u0026\u0026 response.data.session \u0026\u0026 response.data.session.id) {",
-                                    "        pm.environment.set(\u0027session_id\u0027, response.data.session.id);",
-                                    "        console.log(\u0027âœ… Session started:\u0027, response.data.session.id);",
+                                    "    if (response.data && response.data.session && response.data.session.id) {",
+                                    "        pm.environment.set('session_id', response.data.session.id);",
+                                    "        console.log('âœ… Session started:', response.data.session.id);",
                                     "    }",
-                                    "    if (response.data.pending_assignments \u0026\u0026 response.data.pending_assignments.length \u003e 0) {",
-                                    "        console.log(\u0027ðŸ“‹ Pending assignments:\u0027, response.data.pending_assignments.length);",
+                                    "    if (response.data.pending_assignments && response.data.pending_assignments.length > 0) {",
+                                    "        console.log('ðŸ“‹ Pending assignments:', response.data.pending_assignments.length);",
                                     "    }",
                                     "}"
                                 ],
@@ -319,7 +319,7 @@
                                 "online"
                             ]
                         },
-                        "description": "Set the driver\u0027s status to online and start a new session.\n\nResponse now includes `pending_assignments` â€” an array of DriverAssignments in active/pending_approval status with booking and booking_item details."
+                        "description": "Set the driver's status to online and start a new session.\n\nResponse now includes `pending_assignments` â€” an array of DriverAssignments in active/pending_approval status with booking and booking_item details."
                     },
                     "response": [
                         {
@@ -378,7 +378,7 @@
                                 "offline"
                             ]
                         },
-                        "description": "Set the driver\u0027s status to offline and close the active session.\n\nIf a trip tracking session is active, the trip remains active and the response includes a `trip_warning` message and `active_trip` details."
+                        "description": "Set the driver's status to offline and close the active session.\n\nIf a trip tracking session is active, the trip remains active and the response includes a `trip_warning` message and `active_trip` details."
                     },
                     "response": [
                         {
@@ -428,7 +428,7 @@
                                 "status"
                             ]
                         },
-                        "description": "Retrieve the driver\u0027s current online/offline status and active session information."
+                        "description": "Retrieve the driver's current online/offline status and active session information."
                     },
                     "response": []
                 }
@@ -511,7 +511,7 @@
                     ]
                 }
             ],
-            "description": "Heartbeat endpoint to maintain driver\u0027s active status."
+            "description": "Heartbeat endpoint to maintain driver's active status."
         },
         {
             "name": "Location Tracking",
@@ -555,7 +555,7 @@
                                 "location"
                             ]
                         },
-                        "description": "Send the driver\u0027s current GPS location. Creates a route point for the active session. During an active trip, the route point is also linked to the assignment_id. Should be sent every 10 seconds while moving."
+                        "description": "Send the driver's current GPS location. Creates a route point for the active session. During an active trip, the route point is also linked to the assignment_id. Should be sent every 10 seconds while moving."
                     },
                     "response": []
                 },
@@ -742,7 +742,7 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/driver/sessions?page=1\u0026per_page=15",
+                            "raw": "{{base_url}}/api/driver/sessions?page=1&per_page=15",
                             "host": [
                                 "{{base_url}}"
                             ],
@@ -770,7 +770,7 @@
                                 }
                             ]
                         },
-                        "description": "Retrieve paginated list of driver\u0027s session history."
+                        "description": "Retrieve paginated list of driver's session history."
                     },
                     "response": []
                 },
@@ -1043,7 +1043,7 @@
                                 "{{device_uuid}}"
                             ]
                         },
-                        "description": "Remove a device from the driver\u0027s account."
+                        "description": "Remove a device from the driver's account."
                     },
                     "response": []
                 }
@@ -1074,7 +1074,7 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/driver/assignments?page=1\u0026per_page=15\u0026status={{assignment_status}}\u0026date={{filter_date}}\u0026from={{filter_from}}\u0026to={{filter_to}}",
+                            "raw": "{{base_url}}/api/driver/assignments?page=1&per_page=15&status={{assignment_status}}&date={{filter_date}}&from={{filter_from}}&to={{filter_to}}",
                             "host": [
                                 "{{base_url}}"
                             ],
@@ -1110,7 +1110,7 @@
                                 }
                             ]
                         },
-                        "description": "List driver assignments with optional status/date/range filters."
+                        "description": "List driver assignments with optional status/date/range filters. Multi-stop assignments include `route_stops`; use each stop `id` for stop action endpoints and `display_label`/`booking_stop_id` for UI identification."
                     },
                     "response": []
                 },
@@ -1146,7 +1146,7 @@
                                 "current"
                             ]
                         },
-                        "description": "Get current active assignment for the authenticated driver."
+                        "description": "Get current active assignment for the authenticated driver. Multi-stop assignments include `route_stops`; use each stop `id` for stop action endpoints and `display_label`/`booking_stop_id` for UI identification."
                     },
                     "response": []
                 },
@@ -1187,7 +1187,7 @@
                                 "accept"
                             ]
                         },
-                        "description": "Accept a driver assignment.",
+                        "description": "Accept a driver assignment. The response can include generated `route_stops` with `id`, `booking_stop_id`, `type_sequence`, and `display_label` for multi-stop hires.",
                         "body": {
                             "mode": "raw",
                             "raw": "{}",
@@ -1271,7 +1271,7 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/driver/hires?page=1\u0026per_page=15\u0026date={{filter_date}}\u0026from={{filter_from}}\u0026to={{filter_to}}",
+                            "raw": "{{base_url}}/api/driver/hires?page=1&per_page=15&date={{filter_date}}&from={{filter_from}}&to={{filter_to}}",
                             "host": [
                                 "{{base_url}}"
                             ],
@@ -1346,7 +1346,7 @@
                                 "status"
                             ]
                         },
-                        "description": "Canonical endpoint: get trip status for a specific assignment. Response includes all generated route stops in `stops`, the next actionable stop in `current_stop`, and assignment-level `allowed_actions`."
+                        "description": "Canonical endpoint: get trip status for a specific assignment. Response includes all generated route stops in `stops`, the next actionable stop in `current_stop`, and assignment-level `allowed_actions`. Use each stop `id` for stop action endpoints. Use `booking_stop_id`, `type_sequence`, and `display_label` to identify the exact booking pickup/dropoff in the mobile UI."
                     },
                     "event": [
                         {
@@ -1358,6 +1358,7 @@
                                     "    const currentStop = response.data.current_stop;",
                                     "    if (currentStop && currentStop.id) {",
                                     "        pm.environment.set('stop_id', currentStop.id);",
+                                    "        pm.environment.set('booking_stop_id', currentStop.booking_stop_id || '');",
                                     "    }",
                                     "}"
                                 ],
@@ -1406,7 +1407,7 @@
                                 }
                             ],
                             "cookie": [],
-                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"trip_phase\": \"in_progress\",\n        \"is_multi_stop\": true,\n        \"pickup_location\": {\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841,\n            \"landmark\": \"Colombo Airport\"\n        },\n        \"pickup_arrival\": null,\n        \"trip_started_at\": \"2026-04-27T08:20:00+05:30\",\n        \"stops\": [\n            {\n                \"id\": \"stop-uuid-1\",\n                \"type\": \"pickup\",\n                \"route_order\": 1,\n                \"status\": \"picked_up\",\n                \"label\": \"Pickup\",\n                \"address\": \"Colombo Airport\",\n                \"latitude\": 7.1808,\n                \"longitude\": 79.8841,\n                \"arrived_at\": \"2026-04-27T08:20:00+05:30\",\n                \"completed_at\": \"2026-04-27T08:20:00+05:30\",\n                \"completed_action\": \"picked_up\",\n                \"allowed_actions\": []\n            },\n            {\n                \"id\": \"stop-uuid-2\",\n                \"type\": \"pickup\",\n                \"route_order\": 2,\n                \"status\": \"pending\",\n                \"label\": \"Pickup Stop\",\n                \"address\": \"Passenger 2 pickup\",\n                \"latitude\": 6.9271,\n                \"longitude\": 79.8612,\n                \"arrived_at\": null,\n                \"completed_at\": null,\n                \"completed_action\": null,\n                \"allowed_actions\": [\"arrived\", \"skip\"]\n            },\n            {\n                \"id\": \"stop-uuid-3\",\n                \"type\": \"dropoff\",\n                \"route_order\": 3,\n                \"status\": \"pending\",\n                \"label\": \"Drop-off\",\n                \"address\": \"Hotel dropoff\",\n                \"latitude\": 6.9344,\n                \"longitude\": 79.8428,\n                \"arrived_at\": null,\n                \"completed_at\": null,\n                \"completed_action\": null,\n                \"allowed_actions\": [\"arrived\", \"skip\"]\n            }\n        ],\n        \"current_stop\": {\n            \"id\": \"stop-uuid-2\",\n            \"type\": \"pickup\",\n            \"route_order\": 2,\n            \"status\": \"pending\",\n            \"label\": \"Pickup Stop\",\n            \"address\": \"Passenger 2 pickup\",\n            \"latitude\": 6.9271,\n            \"longitude\": 79.8612,\n            \"allowed_actions\": [\"arrived\", \"skip\"]\n        },\n        \"allowed_actions\": [\"stop_action\"],\n        \"estimated_distance_to_pickup_km\": null,\n        \"near_pickup\": false,\n        \"cumulative_distance_km\": 12.5,\n        \"total_waiting_time_seconds\": 300,\n        \"waiting_period_count\": 1,\n        \"route_point_count\": 75\n    }\n}"
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"trip_phase\": \"in_progress\",\n        \"is_multi_stop\": true,\n        \"pickup_location\": {\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841,\n            \"landmark\": \"Colombo Airport\"\n        },\n        \"pickup_arrival\": null,\n        \"trip_started_at\": \"2026-04-27T08:20:00+05:30\",\n        \"stops\": [\n            {\n                \"id\": \"stop-uuid-1\",\n                \"booking_stop_id\": \"booking-item:item-uuid:primary-pickup\",\n                \"type\": \"pickup\",\n                \"type_sequence\": 1,\n                \"route_order\": 1,\n                \"status\": \"picked_up\",\n                \"label\": \"Pickup 1\",\n                \"display_label\": \"Pickup 1\",\n                \"address\": \"Colombo Airport\",\n                \"latitude\": 7.1808,\n                \"longitude\": 79.8841,\n                \"arrived_at\": \"2026-04-27T08:20:00+05:30\",\n                \"completed_at\": \"2026-04-27T08:20:00+05:30\",\n                \"completed_action\": \"picked_up\",\n                \"allowed_actions\": []\n            },\n            {\n                \"id\": \"stop-uuid-2\",\n                \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n                \"type\": \"pickup\",\n                \"type_sequence\": 2,\n                \"route_order\": 2,\n                \"status\": \"pending\",\n                \"label\": \"Pickup 2\",\n                \"display_label\": \"Pickup 2\",\n                \"address\": \"Passenger 2 pickup\",\n                \"latitude\": 6.9271,\n                \"longitude\": 79.8612,\n                \"arrived_at\": null,\n                \"completed_at\": null,\n                \"completed_action\": null,\n                \"allowed_actions\": [\"arrived\", \"skip\"]\n            },\n            {\n                \"id\": \"stop-uuid-3\",\n                \"booking_stop_id\": \"booking-item:item-uuid:dropoff-client-stop-1\",\n                \"type\": \"dropoff\",\n                \"type_sequence\": 1,\n                \"route_order\": 3,\n                \"status\": \"pending\",\n                \"label\": \"Drop-off 1\",\n                \"display_label\": \"Drop-off 1\",\n                \"address\": \"Hotel dropoff\",\n                \"latitude\": 6.9344,\n                \"longitude\": 79.8428,\n                \"arrived_at\": null,\n                \"completed_at\": null,\n                \"completed_action\": null,\n                \"allowed_actions\": [\"arrived\", \"skip\"]\n            }\n        ],\n        \"current_stop\": {\n            \"id\": \"stop-uuid-2\",\n            \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n            \"type\": \"pickup\",\n            \"type_sequence\": 2,\n            \"route_order\": 2,\n            \"status\": \"pending\",\n            \"label\": \"Pickup 2\",\n            \"display_label\": \"Pickup 2\",\n            \"address\": \"Passenger 2 pickup\",\n            \"latitude\": 6.9271,\n            \"longitude\": 79.8612,\n            \"allowed_actions\": [\"arrived\", \"skip\"]\n        },\n        \"allowed_actions\": [\"stop_action\"],\n        \"estimated_distance_to_pickup_km\": null,\n        \"near_pickup\": false,\n        \"cumulative_distance_km\": 12.5,\n        \"total_waiting_time_seconds\": 300,\n        \"waiting_period_count\": 1,\n        \"route_point_count\": 75\n    }\n}"
                         },
                         {
                             "name": "No Active Trip",
@@ -1611,7 +1612,7 @@
                                 "arrived"
                             ]
                         },
-                        "description": "Multi-stop endpoint. Marks the current route stop as arrived. Previous stops must already be completed or skipped."
+                        "description": "Multi-stop endpoint. Marks the current route stop as arrived. Use `current_stop.id` from trip status as `{{stop_id}}`; `booking_stop_id`, `type_sequence`, and `display_label` identify which pickup/dropoff this is. Previous stops must already be completed or skipped."
                     },
                     "response": [
                         {
@@ -1626,7 +1627,7 @@
                                 }
                             ],
                             "cookie": [],
-                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Stop arrival confirmed\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"trip_phase\": \"in_progress\",\n        \"current_stop\": {\n            \"id\": \"stop-uuid-2\",\n            \"type\": \"pickup\",\n            \"route_order\": 2,\n            \"status\": \"arrived\",\n            \"allowed_actions\": [\"picked_up\", \"skip\"]\n        },\n        \"allowed_actions\": [\"stop_action\"]\n    }\n}"
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Stop arrival confirmed\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"trip_phase\": \"in_progress\",\n        \"current_stop\": {\n            \"id\": \"stop-uuid-2\",\n            \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n            \"type\": \"pickup\",\n            \"type_sequence\": 2,\n            \"route_order\": 2,\n            \"status\": \"arrived\",\n            \"label\": \"Pickup 2\",\n            \"display_label\": \"Pickup 2\",\n            \"address\": \"Passenger 2 pickup\",\n            \"allowed_actions\": [\n                \"picked_up\",\n                \"skip\"\n            ]\n        },\n        \"processed_stop\": {\n            \"id\": \"stop-uuid-2\",\n            \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n            \"type\": \"pickup\",\n            \"type_sequence\": 2,\n            \"route_order\": 2,\n            \"status\": \"arrived\",\n            \"label\": \"Pickup 2\",\n            \"display_label\": \"Pickup 2\",\n            \"address\": \"Passenger 2 pickup\",\n            \"arrived_at\": \"2026-04-27T08:35:00+05:30\",\n            \"completed_at\": null,\n            \"completed_action\": null,\n            \"skip_reason\": null\n        },\n        \"allowed_actions\": [\n            \"stop_action\"\n        ]\n    }\n}"
                         }
                     ]
                 },
@@ -1678,9 +1679,24 @@
                                 "picked-up"
                             ]
                         },
-                        "description": "Multi-stop endpoint. Completes an arrived pickup stop as picked_up. Use only when `current_stop.type` is `pickup` and `current_stop.status` is `arrived`."
+                        "description": "Multi-stop endpoint. Completes an arrived pickup stop as picked_up. Use only when `current_stop.type` is `pickup` and `current_stop.status` is `arrived`; display `current_stop.display_label` such as `Pickup 2` in mobile."
                     },
-                    "response": []
+                    "response": [
+                        {
+                            "name": "Pickup Stop Completed",
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Pickup stop completed\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"trip_phase\": \"in_progress\",\n        \"current_stop\": {\n            \"id\": \"stop-uuid-3\",\n            \"booking_stop_id\": \"booking-item:item-uuid:dropoff-client-stop-1\",\n            \"type\": \"dropoff\",\n            \"type_sequence\": 1,\n            \"route_order\": 3,\n            \"status\": \"pending\",\n            \"label\": \"Drop-off 1\",\n            \"display_label\": \"Drop-off 1\",\n            \"address\": \"Hotel dropoff\",\n            \"allowed_actions\": [\n                \"arrived\",\n                \"skip\"\n            ]\n        },\n        \"processed_stop\": {\n            \"id\": \"stop-uuid-2\",\n            \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n            \"type\": \"pickup\",\n            \"type_sequence\": 2,\n            \"route_order\": 2,\n            \"status\": \"picked_up\",\n            \"label\": \"Pickup 2\",\n            \"display_label\": \"Pickup 2\",\n            \"address\": \"Passenger 2 pickup\",\n            \"arrived_at\": \"2026-04-27T08:35:00+05:30\",\n            \"completed_at\": \"2026-04-27T08:37:00+05:30\",\n            \"completed_action\": \"picked_up\",\n            \"skip_reason\": null\n        },\n        \"allowed_actions\": [\n            \"stop_action\"\n        ]\n    }\n}"
+                        }
+                    ]
                 },
                 {
                     "name": "Complete Dropoff Stop",
@@ -1730,9 +1746,24 @@
                                 "dropped-off"
                             ]
                         },
-                        "description": "Multi-stop endpoint. Completes an arrived dropoff stop as dropped_off. Use only when `current_stop.type` is `dropoff` and `current_stop.status` is `arrived`."
+                        "description": "Multi-stop endpoint. Completes an arrived dropoff stop as dropped_off. Use only when `current_stop.type` is `dropoff` and `current_stop.status` is `arrived`; display `current_stop.display_label` such as `Drop-off 1` in mobile."
                     },
-                    "response": []
+                    "response": [
+                        {
+                            "name": "Drop-off Stop Completed",
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Drop-off stop completed\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"trip_phase\": \"in_progress\",\n        \"current_stop\": null,\n        \"processed_stop\": {\n            \"id\": \"stop-uuid-3\",\n            \"booking_stop_id\": \"booking-item:item-uuid:dropoff-client-stop-1\",\n            \"type\": \"dropoff\",\n            \"type_sequence\": 1,\n            \"route_order\": 3,\n            \"status\": \"dropped_off\",\n            \"label\": \"Drop-off 1\",\n            \"display_label\": \"Drop-off 1\",\n            \"address\": \"Hotel dropoff\",\n            \"arrived_at\": \"2026-04-27T09:05:00+05:30\",\n            \"completed_at\": \"2026-04-27T09:08:00+05:30\",\n            \"completed_action\": \"dropped_off\",\n            \"skip_reason\": null\n        },\n        \"allowed_actions\": [\n            \"complete\"\n        ]\n    }\n}"
+                        }
+                    ]
                 },
                 {
                     "name": "Skip Route Stop",
@@ -1782,9 +1813,24 @@
                                 "skip"
                             ]
                         },
-                        "description": "Multi-stop endpoint. Skips the current pickup/dropoff stop. Skipped stops are terminal and allow the driver to move to the next stop."
+                        "description": "Multi-stop endpoint. Skips the current pickup/dropoff stop. Skipped stops are terminal and allow the driver to move to the next stop. Use `booking_stop_id` and `display_label` in logs/UI to show exactly which booking stop was skipped."
                     },
-                    "response": []
+                    "response": [
+                        {
+                            "name": "Route Stop Skipped",
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Stop skipped\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"trip_phase\": \"in_progress\",\n        \"current_stop\": {\n            \"id\": \"stop-uuid-3\",\n            \"booking_stop_id\": \"booking-item:item-uuid:dropoff-client-stop-1\",\n            \"type\": \"dropoff\",\n            \"type_sequence\": 1,\n            \"route_order\": 3,\n            \"status\": \"pending\",\n            \"label\": \"Drop-off 1\",\n            \"display_label\": \"Drop-off 1\",\n            \"address\": \"Hotel dropoff\",\n            \"allowed_actions\": [\n                \"arrived\",\n                \"skip\"\n            ]\n        },\n        \"processed_stop\": {\n            \"id\": \"stop-uuid-2\",\n            \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n            \"type\": \"pickup\",\n            \"type_sequence\": 2,\n            \"route_order\": 2,\n            \"status\": \"skipped\",\n            \"label\": \"Pickup 2\",\n            \"display_label\": \"Pickup 2\",\n            \"address\": \"Passenger 2 pickup\",\n            \"arrived_at\": null,\n            \"completed_at\": \"2026-04-27T08:40:00+05:30\",\n            \"completed_action\": \"skipped\",\n            \"skip_reason\": \"Passenger did not arrive\"\n        },\n        \"allowed_actions\": [\n            \"stop_action\"\n        ]\n    }\n}"
+                        }
+                    ]
                 },
                 {
                     "name": "End Trip",
@@ -1970,7 +2016,7 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/driver/earnings/range?from={{filter_from}}\u0026to={{filter_to}}",
+                            "raw": "{{base_url}}/api/driver/earnings/range?from={{filter_from}}&to={{filter_to}}",
                             "host": [
                                 "{{base_url}}"
                             ],

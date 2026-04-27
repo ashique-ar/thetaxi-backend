@@ -307,6 +307,8 @@ class TripTrackingService
     public function ensureAssignmentStops(DriverAssignment $assignment): Collection
     {
         if ($assignment->stops()->exists()) {
+            $stops = $assignment->stops()->get();
+            $this->backfillStopIdentifiers($assignment, $stops);
             return $assignment->stops()->get();
         }
 
@@ -327,8 +329,10 @@ class TripTrackingService
                     'assignment_id' => $assignment->id,
                     'booking_id' => $assignment->booking_id,
                     'booking_item_id' => $bookingItem->id,
+                    'booking_stop_id' => $routeStop['booking_stop_id'],
                     'stop_type' => $routeStop['stop_type'],
                     'route_order' => $index + 1,
+                    'type_sequence' => $routeStop['type_sequence'],
                     'status' => 'pending',
                     'location' => $routeStop['location'],
                     'label' => $routeStop['label'],
@@ -457,21 +461,38 @@ class TripTrackingService
 
     public function mapStopsForMobile(Collection $stops): array
     {
-        return $stops->map(fn (DriverAssignmentStop $stop) => $this->mapStopForMobile($stop))->all();
+        $typeCounters = [];
+
+        return $stops
+            ->sortBy('route_order')
+            ->map(function (DriverAssignmentStop $stop) use (&$typeCounters) {
+                $type = (string) $stop->stop_type;
+                $typeCounters[$type] = ($typeCounters[$type] ?? 0) + 1;
+
+                return $this->mapStopForMobile($stop, $typeCounters[$type]);
+            })
+            ->values()
+            ->all();
     }
 
-    private function mapStopForMobile(?DriverAssignmentStop $stop): ?array
+    private function mapStopForMobile(?DriverAssignmentStop $stop, ?int $fallbackTypeSequence = null): ?array
     {
         if (!$stop) {
             return null;
         }
 
+        $typeSequence = $stop->type_sequence ?? $fallbackTypeSequence;
+        $displayLabel = $stop->label ?: $this->formatStopLabel($stop->stop_type, $typeSequence);
+
         return [
             'id' => $stop->id,
+            'booking_stop_id' => $stop->booking_stop_id,
             'type' => $stop->stop_type,
+            'type_sequence' => $typeSequence,
             'route_order' => $stop->route_order,
             'status' => $stop->status,
-            'label' => $stop->label,
+            'label' => $displayLabel,
+            'display_label' => $displayLabel,
             'address' => $stop->address,
             'latitude' => $stop->latitude !== null ? (float) $stop->latitude : null,
             'longitude' => $stop->longitude !== null ? (float) $stop->longitude : null,
@@ -516,9 +537,10 @@ class TripTrackingService
         $routeStops[] = $this->makeRouteStop(
             'pickup',
             $bookingItem->pickup_location,
-            'Pickup',
+            null,
             $bookingItem->pickup_latitude,
-            $bookingItem->pickup_longitude
+            $bookingItem->pickup_longitude,
+            'primary-pickup'
         );
 
         $orderedStops = $this->normalizeArrayPayload($metadata['multi_route_stop_order'] ?? []);
@@ -529,35 +551,58 @@ class TripTrackingService
                     continue;
                 }
 
-                $routeStops[] = $this->makeRouteStop($type, $stop['location'] ?? $stop, ucfirst($type) . ' Stop');
+                $routeStops[] = $this->makeRouteStop(
+                    $type,
+                    $stop['location'] ?? $stop,
+                    null,
+                    null,
+                    null,
+                    $stop['stop_id'] ?? $stop['stopId'] ?? null
+                );
             }
         } else {
             foreach ($this->normalizeArrayPayload($metadata['multi_pickup_locations'] ?? []) as $stop) {
-                $routeStops[] = $this->makeRouteStop('pickup', $stop['location'] ?? $stop, 'Pickup Stop');
+                $routeStops[] = $this->makeRouteStop(
+                    'pickup',
+                    $stop['location'] ?? $stop,
+                    null,
+                    null,
+                    null,
+                    $stop['stop_id'] ?? $stop['stopId'] ?? null
+                );
             }
 
             foreach ($this->normalizeArrayPayload($metadata['multi_dropoff_locations'] ?? []) as $stop) {
-                $routeStops[] = $this->makeRouteStop('dropoff', $stop['location'] ?? $stop, 'Drop-off Stop');
+                $routeStops[] = $this->makeRouteStop(
+                    'dropoff',
+                    $stop['location'] ?? $stop,
+                    null,
+                    null,
+                    null,
+                    $stop['stop_id'] ?? $stop['stopId'] ?? null
+                );
             }
         }
 
         $routeStops[] = $this->makeRouteStop(
             'dropoff',
             $bookingItem->dropoff_location,
-            'Drop-off',
+            null,
             $bookingItem->dropoff_latitude,
-            $bookingItem->dropoff_longitude
+            $bookingItem->dropoff_longitude,
+            'primary-dropoff'
         );
 
-        return array_values(array_filter($routeStops));
+        return $this->prepareRouteStopsForPersistence($bookingItem, array_values(array_filter($routeStops)));
     }
 
     private function makeRouteStop(
         string $type,
         mixed $location,
-        string $fallbackLabel,
+        ?string $fallbackLabel,
         mixed $fallbackLatitude = null,
-        mixed $fallbackLongitude = null
+        mixed $fallbackLongitude = null,
+        ?string $sourceStopId = null
     ): ?array
     {
         $normalized = $this->normalizeLocation($location);
@@ -572,7 +617,92 @@ class TripTrackingService
             'address' => $normalized['address'] ?? $normalized['formatted_address'] ?? null,
             'latitude' => $this->toNullableFloat($normalized['latitude'] ?? $normalized['lat'] ?? $fallbackLatitude),
             'longitude' => $this->toNullableFloat($normalized['longitude'] ?? $normalized['lng'] ?? $fallbackLongitude),
+            'source_stop_id' => $sourceStopId
+                ?? $normalized['stop_id']
+                ?? $normalized['stopId']
+                ?? null,
         ];
+    }
+
+    private function prepareRouteStopsForPersistence(BookingItem $bookingItem, array $routeStops): array
+    {
+        $typeCounters = [];
+
+        foreach ($routeStops as $index => $routeStop) {
+            $type = (string) $routeStop['stop_type'];
+            $typeCounters[$type] = ($typeCounters[$type] ?? 0) + 1;
+            $typeSequence = $typeCounters[$type];
+            $routeOrder = $index + 1;
+
+            $routeStops[$index]['type_sequence'] = $typeSequence;
+            $routeStops[$index]['label'] = $routeStop['label'] ?: $this->formatStopLabel($type, $typeSequence);
+            $routeStops[$index]['booking_stop_id'] = $this->buildBookingStopId(
+                $bookingItem,
+                $type,
+                $routeOrder,
+                $typeSequence,
+                $routeStop['source_stop_id'] ?? null
+            );
+        }
+
+        return $routeStops;
+    }
+
+    private function backfillStopIdentifiers(DriverAssignment $assignment, Collection $stops): void
+    {
+        $bookingItemId = $assignment->booking_item_id;
+        $typeCounters = [];
+
+        foreach ($stops->sortBy('route_order') as $stop) {
+            $type = (string) $stop->stop_type;
+            $typeCounters[$type] = ($typeCounters[$type] ?? 0) + 1;
+            $typeSequence = $stop->type_sequence ?: $typeCounters[$type];
+            $label = $stop->label ?: $this->formatStopLabel($type, $typeSequence);
+            $bookingStopId = $stop->booking_stop_id ?: sprintf(
+                'booking-item:%s:%s:%03d',
+                $bookingItemId ?: $assignment->booking_id,
+                $type,
+                (int) $stop->route_order
+            );
+
+            if (
+                $stop->type_sequence !== $typeSequence ||
+                $stop->label !== $label ||
+                $stop->booking_stop_id !== $bookingStopId
+            ) {
+                $stop->forceFill([
+                    'type_sequence' => $typeSequence,
+                    'label' => $label,
+                    'booking_stop_id' => $bookingStopId,
+                ])->save();
+            }
+        }
+    }
+
+    private function buildBookingStopId(
+        BookingItem $bookingItem,
+        string $type,
+        int $routeOrder,
+        int $typeSequence,
+        ?string $sourceStopId = null
+    ): string {
+        if ($sourceStopId) {
+            return sprintf('booking-item:%s:%s', $bookingItem->id, $sourceStopId);
+        }
+
+        return sprintf(
+            'booking-item:%s:%s:%03d:%03d',
+            $bookingItem->id,
+            $type,
+            $typeSequence,
+            $routeOrder
+        );
+    }
+
+    private function formatStopLabel(string $type, ?int $typeSequence): string
+    {
+        $prefix = $type === 'pickup' ? 'Pickup' : 'Drop-off';
+        return $typeSequence ? "{$prefix} {$typeSequence}" : $prefix;
     }
 
     private function normalizeLocation(mixed $location): ?array

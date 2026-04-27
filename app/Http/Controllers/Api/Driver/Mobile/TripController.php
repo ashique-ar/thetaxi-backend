@@ -219,10 +219,17 @@ class TripController extends Controller
                 ], 404);
             }
 
+            $data = $action($assignment, $stop);
+            $processedStop = $stop->fresh();
+
+            if (is_array($data) && $processedStop) {
+                $data['processed_stop'] = $this->mapStopForResponse($processedStop);
+            }
+
             return response()->json([
                 'status' => 'success',
                 'message' => $message,
-                'data' => $action($assignment, $stop),
+                'data' => $data,
             ]);
         } catch (\InvalidArgumentException $e) {
             return response()->json([
@@ -239,6 +246,32 @@ class TripController extends Controller
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    private function mapStopForResponse(DriverAssignmentStop $stop): array
+    {
+        $typeSequence = $stop->type_sequence;
+        $displayLabel = $stop->label ?: (
+            $stop->stop_type === 'pickup'
+                ? 'Pickup ' . ($typeSequence ?: $stop->route_order)
+                : 'Drop-off ' . ($typeSequence ?: $stop->route_order)
+        );
+
+        return [
+            'id' => $stop->id,
+            'booking_stop_id' => $stop->booking_stop_id,
+            'type' => $stop->stop_type,
+            'type_sequence' => $typeSequence !== null ? (int) $typeSequence : null,
+            'route_order' => (int) $stop->route_order,
+            'status' => $stop->status,
+            'label' => $displayLabel,
+            'display_label' => $displayLabel,
+            'address' => $stop->address,
+            'arrived_at' => $stop->arrived_at?->toIso8601String(),
+            'completed_at' => $stop->completed_at?->toIso8601String(),
+            'completed_action' => $stop->completed_action,
+            'skip_reason' => $stop->skip_reason,
+        ];
     }
 
     private function friendlyTripStopError(string $code): string
