@@ -81,6 +81,10 @@ Route::middleware(['auth:api', 'ensure.driver'])->group(function () {
         Route::post('{id}/arrived', [TripController::class, 'pickupArrivedForAssignment']);
         Route::post('{id}/start', [TripController::class, 'startTripForAssignment']);
         Route::post('{id}/complete', [TripController::class, 'endTripForAssignment']);
+        Route::post('{id}/stops/{stopId}/arrived', [TripController::class, 'stopArrivedForAssignment']);
+        Route::post('{id}/stops/{stopId}/picked-up', [TripController::class, 'pickupStopCompletedForAssignment']);
+        Route::post('{id}/stops/{stopId}/dropped-off', [TripController::class, 'dropoffStopCompletedForAssignment']);
+        Route::post('{id}/stops/{stopId}/skip', [TripController::class, 'stopSkippedForAssignment']);
     });
 
     // Hire history route

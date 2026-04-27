@@ -375,7 +375,7 @@ class AssignmentController extends Controller
         ];
 
         if ($tripAssignment) {
-            $tripAssignment->loadMissing('bookingItem');
+            $tripAssignment->loadMissing(['bookingItem', 'stops']);
             $assignmentPayload = [
                 'id' => $tripAssignment->id,
                 'booking_item_id' => $tripAssignment->booking_item_id,
@@ -398,6 +398,7 @@ class AssignmentController extends Controller
                 'final_longitude' => $tripAssignment->final_longitude !== null
                     ? (float) $tripAssignment->final_longitude
                     : null,
+                'stops' => $this->mapPersistedAssignmentStops($tripAssignment),
             ];
 
             $firstPoint = null;
@@ -504,7 +505,10 @@ class AssignmentController extends Controller
                 $bookingItem?->dropoff_landmark ?? null,
                 'Drop-off'
             );
-            $stopPoints = $this->extractStopPointsFromBookingItem($bookingItem);
+            $stopPoints = $this->mapPersistedAssignmentStops($tripAssignment);
+            if (empty($stopPoints)) {
+                $stopPoints = $this->extractStopPointsFromBookingItem($bookingItem);
+            }
 
             $acceptPoint = null;
             if ($tripAssignment->confirmed_at) {
@@ -666,8 +670,9 @@ class AssignmentController extends Controller
                 continue;
             }
 
-            $latitude = $this->toNullableFloat($stop['latitude'] ?? $stop['lat'] ?? null);
-            $longitude = $this->toNullableFloat($stop['longitude'] ?? $stop['lng'] ?? null);
+            $location = is_array($stop['location'] ?? null) ? $stop['location'] : $stop;
+            $latitude = $this->toNullableFloat($location['latitude'] ?? $location['lat'] ?? null);
+            $longitude = $this->toNullableFloat($location['longitude'] ?? $location['lng'] ?? null);
 
             if (!$this->isValidCoordinate($latitude, $longitude)) {
                 continue;
@@ -682,8 +687,9 @@ class AssignmentController extends Controller
                 ? (int) $stop['route_order']
                 : ($index + 1);
 
-            $address = $stop['address']
-                ?? $stop['formatted_address']
+            $address = $location['address']
+                ?? $location['formatted_address']
+                ?? $location['label']
                 ?? $stop['label']
                 ?? null;
 
@@ -702,6 +708,34 @@ class AssignmentController extends Controller
         });
 
         return array_values($normalized);
+    }
+
+    private function mapPersistedAssignmentStops($assignment): array
+    {
+        if (!$assignment || !$assignment->relationLoaded('stops')) {
+            return [];
+        }
+
+        return $assignment->stops
+            ->map(function ($stop) {
+                return [
+                    'id' => $stop->id,
+                    'type' => $stop->stop_type,
+                    'route_order' => (int) $stop->route_order,
+                    'status' => $stop->status,
+                    'label' => $stop->label,
+                    'address' => $stop->address,
+                    'latitude' => $stop->latitude !== null ? (float) $stop->latitude : null,
+                    'longitude' => $stop->longitude !== null ? (float) $stop->longitude : null,
+                    'arrived_at' => $stop->arrived_at?->toIso8601String(),
+                    'completed_at' => $stop->completed_at?->toIso8601String(),
+                    'completed_action' => $stop->completed_action,
+                    'skip_reason' => $stop->skip_reason,
+                ];
+            })
+            ->filter(fn ($stop) => $this->isValidCoordinate($stop['latitude'], $stop['longitude']))
+            ->values()
+            ->all();
     }
 
     private function buildMapPoint($location, $fallbackLat, $fallbackLng, ?string $fallbackLabel, string $defaultLabel): ?array

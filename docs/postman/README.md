@@ -189,7 +189,17 @@ The `device_uuid` is automatically saved to the environment for subsequent reque
 - **GET** `/api/driver/assignments/{id}/status` - Trip status for an assignment
 - **POST** `/api/driver/assignments/{id}/arrived` - Mark pickup arrived
 - **POST** `/api/driver/assignments/{id}/start` - Start trip
+- **POST** `/api/driver/assignments/{id}/stops/{stopId}/arrived` - Mark a route stop as arrived
+- **POST** `/api/driver/assignments/{id}/stops/{stopId}/picked-up` - Complete a pickup stop
+- **POST** `/api/driver/assignments/{id}/stops/{stopId}/dropped-off` - Complete a dropoff stop
+- **POST** `/api/driver/assignments/{id}/stops/{stopId}/skip` - Skip a pickup/dropoff stop with optional reason
 - **POST** `/api/driver/assignments/{id}/complete` - Complete trip (supports optional `ending_mileage`, `notes`)
+
+Multi-stop data is returned in assignment and status responses:
+- Assignment list/current payloads include `is_multi_stop` and `route_stops`.
+- Trip status includes `stops`, `current_stop`, and `allowed_actions`.
+- Stop statuses are `pending`, `arrived`, `picked_up`, `dropped_off`, or `skipped`.
+- For multi-stop hires, call `start` at the starting place first. The starting pickup is auto-completed, then process each remaining stop in order. `complete` is blocked until every stop is completed or skipped.
 
 ## Testing Workflow
 

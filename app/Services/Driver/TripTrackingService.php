@@ -11,8 +11,10 @@ use App\Models\Driver\DriverSession;
 use App\Models\Driver\RoutePoint;
 use App\Models\Vehicle\Vehicle;
 use App\Models\DriverAssignment;
+use App\Models\DriverAssignmentStop;
 use App\Services\BookingLifecycleService;
 use Carbon\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -48,7 +50,8 @@ class TripTrackingService
      */
     public function getTripStatus(DriverAssignment $assignment): array
     {
-        $assignment->loadMissing(['bookingItem', 'driver']);
+        $assignment->loadMissing(['bookingItem', 'driver', 'stops']);
+        $stops = $this->ensureAssignmentStops($assignment);
 
         $bookingItem = $assignment->bookingItem;
         $driver = $assignment->driver;
@@ -85,9 +88,13 @@ class TripTrackingService
             'assignment_id' => $assignment->id,
             'booking_id' => $assignment->booking_id,
             'trip_phase' => $assignment->trip_phase->value,
+            'is_multi_stop' => $this->isMultiStopAssignment($assignment, $stops),
             'pickup_location' => $pickupLocation,
             'pickup_arrival' => $pickupArrival,
             'trip_started_at' => $assignment->trip_started_at?->toIso8601String(),
+            'stops' => $this->mapStopsForMobile($stops),
+            'current_stop' => $this->mapStopForMobile($this->resolveCurrentStop($stops)),
+            'allowed_actions' => $this->resolveAssignmentAllowedActions($assignment, $stops),
             'estimated_distance_to_pickup_km' => $distanceToPickup,
             'near_pickup' => $nearPickup,
             'cumulative_distance_km' => $this->calculateTripDistance($assignment),
@@ -123,7 +130,12 @@ class TripTrackingService
      */
     public function startTrip(DriverAssignment $assignment): void
     {
-        if ($assignment->trip_phase !== TripPhase::PICKUP_ARRIVED) {
+        $stops = $this->ensureAssignmentStops($assignment);
+
+        if (
+            $assignment->trip_phase !== TripPhase::PICKUP_ARRIVED
+            && !($this->isMultiStopAssignment($assignment, $stops) && $assignment->trip_phase === TripPhase::ACCEPTED)
+        ) {
             throw new \InvalidArgumentException('TRIP_PICKUP_NOT_CONFIRMED');
         }
 
@@ -132,6 +144,10 @@ class TripTrackingService
             'trip_started_at' => Carbon::now(),
             'actual_start' => Carbon::now(),
         ]);
+
+        if ($this->isMultiStopAssignment($assignment, $stops)) {
+            $this->markStartingPickupCompleted($stops);
+        }
 
         // Keep dispatch state aligned once the trip actually starts.
         $assignment->loadMissing('booking.dispatch');
@@ -150,6 +166,11 @@ class TripTrackingService
     {
         if ($assignment->trip_phase !== TripPhase::IN_PROGRESS) {
             throw new \InvalidArgumentException('TRIP_NOT_IN_PROGRESS');
+        }
+
+        $stops = $this->ensureAssignmentStops($assignment);
+        if ($this->isMultiStopAssignment($assignment, $stops) && !$this->allStopsTerminal($stops)) {
+            throw new \InvalidArgumentException('TRIP_STOPS_INCOMPLETE');
         }
 
         return DB::transaction(function () use ($assignment, $finalLocation) {
@@ -207,6 +228,384 @@ class TripTrackingService
                 'hire_completed' => true,
             ];
         });
+    }
+
+    public function markStopArrived(DriverAssignment $assignment, DriverAssignmentStop $stop, array $data): array
+    {
+        $this->assertStopBelongsToAssignment($assignment, $stop);
+
+        if ($assignment->trip_phase !== TripPhase::IN_PROGRESS) {
+            throw new \InvalidArgumentException('TRIP_NOT_IN_PROGRESS');
+        }
+
+        if ($stop->isTerminal()) {
+            throw new \InvalidArgumentException('STOP_ALREADY_COMPLETED');
+        }
+
+        if ($stop->status !== 'pending') {
+            throw new \InvalidArgumentException('STOP_INVALID_STATE');
+        }
+
+        if (!$this->isNextActionableStop($assignment, $stop)) {
+            throw new \InvalidArgumentException('STOP_OUT_OF_SEQUENCE');
+        }
+
+        $stop->update([
+            'status' => 'arrived',
+            'arrived_at' => Carbon::now(),
+            'arrived_latitude' => $data['latitude'],
+            'arrived_longitude' => $data['longitude'],
+            'notes' => $data['notes'] ?? $stop->notes,
+        ]);
+
+        return $this->getTripStatus($assignment->fresh());
+    }
+
+    public function completePickupStop(DriverAssignment $assignment, DriverAssignmentStop $stop, array $data): array
+    {
+        return $this->completeStop($assignment, $stop, $data, 'pickup', 'picked_up');
+    }
+
+    public function completeDropoffStop(DriverAssignment $assignment, DriverAssignmentStop $stop, array $data): array
+    {
+        return $this->completeStop($assignment, $stop, $data, 'dropoff', 'dropped_off');
+    }
+
+    public function skipStop(DriverAssignment $assignment, DriverAssignmentStop $stop, array $data): array
+    {
+        $this->assertStopBelongsToAssignment($assignment, $stop);
+
+        if ($assignment->trip_phase !== TripPhase::IN_PROGRESS) {
+            throw new \InvalidArgumentException('TRIP_NOT_IN_PROGRESS');
+        }
+
+        if ($stop->isTerminal()) {
+            throw new \InvalidArgumentException('STOP_ALREADY_COMPLETED');
+        }
+
+        if (!in_array($stop->status, ['pending', 'arrived'], true)) {
+            throw new \InvalidArgumentException('STOP_INVALID_STATE');
+        }
+
+        if (!$this->isNextActionableStop($assignment, $stop)) {
+            throw new \InvalidArgumentException('STOP_OUT_OF_SEQUENCE');
+        }
+
+        $stop->update([
+            'status' => 'skipped',
+            'completed_at' => Carbon::now(),
+            'completed_latitude' => $data['latitude'] ?? null,
+            'completed_longitude' => $data['longitude'] ?? null,
+            'completed_action' => 'skipped',
+            'skip_reason' => $data['reason'] ?? null,
+            'notes' => $data['notes'] ?? $stop->notes,
+        ]);
+
+        return $this->getTripStatus($assignment->fresh());
+    }
+
+    public function ensureAssignmentStops(DriverAssignment $assignment): Collection
+    {
+        if ($assignment->stops()->exists()) {
+            return $assignment->stops()->get();
+        }
+
+        $assignment->loadMissing('bookingItem');
+        $bookingItem = $assignment->bookingItem;
+        if (!$bookingItem) {
+            return collect();
+        }
+
+        $routeStops = $this->buildRouteStopsFromBookingItem($bookingItem);
+        if (empty($routeStops)) {
+            return collect();
+        }
+
+        return DB::transaction(function () use ($assignment, $bookingItem, $routeStops) {
+            foreach ($routeStops as $index => $routeStop) {
+                DriverAssignmentStop::create([
+                    'assignment_id' => $assignment->id,
+                    'booking_id' => $assignment->booking_id,
+                    'booking_item_id' => $bookingItem->id,
+                    'stop_type' => $routeStop['stop_type'],
+                    'route_order' => $index + 1,
+                    'status' => 'pending',
+                    'location' => $routeStop['location'],
+                    'label' => $routeStop['label'],
+                    'address' => $routeStop['address'],
+                    'latitude' => $routeStop['latitude'],
+                    'longitude' => $routeStop['longitude'],
+                ]);
+            }
+
+            return $assignment->stops()->get();
+        });
+    }
+
+    private function completeStop(
+        DriverAssignment $assignment,
+        DriverAssignmentStop $stop,
+        array $data,
+        string $expectedType,
+        string $completedStatus
+    ): array {
+        $this->assertStopBelongsToAssignment($assignment, $stop);
+
+        if ($assignment->trip_phase !== TripPhase::IN_PROGRESS) {
+            throw new \InvalidArgumentException('TRIP_NOT_IN_PROGRESS');
+        }
+
+        if ($stop->stop_type !== $expectedType) {
+            throw new \InvalidArgumentException('STOP_TYPE_MISMATCH');
+        }
+
+        if ($stop->status !== 'arrived') {
+            throw new \InvalidArgumentException('STOP_ARRIVAL_REQUIRED');
+        }
+
+        if (!$this->isNextActionableStop($assignment, $stop)) {
+            throw new \InvalidArgumentException('STOP_OUT_OF_SEQUENCE');
+        }
+
+        $stop->update([
+            'status' => $completedStatus,
+            'completed_at' => Carbon::now(),
+            'completed_latitude' => $data['latitude'] ?? null,
+            'completed_longitude' => $data['longitude'] ?? null,
+            'completed_action' => $completedStatus,
+            'notes' => $data['notes'] ?? $stop->notes,
+        ]);
+
+        return $this->getTripStatus($assignment->fresh());
+    }
+
+    private function assertStopBelongsToAssignment(DriverAssignment $assignment, DriverAssignmentStop $stop): void
+    {
+        if ((string) $stop->assignment_id !== (string) $assignment->id) {
+            throw new \InvalidArgumentException('STOP_NOT_FOUND');
+        }
+    }
+
+    private function isNextActionableStop(DriverAssignment $assignment, DriverAssignmentStop $stop): bool
+    {
+        $stops = $assignment->stops()->get();
+        foreach ($stops as $candidate) {
+            if ((string) $candidate->id === (string) $stop->id) {
+                return true;
+            }
+            if (!$candidate->isTerminal()) {
+                return false;
+            }
+        }
+
+        return false;
+    }
+
+    private function resolveCurrentStop(Collection $stops): ?DriverAssignmentStop
+    {
+        return $stops->first(fn (DriverAssignmentStop $stop) => !$stop->isTerminal());
+    }
+
+    private function markStartingPickupCompleted(Collection $stops): void
+    {
+        $firstStop = $stops->sortBy('route_order')->first();
+        if (!$firstStop || $firstStop->stop_type !== 'pickup' || $firstStop->isTerminal()) {
+            return;
+        }
+
+        $now = Carbon::now();
+        $firstStop->update([
+            'status' => 'picked_up',
+            'arrived_at' => $firstStop->arrived_at ?? $now,
+            'completed_at' => $now,
+            'completed_action' => 'picked_up',
+            'notes' => $firstStop->notes ?? 'Completed when hire was started',
+        ]);
+    }
+
+    private function allStopsTerminal(Collection $stops): bool
+    {
+        return $stops->isNotEmpty() && $stops->every(fn (DriverAssignmentStop $stop) => $stop->isTerminal());
+    }
+
+    private function isMultiStopAssignment(DriverAssignment $assignment, ?Collection $stops = null): bool
+    {
+        $stops = $stops ?? $assignment->stops()->get();
+        return $stops->count() > 2;
+    }
+
+    private function resolveAssignmentAllowedActions(DriverAssignment $assignment, Collection $stops): array
+    {
+        if ($assignment->trip_phase === TripPhase::ACCEPTED) {
+            $actions = ['arrived'];
+            if ($this->isMultiStopAssignment($assignment, $stops)) {
+                $actions[] = 'start';
+            }
+            return $actions;
+        }
+
+        if ($assignment->trip_phase === TripPhase::PICKUP_ARRIVED) {
+            return ['start'];
+        }
+
+        if ($assignment->trip_phase === TripPhase::IN_PROGRESS) {
+            return $this->allStopsTerminal($stops) ? ['complete'] : ['stop_action'];
+        }
+
+        return [];
+    }
+
+    public function mapStopsForMobile(Collection $stops): array
+    {
+        return $stops->map(fn (DriverAssignmentStop $stop) => $this->mapStopForMobile($stop))->all();
+    }
+
+    private function mapStopForMobile(?DriverAssignmentStop $stop): ?array
+    {
+        if (!$stop) {
+            return null;
+        }
+
+        return [
+            'id' => $stop->id,
+            'type' => $stop->stop_type,
+            'route_order' => $stop->route_order,
+            'status' => $stop->status,
+            'label' => $stop->label,
+            'address' => $stop->address,
+            'latitude' => $stop->latitude !== null ? (float) $stop->latitude : null,
+            'longitude' => $stop->longitude !== null ? (float) $stop->longitude : null,
+            'arrived_at' => $stop->arrived_at?->toIso8601String(),
+            'arrived_latitude' => $stop->arrived_latitude !== null ? (float) $stop->arrived_latitude : null,
+            'arrived_longitude' => $stop->arrived_longitude !== null ? (float) $stop->arrived_longitude : null,
+            'completed_at' => $stop->completed_at?->toIso8601String(),
+            'completed_latitude' => $stop->completed_latitude !== null ? (float) $stop->completed_latitude : null,
+            'completed_longitude' => $stop->completed_longitude !== null ? (float) $stop->completed_longitude : null,
+            'completed_action' => $stop->completed_action,
+            'skip_reason' => $stop->skip_reason,
+            'notes' => $stop->notes,
+            'allowed_actions' => $this->resolveStopAllowedActions($stop),
+        ];
+    }
+
+    private function resolveStopAllowedActions(DriverAssignmentStop $stop): array
+    {
+        if ($stop->isTerminal()) {
+            return [];
+        }
+
+        if ($stop->status === 'pending') {
+            return ['arrived', 'skip'];
+        }
+
+        if ($stop->status === 'arrived') {
+            return [
+                $stop->stop_type === 'pickup' ? 'picked_up' : 'dropped_off',
+                'skip',
+            ];
+        }
+
+        return [];
+    }
+
+    private function buildRouteStopsFromBookingItem(BookingItem $bookingItem): array
+    {
+        $metadata = is_array($bookingItem->metadata) ? $bookingItem->metadata : [];
+
+        $routeStops = [];
+        $routeStops[] = $this->makeRouteStop(
+            'pickup',
+            $bookingItem->pickup_location,
+            'Pickup',
+            $bookingItem->pickup_latitude,
+            $bookingItem->pickup_longitude
+        );
+
+        $orderedStops = $this->normalizeArrayPayload($metadata['multi_route_stop_order'] ?? []);
+        if (!empty($orderedStops)) {
+            foreach ($orderedStops as $stop) {
+                $type = strtolower((string) ($stop['type'] ?? $stop['stop_type'] ?? ''));
+                if (!in_array($type, ['pickup', 'dropoff'], true)) {
+                    continue;
+                }
+
+                $routeStops[] = $this->makeRouteStop($type, $stop['location'] ?? $stop, ucfirst($type) . ' Stop');
+            }
+        } else {
+            foreach ($this->normalizeArrayPayload($metadata['multi_pickup_locations'] ?? []) as $stop) {
+                $routeStops[] = $this->makeRouteStop('pickup', $stop['location'] ?? $stop, 'Pickup Stop');
+            }
+
+            foreach ($this->normalizeArrayPayload($metadata['multi_dropoff_locations'] ?? []) as $stop) {
+                $routeStops[] = $this->makeRouteStop('dropoff', $stop['location'] ?? $stop, 'Drop-off Stop');
+            }
+        }
+
+        $routeStops[] = $this->makeRouteStop(
+            'dropoff',
+            $bookingItem->dropoff_location,
+            'Drop-off',
+            $bookingItem->dropoff_latitude,
+            $bookingItem->dropoff_longitude
+        );
+
+        return array_values(array_filter($routeStops));
+    }
+
+    private function makeRouteStop(
+        string $type,
+        mixed $location,
+        string $fallbackLabel,
+        mixed $fallbackLatitude = null,
+        mixed $fallbackLongitude = null
+    ): ?array
+    {
+        $normalized = $this->normalizeLocation($location);
+        if (!$normalized) {
+            return null;
+        }
+
+        return [
+            'stop_type' => $type,
+            'location' => $normalized,
+            'label' => $normalized['label'] ?? $normalized['name'] ?? $fallbackLabel,
+            'address' => $normalized['address'] ?? $normalized['formatted_address'] ?? null,
+            'latitude' => $this->toNullableFloat($normalized['latitude'] ?? $normalized['lat'] ?? $fallbackLatitude),
+            'longitude' => $this->toNullableFloat($normalized['longitude'] ?? $normalized['lng'] ?? $fallbackLongitude),
+        ];
+    }
+
+    private function normalizeLocation(mixed $location): ?array
+    {
+        if (is_string($location)) {
+            $decoded = json_decode($location, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                $location = $decoded;
+            } elseif (trim($location) !== '') {
+                $location = ['address' => $location];
+            }
+        }
+
+        if (!is_array($location)) {
+            return null;
+        }
+
+        return $location;
+    }
+
+    private function normalizeArrayPayload(mixed $payload): array
+    {
+        if (is_string($payload)) {
+            $decoded = json_decode($payload, true);
+            $payload = is_array($decoded) ? $decoded : [];
+        }
+
+        return is_array($payload) ? $payload : [];
+    }
+
+    private function toNullableFloat(mixed $value): ?float
+    {
+        return is_numeric($value) ? (float) $value : null;
     }
 
     /**

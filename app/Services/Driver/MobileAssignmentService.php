@@ -24,7 +24,8 @@ use Illuminate\Support\Facades\Log;
 class MobileAssignmentService
 {
     public function __construct(
-        private NotificationTriggerService $notificationService
+        private NotificationTriggerService $notificationService,
+        private TripTrackingService $tripTrackingService
     ) {}
 
     private function baseAssignmentQuery(Driver $driver): Builder
@@ -186,6 +187,8 @@ class MobileAssignmentService
                 'bookingItem.vehicle.group',
             ]);
 
+            $this->tripTrackingService->ensureAssignmentStops($updated);
+
             // Broadcast status change to admin panel for real-time sync
             $this->broadcastStatusChange($updated, 'accepted', $driver);
 
@@ -309,6 +312,7 @@ class MobileAssignmentService
             'bookingItem',
             'bookingItem.serviceType',
             'bookingItem.vehicle.group',
+            'stops',
         ]);
 
         $booking = $assignment->booking;
@@ -330,6 +334,9 @@ class MobileAssignmentService
         $payload['customer_email'] = $customerUser?->email;
         $payload['pickup_location_label'] = $this->extractLocationLabel($bookingItem?->pickup_location);
         $payload['dropoff_location_label'] = $this->extractLocationLabel($bookingItem?->dropoff_location);
+        $stops = $this->tripTrackingService->ensureAssignmentStops($assignment);
+        $payload['is_multi_stop'] = $stops->count() > 2;
+        $payload['route_stops'] = $this->tripTrackingService->mapStopsForMobile($stops);
         $payload['scheduled_from'] = $assignment->assigned_from?->toIso8601String();
         $payload['scheduled_to'] = $assignment->assigned_to?->toIso8601String();
         $payload['trip_completed_at'] = $assignment->trip_completed_at?->toIso8601String();

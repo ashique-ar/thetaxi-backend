@@ -7,6 +7,7 @@ use App\Models\Booking\Booking;
 use App\Models\Booking\BookingItem;
 use App\Models\Driver\Driver;
 use App\Models\Driver\RoutePoint;
+use App\Models\DriverAssignmentStop;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
@@ -162,6 +163,15 @@ class DriverAssignment extends BaseModel
     public function routePoints(): HasMany
     {
         return $this->hasMany(RoutePoint::class, 'assignment_id');
+    }
+
+    /**
+     * Ordered pickup/dropoff progress stops for this assignment.
+     */
+    public function stops(): HasMany
+    {
+        return $this->hasMany(DriverAssignmentStop::class, 'assignment_id')
+            ->orderBy('route_order');
     }
 
     /**

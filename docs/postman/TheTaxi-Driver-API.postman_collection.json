@@ -1346,8 +1346,25 @@
                                 "status"
                             ]
                         },
-                        "description": "Canonical endpoint: get trip status for a specific assignment."
+                        "description": "Canonical endpoint: get trip status for a specific assignment. Response includes all generated route stops in `stops`, the next actionable stop in `current_stop`, and assignment-level `allowed_actions`."
                     },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "const response = pm.response.json();",
+                                    "if (response.status === 'success' && response.data) {",
+                                    "    const currentStop = response.data.current_stop;",
+                                    "    if (currentStop && currentStop.id) {",
+                                    "        pm.environment.set('stop_id', currentStop.id);",
+                                    "    }",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
                     "response": [
                         {
                             "name": "Trip Status - Accepted Phase",
@@ -1376,6 +1393,20 @@
                             ],
                             "cookie": [],
                             "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"trip_phase\": \"in_progress\",\n        \"pickup_location\": {\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841,\n            \"landmark\": \"Colombo Airport\"\n        },\n        \"pickup_arrival\": {\n            \"arrived_at\": \"2026-03-01T08:15:00Z\",\n            \"latitude\": 7.1810,\n            \"longitude\": 79.8839\n        },\n        \"trip_started_at\": \"2026-03-01T08:20:00Z\",\n        \"estimated_distance_to_pickup_km\": null,\n        \"near_pickup\": false,\n        \"cumulative_distance_km\": 12.5,\n        \"total_waiting_time_seconds\": 300,\n        \"waiting_period_count\": 1,\n        \"route_point_count\": 75\n    }\n}"
+                        },
+                        {
+                            "name": "Trip Status - Multi Stop",
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"trip_phase\": \"in_progress\",\n        \"is_multi_stop\": true,\n        \"pickup_location\": {\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841,\n            \"landmark\": \"Colombo Airport\"\n        },\n        \"pickup_arrival\": null,\n        \"trip_started_at\": \"2026-04-27T08:20:00+05:30\",\n        \"stops\": [\n            {\n                \"id\": \"stop-uuid-1\",\n                \"type\": \"pickup\",\n                \"route_order\": 1,\n                \"status\": \"picked_up\",\n                \"label\": \"Pickup\",\n                \"address\": \"Colombo Airport\",\n                \"latitude\": 7.1808,\n                \"longitude\": 79.8841,\n                \"arrived_at\": \"2026-04-27T08:20:00+05:30\",\n                \"completed_at\": \"2026-04-27T08:20:00+05:30\",\n                \"completed_action\": \"picked_up\",\n                \"allowed_actions\": []\n            },\n            {\n                \"id\": \"stop-uuid-2\",\n                \"type\": \"pickup\",\n                \"route_order\": 2,\n                \"status\": \"pending\",\n                \"label\": \"Pickup Stop\",\n                \"address\": \"Passenger 2 pickup\",\n                \"latitude\": 6.9271,\n                \"longitude\": 79.8612,\n                \"arrived_at\": null,\n                \"completed_at\": null,\n                \"completed_action\": null,\n                \"allowed_actions\": [\"arrived\", \"skip\"]\n            },\n            {\n                \"id\": \"stop-uuid-3\",\n                \"type\": \"dropoff\",\n                \"route_order\": 3,\n                \"status\": \"pending\",\n                \"label\": \"Drop-off\",\n                \"address\": \"Hotel dropoff\",\n                \"latitude\": 6.9344,\n                \"longitude\": 79.8428,\n                \"arrived_at\": null,\n                \"completed_at\": null,\n                \"completed_action\": null,\n                \"allowed_actions\": [\"arrived\", \"skip\"]\n            }\n        ],\n        \"current_stop\": {\n            \"id\": \"stop-uuid-2\",\n            \"type\": \"pickup\",\n            \"route_order\": 2,\n            \"status\": \"pending\",\n            \"label\": \"Pickup Stop\",\n            \"address\": \"Passenger 2 pickup\",\n            \"latitude\": 6.9271,\n            \"longitude\": 79.8612,\n            \"allowed_actions\": [\"arrived\", \"skip\"]\n        },\n        \"allowed_actions\": [\"stop_action\"],\n        \"estimated_distance_to_pickup_km\": null,\n        \"near_pickup\": false,\n        \"cumulative_distance_km\": 12.5,\n        \"total_waiting_time_seconds\": 300,\n        \"waiting_period_count\": 1,\n        \"route_point_count\": 75\n    }\n}"
                         },
                         {
                             "name": "No Active Trip",
@@ -1533,6 +1564,229 @@
                     ]
                 },
                 {
+                    "name": "Mark Route Stop Arrived",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"latitude\": {{current_latitude}},\n    \"longitude\": {{current_longitude}},\n    \"notes\": \"Arrived at route stop\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/assignments/{{assignment_id}}/stops/{{stop_id}}/arrived",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "assignments",
+                                "{{assignment_id}}",
+                                "stops",
+                                "{{stop_id}}",
+                                "arrived"
+                            ]
+                        },
+                        "description": "Multi-stop endpoint. Marks the current route stop as arrived. Previous stops must already be completed or skipped."
+                    },
+                    "response": [
+                        {
+                            "name": "Route Stop Arrived",
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Stop arrival confirmed\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"trip_phase\": \"in_progress\",\n        \"current_stop\": {\n            \"id\": \"stop-uuid-2\",\n            \"type\": \"pickup\",\n            \"route_order\": 2,\n            \"status\": \"arrived\",\n            \"allowed_actions\": [\"picked_up\", \"skip\"]\n        },\n        \"allowed_actions\": [\"stop_action\"]\n    }\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "Complete Pickup Stop",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"latitude\": {{current_latitude}},\n    \"longitude\": {{current_longitude}},\n    \"notes\": \"Passenger picked up\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/assignments/{{assignment_id}}/stops/{{stop_id}}/picked-up",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "assignments",
+                                "{{assignment_id}}",
+                                "stops",
+                                "{{stop_id}}",
+                                "picked-up"
+                            ]
+                        },
+                        "description": "Multi-stop endpoint. Completes an arrived pickup stop as picked_up. Use only when `current_stop.type` is `pickup` and `current_stop.status` is `arrived`."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Complete Dropoff Stop",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"latitude\": {{current_latitude}},\n    \"longitude\": {{current_longitude}},\n    \"notes\": \"Passenger dropped off\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/assignments/{{assignment_id}}/stops/{{stop_id}}/dropped-off",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "assignments",
+                                "{{assignment_id}}",
+                                "stops",
+                                "{{stop_id}}",
+                                "dropped-off"
+                            ]
+                        },
+                        "description": "Multi-stop endpoint. Completes an arrived dropoff stop as dropped_off. Use only when `current_stop.type` is `dropoff` and `current_stop.status` is `arrived`."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Skip Route Stop",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"latitude\": {{current_latitude}},\n    \"longitude\": {{current_longitude}},\n    \"reason\": \"Passenger did not arrive\",\n    \"notes\": \"Waited and skipped stop\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/assignments/{{assignment_id}}/stops/{{stop_id}}/skip",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "assignments",
+                                "{{assignment_id}}",
+                                "stops",
+                                "{{stop_id}}",
+                                "skip"
+                            ]
+                        },
+                        "description": "Multi-stop endpoint. Skips the current pickup/dropoff stop. Skipped stops are terminal and allow the driver to move to the next stop."
+                    },
+                    "response": []
+                },
+                {
                     "name": "End Trip",
                     "request": {
                         "auth": {
@@ -1612,7 +1866,7 @@
                     ]
                 }
             ],
-            "description": "Trip lifecycle tracking endpoints. Manage the full trip flow: check status, confirm pickup arrival, start trip, and end trip with summary. Waiting time is automatically detected during in_progress phase."
+            "description": "Trip lifecycle tracking endpoints. Manage the full trip flow: check status, confirm pickup arrival, start trip, route stop progress for multi-stop hires, and end trip with summary. Waiting time is automatically detected during in_progress phase. Multi-stop hires return all stops in status responses and must complete or skip every stop before ending the hire."
         },
         {
             "name": "Earnings",
