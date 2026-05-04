@@ -12,9 +12,9 @@ return new class extends Migration
     {
         $this->mergeDuplicateCustomers();
 
-        Schema::table('customers', function (Blueprint $table) {
-            $table->unique('user_id', 'customers_user_id_unique');
-        });
+        // Schema::table('customers', function (Blueprint $table) {
+        //     $table->unique('user_id', 'customers_user_id_unique');
+        // });
     }
 
     public function down(): void
@@ -26,6 +26,8 @@ return new class extends Migration
 
     private function mergeDuplicateCustomers(): void
     {
+        $this->mergeDuplicateCustomersByEmail();
+
         $duplicateUserIds = DB::table('customers')
             ->select('user_id')
             ->whereNotNull('user_id')
@@ -36,6 +38,37 @@ return new class extends Migration
         foreach ($duplicateUserIds as $userId) {
             $customers = Customer::withTrashed()
                 ->where('user_id', $userId)
+                ->orderByRaw('deleted_at IS NOT NULL')
+                ->orderBy('created_at')
+                ->get();
+
+            $keeper = $customers->first();
+            $duplicates = $customers->slice(1);
+
+            foreach ($duplicates as $duplicate) {
+                $this->moveCustomerReferences($duplicate->id, $keeper->id);
+                $duplicate->forceDelete();
+            }
+        }
+    }
+
+    private function mergeDuplicateCustomersByEmail(): void
+    {
+        if (!Schema::hasTable('users')) {
+            return;
+        }
+
+        $duplicateEmails = DB::table('customers')
+            ->join('users', 'customers.user_id', '=', 'users.id')
+            ->selectRaw('LOWER(users.email) as email_key')
+            ->whereNotNull('users.email')
+            ->groupBy('email_key')
+            ->havingRaw('COUNT(customers.id) > 1')
+            ->pluck('email_key');
+
+        foreach ($duplicateEmails as $emailKey) {
+            $customers = Customer::withTrashed()
+                ->whereHas('user', fn ($query) => $query->whereRaw('LOWER(email) = ?', [$emailKey]))
                 ->orderByRaw('deleted_at IS NOT NULL')
                 ->orderBy('created_at')
                 ->get();

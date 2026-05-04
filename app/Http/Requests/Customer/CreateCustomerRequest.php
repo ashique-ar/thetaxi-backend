@@ -56,7 +56,7 @@ class CreateCustomerRequest extends FormRequest
             $email = $this->input('email');
 
             if ($email) {
-                $user = User::where('email', $email)->first();
+                $user = User::whereRaw('LOWER(email) = ?', [strtolower(trim($email))])->first();
 
                 if ($user) {
                     // Check if user already has customer context

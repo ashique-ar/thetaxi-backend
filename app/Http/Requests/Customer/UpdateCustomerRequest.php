@@ -30,7 +30,7 @@ class UpdateCustomerRequest extends FormRequest
                 'max:255',
                 function ($attribute, $value, $fail) use ($customerId) {
                     $exists = Customer::where('id', '!=', $customerId)
-                        ->whereHas('user', fn ($query) => $query->where('email', $value))
+                        ->whereHas('user', fn ($query) => $query->whereRaw('LOWER(email) = ?', [strtolower(trim($value))]))
                         ->exists();
 
                     if ($exists) {

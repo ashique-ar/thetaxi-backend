@@ -110,7 +110,7 @@ class CustomerController extends Controller
         $email = strtolower(trim($data['email']));
 
         $customer = Customer::with('user')
-            ->whereHas('user', fn ($query) => $query->where('email', $email))
+            ->whereHas('user', fn ($query) => $query->whereRaw('LOWER(email) = ?', [$email]))
             ->when(!empty($data['except_customer_id']), fn ($query) => $query->where('id', '!=', $data['except_customer_id']))
             ->first();
 
@@ -130,13 +130,13 @@ class CustomerController extends Controller
 
         try {
             return DB::transaction(function () use ($data) {
-            $existingUser = User::where('email', $data['email'])->lockForUpdate()->first();
+                $existingUser = User::whereRaw('LOWER(email) = ?', [strtolower(trim($data['email']))])->lockForUpdate()->first();
             
-            if ($existingUser) {
-                $existingContext = \App\Models\UserContext::where('user_id', $existingUser->id)
-                    ->where('context_type', 'customer')
-                    ->where('is_active', true)
-                    ->first();
+                if ($existingUser) {
+                    $existingContext = \App\Models\UserContext::where('user_id', $existingUser->id)
+                        ->where('context_type', 'customer')
+                        ->where('is_active', true)
+                        ->first();
                 
                 if ($existingContext) {
                     return response()->json([

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Customer;
 use App\Models\User;
+use App\Models\UserContext;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -31,73 +32,31 @@ class CustomerService
     public function createGuestCustomer(array $data): Customer
     {
         return DB::transaction(function () use ($data) {
+            $data = $this->normalizeCheckoutData($data);
             $email = $data['customer_email'];
+            $this->lockCustomerEmail($email);
             
             // CRITICAL FIX: Check if user with this email already exists FIRST
-            // This prevents duplicate user creation in concurrent requests
-            $user = User::where('email', $email)->lockForUpdate()->first();
+            // This prevents duplicate customer creation and links checkout bookings to the existing customer.
+            $user = $this->findUserByEmail($email, true);
 
             if ($user) {
                 // User exists - update their info
                 $user->update([
-                    'first_name' => $data['first_name'] ?? explode(' ', $data['customer_name'])[0],
-                    'last_name' => $data['last_name'] ?? (explode(' ', $data['customer_name'])[1] ?? ''),
+                    'first_name' => $data['first_name'] ?? $this->splitCustomerName($data['customer_name'])[0],
+                    'last_name' => $data['last_name'] ?? $this->splitCustomerName($data['customer_name'])[1],
                     'phone' => $data['customer_phone'] ?? $user->phone,
                 ]);
                 
-                // Check if customer record exists for this user
-                $customer = $user->customer;
-                
-                if ($customer) {
-                    // Customer exists - update their info
-                    $updateData = [
-                        'address' => $data['customer_address'] ?? $customer->address,
-                        'city' => $data['customer_city'] ?? $customer->city,
-                        'country' => $data['customer_country'] ?? $customer->country,
-                        'country_id' => $data['country_id'] ?? $customer->country_id,
-                        'nic' => $data['customer_identification'] ?? $customer->nic,
-                        'updated_user_id' => Auth::id() ?? $user->id,
-                    ];
-                    
-                    // Handle marketing consent
-                    if (isset($data['marketing_consent'])) {
-                        $updateData['marketing_consent'] = (bool) $data['marketing_consent'];
-                        $updateData['marketing_consent_date'] = $data['marketing_consent'] ? now() : null;
-                        $updateData['marketing_consent_ip'] = $data['marketing_consent'] ? request()->ip() : null;
-                    }
-                    
-                    $customer->update($updateData);
-                    
-                    return $customer->load('user');
-                } else {
-                    // User exists but no customer - create customer
-                    $customerData = [
-                        'user_id' => $user->id,
-                        'address' => $data['customer_address'] ?? null,
-                        'city' => $data['customer_city'] ?? null,
-                        'country' => $data['customer_country'] ?? null,
-                        'country_id' => $data['country_id'] ?? null,
-                        'nic' => $data['customer_identification'] ?? null,
-                        'created_user_id' => Auth::id() ?? $user->id,
-                    ];
-                    
-                    // Handle marketing consent
-                    if (isset($data['marketing_consent'])) {
-                        $customerData['marketing_consent'] = (bool) $data['marketing_consent'];
-                        $customerData['marketing_consent_date'] = $data['marketing_consent'] ? now() : null;
-                        $customerData['marketing_consent_ip'] = $data['marketing_consent'] ? request()->ip() : null;
-                    }
-                    
-                    $customer = Customer::create($customerData);
-                    
-                    return $customer->load('user');
-                }
+                return $this->ensureCustomerForUser($user, $data)->load('user');
             }
 
             // No existing user or customer - create new ones
+            [$firstName, $lastName] = $this->splitCustomerName($data['customer_name']);
+
             $user = User::create([
-                'first_name' => $data['first_name'] ?? explode(' ', $data['customer_name'])[0],
-                'last_name' => $data['last_name'] ?? (explode(' ', $data['customer_name'])[1] ?? ''),
+                'first_name' => $data['first_name'] ?? $firstName,
+                'last_name' => $data['last_name'] ?? $lastName,
                 'email' => $email,
                 'phone' => $data['customer_phone'] ?? null,
                 'password' => bcrypt(Str::random(16)), // Random password, guest won't login
@@ -105,27 +64,7 @@ class CustomerService
                 'email_verified_at' => now(),
             ]);
 
-            // Create new customer linked to user
-            $customerData = [
-                'user_id' => $user->id,
-                'address' => $data['customer_address'] ?? null,
-                'city' => $data['customer_city'] ?? null,
-                'country' => $data['customer_country'] ?? null,
-                'country_id' => $data['country_id'] ?? null,
-                'nic' => $data['customer_identification'] ?? null,
-                'created_user_id' => Auth::id() ?? $user->id,
-            ];
-            
-            // Handle marketing consent
-            if (isset($data['marketing_consent'])) {
-                $customerData['marketing_consent'] = (bool) $data['marketing_consent'];
-                $customerData['marketing_consent_date'] = $data['marketing_consent'] ? now() : null;
-                $customerData['marketing_consent_ip'] = $data['marketing_consent'] ? request()->ip() : null;
-            }
-            
-            $customer = Customer::create($customerData);
-
-            return $customer->load('user');
+            return $this->ensureCustomerForUser($user, $data)->load('user');
         });
     }
 
@@ -139,23 +78,7 @@ class CustomerService
     public function createCustomerForUser(User $user, array $data): Customer
     {
         return DB::transaction(function () use ($user, $data) {
-            // Check if customer already exists
-            if ($user->customer) {
-                return $user->customer;
-            }
-
-            $customer = Customer::create([
-                'user_id' => $user->id,
-                'address' => $data['customer_address'] ?? null,
-                'city' => $data['customer_city'] ?? null,
-                'country_id' => $data['country_id'] ?? null,
-                'nic' => $data['customer_identification'] ?? null,
-                'dob' => $data['dob'] ?? null,
-                'gender' => $data['gender'] ?? null,
-                'created_user_id' => $user->id,
-            ]);
-
-            return $customer->load('user');
+            return $this->ensureCustomerForUser($user, $this->normalizeCheckoutData($data))->load('user');
         });
     }
 
@@ -196,6 +119,16 @@ class CustomerService
      */
     public function getOrCreateCustomer(array $data): Customer
     {
+        $data = $this->normalizeCheckoutData($data);
+
+        if (!empty($data['customer_email'])) {
+            $customer = $this->getCustomerByEmail($data['customer_email']);
+
+            if ($customer) {
+                return $this->updateCustomerProfile($customer, $data)->load('user');
+            }
+        }
+
         if (Auth::check()) {
             // Authenticated user - get existing customer or create new
             $user = Auth::user();
@@ -222,9 +155,11 @@ class CustomerService
      */
     public function getCustomerByEmail(string $email): ?Customer
     {
+        $email = strtolower(trim($email));
+
         return Customer::whereHas('user', function ($query) use ($email) {
-            $query->where('email', $email);
-        })->first();
+            $query->whereRaw('LOWER(email) = ?', [$email]);
+        })->with('user')->first();
     }
 
     /**
@@ -261,7 +196,109 @@ class CustomerService
     {
         return $customer->bookings()
             ->where('status', 'completed')
-            ->sum('total_amount') ?? 0;
+            ->sum('total_actual') ?? 0;
+    }
+
+    private function ensureCustomerForUser(User $user, array $data): Customer
+    {
+        $customer = Customer::withTrashed()->where('user_id', $user->id)->lockForUpdate()->first();
+
+        if (!$customer) {
+            $customer = new Customer([
+                'user_id' => $user->id,
+                'created_user_id' => Auth::id() ?? $user->id,
+            ]);
+        }
+
+        if ($customer->trashed()) {
+            $customer->restore();
+        }
+
+        $customer->fill([
+            'address' => $data['customer_address'] ?? $customer->address,
+            'city' => $data['customer_city'] ?? $customer->city,
+            'country' => $data['customer_country'] ?? $customer->country,
+            'country_id' => $data['country_id'] ?? $customer->country_id,
+            'nic' => $data['customer_identification'] ?? $customer->nic,
+            'dob' => $data['dob'] ?? $customer->dob,
+            'gender' => $data['gender'] ?? $customer->gender,
+            'updated_user_id' => Auth::id() ?? $user->id,
+        ]);
+
+        if (isset($data['marketing_consent'])) {
+            $customer->marketing_consent = (bool) $data['marketing_consent'];
+            $customer->marketing_consent_date = $data['marketing_consent'] ? now() : null;
+            $customer->marketing_consent_ip = $data['marketing_consent'] ? request()->ip() : null;
+        }
+
+        $customer->save();
+        $this->ensureCustomerContext($user, $customer);
+
+        return $customer->fresh('user');
+    }
+
+    private function ensureCustomerContext(User $user, Customer $customer): void
+    {
+        $context = UserContext::withTrashed()->firstOrNew([
+            'user_id' => $user->id,
+            'context_type' => 'customer',
+            'context_id' => $customer->id,
+        ]);
+
+        if ($context->trashed()) {
+            $context->restore();
+        }
+
+        $context->fill([
+            'is_active' => true,
+            'created_user_id' => $context->created_user_id ?? (Auth::id() ?? $user->id),
+            'updated_user_id' => Auth::id() ?? $user->id,
+        ]);
+        $context->save();
+    }
+
+    private function findUserByEmail(string $email, bool $lock = false): ?User
+    {
+        $query = User::whereRaw('LOWER(email) = ?', [strtolower(trim($email))]);
+
+        if ($lock) {
+            $query->lockForUpdate();
+        }
+
+        return $query->first();
+    }
+
+    private function lockCustomerEmail(string $email): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            return;
+        }
+
+        DB::statement('SELECT pg_advisory_xact_lock(?)', [(string) sprintf('%u', crc32(strtolower(trim($email))))]);
+    }
+
+    private function normalizeCheckoutData(array $data): array
+    {
+        $email = $data['customer_email'] ?? $data['email'] ?? null;
+
+        if ($email !== null) {
+            $data['customer_email'] = strtolower(trim((string) $email));
+            $data['email'] = $data['customer_email'];
+        }
+
+        $data['customer_name'] = trim((string) ($data['customer_name'] ?? trim(($data['first_name'] ?? '') . ' ' . ($data['last_name'] ?? ''))));
+
+        return $data;
+    }
+
+    private function splitCustomerName(string $name): array
+    {
+        $parts = preg_split('/\s+/', trim($name), 2) ?: [];
+
+        return [
+            $parts[0] ?? 'Customer',
+            $parts[1] ?? '',
+        ];
     }
 
     /**
