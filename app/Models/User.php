@@ -449,6 +449,14 @@ class User extends Authenticatable
     }
 
     /**
+     * Get the customer profile linked to this user.
+     */
+    public function customer()
+    {
+        return $this->hasOne(\App\Models\Customer::class);
+    }
+
+    /**
      * Get customer context if exists
      */
     public function customerContext()

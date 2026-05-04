@@ -299,17 +299,24 @@ Route::middleware(['auth:api'])->group(function () {
     */
 
     Route::middleware(['permission:customers.view'])->group(function () {
-        Route::apiResource('customers', CustomerController::class);
+        Route::get('customers/search', [CustomerController::class, 'search']);
+        Route::get('customers/check-email', [CustomerController::class, 'checkEmail']);
+        Route::get('customers/stats', [CustomerController::class, 'getCustomerAnalytics'])->middleware('permission:customers.analytics');
+        Route::get('customers/analytics', [CustomerController::class, 'getCustomerAnalytics'])->middleware('permission:customers.analytics');
+        Route::get('customers/analytics/growth', [CustomerController::class, 'getCustomerGrowth'])->middleware('permission:customers.analytics');
+        Route::get('customers/analytics/segments', [CustomerController::class, 'getCustomerSegments'])->middleware('permission:customers.analytics');
+        Route::get('customers/analytics/cohort', [CustomerController::class, 'getCustomerCohort'])->middleware('permission:customers.analytics');
+        Route::get('customers/analytics/top-customers', [CustomerController::class, 'getTopCustomers'])->middleware('permission:customers.analytics');
+        Route::get('customers/export', [CustomerController::class, 'exportCustomers'])->middleware('permission:customers.export');
+        Route::get('customers/feedback/stats', [CustomerController::class, 'getFeedbackStats'])->middleware('permission:customers.feedback');
+        Route::get('customers/feedback', [CustomerController::class, 'getAllCustomerFeedback'])->middleware('permission:customers.feedback');
+        Route::post('customers/feedback', [CustomerController::class, 'submitCustomerFeedback'])->middleware('permission:customers.feedback');
         Route::get('customers/{customer}/bookings', [CustomerController::class, 'getCustomerBookings'])->middleware('permission:customers.bookings');
         Route::get('customers/{customer}/loyalty', [CustomerController::class, 'getCustomerLoyalty'])->middleware('permission:customers.loyalty');
         Route::post('customers/{customer}/loyalty/points', [CustomerController::class, 'addLoyaltyPoints'])->middleware('permission:customers.loyalty');
         Route::get('customers/{customer}/feedback', [CustomerController::class, 'getCustomerFeedback'])->middleware('permission:customers.feedback');
         Route::post('customers/{customer}/feedback', [CustomerController::class, 'addCustomerFeedback'])->middleware('permission:customers.feedback');
-        Route::get('customers/analytics', [CustomerController::class, 'getCustomerAnalytics'])->middleware('permission:customers.analytics');
-        Route::get('customers/export', [CustomerController::class, 'exportCustomers'])->middleware('permission:customers.export');
-        Route::get('customers/feedback/stats', [CustomerController::class, 'getFeedbackStats'])->middleware('permission:customers.feedback');
-        Route::get('customers/feedback', [CustomerController::class, 'getAllCustomerFeedback'])->middleware('permission:customers.feedback');
-        Route::post('customers/feedback', [CustomerController::class, 'submitCustomerFeedback'])->middleware('permission:customers.feedback');
+        Route::apiResource('customers', CustomerController::class);
     });
 
     /*

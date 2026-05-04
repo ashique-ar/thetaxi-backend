@@ -12,6 +12,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class CustomerController extends Controller
@@ -29,20 +30,97 @@ class CustomerController extends Controller
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        $q = Customer::with('user');
+        $q = Customer::with(['user', 'state']);
+
         if ($request->filled('search')) {
             $search = $request->get('search');
             $q->where(function ($builder) use ($search) {
                 $builder->whereHas('user', function ($query) use ($search) {
                     $query->whereLikeInsensitive('first_name', $search)
                         ->orWhereLikeInsensitive('last_name', $search)
-                        ->orWhereLikeInsensitive('email', $search);
-                })->orWhereLikeInsensitive('code', $search);
+                        ->orWhereLikeInsensitive('email', $search)
+                        ->orWhereLikeInsensitive('phone', $search);
+                })->orWhereLikeInsensitive('code', $search)
+                    ->orWhereLikeInsensitive('nic', $search)
+                    ->orWhereLikeInsensitive('passport_number', $search);
             });
         }
+
+        if ($request->filled('status')) {
+            $isActive = $request->get('status') === 'active';
+            $q->whereHas('user', fn ($query) => $query->where('is_active', $isActive));
+        }
+
+        if ($request->has('is_verified')) {
+            $verified = filter_var($request->get('is_verified'), FILTER_VALIDATE_BOOLEAN);
+            $q->whereHas('user', function ($query) use ($verified) {
+                if ($verified) {
+                    $query->whereNotNull('email_verified_at');
+                } else {
+                    $query->whereNull('email_verified_at');
+                }
+            });
+        }
+
+        $sort = in_array($request->get('sort'), ['created_at', 'updated_at', 'code'], true)
+            ? $request->get('sort')
+            : 'created_at';
+        $direction = $request->get('direction') === 'asc' ? 'asc' : 'desc';
+
         return CustomerResource::collection(
-            $q->paginate($request->per_page ?? 15)
+            $q->orderBy($sort, $direction)->paginate($request->per_page ?? 15)
         );
+    }
+
+    public function search(Request $request): JsonResponse
+    {
+        $request->validate([
+            'q' => ['nullable', 'string', 'max:255'],
+            'limit' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+
+        $search = $request->get('q', '');
+        $limit = (int) $request->get('limit', 20);
+
+        $customers = Customer::with('user')
+            ->when($search !== '', function ($query) use ($search) {
+                $query->whereHas('user', function ($userQuery) use ($search) {
+                    $userQuery->whereLikeInsensitive('first_name', $search)
+                        ->orWhereLikeInsensitive('last_name', $search)
+                        ->orWhereLikeInsensitive('email', $search)
+                        ->orWhereLikeInsensitive('phone', $search);
+                })->orWhereLikeInsensitive('code', $search);
+            })
+            ->limit($limit)
+            ->get();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => CustomerResource::collection($customers),
+        ]);
+    }
+
+    public function checkEmail(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'email' => ['required', 'email', 'max:255'],
+            'except_customer_id' => ['nullable', 'uuid'],
+        ]);
+
+        $email = strtolower(trim($data['email']));
+
+        $customer = Customer::with('user')
+            ->whereHas('user', fn ($query) => $query->where('email', $email))
+            ->when(!empty($data['except_customer_id']), fn ($query) => $query->where('id', '!=', $data['except_customer_id']))
+            ->first();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'exists' => (bool) $customer,
+                'customer' => $customer ? new CustomerResource($customer) : null,
+            ],
+        ]);
     }
 
     public function store(CreateCustomerRequest $request): JsonResponse
@@ -51,7 +129,8 @@ class CustomerController extends Controller
         $data['created_user_id'] = $request->user()->id;
 
         try {
-            $existingUser = User::where('email', $data['email'])->first();
+            return DB::transaction(function () use ($data) {
+            $existingUser = User::where('email', $data['email'])->lockForUpdate()->first();
             
             if ($existingUser) {
                 $existingContext = \App\Models\UserContext::where('user_id', $existingUser->id)
@@ -90,12 +169,12 @@ class CustomerController extends Controller
                 ];
 
                 $context = $this->contextService->switchContext($existingUser, 'customer', $contextData);
-                $customer = Customer::find($context->getAttribute('context_id'));
+                $customer = Customer::with(['user', 'state'])->find($context->getAttribute('context_id'));
 
                 return response()->json([
                     'status' => 'success',
                     'message' => 'Customer context created for existing user',
-                    'data' => ['customer' => new CustomerResource($customer)]
+                    'data' => new CustomerResource($customer)
                 ], 201);
 
             } else {
@@ -132,14 +211,15 @@ class CustomerController extends Controller
                 ];
 
                 $context = $this->contextService->switchContext($user, 'customer', $contextData);
-                $customer = Customer::find($context->getAttribute('context_id'));
+                $customer = Customer::with(['user', 'state'])->find($context->getAttribute('context_id'));
 
                 return response()->json([
                     'status' => 'success',
                     'message' => 'Customer created successfully',
-                    'data' => ['customer' => new CustomerResource($customer)]
+                    'data' => new CustomerResource($customer)
                 ], 201);
             }
+            });
 
         } catch (\Exception $e) {
             return response()->json([
@@ -152,7 +232,7 @@ class CustomerController extends Controller
 
     public function show(Customer $customer): JsonResponse
     {
-        $customer->load('user');
+        $customer->load(['user', 'state']);
         return response()->json([
             'status' => 'success',
             'data' => new CustomerResource($customer)
@@ -177,12 +257,12 @@ class CustomerController extends Controller
 
             $customer->update($customerData);
 
-            $customer->load('user');
+            $customer->load(['user', 'state']);
 
             return response()->json([
                 'status' => 'success',
                 'message' => 'Customer updated successfully',
-                'data' => ['customer' => new CustomerResource($customer)]
+                'data' => new CustomerResource($customer)
             ]);
 
         } catch (\Exception $e) {
@@ -197,8 +277,17 @@ class CustomerController extends Controller
     public function destroy(Customer $customer): JsonResponse
     {
         $user = User::find($customer->user_id);
+        \App\Models\UserContext::where('user_id', $customer->user_id)
+            ->where('context_type', 'customer')
+            ->where('context_id', $customer->id)
+            ->update(['is_active' => false]);
+
         $customer->delete();
-        $user->delete();
+
+        if ($user && !$user->contexts()->where('is_active', true)->exists()) {
+            $user->delete();
+        }
+
         return response()->json([
             'status' => 'success',
             'message' => 'Customer deleted'
@@ -340,12 +429,22 @@ class CustomerController extends Controller
      */
     public function getCustomerAnalytics(): JsonResponse
     {
+        $totalCustomers = Customer::count();
+        $newThisMonth = Customer::whereMonth('created_at', now()->month)
+            ->whereYear('created_at', now()->year)
+            ->count();
+        $activeCustomers = Customer::whereHas('bookings', function ($q) {
+            $q->where('created_at', '>=', now()->subDays(30));
+        })->count();
+
         $analytics = [
-            'total_customers' => Customer::count(),
-            'new_customers_this_month' => Customer::whereMonth('created_at', now()->month)->count(),
-            'active_customers' => Customer::whereHas('bookings', function ($q) {
-                $q->where('created_at', '>=', now()->subDays(30));
-            })->count(),
+            'total_customers' => $totalCustomers,
+            'new_customers_this_month' => $newThisMonth,
+            'active_customers' => $activeCustomers,
+            'totalCustomers' => $totalCustomers,
+            'newCustomersThisMonth' => $newThisMonth,
+            'activeCustomers' => $activeCustomers,
+            'averageLifetimeValue' => (float) DB::table('bookings')->avg(DB::raw('COALESCE(total_actual, total_estimated, 0)')),
             'customer_growth' => Customer::selectRaw('DATE(created_at) as date, COUNT(*) as count')
                 ->where('created_at', '>=', now()->subDays(30))
                 ->groupBy('date')
@@ -356,6 +455,81 @@ class CustomerController extends Controller
         return response()->json([
             'status' => 'success',
             'data' => $analytics
+        ]);
+    }
+
+    public function getCustomerGrowth(Request $request): JsonResponse
+    {
+        $startDate = $request->date('start_date') ?? now()->subDays(30);
+        $endDate = $request->date('end_date') ?? now();
+
+        $rows = Customer::selectRaw('DATE(created_at) as date, COUNT(*) as count')
+            ->whereBetween('created_at', [$startDate->startOfDay(), $endDate->endOfDay()])
+            ->groupBy('date')
+            ->orderBy('date')
+            ->get();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'dates' => $rows->pluck('date')->values(),
+                'values' => $rows->pluck('count')->values(),
+            ],
+        ]);
+    }
+
+    public function getCustomerSegments(): JsonResponse
+    {
+        $segments = Customer::selectRaw("COALESCE(type, 'Unclassified') as name, COUNT(*) as value")
+            ->groupBy('type')
+            ->orderByDesc('value')
+            ->get();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $segments,
+        ]);
+    }
+
+    public function getCustomerCohort(): JsonResponse
+    {
+        $cohorts = Customer::selectRaw("DATE_FORMAT(created_at, '%Y-%m') as cohort, COUNT(*) as customers")
+            ->where('created_at', '>=', now()->subMonths(12))
+            ->groupBy('cohort')
+            ->orderBy('cohort')
+            ->get();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $cohorts,
+        ]);
+    }
+
+    public function getTopCustomers(Request $request): JsonResponse
+    {
+        $limit = (int) $request->get('limit', 10);
+
+        $customers = Customer::with('user')
+            ->withCount('bookings')
+            ->withSum('bookings as total_revenue', 'total_actual')
+            ->orderByDesc('bookings_count')
+            ->limit(min(max($limit, 1), 50))
+            ->get()
+            ->map(fn (Customer $customer) => [
+                'id' => $customer->id,
+                'name' => $customer->full_name,
+                'email' => $customer->email,
+                'totalBookings' => $customer->bookings_count,
+                'totalRevenue' => (float) ($customer->total_revenue ?? 0),
+                'averageOrderValue' => $customer->bookings_count > 0
+                    ? (float) ($customer->total_revenue ?? 0) / $customer->bookings_count
+                    : 0,
+                'lastBooking' => $customer->bookings()->latest('created_at')->value('created_at'),
+            ]);
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $customers,
         ]);
     }
 
