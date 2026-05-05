@@ -259,7 +259,21 @@ class CustomerService
 
     private function findUserByEmail(string $email, bool $lock = false): ?User
     {
-        $query = User::whereRaw('LOWER(email) = ?', [strtolower(trim($email))]);
+        $email = strtolower(trim($email));
+
+        $query = User::where('email', $email);
+
+        if ($lock) {
+            $query->lockForUpdate();
+        }
+
+        $user = $query->first();
+
+        if ($user) {
+            return $user;
+        }
+
+        $query = User::whereRaw('LOWER(email) = ?', [$email]);
 
         if ($lock) {
             $query->lockForUpdate();
