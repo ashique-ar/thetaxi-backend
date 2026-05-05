@@ -3217,16 +3217,22 @@ class BookingFlowService
                     ->whereIn('status', ['active', 'pending_approval']);
             },
             'user' => function ($query) use ($searchTerm) {
-                $query->Where('first_name', 'LIKE', "%{$searchTerm}%")
-                    ->orWhere('last_name', 'LIKE', "%{$searchTerm}%");
+                if (!empty($searchTerm)) {
+                    $query->Where('first_name', 'LIKE', "%{$searchTerm}%")
+                        ->orWhere('last_name', 'LIKE', "%{$searchTerm}%");
+                }
             }
-        ])
-            ->where(function ($q) use ($searchTerm) {
-                $q->Where('license_no', 'LIKE', "%{$searchTerm}%");
+        ]);
+
+        if (!empty($searchTerm)) {
+            $query->where(function ($q) use ($searchTerm) {
+                $q->Where('license_no', 'LIKE', "%{$searchTerm}%")
+                    ->orWhere('code', 'LIKE', "%{$searchTerm}%");
                 if (Uuid::isValid($searchTerm)) {
                     $q->orWhere('id', $searchTerm);
                 }
             });
+        }
 
         if (!$includeUnavailable) {
             $query->where('availability_status', '!=', 'off_duty');
