@@ -301,7 +301,7 @@
                                                 <span class="status-badge status-pending">⏳ Pending</span>
                                             @else
                                                 <span
-                                                    class="status-badge status-processing">{{ ucfirst($booking->payment_status) }}</span>
+                                                    class="status-badge status-processing">{{ ucwords(str_replace('_', ' ', $booking->payment_status)) }}</span>
                                             @endif
                                         </td>
                                     </tr>
@@ -329,8 +329,9 @@
                                     @foreach ($booking->acceptedTerms as $bt)
                                         @php $tc = $bt->terms; @endphp
                                         <div class="term-item mb-3">
-                                            <h6 style="margin:0; font-weight:700">{{ $tc->title ?? 'Terms' }} <small
-                                                    style="font-weight:400; font-size:12px">v{{ $bt->terms_version ?? ($tc->version ?? '1') }}</small>
+                                            <h6 style="margin:0; font-weight:700">{{ $tc->title ?? 'Terms' }}
+                                                {{-- <small
+                                                    style="font-weight:400; font-size:12px">v{{ $bt->terms_version ?? ($tc->version ?? '1') }}</small> --}}
                                             </h6>
                                             <div style="color:#555; margin-top:6px">{!! $tc->content ?? '' !!}</div>
                                         </div>
@@ -408,7 +409,7 @@
                                         <div class="btn-container" style="margin: 20px 0;">
                                             @if (!$isFallbackPaymentLink)
                                                 <a href="{{ $paymentLink }}" class="btn btn-new">
-                                                Pay {{ $currencySymbol }}
+                                                    Pay {{ $currencySymbol }}
                                                     {{ number_format($booking->amount_to_pay ?? $booking->total_estimated, 2) }}
                                                 </a>
                                                 <p
@@ -836,7 +837,11 @@
 @endpush
 
 @push('scripts')
-    @if (!empty($settings['google_ads_conversion_id']) && !empty($settings['google_ads_conversion_label']) && $booking && ($isFullPayment || $isAdvancePayment))
+    @if (
+        !empty($settings['google_ads_conversion_id']) &&
+            !empty($settings['google_ads_conversion_label']) &&
+            $booking &&
+            ($isFullPayment || $isAdvancePayment))
         @php
             // Determine if this is a new customer
             // Check if customer has any previous paid bookings
@@ -856,11 +861,11 @@
                 var maxAttempts = 10;
                 var attempts = 0;
                 var checkInterval = 200; // Check every 200ms
-                
+
                 function fireConversion() {
                     if (typeof gtag !== 'undefined') {
                         console.log('Google Ads Conversion Tracking - Firing conversion event');
-                        
+
                         gtag('event', 'conversion', {
                             'send_to': '{{ $settings['google_ads_conversion_id'] }}/{{ $settings['google_ads_conversion_label'] }}',
                             'value': {{ $booking->amount_to_pay ?? $booking->total_estimated }},
@@ -868,7 +873,7 @@
                             'transaction_id': '{{ $booking->booking_number }}',
                             'new_customer': {{ $isNewCustomer ? 'true' : 'false' }}
                         });
-                        
+
                         console.log('Google Ads Conversion tracked successfully', {
                             booking: '{{ $booking->booking_number }}',
                             value: {{ $booking->amount_to_pay ?? $booking->total_estimated }},
@@ -881,12 +886,13 @@
                             console.log('Waiting for gtag to load... (attempt ' + attempts + '/' + maxAttempts + ')');
                             setTimeout(fireConversion, checkInterval);
                         } else {
-                            console.error('Google Ads Conversion Tracking - gtag not loaded after ' + maxAttempts + ' attempts');
+                            console.error('Google Ads Conversion Tracking - gtag not loaded after ' + maxAttempts +
+                                ' attempts');
                             console.error('Conversion not tracked for booking: {{ $booking->booking_number }}');
                         }
                     }
                 }
-                
+
                 // Start checking for gtag
                 fireConversion();
             })();
