@@ -41,13 +41,18 @@ class CustomerService
             $user = $this->findUserByEmail($email, true);
 
             if ($user) {
-                // User exists - update their info
+                // User exists - restore if soft-deleted and update their info
+                if ($user->trashed()) {
+                    $user->restore();
+                }
+
                 $user->update([
                     'first_name' => $data['first_name'] ?? $this->splitCustomerName($data['customer_name'])[0],
                     'last_name' => $data['last_name'] ?? $this->splitCustomerName($data['customer_name'])[1],
                     'phone' => $data['customer_phone'] ?? $user->phone,
+                    'is_active' => true,
                 ]);
-                
+
                 return $this->ensureCustomerForUser($user, $data)->load('user');
             }
 
@@ -261,19 +266,7 @@ class CustomerService
     {
         $email = strtolower(trim($email));
 
-        $query = User::where('email', $email);
-
-        if ($lock) {
-            $query->lockForUpdate();
-        }
-
-        $user = $query->first();
-
-        if ($user) {
-            return $user;
-        }
-
-        $query = User::whereRaw('LOWER(email) = ?', [$email]);
+        $query = User::withTrashed()->whereRaw('LOWER(email) = ?', [$email]);
 
         if ($lock) {
             $query->lockForUpdate();
