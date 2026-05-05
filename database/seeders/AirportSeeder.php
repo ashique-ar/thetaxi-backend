@@ -15,7 +15,6 @@ class AirportSeeder extends Seeder
     {
         $airports = [
             [
-                'id' => Str::uuid()->toString(),
                 'name' => 'Bandaranaike International Airport (BIA)',
                 'code' => 'CMB',
                 'city' => 'Colombo',
@@ -26,11 +25,8 @@ class AirportSeeder extends Seeder
                 'is_active' => true,
                 'sort_order' => 1,
                 'description' => 'Main international airport serving Colombo',
-                'created_at' => now(),
-                'updated_at' => now(),
             ],
             [
-                'id' => Str::uuid()->toString(),
                 'name' => 'Mattala Rajapaksa International Airport',
                 'code' => 'HRI',
                 'city' => 'Hambantota',
@@ -41,11 +37,8 @@ class AirportSeeder extends Seeder
                 'is_active' => true,
                 'sort_order' => 3,
                 'description' => 'International airport in Hambantota',
-                'created_at' => now(),
-                'updated_at' => now(),
             ],
             [
-                'id' => Str::uuid()->toString(),
                 'name' => 'Jaffna International Airport',
                 'code' => 'JAF',
                 'city' => 'Jaffna',
@@ -56,11 +49,30 @@ class AirportSeeder extends Seeder
                 'is_active' => true,
                 'sort_order' => 4,
                 'description' => 'International airport in Jaffna',
-                'created_at' => now(),
-                'updated_at' => now(),
             ],
         ];
 
-        DB::table('airports')->insert($airports);
+        foreach ($airports as $airport) {
+            $existingAirport = DB::table('airports')
+                ->where('code', $airport['code'])
+                ->first();
+
+            if ($existingAirport) {
+                DB::table('airports')
+                    ->where('code', $airport['code'])
+                    ->update(array_merge($airport, [
+                        'updated_at' => now(),
+                        'deleted_at' => null,
+                    ]));
+
+                continue;
+            }
+
+            DB::table('airports')->insert(array_merge($airport, [
+                'id' => Str::uuid()->toString(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]));
+        }
     }
 }

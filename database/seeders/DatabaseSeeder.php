@@ -32,6 +32,7 @@ class DatabaseSeeder extends Seeder
             // VipTypeSeeder::class,
             // RegionSeeder::class,
             // BookingChannelSeeder::class,
+            // AirportSeeder::class,
             // VehicleCategorySeeder::class,
             // VehicleClassSeeder::class,
             // VehicleFuelTypeSeeder::class,
