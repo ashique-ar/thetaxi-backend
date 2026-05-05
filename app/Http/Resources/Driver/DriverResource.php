@@ -29,11 +29,20 @@ class DriverResource extends JsonResource
             'city' => $this->city,
             'remarks' => $this->remarks,
             'postal_code' => $this->postal_code,
+            'is_active' => $this->is_active,
+            // Real-time status fields
+            'is_online' => $this->is_online ?? false,
+            'last_active_at' => $this->last_active_at,
+            'current_latitude' => $this->current_latitude,
+            'current_longitude' => $this->current_longitude,
+            'current_device_uuid' => $this->current_device_uuid,
+            // Availability status
+            'availability_status' => $this->availability_status,
+            // Relations
             'licenseType' => new DrivingLicenseTypeResource($this->whenLoaded('licenseType')),
             'state' => new StateResource($this->whenLoaded('state')),
             'country' => new CountryResource($this->whenLoaded('country')),
             'user' => new UserResource($this->whenLoaded('user')),
-            'is_active' => $this->is_active,
         ];
     }
 }

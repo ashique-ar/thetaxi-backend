@@ -16,6 +16,65 @@ use App\Models\Vehicle\Vehicle;
 class DriverObserver
 {
     /**
+     * Handle the Driver "creating" event.
+     * Auto-generate driver code and license number if not provided.
+     */
+    public function creating(Driver $driver): void
+    {
+        // Auto-generate driver code if not provided
+        if (empty($driver->code)) {
+            $driver->code = $this->generateUniqueCode();
+        }
+
+        // Auto-generate license number if not provided
+        if (empty($driver->license_no)) {
+            $driver->license_no = $this->generateUniqueLicenseNo();
+        }
+    }
+
+    /**
+     * Generate a unique driver code.
+     */
+    private function generateUniqueCode(): string
+    {
+        $prefix = 'DRV';
+        $timestamp = substr(strval(time()), -6);
+        $random = strtoupper(substr(uniqid(), -4));
+        $code = $prefix . $timestamp . $random;
+
+        // Ensure uniqueness
+        $counter = 0;
+        $originalCode = $code;
+        while (Driver::where('code', $code)->exists()) {
+            $counter++;
+            $code = $originalCode . $counter;
+        }
+
+        return $code;
+    }
+
+    /**
+     * Generate a unique license number.
+     */
+    private function generateUniqueLicenseNo(): string
+    {
+        $prefix = 'LIC';
+        $timestamp = substr(strval(time()), -5);
+        $random = strtoupper(substr(uniqid(), -5));
+        $licenseNo = $prefix . '-' . $timestamp . '-' . $random;
+
+        // Ensure uniqueness
+        $counter = 0;
+        $originalLicense = $licenseNo;
+        while (Driver::where('license_no', $licenseNo)->exists()) {
+            $counter++;
+            $licenseNo = $originalLicense . $counter;
+        }
+
+        return $licenseNo;
+    }
+
+    /**
      * Handle the Driver "deleting" event.
      */
     public function deleting(Driver $driver): void

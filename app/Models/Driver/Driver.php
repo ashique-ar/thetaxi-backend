@@ -92,6 +92,16 @@ class Driver extends BaseModel
         'current_device_uuid',
         'created_user_id',
         'updated_user_id',
+        'hire_date',
+        'termination_date',
+        'blood_group',
+        'medical_conditions',
+        'emergency_contact_name',
+        'emergency_contact_phone',
+        'availability_status',
+        'working_schedule',
+        'leave_schedule',
+        'rest_windows',
     ];
 
     /**
