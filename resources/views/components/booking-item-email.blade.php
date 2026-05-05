@@ -267,7 +267,7 @@
     }
 
     $isDayPackage = $servicePricingMode === 'day';
-    $showReturnLocations = !$isDayPackage && ($isReturnTrip || !empty($returnPickup) || !empty($returnDropoff));
+    $showReturnLocations = !$isDayPackage && $isReturnTrip;
 
     if ($showReturnLocations && empty($returnPickup)) {
         $returnPickup = $dropoffLoc;
