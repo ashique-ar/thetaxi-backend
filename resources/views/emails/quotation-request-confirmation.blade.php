@@ -11,6 +11,8 @@
         use App\Helpers\BookingLinkHelper;
         use App\Models\Booking\Booking;
 
+        $booking = $booking ?? null;
+
         // Get the quotation booking for this inquiry to generate checkout link
         $quotationBooking =
             isset($booking) && $booking instanceof Booking
@@ -110,11 +112,15 @@
         @php
             $paymentType = 'quotation';
             $serviceParams = collect();
-            foreach ($booking->bookingItems as $bi) {
-                $serviceParams->push($bi->service_type ?? ($bi->serviceType?->id ?? null));
-            }
-            if ($booking->serviceType?->id) {
-                $serviceParams->push($booking->serviceType->id);
+            if ($booking instanceof \App\Models\Booking\Booking) {
+                foreach ($booking->bookingItems as $bi) {
+                    $serviceParams->push($bi->service_type ?? ($bi->serviceType?->id ?? null));
+                }
+                if ($booking->serviceType?->id) {
+                    $serviceParams->push($booking->serviceType->id);
+                }
+            } elseif (!empty($requestData['service_type'])) {
+                $serviceParams->push($requestData['service_type']);
             }
             $serviceParams = $serviceParams->filter()->unique()->values();
 

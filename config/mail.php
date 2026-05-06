@@ -134,6 +134,8 @@ return [
         // 'sales@thetaxi.lk',
     ],
 
+    'corporate_transport_admin' => env('CORPORATE_TRANSPORT_ADMIN_EMAIL', 'info@thetaxi.lk'),
+
     /*
     |--------------------------------------------------------------------------
     | Inquiry Routing Rules

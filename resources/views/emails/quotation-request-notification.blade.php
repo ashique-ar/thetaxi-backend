@@ -7,6 +7,10 @@
 @section('header_subtitle', 'Action Required - Corporate Transport Services')
 
 @section('content')
+    @php
+        $booking = $booking ?? null;
+    @endphp
+
     <!-- Urgent Notice -->
     <div class="highlight-box warning">
         <h3>⚠️ Action Required</h3>
@@ -122,15 +126,19 @@
         </div>
     @endif
 
-    @php
-        $paymentType = 'quotation';
-        $serviceParams = collect();
-        foreach ($booking->bookingItems as $bi) {
-            $serviceParams->push($bi->service_type ?? ($bi->serviceType?->id ?? null));
-        }
-        if ($booking->serviceType?->id) {
-            $serviceParams->push($booking->serviceType->id);
-        }
+        @php
+            $paymentType = 'quotation';
+            $serviceParams = collect();
+            if ($booking instanceof \App\Models\Booking\Booking) {
+                foreach ($booking->bookingItems as $bi) {
+                    $serviceParams->push($bi->service_type ?? ($bi->serviceType?->id ?? null));
+                }
+                if ($booking->serviceType?->id) {
+                    $serviceParams->push($booking->serviceType->id);
+                }
+            } elseif (!empty($requestData['service_type'])) {
+                $serviceParams->push($requestData['service_type']);
+            }
         $serviceParams = $serviceParams->filter()->unique()->values();
 
         $applicableTerms = collect();
