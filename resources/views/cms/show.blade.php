@@ -7,7 +7,12 @@
 @endpush
 
 @push('styles')
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/intl-tel-input@17/build/css/intlTelInput.css">
     <style>
+        #requestQuotationModal .iti {
+            width: 100%;
+        }
+
         /* Article show improvements */
         .article-hero {
             background: linear-gradient(180deg, rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.35)), url('{{ $content->thumbnail ? s3_asset($content->thumbnail) : asset('assets/img/innerpages/breadcrumb-bg.jpg') }}') center/cover no-repeat;
@@ -414,6 +419,13 @@
                                 name="customer_email" required>
                         </div>
                         <div class="mb-3">
+                            <label for="quotation_customer_phone" class="form-label">Phone</label>
+                            <input type="tel" class="form-control quotation-phone-input" id="quotation_customer_phone"
+                                name="phone" required>
+                            <input type="hidden" name="phone_country_code" class="quotation-phone-country-code">
+                            <input type="hidden" name="phone_international" class="quotation-phone-international">
+                        </div>
+                        <div class="mb-3">
                             <label for="quotation_message" class="form-label">Message</label>
                             <textarea class="form-control" id="quotation_message" name="message" rows="4"></textarea>
                         </div>
@@ -430,7 +442,39 @@
 @endsection
 
 @push('scripts')
+    <script src="https://cdn.jsdelivr.net/npm/intl-tel-input@17/build/js/intlTelInput.js"></script>
     <script>
+        (function() {
+            const form = document.getElementById('quotationRequestForm');
+            const phoneInput = form ? form.querySelector('.quotation-phone-input') : null;
+            let quotationPhoneIti = null;
+
+            if (phoneInput && typeof window.intlTelInput === 'function') {
+                quotationPhoneIti = window.intlTelInput(phoneInput, {
+                    initialCountry: 'lk',
+                    preferredCountries: ['lk', 'in', 'us', 'gb', 'ca', 'au'],
+                    separateDialCode: true,
+                    formatAsYouType: true,
+                    utilsScript: 'https://cdn.jsdelivr.net/npm/intl-tel-input@17/build/js/utils.js'
+                });
+
+                phoneInput.addEventListener('countrychange', function() {
+                    const countryData = quotationPhoneIti.getSelectedCountryData();
+                    form.querySelector('.quotation-phone-country-code').value = countryData.dialCode || '';
+                });
+            }
+
+            if (form) {
+                form.addEventListener('submit', function() {
+                    if (!quotationPhoneIti) return;
+
+                    const countryData = quotationPhoneIti.getSelectedCountryData();
+                    form.querySelector('.quotation-phone-country-code').value = countryData.dialCode || '';
+                    form.querySelector('.quotation-phone-international').value = quotationPhoneIti.getNumber() || '';
+                }, true);
+            }
+        })();
+
         (function() {
             const enforceCmsHeaderState = () => {
                 const header = document.querySelector('header.header-area.style-2.travel-agency3');

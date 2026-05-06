@@ -7,7 +7,12 @@
 @endpush
 
 @push('styles')
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/intl-tel-input@17/build/css/intlTelInput.css">
 <style>
+    #requestQuotationModal .iti {
+        width: 100%;
+    }
+
     .rate-chart-hero {
         background: linear-gradient(135deg, #BF2629 0%, #a02123 100%);
         padding: 60px 0;
@@ -887,7 +892,9 @@
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Phone *</label>
-                            <input type="tel" class="form-control" name="phone" required>
+                            <input type="tel" class="form-control quotation-phone-input" name="phone" required>
+                            <input type="hidden" name="phone_country_code" class="quotation-phone-country-code">
+                            <input type="hidden" name="phone_international" class="quotation-phone-international">
                         </div>
                         <div class="col-12">
                             <label class="form-label">Additional Requirements</label>
@@ -917,6 +924,7 @@
 @endsection
 
 @push('scripts')
+<script src="https://cdn.jsdelivr.net/npm/intl-tel-input@17/build/js/intlTelInput.js"></script>
 <script>
     (function () {
         function showRateChartNotification(type, message) {
@@ -940,12 +948,36 @@
             $('#quotation_service_type').val($btn.data('service-type') || 'day_rental');
         });
 
+        const quotationPhoneInput = document.querySelector('#quotationRequestForm .quotation-phone-input');
+        let quotationPhoneIti = null;
+
+        if (quotationPhoneInput && typeof window.intlTelInput === 'function') {
+            quotationPhoneIti = window.intlTelInput(quotationPhoneInput, {
+                initialCountry: 'lk',
+                preferredCountries: ['lk', 'in', 'us', 'gb', 'ca', 'au'],
+                separateDialCode: true,
+                formatAsYouType: true,
+                utilsScript: 'https://cdn.jsdelivr.net/npm/intl-tel-input@17/build/js/utils.js'
+            });
+
+            quotationPhoneInput.addEventListener('countrychange', function () {
+                const countryData = quotationPhoneIti.getSelectedCountryData();
+                $('#quotationRequestForm .quotation-phone-country-code').val(countryData.dialCode || '');
+            });
+        }
+
         $(document).on('submit', '#quotationRequestForm', function (event) {
             event.preventDefault();
 
             const $form = $(this);
             const $submitBtn = $form.find('button[type="submit"]');
             const originalBtnText = $submitBtn.html();
+
+            if (quotationPhoneIti) {
+                const countryData = quotationPhoneIti.getSelectedCountryData();
+                $form.find('.quotation-phone-country-code').val(countryData.dialCode || '');
+                $form.find('.quotation-phone-international').val(quotationPhoneIti.getNumber() || '');
+            }
 
             $submitBtn.prop('disabled', true).html(
                 '<span class="spinner-border spinner-border-sm me-2"></span> Submitting...'
