@@ -1247,7 +1247,7 @@ body.tt-magic-cursor #magic-cursor {
 .progress-wrap {
   position: fixed;
   right: 30px;
-  bottom: 30px;
+  bottom: 90px;
   height: 45px;
   width: 45px;
   cursor: pointer;

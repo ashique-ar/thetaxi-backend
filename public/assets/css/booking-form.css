@@ -607,12 +607,117 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 
 /* ==================== MOBILE SPACING ==================== */
+.filter-wrapper,
+.filter-wrapper *,
+.t2-filter-wrapper,
+.t2-filter-wrapper * {
+    box-sizing: border-box !important;
+}
+
+.filter-wrapper,
+.t2-filter-wrapper {
+    max-width: 100% !important;
+}
+
+.filter-wrapper .filter-input-wrap,
+.t2-filter-wrapper .filter-input-wrap {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: clip !important;
+}
+
+.filter-wrapper .filter-input-wrap .filter-input:not(.show),
+.t2-filter-wrapper .filter-input-wrap .filter-input:not(.show) {
+    display: none !important;
+}
+
+.filter-wrapper .filter-input-wrap .filter-input,
+.t2-filter-wrapper .filter-input-wrap .filter-input {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+}
+
+.filter-wrapper .filter-input-wrap .filter-input > *,
+.t2-filter-wrapper .filter-input-wrap .filter-input > *,
+.filter-wrapper .single-search-box,
+.t2-filter-wrapper .single-search-box,
+.filter-wrapper .custom-select-dropdown,
+.t2-filter-wrapper .custom-select-dropdown,
+.filter-wrapper .dynamic-conditional-location,
+.t2-filter-wrapper .dynamic-conditional-location,
+.filter-wrapper .conditional-variant,
+.t2-filter-wrapper .conditional-variant {
+    min-width: 0 !important;
+    max-width: 100% !important;
+}
+
+.filter-wrapper .single-search-box input,
+.filter-wrapper .single-search-box select,
+.filter-wrapper .single-search-box textarea,
+.t2-filter-wrapper .single-search-box input,
+.t2-filter-wrapper .single-search-box select,
+.t2-filter-wrapper .single-search-box textarea,
+.filter-wrapper .pls-dropdown-current,
+.t2-filter-wrapper .pls-dropdown-current,
+.filter-wrapper .single-search-box .nice-select .current,
+.t2-filter-wrapper .single-search-box .nice-select .current {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+}
+
 @media (max-width: 576px) {
     .filter-wrapper {
-        margin: 0 10px !important;
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+        max-width: calc(100vw - 24px) !important;
     }
     .filter-wrapper .filter-input-wrap {
+        padding-left: 14px !important;
+        padding-right: 14px !important;
         box-shadow: 0px 2px 15px 0px rgba(0, 0, 0, 0.06) !important;
+    }
+
+    .filter-wrapper .filter-item-list {
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        flex-wrap: nowrap !important;
+        gap: 4px !important;
+    }
+
+    .filter-wrapper .filter-item-list .single-item {
+        flex: 1 1 0 !important;
+        min-width: 0 !important;
+        padding-left: 6px !important;
+        padding-right: 6px !important;
+        text-align: center !important;
+    }
+
+    .filter-wrapper .filter-item-list .single-item span {
+        max-width: 100% !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        white-space: nowrap !important;
+    }
+
+    .filter-wrapper .filter-input-wrap .filter-input.show,
+    .t2-filter-wrapper .filter-input.show {
+        grid-template-columns: minmax(0, 1fr) !important;
+    }
+
+    .filter-wrapper .filter-input-wrap .filter-input .single-search-box {
+        padding-left: 14px !important;
+        padding-right: 14px !important;
+    }
+
+    .booking-advance-note {
+        width: 100% !important;
+        max-width: 100% !important;
+        align-items: flex-start !important;
     }
 }
 
