@@ -4,56 +4,48 @@
 
 @section('header_title', 'New Quotation Request')
 
-@section('header_subtitle', 'Action Required - Corporate Transport Services')
+@section('header_subtitle', 'Action Required')
 
 @section('content')
     @php
         $booking = $booking ?? null;
+        $requestRows = [
+            'Vehicle Group' => $vehicleGroup->name,
+            'Service Type' => $serviceType,
+            'Pickup Location' => $pickupLocation,
+            'Dropoff Location' => $dropoffLocation,
+            'Travel Date' => $travelDate,
+            'Travel Time' => $travelTime,
+            'Passengers' => $passengers,
+        ];
     @endphp
 
-    <!-- Urgent Notice -->
     <div class="highlight-box warning">
-        <h3>⚠️ Action Required</h3>
+        <h3>Action Required</h3>
         <p style="margin-bottom: 0;">A new quotation request has been submitted for
-            <strong>{{ $vehicleGroup->name }}</strong>. Distance calculation was not possible due to missing coordinates,
-            requiring manual quotation.
-        </p>
+            <strong>{{ $vehicleGroup->name }}</strong>. Please review the request details and prepare pricing manually.</p>
     </div>
 
-    <!-- Inquiry Details Section -->
     <div class="section">
-        <h2 class="section-title">
-            <span class="icon">📋</span> Inquiry Details
-        </h2>
+        <h2 class="section-title"><span class="icon">REF</span> Inquiry Details</h2>
         <table class="info-table">
             <tr>
                 <td>Inquiry ID</td>
                 <td><strong>{{ $inquiry->inquiry_number ?? $inquiry->id }}</strong></td>
             </tr>
             <tr>
-                <td>Vehicle Group</td>
-                <td><strong>{{ $vehicleGroup->name }}</strong></td>
-            </tr>
-            <tr>
-                <td>Service Type</td>
-                <td>{{ $serviceType }}</td>
-            </tr>
-            <tr>
                 <td>Submitted</td>
-                <td>{{ $inquiry->created_at->format('Y-m-d H:i:s') }}</td>
+                <td>{{ optional($inquiry->created_at)->format('Y-m-d H:i:s') ?? now()->format('Y-m-d H:i:s') }}</td>
             </tr>
             <tr>
-                <td>Priority</td>
-                <td><span style="color: #BF2629; font-weight: bold;">HIGH</span></td>
+                <td>Status</td>
+                <td>{{ ucfirst($inquiry->status ?? 'open') }}</td>
             </tr>
         </table>
     </div>
 
-    <!-- Customer Information Section -->
     <div class="section">
-        <h2 class="section-title">
-            <span class="icon">👤</span> Customer Information
-        </h2>
+        <h2 class="section-title"><span class="icon">USER</span> Customer Information</h2>
         <table class="info-table">
             <tr>
                 <td>Name</td>
@@ -69,30 +61,6 @@
                 <td><a href="tel:{{ $customerPhone }}"
                         style="color: #BF2629; text-decoration: none;">{{ $customerPhone }}</a></td>
             </tr>
-            @if (isset($customerIdentification) && !empty($customerIdentification))
-                <tr>
-                    <td>Identification</td>
-                    <td>{{ $customerIdentification }}</td>
-                </tr>
-            @endif
-            @if (isset($customerAddress) && !empty($customerAddress))
-                <tr>
-                    <td>Address</td>
-                    <td>{{ $customerAddress }}</td>
-                </tr>
-            @endif
-            @if (isset($customerCity) && !empty($customerCity))
-                <tr>
-                    <td>City</td>
-                    <td>{{ $customerCity }}</td>
-                </tr>
-            @endif
-            @if (isset($customerCountry) && !empty($customerCountry))
-                <tr>
-                    <td>Country</td>
-                    <td>{{ $customerCountry }}</td>
-                </tr>
-            @endif
             @if ($companyName)
                 <tr>
                     <td>Company</td>
@@ -102,100 +70,43 @@
         </table>
     </div>
 
-    <!-- Vehicle Wise Trip Details Section -->
     <div class="section">
-        <h2 class="section-title">
-            <span class="icon">🚗</span> Vehicle Wise Trip Details
-        </h2>
-        @if (isset($booking) && $booking->bookingItems->count() > 0)
+        <h2 class="section-title"><span class="icon">CAR</span> Request Details</h2>
+        @if ($booking instanceof \App\Models\Booking\Booking && $booking->bookingItems->count() > 0)
             @php
                 $currencySymbol = getCurrencySymbol($booking->currency ?? 'LKR');
             @endphp
             @foreach ($booking->bookingItems as $index => $item)
                 <x-booking-item-email :item="$item" :index="$index" :currencySymbol="$currencySymbol" />
             @endforeach
+        @else
+            <table class="info-table">
+                @foreach ($requestRows as $label => $value)
+                    @if (!empty($value))
+                        <tr>
+                            <td>{{ $label }}</td>
+                            <td>{{ $value }}</td>
+                        </tr>
+                    @endif
+                @endforeach
+            </table>
         @endif
     </div>
 
     @if ($specialRequirements)
         <div class="section">
-            <h2 class="section-title">
-                <span class="icon">📝</span> Special Requirements
-            </h2>
+            <h2 class="section-title"><span class="icon">NOTE</span> Special Requirements</h2>
             <p style="color: #555; line-height: 1.6; margin: 0;">{{ $specialRequirements }}</p>
         </div>
     @endif
 
-        @php
-            $paymentType = 'quotation';
-            $serviceParams = collect();
-            if ($booking instanceof \App\Models\Booking\Booking) {
-                foreach ($booking->bookingItems as $bi) {
-                    $serviceParams->push($bi->service_type ?? ($bi->serviceType?->id ?? null));
-                }
-                if ($booking->serviceType?->id) {
-                    $serviceParams->push($booking->serviceType->id);
-                }
-            } elseif (!empty($requestData['service_type'])) {
-                $serviceParams->push($requestData['service_type']);
-            }
-        $serviceParams = $serviceParams->filter()->unique()->values();
-
-        $applicableTerms = collect();
-        if ($serviceParams->count()) {
-            foreach ($serviceParams as $s) {
-                $applicableTerms = $applicableTerms->merge(
-                    \App\Models\TermsAndCondition::getForCheckout($s, $paymentType),
-                );
-            }
-        } else {
-            $applicableTerms = \App\Models\TermsAndCondition::getForCheckout(null, $paymentType);
-        }
-        $applicableTerms = $applicableTerms->unique('id')->values();
-    @endphp
-
-    @if ($applicableTerms->count())
-        <div class="section">
-            <h2 class="section-title"><span class="icon">📜</span> Terms & Conditions</h2>
-            @foreach ($applicableTerms as $t)
-                <h4 style="margin-top:8px;">{{ $t->title }} @if ($t->service_name)
-                        <small class="text-muted">({{ $t->service_name }})</small>
-                    @endif
-                </h4>
-                <div style="color:#555;text-align: left;">{!! $t->content !!}</div>
-            @endforeach
-        </div>
-    @endif
-
-    <div class="divider"></div>
-
-    <!-- Technical Issue Section -->
-    <div class="section">
-        <h2 class="section-title">
-            <span class="icon">🔍</span> Technical Issue
-        </h2>
-        <div class="highlight-box">
-            <p><strong>Coordinates Missing:</strong> The automated distance calculation failed due to missing or invalid
-                location coordinates. This requires manual intervention to:</p>
-            <ul style="margin: 12px 0 0 0; padding-left: 20px;">
-                <li style="margin-bottom: 6px;">Verify the exact pickup and dropoff locations</li>
-                <li style="margin-bottom: 6px;">Calculate accurate distance and travel time</li>
-                <li style="margin-bottom: 6px;">Prepare custom pricing based on route requirements</li>
-                <li>Consider any special routing or accessibility needs</li>
-            </ul>
-        </div>
-    </div>
-
-    <!-- Action Required Section -->
     <div class="highlight-box info">
-        <h3>🎯 Next Steps</h3>
-        <p style="font-size: 16px;"><strong>Response Required Within: 2 Business Hours</strong></p>
-        <p>Please:</p>
+        <h3>Next Steps</h3>
         <ol style="margin: 12px 0 0 0; padding-left: 20px; color: #555;">
-            <li style="margin-bottom: 8px;">Contact the customer to confirm exact locations</li>
-            <li style="margin-bottom: 8px;">Calculate route distance and duration manually</li>
-            <li style="margin-bottom: 8px;">Prepare detailed quotation with pricing breakdown</li>
-            <li>Send quotation to customer and update inquiry status</li>
+            <li style="margin-bottom: 8px;">Review the requested vehicle and trip details.</li>
+            <li style="margin-bottom: 8px;">Prepare the quotation amount manually.</li>
+            <li style="margin-bottom: 8px;">Contact the customer with the quote and any clarifications.</li>
+            <li>Update the inquiry status after follow-up.</li>
         </ol>
     </div>
 
