@@ -4,28 +4,20 @@
 
 @section('header_title', 'Quotation Request Received')
 
-@section('header_subtitle', 'Your request is being processed')
+@section('header_subtitle', 'Your Premium Transport Experience Awaits')
 
 @section('content')
     @php
-        use App\Helpers\BookingLinkHelper;
-        use App\Models\Booking\Booking;
-
-        $booking = $booking ?? null;
-        $quotationBooking =
-            $booking instanceof Booking
-                ? $booking
-                : (isset($inquiryNumber) ? Booking::where('booking_number', $inquiryNumber)->first() : null);
-        $checkoutLink = $quotationBooking ? BookingLinkHelper::getQuotationCheckoutLink($quotationBooking) : null;
-        $requestRows = [
-            'Vehicle Group' => $vehicleGroup->name,
-            'Service Type' => $requestData['service_type'] ?? null,
-            'Pickup Location' => $requestData['pickup_location'] ?? null,
-            'Dropoff Location' => $requestData['dropoff_location'] ?? null,
-            'Travel Date' => $requestData['travel_date'] ?? null,
-            'Travel Time' => $requestData['travel_time'] ?? null,
-            'Passengers' => $requestData['passengers'] ?? null,
-        ];
+        $serviceType = $requestData['service_type'] ?? 'Quotation';
+        $pickupLocation = $requestData['pickup_location'] ?? null;
+        $dropoffLocation = $requestData['dropoff_location'] ?? null;
+        $travelDate = $requestData['travel_date'] ?? null;
+        $travelTime = $requestData['travel_time'] ?? null;
+        $passengers = $requestData['passengers'] ?? null;
+        $vehicleThumbnail = $vehicleGroup->thumbnail ?? null;
+        $thumb = is_array($vehicleThumbnail) ? ($vehicleThumbnail['path'] ?? ($vehicleThumbnail[0] ?? null)) : $vehicleThumbnail;
+        $imageUrl = $thumb ? s3_asset($thumb) : asset('assets/img/default-vehicle.jpg');
+        $pickupDateTime = trim(($travelDate ?: 'To be confirmed') . ($travelTime ? ' ' . $travelTime : ''));
     @endphp
 
     <p class="greeting">
@@ -33,55 +25,93 @@
     </p>
 
     <p class="intro-text">
-        Thank you for your quotation request. Our team has received your request for
-        <strong>{{ $vehicleGroup->name }}</strong> and will contact you with pricing.
+        Thank you for your quotation request. Our team will review your requirements and get back to you within
+        {{ $estimatedResponseTime }}.
     </p>
 
     <div class="reference-box">
-        <div class="reference-label">Reference Number</div>
+        <div class="reference-label">Quotation Reference</div>
         <div class="reference-number">{{ $inquiryNumber }}</div>
     </div>
 
     <div class="section">
-        <h2 class="section-title"><span class="icon">CAR</span> Request Details</h2>
-        @if ($booking instanceof \App\Models\Booking\Booking && $booking->bookingItems->count() > 0)
-            @php
-                $currencySymbol = getCurrencySymbol($booking->currency ?? 'LKR');
-            @endphp
-            @foreach ($booking->bookingItems as $index => $item)
-                <x-booking-item-email :item="$item" :index="$index" :currencySymbol="$currencySymbol" />
-            @endforeach
-        @else
-            <table class="info-table">
-                @foreach ($requestRows as $label => $value)
-                    @if (!empty($value))
-                        <tr>
-                            <td>{{ $label }}</td>
-                            <td>{{ $value }}</td>
-                        </tr>
-                    @endif
-                @endforeach
+        <h2 class="section-title">
+            <span class="icon">Vehicle</span> Vehicle Wise Trip Details
+        </h2>
+
+        <div
+            style="background-color: #f8f9fa; border: 1px solid #eef0f2; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
+            <div style="display: flex; align-items: flex-start; gap: 15px;">
+                @if ($imageUrl)
+                    <div style="flex-shrink: 0;">
+                        <img src="{{ $imageUrl }}" alt="{{ $vehicleGroup->name }}"
+                            style="width: 120px; height: 80px; object-fit: cover; border-radius: 6px; border: 1px solid #ddd;">
+                    </div>
+                @endif
+                <div style="flex: 1;">
+                    <h3 style="margin-top: 0; margin-bottom: 5px; color: #BF2629; font-size: 16px;">
+                        Vehicle 1: {{ $vehicleGroup->name }}
+                    </h3>
+                    <span
+                        style="display: inline-block; background-color: #fff3cd; color: #856404; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; border: 1px solid #ffc107; margin-bottom: 8px;">
+                        Service: {{ ucwords(str_replace(['_', '-'], ' ', $serviceType)) }}
+                    </span>
+                </div>
+            </div>
+
+            <table class="info-table" style="width: 100%; border-collapse: collapse; margin-top: 15px;">
+                @if ($pickupLocation)
+                    <tr>
+                        <td>Pickup Location</td>
+                        <td>{{ $pickupLocation }}
+                            <div style="margin-top: 6px; color: #777; font-size: 12px; line-height: 1.5;">
+                                Pickup Date & Time: <strong>{{ $pickupDateTime }}</strong>
+                            </div>
+                        </td>
+                    </tr>
+                @elseif ($travelDate || $travelTime)
+                    <tr>
+                        <td>Pickup Date & Time</td>
+                        <td>{{ $pickupDateTime }}</td>
+                    </tr>
+                @endif
+                @if ($dropoffLocation)
+                    <tr>
+                        <td>Dropoff Location</td>
+                        <td>{{ $dropoffLocation }}</td>
+                    </tr>
+                @endif
+                @if ($passengers)
+                    <tr>
+                        <td>Passengers</td>
+                        <td>{{ $passengers }}</td>
+                    </tr>
+                @endif
             </table>
-        @endif
+        </div>
     </div>
 
     <div class="section">
-        <h2 class="section-title"><span class="icon">USER</span> Contact Information</h2>
+        <h2 class="section-title">
+            <span class="icon">Customer</span> Customer Information
+        </h2>
         <table class="info-table">
             <tr>
                 <td>Name</td>
                 <td>{{ $customerName }}</td>
             </tr>
-            @if (!empty($requestData['customer_email']))
+            <tr>
+                <td>Email</td>
+                <td>{{ $requestData['customer_email'] ?? 'N/A' }}</td>
+            </tr>
+            <tr>
+                <td>Phone</td>
+                <td>{{ $requestData['customer_phone'] ?? 'N/A' }}</td>
+            </tr>
+            @if (!empty($requestData['phone_country']))
                 <tr>
-                    <td>Email</td>
-                    <td>{{ $requestData['customer_email'] }}</td>
-                </tr>
-            @endif
-            @if (!empty($requestData['customer_phone']))
-                <tr>
-                    <td>Phone</td>
-                    <td>{{ $requestData['customer_phone'] }}</td>
+                    <td>Country</td>
+                    <td>{{ strtoupper($requestData['phone_country']) }}</td>
                 </tr>
             @endif
         </table>
@@ -89,46 +119,53 @@
 
     @if (!empty($requestData['special_requirements']))
         <div class="section">
-            <h2 class="section-title"><span class="icon">NOTE</span> Special Requirements</h2>
+            <h2 class="section-title">
+                <span class="icon">Notes</span> Special Requirements
+            </h2>
             <p style="color: #555; line-height: 1.6; margin: 0;">{{ $requestData['special_requirements'] }}</p>
-        </div>
-    @endif
-
-    <div class="highlight-box info">
-        <h3>What Happens Next</h3>
-        <p><strong>1. Review:</strong> Our team will review your request details.</p>
-        <p><strong>2. Quote:</strong> We will prepare pricing manually for your requirement.</p>
-        <p style="margin-bottom: 0;"><strong>3. Contact:</strong> We will contact you within
-            {{ $estimatedResponseTime }}.</p>
-    </div>
-
-    @if ($checkoutLink)
-        <div class="section">
-            <h2 class="section-title"><span class="icon">PAY</span> Ready to Proceed?</h2>
-            <p style="color: #555; margin-bottom: 15px;">You can proceed to checkout from the link below.</p>
-            <div class="btn-container">
-                <a href="{{ $checkoutLink }}" class="btn"
-                    style="display: inline-block; background-color: #15803d; color: #FFFFFF; padding: 15px 40px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
-                    Book Now
-                </a>
-            </div>
         </div>
     @endif
 
     <div class="divider"></div>
 
     <div class="section">
-        <h2 class="section-title"><span class="icon">HELP</span> Need Assistance?</h2>
+        <h2 class="section-title">
+            <span class="icon">Next</span> What's Next?
+        </h2>
+        <div class="highlight-box info">
+            <h3>Your Request is Being Processed</h3>
+            <p><strong>Step 1:</strong> Our team will review your quotation request</p>
+            <p><strong>Step 2:</strong> We'll contact you at
+                <strong>{{ $requestData['customer_phone'] ?? 'your provided number' }}</strong> within
+                {{ $estimatedResponseTime }}
+            </p>
+            <p><strong>Step 3:</strong> You'll receive a detailed quote with vehicle options and pricing</p>
+            <p style="margin-bottom: 0;"><strong>Step 4:</strong> Once approved, we'll send the next steps to confirm your
+                booking</p>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2 class="section-title">
+            <span class="icon">Help</span> Need Assistance?
+        </h2>
+        <p style="color: #555; margin-bottom: 15px;">If you have any questions about your quotation request, please contact
+            us:</p>
         <table class="info-table">
+            <tr>
+                <td>Phone</td>
+                <td><a href="tel:{{ $supportPhone }}"
+                        style="color: #BF2629; text-decoration: none;">{{ $supportPhone }}</a></td>
+            </tr>
             <tr>
                 <td>Email</td>
                 <td><a href="mailto:{{ $supportEmail }}"
                         style="color: #BF2629; text-decoration: none;">{{ $supportEmail }}</a></td>
             </tr>
             <tr>
-                <td>Phone</td>
-                <td><a href="tel:{{ $supportPhone }}"
-                        style="color: #BF2629; text-decoration: none;">{{ $supportPhone }}</a></td>
+                <td>Website</td>
+                <td><a href="{{ config('app.url') }}"
+                        style="color: #BF2629; text-decoration: none;">{{ config('app.url') }}</a></td>
             </tr>
         </table>
     </div>

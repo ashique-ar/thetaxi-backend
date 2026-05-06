@@ -33,8 +33,10 @@ class QuotationRequestConfirmation extends Mailable
      */
     public function envelope(): Envelope
     {
+        $reference = $this->inquiry->inquiry_number ?? $this->inquiry->id;
+
         return new Envelope(
-            subject: "Quotation Request Received - {$this->vehicleGroup->name}",
+            subject: "Quotation Request {$reference} Received - {$this->vehicleGroup->name}",
         );
     }
 

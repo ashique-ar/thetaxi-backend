@@ -33,8 +33,10 @@ class QuotationRequestNotification extends Mailable
      */
     public function envelope(): Envelope
     {
+        $reference = $this->inquiry->inquiry_number ?? $this->inquiry->id;
+
         return new Envelope(
-            subject: "New Quotation Request - {$this->vehicleGroup->name}",
+            subject: "New Quotation Request {$reference} - {$this->vehicleGroup->name}",
         );
     }
 
