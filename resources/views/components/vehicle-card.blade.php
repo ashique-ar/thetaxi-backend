@@ -39,6 +39,7 @@
     // Final determination: show quotation button if any condition is met
     $showQuotationButton =
         $isQuotationOnly || !$hasPricing || !$isGroupActive || $isInquiryOnly || $serviceRequiresInquiry;
+    $showPublicPrice = $hasPricing && !$isInquiryOnly && !$serviceRequiresInquiry;
 
     // Can add to cart/book only if all conditions are met
     $canAddToCart =
@@ -133,7 +134,7 @@
             </span>
         @endif --}}
 
-        @if ($hasDiscount && $discountPercentage > 0)
+        @if ($showPublicPrice && $hasDiscount && $discountPercentage > 0)
             <span class="discount-badge">
                 {{ round($discountPercentage) }}% OFF
             </span>
@@ -205,7 +206,7 @@
         @endif --}}
 
         <!-- Enhanced Pricing Section -->
-        @if ($hasPricing)
+        @if ($showPublicPrice)
         <div class="price-display">
 
 
@@ -442,13 +443,14 @@
                 $distanceDetails['extra_hour_price'] > 0;
             $extraHourLabel = $distanceDetails['extra_hour_label'] ?? 'Extra Hour Rate';
             $showDistanceDetails =
-                $hasFreeKmPerDay || $hasFreeKmPerPackage || $hasAllowedKm || $hasExtraKmPrice || $hasExtraHourPrice;
+                $showPublicPrice &&
+                ($hasFreeKmPerDay || $hasFreeKmPerPackage || $hasAllowedKm || $hasExtraKmPrice || $hasExtraHourPrice);
 
             // Check if we have journey duration and the service supports time-based durations
             $journeyDurationSeconds = $distanceDetails['journey_duration_seconds'] ?? null;
             $servicePricingMode = $serviceType->pricing_mode ?? ($serviceType['pricing_mode'] ?? null);
             $showDurationDetails =
-                $journeyDurationSeconds && $journeyDurationSeconds > 0 && $servicePricingMode !== 'day';
+                $showPublicPrice && $journeyDurationSeconds && $journeyDurationSeconds > 0 && $servicePricingMode !== 'day';
 
             // Define perDayKm from distance details
             $perDayKm = $distanceDetails['free_km_per_day'] ?? null;

@@ -46,7 +46,7 @@ class RateChartController extends Controller
 
             $selectedCurrency = $this->currencyService->getSelectedCurrency();
             $cacheDate = Carbon::today()->format('Ymd');
-            $cacheKey = "rate_chart:day_rental:v4:{$dayRentalService->id}:{$selectedCurrency}:{$cacheDate}";
+            $cacheKey = "rate_chart:day_rental:v5:{$dayRentalService->id}:{$selectedCurrency}:{$cacheDate}";
 
             $cachedRateChart = Cache::store('file')->remember($cacheKey, now()->addHours(4), function () use ($dayRentalService, $selectedCurrency) {
                 // Get all active vehicle groups with relationships
@@ -67,18 +67,21 @@ class RateChartController extends Controller
                     ->where('is_active', true)
                     ->orderBy('name')
                     ->get();
-                $hiddenVehicleGroupIds = VehicleGroupServicePricingSetting::query()
+                $serviceSettings = VehicleGroupServicePricingSetting::query()
                     ->where('service_type_id', $dayRentalService->id)
-                    ->where('is_hidden', true)
-                    ->pluck('vehicle_group_id')
-                    ->all();
+                    ->get()
+                    ->keyBy('vehicle_group_id');
 
                 $rateData = [];
 
                 foreach ($vehicleGroups as $group) {
-                    if (in_array($group->id, $hiddenVehicleGroupIds, true)) {
+                    $serviceSetting = $serviceSettings->get($group->id);
+
+                    if ($serviceSetting?->is_hidden) {
                         continue;
                     }
+
+                    $isInquiryOnly = (bool) ($serviceSetting?->is_inquiry_only ?? false);
 
                     // Calculate daily rate (1 day)
                     $dailyRate = $this->calculateRate($group, $dayRentalService, 1, $selectedCurrency);
@@ -143,6 +146,7 @@ class RateChartController extends Controller
                         'extra_km_rate' => $dailyRate['extra_km_price'] ?? $monthlyRate['extra_km_price'] ?? null,
                         'extra_km_rate_lkr' => $dailyRate['extra_km_price_lkr'] ?? $monthlyRate['extra_km_price_lkr'] ?? null,
                         'has_pricing' => $dailyRate['amount'] > 0 || $monthlyRate['amount'] > 0,
+                        'is_inquiry_only' => $isInquiryOnly,
                     ];
                 }
 

@@ -576,7 +576,7 @@
 
                             <!-- Daily Rate -->
                             <td style="text-align: center;">
-                                @if($vehicle['daily_rate']['amount'] > 0)
+                                @if(($vehicle['daily_rate']['amount'] ?? 0) > 0 && !($vehicle['is_inquiry_only'] ?? false))
                                     <a href="{{ route('vehicle.details', ['id' => $vehicle['id'], 'preset' => 'daily']) }}" class="rate-link" title="Open vehicle with 1-day rental preset">
                                         <div class="rate-amount">
                                             {{ getCurrencySymbol() }} {{ number_format($vehicle['daily_rate']['amount'], 2) }}
@@ -599,7 +599,7 @@
 
                             <!-- Monthly Rate -->
                             <td style="text-align: center;">
-                                @if($vehicle['monthly_rate']['amount'] > 0)
+                                @if(($vehicle['monthly_rate']['amount'] ?? 0) > 0 && !($vehicle['is_inquiry_only'] ?? false))
                                     <a href="{{ route('vehicle.details', ['id' => $vehicle['id'], 'preset' => 'monthly']) }}" class="rate-link" title="Open vehicle with 30-day rental preset">
                                         <div class="rate-amount">
                                             {{ getCurrencySymbol() }} {{ number_format($vehicle['monthly_rate']['amount'], 2) }}
@@ -624,7 +624,7 @@
 
                             <!-- Extra KM Rate -->
                             <td style="text-align: center;">
-                                @if(isset($vehicle['extra_km_rate']) && $vehicle['extra_km_rate'] > 0)
+                                @if(isset($vehicle['extra_km_rate']) && $vehicle['extra_km_rate'] > 0 && !($vehicle['is_inquiry_only'] ?? false))
                                     <div class="rate-amount">
                                         {{ getCurrencySymbol() }} {{ number_format($vehicle['extra_km_rate'], 2) }}
                                     </div>
@@ -728,7 +728,7 @@
                     <div class="rates-section">
                         <div class="rate-box">
                             <div class="rate-label">Daily Rate</div>
-                            @if($vehicle['daily_rate']['amount'] > 0)
+                            @if(($vehicle['daily_rate']['amount'] ?? 0) > 0 && !($vehicle['is_inquiry_only'] ?? false))
                                 <a href="{{ route('vehicle.details', ['id' => $vehicle['id'], 'preset' => 'daily']) }}" class="rate-link" title="Open vehicle with 1-day rental preset">
                                     <div class="rate-amount">
                                         {{ getCurrencySymbol() }} {{ number_format($vehicle['daily_rate']['amount'], 2) }}
@@ -751,7 +751,7 @@
 
                         <div class="rate-box">
                             <div class="rate-label">Monthly Rate</div>
-                            @if($vehicle['monthly_rate']['amount'] > 0)
+                            @if(($vehicle['monthly_rate']['amount'] ?? 0) > 0 && !($vehicle['is_inquiry_only'] ?? false))
                                 <a href="{{ route('vehicle.details', ['id' => $vehicle['id'], 'preset' => 'monthly']) }}" class="rate-link" title="Open vehicle with 30-day rental preset">
                                     <div class="rate-amount">
                                         {{ getCurrencySymbol() }} {{ number_format($vehicle['monthly_rate']['amount'], 2) }}
@@ -776,7 +776,7 @@
 
                         <div class="rate-box">
                             <div class="rate-label">Extra KM Rate</div>
-                            @if(isset($vehicle['extra_km_rate']) && $vehicle['extra_km_rate'] > 0)
+                            @if(isset($vehicle['extra_km_rate']) && $vehicle['extra_km_rate'] > 0 && !($vehicle['is_inquiry_only'] ?? false))
                                 <div class="rate-amount">
                                     {{ getCurrencySymbol() }} {{ number_format($vehicle['extra_km_rate'], 2) }}
                                 </div>
