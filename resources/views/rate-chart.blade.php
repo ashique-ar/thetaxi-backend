@@ -891,6 +891,19 @@
                             <input type="email" class="form-control" name="email" required>
                         </div>
                         <div class="col-md-6">
+                            <label class="form-label">Country *</label>
+                            <select class="form-select quotation-phone-country-select" name="phone_country" required>
+                                <option value="lk" selected>Sri Lanka</option>
+                                <option value="in">India</option>
+                                <option value="us">United States</option>
+                                <option value="gb">United Kingdom</option>
+                                <option value="ca">Canada</option>
+                                <option value="au">Australia</option>
+                                <option value="ae">United Arab Emirates</option>
+                                <option value="sg">Singapore</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
                             <label class="form-label">Phone *</label>
                             <input type="tel" class="form-control quotation-phone-input" name="phone" required>
                             <input type="hidden" name="phone_country_code" class="quotation-phone-country-code">
@@ -949,11 +962,12 @@
         });
 
         const quotationPhoneInput = document.querySelector('#quotationRequestForm .quotation-phone-input');
+        const quotationPhoneCountrySelect = document.querySelector('#quotationRequestForm .quotation-phone-country-select');
         let quotationPhoneIti = null;
 
         if (quotationPhoneInput && typeof window.intlTelInput === 'function') {
             quotationPhoneIti = window.intlTelInput(quotationPhoneInput, {
-                initialCountry: 'lk',
+                initialCountry: quotationPhoneCountrySelect ? quotationPhoneCountrySelect.value : 'lk',
                 preferredCountries: ['lk', 'in', 'us', 'gb', 'ca', 'au'],
                 separateDialCode: true,
                 formatAsYouType: true,
@@ -963,7 +977,16 @@
             quotationPhoneInput.addEventListener('countrychange', function () {
                 const countryData = quotationPhoneIti.getSelectedCountryData();
                 $('#quotationRequestForm .quotation-phone-country-code').val(countryData.dialCode || '');
+                if (quotationPhoneCountrySelect && countryData.iso2) {
+                    quotationPhoneCountrySelect.value = countryData.iso2;
+                }
             });
+
+            if (quotationPhoneCountrySelect) {
+                quotationPhoneCountrySelect.addEventListener('change', function () {
+                    quotationPhoneIti.setCountry(this.value);
+                });
+            }
         }
 
         $(document).on('submit', '#quotationRequestForm', function (event) {

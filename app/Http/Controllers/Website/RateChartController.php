@@ -46,7 +46,7 @@ class RateChartController extends Controller
 
             $selectedCurrency = $this->currencyService->getSelectedCurrency();
             $cacheDate = Carbon::today()->format('Ymd');
-            $cacheKey = "rate_chart:day_rental:v3:{$dayRentalService->id}:{$selectedCurrency}:{$cacheDate}";
+            $cacheKey = "rate_chart:day_rental:v4:{$dayRentalService->id}:{$selectedCurrency}:{$cacheDate}";
 
             $cachedRateChart = Cache::store('file')->remember($cacheKey, now()->addHours(4), function () use ($dayRentalService, $selectedCurrency) {
                 // Get all active vehicle groups with relationships
@@ -221,53 +221,46 @@ class RateChartController extends Controller
                 'calculated_days' => $fromDate->diffInDays($toDate) + 1,
             ]);
 
-            $availability = $this->bookingFlowService->getAvailableVehicleGroups($params, true);
-
-            Log::debug("Rate chart: Availability response", [
-                'vehicle_group' => $group->name,
-                'has_data' => isset($availability['data']),
-                'data_count' => isset($availability['data']) ? count($availability['data']) : 0,
-                'availability_keys' => array_keys($availability)
+            $pricingResult = $this->bookingFlowService->calculatePricing([
+                'service_type' => $serviceType->id,
+                'service_type_id' => $serviceType->id,
+                'vehicle_group_id' => $group->id,
+                'from_date' => $params['from_date'],
+                'to_date' => $params['to_date'],
+                'from_time' => $params['from_time'],
+                'to_time' => $params['to_time'],
+                'currency' => 'LKR',
+                'base_currency' => 'LKR',
+                'is_preview_calculation' => true,
             ]);
 
-            if (isset($availability['data']) && count($availability['data']) > 0) {
-                $vehicleData = collect($availability['data'])->firstWhere('id', $group->id);
-                
-                Log::debug("Rate chart: Vehicle data found", [
-                    'vehicle_group' => $group->name,
-                    'found' => $vehicleData !== null,
-                    'has_pricing' => $vehicleData && isset($vehicleData['pricing_info']['base_amount']),
-                    'pricing_info' => $vehicleData['pricing_info'] ?? null
-                ]);
-                
-                if ($vehicleData && isset($vehicleData['pricing_info']['base_amount'])) {
-                    $baseAmountLKR = $vehicleData['pricing_info']['base_amount'];
+            $baseAmountLKR = (float) ($pricingResult['summary']['total'] ?? 0);
 
-                    // Convert to selected currency
-                    $selectedCurrency = $selectedCurrency ?: $this->currencyService->getSelectedCurrency();
-                    $convertedAmount = $this->currencyService->convertFromLKR($baseAmountLKR, $selectedCurrency);
-                    $perDayAmount = $days > 1 ? round($convertedAmount / $days, 2) : $convertedAmount;
+            if ($baseAmountLKR > 0) {
+                $selectedCurrency = $selectedCurrency ?: $this->currencyService->getSelectedCurrency();
+                $convertedAmount = $this->currencyService->convertFromLKR($baseAmountLKR, $selectedCurrency);
+                $perDayAmount = $days > 1 ? round($convertedAmount / $days, 2) : $convertedAmount;
 
-                    $distanceDetails = $vehicleData['pricing_info']['distance_details'] ?? [];
-                    $extraKmPriceLkr = isset($distanceDetails['extra_km_price']) && $distanceDetails['extra_km_price'] !== null
-                        ? (float) $distanceDetails['extra_km_price']
-                        : null;
-                    $extraKmPrice = null;
+                $basePricing = $pricingResult['base_pricing'] ?? [];
+                $distanceDetails = $basePricing['distance_details'] ?? [];
+                $extraKmPriceLkr = isset($distanceDetails['extra_km_price']) && $distanceDetails['extra_km_price'] !== null
+                    ? (float) $distanceDetails['extra_km_price']
+                    : null;
+                $extraKmPrice = null;
 
-                    if ($extraKmPriceLkr !== null && $extraKmPriceLkr > 0) {
-                        $extraKmPrice = $this->currencyService->convertFromLKR($extraKmPriceLkr, $selectedCurrency);
-                    }
-                    
-                    return [
-                        'amount' => $convertedAmount,
-                        'amount_lkr' => $baseAmountLKR,
-                        'currency' => $selectedCurrency,
-                        'per_day' => $perDayAmount,
-                        'breakdown' => $vehicleData['pricing_info']['breakdown'] ?? null,
-                        'extra_km_price' => $extraKmPrice,
-                        'extra_km_price_lkr' => $extraKmPriceLkr,
-                    ];
+                if ($extraKmPriceLkr !== null && $extraKmPriceLkr > 0) {
+                    $extraKmPrice = $this->currencyService->convertFromLKR($extraKmPriceLkr, $selectedCurrency);
                 }
+
+                return [
+                    'amount' => $convertedAmount,
+                    'amount_lkr' => $baseAmountLKR,
+                    'currency' => $selectedCurrency,
+                    'per_day' => $perDayAmount,
+                    'breakdown' => $basePricing['breakdown'] ?? null,
+                    'extra_km_price' => $extraKmPrice,
+                    'extra_km_price_lkr' => $extraKmPriceLkr,
+                ];
             }
 
             $selectedCurrency = $selectedCurrency ?: $this->currencyService->getSelectedCurrency();

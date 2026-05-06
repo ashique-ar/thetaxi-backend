@@ -419,6 +419,20 @@
                                 name="customer_email" required>
                         </div>
                         <div class="mb-3">
+                            <label for="quotation_phone_country" class="form-label">Country</label>
+                            <select class="form-select quotation-phone-country-select" id="quotation_phone_country"
+                                name="phone_country" required>
+                                <option value="lk" selected>Sri Lanka</option>
+                                <option value="in">India</option>
+                                <option value="us">United States</option>
+                                <option value="gb">United Kingdom</option>
+                                <option value="ca">Canada</option>
+                                <option value="au">Australia</option>
+                                <option value="ae">United Arab Emirates</option>
+                                <option value="sg">Singapore</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
                             <label for="quotation_customer_phone" class="form-label">Phone</label>
                             <input type="tel" class="form-control quotation-phone-input" id="quotation_customer_phone"
                                 name="phone" required>
@@ -447,11 +461,12 @@
         (function() {
             const form = document.getElementById('quotationRequestForm');
             const phoneInput = form ? form.querySelector('.quotation-phone-input') : null;
+            const countrySelect = form ? form.querySelector('.quotation-phone-country-select') : null;
             let quotationPhoneIti = null;
 
             if (phoneInput && typeof window.intlTelInput === 'function') {
                 quotationPhoneIti = window.intlTelInput(phoneInput, {
-                    initialCountry: 'lk',
+                    initialCountry: countrySelect ? countrySelect.value : 'lk',
                     preferredCountries: ['lk', 'in', 'us', 'gb', 'ca', 'au'],
                     separateDialCode: true,
                     formatAsYouType: true,
@@ -461,7 +476,16 @@
                 phoneInput.addEventListener('countrychange', function() {
                     const countryData = quotationPhoneIti.getSelectedCountryData();
                     form.querySelector('.quotation-phone-country-code').value = countryData.dialCode || '';
+                    if (countrySelect && countryData.iso2) {
+                        countrySelect.value = countryData.iso2;
+                    }
                 });
+
+                if (countrySelect) {
+                    countrySelect.addEventListener('change', function() {
+                        quotationPhoneIti.setCountry(this.value);
+                    });
+                }
             }
 
             if (form) {
