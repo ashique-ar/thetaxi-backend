@@ -2233,11 +2233,35 @@ class BookingController extends Controller
     public function requestQuotation(Request $request)
     {
         try {
+            if (!$request->filled('customer_name') && ($request->filled('first_name') || $request->filled('last_name'))) {
+                $request->merge([
+                    'customer_name' => trim(($request->input('first_name', '') . ' ' . $request->input('last_name', ''))),
+                ]);
+            }
+
+            if (!$request->filled('customer_email') && $request->filled('email')) {
+                $request->merge(['customer_email' => $request->input('email')]);
+            }
+
+            if (!$request->filled('customer_phone') && ($request->filled('phone_international') || $request->filled('phone'))) {
+                $request->merge(['customer_phone' => $request->input('phone_international') ?: $request->input('phone')]);
+            }
+
+            if (!$request->filled('special_requirements') && $request->filled('requirements')) {
+                $request->merge(['special_requirements' => $request->input('requirements')]);
+            }
+
+            if (!$request->filled('service_type')) {
+                $request->merge(['service_type' => 'day_rental']);
+            }
+
             $validator = Validator::make($request->all(), [
                 'vehicle_group_id' => 'required|string|exists:vehicle_groups,id',
                 'customer_name' => 'required|string|max:255',
                 'customer_email' => 'required|email|max:255',
                 'customer_phone' => 'required|string|max:20',
+                'phone_country_code' => 'nullable|string|max:10',
+                'phone_international' => 'nullable|string|max:20',
                 'service_type' => 'required|string',
                 'pickup_location' => 'nullable|string|max:500',
                 'dropoff_location' => 'nullable|string|max:500',
@@ -2249,6 +2273,14 @@ class BookingController extends Controller
             ]);
 
             if ($validator->fails()) {
+                if ($request->expectsJson() || $request->ajax()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Please check your information and try again.',
+                        'errors' => $validator->errors(),
+                    ], 422);
+                }
+
                 return back()->withErrors($validator)->withInput()
                     ->with('error', 'Please check your information and try again.');
             }
@@ -2284,6 +2316,13 @@ class BookingController extends Controller
             // Trigger email notifications
             $this->sendQuotationRequestEmails($inquiry, $request->all(), $vehicleGroup);
 
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Your quotation request has been submitted successfully! Our team will contact you shortly.',
+                ]);
+            }
+
             return redirect()->back()
                 ->with('success', 'Your quotation request has been submitted successfully! Our team will contact you within 2 business hours with a detailed quote.');
 
@@ -2293,6 +2332,13 @@ class BookingController extends Controller
                 'trace' => $e->getTraceAsString(),
                 'request_data' => $request->all()
             ]);
+
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'An error occurred while submitting your request. Please try again or contact us directly.',
+                ], 500);
+            }
 
             return back()->withInput()
                 ->with('error', 'An error occurred while submitting your request. Please try again or contact us directly.');

@@ -125,7 +125,7 @@ class CorporateTransferInquirySeeder extends Seeder
                 'placeholder' => 'Specify the service type',
                 'help_text' => 'Add a short description so we can tailor the plan.',
                 'is_required' => false,
-                'validation_rules' => 'required_if:service_type_select,other|string|max:255',
+                'validation_rules' => 'required_if:service_type_select,other|nullable|string|max:255',
                 'conditional_logic' => [
                     'field' => 'service_type_select',
                     'operator' => 'equals',

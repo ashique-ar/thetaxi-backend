@@ -259,6 +259,7 @@
         font-size: 0.9rem;
         text-decoration: none;
         border: 1px solid #fed7aa;
+        cursor: pointer;
     }
 
     .rate-quotation-link:hover {
@@ -574,9 +575,14 @@
                                     <div class="rate-per-day">per day</div>
                                 @else
                                     <div class="rate-unavailable">
-                                        <a href="{{ route('inquiry') }}" class="rate-quotation-link">
+                                        <button type="button" class="rate-quotation-link request-quotation-btn"
+                                            data-group-id="{{ $vehicle['id'] }}"
+                                            data-group-name="{{ $vehicle['name'] }}"
+                                            data-service-type="day_rental"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#requestQuotationModal">
                                             <i class="bi bi-calculator"></i> Request Quotation
-                                        </a>
+                                        </button>
                                     </div>
                                 @endif
                             </td>
@@ -594,9 +600,14 @@
                                     </div>
                                 @else
                                     <div class="rate-unavailable">
-                                        <a href="{{ route('inquiry') }}" class="rate-quotation-link">
+                                        <button type="button" class="rate-quotation-link request-quotation-btn"
+                                            data-group-id="{{ $vehicle['id'] }}"
+                                            data-group-name="{{ $vehicle['name'] }}"
+                                            data-service-type="day_rental"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#requestQuotationModal">
                                             <i class="bi bi-calculator"></i> Request Quotation
-                                        </a>
+                                        </button>
                                     </div>
                                 @endif
                             </td>
@@ -610,9 +621,14 @@
                                     <div class="rate-per-day">per km</div>
                                 @else
                                     <div class="rate-unavailable">
-                                        <a href="{{ route('inquiry') }}" class="rate-quotation-link">
+                                        <button type="button" class="rate-quotation-link request-quotation-btn"
+                                            data-group-id="{{ $vehicle['id'] }}"
+                                            data-group-name="{{ $vehicle['name'] }}"
+                                            data-service-type="day_rental"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#requestQuotationModal">
                                             <i class="bi bi-calculator"></i> Request Quotation
-                                        </a>
+                                        </button>
                                     </div>
                                 @endif
                             </td>
@@ -711,9 +727,14 @@
                                 <div class="rate-per-day">per day</div>
                             @else
                                 <div class="rate-unavailable">
-                                    <a href="{{ route('inquiry') }}" class="rate-quotation-link">
+                                    <button type="button" class="rate-quotation-link request-quotation-btn"
+                                        data-group-id="{{ $vehicle['id'] }}"
+                                        data-group-name="{{ $vehicle['name'] }}"
+                                        data-service-type="day_rental"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#requestQuotationModal">
                                         <i class="bi bi-calculator"></i> Request Quotation
-                                    </a>
+                                    </button>
                                 </div>
                             @endif
                         </div>
@@ -731,9 +752,14 @@
                                 </div>
                             @else
                                 <div class="rate-unavailable">
-                                    <a href="{{ route('inquiry') }}" class="rate-quotation-link">
+                                    <button type="button" class="rate-quotation-link request-quotation-btn"
+                                        data-group-id="{{ $vehicle['id'] }}"
+                                        data-group-name="{{ $vehicle['name'] }}"
+                                        data-service-type="day_rental"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#requestQuotationModal">
                                         <i class="bi bi-calculator"></i> Request Quotation
-                                    </a>
+                                    </button>
                                 </div>
                             @endif
                         </div>
@@ -747,9 +773,14 @@
                                 <div class="rate-per-day">per km</div>
                             @else
                                 <div class="rate-unavailable">
-                                    <a href="{{ route('inquiry') }}" class="rate-quotation-link">
+                                    <button type="button" class="rate-quotation-link request-quotation-btn"
+                                        data-group-id="{{ $vehicle['id'] }}"
+                                        data-group-name="{{ $vehicle['name'] }}"
+                                        data-service-type="day_rental"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#requestQuotationModal">
                                         <i class="bi bi-calculator"></i> Request Quotation
-                                    </a>
+                                    </button>
                                 </div>
                             @endif
                         </div>
@@ -817,11 +848,137 @@
     </div>
 </div>
 
+<!-- Request Quotation Modal -->
+<div class="modal fade" id="requestQuotationModal" tabindex="-1" aria-labelledby="requestQuotationModalLabel"
+    aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-warning text-dark">
+                <h5 class="modal-title" id="requestQuotationModalLabel">
+                    <i class="bi bi-calculator"></i> Request Quotation
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="quotationRequestForm" method="POST" action="{{ route('quotation.request') }}">
+                @csrf
+                <div class="modal-body">
+                    <input type="hidden" name="vehicle_group_id" id="quotation_vehicle_group_id">
+                    <input type="hidden" name="service_type" id="quotation_service_type" value="day_rental">
+
+                    <div class="alert alert-info mb-4">
+                        <i class="bi bi-info-circle"></i>
+                        <strong>Vehicle:</strong> <span id="quotation_vehicle_name"></span>
+                        <br>
+                        <small class="text-muted">This vehicle requires a quotation request. Our team will contact you with pricing details.</small>
+                    </div>
+
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">First Name *</label>
+                            <input type="text" class="form-control" name="first_name" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Last Name *</label>
+                            <input type="text" class="form-control" name="last_name" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Email *</label>
+                            <input type="email" class="form-control" name="email" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Phone *</label>
+                            <input type="tel" class="form-control" name="phone" required>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Additional Requirements</label>
+                            <textarea class="form-control" name="requirements" rows="3"
+                                placeholder="Please describe preferred dates, rental duration, pickup location, or other requirements..."></textarea>
+                        </div>
+                    </div>
+
+                    <div class="mt-4 p-3 bg-light rounded">
+                        <h6 class="mb-2"><i class="bi bi-calendar-event"></i> Request Details</h6>
+                        <p class="mb-0 text-muted small">
+                            Rate chart quotation request for day rental. Add your preferred dates and requirements above.
+                        </p>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-warning">
+                        <i class="bi bi-send"></i> Submit Request
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 @endsection
 
 @push('scripts')
 <script>
     (function () {
+        function showRateChartNotification(type, message) {
+            const alertClass = type === 'success' ? 'alert-success' : 'alert-danger';
+            const icon = type === 'success' ? 'bi-check-circle-fill' : 'bi-exclamation-circle-fill';
+            const alert = $(`
+                <div class="alert ${alertClass} alert-dismissible fade show" role="alert" style="position: fixed; top: 20px; right: 20px; z-index: 1300; min-width: 300px;">
+                    <i class="bi ${icon} me-2"></i>
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            `);
+            $('body').append(alert);
+            setTimeout(() => alert.alert('close'), type === 'success' ? 4000 : 5000);
+        }
+
+        $(document).on('click', '.request-quotation-btn', function () {
+            const $btn = $(this);
+            $('#quotation_vehicle_group_id').val($btn.data('group-id'));
+            $('#quotation_vehicle_name').text($btn.data('group-name'));
+            $('#quotation_service_type').val($btn.data('service-type') || 'day_rental');
+        });
+
+        $(document).on('submit', '#quotationRequestForm', function (event) {
+            event.preventDefault();
+
+            const $form = $(this);
+            const $submitBtn = $form.find('button[type="submit"]');
+            const originalBtnText = $submitBtn.html();
+
+            $submitBtn.prop('disabled', true).html(
+                '<span class="spinner-border spinner-border-sm me-2"></span> Submitting...'
+            );
+
+            $.ajax({
+                url: $form.attr('action'),
+                method: 'POST',
+                data: $form.serialize(),
+                headers: {
+                    Accept: 'application/json',
+                },
+                success: function (response) {
+                    if (response.success) {
+                        $('#requestQuotationModal').modal('hide');
+                        showRateChartNotification('success', response.message || 'Quotation request submitted successfully! Our team will contact you shortly.');
+                        $form[0].reset();
+                        $('#quotation_service_type').val('day_rental');
+                    } else {
+                        showRateChartNotification('error', response.message || 'Failed to submit quotation request. Please try again.');
+                    }
+                },
+                error: function (xhr) {
+                    const errors = xhr.responseJSON && xhr.responseJSON.errors ? xhr.responseJSON.errors : null;
+                    const firstError = errors ? Object.values(errors).flat()[0] : null;
+                    showRateChartNotification('error', firstError || xhr.responseJSON?.message || 'An error occurred. Please try again.');
+                },
+                complete: function () {
+                    $submitBtn.prop('disabled', false).html(originalBtnText);
+                },
+            });
+        });
+
         const triggers = document.querySelectorAll('.zoom-trigger');
         const hoverPopup = document.getElementById('zoom-hover-popup');
         const hoverImage = document.getElementById('zoom-hover-image');

@@ -90,10 +90,15 @@ class InquiryForm extends BaseModel
         $hasRequired = in_array('required', $rules, true) || collect($rules)->contains(function ($rule) {
             return Str::startsWith($rule, 'required');
         });
+        $hasConditionalRequired = !in_array('required', $rules, true) && collect($rules)->contains(function ($rule) {
+            return Str::startsWith($rule, 'required_');
+        });
         $hasNullable = in_array('nullable', $rules, true);
 
         if ($field->is_required && !$hasRequired) {
             $rules[] = 'required';
+        } elseif (!$field->is_required && $hasConditionalRequired && !$hasNullable) {
+            $rules[] = 'nullable';
         } elseif (!$field->is_required && !$hasNullable && !$hasRequired) {
             $rules[] = 'nullable';
         }
