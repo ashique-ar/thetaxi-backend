@@ -2255,6 +2255,33 @@ class BookingController extends Controller
                 $request->merge(['service_type' => 'day_rental']);
             }
 
+            $searchContext = session()->get('current_search_params', []);
+            if (empty($searchContext) && $request->filled('search_id')) {
+                $bookingSearch = BookingSearch::find($request->input('search_id'));
+                if ($bookingSearch) {
+                    $searchContext = $bookingSearch->toArray();
+                }
+            }
+
+            $locationToString = function ($location): ?string {
+                if (is_array($location)) {
+                    return $location['address'] ?? null;
+                }
+                if (is_object($location)) {
+                    return $location->address ?? null;
+                }
+                return $location ?: null;
+            };
+
+            $request->merge([
+                'pickup_location' => $request->input('pickup_location') ?: $locationToString($searchContext['pickup_location'] ?? null),
+                'dropoff_location' => $request->input('dropoff_location') ?: $locationToString($searchContext['dropoff_location'] ?? null),
+                'travel_date' => $request->input('travel_date') ?: ($searchContext['from_date'] ?? null),
+                'travel_time' => $request->input('travel_time') ?: ($searchContext['from_time'] ?? null),
+                'return_date' => $request->input('return_date') ?: ($searchContext['to_date'] ?? ($searchContext['return_date'] ?? null)),
+                'return_time' => $request->input('return_time') ?: ($searchContext['to_time'] ?? ($searchContext['return_time'] ?? null)),
+            ]);
+
             $validator = Validator::make($request->all(), [
                 'vehicle_group_id' => 'required|string|exists:vehicle_groups,id',
                 'customer_name' => 'required|string|max:255',
@@ -2268,6 +2295,8 @@ class BookingController extends Controller
                 'dropoff_location' => 'nullable|string|max:500',
                 'travel_date' => 'nullable|date',
                 'travel_time' => 'nullable|string',
+                'return_date' => 'nullable|date',
+                'return_time' => 'nullable|string',
                 'passengers' => 'nullable|integer|min:1|max:50',
                 'special_requirements' => 'nullable|string|max:1000',
                 'company_name' => 'nullable|string|max:255',
@@ -2287,7 +2316,7 @@ class BookingController extends Controller
             }
 
             // Get search parameters from session for context
-            $searchParams = session()->get('current_search_params', []);
+            $searchParams = $searchContext;
             $vehicleGroup = VehicleGroup::findOrFail($request->vehicle_group_id);
 
             // Create inquiry with enhanced context
@@ -2389,6 +2418,12 @@ class BookingController extends Controller
         }
         if (!empty($requestData['travel_time'])) {
             $message .= "Time: {$requestData['travel_time']}\n";
+        }
+        if (!empty($requestData['return_date'])) {
+            $message .= "Return Date: {$requestData['return_date']}\n";
+        }
+        if (!empty($requestData['return_time'])) {
+            $message .= "Return Time: {$requestData['return_time']}\n";
         }
         if (!empty($requestData['passengers'])) {
             $message .= "Passengers: {$requestData['passengers']}\n";

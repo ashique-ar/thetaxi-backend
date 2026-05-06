@@ -341,6 +341,20 @@
                         <input type="hidden" name="vehicle_group_id" id="quotation_vehicle_group_id">
                         <input type="hidden" name="search_id" id="quotation_search_id"
                             value="{{ $search->id ?? '' }}">
+                        <input type="hidden" name="service_type" id="quotation_service_type"
+                            value="{{ $search->service_type ?? 'day_rental' }}">
+                        <input type="hidden" name="pickup_location" id="quotation_pickup_location"
+                            value="">
+                        <input type="hidden" name="dropoff_location" id="quotation_dropoff_location"
+                            value="">
+                        <input type="hidden" name="travel_date" id="quotation_travel_date"
+                            value="{{ $search->from_date ?? '' }}">
+                        <input type="hidden" name="travel_time" id="quotation_travel_time"
+                            value="{{ $search->from_time ?? '' }}">
+                        <input type="hidden" name="return_date" id="quotation_return_date"
+                            value="{{ $search->to_date ?? '' }}">
+                        <input type="hidden" name="return_time" id="quotation_return_time"
+                            value="{{ $search->to_time ?? '' }}">
 
                         <div class="alert alert-info mb-4">
                             <i class="bi bi-info-circle"></i>
@@ -1426,6 +1440,13 @@
             $('#quotation_vehicle_group_id').val(groupId);
             $('#quotation_search_id').val(searchId || '{{ $search->id ?? '' }}');
             $('#quotation_vehicle_name').text(groupName);
+            $('#quotation_service_type').val(window.bookingSearchData.service_type || 'day_rental');
+            $('#quotation_pickup_location').val(window.bookingSearchData.pickup_location || '');
+            $('#quotation_dropoff_location').val(window.bookingSearchData.dropoff_location || '');
+            $('#quotation_travel_date').val(window.bookingSearchData.from_date || '');
+            $('#quotation_travel_time').val(window.bookingSearchData.from_time || '');
+            $('#quotation_return_date').val(window.bookingSearchData.to_date || window.bookingSearchData.return_trip_date || '');
+            $('#quotation_return_time').val(window.bookingSearchData.to_time || window.bookingSearchData.return_trip_time || '');
         });
 
         const quotationPhoneInput = document.querySelector('#quotationRequestForm .quotation-phone-input');

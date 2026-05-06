@@ -391,6 +391,15 @@
             $('#quotation_vehicle_group_id').val(groupId);
             $('#quotation_search_id').val(searchId || '');
             $('#quotation_vehicle_name').text(groupName);
+            if (window.bookingSearchData) {
+                $('#quotation_service_type').val(window.bookingSearchData.service_type || 'day_rental');
+                $('#quotation_pickup_location').val(window.bookingSearchData.pickup_location || '');
+                $('#quotation_dropoff_location').val(window.bookingSearchData.dropoff_location || '');
+                $('#quotation_travel_date').val(window.bookingSearchData.from_date || '');
+                $('#quotation_travel_time').val(window.bookingSearchData.from_time || '');
+                $('#quotation_return_date').val(window.bookingSearchData.to_date || window.bookingSearchData.return_trip_date || '');
+                $('#quotation_return_time').val(window.bookingSearchData.to_time || window.bookingSearchData.return_trip_time || '');
+            }
         });
 
         /**

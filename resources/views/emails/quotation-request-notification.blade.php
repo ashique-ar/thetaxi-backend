@@ -13,6 +13,8 @@
         $dropoffLocation = $requestData['dropoff_location'] ?? null;
         $travelDate = $requestData['travel_date'] ?? null;
         $travelTime = $requestData['travel_time'] ?? null;
+        $returnDate = $requestData['return_date'] ?? null;
+        $returnTime = $requestData['return_time'] ?? null;
         $passengers = $requestData['passengers'] ?? null;
         $vehicleThumbnail = $vehicleGroup->thumbnail ?? null;
         $thumb = is_array($vehicleThumbnail) ? ($vehicleThumbnail['path'] ?? ($vehicleThumbnail[0] ?? null)) : $vehicleThumbnail;
@@ -78,6 +80,12 @@
                     <tr>
                         <td>Dropoff Location</td>
                         <td>{{ $dropoffLocation }}</td>
+                    </tr>
+                @endif
+                @if ($returnDate || $returnTime)
+                    <tr>
+                        <td>Return Date & Time</td>
+                        <td>{{ trim(($returnDate ?: 'To be confirmed') . ($returnTime ? ' ' . $returnTime : '')) }}</td>
                     </tr>
                 @endif
                 @if ($passengers)
