@@ -2292,24 +2292,38 @@ class BookingController extends Controller
 
             // Create inquiry with enhanced context
             $inquiryData = [
+                'name' => $request->customer_name,
+                'email' => $request->customer_email,
+                'phone' => $request->customer_phone,
                 'subject' => "Request Quotation - {$vehicleGroup->name}",
                 'message' => $this->buildQuotationMessage($request->all(), $searchParams, $vehicleGroup),
-                'status' => 'pending',
-                'priority' => 'high',
+                'status' => 'open',
                 'customer_id' => null, // Will be created if needed
                 'inquiry_type' => 'quotation_request',
-                'vehicle_group_id' => $request->vehicle_group_id,
                 'service_type' => $request->service_type,
-                'contact_name' => $request->customer_name,
-                'contact_email' => $request->customer_email,
-                'contact_phone' => $request->customer_phone,
+                'payload' => [
+                    'type' => 'quotation_request',
+                    'vehicle_group_id' => $request->vehicle_group_id,
+                    'vehicle_group_name' => $vehicleGroup->name,
+                    'form' => $request->except(['_token']),
+                    'search_context' => $searchParams,
+                ],
+            ];
+
+            $optionalInquiryData = [
+                'vehicle_group_id' => $request->vehicle_group_id,
                 'company_name' => $request->company_name,
-                'search_context' => json_encode($searchParams),
-                'form_data' => json_encode($request->except(['_token'])),
+                'search_context' => $searchParams,
+                'form_data' => $request->except(['_token']),
                 'ip_address' => $request->ip(),
                 'user_agent' => $request->userAgent(),
-                'created_at' => now(),
             ];
+
+            foreach ($optionalInquiryData as $column => $value) {
+                if (\Illuminate\Support\Facades\Schema::hasColumn('inquiries', $column)) {
+                    $inquiryData[$column] = $value;
+                }
+            }
 
             // Create the inquiry
             $inquiry = \App\Models\Inquiry::create($inquiryData);

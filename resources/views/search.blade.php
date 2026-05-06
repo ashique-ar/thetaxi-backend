@@ -365,7 +365,7 @@
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">Country *</label>
-                                <select class="form-select quotation-phone-country-select" name="phone_country" required>
+                                <select class="form-select no-nice quotation-phone-country-select" name="phone_country" required>
                                     <option value="">Select Country</option>
                                     @foreach ($quotationCountries as $country)
                                         <option value="{{ strtolower($country->code ?? '') }}"
@@ -1433,6 +1433,7 @@
         let quotationPhoneIti = null;
 
         if (quotationPhoneCountrySelect && $.fn.select2) {
+            $(quotationPhoneCountrySelect).next('.nice-select').remove();
             $(quotationPhoneCountrySelect).select2({
                 placeholder: 'Select Country',
                 allowClear: true,
