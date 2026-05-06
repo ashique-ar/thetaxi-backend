@@ -4014,10 +4014,17 @@ class BookingFlowService
                 $distanceDetails['extra_km_price'] = (float) $extraKmRate;
             }
 
+            $extraHourRate = $this->getCommonRateForVehicleGroup($serviceTypeId, $vehicleGroupId, 'extra_hour_rate');
+            if ($extraHourRate && $extraHourRate['value'] !== null) {
+                $distanceDetails['extra_hour_price'] = (float) $extraHourRate['value'];
+                $distanceDetails['extra_hour_label'] = $extraHourRate['name'] ?: 'Extra Hour Rate';
+            }
+
             Log::debug('BuildDistanceDetails - Extra KM Rate Lookup', [
                 'service_type_id' => $serviceTypeId,
                 'vehicle_group_id' => $vehicleGroupId,
                 'extra_km_rate' => $extraKmRate,
+                'extra_hour_rate' => $extraHourRate['value'] ?? null,
             ]);
         }
 
@@ -4081,6 +4088,45 @@ class BookingFlowService
                 'vehicle_group_id' => $vehicleGroupId,
                 'error' => $e->getMessage(),
             ]);
+            return null;
+        }
+    }
+
+    /**
+     * Get a configured common rate for a vehicle group and service type.
+     */
+    private function getCommonRateForVehicleGroup(string $serviceTypeId, string $vehicleGroupId, string $code): ?array
+    {
+        try {
+            $normalizedCode = Str::lower($code);
+
+            $commonRatePricing = VehicleGroupCommonRatePricing::with('commonRateDefinition')
+                ->whereHas('commonRateDefinition', function ($query) use ($serviceTypeId, $normalizedCode) {
+                    $query->whereRaw('LOWER(code) = ?', [$normalizedCode])
+                        ->where('service_type_id', $serviceTypeId)
+                        ->where('is_active', true);
+                })
+                ->where('vehicle_group_id', $vehicleGroupId)
+                ->where('is_active', true)
+                ->first();
+
+            if (!$commonRatePricing || $commonRatePricing->value === null) {
+                return null;
+            }
+
+            return [
+                'name' => $commonRatePricing->commonRateDefinition->name ?? null,
+                'value' => (float) $commonRatePricing->value,
+                'type' => $commonRatePricing->commonRateDefinition->common_rate_type ?? null,
+            ];
+        } catch (\Exception $e) {
+            Log::error('Error fetching common rate for vehicle group', [
+                'service_type_id' => $serviceTypeId,
+                'vehicle_group_id' => $vehicleGroupId,
+                'code' => $code,
+                'error' => $e->getMessage(),
+            ]);
+
             return null;
         }
     }

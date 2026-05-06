@@ -436,7 +436,13 @@
                 isset($distanceDetails['free_km_per_package']) && $distanceDetails['free_km_per_package'] > 0;
             $hasAllowedKm = isset($distanceDetails['allowed_total_km']) && $distanceDetails['allowed_total_km'] > 0;
             $hasExtraKmPrice = isset($distanceDetails['extra_km_price']) && $distanceDetails['extra_km_price'] > 0;
-            $showDistanceDetails = $hasFreeKmPerDay || $hasFreeKmPerPackage || $hasAllowedKm || $hasExtraKmPrice;
+            $hasExtraHourPrice =
+                $serviceType === 'day_rental' &&
+                isset($distanceDetails['extra_hour_price']) &&
+                $distanceDetails['extra_hour_price'] > 0;
+            $extraHourLabel = $distanceDetails['extra_hour_label'] ?? 'Extra Hour Rate';
+            $showDistanceDetails =
+                $hasFreeKmPerDay || $hasFreeKmPerPackage || $hasAllowedKm || $hasExtraKmPrice || $hasExtraHourPrice;
 
             // Check if we have journey duration and the service supports time-based durations
             $journeyDurationSeconds = $distanceDetails['journey_duration_seconds'] ?? null;
@@ -457,6 +463,7 @@
                 'has_free_km_per_package' => $hasFreeKmPerPackage,
                 'has_allowed_km' => $hasAllowedKm,
                 'has_extra_km_price' => $hasExtraKmPrice,
+                'has_extra_hour_price' => $hasExtraHourPrice,
                 'show_distance_details' => $showDistanceDetails,
             ]);
         @endphp
@@ -494,6 +501,14 @@
                         <i class="bi bi-lightning-fill"></i> Extra:
                         <small class="currency-code">{{ getCurrencySymbol() }}</small>
                         {{ number_format($distanceDetails['extra_km_price'], 2) }}/km
+                    </small>
+                @endif
+
+                @if ($hasExtraHourPrice)
+                    <small class="pricing-detail-item">
+                        <i class="bi bi-clock-fill"></i> {{ $extraHourLabel }}:
+                        <small class="currency-code">{{ getCurrencySymbol() }}</small>
+                        {{ number_format($distanceDetails['extra_hour_price'], 2) }}/hour
                     </small>
                 @endif
 

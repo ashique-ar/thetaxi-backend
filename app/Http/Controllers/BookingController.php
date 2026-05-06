@@ -1205,6 +1205,13 @@ class BookingController extends Controller
                     $selectedCurrency
                 );
             }
+            if ($distanceDetails && isset($distanceDetails['extra_hour_price'])) {
+                $selectedCurrency = $selectedCurrency ?? $this->currencyService->getSelectedCurrency();
+                $distanceDetails['extra_hour_price'] = $this->currencyService->convertFromLKR(
+                    (float) $distanceDetails['extra_hour_price'],
+                    $selectedCurrency
+                );
+            }
 
             $formattedPricing = !empty($pricingInfo) ? [
                 'base_amount' => $pricingInfo['base_amount'] ?? 0,
