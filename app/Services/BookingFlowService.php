@@ -23,6 +23,7 @@ use App\Models\Company;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCalculationDefinition;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCommonRateDefinition;
 use App\Models\Vehicle\VehiclePricing\VehicleGroupCommonRatePricing;
+use App\Models\Vehicle\VehiclePricing\VehicleGroupServicePricingSetting;
 use App\Models\Vehicle\VehiclePricing\DistrictPricingAdjustment;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -788,9 +789,32 @@ class BookingFlowService
             ->take($perPage)
             ->get();
 
+        $selectedServiceTypeModel = (($isPublic || $this->shouldUsePublicServiceContext($params))
+            ? ServiceType::publicContext()
+            : ServiceType::query())
+            ->where(function ($query) use ($serviceType) {
+                $query->where('id', $serviceType)
+                    ->orWhere('code', $serviceType)
+                    ->orWhere('name', $serviceType);
+            })
+            ->first();
+
+        $servicePricingSettings = $selectedServiceTypeModel
+            ? VehicleGroupServicePricingSetting::query()
+                ->where('service_type_id', $selectedServiceTypeModel->id)
+                ->whereIn('vehicle_group_id', $vehicleGroups->pluck('id'))
+                ->get()
+                ->keyBy('vehicle_group_id')
+            : collect();
+
         $availability = [];
 
         foreach ($vehicleGroups as $group) {
+            $servicePricingSetting = $servicePricingSettings->get($group->id);
+            if ($servicePricingSetting?->is_hidden) {
+                continue;
+            }
+
             // Get detailed vehicle analysis
             $vehicleAnalysis = $this->analyzeVehicleAvailability($group, $fromDate, $toDate, $excludeBookingId);
 
@@ -803,22 +827,11 @@ class BookingFlowService
             $pricingInfo = null;
             $isPricingConfigured = false;
             $pricingError = null;
+            $serviceTypeModel = $selectedServiceTypeModel;
 
             try {
                 // Calculate duration
                 $durationInfo = $this->calculateDurationInDaysAndHours($fromDate, $toDate);
-
-                // Get service type model to ensure we have correct ID
-                $serviceTypeQuery = ($isPublic || $this->shouldUsePublicServiceContext($params))
-                    ? ServiceType::publicContext()
-                    : ServiceType::query();
-                $serviceTypeModel = $serviceTypeQuery
-                    ->where(function ($query) use ($serviceType) {
-                        $query->where('id', $serviceType)
-                            ->orWhere('code', $serviceType)
-                            ->orWhere('name', $serviceType);
-                    })
-                    ->first();
 
                 if ($serviceTypeModel) {
                     // Check if service type uses dropoff time
@@ -958,7 +971,7 @@ class BookingFlowService
             $hasAvailableVehicles = $availableCount > 0;
 
             // Check if vehicle group is inquiry-only (force quotation)
-            $isInquiryOnly = $group->is_inquiry_only ?? false;
+            $isInquiryOnly = ($group->is_inquiry_only ?? false) || ($servicePricingSetting?->is_inquiry_only ?? false);
 
             // Debug logging to trace inquiry flag issue (after all variables are defined)
             if ($serviceTypeModel) {
@@ -1000,7 +1013,9 @@ class BookingFlowService
                 $quotationOnlyReasons[] = 'no_vehicles_available';
             }
             if ($isInquiryOnly) {
-                $quotationOnlyReasons[] = 'inquiry_only_vehicle';
+                $quotationOnlyReasons[] = ($servicePricingSetting?->is_inquiry_only ?? false)
+                    ? 'service_vehicle_inquiry_only'
+                    : 'inquiry_only_vehicle';
             }
             if ($serviceTypeRequiresInquiry) {
                 $quotationOnlyReasons[] = 'service_requires_inquiry';
@@ -1083,6 +1098,11 @@ class BookingFlowService
 
             $availability[] = $availabilityEntry;
         }
+
+        $availability = collect($availability)
+            ->sortBy(fn($item) => $item['pricing_info']['base_amount'] ?? PHP_INT_MAX)
+            ->values()
+            ->all();
 
         // Calculate total journey distance if locations are provided
         $totalJourneyDistance = null;

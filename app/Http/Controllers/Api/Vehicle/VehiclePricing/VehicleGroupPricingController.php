@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Vehicle\VehiclePricing\VehicleGroupPricing;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingSlabDefinition;
 use App\Models\Vehicle\VehiclePricing\VehicleGroupCommonRatePricing;
+use App\Models\Vehicle\VehiclePricing\VehicleGroupServicePricingSetting;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCommonRateDefinition;
 use App\Models\Vehicle\VehicleGroup;
 use App\Models\Service\ServiceType;
@@ -171,6 +172,12 @@ class VehicleGroupPricingController extends Controller
                     return $item->vehicle_group_id . '_' . $item->common_rate_definition_id;
                 });
 
+            $serviceSettings = VehicleGroupServicePricingSetting::query()
+                ->whereIn('vehicle_group_id', $vehicleGroupIds)
+                ->whereIn('service_type_id', $serviceTypeIds)
+                ->get()
+                ->keyBy(fn($item) => $item->vehicle_group_id . '_' . $item->service_type_id);
+
             $result = [];
 
             foreach ($vehicleGroups as $group) {
@@ -190,6 +197,12 @@ class VehicleGroupPricingController extends Controller
 
                     $serviceData = [
                         'service_type' => $serviceType,
+                        'settings' => $serviceSettings->get($group->id . '_' . $serviceType->id) ?: [
+                            'vehicle_group_id' => $group->id,
+                            'service_type_id' => $serviceType->id,
+                            'is_inquiry_only' => false,
+                            'is_hidden' => false,
+                        ],
                         'slab_definitions' => $slabDefinitions->map(function ($slab) use ($group, $allSlabPricing) {
                             $key = $group->id . '_' . $slab->id;
                             $pricing = $allSlabPricing->get($key)?->first();
@@ -308,12 +321,17 @@ class VehicleGroupPricingController extends Controller
             'common_rates.*.value' => 'nullable|numeric|min:0',
             'common_rates.*.is_active' => 'boolean',
             'common_rates.*.service_type_id' => 'nullable|uuid|exists:service_types,id',
+            'service_settings' => 'nullable|array',
+            'service_settings.*.service_type_id' => 'required_with:service_settings|uuid|exists:service_types,id',
+            'service_settings.*.is_inquiry_only' => 'boolean',
+            'service_settings.*.is_hidden' => 'boolean',
             'change_reason' => 'nullable|string|max:500',
         ]);
 
         // Require at least one of the two arrays to be present and non-empty
         $hasServicePricing = (is_array($request->service_pricing) && count($request->service_pricing) > 0);
         $hasCommonRates = (is_array($request->common_rates) && count($request->common_rates) > 0);
+        $hasServiceSettings = (is_array($request->service_settings) && count($request->service_settings) > 0);
 
         // If service_pricing exists, ensure at least one entry has slabs with at least one slab
         $servicePricingHasSlabs = false;
@@ -326,11 +344,11 @@ class VehicleGroupPricingController extends Controller
             }
         }
 
-        if ((!$hasServicePricing || !$servicePricingHasSlabs) && !$hasCommonRates) {
+        if ((!$hasServicePricing || !$servicePricingHasSlabs) && !$hasCommonRates && !$hasServiceSettings) {
             return response()->json([
                 'success' => false,
                 'message' => 'Validation failed',
-                'errors' => ['service_pricing' => ['Either service_pricing with at least one slab or common_rates must be provided.']]
+                'errors' => ['service_pricing' => ['Either service_pricing with at least one slab, common_rates, or service_settings must be provided.']]
             ], 422);
         }
 
@@ -500,6 +518,21 @@ class VehicleGroupPricingController extends Controller
                         $results['common_rates']['created'][] = $newCommonRate;
                     }
                 }
+            }
+
+            // Process service-level settings for this vehicle group
+            foreach ($request->input('service_settings', []) as $settingData) {
+                VehicleGroupServicePricingSetting::updateOrCreate(
+                    [
+                        'vehicle_group_id' => $vehicleGroupId,
+                        'service_type_id' => $settingData['service_type_id'],
+                    ],
+                    [
+                        'is_inquiry_only' => $settingData['is_inquiry_only'] ?? false,
+                        'is_hidden' => $settingData['is_hidden'] ?? false,
+                        'updated_user_id' => $userId,
+                    ]
+                );
             }
 
             DB::commit();

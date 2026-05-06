@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Website;
 use App\Http\Controllers\Controller;
 use App\Models\Vehicle\VehicleGroup;
 use App\Models\Service\ServiceType;
+use App\Models\Vehicle\VehiclePricing\VehicleGroupServicePricingSetting;
 use App\Services\BookingFlowService;
 use App\Services\CurrencyService;
 use Carbon\Carbon;
@@ -45,7 +46,7 @@ class RateChartController extends Controller
 
             $selectedCurrency = $this->currencyService->getSelectedCurrency();
             $cacheDate = Carbon::today()->format('Ymd');
-            $cacheKey = "rate_chart:day_rental:v2:{$dayRentalService->id}:{$selectedCurrency}:{$cacheDate}";
+            $cacheKey = "rate_chart:day_rental:v3:{$dayRentalService->id}:{$selectedCurrency}:{$cacheDate}";
 
             $cachedRateChart = Cache::store('file')->remember($cacheKey, now()->addHours(4), function () use ($dayRentalService, $selectedCurrency) {
                 // Get all active vehicle groups with relationships
@@ -66,17 +67,25 @@ class RateChartController extends Controller
                     ->where('is_active', true)
                     ->orderBy('name')
                     ->get();
+                $hiddenVehicleGroupIds = VehicleGroupServicePricingSetting::query()
+                    ->where('service_type_id', $dayRentalService->id)
+                    ->where('is_hidden', true)
+                    ->pluck('vehicle_group_id')
+                    ->all();
 
                 $rateData = [];
 
                 foreach ($vehicleGroups as $group) {
+                    if (in_array($group->id, $hiddenVehicleGroupIds, true)) {
+                        continue;
+                    }
+
                     // Calculate daily rate (1 day)
                     $dailyRate = $this->calculateRate($group, $dayRentalService, 1, $selectedCurrency);
 
                     // Calculate monthly rate (30 days)
                     $monthlyRate = $this->calculateRate($group, $dayRentalService, 30, $selectedCurrency);
 
-                    // Skip groups with no pricing data
                     if ($dailyRate['amount'] == 0) {
                         Log::warning("Rate chart: No pricing for vehicle group", [
                             'vehicle_group_id' => $group->id,
@@ -84,7 +93,6 @@ class RateChartController extends Controller
                             'daily_rate_response' => $dailyRate,
                             'monthly_rate_response' => $monthlyRate
                         ]);
-                        continue;
                     }
 
                     // Get vehicle thumbnail - handle array or string format
@@ -138,8 +146,15 @@ class RateChartController extends Controller
                     ];
                 }
 
-                // Sort by daily rate (lowest first), then by name
+                // Sort priced vehicles by daily rate first; keep quotation-only/no-rate rows after them by name.
                 usort($rateData, function ($a, $b) {
+                    $aHasRate = ($a['daily_rate']['amount'] ?? 0) > 0;
+                    $bHasRate = ($b['daily_rate']['amount'] ?? 0) > 0;
+
+                    if ($aHasRate !== $bHasRate) {
+                        return $aHasRate ? -1 : 1;
+                    }
+
                     if ($a['daily_rate']['amount'] == $b['daily_rate']['amount']) {
                         return strcmp($a['name'], $b['name']);
                     }

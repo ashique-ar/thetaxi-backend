@@ -242,9 +242,28 @@
     }
 
     .rate-unavailable {
-        color: #dc3545;
+        color: #BF2629;
         font-weight: 500;
         font-size: 0.95rem;
+    }
+
+    .rate-quotation-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: #fff7ed;
+        color: #b45309;
+        font-weight: 700;
+        font-size: 0.9rem;
+        text-decoration: none;
+        border: 1px solid #fed7aa;
+    }
+
+    .rate-quotation-link:hover {
+        background: #ffedd5;
+        color: #92400e;
     }
 
     .info-badge {
@@ -555,7 +574,9 @@
                                     <div class="rate-per-day">per day</div>
                                 @else
                                     <div class="rate-unavailable">
-                                        <i class="bi bi-dash-circle"></i> Contact Us
+                                        <a href="{{ route('inquiry') }}" class="rate-quotation-link">
+                                            <i class="bi bi-calculator"></i> Request Quotation
+                                        </a>
                                     </div>
                                 @endif
                             </td>
@@ -573,7 +594,9 @@
                                     </div>
                                 @else
                                     <div class="rate-unavailable">
-                                        <i class="bi bi-dash-circle"></i> Contact Us
+                                        <a href="{{ route('inquiry') }}" class="rate-quotation-link">
+                                            <i class="bi bi-calculator"></i> Request Quotation
+                                        </a>
                                     </div>
                                 @endif
                             </td>
@@ -587,7 +610,9 @@
                                     <div class="rate-per-day">per km</div>
                                 @else
                                     <div class="rate-unavailable">
-                                        <i class="bi bi-dash-circle"></i> Contact Us
+                                        <a href="{{ route('inquiry') }}" class="rate-quotation-link">
+                                            <i class="bi bi-calculator"></i> Request Quotation
+                                        </a>
                                     </div>
                                 @endif
                             </td>
@@ -686,7 +711,9 @@
                                 <div class="rate-per-day">per day</div>
                             @else
                                 <div class="rate-unavailable">
-                                    <i class="bi bi-dash-circle"></i> Contact Us
+                                    <a href="{{ route('inquiry') }}" class="rate-quotation-link">
+                                        <i class="bi bi-calculator"></i> Request Quotation
+                                    </a>
                                 </div>
                             @endif
                         </div>
@@ -704,7 +731,9 @@
                                 </div>
                             @else
                                 <div class="rate-unavailable">
-                                    <i class="bi bi-dash-circle"></i> Contact Us
+                                    <a href="{{ route('inquiry') }}" class="rate-quotation-link">
+                                        <i class="bi bi-calculator"></i> Request Quotation
+                                    </a>
                                 </div>
                             @endif
                         </div>
@@ -718,7 +747,9 @@
                                 <div class="rate-per-day">per km</div>
                             @else
                                 <div class="rate-unavailable">
-                                    <i class="bi bi-dash-circle"></i> Contact Us
+                                    <a href="{{ route('inquiry') }}" class="rate-quotation-link">
+                                        <i class="bi bi-calculator"></i> Request Quotation
+                                    </a>
                                 </div>
                             @endif
                         </div>
