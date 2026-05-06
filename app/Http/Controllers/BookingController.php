@@ -2359,14 +2359,14 @@ class BookingController extends Controller
             // Create the inquiry. Some deployed databases may not have the optional
             // quotation columns yet, so fall back to the stable base columns.
             try {
-                $inquiry = \App\Models\Inquiry::create($inquiryData);
+                $inquiry = $this->createQuotationInquiryWithRetry($inquiryData);
             } catch (\Throwable $createException) {
                 Log::warning('Quotation inquiry create failed with optional columns; retrying base payload', [
                     'error' => $createException->getMessage(),
                     'columns' => array_keys($inquiryData),
                 ]);
 
-                $inquiry = \App\Models\Inquiry::create($baseInquiryData);
+                $inquiry = $this->createQuotationInquiryWithRetry($baseInquiryData);
             }
 
             // Trigger email notifications
@@ -2469,6 +2469,36 @@ class BookingController extends Controller
         $message .= "\nSubmitted: " . now()->format('Y-m-d H:i:s') . "\n";
 
         return $message;
+    }
+
+    /**
+     * Create a quotation inquiry and recover from rare inquiry_number collisions.
+     */
+    private function createQuotationInquiryWithRetry(array $inquiryData): \App\Models\Inquiry
+    {
+        $lastException = null;
+
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            try {
+                unset($inquiryData['inquiry_number']);
+
+                return \App\Models\Inquiry::create($inquiryData);
+            } catch (\Illuminate\Database\QueryException $exception) {
+                $lastException = $exception;
+                $message = $exception->getMessage();
+
+                if (!str_contains($message, 'inquiries_inquiry_number_unique') && !str_contains($message, 'inquiry_number')) {
+                    throw $exception;
+                }
+
+                Log::warning('Inquiry number collision while creating quotation inquiry; retrying', [
+                    'attempt' => $attempt + 1,
+                    'error' => $message,
+                ]);
+            }
+        }
+
+        throw $lastException ?? new \RuntimeException('Unable to create quotation inquiry.');
     }
 
     /**

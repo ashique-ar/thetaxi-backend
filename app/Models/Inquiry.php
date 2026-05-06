@@ -125,18 +125,18 @@ class Inquiry extends BaseModel
     {
         $prefix = 'INQ';
 
-        $last = static::where('inquiry_number', 'like', $prefix . '%')
-            ->orderByDesc('created_at')
-            ->first();
+        $max = static::withTrashed()
+            ->where('inquiry_number', 'like', $prefix . '%')
+            ->pluck('inquiry_number')
+            ->reduce(function (int $carry, ?string $number) {
+                if ($number && preg_match('/(\d{1,})$/', $number, $matches)) {
+                    return max($carry, (int) $matches[1]);
+                }
 
-        $next = 1;
+                return $carry;
+            }, 0);
 
-        if ($last && preg_match('/(\d{1,})$/', $last->inquiry_number, $m)) {
-            $next = intval($m[1]) + 1;
-        } else {
-            $count = static::where('inquiry_number', 'like', $prefix . '%')->count();
-            $next = $count + 1;
-        }
+        $next = $max + 1;
 
         return $prefix . str_pad($next, 6, '0', STR_PAD_LEFT);
     }
