@@ -14,7 +14,7 @@ return new class extends Migration {
         Schema::create('vehicle_pricing_history', function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->uuid('vehicle_group_id');
-            $table->uuid('service_type_id');
+            $table->uuid('service_type_id')->nullable();
             $table->uuid('pricing_slab_definition_id')->nullable();
             
             $table->uuid('common_rate_definition_id')->nullable();
@@ -30,7 +30,7 @@ return new class extends Migration {
             $table->text('change_reason')->nullable();
             $table->json('old_pricing_data')->nullable(); // Store complete old pricing structure
             $table->json('new_pricing_data')->nullable(); // Store complete new pricing structure
-            $table->uuid('changed_by'); // User who made the change
+            $table->uuid('changed_by')->nullable(); // User who made the change
             $table->timestamp('changed_at');
             $table->uuid('created_user_id')->nullable()->index();
             $table->uuid('updated_user_id')->nullable()->index();

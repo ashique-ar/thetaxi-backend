@@ -363,7 +363,7 @@ class VehicleGroupPricingController extends Controller
             $userId = auth()->id();
 
             // Process slab pricing
-            foreach ($request->service_pricing as $serviceData) {
+            foreach ($request->input('service_pricing', []) as $serviceData) {
                 foreach ($serviceData['slabs'] as $slabData) {
                     // Set defaults
                     $data = array_merge($slabData, [
@@ -436,10 +436,12 @@ class VehicleGroupPricingController extends Controller
             // Process common rates if provided
             if ($request->has('common_rates') && is_array($request->common_rates)) {
                 foreach ($request->common_rates as $commonRateData) {
+                    $commonRateServiceTypeId = $commonRateData['service_type_id'] ?? null;
                     $data = array_merge($commonRateData, [
                         'vehicle_group_id' => $vehicleGroupId,
                         'is_active' => $commonRateData['is_active'] ?? true,
                     ]);
+                    unset($data['service_type_id']);
 
                     $existingCommonRate = VehicleGroupCommonRatePricing::forVehicleGroup($vehicleGroupId)
                         ->forCommonRate($commonRateData['common_rate_definition_id'])
@@ -457,7 +459,7 @@ class VehicleGroupPricingController extends Controller
                             // Create history record for common rate change
                             $historyRecord = VehiclePricingHistory::createHistoryRecord([
                                 'vehicle_group_id' => $vehicleGroupId,
-                                'service_type_id' => $commonRateData['service_type_id'] ?? null,
+                                'service_type_id' => $commonRateServiceTypeId,
                                 'record_type' => 'common_rate_pricing',
                                 'common_rate_definition_id' => $commonRateData['common_rate_definition_id'],
                                 'old_rate' => $oldValue ?? 0,
@@ -480,7 +482,7 @@ class VehicleGroupPricingController extends Controller
                         // Create history record for new common rate
                         $historyRecord = VehiclePricingHistory::createHistoryRecord([
                             'vehicle_group_id' => $vehicleGroupId,
-                            'service_type_id' => $commonRateData['service_type_id'] ?? null,
+                            'service_type_id' => $commonRateServiceTypeId,
                             'record_type' => 'common_rate_pricing',
                             'common_rate_definition_id' => $commonRateData['common_rate_definition_id'],
                             'old_rate' => 0,
