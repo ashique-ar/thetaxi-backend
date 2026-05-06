@@ -2260,7 +2260,7 @@ class BookingController extends Controller
                 'customer_name' => 'required|string|max:255',
                 'customer_email' => 'required|email|max:255',
                 'customer_phone' => 'required|string|max:20',
-                'phone_country' => 'nullable|string|size:2',
+                'phone_country' => 'nullable|string|max:10',
                 'phone_country_code' => 'nullable|string|max:10',
                 'phone_international' => 'nullable|string|max:20',
                 'service_type' => 'required|string',

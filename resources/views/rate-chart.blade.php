@@ -2,12 +2,17 @@
 
 @section('title', 'Vehicle Rate Chart - Daily & Monthly Rental Rates')
 
+@php
+    $quotationCountries = $countries ?? \App\Models\Country::orderBy('name')->get(['id', 'name', 'code', 'callcode']);
+@endphp
+
 @push('meta')
 <meta name="description" content="View our comprehensive vehicle rental rate chart with daily and monthly pricing for all vehicle categories in Sri Lanka.">
 @endpush
 
 @push('styles')
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/intl-tel-input@17/build/css/intlTelInput.css">
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
 <style>
     #requestQuotationModal .iti {
         width: 100%;
@@ -893,14 +898,16 @@
                         <div class="col-md-6">
                             <label class="form-label">Country *</label>
                             <select class="form-select quotation-phone-country-select" name="phone_country" required>
-                                <option value="lk" selected>Sri Lanka</option>
-                                <option value="in">India</option>
-                                <option value="us">United States</option>
-                                <option value="gb">United Kingdom</option>
-                                <option value="ca">Canada</option>
-                                <option value="au">Australia</option>
-                                <option value="ae">United Arab Emirates</option>
-                                <option value="sg">Singapore</option>
+                                <option value="">Select Country</option>
+                                @foreach ($quotationCountries as $country)
+                                    <option value="{{ strtolower($country->code ?? '') }}"
+                                        {{ strtolower($country->code ?? '') === 'lk' ? 'selected' : '' }}>
+                                        {{ $country->name }}
+                                        @if ($country->callcode)
+                                            (+{{ $country->callcode }})
+                                        @endif
+                                    </option>
+                                @endforeach
                             </select>
                         </div>
                         <div class="col-md-6">
@@ -938,6 +945,7 @@
 
 @push('scripts')
 <script src="https://cdn.jsdelivr.net/npm/intl-tel-input@17/build/js/intlTelInput.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script>
     (function () {
         function showRateChartNotification(type, message) {
@@ -965,6 +973,15 @@
         const quotationPhoneCountrySelect = document.querySelector('#quotationRequestForm .quotation-phone-country-select');
         let quotationPhoneIti = null;
 
+        if (quotationPhoneCountrySelect && $.fn.select2) {
+            $(quotationPhoneCountrySelect).select2({
+                placeholder: 'Select Country',
+                allowClear: true,
+                width: '100%',
+                dropdownParent: $('#requestQuotationModal')
+            });
+        }
+
         if (quotationPhoneInput && typeof window.intlTelInput === 'function') {
             quotationPhoneIti = window.intlTelInput(quotationPhoneInput, {
                 initialCountry: quotationPhoneCountrySelect ? quotationPhoneCountrySelect.value : 'lk',
@@ -983,7 +1000,7 @@
             });
 
             if (quotationPhoneCountrySelect) {
-                quotationPhoneCountrySelect.addEventListener('change', function () {
+                $(quotationPhoneCountrySelect).on('change', function () {
                     quotationPhoneIti.setCountry(this.value);
                 });
             }
