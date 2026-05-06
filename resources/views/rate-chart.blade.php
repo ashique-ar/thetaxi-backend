@@ -874,6 +874,12 @@
                 <div class="modal-body">
                     <input type="hidden" name="vehicle_group_id" id="quotation_vehicle_group_id">
                     <input type="hidden" name="service_type" id="quotation_service_type" value="day_rental">
+                    <input type="hidden" name="pickup_location" id="quotation_pickup_location">
+                    <input type="hidden" name="dropoff_location" id="quotation_dropoff_location">
+                    <input type="hidden" name="travel_date" id="quotation_travel_date">
+                    <input type="hidden" name="travel_time" id="quotation_travel_time">
+                    <input type="hidden" name="return_date" id="quotation_return_date">
+                    <input type="hidden" name="return_time" id="quotation_return_time">
 
                     <div class="alert alert-info mb-4">
                         <i class="bi bi-info-circle"></i>
@@ -967,6 +973,12 @@
             $('#quotation_vehicle_group_id').val($btn.data('group-id'));
             $('#quotation_vehicle_name').text($btn.data('group-name'));
             $('#quotation_service_type').val($btn.data('service-type') || 'day_rental');
+            $('#quotation_pickup_location').val('');
+            $('#quotation_dropoff_location').val('');
+            $('#quotation_travel_date').val('');
+            $('#quotation_travel_time').val('');
+            $('#quotation_return_date').val('');
+            $('#quotation_return_time').val('');
         });
 
         const quotationPhoneInput = document.querySelector('#quotationRequestForm .quotation-phone-input');

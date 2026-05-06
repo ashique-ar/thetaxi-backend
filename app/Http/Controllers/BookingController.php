@@ -2320,7 +2320,7 @@ class BookingController extends Controller
             $vehicleGroup = VehicleGroup::findOrFail($request->vehicle_group_id);
 
             // Create inquiry with enhanced context
-            $inquiryData = [
+            $baseInquiryData = [
                 'name' => $request->customer_name,
                 'email' => $request->customer_email,
                 'phone' => $request->customer_phone,
@@ -2339,6 +2339,8 @@ class BookingController extends Controller
                 ],
             ];
 
+            $inquiryData = $baseInquiryData;
+
             $optionalInquiryData = [
                 'vehicle_group_id' => $request->vehicle_group_id,
                 'company_name' => $request->company_name,
@@ -2354,8 +2356,18 @@ class BookingController extends Controller
                 }
             }
 
-            // Create the inquiry
-            $inquiry = \App\Models\Inquiry::create($inquiryData);
+            // Create the inquiry. Some deployed databases may not have the optional
+            // quotation columns yet, so fall back to the stable base columns.
+            try {
+                $inquiry = \App\Models\Inquiry::create($inquiryData);
+            } catch (\Throwable $createException) {
+                Log::warning('Quotation inquiry create failed with optional columns; retrying base payload', [
+                    'error' => $createException->getMessage(),
+                    'columns' => array_keys($inquiryData),
+                ]);
+
+                $inquiry = \App\Models\Inquiry::create($baseInquiryData);
+            }
 
             // Trigger email notifications
             $this->sendQuotationRequestEmails($inquiry, $request->all(), $vehicleGroup);
