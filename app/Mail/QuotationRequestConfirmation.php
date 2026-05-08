@@ -54,8 +54,8 @@ class QuotationRequestConfirmation extends Mailable
                 'customerName' => $this->requestData['customer_name'] ?? 'Dear Customer',
                 'inquiryNumber' => $this->inquiry->inquiry_number ?? $this->inquiry->id,
                 'estimatedResponseTime' => '2 business hours',
-                'supportEmail' => config('mail.support_email', 'support@thetaxi.lk'),
-                'supportPhone' => config('app.support_phone', '+94 11 2345678'),
+                'supportEmail' => config('mail.support_email', 'info@thetaxi.lk'),
+                'supportPhone' => config('app.support_phone', '+94 71 1 615 615'),
             ]
         );
     }
