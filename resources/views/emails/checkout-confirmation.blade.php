@@ -194,16 +194,24 @@
                 <td>{{ $currencySymbol }} {{ number_format($booking->total_estimated, 2) }}</td>
             </tr>
             @if ($booking->payment_type === 'advance')
+                @php
+                    $actualAmountPaid = $booking->amount_to_pay ?? 0;
+                    $actualPercentagePaid = $booking->total_estimated > 0
+                        ? round(($actualAmountPaid / $booking->total_estimated) * 100, 2)
+                        : 0;
+                @endphp
                 <tr style="background: #eff6ff;">
-                    <td><strong>Amount Paid ({{ $advancePercentage }}%)</strong></td>
-                    <td><strong>{{ $currencySymbol }} {{ number_format($booking->amount_to_pay ?? 0, 2) }}</strong></td>
+                    <td><strong>Amount Paid ({{ $actualPercentagePaid }}%)</strong></td>
+                    <td><strong>{{ $currencySymbol }} {{ number_format($actualAmountPaid, 2) }}</strong></td>
                 </tr>
-                <tr style="background: #eff6ff;">
-                    <td>Balance Due at Pickup</td>
-                    <td>{{ $currencySymbol }}
-                        {{ number_format($booking->total_estimated - ($booking->amount_to_pay ?? 0), 2) }}
-                    </td>
-                </tr>
+                @if($actualPercentagePaid < 100)
+                    <tr style="background: #eff6ff;">
+                        <td>Balance Due at Pickup</td>
+                        <td>{{ $currencySymbol }}
+                            {{ number_format($booking->total_estimated - $actualAmountPaid, 2) }}
+                        </td>
+                    </tr>
+                @endif
             @elseif($booking->payment_type === 'checkin')
                 <tr style="background: #fff7ed;">
                     <td><strong>Amount Due at Check-in</strong></td>
@@ -367,19 +375,30 @@
                     confirm your booking</p>
             </div>
         @elseif($booking->payment_type === 'advance' && $booking->payment_status === 'paid')
+            @php
+                $actualAmountPaid = $booking->amount_to_pay ?? 0;
+                $actualPercentagePaid = $booking->total_estimated > 0
+                    ? round(($actualAmountPaid / $booking->total_estimated) * 100, 2)
+                    : 0;
+            @endphp
             <div class="highlight-box success">
                 <h3>✓ Your Booking is Confirmed!</h3>
                    <p>Your payment has been successfully processed and your vehicle will be prepared and ready for pickup on
                     <strong>{{ \Carbon\Carbon::parse($booking->from_date)->format('F d, Y \a\t g:i A') }}</strong>.
-                </p>  
-                <p>Driver Details will be shared with you before 3 hours of pickup time.
-                </p>           
-                <p>You have successfully paid {{ $advancePercentage }}% advance
-                    ({{ $currencySymbol }} {{ number_format($booking->amount_to_pay ?? 0, 2) }}).</p>
-                <p><strong>Balance Due at Pickup:</strong>
-                    {{ $currencySymbol }}
-                    {{ number_format($booking->total_estimated - ($booking->amount_to_pay ?? 0), 2) }}
                 </p>
+                <p>Driver Details will be shared with you before 3 hours of pickup time.
+                </p>
+                @if($actualPercentagePaid >= 100)
+                    <p>You have successfully paid the <strong>full amount</strong>
+                        ({{ $currencySymbol }} {{ number_format($actualAmountPaid, 2) }}).</p>
+                @else
+                    <p>You have successfully paid {{ $actualPercentagePaid }}% advance
+                        ({{ $currencySymbol }} {{ number_format($actualAmountPaid, 2) }}).</p>
+                    <p><strong>Balance Due at Pickup:</strong>
+                        {{ $currencySymbol }}
+                        {{ number_format($booking->total_estimated - $actualAmountPaid, 2) }}
+                    </p>
+                @endif
             </div>
         @elseif($booking->payment_type === 'checkin')
             <div class="highlight-box success">
