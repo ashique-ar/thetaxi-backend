@@ -148,14 +148,15 @@ class GenerateSitemapAndPing extends Command
 
                         if ($notify && !empty($notifyEmail)) {
                             try {
-                                $pending = Mail::to($notifyEmail);
+                                $toRecipients = [$notifyEmail];
                                 $fromAddress = config('mail.from.address');
 
                                 if (!app()->environment('local', 'testing') && !empty($fromAddress)) {
-                                    $pending->cc($fromAddress);
+                                    $toRecipients[] = $fromAddress;
                                 }
 
-                                $pending->send(new \App\Mail\SitemapPingFailed($failureDetails));
+                                Mail::to(array_values(array_unique(array_filter($toRecipients))))
+                                    ->send(new \App\Mail\SitemapPingFailed($failureDetails));
                                 $this->info("Notification sent to {$notifyEmail}");
                             } catch (\Throwable $e) {
                                 Log::error('Failed to send sitemap failure notification: ' . $e->getMessage(), ['exception' => $e]);

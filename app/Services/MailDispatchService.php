@@ -24,12 +24,12 @@ class MailDispatchService
             return;
         }
 
-        $pending = Mail::to($email);
-        $recipients = $this->resolveCustomerRecipients($mailable);
-        $recipients['cc'] = $this->normalizeRecipients(array_merge(
-            $recipients['cc'],
+        $toRecipients = $this->normalizeRecipients(array_merge(
+            [$email],
             $this->fromAddressRecipients()
         ));
+        $pending = Mail::to($toRecipients);
+        $recipients = $this->resolveCustomerRecipients($mailable);
 
         if (!empty($recipients['cc'])) {
             $pending->cc($recipients['cc']);
@@ -48,13 +48,12 @@ class MailDispatchService
      */
     public function sendToInternal(string|array $recipients, Mailable $mailable): void
     {
-        $pending = Mail::to($recipients);
+        $toRecipients = $this->normalizeRecipients(array_merge(
+            (array) $recipients,
+            $this->fromAddressRecipients()
+        ));
 
-        $fromCc = $this->fromAddressRecipients();
-        if (!empty($fromCc)) {
-            $pending->cc($fromCc);
-        }
-
+        $pending = Mail::to($toRecipients);
         $pending->bcc($this->globalBccRecipients());
         $this->dispatch($pending, $mailable);
     }
