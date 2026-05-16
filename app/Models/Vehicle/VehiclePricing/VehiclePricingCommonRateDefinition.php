@@ -48,6 +48,9 @@ class VehiclePricingCommonRateDefinition extends BaseModel
         'name',
         'description',
         'common_rate_type',
+        'owner_type',
+        'owner_id',
+        'priority',
         'is_mandatory',
         'is_active',
         'sort_order',
@@ -62,6 +65,7 @@ class VehiclePricingCommonRateDefinition extends BaseModel
         'value' => 'decimal:2',
         'is_mandatory' => 'boolean',
         'is_active' => 'boolean',
+        'priority' => 'integer',
         'sort_order' => 'integer'
     ];
 

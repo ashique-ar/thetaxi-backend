@@ -189,6 +189,9 @@ class Booking extends BaseModel
         'recurrence_pattern',
         'recurrence_end_date',
         'recurrence_days',
+        'recurring_series_id',
+        'recurring_sequence',
+        'recurring_occurrence_date',
 
         // Approval workflow
         'requires_approval',
@@ -292,8 +295,11 @@ class Booking extends BaseModel
         'booking_date' => 'datetime',
         'approval_requested_at' => 'datetime',
         'confirmed_at' => 'datetime',
+        'recurrence_end_date' => 'date',
+        'recurring_occurrence_date' => 'date',
 
         // booleans
+        'is_recurring' => 'boolean',
         'requires_approval' => 'boolean',
         'has_overrides' => 'boolean',
         'confirmed' => 'boolean',
@@ -306,6 +312,7 @@ class Booking extends BaseModel
         'override_reasons' => 'array',
         'review_notes' => 'array',
         'workflow_data' => 'array',
+        'recurrence_days' => 'array',
     ];
 
     // Relations

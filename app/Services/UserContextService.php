@@ -669,12 +669,6 @@ class UserContextService
             return true;
         }
 
-        foreach (self::INTERNAL_PERMISSION_HINTS as $permission) {
-            if ($user->can($permission)) {
-                return true;
-            }
-        }
-
         return false;
     }
 

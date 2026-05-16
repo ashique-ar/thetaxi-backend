@@ -4,6 +4,7 @@ namespace App\Models\Corporate;
 
 use App\Models\BaseModel;
 use App\Models\Booking\Booking;
+use App\Models\Service\ServiceType;
 use App\Models\Vehicle\VehicleGroup;
 
 class Corporate extends BaseModel
@@ -45,9 +46,11 @@ class Corporate extends BaseModel
             ->withInactive();
     }
 
-    public function rateCharts()
+    public function serviceTypes()
     {
-        return $this->hasMany(CorporateRateChart::class, 'corporate_id');
+        return $this->belongsToMany(ServiceType::class, 'corporate_service_types', 'corporate_id', 'service_type_id')
+            ->wherePivot('is_active', true)
+            ->withTimestamps();
     }
 
     public function employees()

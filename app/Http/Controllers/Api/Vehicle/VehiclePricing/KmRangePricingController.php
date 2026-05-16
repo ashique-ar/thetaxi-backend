@@ -27,6 +27,8 @@ class KmRangePricingController extends Controller
             'scope' => 'in:global,service,vehicle_group',
             'service_type_id' => 'uuid|exists:service_types,id',
             'vehicle_group_id' => 'uuid|exists:vehicle_groups,id',
+            'owner_type' => 'nullable|string|in:corporate',
+            'owner_id' => 'nullable|uuid|exists:corporates,id|required_with:owner_type',
             'is_active' => 'boolean',
             'sort_by' => 'in:name,created_at,priority,from_km,to_km',
             'sort_direction' => 'in:asc,desc',
@@ -61,6 +63,13 @@ class KmRangePricingController extends Controller
 
             if ($request->filled('vehicle_group_id')) {
                 $query->where('vehicle_group_id', $request->vehicle_group_id);
+            }
+
+            if ($request->filled('owner_type')) {
+                $query->where('owner_type', $request->owner_type)
+                    ->where('owner_id', $request->owner_id);
+            } elseif ($request->boolean('global_only', false)) {
+                $query->whereNull('owner_type')->whereNull('owner_id');
             }
 
             // Only apply is_active filter if explicitly set (not empty or 'all')

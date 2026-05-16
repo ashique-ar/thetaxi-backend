@@ -1507,11 +1507,26 @@ class BookingFlowController extends Controller
 
     public function getCorporateEmployees(Request $request, string $corporateId): JsonResponse
     {
+        $user = $request->user();
+        $ownCorporateEmployee = CorporateEmployee::query()
+            ->where('corporate_id', $corporateId)
+            ->where('user_id', $user?->id)
+            ->where('is_active', true)
+            ->first();
+
         $query = CorporateEmployee::query()
             ->where('corporate_id', $corporateId)
             ->where('is_active', true)
             ->with(['user', 'department', 'division'])
             ->orderBy('created_at');
+
+        if (
+            $ownCorporateEmployee
+            && !$user->can('create_bookings_for_others')
+            && !$user->can('corporates.manage')
+        ) {
+            $query->where('id', $ownCorporateEmployee->id);
+        }
 
         if ($request->filled('search')) {
             $query->whereHas('user', function ($userQuery) use ($request) {
@@ -1927,6 +1942,43 @@ class BookingFlowController extends Controller
             return response()->json([
                 'status' => 'error',
                 'message' => 'Failed to delete booking',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function cancelRecurringBooking(Request $request, string $bookingId): JsonResponse
+    {
+        $validated = $request->validate([
+            'scope' => ['required', 'string', Rule::in(['single', 'future'])],
+            'reason' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        try {
+            $result = $this->bookingFlowService->cancelRecurringBooking(
+                $bookingId,
+                $validated['scope'],
+                Auth::id(),
+                $validated['reason'] ?? null
+            );
+
+            return response()->json([
+                'status' => 'success',
+                'data' => $result,
+                'message' => $validated['scope'] === 'future'
+                    ? 'Future recurring bookings cancelled successfully'
+                    : 'Recurring occurrence cancelled successfully',
+            ]);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Booking not found'
+            ], 404);
+        } catch (\Exception $e) {
+            Log::error('Error cancelling recurring booking: ' . $e->getMessage());
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to cancel recurring booking',
                 'error' => $e->getMessage()
             ], 500);
         }

@@ -26,7 +26,8 @@ class CorporateBookingController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $filters = $request->only(['status', 'department_id', 'division_id', 'date_from', 'date_to']);
+        $filters = $request->only(['status', 'department_id', 'division_id', 'date_from', 'date_to', 'search', 'page', 'per_page']);
+        $filters['can_view_payments'] = $this->canViewPayments($request);
 
         $bookings = $this->bookingService->getBookingsForCorporate(
             $request->corporate_id,
@@ -35,20 +36,38 @@ class CorporateBookingController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'data'   => ['bookings' => $bookings],
+            'data'   => $bookings->items(),
+            'meta'   => [
+                'current_page' => $bookings->currentPage(),
+                'per_page' => $bookings->perPage(),
+                'total' => $bookings->total(),
+                'last_page' => $bookings->lastPage(),
+            ],
         ]);
     }
 
     public function store(StoreCorporateBookingRequest $request): JsonResponse
     {
         $employee = $request->attributes->get('corporate_employee');
+        $selectedEmployeeId = $request->validated('employee_id');
+
+        if (
+            $selectedEmployeeId
+            && $selectedEmployeeId !== $employee->id
+            && !$request->user()->can('create_bookings_for_others')
+        ) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'You can only create bookings for yourself.',
+            ], 403);
+        }
 
         $booking = $this->bookingService->createBooking($employee, $request->validated());
 
         return response()->json([
             'status'  => 'success',
             'message' => 'Booking created successfully',
-            'data'    => ['booking' => $booking],
+            'data'    => $this->bookingService->getCorporateBookingDetails($booking, $this->canViewPayments($request)),
         ], 201);
     }
 
@@ -73,7 +92,7 @@ class CorporateBookingController extends Controller
         return response()->json([
             'status'  => 'success',
             'message' => 'Booking created for employee successfully',
-            'data'    => ['booking' => $booking],
+            'data'    => $this->bookingService->getCorporateBookingDetails($booking, $this->canViewPayments($request)),
         ], 201);
     }
 
@@ -96,14 +115,51 @@ class CorporateBookingController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'data'   => ['booking' => $booking],
+            'data'   => $this->bookingService->getCorporateBookingDetails($booking, $this->canViewPayments($request)),
+        ]);
+    }
+
+    public function cancelRecurring(Request $request, string $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'scope' => ['required', 'string', 'in:single,future'],
+            'reason' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $booking = Booking::where('corporate_account_id', $request->corporate_id)
+            ->findOrFail($id);
+
+        $employee = $request->attributes->get('corporate_employee');
+        $user = $request->user();
+
+        if (!$user->can('view_all_bookings') && $booking->employee_id !== $employee->user_id) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'You do not have permission to cancel this booking.',
+            ], 403);
+        }
+
+        $result = $this->bookingService->cancelRecurringBooking(
+            $booking,
+            $validated['scope'],
+            (string) $user->id,
+            $validated['reason'] ?? null
+        );
+
+        return response()->json([
+            'status' => 'success',
+            'message' => $validated['scope'] === 'future'
+                ? 'Future recurring bookings cancelled successfully'
+                : 'Recurring occurrence cancelled successfully',
+            'data' => $result,
         ]);
     }
 
     public function myBookings(Request $request): JsonResponse
     {
         $employee = $request->attributes->get('corporate_employee');
-        $filters = $request->only(['status', 'date_from', 'date_to']);
+        $filters = $request->only(['status', 'date_from', 'date_to', 'search', 'page', 'per_page']);
+        $filters['can_view_payments'] = $this->canViewPayments($request);
 
         $bookings = $this->bookingService->getBookingsForEmployee(
             $employee->user_id,
@@ -112,7 +168,13 @@ class CorporateBookingController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'data'   => ['bookings' => $bookings],
+            'data'   => $bookings->items(),
+            'meta'   => [
+                'current_page' => $bookings->currentPage(),
+                'per_page' => $bookings->perPage(),
+                'total' => $bookings->total(),
+                'last_page' => $bookings->lastPage(),
+            ],
         ]);
     }
 
@@ -144,5 +206,15 @@ class CorporateBookingController extends Controller
             'status' => 'success',
             'data'   => ['stats' => $stats],
         ]);
+    }
+
+    private function canViewPayments(Request $request): bool
+    {
+        $user = $request->user();
+        $employee = $request->attributes->get('corporate_employee');
+        $corporate = $employee?->corporate;
+
+        return $user->can('view_payments')
+            || ($user->can('create_bookings_for_others') && (bool) $corporate?->coordinator_can_view_payments);
     }
 }

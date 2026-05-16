@@ -38,6 +38,9 @@ class VehiclePricingSlabDefinition extends BaseModel
         'max_km_per_day',
         'max_km_per_package',
         'sort_order',
+        'owner_type',
+        'owner_id',
+        'priority',
     ];
 
     /**
@@ -53,6 +56,7 @@ class VehiclePricingSlabDefinition extends BaseModel
         'max_km_per_day' => 'integer',
         'max_km_per_package' => 'integer',
         'sort_order' => 'integer',
+        'priority' => 'integer',
     ];
 
     /**
@@ -86,6 +90,19 @@ class VehiclePricingSlabDefinition extends BaseModel
     public function scopeForServiceType($query, $serviceTypeId)
     {
         return $query->where('service_type_id', $serviceTypeId);
+    }
+
+    public function scopeForOwner($query, ?string $ownerType, ?string $ownerId)
+    {
+        if ($ownerType && $ownerId) {
+            return $query->where(function ($q) use ($ownerType, $ownerId) {
+                $q->where(function ($scoped) use ($ownerType, $ownerId) {
+                    $scoped->where('owner_type', $ownerType)->where('owner_id', $ownerId);
+                })->orWhereNull('owner_type');
+            });
+        }
+
+        return $query->whereNull('owner_type')->whereNull('owner_id');
     }
 
     /**

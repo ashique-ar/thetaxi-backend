@@ -34,6 +34,9 @@ class VehicleGroupPricing extends BaseModel
         'minimum_charge',
         'includes_fuel',
         'includes_driver',
+        'owner_type',
+        'owner_id',
+        'priority',
     ];
 
     /**
@@ -47,6 +50,7 @@ class VehicleGroupPricing extends BaseModel
         'includes_fuel' => 'boolean',
         'includes_driver' => 'boolean',
         'is_active' => 'boolean',
+        'priority' => 'integer',
     ];
 
     /**
@@ -96,6 +100,19 @@ class VehicleGroupPricing extends BaseModel
     public function scopeForSlabDefinition($query, $slabDefinitionId)
     {
         return $query->where('slab_definition_id', $slabDefinitionId);
+    }
+
+    public function scopeForOwner($query, ?string $ownerType, ?string $ownerId)
+    {
+        if ($ownerType && $ownerId) {
+            return $query->where(function ($q) use ($ownerType, $ownerId) {
+                $q->where(function ($scoped) use ($ownerType, $ownerId) {
+                    $scoped->where('owner_type', $ownerType)->where('owner_id', $ownerId);
+                })->orWhereNull('owner_type');
+            });
+        }
+
+        return $query->whereNull('owner_type')->whereNull('owner_id');
     }
 
 

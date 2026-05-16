@@ -18,7 +18,7 @@ class CorporateApprovalService
      * Approve a corporate booking.
      *
      * Verifies the booking is in pending_approval status, updates the
-     * BookingApproval record, transitions the booking to confirmed,
+     * BookingApproval record, transitions the booking to approved,
      * and logs an audit entry.
      */
     public function approveBooking(string $bookingId, string $approverId, string $corporateId, ?string $comments = null): Booking
@@ -40,8 +40,18 @@ class CorporateApprovalService
                 $approval->approve($approverId, $comments);
             }
 
-            // Transition booking to confirmed
-            $booking->applyApprovalDecision('approved', $approverId, $comments);
+            $booking->forceFill([
+                'status' => 'approved',
+                'confirmed' => false,
+                'confirmed_at' => null,
+                'requires_approval' => false,
+                'approval_status' => 'approved',
+                'approval_by' => $approverId,
+                'approval_at' => now(),
+                'approval_note' => $comments,
+                'workflow_step' => 'approved',
+                'updated_user_id' => $approverId,
+            ])->save();
 
             $this->logAudit('corporate_booking_approved', 'Booking', $bookingId, [
                 'corporate_id' => $booking->corporate_account_id,

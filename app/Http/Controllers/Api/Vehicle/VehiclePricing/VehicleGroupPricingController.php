@@ -28,6 +28,91 @@ class VehicleGroupPricingController extends Controller
         $this->middleware('permission:vehicle-group-pricing.manage')->only(['syncCommonRates', 'exportPricing', 'importPricing']);
     }
 
+    public function index(Request $request): JsonResponse
+    {
+        $query = VehicleGroupPricing::with(['slabDefinition.serviceType', 'vehicleGroup']);
+
+        if ($request->filled('service_type_id')) {
+            $query->whereHas('slabDefinition', fn ($q) => $q->where('service_type_id', $request->service_type_id));
+        }
+
+        if ($request->filled('vehicle_group_id')) {
+            $query->where('vehicle_group_id', $request->vehicle_group_id);
+        }
+
+        if ($request->filled('context')) {
+            $query->whereHas('slabDefinition.serviceType', fn ($q) => $q->where('context', $request->context));
+        }
+
+        if ($request->filled('owner_type')) {
+            $query->where('owner_type', $request->owner_type)->where('owner_id', $request->owner_id);
+        } elseif ($request->boolean('global_only', false)) {
+            $query->whereNull('owner_type')->whereNull('owner_id');
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $query->orderByDesc('priority')->paginate($request->input('per_page', 25)),
+        ]);
+    }
+
+    public function store(Request $request): JsonResponse
+    {
+        $data = $this->validateVehicleGroupPricing($request);
+        $pricing = VehicleGroupPricing::create($data);
+
+        return response()->json([
+            'success' => true,
+            'data' => $pricing->load(['slabDefinition.serviceType', 'vehicleGroup']),
+            'message' => 'Vehicle group pricing created successfully',
+        ], 201);
+    }
+
+    public function show(string $id): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'data' => VehicleGroupPricing::with(['slabDefinition.serviceType', 'vehicleGroup'])->findOrFail($id),
+        ]);
+    }
+
+    public function update(Request $request, string $id): JsonResponse
+    {
+        $pricing = VehicleGroupPricing::findOrFail($id);
+        $pricing->update($this->validateVehicleGroupPricing($request, true));
+
+        return response()->json([
+            'success' => true,
+            'data' => $pricing->fresh(['slabDefinition.serviceType', 'vehicleGroup']),
+            'message' => 'Vehicle group pricing updated successfully',
+        ]);
+    }
+
+    public function destroy(string $id): JsonResponse
+    {
+        VehicleGroupPricing::findOrFail($id)->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Vehicle group pricing deleted successfully',
+        ]);
+    }
+
+    public function bulkStore(Request $request): JsonResponse
+    {
+        return $this->bulkSavePricing($request);
+    }
+
+    public function matrix(Request $request): JsonResponse
+    {
+        return $this->getPricingMatrix($request);
+    }
+
+    public function bulkUpdate(Request $request): JsonResponse
+    {
+        return $this->bulkSavePricing($request);
+    }
+
     /**
      * Get unified pricing data for the frontend matrix view with pagination support.
      * Optimized version with better performance, caching, and pagination for vehicle groups.
@@ -129,8 +214,13 @@ class VehicleGroupPricingController extends Controller
             $allSlabDefinitions = VehiclePricingSlabDefinition::query()
                 ->with(['serviceType:id,name'])
                 ->whereIn('service_type_id', $serviceTypeIds)
+                ->when($ownerType && $ownerId, function ($q) use ($ownerType, $ownerId) {
+                    $q->forOwner($ownerType, $ownerId);
+                }, fn ($q) => $q->whereNull('owner_type')->whereNull('owner_id'))
                 ->when(!$includeInactive, fn($q) => $q->where('is_active', true))
-                ->select(['id', 'service_type_id', 'name', 'min_hours', 'max_hours', 'type', 'is_active', 'sort_order'])
+                ->select(['id', 'service_type_id', 'name', 'min_hours', 'max_hours', 'type', 'is_active', 'sort_order', 'owner_type', 'owner_id', 'priority'])
+                ->orderByRaw("CASE WHEN owner_type = ? AND owner_id = ? THEN 0 ELSE 1 END", [$ownerType ?: '', $ownerId ?: ''])
+                ->orderByDesc('priority')
                 ->orderBy('service_type_id')
                 ->orderBy('sort_order')
                 ->get()
@@ -143,8 +233,17 @@ class VehicleGroupPricingController extends Controller
                     $q->whereIn('service_type_id', $serviceTypeIds)
                         ->orWhereNull('service_type_id'); // Global rates
                 })
+                ->when($ownerType && $ownerId, function ($q) use ($ownerType, $ownerId) {
+                    $q->where(function ($scope) use ($ownerType, $ownerId) {
+                        $scope->where(function ($scoped) use ($ownerType, $ownerId) {
+                            $scoped->where('owner_type', $ownerType)->where('owner_id', $ownerId);
+                        })->orWhereNull('owner_type');
+                    });
+                }, fn ($q) => $q->whereNull('owner_type')->whereNull('owner_id'))
                 ->when(!$includeInactive, fn($q) => $q->where('is_active', true))
-                ->select(['id', 'service_type_id', 'name', 'is_active'])
+                ->select(['id', 'service_type_id', 'name', 'is_active', 'owner_type', 'owner_id', 'priority'])
+                ->orderByRaw("CASE WHEN owner_type = ? AND owner_id = ? THEN 0 ELSE 1 END", [$ownerType ?: '', $ownerId ?: ''])
+                ->orderByDesc('priority')
                 ->get()
                 ->groupBy(function ($item) {
                     return $item->service_type_id ?? 'global';
@@ -155,7 +254,12 @@ class VehicleGroupPricingController extends Controller
                 ->with(['slabDefinition:id,name,service_type_id'])
                 ->whereIn('slab_definition_id', $allSlabDefinitions->flatten()->pluck('id'))
                 ->whereIn('vehicle_group_id', $vehicleGroupIds)
-                ->select(['id', 'vehicle_group_id', 'slab_definition_id', 'rate', 'rate_type', 'minimum_charge', 'includes_fuel', 'includes_driver', 'is_active'])
+                ->when($ownerType && $ownerId, function ($q) use ($ownerType, $ownerId) {
+                    $q->forOwner($ownerType, $ownerId);
+                }, fn ($q) => $q->whereNull('owner_type')->whereNull('owner_id'))
+                ->select(['id', 'vehicle_group_id', 'slab_definition_id', 'rate', 'rate_type', 'minimum_charge', 'includes_fuel', 'includes_driver', 'is_active', 'owner_type', 'owner_id', 'priority'])
+                ->orderByRaw("CASE WHEN owner_type = ? AND owner_id = ? THEN 0 ELSE 1 END", [$ownerType ?: '', $ownerId ?: ''])
+                ->orderByDesc('priority')
                 ->get()
                 ->groupBy(function ($item) {
                     return $item->vehicle_group_id . '_' . $item->slab_definition_id;
@@ -166,7 +270,16 @@ class VehicleGroupPricingController extends Controller
                 ->with(['commonRateDefinition:id,name,service_type_id'])
                 ->whereIn('common_rate_definition_id', $allCommonRateDefinitions->flatten()->pluck('id'))
                 ->whereIn('vehicle_group_id', $vehicleGroupIds)
-                ->select(['id', 'vehicle_group_id', 'common_rate_definition_id', 'value', 'is_active'])
+                ->when($ownerType && $ownerId, function ($q) use ($ownerType, $ownerId) {
+                    $q->where(function ($scope) use ($ownerType, $ownerId) {
+                        $scope->where(function ($scoped) use ($ownerType, $ownerId) {
+                            $scoped->where('owner_type', $ownerType)->where('owner_id', $ownerId);
+                        })->orWhereNull('owner_type');
+                    });
+                }, fn ($q) => $q->whereNull('owner_type')->whereNull('owner_id'))
+                ->select(['id', 'vehicle_group_id', 'common_rate_definition_id', 'value', 'is_active', 'owner_type', 'owner_id', 'priority'])
+                ->orderByRaw("CASE WHEN owner_type = ? AND owner_id = ? THEN 0 ELSE 1 END", [$ownerType ?: '', $ownerId ?: ''])
+                ->orderByDesc('priority')
                 ->get()
                 ->groupBy(function ($item) {
                     return $item->vehicle_group_id . '_' . $item->common_rate_definition_id;
@@ -325,6 +438,9 @@ class VehicleGroupPricingController extends Controller
             'service_settings.*.service_type_id' => 'required_with:service_settings|uuid|exists:service_types,id',
             'service_settings.*.is_inquiry_only' => 'boolean',
             'service_settings.*.is_hidden' => 'boolean',
+            'owner_type' => 'nullable|string|in:corporate',
+            'owner_id' => 'nullable|uuid|exists:corporates,id|required_with:owner_type',
+            'priority' => 'nullable|integer|min:0',
             'change_reason' => 'nullable|string|max:500',
         ]);
 
@@ -379,6 +495,9 @@ class VehicleGroupPricingController extends Controller
 
             $changeReason = $request->input('change_reason', "Pricing update for vehicle group: {$vehicleGroup->name}");
             $userId = auth()->id();
+            $ownerType = $request->input('owner_type');
+            $ownerId = $ownerType ? $request->input('owner_id') : null;
+            $priority = (int) $request->input('priority', 0);
 
             // Process slab pricing
             foreach ($request->input('service_pricing', []) as $serviceData) {
@@ -390,10 +509,15 @@ class VehicleGroupPricingController extends Controller
                         'includes_fuel' => $slabData['includes_fuel'] ?? false,
                         'includes_driver' => $slabData['includes_driver'] ?? false,
                         'rate_type' => $slabData['rate_type'] ?? 'per_day',
+                        'owner_type' => $ownerType,
+                        'owner_id' => $ownerId,
+                        'priority' => $priority,
                     ]);
 
                     $existingPricing = VehicleGroupPricing::forVehicleGroup($vehicleGroupId)
                         ->forSlabDefinition($slabData['slab_definition_id'])
+                        ->where('owner_type', $ownerType)
+                        ->where('owner_id', $ownerId)
                         ->first();
 
                     if ($existingPricing) {
@@ -458,11 +582,16 @@ class VehicleGroupPricingController extends Controller
                     $data = array_merge($commonRateData, [
                         'vehicle_group_id' => $vehicleGroupId,
                         'is_active' => $commonRateData['is_active'] ?? true,
+                        'owner_type' => $ownerType,
+                        'owner_id' => $ownerId,
+                        'priority' => $priority,
                     ]);
                     unset($data['service_type_id']);
 
                     $existingCommonRate = VehicleGroupCommonRatePricing::forVehicleGroup($vehicleGroupId)
                         ->forCommonRate($commonRateData['common_rate_definition_id'])
+                        ->where('owner_type', $ownerType)
+                        ->where('owner_id', $ownerId)
                         ->first();
 
                     if ($existingCommonRate) {
@@ -638,6 +767,33 @@ class VehicleGroupPricingController extends Controller
                 ]);
             }
         }
+    }
+
+    private function validateVehicleGroupPricing(Request $request, bool $partial = false): array
+    {
+        $required = $partial ? 'sometimes' : 'required';
+        $data = $request->validate([
+            'slab_definition_id' => [$required, 'uuid', 'exists:vehicle_pricing_slab_definitions,id'],
+            'vehicle_group_id' => [$required, 'uuid', 'exists:vehicle_groups,id'],
+            'rate' => [$required, 'numeric', 'min:0'],
+            'rate_type' => ['nullable', 'in:per_hour,per_day,flat_rate'],
+            'minimum_charge' => ['nullable', 'numeric', 'min:0'],
+            'includes_fuel' => ['nullable', 'boolean'],
+            'includes_driver' => ['nullable', 'boolean'],
+            'owner_type' => ['nullable', 'string', 'in:corporate'],
+            'owner_id' => ['nullable', 'uuid', 'exists:corporates,id', 'required_with:owner_type'],
+            'priority' => ['nullable', 'integer', 'min:0'],
+        ]);
+
+        if (array_key_exists('owner_type', $data) && !$data['owner_type']) {
+            $data['owner_id'] = null;
+        }
+
+        $data['rate_type'] = $data['rate_type'] ?? 'per_day';
+        $data['includes_fuel'] = $data['includes_fuel'] ?? false;
+        $data['includes_driver'] = $data['includes_driver'] ?? false;
+
+        return $data;
     }
     /**
      * Copy pricing from one vehicle group to another.

@@ -13,10 +13,47 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 
 class CorporateService
 {
+    private const CORPORATE_ROLE_PERMISSIONS = [
+        'Corporate_Master_Admin' => [
+            'manage_employees',
+            'manage_departments',
+            'manage_divisions',
+            'create_bookings',
+            'create_bookings_for_others',
+            'view_all_bookings',
+            'approve_bookings',
+            'view_payments',
+            'corporate.view',
+            'bookings.view',
+            'bookings.create',
+        ],
+        'Transport_Coordinator' => [
+            'corporate.view',
+            'manage_employees',
+            'create_bookings',
+            'create_bookings_for_others',
+            'view_all_bookings',
+            'bookings.view',
+            'bookings.create',
+        ],
+        'Approval_Manager' => [
+            'corporate.view',
+            'approve_bookings',
+            'view_all_bookings',
+        ],
+        'Corporate_Employee' => [
+            'corporate.view',
+            'create_bookings',
+            'bookings.view',
+            'bookings.create',
+        ],
+    ];
+
     // ─── Corporate CRUD ───────────────────────────────────────────────
 
     public function createCorporate(array $data): Corporate
@@ -206,6 +243,8 @@ class CorporateService
     public function addEmployee(Corporate $corporate, array $data): CorporateEmployee
     {
         return DB::transaction(function () use ($corporate, $data) {
+            $roleName = $data['role'] ?? 'Corporate_Employee';
+
             [$department, $division] = $this->resolveEmployeeHierarchy(
                 $corporate,
                 $data['department_id'],
@@ -227,28 +266,31 @@ class CorporateService
                 ]);
             }
 
-            // Create CorporateEmployee record
-            $employee = CorporateEmployee::create([
-                'user_id'       => $user->id,
-                'corporate_id'  => $corporate->id,
-                'department_id' => $department->id,
-                'division_id'   => $division?->id,
-                'employee_code' => $data['employee_code'] ?? null,
-                'is_active'     => true,
-            ]);
+            $employee = CorporateEmployee::updateOrCreate(
+                [
+                    'user_id'      => $user->id,
+                    'corporate_id' => $corporate->id,
+                ],
+                [
+                    'department_id' => $department->id,
+                    'division_id'   => $division?->id,
+                    'employee_code' => $data['employee_code'] ?? null,
+                    'is_active'     => true,
+                ]
+            );
 
-            // Create UserContext with context_type='corporate'
-            $userContext = UserContext::create([
-                'user_id'      => $user->id,
-                'context_type' => 'corporate',
-                'context_id'   => $employee->id,
-                'is_active'    => true,
-            ]);
+            UserContext::updateOrCreate(
+                [
+                    'user_id'      => $user->id,
+                    'context_type' => 'corporate',
+                    'context_id'   => $employee->id,
+                ],
+                [
+                    'is_active' => true,
+                ]
+            );
 
-            // Assign role via Spatie through the UserContext roles relationship
-            if (!empty($data['role'])) {
-                $this->assignEmployeeRole($employee, $data['role']);
-            }
+            $this->assignEmployeeRole($employee, $roleName);
 
             $this->logAudit('create', 'CorporateEmployee', $employee->id, [
                 'corporate_id'   => $corporate->id,
@@ -257,7 +299,7 @@ class CorporateService
                 'existing_user'  => $isExistingUser,
                 'department_id'  => $department->id,
                 'division_id'    => $division?->id,
-                'role'           => $data['role'] ?? null,
+                'role'           => $roleName,
             ]);
 
             return $employee;
@@ -346,20 +388,16 @@ class CorporateService
 
     public function assignEmployeeRole(CorporateEmployee $employee, string $roleName): void
     {
-        $role = Role::firstOrCreate(
-            ['name' => $roleName, 'guard_name' => 'api']
-        );
+        $role = $this->resolveCorporateRole($roleName);
 
-        // Sync role on the employee's UserContext roles relationship
         $userContext = $employee->userContext;
         if ($userContext) {
             $userContext->roles()->sync([$role->id]);
         }
 
-        // Also assign the role to the user via Spatie
         $user = $employee->user;
-        if ($user && !$user->hasRole($roleName)) {
-            $user->assignRole($roleName);
+        if ($user && !$user->hasRole($role)) {
+            $user->assignRole($role);
         }
 
         $this->logAudit('assign_role', 'CorporateEmployee', $employee->id, [
@@ -367,7 +405,22 @@ class CorporateService
         ]);
     }
 
-    // ─── Audit Logging ────────────────────────────────────────────────
+    private function resolveCorporateRole(string $roleName): Role
+    {
+        $role = Role::firstOrCreate(['name' => $roleName, 'guard_name' => 'api']);
+
+        if (array_key_exists($roleName, self::CORPORATE_ROLE_PERMISSIONS)) {
+            $permissions = collect(self::CORPORATE_ROLE_PERMISSIONS[$roleName])
+                ->map(fn (string $permission) => Permission::firstOrCreate([
+                    'name' => $permission,
+                    'guard_name' => 'api',
+                ]));
+
+            $role->syncPermissions($permissions);
+        }
+
+        return $role;
+    }
 
     private function resolveEmployeeHierarchy(
         Corporate $corporate,

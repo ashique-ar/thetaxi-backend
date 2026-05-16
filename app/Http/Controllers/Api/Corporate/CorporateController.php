@@ -62,7 +62,7 @@ class CorporateController extends Controller
 
     public function show(Corporate $corporate): JsonResponse
     {
-        $corporate->load(['departments', 'vehicleGroups', 'rateCharts']);
+        $corporate->load(['departments', 'vehicleGroups']);
 
         return response()->json([
             'status' => 'success',

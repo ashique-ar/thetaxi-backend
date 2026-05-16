@@ -36,6 +36,9 @@ class VehiclePricingCalculationDefinition extends Model
         'formula',
         'variables',
         'conditions',
+        'owner_type',
+        'owner_id',
+        'priority',
         'created_by',
         'updated_by',
     ];
@@ -43,6 +46,7 @@ class VehiclePricingCalculationDefinition extends Model
     protected $casts = [
         'variables' => 'array',
         'conditions' => 'array',
+        'priority' => 'integer',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
         'deleted_at' => 'datetime',
@@ -759,8 +763,11 @@ class VehiclePricingCalculationDefinition extends Model
                 }
 
                 $durationDaysForFallback = $inputs['duration_days'] ?? $inputs['days'] ?? 0;
+                $ownerType = $inputs['owner_type'] ?? null;
+                $ownerId = $inputs['owner_id'] ?? null;
                 $slabDefinition = VehiclePricingSlabDefinition::where('service_type_id', $this->service_type_id)
                     ->where('is_active', true)
+                    ->forOwner($ownerType, $ownerId)
                     ->where(function ($query) use ($durationHours, $durationDaysForFallback) {
                         $query->when($durationDaysForFallback > 0, function ($q) use ($durationDaysForFallback) {
                             return $q->where('min_days', '<=', $durationDaysForFallback)
@@ -778,6 +785,8 @@ class VehiclePricingCalculationDefinition extends Model
                     })
                     ->orderByDesc('min_days')
                     ->orderByDesc('min_hours')
+                    ->orderByRaw("CASE WHEN owner_type = ? AND owner_id = ? THEN 0 ELSE 1 END", [$ownerType ?? '', $ownerId ?? ''])
+                    ->orderByDesc('priority')
                     ->first();
 
                 if (!$slabDefinition) {
@@ -795,6 +804,9 @@ class VehiclePricingCalculationDefinition extends Model
                 ? VehicleGroupPricing::where('vehicle_group_id', $vehicleGroupId)
                     ->where('slab_definition_id', $slabDefinition->id)
                     ->where('is_active', true)
+                    ->forOwner($inputs['owner_type'] ?? null, $inputs['owner_id'] ?? null)
+                    ->orderByRaw("CASE WHEN owner_type = ? AND owner_id = ? THEN 0 ELSE 1 END", [$inputs['owner_type'] ?? '', $inputs['owner_id'] ?? ''])
+                    ->orderByDesc('priority')
                     ->first()
                 : null;
 
@@ -850,18 +862,26 @@ class VehiclePricingCalculationDefinition extends Model
                 Log::warning("No vehicle_group_id provided for common rate lookup: {$rateKey}");
                 return 0;
             }
+            $ownerType = $inputs['owner_type'] ?? null;
+            $ownerId = $inputs['owner_id'] ?? null;
 
             // Get vehicle group specific common rate pricing first
-            $commonRatePricing = VehicleGroupCommonRatePricing::whereHas('commonRateDefinition', function ($query) use ($rateKey) {
+            $commonRatePricing = VehicleGroupCommonRatePricing::whereHas('commonRateDefinition', function ($query) use ($rateKey, $ownerType, $ownerId) {
                 $query->where(function ($q) use ($rateKey) {
                     $q->where('code', $rateKey)
                         ->orWhere('name', $rateKey);
                 })
                     ->where('service_type_id', $this->service_type_id)
                     ->where('is_active', true);
+                $this->applyOwnerScope($query, $ownerType, $ownerId);
             })
                 ->where('vehicle_group_id', $vehicleGroupId)
                 ->where('is_active', true)
+                ->when($ownerType && $ownerId, function ($query) use ($ownerType, $ownerId) {
+                    $this->applyOwnerScope($query, $ownerType, $ownerId);
+                }, fn ($query) => $query->whereNull('owner_type')->whereNull('owner_id'))
+                ->orderByRaw("CASE WHEN owner_type = ? AND owner_id = ? THEN 0 ELSE 1 END", [$ownerType ?? '', $ownerId ?? ''])
+                ->orderBy('priority', 'desc')
                 ->first();
 
             if ($commonRatePricing && isset($commonRatePricing->value)) {
@@ -877,6 +897,11 @@ class VehiclePricingCalculationDefinition extends Model
             })
                 ->where('service_type_id', $this->service_type_id)
                 ->where('is_active', true)
+                ->when($ownerType && $ownerId, function ($query) use ($ownerType, $ownerId) {
+                    $this->applyOwnerScope($query, $ownerType, $ownerId);
+                }, fn ($query) => $query->whereNull('owner_type')->whereNull('owner_id'))
+                ->orderByRaw("CASE WHEN owner_type = ? AND owner_id = ? THEN 0 ELSE 1 END", [$ownerType ?? '', $ownerId ?? ''])
+                ->orderBy('priority', 'desc')
                 ->first();
 
             if ($commonRateDefinition) {
@@ -1046,7 +1071,10 @@ class VehiclePricingCalculationDefinition extends Model
                 $totalDistance,
                 $baseAmount,
                 $this->service_type_id,
-                $vehicleGroupId
+                $vehicleGroupId,
+                null,
+                $inputs['owner_type'] ?? null,
+                $inputs['owner_id'] ?? null
             );
 
             if (!empty($kmRangeResult['rules_applied'])) {
@@ -1089,7 +1117,9 @@ class VehiclePricingCalculationDefinition extends Model
             $vehicleGroupId,
             'total_price',
             $pricingStartDate,
-            $pricingEndDate
+            $pricingEndDate,
+            $inputs['owner_type'] ?? null,
+            $inputs['owner_id'] ?? null
         );
 
         if (!empty($priceAdjustmentResult['adjustments_applied'])) {
@@ -1219,6 +1249,21 @@ class VehiclePricingCalculationDefinition extends Model
         }
 
         return $sampleInputs;
+    }
+
+    private function applyOwnerScope($query, ?string $ownerType, ?string $ownerId): void
+    {
+        if ($ownerType && $ownerId) {
+            $query->where(function ($scopeQuery) use ($ownerType, $ownerId) {
+                $scopeQuery->where(function ($scoped) use ($ownerType, $ownerId) {
+                    $scoped->where('owner_type', $ownerType)->where('owner_id', $ownerId);
+                })->orWhereNull('owner_type');
+            });
+
+            return;
+        }
+
+        $query->whereNull('owner_type')->whereNull('owner_id');
     }
 
     /**
@@ -1389,6 +1434,8 @@ class VehiclePricingCalculationDefinition extends Model
 
         try {
             $vehicleGroupId = $breakdown['vehicle_group_id'];
+            $ownerType = $inputs['owner_type'] ?? null;
+            $ownerId = $inputs['owner_id'] ?? null;
             $durationHours = $breakdown['duration_hours'];
 
             if (!$vehicleGroupId || !$durationHours) {
@@ -1397,6 +1444,7 @@ class VehiclePricingCalculationDefinition extends Model
 
             $slabDefinition = VehiclePricingSlabDefinition::where('service_type_id', $this->service_type_id)
                 ->where('is_active', true)
+                ->forOwner($ownerType, $ownerId)
                 ->where(function ($query) use ($durationHours) {
                     $query->where('min_hours', '<=', $durationHours)
                         ->where(function ($q) use ($durationHours) {
@@ -1404,6 +1452,8 @@ class VehiclePricingCalculationDefinition extends Model
                                 ->orWhere('max_hours', '>=', $durationHours);
                         });
                 })
+                ->orderByRaw("CASE WHEN owner_type = ? AND owner_id = ? THEN 0 ELSE 1 END", [$ownerType ?? '', $ownerId ?? ''])
+                ->orderByDesc('priority')
                 ->orderBy('min_hours')
                 ->first();
 
@@ -1420,6 +1470,9 @@ class VehiclePricingCalculationDefinition extends Model
                 $vehicleGroupPricing = VehicleGroupPricing::where('vehicle_group_id', $vehicleGroupId)
                     ->where('slab_definition_id', $slabDefinition->id)
                     ->where('is_active', true)
+                    ->forOwner($inputs['owner_type'] ?? null, $inputs['owner_id'] ?? null)
+                    ->orderByRaw("CASE WHEN owner_type = ? AND owner_id = ? THEN 0 ELSE 1 END", [$inputs['owner_type'] ?? '', $inputs['owner_id'] ?? ''])
+                    ->orderByDesc('priority')
                     ->first();
 
                 if ($vehicleGroupPricing) {
@@ -1471,13 +1524,19 @@ class VehiclePricingCalculationDefinition extends Model
             }
 
             // Check vehicle group specific pricing first
-            $commonRatePricing = VehicleGroupCommonRatePricing::whereHas('commonRateDefinition', function ($query) use ($rateKey) {
+            $commonRatePricing = VehicleGroupCommonRatePricing::whereHas('commonRateDefinition', function ($query) use ($rateKey, $ownerType, $ownerId) {
                 $query->where('name', $rateKey)
                     ->where('service_type_id', $this->service_type_id)
                     ->where('is_active', true);
+                $this->applyOwnerScope($query, $ownerType, $ownerId);
             })
                 ->where('vehicle_group_id', $vehicleGroupId)
                 ->where('is_active', true)
+                ->when($ownerType && $ownerId, function ($query) use ($ownerType, $ownerId) {
+                    $this->applyOwnerScope($query, $ownerType, $ownerId);
+                }, fn ($query) => $query->whereNull('owner_type')->whereNull('owner_id'))
+                ->orderByRaw("CASE WHEN owner_type = ? AND owner_id = ? THEN 0 ELSE 1 END", [$ownerType ?? '', $ownerId ?? ''])
+                ->orderBy('priority', 'desc')
                 ->first();
 
             if ($commonRatePricing) {
@@ -1490,6 +1549,11 @@ class VehiclePricingCalculationDefinition extends Model
             $commonRateDefinition = VehiclePricingCommonRateDefinition::where('name', $rateKey)
                 ->where('service_type_id', $this->service_type_id)
                 ->where('is_active', true)
+                ->when($ownerType && $ownerId, function ($query) use ($ownerType, $ownerId) {
+                    $this->applyOwnerScope($query, $ownerType, $ownerId);
+                }, fn ($query) => $query->whereNull('owner_type')->whereNull('owner_id'))
+                ->orderByRaw("CASE WHEN owner_type = ? AND owner_id = ? THEN 0 ELSE 1 END", [$ownerType ?? '', $ownerId ?? ''])
+                ->orderBy('priority', 'desc')
                 ->first();
 
             if ($commonRateDefinition) {

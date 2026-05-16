@@ -25,6 +25,8 @@ class ServiceTypeResource extends JsonResource
             'pricing_mode' => $this->pricing_mode,
             'uses_dropoff_time' => (bool) $this->uses_dropoff_time,
             'allow_return_trip' => (bool) $this->allow_return_trip,
+            'allow_multiple_pickup_locations' => (bool) $this->allow_multiple_pickup_locations,
+            'allow_multiple_dropoff_locations' => (bool) $this->allow_multiple_dropoff_locations,
             'frontend_category' => $this->frontend_category,
             'is_internal' => $this->is_internal,
             'is_active' => $this->is_active,

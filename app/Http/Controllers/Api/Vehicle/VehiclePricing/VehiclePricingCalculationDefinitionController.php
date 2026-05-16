@@ -28,8 +28,10 @@ class VehiclePricingCalculationDefinitionController extends Controller
             'per_page' => 'integer|min:1|max:100',
             'search' => 'string|max:255',
             'service_type_id' => 'uuid|exists:service_types,id',
+            'owner_type' => 'nullable|string|in:corporate',
+            'owner_id' => 'nullable|uuid|exists:corporates,id|required_with:owner_type',
             'status' => 'in:active,inactive,draft',
-            'sort_by' => 'in:name,created_at,updated_at,status',
+            'sort_by' => 'in:name,created_at,updated_at,status,priority',
             'sort_direction' => 'in:asc,desc',
         ]);
 
@@ -53,6 +55,13 @@ class VehiclePricingCalculationDefinitionController extends Controller
 
         if ($request->filled('service_type_id')) {
             $query->where('service_type_id', $request->service_type_id);
+        }
+
+        if ($request->filled('owner_type')) {
+            $query->where('owner_type', $request->owner_type)
+                ->where('owner_id', $request->owner_id);
+        } elseif ($request->boolean('global_only', false)) {
+            $query->whereNull('owner_type')->whereNull('owner_id');
         }
 
         if ($request->filled('status')) {
@@ -101,6 +110,9 @@ class VehiclePricingCalculationDefinitionController extends Controller
             'conditions.*.operator' => 'required|in:=,!=,>,<,>=,<=,in,not_in',
             'conditions.*.value' => 'required',
             'status' => 'in:active,inactive,draft',
+            'owner_type' => 'nullable|string|in:corporate',
+            'owner_id' => 'nullable|uuid|exists:corporates,id|required_with:owner_type',
+            'priority' => 'nullable|integer|min:0',
         ]);
 
         if ($validator->fails()) {
@@ -119,6 +131,9 @@ class VehiclePricingCalculationDefinitionController extends Controller
             $definition->variables = $request->variables ?? [];
             $definition->conditions = $request->conditions ?? [];
             $definition->status = $request->get('status', 'draft');
+            $definition->owner_type = $request->owner_type;
+            $definition->owner_id = $request->owner_type ? $request->owner_id : null;
+            $definition->priority = $request->input('priority', 0);
             $definition->created_by = Auth::id();
             $definition->save();
 
@@ -176,6 +191,9 @@ class VehiclePricingCalculationDefinitionController extends Controller
             'conditions.*.operator' => 'required|in:=,!=,>,<,>=,<=,in,not_in',
             'conditions.*.value' => 'required',
             'status' => 'in:active,inactive,draft',
+            'owner_type' => 'nullable|string|in:corporate',
+            'owner_id' => 'nullable|uuid|exists:corporates,id|required_with:owner_type',
+            'priority' => 'nullable|integer|min:0',
         ]);
 
         if ($validator->fails()) {
@@ -195,6 +213,9 @@ class VehiclePricingCalculationDefinitionController extends Controller
             $definition->variables = $request->variables ?? [];
             $definition->conditions = $request->conditions ?? [];
             $definition->status = $request->get('status', $definition->status);
+            $definition->owner_type = $request->owner_type;
+            $definition->owner_id = $request->owner_type ? $request->owner_id : null;
+            $definition->priority = $request->input('priority', $definition->priority ?? 0);
             $definition->updated_by = Auth::id();
             $definition->save();
 

@@ -35,6 +35,25 @@ class DriverSessionResource extends JsonResource
             'total_distance_km' => $this->total_distance_km,
             'assignment_id' => $this->assignment_id,
             'metadata' => $this->metadata,
+            'device' => $this->whenLoaded('device', function () {
+                return $this->device ? [
+                    'id' => $this->device->id,
+                    'device_uuid' => $this->device->device_uuid,
+                    'device_name' => $this->device->device_name,
+                    'device_model' => $this->device->device_model,
+                    'device_manufacturer' => $this->device->device_manufacturer,
+                    'platform' => $this->device->platform,
+                    'platform_display' => $this->device->platform_display,
+                    'os_version' => $this->device->os_version,
+                    'app_version' => $this->device->app_version,
+                    'app_build' => $this->device->app_build,
+                    'is_active' => (bool) $this->device->is_active,
+                    'last_active_at' => $this->device->last_active_at?->toIso8601String(),
+                    'registered_at' => $this->device->registered_at?->toIso8601String(),
+                    'locale' => $this->device->locale,
+                    'timezone' => $this->device->timezone,
+                ] : null;
+            }),
             'duration_seconds' => $this->when(
                 $this->start_time && $this->end_time,
                 fn() => $this->end_time->diffInSeconds($this->start_time)

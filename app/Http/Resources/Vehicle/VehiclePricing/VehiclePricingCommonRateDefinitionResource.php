@@ -21,6 +21,9 @@ class VehiclePricingCommonRateDefinitionResource extends JsonResource
             'is_mandatory' => $this->is_mandatory,
             'is_active' => $this->is_active,
             'sort_order' => $this->sort_order,
+            'owner_type' => $this->owner_type,
+            'owner_id' => $this->owner_id,
+            'priority' => $this->priority,
         ];
     }
 }

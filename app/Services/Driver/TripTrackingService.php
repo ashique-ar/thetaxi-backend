@@ -496,6 +496,12 @@ class TripTrackingService
             'address' => $stop->address,
             'latitude' => $stop->latitude !== null ? (float) $stop->latitude : null,
             'longitude' => $stop->longitude !== null ? (float) $stop->longitude : null,
+            'contact' => [
+                'employee_id' => $stop->location['employee_id'] ?? null,
+                'contact_name' => $stop->location['contact_name'] ?? null,
+                'contact_phone' => $stop->location['contact_phone'] ?? null,
+                'contact_note' => $stop->location['contact_note'] ?? null,
+            ],
             'arrived_at' => $stop->arrived_at?->toIso8601String(),
             'arrived_latitude' => $stop->arrived_latitude !== null ? (float) $stop->arrived_latitude : null,
             'arrived_longitude' => $stop->arrived_longitude !== null ? (float) $stop->arrived_longitude : null,
@@ -553,7 +559,10 @@ class TripTrackingService
 
                 $routeStops[] = $this->makeRouteStop(
                     $type,
-                    $stop['location'] ?? $stop,
+                    array_merge(
+                        is_array($stop['location'] ?? null) ? $stop['location'] : $stop,
+                        array_intersect_key($stop, array_flip(['employee_id', 'contact_name', 'contact_phone', 'contact_note']))
+                    ),
                     null,
                     null,
                     null,
@@ -564,7 +573,10 @@ class TripTrackingService
             foreach ($this->normalizeArrayPayload($metadata['multi_pickup_locations'] ?? []) as $stop) {
                 $routeStops[] = $this->makeRouteStop(
                     'pickup',
-                    $stop['location'] ?? $stop,
+                    array_merge(
+                        is_array($stop['location'] ?? null) ? $stop['location'] : $stop,
+                        array_intersect_key($stop, array_flip(['employee_id', 'contact_name', 'contact_phone', 'contact_note']))
+                    ),
                     null,
                     null,
                     null,
@@ -575,7 +587,10 @@ class TripTrackingService
             foreach ($this->normalizeArrayPayload($metadata['multi_dropoff_locations'] ?? []) as $stop) {
                 $routeStops[] = $this->makeRouteStop(
                     'dropoff',
-                    $stop['location'] ?? $stop,
+                    array_merge(
+                        is_array($stop['location'] ?? null) ? $stop['location'] : $stop,
+                        array_intersect_key($stop, array_flip(['employee_id', 'contact_name', 'contact_phone', 'contact_note']))
+                    ),
                     null,
                     null,
                     null,

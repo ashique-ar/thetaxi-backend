@@ -7,7 +7,6 @@ use App\Models\Booking\Booking;
 use App\Models\Booking\BookingApproval;
 use App\Models\Corporate\Corporate;
 use App\Models\Corporate\CorporateEmployee;
-use App\Models\Corporate\CorporateRateChart;
 use App\Models\Customer;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
@@ -29,15 +28,9 @@ class CorporateBookingService
     {
         $corporate = $employee->corporate;
 
-        $this->validateVehicleGroup($corporate, $data['vehicle_group_id'] ?? null);
+        $data = $this->prepareCorporateBookingPayload($corporate, $data);
 
-        $rateChart = $this->applyRateChartPricing(
-            $corporate,
-            $data['vehicle_group_id'] ?? null,
-            $data['service_type_id'] ?? null,
-        );
-
-        return DB::transaction(function () use ($employee, $corporate, $data, $rateChart) {
+        return DB::transaction(function () use ($employee, $corporate, $data) {
             $needsApproval = $corporate->approval_required;
 
             $params = array_merge($data, [
@@ -50,20 +43,13 @@ class CorporateBookingService
                 'created_by_user_id'     => Auth::id(),
             ]);
 
-            if ($rateChart) {
-                $params['corporate_rate_chart'] = [
-                    'id'            => $rateChart->id,
-                    'per_km_rate'   => $rateChart->per_km_rate,
-                    'per_hour_rate' => $rateChart->per_hour_rate,
-                    'fixed_route_pricing' => $rateChart->fixed_route_pricing,
-                ];
-            }
-
             if ($needsApproval) {
                 $booking = $this->bookingFlowService->submitBookingForApproval($params);
             } else {
                 $booking = $this->bookingFlowService->confirmBooking($params);
             }
+
+            $this->applyCorporateRequestStatus($booking, $needsApproval, Auth::id());
 
             // Ensure corporate fields are set on the booking
             $booking->update([
@@ -79,11 +65,15 @@ class CorporateBookingService
                 'corporate_id'  => $corporate->id,
                 'employee_id'   => $employee->user_id,
                 'needs_approval' => $needsApproval,
-                'rate_chart_id' => $rateChart?->id,
             ]);
 
             return $booking->fresh();
         });
+    }
+
+    public function cancelRecurringBooking(Booking $booking, string $scope, string $userId, ?string $reason = null): array
+    {
+        return $this->bookingFlowService->cancelRecurringBooking($booking->id, $scope, $userId, $reason);
     }
 
     /**
@@ -96,15 +86,9 @@ class CorporateBookingService
     ): Booking {
         $corporate = $coordinator->corporate;
 
-        $this->validateVehicleGroup($corporate, $data['vehicle_group_id'] ?? null);
+        $data = $this->prepareCorporateBookingPayload($corporate, $data);
 
-        $rateChart = $this->applyRateChartPricing(
-            $corporate,
-            $data['vehicle_group_id'] ?? null,
-            $data['service_type_id'] ?? null,
-        );
-
-        return DB::transaction(function () use ($coordinator, $targetEmployee, $corporate, $data, $rateChart) {
+        return DB::transaction(function () use ($coordinator, $targetEmployee, $corporate, $data) {
             $needsApproval = $corporate->approval_required;
 
             // If corporate exempts coordinators from approval, skip it
@@ -122,20 +106,13 @@ class CorporateBookingService
                 'created_by_user_id'     => $coordinator->user_id,
             ]);
 
-            if ($rateChart) {
-                $params['corporate_rate_chart'] = [
-                    'id'            => $rateChart->id,
-                    'per_km_rate'   => $rateChart->per_km_rate,
-                    'per_hour_rate' => $rateChart->per_hour_rate,
-                    'fixed_route_pricing' => $rateChart->fixed_route_pricing,
-                ];
-            }
-
             if ($needsApproval) {
                 $booking = $this->bookingFlowService->submitBookingForApproval($params);
             } else {
                 $booking = $this->bookingFlowService->confirmBooking($params);
             }
+
+            $this->applyCorporateRequestStatus($booking, $needsApproval, $coordinator->user_id);
 
             // Ensure corporate fields are set on the booking
             $booking->update([
@@ -153,63 +130,10 @@ class CorporateBookingService
                 'target_employee_id' => $targetEmployee->user_id,
                 'needs_approval'     => $needsApproval,
                 'coordinator_exempt' => $corporate->exempt_coordinator_from_approval,
-                'rate_chart_id'      => $rateChart?->id,
             ]);
 
             return $booking->fresh();
         });
-    }
-
-    /**
-     * Find the most specific matching rate chart for a corporate.
-     *
-     * Priority:
-     *  1. Match both vehicle_group_id AND service_type_id
-     *  2. Match vehicle_group_id only (service_type_id is null)
-     *  3. Match service_type_id only (vehicle_group_id is null)
-     *  4. Catch-all (both null)
-     */
-    public function applyRateChartPricing(
-        Corporate $corporate,
-        ?string $vehicleGroupId,
-        ?string $serviceTypeId,
-    ): ?CorporateRateChart {
-        $charts = $corporate->rateCharts()->where('is_active', true)->get();
-
-        // 1. Both match
-        if ($vehicleGroupId && $serviceTypeId) {
-            $match = $charts->first(fn (CorporateRateChart $c) =>
-                $c->vehicle_group_id === $vehicleGroupId && $c->service_type_id === $serviceTypeId
-            );
-            if ($match) {
-                return $match;
-            }
-        }
-
-        // 2. Vehicle group only
-        if ($vehicleGroupId) {
-            $match = $charts->first(fn (CorporateRateChart $c) =>
-                $c->vehicle_group_id === $vehicleGroupId && $c->service_type_id === null
-            );
-            if ($match) {
-                return $match;
-            }
-        }
-
-        // 3. Service type only
-        if ($serviceTypeId) {
-            $match = $charts->first(fn (CorporateRateChart $c) =>
-                $c->vehicle_group_id === null && $c->service_type_id === $serviceTypeId
-            );
-            if ($match) {
-                return $match;
-            }
-        }
-
-        // 4. Catch-all (both null)
-        return $charts->first(fn (CorporateRateChart $c) =>
-            $c->vehicle_group_id === null && $c->service_type_id === null
-        );
     }
 
     /**
@@ -230,6 +154,156 @@ class CorporateBookingService
         }
     }
 
+    private function prepareCorporateBookingPayload(Corporate $corporate, array $data): array
+    {
+        $items = $this->bookingItemsFromPayload($data);
+
+        foreach ($items as $index => $item) {
+            $this->validateVehicleGroup($corporate, $item['vehicle_group_id'] ?? null);
+            $this->validateServiceType($corporate, $item['service_type_id'] ?? ($item['service_type'] ?? null));
+
+            unset($items[$index]['vehicle_id'], $items[$index]['driver_id']);
+        }
+
+        if (!empty($items)) {
+            $data['booking_items'] = array_values($items);
+            $first = $data['booking_items'][0];
+            $data['vehicle_group_id'] = $first['vehicle_group_id'] ?? ($data['vehicle_group_id'] ?? null);
+            $data['service_type_id'] = $first['service_type_id'] ?? ($first['service_type'] ?? ($data['service_type_id'] ?? null));
+            $data['service_type'] = $data['service_type_id'];
+        } else {
+            $this->validateVehicleGroup($corporate, $data['vehicle_group_id'] ?? null);
+            $this->validateServiceType($corporate, $data['service_type_id'] ?? ($data['service_type'] ?? null));
+        }
+
+        unset(
+            $data['vehicle_id'],
+            $data['driver_id'],
+            $data['specific_vehicle_id'],
+            $data['specific_driver_id'],
+            $data['vehicle_driver_assignments']
+        );
+
+        return $data;
+    }
+
+    private function bookingItemsFromPayload(array $data): array
+    {
+        if (isset($data['booking_items']) && is_array($data['booking_items'])) {
+            return $data['booking_items'];
+        }
+
+        if (!empty($data['vehicle_group_id']) || !empty($data['service_type_id']) || !empty($data['service_type'])) {
+            return [[
+                'vehicle_group_id' => $data['vehicle_group_id'] ?? null,
+                'service_type_id' => $data['service_type_id'] ?? ($data['service_type'] ?? null),
+            ]];
+        }
+
+        return [];
+    }
+
+    private function firstVehicleGroupId(array $data): ?string
+    {
+        return $data['booking_items'][0]['vehicle_group_id'] ?? ($data['vehicle_group_id'] ?? null);
+    }
+
+    private function firstServiceTypeId(array $data): ?string
+    {
+        return $data['booking_items'][0]['service_type_id']
+            ?? ($data['booking_items'][0]['service_type'] ?? ($data['service_type_id'] ?? ($data['service_type'] ?? null)));
+    }
+
+    private function validateServiceType(Corporate $corporate, ?string $serviceTypeId): void
+    {
+        if (!$serviceTypeId) {
+            abort(422, 'A service type is required for corporate bookings.');
+        }
+
+        $assigned = $corporate->serviceTypes()
+            ->where('service_types.id', $serviceTypeId)
+            ->exists();
+
+        if (!$assigned) {
+            abort(422, 'The selected service is not assigned to your corporate.');
+        }
+    }
+
+    private function applyCorporateRequestStatus(Booking $booking, bool $requiresApproval, ?string $actorId): void
+    {
+        $seriesQuery = $booking->recurring_series_id
+            ? Booking::query()
+                ->where('recurring_series_id', $booking->recurring_series_id)
+                ->where('id', '!=', $booking->id)
+            : null;
+
+        if ($requiresApproval) {
+            $attributes = [
+                'status' => 'pending_approval',
+                'confirmed' => false,
+                'confirmed_at' => null,
+                'requires_approval' => true,
+                'approval_status' => 'pending',
+                'approval_requested_by' => $actorId,
+                'approval_requested_at' => $booking->approval_requested_at ?? now(),
+                'workflow_step' => 'pending_approval',
+            ];
+
+            $booking->update($attributes);
+            $seriesQuery?->update($attributes);
+
+            BookingApproval::firstOrCreate(
+                [
+                    'booking_id' => $booking->id,
+                    'status' => BookingApproval::STATUS_PENDING,
+                ],
+                [
+                    'requested_by' => $actorId,
+                    'override_reasons' => $booking->override_reasons ?? [],
+                    'justification' => $booking->approval_justification,
+                    'priority' => $booking->approval_priority ?? 'normal',
+                ]
+            );
+
+            if ($seriesQuery) {
+                Booking::query()
+                    ->where('recurring_series_id', $booking->recurring_series_id)
+                    ->where('id', '!=', $booking->id)
+                    ->pluck('id')
+                    ->each(function ($bookingId) use ($actorId, $booking) {
+                        BookingApproval::firstOrCreate(
+                            [
+                                'booking_id' => $bookingId,
+                                'status' => BookingApproval::STATUS_PENDING,
+                            ],
+                            [
+                                'requested_by' => $actorId,
+                                'override_reasons' => $booking->override_reasons ?? [],
+                                'justification' => $booking->approval_justification,
+                                'priority' => $booking->approval_priority ?? 'normal',
+                            ]
+                        );
+                    });
+            }
+
+            return;
+        }
+
+        $attributes = [
+            'status' => 'approved',
+            'confirmed' => false,
+            'confirmed_at' => null,
+            'requires_approval' => false,
+            'approval_status' => 'approved',
+            'approval_by' => $actorId,
+            'approval_at' => now(),
+            'workflow_step' => 'approved',
+        ];
+
+        $booking->update($attributes);
+        $seriesQuery?->update($attributes);
+    }
+
     // ─── Booking Queries & Filters ────────────────────────────────────
 
     /**
@@ -241,10 +315,23 @@ class CorporateBookingService
 
         $this->applyBookingFilters($query, $filters);
 
-        return $query
-            ->with(['customer', 'corporateDepartment', 'corporateDivision'])
+        $paginator = $query
+            ->with([
+                'customer',
+                'corporateAccount',
+                'corporateDepartment',
+                'corporateDivision',
+                'employee.user',
+                'vehicleGroup',
+                'vehicle',
+                'driver',
+                'latestApproval.approver',
+                'createdBy',
+            ])
             ->orderByDesc('created_at')
-            ->paginate(15);
+            ->paginate((int) ($filters['per_page'] ?? 15));
+
+        return $this->transformBookingPaginator($paginator, $filters);
     }
 
     /**
@@ -257,10 +344,23 @@ class CorporateBookingService
 
         $this->applyBookingFilters($query, $filters);
 
-        return $query
-            ->with(['customer', 'corporateDepartment', 'corporateDivision'])
+        $paginator = $query
+            ->with([
+                'customer',
+                'corporateAccount',
+                'corporateDepartment',
+                'corporateDivision',
+                'employee.user',
+                'vehicleGroup',
+                'vehicle',
+                'driver',
+                'latestApproval.approver',
+                'createdBy',
+            ])
             ->orderByDesc('created_at')
-            ->paginate(15);
+            ->paginate((int) ($filters['per_page'] ?? 15));
+
+        return $this->transformBookingPaginator($paginator, $filters);
     }
 
     /**
@@ -273,10 +373,86 @@ class CorporateBookingService
 
         $this->applyBookingFilters($query, $filters);
 
-        return $query
-            ->with(['customer', 'corporateDepartment', 'corporateDivision'])
+        $paginator = $query
+            ->with([
+                'customer',
+                'corporateAccount',
+                'corporateDepartment',
+                'corporateDivision',
+                'employee.user',
+                'vehicleGroup',
+                'vehicle',
+                'driver',
+                'latestApproval.approver',
+                'createdBy',
+            ])
             ->orderByDesc('created_at')
-            ->paginate(15);
+            ->paginate((int) ($filters['per_page'] ?? 15));
+
+        return $this->transformBookingPaginator($paginator, $filters);
+    }
+
+    public function getCorporateBookingDetails(Booking $booking, bool $canViewPayments = false): array
+    {
+        $booking->loadMissing([
+            'customer',
+            'corporateAccount',
+            'corporateDepartment',
+            'corporateDivision',
+            'employee.user',
+            'vehicleGroup',
+            'vehicle',
+            'driver',
+            'bookingItems.serviceType',
+            'bookingItems.vehicleGroup',
+            'vehicleAssignments.vehicle',
+            'driverAssignments.driver',
+            'approvals.approver',
+            'latestApproval.approver',
+            'createdBy',
+        ]);
+
+        $payload = $this->mapBooking($booking, $canViewPayments);
+        $payload['trips'] = $booking->bookingItems->map(fn ($item) => [
+            'id' => $item->id,
+            'service_type' => $item->serviceType?->name,
+            'vehicle_group' => $item->vehicleGroup?->name,
+            'pickup_location' => $this->locationLabel($item->pickup_location ?? null),
+            'dropoff_location' => $this->locationLabel($item->dropoff_location ?? null),
+            'from_date' => $this->dateIso($item->from_date),
+            'to_date' => $this->dateIso($item->to_date),
+            'form_responses' => $item->metadata ?? [],
+        ])->values();
+        $payload['approvals'] = $booking->approvals->map(fn (BookingApproval $approval) => [
+            'id' => $approval->id,
+            'status' => $approval->status,
+            'comments' => $approval->comments ?? $approval->notes ?? null,
+            'approved_at' => optional($approval->approved_at)->toISOString(),
+            'approver' => $approval->approver ? [
+                'id' => $approval->approver->id,
+                'first_name' => $approval->approver->first_name,
+                'last_name' => $approval->approver->last_name,
+            ] : null,
+        ])->values();
+        $payload['assignments'] = [
+            'vehicles' => $booking->vehicleAssignments->map(fn ($assignment) => [
+                'id' => $assignment->id,
+                'status' => $assignment->status,
+                'vehicle_name' => $assignment->vehicle?->name ?? $assignment->vehicle?->title,
+                'license_plate' => $assignment->vehicle?->license_plate,
+            ])->values(),
+            'drivers' => $booking->driverAssignments->map(fn ($assignment) => [
+                'id' => $assignment->id,
+                'status' => $assignment->status,
+                'driver_name' => $assignment->driver?->name,
+                'driver_phone' => $assignment->driver?->phone,
+            ])->values(),
+        ];
+        $payload['visibility'] = [
+            'can_view_payments' => $canViewPayments,
+        ];
+
+        return $payload;
     }
 
     /**
@@ -285,7 +461,33 @@ class CorporateBookingService
     private function applyBookingFilters($query, array $filters): void
     {
         if (!empty($filters['status'])) {
-            $query->where('status', $filters['status']);
+            $status = $filters['status'];
+            if ($status === 'pending') {
+                $query->whereIn('status', ['pending', 'pending_approval']);
+            } elseif ($status === 'approved') {
+                $query->whereIn('status', ['approved', 'confirmed']);
+            } elseif ($status === 'assigned') {
+                $query->whereIn('status', ['assigned', 'allocated', 'in_progress']);
+            } else {
+                $query->where('status', $status);
+            }
+        } else {
+            $query->whereIn('status', ['pending', 'pending_approval']);
+        }
+
+        if (!empty($filters['search'])) {
+            $search = trim((string) $filters['search']);
+            $query->where(function ($q) use ($search) {
+                $q->where('booking_number', 'like', "%{$search}%")
+                    ->orWhereHas('customer', fn ($customerQuery) =>
+                        $customerQuery->where('name', 'like', "%{$search}%")
+                    )
+                    ->orWhereHas('employee.user', fn ($userQuery) =>
+                        $userQuery->where('first_name', 'like', "%{$search}%")
+                            ->orWhere('last_name', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%")
+                    );
+            });
         }
 
         if (!empty($filters['department_id'])) {
@@ -303,6 +505,120 @@ class CorporateBookingService
         if (!empty($filters['date_to'])) {
             $query->where('created_at', '<=', $filters['date_to']);
         }
+    }
+
+    private function transformBookingPaginator(LengthAwarePaginator $paginator, array $filters = []): LengthAwarePaginator
+    {
+        $canViewPayments = (bool) ($filters['can_view_payments'] ?? false);
+        $paginator->setCollection(
+            $paginator->getCollection()->map(fn (Booking $booking) => $this->mapBooking($booking, $canViewPayments))
+        );
+
+        return $paginator;
+    }
+
+    private function mapBooking(Booking $booking, bool $canViewPayments = false): array
+    {
+        $employeeUser = $booking->employee?->user;
+        $approval = $booking->latestApproval;
+
+        $payload = [
+            'id' => $booking->id,
+            'booking_number' => $booking->booking_number,
+            'is_corporate_booking' => (bool) $booking->is_corporate_booking,
+            'corporate_account_id' => $booking->corporate_account_id,
+            'corporate_name' => $booking->corporateAccount?->name,
+            'employee_id' => $booking->employee_id,
+            'employee_name' => $employeeUser
+                ? trim($employeeUser->first_name . ' ' . $employeeUser->last_name)
+                : ($booking->customer?->name ?? null),
+            'employee_email' => $employeeUser?->email,
+            'corporate_department_id' => $booking->corporate_department_id,
+            'corporate_division_id' => $booking->corporate_division_id,
+            'department' => $booking->corporateDepartment?->name,
+            'division' => $booking->corporateDivision?->name,
+            'created_by_user_id' => $booking->created_by_user_id,
+            'created_by_name' => $booking->createdBy?->name,
+            'status' => $booking->status,
+            'approval_status' => $booking->approval_status,
+            'requires_approval' => (bool) $booking->requires_approval,
+            'is_recurring' => (bool) $booking->is_recurring,
+            'recurrence_pattern' => $booking->recurrence_pattern,
+            'recurrence_end_date' => $this->dateIso($booking->recurrence_end_date),
+            'recurrence_days' => $booking->recurrence_days,
+            'recurring_series_id' => $booking->recurring_series_id,
+            'recurring_sequence' => $booking->recurring_sequence,
+            'recurring_occurrence_date' => $this->dateIso($booking->recurring_occurrence_date),
+            'vehicle_group_id' => $booking->vehicle_group_id,
+            'vehicle_group_name' => $booking->vehicleGroup?->name,
+            'pickup_location' => $this->locationLabel($booking->pickup_location ?? null),
+            'dropoff_location' => $this->locationLabel($booking->dropoff_location ?? null),
+            'pickup_date' => $this->dateIso($booking->from_date),
+            'dropoff_date' => $this->dateIso($booking->to_date),
+            'assigned_vehicle' => $booking->vehicle ? [
+                'id' => $booking->vehicle->id,
+                'name' => $booking->vehicle->name ?? $booking->vehicle->title,
+                'license_plate' => $booking->vehicle->license_plate,
+            ] : null,
+            'assigned_driver' => $booking->driver ? [
+                'id' => $booking->driver->id,
+                'name' => $booking->driver->name,
+                'phone' => $booking->driver->phone,
+            ] : null,
+            'approval' => $approval ? [
+                'id' => $approval->id,
+                'booking_id' => $approval->booking_id,
+                'status' => $approval->status,
+                'approved_by_user_id' => $approval->approved_by_user_id ?? null,
+                'comments' => $approval->comments ?? $approval->notes ?? null,
+                'approved_at' => optional($approval->approved_at)->toISOString(),
+                'approver' => $approval->approver ? [
+                    'id' => $approval->approver->id,
+                    'first_name' => $approval->approver->first_name,
+                    'last_name' => $approval->approver->last_name,
+                ] : null,
+            ] : null,
+            'created_at' => $this->dateIso($booking->created_at),
+            'updated_at' => $this->dateIso($booking->updated_at),
+        ];
+
+        if ($canViewPayments) {
+            $payload += [
+                'total_cost' => (float) ($booking->total_estimated ?? $booking->total_actual ?? 0),
+                'currency' => $booking->currency,
+                'payment_status' => $booking->payment_status,
+                'payment_method' => $booking->payment_method,
+                'pricing_scope' => data_get($booking->pricing_snapshot, 'pricing_scope'),
+            ];
+        }
+
+        return $payload;
+    }
+
+    private function locationLabel(mixed $location): ?string
+    {
+        if (is_array($location)) {
+            return $location['address'] ?? $location['label'] ?? null;
+        }
+
+        if (is_object($location)) {
+            return $location->address ?? $location->label ?? null;
+        }
+
+        return $location ? (string) $location : null;
+    }
+
+    private function dateIso(mixed $value): ?string
+    {
+        if (!$value) {
+            return null;
+        }
+
+        if ($value instanceof \Carbon\CarbonInterface) {
+            return $value->toISOString();
+        }
+
+        return (string) $value;
     }
 
     // ─── Reporting & Export ───────────────────────────────────────────

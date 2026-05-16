@@ -267,6 +267,12 @@ class TripController extends Controller
             'label' => $displayLabel,
             'display_label' => $displayLabel,
             'address' => $stop->address,
+            'contact' => [
+                'employee_id' => $stop->location['employee_id'] ?? null,
+                'contact_name' => $stop->location['contact_name'] ?? null,
+                'contact_phone' => $stop->location['contact_phone'] ?? null,
+                'contact_note' => $stop->location['contact_note'] ?? null,
+            ],
             'arrived_at' => $stop->arrived_at?->toIso8601String(),
             'completed_at' => $stop->completed_at?->toIso8601String(),
             'completed_action' => $stop->completed_action,

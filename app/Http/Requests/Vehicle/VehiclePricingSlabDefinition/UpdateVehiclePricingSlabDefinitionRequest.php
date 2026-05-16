@@ -17,8 +17,14 @@ class UpdateVehiclePricingSlabDefinitionRequest extends FormRequest
             'max_days' => ['sometimes'],
             'min_hours' => ['sometimes'],
             'max_hours' => ['sometimes'],
+            'type' => ['sometimes', 'nullable', 'string', 'in:hours,days,per_day,per_km,flat_rate'],
+            'max_km_per_day' => ['sometimes', 'nullable', 'integer', 'min:0'],
+            'max_km_per_package' => ['sometimes', 'nullable', 'integer', 'min:0'],
             'sort_order' => ['sometimes', 'nullable', 'integer', 'min:0'],
             'is_active' => ['sometimes', 'boolean'],
+            'owner_type' => ['nullable', 'string', 'in:corporate'],
+            'owner_id' => ['nullable', 'uuid', 'exists:corporates,id', 'required_with:owner_type'],
+            'priority' => ['nullable', 'integer', 'min:0'],
         ];
     }
 }

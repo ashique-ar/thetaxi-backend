@@ -22,6 +22,8 @@ class KmRangePricingRule extends BaseModel
         'scope',
         'service_type_id',
         'vehicle_group_id',
+        'owner_type',
+        'owner_id',
         'from_km',
         'to_km',
         'price_type',
@@ -234,9 +236,12 @@ class KmRangePricingRule extends BaseModel
         float $distance,
         ?string $serviceTypeId = null,
         ?string $vehicleGroupId = null,
-        Carbon $date = null
+        Carbon $date = null,
+        ?string $ownerType = null,
+        ?string $ownerId = null
     ): \Illuminate\Database\Eloquent\Collection {
         $query = static::active()->effective($date)->forDistance($distance);
+        static::applyOwnerScope($query, $ownerType, $ownerId);
 
         // Apply scope filtering
         if ($serviceTypeId && $vehicleGroupId) {
@@ -272,9 +277,11 @@ class KmRangePricingRule extends BaseModel
         float $baseAmount = 0,
         ?string $serviceTypeId = null,
         ?string $vehicleGroupId = null,
-        Carbon $date = null
+        Carbon $date = null,
+        ?string $ownerType = null,
+        ?string $ownerId = null
     ): array {
-        $applicableRules = static::getApplicableRules($distance, $serviceTypeId, $vehicleGroupId, $date);
+        $applicableRules = static::getApplicableRules($distance, $serviceTypeId, $vehicleGroupId, $date, $ownerType, $ownerId);
         
         if ($applicableRules->isEmpty()) {
             return [
@@ -333,6 +340,8 @@ class KmRangePricingRule extends BaseModel
             'scope' => 'required|in:global,service,vehicle_group',
             'service_type_id' => 'nullable|uuid|exists:service_types,id|required_if:scope,service',
             'vehicle_group_id' => 'nullable|uuid|exists:vehicle_groups,id|required_if:scope,vehicle_group',
+            'owner_type' => 'nullable|string|in:corporate',
+            'owner_id' => 'nullable|uuid|required_with:owner_type',
             'from_km' => 'required|numeric|min:0',
             'to_km' => 'nullable|numeric|min:0|gt:from_km',
             'price_type' => 'required|in:fixed_rate,percentage_multiplier,flat_addition',
@@ -343,5 +352,20 @@ class KmRangePricingRule extends BaseModel
             'effective_from' => 'nullable|date',
             'effective_to' => 'nullable|date|after:effective_from',
         ];
+    }
+
+    private static function applyOwnerScope(Builder $query, ?string $ownerType, ?string $ownerId): void
+    {
+        if ($ownerType && $ownerId) {
+            $query->where(function (Builder $q) use ($ownerType, $ownerId) {
+                $q->where(function (Builder $scoped) use ($ownerType, $ownerId) {
+                    $scoped->where('owner_type', $ownerType)->where('owner_id', $ownerId);
+                })->orWhereNull('owner_type');
+            });
+
+            return;
+        }
+
+        $query->whereNull('owner_type')->whereNull('owner_id');
     }
 }

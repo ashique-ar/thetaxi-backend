@@ -25,6 +25,9 @@ class CorporateRoleController extends Controller
         'view_payments',
         'manage_rate_charts',
         'view_reports',
+        'view_audit_log',
+        'bookings.view',
+        'bookings.create',
     ];
 
     /**
@@ -45,15 +48,7 @@ class CorporateRoleController extends Controller
     public function index(Request $request): JsonResponse
     {
         $roles = Role::where('guard_name', 'api')
-            ->where(function ($q) use ($request) {
-                // Include default corporate roles (corporate_id IS NULL)
-                $q->where(function ($subQ) {
-                    $subQ->whereNull('corporate_id')
-                         ->whereIn('name', self::DEFAULT_CORPORATE_ROLES);
-                })
-                // OR include custom roles belonging to the requesting corporate
-                ->orWhere('corporate_id', $request->corporate_id);
-            })
+            ->whereIn('name', self::DEFAULT_CORPORATE_ROLES)
             ->with('permissions')
             ->get();
 
@@ -84,7 +79,6 @@ class CorporateRoleController extends Controller
         $role = Role::create([
             'name'       => $roleName,
             'guard_name' => 'api',
-            'corporate_id' => $request->corporate_id,
         ]);
 
         $role->syncPermissions($request->permissions);

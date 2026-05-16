@@ -24,6 +24,9 @@ class CorporatePermissionsSeeder extends Seeder
             'view_payments',
             'manage_rate_charts',
             'view_reports',
+            'view_audit_log',
+            'bookings.view',
+            'bookings.create',
         ];
 
         // System-level admin permissions for managing corporates
@@ -49,7 +52,19 @@ class CorporatePermissionsSeeder extends Seeder
         // Default corporate roles with their permission sets
         // All corporate roles get 'corporate.view' for navigation visibility
         $rolesPermissions = [
-            'Corporate_Master_Admin' => array_merge($corporatePermissions, ['corporate.view']),
+            'Corporate_Master_Admin' => [
+                'corporate.view',
+                'manage_employees',
+                'manage_departments',
+                'manage_divisions',
+                'create_bookings',
+                'create_bookings_for_others',
+                'view_all_bookings',
+                'approve_bookings',
+                'view_payments',
+                'bookings.view',
+                'bookings.create',
+            ],
 
             'Transport_Coordinator' => [
                 'corporate.view',
@@ -57,6 +72,8 @@ class CorporatePermissionsSeeder extends Seeder
                 'create_bookings',
                 'create_bookings_for_others',
                 'view_all_bookings',
+                'bookings.view',
+                'bookings.create',
             ],
 
             'Approval_Manager' => [
@@ -68,6 +85,8 @@ class CorporatePermissionsSeeder extends Seeder
             'Corporate_Employee' => [
                 'corporate.view',
                 'create_bookings',
+                'bookings.view',
+                'bookings.create',
             ],
         ];
 

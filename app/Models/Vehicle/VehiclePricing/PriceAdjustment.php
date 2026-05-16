@@ -22,6 +22,8 @@ class PriceAdjustment extends BaseModel
         'scope',
         'service_type_id',
         'vehicle_group_id',
+        'owner_type',
+        'owner_id',
         'adjustment_type',
         'percentage_change',
         'fixed_amount_change',
@@ -301,13 +303,16 @@ class PriceAdjustment extends BaseModel
         ?string $vehicleGroupId = null,
         string $priceComponent = 'total_price',
         Carbon $date = null,
-        Carbon $endDate = null
+        Carbon $endDate = null,
+        ?string $ownerType = null,
+        ?string $ownerId = null
     ): \Illuminate\Database\Eloquent\Collection {
         $query = static::active()
             ->valid($date, $endDate)
             ->withinUsageLimit()
             ->forAmount($amount)
             ->where('applies_to', $priceComponent);
+        static::applyOwnerScope($query, $ownerType, $ownerId);
 
         if ($serviceTypeId) {
             $query->forService($serviceTypeId);
@@ -344,7 +349,9 @@ class PriceAdjustment extends BaseModel
         ?string $vehicleGroupId = null,
         string $priceComponent = 'total_price',
         Carbon $date = null,
-        Carbon $endDate = null
+        Carbon $endDate = null,
+        ?string $ownerType = null,
+        ?string $ownerId = null
     ): array {
         $originalAmount = $amount;
 
@@ -354,7 +361,9 @@ class PriceAdjustment extends BaseModel
             $vehicleGroupId,
             $priceComponent,
             $date,
-            $endDate
+            $endDate,
+            $ownerType,
+            $ownerId
         );
 
         if ($adjustments->isEmpty()) {
@@ -451,6 +460,8 @@ class PriceAdjustment extends BaseModel
             'scope' => 'required|in:global,service,vehicle_group',
             'service_type_id' => 'nullable|uuid|exists:service_types,id|required_if:scope,service',
             'vehicle_group_id' => 'nullable|uuid|exists:vehicle_groups,id|required_if:scope,vehicle_group',
+            'owner_type' => 'nullable|string|in:corporate',
+            'owner_id' => 'nullable|uuid|required_with:owner_type',
             'adjustment_type' => 'required|in:percentage,fixed_amount',
             'percentage_change' => 'nullable|numeric|required_if:adjustment_type,percentage',
             'fixed_amount_change' => 'nullable|numeric|required_if:adjustment_type,fixed_amount',
@@ -463,5 +474,20 @@ class PriceAdjustment extends BaseModel
             'valid_to' => 'required|date|after:valid_from',
             'usage_limit' => 'nullable|integer|min:1',
         ];
+    }
+
+    private static function applyOwnerScope(Builder $query, ?string $ownerType, ?string $ownerId): void
+    {
+        if ($ownerType && $ownerId) {
+            $query->where(function (Builder $q) use ($ownerType, $ownerId) {
+                $q->where(function (Builder $scoped) use ($ownerType, $ownerId) {
+                    $scoped->where('owner_type', $ownerType)->where('owner_id', $ownerId);
+                })->orWhereNull('owner_type');
+            });
+
+            return;
+        }
+
+        $query->whereNull('owner_type')->whereNull('owner_id');
     }
 }

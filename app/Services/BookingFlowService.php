@@ -1674,6 +1674,8 @@ class BookingFlowService
 
     public function submitBookingForApproval(array $params): Booking
     {
+        $params = $this->sanitizeCorporateRequestPayload($params);
+
         return DB::transaction(function () use ($params) {
 
             // 1) Calculate pricing with the same payload you got from the controller
@@ -1693,6 +1695,7 @@ class BookingFlowService
             // (No normalization: we use $params directly)
             $booking->customer_id = $this->resolveBookingCustomerId($params);
             $this->applyCorporateBookingFields($booking, $params);
+            $this->applyRecurringBookingFields($booking, $params);
 
             // pricing snapshot + quick numbers
             $booking->pricing_snapshot = $totals['pricing_snapshot'];
@@ -1768,8 +1771,60 @@ class BookingFlowService
                 }
             }
 
+            $this->createFutureRecurringBookings($booking, $params);
+
             return $booking->load(['customer', 'vehicle', 'driver', 'serviceType', 'vehicleGroup', 'approvals']);
         });
+    }
+
+    private function sanitizeCorporateRequestPayload(array $params): array
+    {
+        $isCorporateBooking = filter_var($params['is_corporate_booking'] ?? false, FILTER_VALIDATE_BOOL);
+
+        if (!$isCorporateBooking) {
+            return $params;
+        }
+
+        $corporateId = $params['corporate_account_id'] ?? null;
+        $corporate = $corporateId ? Corporate::find($corporateId) : null;
+
+        unset(
+            $params['vehicle_id'],
+            $params['driver_id'],
+            $params['specific_vehicle_id'],
+            $params['specific_driver_id'],
+            $params['vehicle_driver_assignments']
+        );
+
+        if (isset($params['booking_items']) && is_array($params['booking_items'])) {
+            foreach ($params['booking_items'] as $index => $item) {
+                if (is_array($item)) {
+                    if ($corporate) {
+                        $this->assertCorporateBookingItemAllowed($corporate, $item);
+                    }
+                    unset($item['vehicle_id'], $item['driver_id']);
+                    $params['booking_items'][$index] = $item;
+                }
+            }
+        } elseif ($corporate) {
+            $this->assertCorporateBookingItemAllowed($corporate, $params);
+        }
+
+        return $params;
+    }
+
+    private function assertCorporateBookingItemAllowed(Corporate $corporate, array $item): void
+    {
+        $serviceTypeId = $item['service_type_id'] ?? ($item['service_type'] ?? null);
+        $vehicleGroupId = $item['vehicle_group_id'] ?? null;
+
+        if ($serviceTypeId && !$corporate->serviceTypes()->where('service_types.id', $serviceTypeId)->exists()) {
+            abort(422, 'The selected service is not assigned to this corporate.');
+        }
+
+        if ($vehicleGroupId && !$corporate->vehicleGroups()->where('vehicle_groups.id', $vehicleGroupId)->exists()) {
+            abort(422, 'The selected vehicle group is not assigned to this corporate.');
+        }
     }
 
     /**
@@ -2058,6 +2113,8 @@ class BookingFlowService
 
     public function confirmBooking(array $params): Booking
     {
+        $params = $this->sanitizeCorporateRequestPayload($params);
+
         return DB::transaction(function () use ($params) {
 
             // 1) Calculate pricing
@@ -2072,6 +2129,7 @@ class BookingFlowService
             $booking->customer_id = $this->resolveBookingCustomerId($params);
             $booking->booking_date = now();
             $this->applyCorporateBookingFields($booking, $params);
+            $this->applyRecurringBookingFields($booking, $params);
 
             // Booking-level metadata only
             $booking->passenger_count = $params['passenger_count'] ?? 1;
@@ -2140,6 +2198,8 @@ class BookingFlowService
             if (method_exists($this, 'sendBookingConfirmation')) {
                 $this->sendBookingConfirmation($booking);
             }
+
+            $this->createFutureRecurringBookings($booking, $params);
 
             return $booking->load(['customer', 'vehicle', 'driver', 'serviceType', 'vehicleGroup', 'bookingItems']);
         });
@@ -3568,9 +3628,25 @@ class BookingFlowService
                 return $this->getDefaultPricingStructure();
             }
 
-            // Get active calculation definition for this service type
-            $calculationDefinition = VehiclePricingCalculationDefinition::where('service_type_id', $serviceTypeId)
+            $ownerType = !empty($params['corporate_account_id']) ? 'corporate' : null;
+            $ownerId = $params['corporate_account_id'] ?? null;
+
+            // Get active calculation definition for this service type, preferring corporate-scoped pricing when present.
+            $calculationDefinitionQuery = VehiclePricingCalculationDefinition::where('service_type_id', $serviceTypeId)
                 ->where('status', 'active')
+                ->when($ownerType && $ownerId, function ($query) use ($ownerType, $ownerId) {
+                    $query->where(function ($scopeQuery) use ($ownerType, $ownerId) {
+                        $scopeQuery->where(function ($scoped) use ($ownerType, $ownerId) {
+                            $scoped->where('owner_type', $ownerType)->where('owner_id', $ownerId);
+                        })->orWhereNull('owner_type');
+                    });
+                }, function ($query) {
+                    $query->whereNull('owner_type')->whereNull('owner_id');
+                });
+
+            $calculationDefinition = $calculationDefinitionQuery
+                ->orderByRaw("CASE WHEN owner_type = ? AND owner_id = ? THEN 0 ELSE 1 END", [$ownerType ?? '', $ownerId ?? ''])
+                ->orderBy('priority', 'desc')
                 ->orderBy('created_at', 'desc')
                 ->first();
 
@@ -3590,6 +3666,8 @@ class BookingFlowService
 
             // Prepare calculation inputs
             $calculationInputs = $this->prepareCalculationInputs($params);
+            $calculationInputs['owner_type'] = $ownerType;
+            $calculationInputs['owner_id'] = $ownerId;
 
             // Ensure journey duration seconds flow through to distance_details
             // (used later for email/cart displays)
@@ -3617,7 +3695,16 @@ class BookingFlowService
 
             ]);
             // Transform result to standard pricing structure
-            return $this->transformCalculationResult($calculationResult, $params, $mode, $servicePackageInfo);
+            $transformed = $this->transformCalculationResult($calculationResult, $params, $mode, $servicePackageInfo);
+            $transformed['pricing_scope'] = [
+                'source' => $calculationDefinition->owner_type === 'corporate' ? 'corporate' : 'global',
+                'owner_type' => $calculationDefinition->owner_type,
+                'owner_id' => $calculationDefinition->owner_id,
+                'calculation_definition_id' => $calculationDefinition->id,
+                'calculation_definition_name' => $calculationDefinition->name,
+            ];
+
+            return $transformed;
 
         } catch (\Exception $e) {
             Log::error("Dynamic pricing calculation failed: " . $e->getMessage(), [
@@ -3876,7 +3963,9 @@ class BookingFlowService
             $servicePackageInfo,
             $params['service_type_id'] ?? null,
             $params['vehicle_group_id'] ?? null,
-            $params['duration_seconds'] ?? null
+            $params['duration_seconds'] ?? null,
+            !empty($params['corporate_account_id']) ? 'corporate' : null,
+            $params['corporate_account_id'] ?? null
         );
 
         Log::debug('TransformCalculationResult - Distance Details Built', [
@@ -3971,7 +4060,9 @@ class BookingFlowService
         ?array $servicePackageInfo,
         ?string $serviceTypeId,
         ?string $vehicleGroupId,
-        ?int $durationSeconds = null
+        ?int $durationSeconds = null,
+        ?string $ownerType = null,
+        ?string $ownerId = null
     ): array {
         $distanceDetails = [
             'journey_distance' => $kmCalculations['journey_distance'] ?? 0,
@@ -4028,13 +4119,13 @@ class BookingFlowService
 
         // Get extra_km_rate from common rate definitions
         if ($serviceTypeId && $vehicleGroupId) {
-            $extraKmRate = $this->getExtraKmRateForVehicleGroup($serviceTypeId, $vehicleGroupId);
+            $extraKmRate = $this->getExtraKmRateForVehicleGroup($serviceTypeId, $vehicleGroupId, $ownerType, $ownerId);
 
             if ($extraKmRate !== null) {
                 $distanceDetails['extra_km_price'] = (float) $extraKmRate;
             }
 
-            $extraHourRate = $this->getCommonRateForVehicleGroup($serviceTypeId, $vehicleGroupId, 'extra_hour_rate');
+            $extraHourRate = $this->getCommonRateForVehicleGroup($serviceTypeId, $vehicleGroupId, 'extra_hour_rate', $ownerType, $ownerId);
             if ($extraHourRate && $extraHourRate['value'] !== null) {
                 $distanceDetails['extra_hour_price'] = (float) $extraHourRate['value'];
                 $distanceDetails['extra_hour_label'] = $extraHourRate['name'] ?: 'Extra Hour Rate';
@@ -4061,17 +4152,23 @@ class BookingFlowService
      * @param string $vehicleGroupId Vehicle group ID
      * @return float|null Extra km rate or null if not configured
      */
-    private function getExtraKmRateForVehicleGroup(string $serviceTypeId, string $vehicleGroupId): ?float
+    private function getExtraKmRateForVehicleGroup(string $serviceTypeId, string $vehicleGroupId, ?string $ownerType = null, ?string $ownerId = null): ?float
     {
         try {
             // Look up the extra_km_rate common rate definition for this service type
-            $commonRatePricing = VehicleGroupCommonRatePricing::whereHas('commonRateDefinition', function ($query) use ($serviceTypeId) {
+            $commonRatePricing = VehicleGroupCommonRatePricing::whereHas('commonRateDefinition', function ($query) use ($serviceTypeId, $ownerType, $ownerId) {
                 $query->where('code', 'extra_km_rate')
                     ->where('service_type_id', $serviceTypeId)
                     ->where('is_active', true);
+                $this->applyOwnerScopeToQuery($query, $ownerType, $ownerId);
             })
                 ->where('vehicle_group_id', $vehicleGroupId)
                 ->where('is_active', true)
+                ->when($ownerType && $ownerId, function ($query) use ($ownerType, $ownerId) {
+                    $this->applyOwnerScopeToQuery($query, $ownerType, $ownerId);
+                }, fn ($query) => $query->whereNull('owner_type')->whereNull('owner_id'))
+                ->orderByRaw("CASE WHEN owner_type = ? AND owner_id = ? THEN 0 ELSE 1 END", [$ownerType ?? '', $ownerId ?? ''])
+                ->orderBy('priority', 'desc')
                 ->first();
 
             if ($commonRatePricing && $commonRatePricing->value !== null) {
@@ -4087,6 +4184,11 @@ class BookingFlowService
             $commonRateDefinition = VehiclePricingCommonRateDefinition::where('code', 'extra_km_rate')
                 ->where('service_type_id', $serviceTypeId)
                 ->where('is_active', true)
+                ->when($ownerType && $ownerId, function ($query) use ($ownerType, $ownerId) {
+                    $this->applyOwnerScopeToQuery($query, $ownerType, $ownerId);
+                }, fn ($query) => $query->whereNull('owner_type')->whereNull('owner_id'))
+                ->orderByRaw("CASE WHEN owner_type = ? AND owner_id = ? THEN 0 ELSE 1 END", [$ownerType ?? '', $ownerId ?? ''])
+                ->orderBy('priority', 'desc')
                 ->first();
 
             if ($commonRateDefinition) {
@@ -4115,19 +4217,25 @@ class BookingFlowService
     /**
      * Get a configured common rate for a vehicle group and service type.
      */
-    private function getCommonRateForVehicleGroup(string $serviceTypeId, string $vehicleGroupId, string $code): ?array
+    private function getCommonRateForVehicleGroup(string $serviceTypeId, string $vehicleGroupId, string $code, ?string $ownerType = null, ?string $ownerId = null): ?array
     {
         try {
             $normalizedCode = Str::lower($code);
 
             $commonRatePricing = VehicleGroupCommonRatePricing::with('commonRateDefinition')
-                ->whereHas('commonRateDefinition', function ($query) use ($serviceTypeId, $normalizedCode) {
+                ->whereHas('commonRateDefinition', function ($query) use ($serviceTypeId, $normalizedCode, $ownerType, $ownerId) {
                     $query->whereRaw('LOWER(code) = ?', [$normalizedCode])
                         ->where('service_type_id', $serviceTypeId)
                         ->where('is_active', true);
+                    $this->applyOwnerScopeToQuery($query, $ownerType, $ownerId);
                 })
                 ->where('vehicle_group_id', $vehicleGroupId)
                 ->where('is_active', true)
+                ->when($ownerType && $ownerId, function ($query) use ($ownerType, $ownerId) {
+                    $this->applyOwnerScopeToQuery($query, $ownerType, $ownerId);
+                }, fn ($query) => $query->whereNull('owner_type')->whereNull('owner_id'))
+                ->orderByRaw("CASE WHEN owner_type = ? AND owner_id = ? THEN 0 ELSE 1 END", [$ownerType ?? '', $ownerId ?? ''])
+                ->orderBy('priority', 'desc')
                 ->first();
 
             if (!$commonRatePricing || $commonRatePricing->value === null) {
@@ -4149,6 +4257,21 @@ class BookingFlowService
 
             return null;
         }
+    }
+
+    private function applyOwnerScopeToQuery($query, ?string $ownerType, ?string $ownerId): void
+    {
+        if ($ownerType && $ownerId) {
+            $query->where(function ($scopeQuery) use ($ownerType, $ownerId) {
+                $scopeQuery->where(function ($scoped) use ($ownerType, $ownerId) {
+                    $scoped->where('owner_type', $ownerType)->where('owner_id', $ownerId);
+                })->orWhereNull('owner_type');
+            });
+
+            return;
+        }
+
+        $query->whereNull('owner_type')->whereNull('owner_id');
     }
 
 
@@ -4187,15 +4310,6 @@ class BookingFlowService
                 'reason' => 'No active calculation definition found for this service type'
             ]
         ];
-    }
-
-    /**
-     * Get service type base rate for fallback calculations
-     * @deprecated No longer used — fallback now returns 0 to trigger quotation flow
-     */
-    private function getServiceTypeBaseRate(?ServiceType $serviceType): float
-    {
-        return 0;
     }
 
     /**
@@ -8267,6 +8381,13 @@ class BookingFlowService
             'status' => (string) ($booking->status ?? 'pending'),
             'workflow_step' => (string) ($booking->workflow_step ?? 'pending_approval'),
             'requires_approval' => (bool) ($booking->requires_approval ?? false),
+            'is_recurring' => (bool) $booking->is_recurring,
+            'recurrence_pattern' => $booking->recurrence_pattern,
+            'recurrence_end_date' => optional($booking->recurrence_end_date)->format('Y-m-d'),
+            'recurrence_days' => $booking->recurrence_days,
+            'recurring_series_id' => $booking->recurring_series_id,
+            'recurring_sequence' => $booking->recurring_sequence,
+            'recurring_occurrence_date' => optional($booking->recurring_occurrence_date)->format('Y-m-d'),
             'created_at' => optional($booking->created_at)->toISOString(),
             'updated_at' => optional($booking->updated_at)->toISOString(),
 
@@ -8320,10 +8441,278 @@ class BookingFlowService
 
 
 
+    private function applyRecurringBookingFields(Booking $booking, array $params, ?string $seriesId = null, int $sequence = 1, ?Carbon $occurrenceDate = null): void
+    {
+        $isRecurring = filter_var($params['is_recurring'] ?? false, FILTER_VALIDATE_BOOL);
+
+        if (!$isRecurring) {
+            $booking->is_recurring = false;
+            return;
+        }
+
+        $baseOccurrenceDate = $occurrenceDate ?: $this->resolveRecurringBaseDate($params);
+
+        $booking->is_recurring = true;
+        $booking->recurrence_pattern = $params['recurrence_pattern'] ?? null;
+        $booking->recurrence_end_date = !empty($params['recurrence_end_date'])
+            ? Carbon::parse($params['recurrence_end_date'])->toDateString()
+            : null;
+        $booking->recurrence_days = $params['recurrence_days'] ?? null;
+        $booking->recurring_series_id = $seriesId ?: ($params['recurring_series_id'] ?? (string) Str::uuid());
+        $booking->recurring_sequence = $sequence;
+        $booking->recurring_occurrence_date = $baseOccurrenceDate?->toDateString();
+    }
+
+    private function createFutureRecurringBookings(Booking $booking, array $params): void
+    {
+        if (!$booking->is_recurring || !$booking->recurring_series_id || empty($booking->recurrence_pattern) || empty($booking->recurrence_end_date)) {
+            return;
+        }
+
+        if ((int) ($booking->recurring_sequence ?? 1) !== 1) {
+            return;
+        }
+
+        $baseDate = $booking->recurring_occurrence_date
+            ? Carbon::parse($booking->recurring_occurrence_date)
+            : $this->resolveRecurringBaseDate($params);
+
+        if (!$baseDate) {
+            return;
+        }
+
+        $occurrenceDates = $this->buildRecurringOccurrenceDates(
+            $baseDate,
+            (string) $booking->recurrence_pattern,
+            $booking->recurrence_end_date instanceof Carbon ? $booking->recurrence_end_date : Carbon::parse($booking->recurrence_end_date),
+            $booking->recurrence_days ?: [],
+        );
+
+        $booking->loadMissing(['bookingItems', 'addons', 'variableCustomizations']);
+        $sequence = 2;
+        $baseDate = $baseDate->copy()->startOfDay();
+
+        foreach ($occurrenceDates as $occurrenceDate) {
+            $copy = $booking->replicate([
+                'booking_number',
+                'confirmation_number',
+                'invoice_number',
+                'log_code',
+                'created_at',
+                'updated_at',
+                'deleted_at',
+            ]);
+
+            $this->applyRecurringBookingFields($copy, $params, $booking->recurring_series_id, $sequence, $occurrenceDate);
+            $copy->booking_number = null;
+            $copy->confirmation_number = null;
+            $copy->workflow_data = array_merge($copy->workflow_data ?? [], [
+                'recurring_generated_from_booking_id' => $booking->id,
+                'recurring_generated_at' => now()->toISOString(),
+            ]);
+            $copy->save();
+
+            $daysOffset = $baseDate->diffInDays($occurrenceDate->copy()->startOfDay(), false);
+
+            foreach ($booking->bookingItems as $item) {
+                $itemCopy = $item->replicate(['created_at', 'updated_at', 'deleted_at']);
+                $itemCopy->booking_id = $copy->id;
+                $itemCopy->from_date = $this->shiftRecurringDateValue($item->from_date, $daysOffset);
+                $itemCopy->to_date = $this->shiftRecurringDateValue($item->to_date, $daysOffset);
+
+                if ($copy->is_corporate_booking) {
+                    $itemCopy->vehicle_id = null;
+                    $itemCopy->driver_id = null;
+                }
+
+                $itemCopy->save();
+            }
+
+            foreach ($booking->addons as $addon) {
+                $addonCopy = $addon->replicate(['created_at', 'updated_at', 'deleted_at']);
+                $addonCopy->booking_id = $copy->id;
+                $addonCopy->save();
+            }
+
+            foreach ($booking->variableCustomizations as $customization) {
+                $customizationCopy = $customization->replicate(['created_at', 'updated_at', 'deleted_at']);
+                $customizationCopy->booking_id = $copy->id;
+                $customizationCopy->save();
+            }
+
+            if ($copy->requires_approval) {
+                BookingApproval::create([
+                    'booking_id' => $copy->id,
+                    'requested_by' => $copy->approval_requested_by ?: Auth::id(),
+                    'status' => BookingApproval::STATUS_PENDING,
+                    'override_reasons' => $copy->override_reasons ?? [],
+                    'justification' => $copy->approval_justification,
+                    'priority' => $copy->approval_priority ?? 'normal',
+                ]);
+            }
+
+            $sequence++;
+        }
+    }
+
+    private function buildRecurringOccurrenceDates(Carbon $baseDate, string $pattern, Carbon $endDate, array $recurrenceDays): array
+    {
+        $dates = [];
+        $baseDate = $baseDate->copy()->startOfDay();
+        $endDate = $endDate->copy()->startOfDay();
+
+        if ($endDate->lessThanOrEqualTo($baseDate)) {
+            return [];
+        }
+
+        if ($pattern === 'daily') {
+            $cursor = $baseDate->copy()->addDay();
+            while ($cursor->lessThanOrEqualTo($endDate) && count($dates) < 365) {
+                $dates[] = $cursor->copy();
+                $cursor->addDay();
+            }
+        } elseif ($pattern === 'weekly') {
+            $selectedDays = $this->normalizeRecurrenceWeekdays($recurrenceDays);
+            if (empty($selectedDays)) {
+                $selectedDays = [$baseDate->dayOfWeekIso];
+            }
+
+            $cursor = $baseDate->copy()->addDay();
+            while ($cursor->lessThanOrEqualTo($endDate) && count($dates) < 365) {
+                if (in_array($cursor->dayOfWeekIso, $selectedDays, true)) {
+                    $dates[] = $cursor->copy();
+                }
+                $cursor->addDay();
+            }
+        } elseif ($pattern === 'monthly') {
+            $targetDay = $baseDate->day;
+            $cursor = $baseDate->copy()->addMonthNoOverflow();
+            while ($cursor->lessThanOrEqualTo($endDate) && count($dates) < 365) {
+                $lastDay = $cursor->copy()->endOfMonth()->day;
+                $dates[] = $cursor->copy()->day(min($targetDay, $lastDay));
+                $cursor->addMonthNoOverflow();
+            }
+        }
+
+        return array_values(array_filter($dates, fn (Carbon $date) => $date->greaterThan($baseDate) && $date->lessThanOrEqualTo($endDate)));
+    }
+
+    private function normalizeRecurrenceWeekdays(array $days): array
+    {
+        $nameMap = [
+            'monday' => 1, 'mon' => 1,
+            'tuesday' => 2, 'tue' => 2,
+            'wednesday' => 3, 'wed' => 3,
+            'thursday' => 4, 'thu' => 4,
+            'friday' => 5, 'fri' => 5,
+            'saturday' => 6, 'sat' => 6,
+            'sunday' => 7, 'sun' => 7,
+        ];
+
+        return collect($days)
+            ->map(function ($day) use ($nameMap) {
+                if (is_numeric($day)) {
+                    $number = (int) $day;
+                    return $number === 0 ? 7 : $number;
+                }
+
+                return $nameMap[strtolower((string) $day)] ?? null;
+            })
+            ->filter(fn ($day) => $day >= 1 && $day <= 7)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    private function resolveRecurringBaseDate(array $params): ?Carbon
+    {
+        $date = $params['from_date'] ?? ($params['pickup_date'] ?? null);
+
+        if (!$date && !empty($params['booking_items'][0]['from_date'])) {
+            $date = $params['booking_items'][0]['from_date'];
+        }
+
+        return $date ? Carbon::parse($date)->startOfDay() : null;
+    }
+
+    private function shiftRecurringDateValue($value, int $daysOffset)
+    {
+        if (!$value) {
+            return null;
+        }
+
+        return Carbon::parse($value)->addDays($daysOffset)->format('Y-m-d H:i:s');
+    }
+
+    public function cancelRecurringBooking(string $bookingId, string $scope, string $userId, ?string $reason = null): array
+    {
+        $booking = Booking::findOrFail($bookingId);
+
+        if ($scope === 'single' || !$booking->recurring_series_id) {
+            return [
+                'scope' => 'single',
+                'affected_booking_ids' => [$booking->id],
+                'affected_count' => 1,
+                'result' => $this->deleteBooking($booking->id, $userId, $reason ?: 'Recurring occurrence cancelled'),
+            ];
+        }
+
+        if ($scope !== 'future') {
+            abort(422, 'Invalid recurring cancellation scope.');
+        }
+
+        $fromDate = $booking->recurring_occurrence_date
+            ? Carbon::parse($booking->recurring_occurrence_date)->toDateString()
+            : optional($booking->bookingItems()->first())->from_date?->toDateString();
+
+        $bookings = Booking::query()
+            ->where('recurring_series_id', $booking->recurring_series_id)
+            ->whereNotIn('status', ['completed', 'cancelled'])
+            ->where(function ($query) use ($fromDate, $booking) {
+                if ($fromDate) {
+                    $query->whereDate('recurring_occurrence_date', '>=', $fromDate);
+                }
+                $query->orWhere(function ($fallback) use ($booking) {
+                    $fallback->whereNull('recurring_occurrence_date')
+                        ->where('recurring_sequence', '>=', $booking->recurring_sequence ?? 1);
+                });
+            })
+            ->orderBy('recurring_sequence')
+            ->get();
+
+        $affectedIds = [];
+        foreach ($bookings as $futureBooking) {
+            $this->cancelBookingRecord($futureBooking, $userId, $reason ?: 'Future recurring bookings cancelled');
+            $affectedIds[] = $futureBooking->id;
+        }
+
+        return [
+            'scope' => 'future',
+            'affected_booking_ids' => $affectedIds,
+            'affected_count' => count($affectedIds),
+        ];
+    }
+
+    private function cancelBookingRecord(Booking $booking, string $userId, string $reason): void
+    {
+        $booking->update([
+            'status' => 'cancelled',
+            'cancelled_at' => now(),
+            'cancelled_by' => $userId,
+            'cancellation_reason' => $reason,
+        ]);
+
+        $booking->bookingItems()->update(['status' => 'cancelled']);
+        $booking->vehicleAssignments()->update(['status' => 'cancelled']);
+        $booking->driverAssignments()->update(['status' => 'cancelled']);
+
+        // booking_dispatches currently has no cancelled database state; assignment release is handled above.
+    }
+
     /**
      * Delete or cancel booking
      */
-    public function deleteBooking(string $bookingId, string $userId): array
+    public function deleteBooking(string $bookingId, string $userId, ?string $reason = null): array
     {
         $booking = Booking::findOrFail($bookingId);
 
@@ -8338,12 +8727,7 @@ class BookingFlowService
                 'message' => 'Booking deleted successfully'
             ];
         } else {
-            $booking->update([
-                'status' => 'cancelled',
-                'cancelled_at' => now(),
-                'cancelled_by' => $userId,
-                'cancellation_reason' => 'Cancelled via admin interface'
-            ]);
+            $this->cancelBookingRecord($booking, $userId, $reason ?: 'Cancelled via admin interface');
 
             return [
                 'deleted' => false,

@@ -45,6 +45,8 @@ class PriceAdjustmentController extends Controller
             'scope' => 'in:global,service,vehicle_group,service_vehicle_group',
             'service_type_id' => 'uuid|exists:service_types,id',
             'vehicle_group_id' => 'uuid|exists:vehicle_groups,id',
+            'owner_type' => 'nullable|string|in:corporate',
+            'owner_id' => 'nullable|uuid|exists:corporates,id|required_with:owner_type',
             'adjustment_type' => 'in:percentage,fixed_amount',
             'applies_to' => 'in:base_price,total_price,km_charges',
             'is_active' => 'any',
@@ -145,6 +147,13 @@ class PriceAdjustmentController extends Controller
 
             if ($request->filled('vehicle_group_id')) {
                 $query->where('vehicle_group_id', $request->vehicle_group_id);
+            }
+
+            if ($request->filled('owner_type')) {
+                $query->where('owner_type', $request->owner_type)
+                    ->where('owner_id', $request->owner_id);
+            } elseif ($request->boolean('global_only', false)) {
+                $query->whereNull('owner_type')->whereNull('owner_id');
             }
 
             if ($request->filled('adjustment_type')) {

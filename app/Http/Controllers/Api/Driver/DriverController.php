@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Driver;
 
 use App\Http\Controllers\Controller;
 use App\Models\Driver\Driver;
+use App\Models\Driver\DriverDevice;
 use App\Models\Driver\DriverLog;
 use App\Models\Driver\RoutePoint;
 use App\Models\Driver\DriverSession;
@@ -394,6 +395,7 @@ class DriverController extends Controller
     public function sessions(Request $request, Driver $driver): JsonResponse
     {
         $query = $driver->sessions()
+            ->with(['device' => fn($deviceQuery) => $deviceQuery->where('driver_id', $driver->id)])
             ->orderBy('start_time', 'desc');
         
         // Optional status filter
@@ -402,11 +404,14 @@ class DriverController extends Controller
         }
         
         // Optional date range filter
-        if ($request->filled('from_date')) {
-            $query->where('start_time', '>=', Carbon::parse($request->from_date)->startOfDay());
+        $fromDate = $request->input('from_date', $request->input('date_from'));
+        $toDate = $request->input('to_date', $request->input('date_to'));
+
+        if ($fromDate) {
+            $query->where('start_time', '>=', Carbon::parse($fromDate)->startOfDay());
         }
-        if ($request->filled('to_date')) {
-            $query->where('start_time', '<=', Carbon::parse($request->to_date)->endOfDay());
+        if ($toDate) {
+            $query->where('start_time', '<=', Carbon::parse($toDate)->endOfDay());
         }
         
         $sessions = $query->paginate($request->per_page ?? 15);
@@ -439,6 +444,8 @@ class DriverController extends Controller
                 'message' => 'Session does not belong to this driver'
             ], 404);
         }
+
+        $session->loadMissing(['device' => fn($deviceQuery) => $deviceQuery->where('driver_id', $driver->id)]);
         
         $routePoints = $session->routePoints()
             ->orderBy('recorded_at', 'asc')
@@ -487,6 +494,15 @@ class DriverController extends Controller
             })
             ->orderBy('start_time')
             ->get();
+
+        $sessionDevices = DriverDevice::query()
+            ->where('driver_id', $driver->id)
+            ->whereIn(
+                'device_uuid',
+                $sessions->pluck('device_uuid')->filter()->unique()->values()
+            )
+            ->get()
+            ->keyBy('device_uuid');
 
         $assignments = DriverAssignment::query()
             ->where('driver_id', $driver->id)
@@ -621,9 +637,14 @@ class DriverController extends Controller
                         'is_online' => (bool) $driver->is_online,
                     ])
                     : null,
-                'sessions' => $sessions->map(function (DriverSession $session) {
+                'sessions' => $sessions->map(function (DriverSession $session) use ($sessionDevices) {
+                    $device = $session->device_uuid
+                        ? $sessionDevices->get($session->device_uuid)
+                        : null;
+
                     return [
                         'session_id' => $session->id,
+                        'device_uuid' => $session->device_uuid,
                         'status' => $session->status,
                         'start_time' => $session->start_time?->toIso8601String(),
                         'end_time' => $session->end_time?->toIso8601String(),
@@ -638,6 +659,21 @@ class DriverController extends Controller
                         'total_distance_km' => $session->total_distance_km !== null
                             ? (float) $session->total_distance_km
                             : null,
+                        'device' => $device ? [
+                            'device_uuid' => $device->device_uuid,
+                            'device_name' => $device->device_name,
+                            'device_model' => $device->device_model,
+                            'device_manufacturer' => $device->device_manufacturer,
+                            'platform' => $device->platform,
+                            'platform_display' => $device->platform_display,
+                            'os_version' => $device->os_version,
+                            'app_version' => $device->app_version,
+                            'app_build' => $device->app_build,
+                            'is_active' => (bool) $device->is_active,
+                            'last_active_at' => $device->last_active_at?->toIso8601String(),
+                            'locale' => $device->locale,
+                            'timezone' => $device->timezone,
+                        ] : null,
                     ];
                 })->values(),
                 'segments' => $segments,

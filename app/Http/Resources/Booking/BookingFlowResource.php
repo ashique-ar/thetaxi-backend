@@ -144,6 +144,9 @@ class BookingFlowResource extends JsonResource
             'recurrence_pattern' => $this->recurrence_pattern,
             'recurrence_end_date' => $this->recurrence_end_date?->format('Y-m-d'),
             'recurrence_days' => $this->recurrence_days,
+            'recurring_series_id' => $this->recurring_series_id,
+            'recurring_sequence' => $this->recurring_sequence,
+            'recurring_occurrence_date' => $this->recurring_occurrence_date?->format('Y-m-d'),
             
             // Approval workflow
             'approval_details' => [

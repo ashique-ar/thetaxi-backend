@@ -25,7 +25,7 @@ class CorporateApprovalController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $filters = $request->only(['date_from', 'date_to']);
+        $filters = $request->only(['date_from', 'date_to', 'page', 'per_page']);
 
         $queue = $this->bookingService->getApprovalQueue(
             $request->corporate_id,
@@ -34,7 +34,13 @@ class CorporateApprovalController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'data'   => ['approvals' => $queue],
+            'data'   => $queue->items(),
+            'meta'   => [
+                'current_page' => $queue->currentPage(),
+                'per_page' => $queue->perPage(),
+                'total' => $queue->total(),
+                'last_page' => $queue->lastPage(),
+            ],
         ]);
     }
 

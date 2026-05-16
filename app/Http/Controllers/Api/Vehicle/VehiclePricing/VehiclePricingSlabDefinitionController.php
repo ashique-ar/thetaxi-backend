@@ -19,10 +19,24 @@ class VehiclePricingSlabDefinitionController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = VehiclePricingSlabDefinition::withInactive()->with(['serviceType']);
+        $ownerType = $request->input('owner_type');
+        $ownerId = $request->input('owner_id');
 
         // Filter by service type if provided
         if ($request->has('service_type_id')) {
             $query->forServiceType($request->service_type_id);
+        }
+
+        if ($request->filled('context')) {
+            $query->whereHas('serviceType', function ($serviceQuery) use ($request) {
+                $serviceQuery->where('context', $request->input('context'));
+            });
+        }
+
+        if ($request->filled('owner_type')) {
+            $query->where('owner_type', $ownerType)->where('owner_id', $ownerId);
+        } elseif ($request->boolean('global_only', false)) {
+            $query->whereNull('owner_type')->whereNull('owner_id');
         }
 
         // Filter by active status if provided
@@ -30,7 +44,7 @@ class VehiclePricingSlabDefinitionController extends Controller
             $query->where('is_active', $request->boolean('is_active'));
         }
 
-        $slabDefinitions = $query->orderBy('sort_order')->get();
+        $slabDefinitions = $query->orderByDesc('priority')->orderBy('sort_order')->get();
 
         return response()->json([
             'success' => true,
@@ -44,7 +58,9 @@ class VehiclePricingSlabDefinitionController extends Controller
      */
     public function store(CreateVehiclePricingSlabDefinitionRequest $request): JsonResponse
     {
-        $slabDefinition = VehiclePricingSlabDefinition::create($request->validated() + ['created_user_id' => $request->user()->id]);
+        $data = $request->validated();
+        $data['owner_id'] = ($data['owner_type'] ?? null) ? ($data['owner_id'] ?? null) : null;
+        $slabDefinition = VehiclePricingSlabDefinition::create($data + ['created_user_id' => $request->user()->id]);
 
         return response()->json([
             'success' => true,
@@ -80,7 +96,9 @@ class VehiclePricingSlabDefinitionController extends Controller
     public function update(UpdateVehiclePricingSlabDefinitionRequest $request, string $id): JsonResponse
     {
         $slabDefinition = VehiclePricingSlabDefinition::find($id);
-        $slabDefinition->update($request->validated());
+        $data = $request->validated();
+        $data['owner_id'] = ($data['owner_type'] ?? null) ? ($data['owner_id'] ?? null) : null;
+        $slabDefinition->update($data);
         $slabDefinition->load('serviceType');
         return response()->json([
             'success' => true,

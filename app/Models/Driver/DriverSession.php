@@ -5,6 +5,7 @@ namespace App\Models\Driver;
 use App\Models\BaseModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
  * DriverSession Model
@@ -84,6 +85,14 @@ class DriverSession extends BaseModel
     public function driver(): BelongsTo
     {
         return $this->belongsTo(Driver::class, 'driver_id');
+    }
+
+    /**
+     * Get the mobile device used for this session.
+     */
+    public function device(): HasOne
+    {
+        return $this->hasOne(DriverDevice::class, 'device_uuid', 'device_uuid');
     }
 
     /**

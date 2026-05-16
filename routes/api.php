@@ -858,6 +858,16 @@ Route::middleware(['auth:api'])->group(function () {
                 ->middleware('permission:bookings.create');
             Route::post('corporates/{corporateId}/employees', [BookingFlowController::class, 'createCorporateEmployee'])
                 ->middleware('permission:bookings.create');
+            Route::get('corporates/{corporateId}/service-types', function (string $corporateId) {
+                $corporate = \App\Models\Corporate\Corporate::findOrFail($corporateId);
+                $serviceTypes = $corporate->serviceTypes()
+                    ->where('service_types.is_active', true)
+                    ->orderBy('service_types.priority')
+                    ->orderBy('service_types.name')
+                    ->get();
+
+                return \App\Http\Resources\ServiceTypeResource::collection($serviceTypes);
+            })->middleware('permission:bookings.create');
 
             // Company/System Routes
             Route::get('company/locations', [BookingFlowController::class, 'getCompanyLocations'])
@@ -909,6 +919,8 @@ Route::middleware(['auth:api'])->group(function () {
                 ->middleware('permission:bookings.view');
             Route::get('bookings/{bookingId}', [BookingFlowController::class, 'getBookingDetails'])
                 ->middleware('permission:bookings.view');
+            Route::post('bookings/{bookingId}/recurring/cancel', [BookingFlowController::class, 'cancelRecurringBooking'])
+                ->middleware('permission:bookings.delete');
             Route::delete('bookings/{bookingId}', [BookingFlowController::class, 'deleteBooking'])
                 ->middleware('permission:bookings.delete');
 
@@ -1274,17 +1286,15 @@ Route::middleware(['auth:api'])->group(function () {
             ]);
         });
 
-        // Rate Charts
-        Route::get('rate-charts', function (\Illuminate\Http\Request $request) {
-            $rateCharts = \App\Models\Corporate\CorporateRateChart::where('corporate_id', $request->corporate_id)
-                ->where('is_active', true)
-                ->with(['vehicleGroup', 'serviceType'])
+        Route::get('service-types', function (\Illuminate\Http\Request $request) {
+            $corporate = \App\Models\Corporate\Corporate::findOrFail($request->corporate_id);
+            $serviceTypes = $corporate->serviceTypes()
+                ->where('service_types.is_active', true)
+                ->orderBy('service_types.priority')
+                ->orderBy('service_types.name')
                 ->get();
 
-            return response()->json([
-                'status' => 'success',
-                'data'   => ['rate_charts' => $rateCharts],
-            ]);
+            return \App\Http\Resources\ServiceTypeResource::collection($serviceTypes);
         });
 
         // Booking Management
@@ -1294,6 +1304,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('bookings', [\App\Http\Controllers\Api\Corporate\CorporateBookingController::class, 'index']);
         Route::post('bookings', [\App\Http\Controllers\Api\Corporate\CorporateBookingController::class, 'store']);
         Route::post('bookings/for-employee', [\App\Http\Controllers\Api\Corporate\CorporateBookingController::class, 'storeForEmployee']);
+        Route::post('bookings/{id}/recurring/cancel', [\App\Http\Controllers\Api\Corporate\CorporateBookingController::class, 'cancelRecurring']);
         Route::get('bookings/{id}', [\App\Http\Controllers\Api\Corporate\CorporateBookingController::class, 'show']);
 
         // Approval Management
@@ -1336,13 +1347,40 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('{corporate}/deactivate', [\App\Http\Controllers\Api\Corporate\CorporateController::class, 'deactivate']);
         Route::post('{corporate}/vehicle-groups', [\App\Http\Controllers\Api\Corporate\CorporateController::class, 'assignVehicleGroups']);
         Route::delete('{corporate}/vehicle-groups/{vehicleGroupId}', [\App\Http\Controllers\Api\Corporate\CorporateController::class, 'removeVehicleGroup']);
-        Route::post('{corporate}/initial-admin', [\App\Http\Controllers\Api\Corporate\CorporateController::class, 'createInitialAdmin']);
+        Route::get('{corporate}/service-types', function (\App\Models\Corporate\Corporate $corporate) {
+            $serviceTypes = $corporate->serviceTypes()
+                ->where('service_types.is_active', true)
+                ->orderBy('service_types.priority')
+                ->orderBy('service_types.name')
+                ->get();
 
-        // Rate chart routes nested under corporate
-        Route::get('{corporate}/rate-charts', [\App\Http\Controllers\Api\Corporate\CorporateRateChartController::class, 'index']);
-        Route::post('{corporate}/rate-charts', [\App\Http\Controllers\Api\Corporate\CorporateRateChartController::class, 'store']);
-        Route::put('{corporate}/rate-charts/{rateChart}', [\App\Http\Controllers\Api\Corporate\CorporateRateChartController::class, 'update']);
-        Route::delete('{corporate}/rate-charts/{rateChart}', [\App\Http\Controllers\Api\Corporate\CorporateRateChartController::class, 'destroy']);
+            return \App\Http\Resources\ServiceTypeResource::collection($serviceTypes);
+        })->middleware('permission:corporates.view');
+        Route::post('{corporate}/service-types', function (\Illuminate\Http\Request $request, \App\Models\Corporate\Corporate $corporate) {
+            $validated = $request->validate([
+                'service_type_ids' => ['required', 'array'],
+                'service_type_ids.*' => ['uuid', 'exists:service_types,id'],
+            ]);
+
+            $sync = collect($validated['service_type_ids'])
+                ->mapWithKeys(fn ($id) => [(string) $id => [
+                    'id' => (string) \Illuminate\Support\Str::uuid(),
+                    'is_active' => true,
+                    'created_user_id' => $request->user()?->id,
+                    'updated_user_id' => $request->user()?->id,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]])
+                ->all();
+
+            $corporate->serviceTypes()->sync($sync);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Corporate services updated successfully',
+            ]);
+        })->middleware('permission:corporates.manage');
+        Route::post('{corporate}/initial-admin', [\App\Http\Controllers\Api\Corporate\CorporateController::class, 'createInitialAdmin']);
 
         // Admin sub-resource routes for departments, divisions, employees, bookings
         Route::get('{corporate}/departments', [\App\Http\Controllers\Api\Corporate\AdminCorporateDepartmentController::class, 'index']);
