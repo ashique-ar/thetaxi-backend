@@ -1175,7 +1175,7 @@ class DriverController extends Controller
             return 'before_accept';
         }
 
-        if ($assignment->pickup_arrived_at && $point->recorded_at && $point->recorded_at->gt($assignment->pickup_arrived_at)) {
+        if ($assignment->pickup_arrived_at && $point->recorded_at && $point->recorded_at->gte($assignment->pickup_arrived_at)) {
             return 'pickup_to_dropoff';
         }
 

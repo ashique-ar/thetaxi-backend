@@ -675,7 +675,7 @@ class AssignmentController extends Controller
             return 'before_accept';
         }
 
-        if ($assignment?->pickup_arrived_at && $recordedAt && $recordedAt->gt($assignment->pickup_arrived_at)) {
+        if ($assignment?->pickup_arrived_at && $recordedAt && $recordedAt->gte($assignment->pickup_arrived_at)) {
             return 'pickup_to_dropoff';
         }
 
