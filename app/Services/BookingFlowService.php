@@ -3645,7 +3645,7 @@ class BookingFlowService
                 });
 
             $calculationDefinition = $calculationDefinitionQuery
-                ->orderByRaw("CASE WHEN owner_type = ? AND owner_id = ? THEN 0 ELSE 1 END", [$ownerType ?? '', $ownerId ?? ''])
+                ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $ownerType, $ownerId))
                 ->orderBy('priority', 'desc')
                 ->orderBy('created_at', 'desc')
                 ->first();
@@ -4167,7 +4167,7 @@ class BookingFlowService
                 ->when($ownerType && $ownerId, function ($query) use ($ownerType, $ownerId) {
                     $this->applyOwnerScopeToQuery($query, $ownerType, $ownerId);
                 }, fn ($query) => $query->whereNull('owner_type')->whereNull('owner_id'))
-                ->orderByRaw("CASE WHEN owner_type = ? AND owner_id = ? THEN 0 ELSE 1 END", [$ownerType ?? '', $ownerId ?? ''])
+                ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $ownerType, $ownerId))
                 ->orderBy('priority', 'desc')
                 ->first();
 
@@ -4187,7 +4187,7 @@ class BookingFlowService
                 ->when($ownerType && $ownerId, function ($query) use ($ownerType, $ownerId) {
                     $this->applyOwnerScopeToQuery($query, $ownerType, $ownerId);
                 }, fn ($query) => $query->whereNull('owner_type')->whereNull('owner_id'))
-                ->orderByRaw("CASE WHEN owner_type = ? AND owner_id = ? THEN 0 ELSE 1 END", [$ownerType ?? '', $ownerId ?? ''])
+                ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $ownerType, $ownerId))
                 ->orderBy('priority', 'desc')
                 ->first();
 
@@ -4234,7 +4234,7 @@ class BookingFlowService
                 ->when($ownerType && $ownerId, function ($query) use ($ownerType, $ownerId) {
                     $this->applyOwnerScopeToQuery($query, $ownerType, $ownerId);
                 }, fn ($query) => $query->whereNull('owner_type')->whereNull('owner_id'))
-                ->orderByRaw("CASE WHEN owner_type = ? AND owner_id = ? THEN 0 ELSE 1 END", [$ownerType ?? '', $ownerId ?? ''])
+                ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $ownerType, $ownerId))
                 ->orderBy('priority', 'desc')
                 ->first();
 
@@ -4272,6 +4272,20 @@ class BookingFlowService
         }
 
         $query->whereNull('owner_type')->whereNull('owner_id');
+    }
+
+    private function applyOwnerPriorityOrder($query, ?string $ownerType, ?string $ownerId): void
+    {
+        if ($ownerType && $ownerId) {
+            $query->orderByRaw(
+                'CASE WHEN owner_type = ? AND owner_id = ? THEN 0 ELSE 1 END',
+                [$ownerType, $ownerId]
+            );
+
+            return;
+        }
+
+        $query->orderByRaw('1');
     }
 
 

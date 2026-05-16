@@ -219,7 +219,7 @@ class VehicleGroupPricingController extends Controller
                 }, fn ($q) => $q->whereNull('owner_type')->whereNull('owner_id'))
                 ->when(!$includeInactive, fn($q) => $q->where('is_active', true))
                 ->select(['id', 'service_type_id', 'name', 'min_hours', 'max_hours', 'type', 'is_active', 'sort_order', 'owner_type', 'owner_id', 'priority'])
-                ->orderByRaw("CASE WHEN owner_type = ? AND owner_id = ? THEN 0 ELSE 1 END", [$ownerType ?: '', $ownerId ?: ''])
+                ->tap(fn ($q) => $this->applyOwnerPriorityOrder($q, $ownerType, $ownerId))
                 ->orderByDesc('priority')
                 ->orderBy('service_type_id')
                 ->orderBy('sort_order')
@@ -242,7 +242,7 @@ class VehicleGroupPricingController extends Controller
                 }, fn ($q) => $q->whereNull('owner_type')->whereNull('owner_id'))
                 ->when(!$includeInactive, fn($q) => $q->where('is_active', true))
                 ->select(['id', 'service_type_id', 'name', 'is_active', 'owner_type', 'owner_id', 'priority'])
-                ->orderByRaw("CASE WHEN owner_type = ? AND owner_id = ? THEN 0 ELSE 1 END", [$ownerType ?: '', $ownerId ?: ''])
+                ->tap(fn ($q) => $this->applyOwnerPriorityOrder($q, $ownerType, $ownerId))
                 ->orderByDesc('priority')
                 ->get()
                 ->groupBy(function ($item) {
@@ -258,7 +258,7 @@ class VehicleGroupPricingController extends Controller
                     $q->forOwner($ownerType, $ownerId);
                 }, fn ($q) => $q->whereNull('owner_type')->whereNull('owner_id'))
                 ->select(['id', 'vehicle_group_id', 'slab_definition_id', 'rate', 'rate_type', 'minimum_charge', 'includes_fuel', 'includes_driver', 'is_active', 'owner_type', 'owner_id', 'priority'])
-                ->orderByRaw("CASE WHEN owner_type = ? AND owner_id = ? THEN 0 ELSE 1 END", [$ownerType ?: '', $ownerId ?: ''])
+                ->tap(fn ($q) => $this->applyOwnerPriorityOrder($q, $ownerType, $ownerId))
                 ->orderByDesc('priority')
                 ->get()
                 ->groupBy(function ($item) {
@@ -278,7 +278,7 @@ class VehicleGroupPricingController extends Controller
                     });
                 }, fn ($q) => $q->whereNull('owner_type')->whereNull('owner_id'))
                 ->select(['id', 'vehicle_group_id', 'common_rate_definition_id', 'value', 'is_active', 'owner_type', 'owner_id', 'priority'])
-                ->orderByRaw("CASE WHEN owner_type = ? AND owner_id = ? THEN 0 ELSE 1 END", [$ownerType ?: '', $ownerId ?: ''])
+                ->tap(fn ($q) => $this->applyOwnerPriorityOrder($q, $ownerType, $ownerId))
                 ->orderByDesc('priority')
                 ->get()
                 ->groupBy(function ($item) {
@@ -1301,5 +1301,19 @@ class VehicleGroupPricingController extends Controller
                 'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
             ], 500);
         }
+    }
+
+    private function applyOwnerPriorityOrder($query, ?string $ownerType, ?string $ownerId): void
+    {
+        if ($ownerType && $ownerId) {
+            $query->orderByRaw(
+                'CASE WHEN owner_type = ? AND owner_id = ? THEN 0 ELSE 1 END',
+                [$ownerType, $ownerId]
+            );
+
+            return;
+        }
+
+        $query->orderByRaw('1');
     }
 }

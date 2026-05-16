@@ -785,7 +785,7 @@ class VehiclePricingCalculationDefinition extends Model
                     })
                     ->orderByDesc('min_days')
                     ->orderByDesc('min_hours')
-                    ->orderByRaw("CASE WHEN owner_type = ? AND owner_id = ? THEN 0 ELSE 1 END", [$ownerType ?? '', $ownerId ?? ''])
+                    ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $ownerType, $ownerId))
                     ->orderByDesc('priority')
                     ->first();
 
@@ -805,7 +805,7 @@ class VehiclePricingCalculationDefinition extends Model
                     ->where('slab_definition_id', $slabDefinition->id)
                     ->where('is_active', true)
                     ->forOwner($inputs['owner_type'] ?? null, $inputs['owner_id'] ?? null)
-                    ->orderByRaw("CASE WHEN owner_type = ? AND owner_id = ? THEN 0 ELSE 1 END", [$inputs['owner_type'] ?? '', $inputs['owner_id'] ?? ''])
+                    ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $inputs['owner_type'] ?? null, $inputs['owner_id'] ?? null))
                     ->orderByDesc('priority')
                     ->first()
                 : null;
@@ -880,7 +880,7 @@ class VehiclePricingCalculationDefinition extends Model
                 ->when($ownerType && $ownerId, function ($query) use ($ownerType, $ownerId) {
                     $this->applyOwnerScope($query, $ownerType, $ownerId);
                 }, fn ($query) => $query->whereNull('owner_type')->whereNull('owner_id'))
-                ->orderByRaw("CASE WHEN owner_type = ? AND owner_id = ? THEN 0 ELSE 1 END", [$ownerType ?? '', $ownerId ?? ''])
+                ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $ownerType, $ownerId))
                 ->orderBy('priority', 'desc')
                 ->first();
 
@@ -900,7 +900,7 @@ class VehiclePricingCalculationDefinition extends Model
                 ->when($ownerType && $ownerId, function ($query) use ($ownerType, $ownerId) {
                     $this->applyOwnerScope($query, $ownerType, $ownerId);
                 }, fn ($query) => $query->whereNull('owner_type')->whereNull('owner_id'))
-                ->orderByRaw("CASE WHEN owner_type = ? AND owner_id = ? THEN 0 ELSE 1 END", [$ownerType ?? '', $ownerId ?? ''])
+                ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $ownerType, $ownerId))
                 ->orderBy('priority', 'desc')
                 ->first();
 
@@ -1266,6 +1266,20 @@ class VehiclePricingCalculationDefinition extends Model
         $query->whereNull('owner_type')->whereNull('owner_id');
     }
 
+    private function applyOwnerPriorityOrder($query, ?string $ownerType, ?string $ownerId): void
+    {
+        if ($ownerType && $ownerId) {
+            $query->orderByRaw(
+                'CASE WHEN owner_type = ? AND owner_id = ? THEN 0 ELSE 1 END',
+                [$ownerType, $ownerId]
+            );
+
+            return;
+        }
+
+        $query->orderByRaw('1');
+    }
+
     /**
      * Get supported variable types.
      *
@@ -1452,7 +1466,7 @@ class VehiclePricingCalculationDefinition extends Model
                                 ->orWhere('max_hours', '>=', $durationHours);
                         });
                 })
-                ->orderByRaw("CASE WHEN owner_type = ? AND owner_id = ? THEN 0 ELSE 1 END", [$ownerType ?? '', $ownerId ?? ''])
+                ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $ownerType, $ownerId))
                 ->orderByDesc('priority')
                 ->orderBy('min_hours')
                 ->first();
@@ -1471,7 +1485,7 @@ class VehiclePricingCalculationDefinition extends Model
                     ->where('slab_definition_id', $slabDefinition->id)
                     ->where('is_active', true)
                     ->forOwner($inputs['owner_type'] ?? null, $inputs['owner_id'] ?? null)
-                    ->orderByRaw("CASE WHEN owner_type = ? AND owner_id = ? THEN 0 ELSE 1 END", [$inputs['owner_type'] ?? '', $inputs['owner_id'] ?? ''])
+                    ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $inputs['owner_type'] ?? null, $inputs['owner_id'] ?? null))
                     ->orderByDesc('priority')
                     ->first();
 
@@ -1523,6 +1537,9 @@ class VehiclePricingCalculationDefinition extends Model
                 return $breakdown;
             }
 
+            $ownerType = $inputs['owner_type'] ?? null;
+            $ownerId = $inputs['owner_id'] ?? null;
+
             // Check vehicle group specific pricing first
             $commonRatePricing = VehicleGroupCommonRatePricing::whereHas('commonRateDefinition', function ($query) use ($rateKey, $ownerType, $ownerId) {
                 $query->where('name', $rateKey)
@@ -1535,7 +1552,7 @@ class VehiclePricingCalculationDefinition extends Model
                 ->when($ownerType && $ownerId, function ($query) use ($ownerType, $ownerId) {
                     $this->applyOwnerScope($query, $ownerType, $ownerId);
                 }, fn ($query) => $query->whereNull('owner_type')->whereNull('owner_id'))
-                ->orderByRaw("CASE WHEN owner_type = ? AND owner_id = ? THEN 0 ELSE 1 END", [$ownerType ?? '', $ownerId ?? ''])
+                ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $ownerType, $ownerId))
                 ->orderBy('priority', 'desc')
                 ->first();
 
@@ -1552,7 +1569,7 @@ class VehiclePricingCalculationDefinition extends Model
                 ->when($ownerType && $ownerId, function ($query) use ($ownerType, $ownerId) {
                     $this->applyOwnerScope($query, $ownerType, $ownerId);
                 }, fn ($query) => $query->whereNull('owner_type')->whereNull('owner_id'))
-                ->orderByRaw("CASE WHEN owner_type = ? AND owner_id = ? THEN 0 ELSE 1 END", [$ownerType ?? '', $ownerId ?? ''])
+                ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $ownerType, $ownerId))
                 ->orderBy('priority', 'desc')
                 ->first();
 
