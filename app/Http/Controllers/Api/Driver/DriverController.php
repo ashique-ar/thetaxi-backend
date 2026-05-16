@@ -1146,6 +1146,7 @@ class DriverController extends Controller
                 'assignment_id' => $point->assignment_id,
                 'booking_id' => $assignment?->booking_id,
                 'booking_number' => $assignment?->booking?->booking_number,
+                'tracking_phase' => $this->classifyMovementPointPhase($point, $assignment),
                 'latitude' => (float) $point->latitude,
                 'longitude' => (float) $point->longitude,
                 'speed' => $point->speed !== null ? (float) $point->speed : null,
@@ -1162,6 +1163,28 @@ class DriverController extends Controller
         }
 
         return array_values($segments);
+    }
+
+    private function classifyMovementPointPhase(RoutePoint $point, ?DriverAssignment $assignment): string
+    {
+        if (!$assignment) {
+            return 'roaming';
+        }
+
+        if ($assignment->confirmed_at && $point->recorded_at && $point->recorded_at->lt($assignment->confirmed_at)) {
+            return 'before_accept';
+        }
+
+        if ($assignment->pickup_arrived_at && $point->recorded_at && $point->recorded_at->gt($assignment->pickup_arrived_at)) {
+            return 'pickup_to_dropoff';
+        }
+
+        $phase = $assignment->trip_phase?->value ?? (string) $assignment->trip_phase;
+        if (!$assignment->pickup_arrived_at && in_array($phase, ['pickup_arrived', 'in_progress', 'completed'], true)) {
+            return 'pickup_to_dropoff';
+        }
+
+        return 'accepted_to_pickup';
     }
 
     private function buildMovementMarkers(

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Services\AssignmentService;
 use App\Services\BookingFlowService;
 use App\Models\Booking\Booking;
+use App\Models\Driver\RoutePoint;
 use App\Models\Vehicle\VehicleAddon;
 use App\Models\Booking\BookingAddon;
 use Illuminate\Http\Request;
@@ -413,8 +414,29 @@ class AssignmentController extends Controller
             $latestPoint = null;
 
             if ($includeTracking) {
-                $totalPoints = $tripAssignment->routePoints()->count();
-                $points = $tripAssignment->routePoints()
+                $routePointsQuery = RoutePoint::query()
+                    ->where(function ($query) use ($tripAssignment, $selectedDriver) {
+                        $query->where('assignment_id', $tripAssignment->id);
+
+                        $trackingStart = $tripAssignment->assigned_from ?? $tripAssignment->confirmed_at;
+                        $trackingEnd = $tripAssignment->trip_completed_at
+                            ?? $tripAssignment->assigned_to
+                            ?? now();
+
+                        if ($selectedDriver && $trackingStart && $trackingEnd) {
+                            $query->orWhere(function ($unassignedQuery) use ($selectedDriver, $trackingStart, $trackingEnd) {
+                                $unassignedQuery
+                                    ->whereNull('assignment_id')
+                                    ->whereBetween('recorded_at', [$trackingStart, $trackingEnd])
+                                    ->whereHas('session', function ($sessionQuery) use ($selectedDriver) {
+                                        $sessionQuery->where('driver_id', $selectedDriver->id);
+                                    });
+                            });
+                        }
+                    });
+
+                $totalPoints = (clone $routePointsQuery)->count();
+                $points = $routePointsQuery
                     ->orderByDesc('recorded_at')
                     ->limit($trackingLimit)
                     ->get([
@@ -432,11 +454,12 @@ class AssignmentController extends Controller
                     ])
                     ->sortBy('recorded_at')
                     ->values()
-                    ->map(function ($point) {
+                    ->map(function ($point) use ($tripAssignment) {
                         return [
                             'id' => $point->id,
                             'session_id' => $point->session_id,
                             'assignment_id' => $point->assignment_id,
+                            'tracking_phase' => $this->classifyTrackingPointPhase($point, $tripAssignment),
                             'latitude' => $point->latitude !== null ? (float) $point->latitude : null,
                             'longitude' => $point->longitude !== null ? (float) $point->longitude : null,
                             'altitude' => $point->altitude !== null ? (float) $point->altitude : null,
@@ -643,6 +666,25 @@ class AssignmentController extends Controller
             'assignment' => $assignmentPayload,
             'route' => $routePayload,
         ];
+    }
+
+    private function classifyTrackingPointPhase($point, $assignment): string
+    {
+        $recordedAt = $point->recorded_at;
+        if ($assignment?->confirmed_at && $recordedAt && $recordedAt->lt($assignment->confirmed_at)) {
+            return 'before_accept';
+        }
+
+        if ($assignment?->pickup_arrived_at && $recordedAt && $recordedAt->gt($assignment->pickup_arrived_at)) {
+            return 'pickup_to_dropoff';
+        }
+
+        $phase = $assignment?->trip_phase?->value ?? (string) $assignment?->trip_phase;
+        if (!$assignment?->pickup_arrived_at && in_array($phase, ['pickup_arrived', 'in_progress', 'completed'], true)) {
+            return 'pickup_to_dropoff';
+        }
+
+        return 'accepted_to_pickup';
     }
 
     private function extractStopPointsFromBookingItem($bookingItem): array
