@@ -390,6 +390,7 @@ class AssignmentController extends Controller
                 'trip_phase' => $tripAssignment->trip_phase?->value ?? (string) $tripAssignment->trip_phase,
                 'assigned_from' => $tripAssignment->assigned_from?->toIso8601String(),
                 'assigned_to' => $tripAssignment->assigned_to?->toIso8601String(),
+                'confirmed_at' => $tripAssignment->confirmed_at?->toIso8601String(),
                 'trip_started_at' => $tripAssignment->trip_started_at?->toIso8601String(),
                 'trip_completed_at' => $tripAssignment->trip_completed_at?->toIso8601String(),
                 'pickup_arrived_at' => $tripAssignment->pickup_arrived_at?->toIso8601String(),
