@@ -70,7 +70,10 @@ class StatusController extends Controller
                 ], 400);
             }
 
-            $session = $this->sessionService->startSession($driver, $request->validated());
+            $sessionData = $request->validated();
+            $sessionData['ip_address'] = $request->ip();
+
+            $session = $this->sessionService->startSession($driver, $sessionData);
 
             // Check for pending assignments
             $pendingAssignments = DriverAssignment::where('driver_id', $driver->id)

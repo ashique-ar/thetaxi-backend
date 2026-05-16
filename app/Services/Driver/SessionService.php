@@ -49,9 +49,10 @@ class SessionService
             $now = Carbon::now();
 
             // Create new session
+            $deviceUuid = $data['device_uuid'] ?? $driver->current_device_uuid;
             $session = DriverSession::create([
                 'driver_id' => $driver->id,
-                'device_uuid' => $data['device_uuid'] ?? $driver->current_device_uuid,
+                'device_uuid' => $deviceUuid,
                 'status' => 'active',
                 'start_time' => $now,
                 'start_latitude' => $data['latitude'] ?? null,
@@ -65,11 +66,112 @@ class SessionService
                 'last_active_at' => $now,
                 'current_latitude' => $data['latitude'] ?? null,
                 'current_longitude' => $data['longitude'] ?? null,
-                'current_device_uuid' => $data['device_uuid'] ?? $driver->current_device_uuid,
+                'current_device_uuid' => $deviceUuid,
             ]);
+
+            if ($deviceUuid) {
+                $this->syncSessionDeviceDetails($driver, $deviceUuid, $data);
+            }
 
             return $session;
         });
+    }
+
+    private function syncSessionDeviceDetails(Driver $driver, string $deviceUuid, array $data): void
+    {
+        $deviceDetails = $this->extractDeviceDetailsFromSessionData($data);
+
+        if (empty($deviceDetails)) {
+            app(DeviceService::class)->touchDevice($driver, $deviceUuid);
+            return;
+        }
+
+        app(DeviceService::class)->updateDeviceDetailsFromSession(
+            $driver,
+            $deviceUuid,
+            $deviceDetails
+        );
+    }
+
+    private function extractDeviceDetailsFromSessionData(array $data): array
+    {
+        $metadata = is_array($data['metadata'] ?? null) ? $data['metadata'] : [];
+        $nestedDevice = $this->firstArrayValue($metadata, [
+            'device',
+            'device_info',
+            'device_details',
+            'mobile',
+            'mobile_info',
+            'app',
+            'app_info',
+        ]);
+
+        $source = array_merge(
+            $metadata,
+            is_array($nestedDevice) ? $nestedDevice : [],
+            $data
+        );
+
+        return array_filter([
+            'device_name' => $this->firstStringValue($source, ['device_name', 'name']),
+            'device_model' => $this->firstStringValue($source, ['device_model', 'model', 'mobile_model', 'phone_model']),
+            'device_manufacturer' => $this->firstStringValue($source, ['device_manufacturer', 'manufacturer', 'brand']),
+            'platform' => $this->normalizePlatform($this->firstStringValue($source, ['platform', 'os', 'operating_system'])),
+            'os_version' => $this->firstStringValue($source, ['os_version', 'android_version', 'ios_version', 'system_version']),
+            'app_version' => $this->firstStringValue($source, ['app_version', 'version']),
+            'app_build' => $this->firstStringValue($source, ['app_build', 'build', 'build_number']),
+            'push_token' => $this->firstStringValue($source, ['push_token', 'fcm_token']),
+            'push_provider' => $this->firstStringValue($source, ['push_provider']),
+            'ip_address' => $data['ip_address'] ?? null,
+            'locale' => $this->firstStringValue($source, ['locale', 'language']),
+            'timezone' => $this->firstStringValue($source, ['timezone', 'time_zone']),
+            'metadata' => $metadata ?: null,
+        ], fn ($value) => $value !== null && $value !== '');
+    }
+
+    private function firstArrayValue(array $source, array $keys): ?array
+    {
+        foreach ($keys as $key) {
+            if (isset($source[$key]) && is_array($source[$key])) {
+                return $source[$key];
+            }
+        }
+
+        return null;
+    }
+
+    private function firstStringValue(array $source, array $keys): ?string
+    {
+        foreach ($keys as $key) {
+            if (!isset($source[$key])) {
+                continue;
+            }
+
+            $value = trim((string) $source[$key]);
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        return null;
+    }
+
+    private function normalizePlatform(?string $platform): ?string
+    {
+        if (!$platform) {
+            return null;
+        }
+
+        $normalized = strtolower($platform);
+        if (str_contains($normalized, 'android')) {
+            return 'android';
+        }
+
+        if (str_contains($normalized, 'ios') || str_contains($normalized, 'iphone')) {
+            return 'ios';
+        }
+
+        return null;
     }
 
     /**

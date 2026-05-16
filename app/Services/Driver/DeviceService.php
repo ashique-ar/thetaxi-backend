@@ -213,6 +213,70 @@ class DeviceService
     }
 
     /**
+     * Update device details captured during session start without clearing
+     * existing values that were not included in the session payload.
+     */
+    public function updateDeviceDetailsFromSession(
+        Driver $driver,
+        string $deviceUuid,
+        array $deviceData
+    ): ?DriverDevice {
+        $allowedFields = [
+            'device_name',
+            'device_model',
+            'device_manufacturer',
+            'platform',
+            'os_version',
+            'app_version',
+            'app_build',
+            'push_token',
+            'push_provider',
+            'ip_address',
+            'locale',
+            'timezone',
+            'metadata',
+        ];
+
+        $updateData = [];
+        foreach ($allowedFields as $field) {
+            if (!array_key_exists($field, $deviceData)) {
+                continue;
+            }
+
+            $value = $deviceData[$field];
+            if ($value === null || $value === '') {
+                continue;
+            }
+
+            $updateData[$field] = $value;
+        }
+
+        $updateData['is_active'] = true;
+        $updateData['last_active_at'] = now();
+
+        $device = DriverDevice::withTrashed()
+            ->where('driver_id', $driver->id)
+            ->where('device_uuid', $deviceUuid)
+            ->first();
+
+        if ($device) {
+            if ($device->trashed()) {
+                $device->restore();
+            }
+
+            $device->update($updateData);
+            return $device;
+        }
+
+        return DriverDevice::create(array_merge($updateData, [
+            'driver_id' => $driver->id,
+            'device_uuid' => $deviceUuid,
+            'platform' => $updateData['platform'] ?? 'unknown',
+            'registered_at' => now(),
+        ]));
+    }
+
+    /**
      * Deactivate a device.
      * 
      * @param Driver $driver The driver
