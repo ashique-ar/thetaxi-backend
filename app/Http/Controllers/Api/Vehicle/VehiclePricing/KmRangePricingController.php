@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Vehicle\VehiclePricing;
 
 use App\Http\Controllers\Controller;
+use App\Models\Corporate\Corporate;
 use App\Models\Vehicle\VehiclePricing\KmRangePricingRule;
 use App\Models\Service\ServiceType;
 use App\Models\Vehicle\VehicleGroup;
@@ -397,11 +398,23 @@ class KmRangePricingController extends Controller
             $ownerType = (string) $request->input('owner_type', ($context === 'corporate' ? 'corporate' : ''));
             $ownerId = (string) $request->input('owner_id', '');
 
-            $serviceTypes = ServiceType::forContext($context, $ownerType, $ownerId)
-                ->select('id', 'name', 'code', 'context', 'owner_type', 'owner_id')
-                ->where('is_active', true)
-                ->orderBy('name')
-                ->get();
+            if ($context === 'corporate' && $ownerType === 'corporate' && $ownerId !== '') {
+                $serviceTypes = Corporate::findOrFail($ownerId)
+                    ->serviceTypes()
+                    ->where('service_types.context', 'corporate')
+                    ->where('service_types.owner_type', '')
+                    ->where('service_types.owner_id', '')
+                    ->select('service_types.id', 'service_types.name', 'service_types.code', 'service_types.context', 'service_types.owner_type', 'service_types.owner_id')
+                    ->where('service_types.is_active', true)
+                    ->orderBy('service_types.name')
+                    ->get();
+            } else {
+                $serviceTypes = ServiceType::forContext($context, '', '')
+                    ->select('id', 'name', 'code', 'context', 'owner_type', 'owner_id')
+                    ->where('is_active', true)
+                    ->orderBy('name')
+                    ->get();
+            }
 
             return response()->json([
                 'message' => 'Service types retrieved successfully',

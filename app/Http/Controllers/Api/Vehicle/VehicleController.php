@@ -4,6 +4,7 @@
 namespace App\Http\Controllers\Api\Vehicle;
 
 use App\Http\Controllers\Controller;
+use App\Models\Corporate\Corporate;
 use App\Models\Service\ServiceType;
 use App\Models\Vehicle\Vehicle;
 use App\Http\Requests\Vehicle\Vehicle\CreateVehicleRequest;
@@ -337,9 +338,19 @@ class VehicleController extends Controller
         $ownerType = (string) $request->input('owner_type', ($context === 'corporate' ? 'corporate' : ''));
         $ownerId = (string) $request->input('owner_id', '');
 
-        $serviceTypes = ServiceType::forContext($context, $ownerType, $ownerId)
-            ->where('is_active', true)
-            ->get();
+        if ($context === 'corporate' && $ownerType === 'corporate' && $ownerId !== '') {
+            $serviceTypes = Corporate::findOrFail($ownerId)
+                ->serviceTypes()
+                ->where('service_types.context', 'corporate')
+                ->where('service_types.owner_type', '')
+                ->where('service_types.owner_id', '')
+                ->where('service_types.is_active', true)
+                ->get();
+        } else {
+            $serviceTypes = ServiceType::forContext($context, '', '')
+                ->where('is_active', true)
+                ->get();
+        }
 
         return response()->json([
             'status' => 'success',

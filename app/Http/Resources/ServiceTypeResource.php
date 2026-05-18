@@ -33,6 +33,8 @@ class ServiceTypeResource extends JsonResource
             'is_public' => $this->context === 'public',
             'is_portal' => $this->context === 'portal',
             'is_corporate' => $this->context === 'corporate',
+            'assigned_to_corporate' => (bool) ($this->assigned_to_corporate ?? false),
+            'is_assigned_active' => (bool) ($this->is_assigned_active ?? false),
             'terms' => $this->terms,
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,

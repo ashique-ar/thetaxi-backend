@@ -50,6 +50,14 @@ class Corporate extends BaseModel
     {
         return $this->belongsToMany(ServiceType::class, 'corporate_service_types', 'corporate_id', 'service_type_id')
             ->wherePivot('is_active', true)
+            ->withPivot(['is_active'])
+            ->withTimestamps();
+    }
+
+    public function allServiceTypes()
+    {
+        return $this->belongsToMany(ServiceType::class, 'corporate_service_types', 'corporate_id', 'service_type_id')
+            ->withPivot(['is_active'])
             ->withTimestamps();
     }
 

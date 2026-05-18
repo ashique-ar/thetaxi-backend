@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Vehicle\VehiclePricing;
 
 use App\Http\Controllers\Controller;
 use App\Models\Service\ServiceType;
+use App\Models\Corporate\Corporate;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCalculationDefinition;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingSlabDefinition;
 use App\Models\Vehicle\VehiclePricing\VehicleGroupPricing;
@@ -57,10 +58,7 @@ class VehiclePricingCalculationDefinitionController extends Controller
             $query->where('service_type_id', $request->service_type_id);
         }
 
-        if ($request->filled('owner_type')) {
-            $query->where('owner_type', $request->owner_type)
-                ->where('owner_id', $request->owner_id);
-        } elseif ($request->boolean('global_only', false)) {
+        if ($request->filled('owner_type') || $request->boolean('global_only', false)) {
             $query->whereNull('owner_type')->whereNull('owner_id');
         }
 
@@ -131,8 +129,8 @@ class VehiclePricingCalculationDefinitionController extends Controller
             $definition->variables = $request->variables ?? [];
             $definition->conditions = $request->conditions ?? [];
             $definition->status = $request->get('status', 'draft');
-            $definition->owner_type = $request->owner_type;
-            $definition->owner_id = $request->owner_type ? $request->owner_id : null;
+            $definition->owner_type = null;
+            $definition->owner_id = null;
             $definition->priority = $request->input('priority', 0);
             $definition->created_by = Auth::id();
             $definition->save();
@@ -213,8 +211,8 @@ class VehiclePricingCalculationDefinitionController extends Controller
             $definition->variables = $request->variables ?? [];
             $definition->conditions = $request->conditions ?? [];
             $definition->status = $request->get('status', $definition->status);
-            $definition->owner_type = $request->owner_type;
-            $definition->owner_id = $request->owner_type ? $request->owner_id : null;
+            $definition->owner_type = null;
+            $definition->owner_id = null;
             $definition->priority = $request->input('priority', $definition->priority ?? 0);
             $definition->updated_by = Auth::id();
             $definition->save();
@@ -423,11 +421,23 @@ class VehiclePricingCalculationDefinitionController extends Controller
             $ownerType = (string) $request->input('owner_type', ($context === 'corporate' ? 'corporate' : ''));
             $ownerId = (string) $request->input('owner_id', '');
 
-            $serviceTypes = ServiceType::forContext($context, $ownerType, $ownerId)
-                ->where('is_active', true)
-                ->select('id', 'name', 'description', 'code', 'context', 'owner_type', 'owner_id')
-                ->orderBy('name')
-                ->get();
+            if ($context === 'corporate' && $ownerType === 'corporate' && $ownerId !== '') {
+                $serviceTypes = Corporate::findOrFail($ownerId)
+                    ->serviceTypes()
+                    ->where('service_types.context', 'corporate')
+                    ->where('service_types.owner_type', '')
+                    ->where('service_types.owner_id', '')
+                    ->where('service_types.is_active', true)
+                    ->select('service_types.id', 'service_types.name', 'service_types.description', 'service_types.code', 'service_types.context', 'service_types.owner_type', 'service_types.owner_id')
+                    ->orderBy('service_types.name')
+                    ->get();
+            } else {
+                $serviceTypes = ServiceType::forContext($context, '', '')
+                    ->where('is_active', true)
+                    ->select('id', 'name', 'description', 'code', 'context', 'owner_type', 'owner_id')
+                    ->orderBy('name')
+                    ->get();
+            }
 
             return response()->json([
                 'data' => $serviceTypes

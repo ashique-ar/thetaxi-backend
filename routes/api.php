@@ -1348,11 +1348,23 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('{corporate}/vehicle-groups', [\App\Http\Controllers\Api\Corporate\CorporateController::class, 'assignVehicleGroups']);
         Route::delete('{corporate}/vehicle-groups/{vehicleGroupId}', [\App\Http\Controllers\Api\Corporate\CorporateController::class, 'removeVehicleGroup']);
         Route::get('{corporate}/service-types', function (\App\Models\Corporate\Corporate $corporate) {
-            $serviceTypes = $corporate->serviceTypes()
-                ->where('service_types.is_active', true)
-                ->orderBy('service_types.priority')
-                ->orderBy('service_types.name')
-                ->get();
+            $assigned = $corporate->allServiceTypes()
+                ->get()
+                ->mapWithKeys(fn ($serviceType) => [
+                    $serviceType->id => (bool) $serviceType->pivot->is_active,
+                ]);
+
+            $serviceTypes = \App\Models\Service\ServiceType::withInactive()
+                ->where('context', 'corporate')
+                ->where('owner_type', '')
+                ->where('owner_id', '')
+                ->orderBy('priority')
+                ->orderBy('name')
+                ->get()
+                ->each(function ($serviceType) use ($assigned) {
+                    $serviceType->assigned_to_corporate = $assigned->has($serviceType->id);
+                    $serviceType->is_assigned_active = (bool) ($assigned[$serviceType->id] ?? false);
+                });
 
             return \App\Http\Resources\ServiceTypeResource::collection($serviceTypes);
         })->middleware('permission:corporates.view');
@@ -1373,7 +1385,7 @@ Route::middleware(['auth:api'])->group(function () {
                 ]])
                 ->all();
 
-            $corporate->serviceTypes()->sync($sync);
+            $corporate->allServiceTypes()->sync($sync);
 
             return response()->json([
                 'status' => 'success',

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Service\ServiceType;
+use App\Models\Corporate\Corporate;
 use App\Http\Requests\ServiceType\CreateServiceTypeRequest;
 use App\Http\Requests\ServiceType\UpdateServiceTypeRequest;
 use App\Http\Resources\ServiceTypeResource;
@@ -26,6 +27,32 @@ class ServiceTypeController extends Controller
     public function index(Request $request): AnonymousResourceCollection
     {
         [$context, $ownerType, $ownerId] = $this->resolveScope($request);
+
+        if ($context === 'corporate' && $ownerType === 'corporate' && $ownerId !== '') {
+            $assignedIds = Corporate::findOrFail($ownerId)
+                ->serviceTypes()
+                ->pluck('service_types.id');
+
+            $q = ServiceType::withInactive()
+                ->whereIn('id', $assignedIds)
+                ->where('context', 'corporate')
+                ->where('owner_type', '')
+                ->where('owner_id', '');
+
+            if (!$request->boolean('include_inactive', false)) {
+                $q->where('is_active', true);
+            }
+
+            if ($request->filled('search')) {
+                $q->where(function ($builder) use ($request) {
+                    $builder->whereLikeInsensitive('name', $request->search)
+                        ->orWhereLikeInsensitive('code', $request->search);
+                });
+            }
+
+            return ServiceTypeResource::collection($q->paginate($request->per_page ?? 15));
+        }
+
         $q = $this->buildScopedIndexQuery($request, $context, $ownerType, $ownerId);
 
         $fallbackContext = (string) $request->input('fallback_context', '');
@@ -151,10 +178,6 @@ class ServiceTypeController extends Controller
         $ownerType = (string) $request->input('owner_type', $serviceType?->owner_type ?? '');
         $ownerId = (string) $request->input('owner_id', $serviceType?->owner_id ?? '');
 
-        if ($context === 'corporate') {
-            $ownerType = $ownerType !== '' ? $ownerType : 'corporate';
-        }
-
         return [$context, $ownerType, $ownerId];
     }
 
@@ -163,10 +186,6 @@ class ServiceTypeController extends Controller
         $context = (string) $request->input('fallback_context', 'portal');
         $ownerType = (string) $request->input('fallback_owner_type', '');
         $ownerId = (string) $request->input('fallback_owner_id', '');
-
-        if ($context === 'corporate') {
-            $ownerType = $ownerType !== '' ? $ownerType : 'corporate';
-        }
 
         return [$context, $ownerType, $ownerId];
     }

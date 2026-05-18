@@ -10,6 +10,7 @@ use App\Models\Vehicle\VehiclePricing\VehicleGroupServicePricingSetting;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCommonRateDefinition;
 use App\Models\Vehicle\VehicleGroup;
 use App\Models\Service\ServiceType;
+use App\Models\Corporate\Corporate;
 use App\Models\Vehicle\VehiclePricingHistory;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -153,12 +154,25 @@ class VehicleGroupPricingController extends Controller
 
         try {
             // Get all service types with optimized query (no pagination for service types)
-            $serviceTypes = ServiceType::forContext($context, $ownerType, $ownerId)
-                ->when($serviceTypeId, fn($q) => $q->where('id', $serviceTypeId))
-                ->when(!$includeInactive, fn($q) => $q->where('is_active', true))
-                ->select(['id', 'name', 'description', 'code', 'context', 'owner_type', 'owner_id', 'is_active'])
-                ->orderBy('priority')
-                ->get();
+            if ($context === 'corporate' && $ownerType === 'corporate' && $ownerId !== '') {
+                $serviceTypes = Corporate::findOrFail($ownerId)
+                    ->serviceTypes()
+                    ->when($serviceTypeId, fn($q) => $q->where('service_types.id', $serviceTypeId))
+                    ->when(!$includeInactive, fn($q) => $q->where('service_types.is_active', true))
+                    ->where('service_types.context', 'corporate')
+                    ->where('service_types.owner_type', '')
+                    ->where('service_types.owner_id', '')
+                    ->select(['service_types.id', 'service_types.name', 'service_types.description', 'service_types.code', 'service_types.context', 'service_types.owner_type', 'service_types.owner_id', 'service_types.is_active'])
+                    ->orderBy('service_types.priority')
+                    ->get();
+            } else {
+                $serviceTypes = ServiceType::forContext($context, '', '')
+                    ->when($serviceTypeId, fn($q) => $q->where('id', $serviceTypeId))
+                    ->when(!$includeInactive, fn($q) => $q->where('is_active', true))
+                    ->select(['id', 'name', 'description', 'code', 'context', 'owner_type', 'owner_id', 'is_active'])
+                    ->orderBy('priority')
+                    ->get();
+            }
 
             // Get paginated vehicle groups with optimized query
             $vehicleGroupQuery = VehicleGroup::query()
