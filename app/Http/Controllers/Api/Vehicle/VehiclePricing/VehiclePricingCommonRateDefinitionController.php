@@ -363,7 +363,8 @@ class VehiclePricingCommonRateDefinitionController extends Controller
                 'active' => VehiclePricingCommonRateDefinition::where('is_active', true)->count(),
                 'inactive' => VehiclePricingCommonRateDefinition::where('is_active', false)->count(),
                 'mandatory' => VehiclePricingCommonRateDefinition::where('is_mandatory', true)->count(),
-                'by_type' => VehiclePricingCommonRateDefinition::select('common_rate_type', DB::raw('count(*) as count'))
+                'by_type' => VehiclePricingCommonRateDefinition::select('common_rate_type')
+                    ->selectRaw('count(*) as count')
                     ->groupBy('common_rate_type')
                     ->pluck('count', 'common_rate_type'),
                 'by_service_type' => VehiclePricingCommonRateDefinition::with('serviceType')

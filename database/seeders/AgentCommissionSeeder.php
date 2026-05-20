@@ -38,10 +38,12 @@ class AgentCommissionSeeder extends Seeder
     private function seedFromExistingBookings($bookings): void
     {
         foreach ($bookings as $booking) {
-            if ($booking->agent_id && $booking->total_amount > 0) {
+            $bookingTotal = $booking->total_actual ?? $booking->total_estimated ?? 0;
+
+            if ($booking->agent_id && $bookingTotal > 0) {
                 $agent = Agent::find($booking->agent_id);
                 if ($agent) {
-                    $commissionAmount = $booking->total_amount * ($agent->commission_rate / 100);
+                    $commissionAmount = $bookingTotal * ($agent->commission_rate / 100);
                     
                     AgentCommission::updateOrCreate(
                         [

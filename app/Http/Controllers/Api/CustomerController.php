@@ -444,7 +444,9 @@ class CustomerController extends Controller
             'totalCustomers' => $totalCustomers,
             'newCustomersThisMonth' => $newThisMonth,
             'activeCustomers' => $activeCustomers,
-            'averageLifetimeValue' => (float) DB::table('bookings')->avg(DB::raw('COALESCE(total_actual, total_estimated, 0)')),
+            'averageLifetimeValue' => (float) (DB::table('bookings')
+                ->selectRaw('AVG(COALESCE(total_actual, total_estimated, 0)) as average_lifetime_value')
+                ->value('average_lifetime_value') ?? 0),
             'customer_growth' => Customer::selectRaw('DATE(created_at) as date, COUNT(*) as count')
                 ->where('created_at', '>=', now()->subDays(30))
                 ->groupBy('date')

@@ -10,7 +10,6 @@ use App\Http\Requests\Vehicle\VehicleAddon\UpdateVehicleAddonRequest;
 use App\Http\Resources\Vehicle\VehicleAddonResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\DB;
 
 class VehicleAddonController extends Controller
 {
@@ -259,10 +258,12 @@ class VehicleAddonController extends Controller
                 ->distinct('category_id')
                 ->count('category_id'),
             'averagePrice' => round(VehicleAddon::avg('amount') ?? 0, 2),
-            'byType' => VehicleAddon::select('addon_type', DB::raw('count(*) as count'))
+            'byType' => VehicleAddon::select('addon_type')
+                ->selectRaw('count(*) as count')
                 ->groupBy('addon_type')
                 ->pluck('count', 'addon_type'),
-            'byPricingType' => VehicleAddon::select('pricing_type', DB::raw('count(*) as count'))
+            'byPricingType' => VehicleAddon::select('pricing_type')
+                ->selectRaw('count(*) as count')
                 ->groupBy('pricing_type')
                 ->pluck('count', 'pricing_type'),
         ];

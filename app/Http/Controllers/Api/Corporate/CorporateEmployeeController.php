@@ -23,7 +23,7 @@ class CorporateEmployeeController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = CorporateEmployee::where('corporate_id', $request->corporate_id)
-            ->with(['user', 'department', 'division', 'userContext.roles']);
+            ->with(['user', 'department', 'division', 'userContext.roles', 'locations']);
 
         if ($request->filled('search')) {
             $query->whereHas('user', function ($q) use ($request) {
@@ -70,14 +70,14 @@ class CorporateEmployeeController extends Controller
         return response()->json([
             'status'  => 'success',
             'message' => 'Employee added successfully',
-            'data'    => ['employee' => $employee->load(['user', 'department', 'division', 'userContext.roles'])],
+            'data'    => ['employee' => $employee->load(['user', 'department', 'division', 'userContext.roles', 'locations'])],
         ], 201);
     }
 
     public function show(Request $request, string $id): JsonResponse
     {
         $employee = CorporateEmployee::where('corporate_id', $request->corporate_id)
-            ->with(['user', 'department', 'division', 'userContext.roles'])
+            ->with(['user', 'department', 'division', 'userContext.roles', 'locations'])
             ->findOrFail($id);
 
         return response()->json([
@@ -96,19 +96,32 @@ class CorporateEmployeeController extends Controller
             'last_name'      => ['sometimes', 'string', 'max:255'],
             'phone'          => ['nullable', 'string', 'max:50'],
             'role'           => ['nullable', 'string', 'max:255'],
+            'locations' => ['nullable', 'array'],
+            'locations.*.id' => ['nullable', 'uuid', 'exists:corporate_employee_locations,id'],
+            'locations.*.label' => ['nullable', 'string', 'max:100'],
+            'locations.*.address' => ['nullable', 'string'],
+            'locations.*.latitude' => ['nullable', 'numeric'],
+            'locations.*.longitude' => ['nullable', 'numeric'],
+            'locations.*.city' => ['nullable', 'string', 'max:100'],
+            'locations.*.country' => ['nullable', 'string', 'max:100'],
+            'locations.*.place_id' => ['nullable', 'string', 'max:255'],
+            'locations.*.placeId' => ['nullable', 'string', 'max:255'],
+            'locations.*.is_default_pickup' => ['nullable', 'boolean'],
+            'locations.*.is_default_dropoff' => ['nullable', 'boolean'],
+            'locations.*.is_active' => ['nullable', 'boolean'],
         ]);
 
         $employee = CorporateEmployee::where('corporate_id', $request->corporate_id)
             ->findOrFail($id);
 
         $employee = $this->corporateService->updateEmployee($employee, $request->only([
-            'department_id', 'division_id', 'employee_code', 'first_name', 'last_name', 'phone', 'role',
+            'department_id', 'division_id', 'employee_code', 'first_name', 'last_name', 'phone', 'role', 'locations',
         ]));
 
         return response()->json([
             'status'  => 'success',
             'message' => 'Employee updated successfully',
-            'data'    => ['employee' => $employee->load(['user', 'department', 'division', 'userContext.roles'])],
+            'data'    => ['employee' => $employee->load(['user', 'department', 'division', 'userContext.roles', 'locations'])],
         ]);
     }
 
@@ -168,7 +181,7 @@ class CorporateEmployeeController extends Controller
         return response()->json([
             'status'  => 'success',
             'message' => 'Role assigned successfully',
-            'data'    => ['employee' => $employee->load(['user', 'department', 'division', 'userContext.roles'])],
+            'data'    => ['employee' => $employee->load(['user', 'department', 'division', 'userContext.roles', 'locations'])],
         ]);
     }
 }

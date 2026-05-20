@@ -52,7 +52,7 @@ class VehicleService
                 $query->where('is_active', true)
                     ->where('status', 'available')
                     ->whereNotExists(function ($subQuery) use ($fromDate, $toDate) {
-                        $subQuery->select(DB::raw(1))
+                        $subQuery->selectRaw('1')
                             ->from('booking_items')
                             ->join('bookings', 'booking_items.booking_id', '=', 'bookings.id')
                             ->whereColumn('booking_items.vehicle_id', 'vehicles.id')
@@ -79,7 +79,8 @@ class VehicleService
             ->leftJoin('vehicles', 'vehicle_groups.id', '=', 'vehicles.vehicle_group_id')
             ->whereIn('vehicle_groups.id', $vehicleGroups->pluck('id'))
             ->where('vehicles.is_active', true)
-            ->select('vehicle_groups.id', DB::raw('COUNT(vehicles.id) as total_count'))
+            ->select('vehicle_groups.id')
+            ->selectRaw('COUNT(vehicles.id) as total_count')
             ->groupBy('vehicle_groups.id')
             ->pluck('total_count', 'id');
 

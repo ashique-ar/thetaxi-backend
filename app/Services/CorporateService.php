@@ -7,6 +7,7 @@ use App\Models\Corporate\Corporate;
 use App\Models\Corporate\CorporateDepartment;
 use App\Models\Corporate\CorporateDivision;
 use App\Models\Corporate\CorporateEmployee;
+use App\Models\Corporate\CorporateEmployeeLocation;
 use App\Models\User;
 use App\Models\UserContext;
 use Illuminate\Support\Facades\DB;
@@ -291,6 +292,7 @@ class CorporateService
             );
 
             $this->assignEmployeeRole($employee, $roleName);
+            $this->syncEmployeeLocations($employee, $data['locations'] ?? []);
 
             $this->logAudit('create', 'CorporateEmployee', $employee->id, [
                 'corporate_id'   => $corporate->id,
@@ -347,7 +349,11 @@ class CorporateService
                 $this->assignEmployeeRole($employee, $data['role']);
             }
 
-            $employee->refresh()->load(['user', 'department', 'division', 'userContext.roles']);
+            if (array_key_exists('locations', $data)) {
+                $this->syncEmployeeLocations($employee, $data['locations'] ?? []);
+            }
+
+            $employee->refresh()->load(['user', 'department', 'division', 'userContext.roles', 'locations']);
 
             $this->logAudit('update', 'CorporateEmployee', $employee->id, [
                 'before' => $before,
@@ -420,6 +426,89 @@ class CorporateService
         }
 
         return $role;
+    }
+
+    private function syncEmployeeLocations(CorporateEmployee $employee, array $locations): void
+    {
+        $locations = collect($locations)
+            ->filter(fn ($location) => is_array($location) && trim((string) ($location['address'] ?? '')) !== '')
+            ->values();
+
+        if ($locations->isEmpty()) {
+            $corporateAddress = trim((string) ($employee->corporate?->billing_address ?? ''));
+            if ($corporateAddress !== '') {
+                $locations = collect([[
+                    'label' => 'Corporate Location',
+                    'address' => $corporateAddress,
+                    'is_default_pickup' => true,
+                    'is_default_dropoff' => true,
+                    'is_active' => true,
+                ]]);
+            }
+        }
+
+        $seenIds = [];
+        $hasDefaultPickup = false;
+        $hasDefaultDropoff = false;
+
+        foreach ($locations as $index => $location) {
+            $isDefaultPickup = (bool) ($location['is_default_pickup'] ?? false);
+            $isDefaultDropoff = (bool) ($location['is_default_dropoff'] ?? false);
+
+            if ($index === 0 && !$locations->contains(fn ($item) => !empty($item['is_default_pickup']))) {
+                $isDefaultPickup = true;
+            }
+
+            if ($index === 0 && !$locations->contains(fn ($item) => !empty($item['is_default_dropoff']))) {
+                $isDefaultDropoff = true;
+            }
+
+            if ($isDefaultPickup && $hasDefaultPickup) {
+                $isDefaultPickup = false;
+            }
+            if ($isDefaultDropoff && $hasDefaultDropoff) {
+                $isDefaultDropoff = false;
+            }
+
+            $hasDefaultPickup = $hasDefaultPickup || $isDefaultPickup;
+            $hasDefaultDropoff = $hasDefaultDropoff || $isDefaultDropoff;
+
+            $payload = [
+                'label' => trim((string) ($location['label'] ?? 'Default')) ?: 'Default',
+                'address' => trim((string) $location['address']),
+                'latitude' => $location['latitude'] ?? null,
+                'longitude' => $location['longitude'] ?? null,
+                'city' => $location['city'] ?? null,
+                'country' => $location['country'] ?? null,
+                'place_id' => $location['place_id'] ?? $location['placeId'] ?? null,
+                'is_default_pickup' => $isDefaultPickup,
+                'is_default_dropoff' => $isDefaultDropoff,
+                'is_active' => array_key_exists('is_active', $location) ? (bool) $location['is_active'] : true,
+                'updated_user_id' => auth()->id(),
+            ];
+
+            $locationId = $location['id'] ?? null;
+            if ($locationId) {
+                $employeeLocation = CorporateEmployeeLocation::where('corporate_employee_id', $employee->id)
+                    ->find($locationId);
+
+                if ($employeeLocation) {
+                    $employeeLocation->update($payload);
+                    $seenIds[] = $employeeLocation->id;
+                    continue;
+                }
+            }
+
+            $created = $employee->locations()->create([
+                ...$payload,
+                'created_user_id' => auth()->id(),
+            ]);
+            $seenIds[] = $created->id;
+        }
+
+        $employee->locations()
+            ->when(!empty($seenIds), fn ($query) => $query->whereNotIn('id', $seenIds))
+            ->delete();
     }
 
     private function resolveEmployeeHierarchy(

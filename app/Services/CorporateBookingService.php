@@ -641,13 +641,15 @@ class CorporateBookingService
         $totalCost  = (clone $query)->sum('total_estimated');
 
         $byStatus = (clone $query)
-            ->select('status', DB::raw('count(*) as count'))
+            ->select('status')
+            ->selectRaw('count(*) as count')
             ->groupBy('status')
             ->pluck('count', 'status')
             ->toArray();
 
         $byDepartment = (clone $query)
-            ->select('corporate_department_id', DB::raw('count(*) as count'))
+            ->select('corporate_department_id')
+            ->selectRaw('count(*) as count')
             ->groupBy('corporate_department_id')
             ->pluck('count', 'corporate_department_id')
             ->toArray();

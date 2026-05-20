@@ -628,7 +628,7 @@ class BookingFlowService
             $query->when($excludeBookingId, function ($q) use ($fromDate, $toDate, $excludeBookingId) {
                 // Edit mode: ignore current booking
                 $q->whereNotExists(function ($subQuery) use ($fromDate, $toDate, $excludeBookingId) {
-                    $subQuery->select(DB::raw(1))
+                    $subQuery->selectRaw('1')
                         ->from('booking_items')
                         ->join('bookings', 'booking_items.booking_id', '=', 'bookings.id')
                         ->whereColumn('booking_items.vehicle_id', 'vehicles.id')
@@ -646,7 +646,7 @@ class BookingFlowService
             }, function ($q) use ($fromDate, $toDate) {
                 // Normal mode
                 $q->whereNotExists(function ($subQuery) use ($fromDate, $toDate) {
-                    $subQuery->select(DB::raw(1))
+                    $subQuery->selectRaw('1')
                         ->from('booking_items')
                         ->join('bookings', 'booking_items.booking_id', '=', 'bookings.id')
                         ->whereColumn('booking_items.vehicle_id', 'vehicles.id')
@@ -704,7 +704,11 @@ class BookingFlowService
         $excludeBookingId = $params['exclude_booking_id'] ?? null; // For edit mode
 
         // New filtering and pagination parameters
-        $search = isset($params['vehicle_group_filter']['search']) ? trim((string) $params['vehicle_group_filter']['search']) : null;
+        $search = trim((string) (
+            $params['vehicle_group_filter']['search']
+            ?? $params['search']
+            ?? ''
+        ));
 
         $categoryId = $params['vehicle_group_filter']['category_id'] ?? ($params['vehicle_group_filter']['category_filter'] ?? null);
         $makeId = $params['vehicle_group_filter']['make_id'] ?? null;
@@ -3220,23 +3224,18 @@ class BookingFlowService
      */
     public function searchSpecificVehicles(array $params): array
     {
-        $searchTerm = isset($params['search_term']) ? $params['search_term'] : '';
+        $searchTerm = trim((string) ($params['search_term'] ?? ''));
         $fromDate = Carbon::parse($params['from_date']);
-        $toDate = Carbon::parse($params['to_date']);
-        $fromTime = $params['from_time'];
-        $toTime = $params['to_time'];
+        $toDate = Carbon::parse($params['to_date'] ?? $params['from_date']);
         $includeUnavailable = $params['include_unavailable'] ?? false;
         $vehicleGroupId = $params['vehicle_group_id'] ?? null;
+        $excludeBookingId = $params['exclude_booking_id'] ?? null;
 
-        $query = Vehicle::when($vehicleGroupId, fn($q) => $q->where('vehicle_group_id', $vehicleGroupId))->with([
-            'vehicleGroup',
-            'bookingItems' => function ($query) use ($fromDate, $toDate) {
-                $query->whereBetween('from_date', [$fromDate, $toDate])
-                    ->orWhereBetween('to_date', [$fromDate, $toDate])
-                    ->whereIn('status', ['active', 'pending_approval']);
-            }
-        ])
-            ->where(function ($q) use ($searchTerm) {
+        $query = Vehicle::query()
+            ->when($vehicleGroupId, fn($q) => $q->where('vehicle_group_id', $vehicleGroupId))
+            ->with(['vehicleGroup', 'defaultDriver.user'])
+            ->when($searchTerm !== '', function ($q) use ($searchTerm) {
+                $q->where(function ($q) use ($searchTerm) {
                 $q->where('title', 'LIKE', "%{$searchTerm}%")
                     ->orWhere('license_plate', 'LIKE', "%{$searchTerm}%")
                     ->orWhere('registration_no', 'LIKE', "%{$searchTerm}%");
@@ -3244,29 +3243,44 @@ class BookingFlowService
                     $q->orWhere('id', $searchTerm);
                 }
             });
+            });
 
-        if (!$includeUnavailable) {
-            $query->where('availability_status', '!=', 'maintenance');
-        }
-
-        $vehicles = $query->get()->map(function ($vehicle) use ($fromDate, $toDate, $fromTime, $toTime) {
-            $conflicts = $this->checkVehicleTimeConflicts($vehicle, $fromDate, $toDate, $fromTime, $toTime);
+        $vehicles = $query->get()->map(function ($vehicle) use ($fromDate, $toDate, $excludeBookingId) {
+            $availability = $this->assignmentService->getEnhancedVehicleAvailability(
+                $vehicle->id,
+                $fromDate,
+                $toDate,
+                $excludeBookingId
+            );
 
             return [
                 'id' => $vehicle->id,
                 'name' => $vehicle->title,
+                'title' => $vehicle->title,
                 'license_plate' => $vehicle->license_plate,
+                'registration_no' => $vehicle->registration_no,
+                'group_id' => $vehicle->vehicle_group_id,
                 'vehicle_group' => $vehicle->vehicleGroup ? [
                     'id' => $vehicle->vehicleGroup->id,
                     'name' => $vehicle->vehicleGroup->name,
                 ] : null,
-                'availability_status' => $vehicle->availability_status,
-                'availability_percentage' => $this->calculateAvailabilityPercentage($conflicts, $fromDate, $toDate),
-                'conflicts' => $conflicts,
-                'requires_approval' => !empty($conflicts) || $vehicle->availability_status === 'maintenance',
-                'concurrent_bookings_allowed' => $vehicle->concurrent_bookings_allowed ?? false,
+                'availability_status' => $availability['availability_status'],
+                'is_available' => $availability['availability_status'] === 'available',
+                'availability_percentage' => $this->calculateAvailabilityPercentage($availability['conflicts'], $fromDate, $toDate),
+                'conflicts' => $availability['conflicts'],
+                'requires_approval' => !empty($availability['conflicts']),
+                'allows_concurrent' => $availability['allows_concurrent'],
+                'concurrent_bookings_allowed' => $availability['allows_concurrent'],
+                'current_driver' => $availability['current_driver'],
+                'default_driver' => $availability['default_driver'],
+                'recommended_driver' => $availability['current_driver'] ?? $availability['default_driver'],
+                'default_driver_id' => $vehicle->default_driver_id,
+                'assigned_driver_id' => $availability['current_driver']['id'] ?? null,
+                'force_default_driver' => $vehicle->hasForceDefaultDriver(),
                 'is_self_driven_compatible' => $vehicle->self_driven_compatible ?? false,
             ];
+        })->when(!$includeUnavailable, function ($vehicles) {
+            return $vehicles->where('availability_status', 'available')->values();
         });
 
         return $vehicles->toArray();
@@ -3277,77 +3291,65 @@ class BookingFlowService
      */
     public function searchSpecificDrivers(array $params): array
     {
-        $searchTerm = isset($params['search_term']) ? $params['search_term'] : '';
+        $searchTerm = trim((string) ($params['search_term'] ?? ''));
         $fromDate = Carbon::parse($params['from_date']);
-        $toDate = Carbon::parse($params['to_date']);
-        $fromTime = $params['from_time'];
-        $toTime = $params['to_time'];
+        $toDate = Carbon::parse($params['to_date'] ?? $params['from_date']);
         $includeUnavailable = $params['include_unavailable'] ?? false;
+        $excludeBookingId = $params['exclude_booking_id'] ?? null;
 
-        $query = Driver::with([
-            'assignments' => function ($query) use ($fromDate, $toDate) {
-                $query->where(function ($q) use ($fromDate, $toDate) {
-                    $q->whereBetween('assigned_from', [$fromDate, $toDate])
-                        ->orWhereBetween('assigned_to', [$fromDate, $toDate])
-                        ->orWhere(function ($inner) use ($fromDate, $toDate) {
-                            $inner->where('assigned_from', '<=', $fromDate)
-                                ->where('assigned_to', '>=', $toDate);
-                        });
-                })
-                    ->whereIn('status', ['active', 'pending_approval']);
-            },
-            'user' => function ($query) use ($searchTerm) {
-                if (!empty($searchTerm)) {
-                    $query->Where('first_name', 'LIKE', "%{$searchTerm}%")
-                        ->orWhere('last_name', 'LIKE', "%{$searchTerm}%");
-                }
-            }
-        ]);
+        $query = Driver::with(['user', 'defaultVehicle']);
 
         if (!empty($searchTerm)) {
             $query->where(function ($q) use ($searchTerm) {
-                $q->Where('license_no', 'LIKE', "%{$searchTerm}%")
-                    ->orWhere('code', 'LIKE', "%{$searchTerm}%");
+                $q->where('license_no', 'LIKE', "%{$searchTerm}%")
+                    ->orWhere('code', 'LIKE', "%{$searchTerm}%")
+                    ->orWhereHas('user', function ($userQuery) use ($searchTerm) {
+                        $userQuery->where('first_name', 'LIKE', "%{$searchTerm}%")
+                            ->orWhere('last_name', 'LIKE', "%{$searchTerm}%")
+                            ->orWhere('phone', 'LIKE', "%{$searchTerm}%");
+                    });
                 if (Uuid::isValid($searchTerm)) {
                     $q->orWhere('id', $searchTerm);
                 }
             });
         }
 
-        if (!$includeUnavailable) {
-            $query->where('availability_status', '!=', 'off_duty');
-        }
-
-        $drivers = $query->get()->map(function ($driver) use ($fromDate, $toDate, $fromTime, $toTime) {
-            $conflicts = $this->checkDriverTimeConflicts($driver, $fromDate, $toDate, $fromTime, $toTime);
-            $scheduleConflicts = $this->checkDriverScheduleConflicts($driver, $fromDate, $toDate, $fromTime, $toTime);
+        $drivers = $query->get()->map(function ($driver) use ($fromDate, $toDate, $excludeBookingId) {
+            $availability = $this->assignmentService->getEnhancedDriverAvailability(
+                $driver->id,
+                $fromDate,
+                $toDate,
+                $excludeBookingId
+            );
 
             return [
                 'id' => $driver->id,
                 'name' => $driver->name ?? "{$driver->user?->first_name} {$driver->user?->last_name}",
                 'code' => $driver->code,
+                'phone' => $driver->user?->phone,
                 'license_type' => $driver->license_type,
                 'license_number' => $driver->license_no ?? $driver->license_number,
                 'license_no' => $driver->license_no,
                 'experience_years' => $driver->experience_years,
-                'availability_status' => $driver->availability_status,
+                'availability_status' => $availability['availability_status'],
+                'is_available' => $availability['availability_status'] === 'available',
                 'is_online' => $driver->is_online ?? false,
                 'last_active_at' => $driver->last_active_at?->toIso8601String(),
                 'current_latitude' => $driver->current_latitude,
                 'current_longitude' => $driver->current_longitude,
-                'availability_percentage' => $this->calculateAvailabilityPercentage(array_merge($conflicts, $scheduleConflicts), $fromDate, $toDate),
-                'conflicts' => $conflicts,
-                'schedule_conflicts' => $scheduleConflicts,
-                'requires_approval' => !empty($conflicts) || !empty($scheduleConflicts) || $driver->availability_status === 'off_duty',
-                'current_assignment' => $driver->current_booking_id ? [
-                    'booking_id' => $driver->current_booking_id,
-                    'status' => $driver->availability_status,
-                ] : null,
+                'availability_percentage' => $this->calculateAvailabilityPercentage($availability['conflicts'], $fromDate, $toDate),
+                'conflicts' => $availability['conflicts'],
+                'schedule_conflicts' => [],
+                'requires_approval' => !empty($availability['conflicts']),
+                'current_vehicle' => $availability['current_vehicle'],
+                'default_vehicle' => $availability['default_vehicle'],
                 'working_schedule' => $driver->working_schedule,
                 'hourly_rate' => $driver->hourly_rate,
                 'overtime_rate' => $driver->overtime_rate,
                 'can_override' => false,
             ];
+        })->when(!$includeUnavailable, function ($drivers) {
+            return $drivers->where('availability_status', 'available')->values();
         });
 
         return $drivers->toArray();
@@ -5884,7 +5886,7 @@ class BookingFlowService
             'type' => 'loyalty_points',
             'customer_id' => $booking->customer_id,
             'points_to_redeem' => $pointsToRedeem,
-            'order_amount' => $booking->total_amount ?? 0,
+            'order_amount' => $booking->total_actual ?? $booking->total_estimated ?? 0,
         ];
 
         $discountService = app(DiscountService::class);
@@ -8960,9 +8962,14 @@ class BookingFlowService
         $query = Booking::whereBetween('created_at', [$dateFrom, $dateTo])
             ->where('status', 'completed');
 
+        $revenueStats = (clone $query)
+            ->selectRaw('SUM(COALESCE(total_actual, total_estimated, 0)) as total_revenue')
+            ->selectRaw('AVG(COALESCE(total_actual, total_estimated, 0)) as average_booking_value')
+            ->first();
+
         $analytics = [
-            'total_revenue' => $query->sum('total_amount'),
-            'average_booking_value' => $query->avg('total_amount'),
+            'total_revenue' => $revenueStats->total_revenue ?? 0,
+            'average_booking_value' => $revenueStats->average_booking_value ?? 0,
             'booking_count' => $query->count(),
             'revenue_by_period' => $this->getRevenueByPeriod($query, $period, $dateFrom, $dateTo),
         ];

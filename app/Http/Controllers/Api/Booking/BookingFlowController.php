@@ -53,6 +53,9 @@ class BookingFlowController extends Controller
     {
         try {
             $params = $this->bookingFlowService->normalizeDynamicCalculationParams($request->all());
+            if (array_key_exists('include_unavailable', $params)) {
+                $params['include_unavailable'] = filter_var($params['include_unavailable'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+            }
             $requirements = $this->bookingFlowService->getDynamicCalculationRequirements($params);
 
             $usesDropoffTime = (bool) ($requirements['uses_dropoff_time'] ?? true);
@@ -124,6 +127,9 @@ class BookingFlowController extends Controller
     {
         try {
             $params = $this->bookingFlowService->normalizeDynamicCalculationParams($request->all());
+            if (array_key_exists('include_unavailable', $params)) {
+                $params['include_unavailable'] = filter_var($params['include_unavailable'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+            }
             $requirements = $this->bookingFlowService->getDynamicCalculationRequirements($params);
             $usesDropoffTime = (bool) ($requirements['uses_dropoff_time'] ?? true);
 
@@ -1517,7 +1523,7 @@ class BookingFlowController extends Controller
         $query = CorporateEmployee::query()
             ->where('corporate_id', $corporateId)
             ->where('is_active', true)
-            ->with(['user', 'department', 'division'])
+            ->with(['user', 'department', 'division', 'activeLocations'])
             ->orderBy('created_at');
 
         if (
@@ -1558,6 +1564,19 @@ class BookingFlowController extends Controller
                         'employee_code' => $employee->employee_code,
                         'department_id' => $employee->department_id ? (string) $employee->department_id : null,
                         'department' => $employee->department?->name,
+                        'locations' => $employee->activeLocations->map(fn ($location) => [
+                            'id' => (string) $location->id,
+                            'label' => $location->label,
+                            'address' => $location->address,
+                            'latitude' => $location->latitude,
+                            'longitude' => $location->longitude,
+                            'city' => $location->city,
+                            'country' => $location->country,
+                            'place_id' => $location->place_id,
+                            'is_default_pickup' => (bool) $location->is_default_pickup,
+                            'is_default_dropoff' => (bool) $location->is_default_dropoff,
+                            'is_active' => (bool) $location->is_active,
+                        ])->values(),
                         'division_id' => $employee->division_id ? (string) $employee->division_id : null,
                         'division' => $employee->division?->name,
                         'user' => $user ? [

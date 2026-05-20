@@ -396,11 +396,11 @@ class PaymentController extends Controller
                 ->select([
                     'payment_transactions.*',
                     'bookings.booking_number',
-                    'bookings.total_amount as booking_amount',
                     'users.first_name',
                     'users.last_name',
                     'users.email'
                 ])
+                ->selectRaw('COALESCE(bookings.total_actual, bookings.total_estimated, 0) as booking_amount')
                 ->where('payment_transactions.id', $id)
                 ->first();
 

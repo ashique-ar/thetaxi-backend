@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use QCod\Gamify\PointType;
 use QCod\Gamify\Badge;
@@ -346,18 +345,12 @@ class GamificationController extends Controller
      */
     public function getBadgeStats(): JsonResponse
     {
-        $stats = Badge::select([
-            DB::raw('COUNT(*) as total_badges'),
-            DB::raw('COUNT(CASE WHEN is_active = 1 THEN 1 END) as active_badges'),
-            DB::raw('COUNT(CASE WHEN is_active = 0 THEN 1 END) as inactive_badges')
-        ])->first();
-
         return response()->json([
             'status' => 'success',
             'data' => [
-                'total_badges' => $stats->total_badges ?? 0,
-                'active_badges' => $stats->active_badges ?? 0,
-                'inactive_badges' => $stats->inactive_badges ?? 0
+                'total_badges' => Badge::count(),
+                'active_badges' => Badge::where('is_active', true)->count(),
+                'inactive_badges' => Badge::where('is_active', false)->count()
             ]
         ]);
     }
@@ -431,24 +424,24 @@ class GamificationController extends Controller
      */
     public function getReputationStats(): JsonResponse
     {
-        $stats = Reputation::select([
-            DB::raw('COUNT(*) as total_transactions'),
-            DB::raw('SUM(point) as total_points'),
-            DB::raw('AVG(point) as average_points'),
-            DB::raw('MAX(point) as max_points'),
-            DB::raw('MIN(point) as min_points'),
-            DB::raw('COUNT(DISTINCT payee_id) as unique_users')
-        ])->first();
+        $stats = [
+            'total_transactions' => Reputation::count(),
+            'total_points' => Reputation::sum('point'),
+            'average_points' => Reputation::avg('point'),
+            'max_points' => Reputation::max('point'),
+            'min_points' => Reputation::min('point'),
+            'unique_users' => Reputation::distinct('payee_id')->count('payee_id'),
+        ];
 
         return response()->json([
             'status' => 'success',
             'data' => [
-                'total_transactions' => $stats->total_transactions ?? 0,
-                'total_points' => $stats->total_points ?? 0,
-                'average_points' => round($stats->average_points ?? 0, 2),
-                'max_points' => $stats->max_points ?? 0,
-                'min_points' => $stats->min_points ?? 0,
-                'unique_users' => $stats->unique_users ?? 0
+                'total_transactions' => $stats['total_transactions'] ?? 0,
+                'total_points' => $stats['total_points'] ?? 0,
+                'average_points' => round($stats['average_points'] ?? 0, 2),
+                'max_points' => $stats['max_points'] ?? 0,
+                'min_points' => $stats['min_points'] ?? 0,
+                'unique_users' => $stats['unique_users'] ?? 0
             ]
         ]);
     }

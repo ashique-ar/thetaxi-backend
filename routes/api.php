@@ -41,6 +41,7 @@ use App\Http\Controllers\Api\Vehicle\VehicleAddonController;
 use App\Http\Controllers\Api\Vehicle\VehicleCategoryController;
 use App\Http\Controllers\Api\Vehicle\VehicleClassController;
 use App\Http\Controllers\Api\Vehicle\VehicleContractTypeController;
+use App\Http\Controllers\Api\Vehicle\VehicleCommissionController;
 use App\Http\Controllers\Api\Vehicle\VehicleController;
 use App\Http\Controllers\Api\Vehicle\VehicleDistanceMultiplierController;
 use App\Http\Controllers\Api\Vehicle\VehicleFuelTypeController;
@@ -588,6 +589,11 @@ Route::middleware(['auth:api'])->group(function () {
         });
 
         Route::get('/vehicles/available', [VehicleController::class, 'getAvailableVehicles']);
+        Route::get('/vehicles/operations-dashboard', [VehicleController::class, 'operationsDashboard']);
+        Route::get('/vehicles/{vehicle}/commissions', [VehicleCommissionController::class, 'index']);
+        Route::post('/vehicles/{vehicle}/commissions', [VehicleCommissionController::class, 'store']);
+        Route::put('/vehicles/{vehicle}/commissions/{commission}', [VehicleCommissionController::class, 'update']);
+        Route::delete('/vehicles/{vehicle}/commissions/{commission}', [VehicleCommissionController::class, 'destroy']);
         Route::get('/vehicles/{id}/availability', [VehicleController::class, 'checkAvailability']);
         Route::get('/vehicles/{id}/maintenance/history', [VehicleController::class, 'getMaintenanceHistory']);
         Route::get('/vehicles/maintenance/upcoming', [VehicleController::class, 'getUpcomingMaintenance']);

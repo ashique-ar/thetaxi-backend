@@ -74,6 +74,13 @@ class Vehicle extends BaseModel
         'owner_id',
         'vehicle_group_id',
         'company_id',
+        'ownership_type',
+        'usage_type',
+        'payment_model',
+        'assignment_policy',
+        'monthly_payment_commitment',
+        'monthly_mileage_limit',
+        'excess_mileage_rate',
         'title',
         'registration_no',
         'chasis_no',
@@ -109,6 +116,9 @@ class Vehicle extends BaseModel
         'thumbnail' => 'array',
         'ac' => 'boolean',
         'is_active' => 'boolean',
+        'monthly_payment_commitment' => 'decimal:2',
+        'monthly_mileage_limit' => 'decimal:2',
+        'excess_mileage_rate' => 'decimal:2',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
         'deleted_at' => 'datetime',
@@ -259,6 +269,23 @@ class Vehicle extends BaseModel
     public function defaultDriver()
     {
         return $this->belongsTo(Driver::class, 'default_driver_id');
+    }
+
+    public function commissions()
+    {
+        return $this->hasMany(VehicleCommission::class, 'vehicle_id');
+    }
+
+    public function activeCommission()
+    {
+        return $this->hasOne(VehicleCommission::class, 'vehicle_id')
+            ->where('is_active', true)
+            ->where('effective_from', '<=', now()->toDateString())
+            ->where(function ($query) {
+                $query->whereNull('effective_to')
+                    ->orWhere('effective_to', '>=', now()->toDateString());
+            })
+            ->latest('effective_from');
     }
 
     /**

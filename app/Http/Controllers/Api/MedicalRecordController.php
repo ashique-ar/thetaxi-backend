@@ -348,11 +348,13 @@ class MedicalRecordController extends Controller
             'expiring_within_30_days' => MedicalRecord::where('valid_until', '<=', now()->addDays(30))
                                                      ->where('valid_until', '>=', now())
                                                      ->count(),
-            'records_by_subject_type' => MedicalRecord::select('subject_type', DB::raw('count(*) as count'))
+            'records_by_subject_type' => MedicalRecord::select('subject_type')
+                                                     ->selectRaw('count(*) as count')
                                                      ->groupBy('subject_type')
                                                      ->get(),
             'records_by_category' => MedicalRecord::join('medical_categories', 'medical_records.medical_category_id', '=', 'medical_categories.id')
-                                                 ->select('medical_categories.name', DB::raw('count(*) as count'))
+                                                 ->select('medical_categories.name')
+                                                 ->selectRaw('count(*) as count')
                                                  ->groupBy('medical_categories.id', 'medical_categories.name')
                                                  ->get(),
             'new_records_this_period' => MedicalRecord::whereBetween('created_at', [$dateFrom, $dateTo])->count()

@@ -53,6 +53,19 @@ class CorporateEmployee extends BaseModel
         return $this->belongsTo(CorporateDivision::class, 'division_id');
     }
 
+    public function locations()
+    {
+        return $this->hasMany(CorporateEmployeeLocation::class, 'corporate_employee_id')
+            ->orderByDesc('is_default_pickup')
+            ->orderByDesc('is_default_dropoff')
+            ->orderBy('label');
+    }
+
+    public function activeLocations()
+    {
+        return $this->locations()->where('is_active', true);
+    }
+
     public function userContext()
     {
         return $this->hasOne(UserContext::class, 'context_id')

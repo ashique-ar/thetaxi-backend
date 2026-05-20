@@ -10,7 +10,6 @@ use App\Models\Vehicle\Vehicle;
 use App\Models\Agent\Agent;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
 class ReportsController extends Controller
@@ -101,14 +100,12 @@ class ReportsController extends Controller
         $query = Booking::query()
             ->join('booking_items', 'bookings.id', '=', 'booking_items.booking_id')
             ->join('service_types', 'booking_items.service_type_id', '=', 'service_types.id')
-            ->select([
-                'service_types.name as service_type',
-                DB::raw('COUNT(DISTINCT bookings.id) as total_bookings'),
-                DB::raw('SUM(CASE WHEN bookings.status = "completed" THEN bookings.total_estimated ELSE 0 END) as revenue'),
-                DB::raw('AVG(CASE WHEN bookings.status = "completed" THEN bookings.total_estimated ELSE NULL END) as avg_booking_value'),
-                DB::raw('SUM(CASE WHEN bookings.status = "completed" THEN 1 ELSE 0 END) as completed_bookings'),
-                DB::raw('SUM(CASE WHEN bookings.status = "cancelled" THEN 1 ELSE 0 END) as cancelled_bookings')
-            ])
+            ->select('service_types.name as service_type')
+            ->selectRaw('COUNT(DISTINCT bookings.id) as total_bookings')
+            ->selectRaw("SUM(CASE WHEN bookings.status = 'completed' THEN bookings.total_estimated ELSE 0 END) as revenue")
+            ->selectRaw("AVG(CASE WHEN bookings.status = 'completed' THEN bookings.total_estimated ELSE NULL END) as avg_booking_value")
+            ->selectRaw("SUM(CASE WHEN bookings.status = 'completed' THEN 1 ELSE 0 END) as completed_bookings")
+            ->selectRaw("SUM(CASE WHEN bookings.status = 'cancelled' THEN 1 ELSE 0 END) as cancelled_bookings")
             ->groupBy('service_types.id', 'service_types.name');
 
         $this->applyFilters($query, $filters);
@@ -172,10 +169,13 @@ class ReportsController extends Controller
         $query = Booking::where('status', 'completed');
         $this->applyFilters($query, $filters);
 
+        $totalRevenue = (clone $query)->sum('total_actual');
+        $totalCommission = (clone $query)->sum('commission_amount');
+
         $analytics = [
-            'total_revenue' => $query->sum('total_actual'),
-            'total_commission' => $query->sum('commission_amount'),
-            'net_revenue' => $query->sum(DB::raw('total_actual - commission_amount')),
+            'total_revenue' => $totalRevenue,
+            'total_commission' => $totalCommission,
+            'net_revenue' => $totalRevenue - $totalCommission,
             'revenue_by_service_type' => $this->getRevenueByServiceType($query),
             'revenue_by_agent' => $this->getRevenueByAgent($query),
             'monthly_growth' => $this->getMonthlyGrowth($query)

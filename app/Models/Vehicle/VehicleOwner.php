@@ -2,6 +2,7 @@
 namespace App\Models\Vehicle;
 
 use App\Models\BaseModel;
+use App\Models\Driver\Driver;
 use App\Traits\UUID;
 
 /**
@@ -41,6 +42,7 @@ class VehicleOwner extends BaseModel
      */
     protected $fillable = [
         'user_id',
+        'driver_id',
         'owner_type_id',
         'address',
         'country_id',
@@ -100,6 +102,11 @@ class VehicleOwner extends BaseModel
     public function user()
     {
         return $this->belongsTo(\App\Models\User::class, 'user_id');
+    }
+
+    public function driver()
+    {
+        return $this->belongsTo(Driver::class, 'driver_id');
     }
     
     /**

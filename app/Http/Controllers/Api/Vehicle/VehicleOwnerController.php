@@ -78,6 +78,8 @@ class VehicleOwnerController extends Controller
                 $driver = null;
                 if ($request->boolean('create_driver_profile')) {
                     $driver = $this->upsertDriverContext($user, $data, $request->user()->id);
+                    $vehicleOwner->update(['driver_id' => $driver->id]);
+                    $vehicleOwner->setRelation('driver', $driver);
                 }
 
                 return [
@@ -144,9 +146,10 @@ class VehicleOwnerController extends Controller
                         $data,
                         $request->user()->id
                     );
+                    $vehicleOwner->update(['driver_id' => $driver->id]);
                 }
 
-                $vehicleOwner->load('user');
+                $vehicleOwner->load(['user', 'driver.user']);
 
                 return [
                     'owner' => $vehicleOwner,

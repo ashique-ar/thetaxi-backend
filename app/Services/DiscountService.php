@@ -326,7 +326,7 @@ class DiscountService
 
         // Calculate points based on amount spent
         $baseEarningRate = 0.1; // 10 points per 100 LKR spent
-        $amountSpent = $booking->total_amount ?? 0;
+        $amountSpent = $booking->total_actual ?? $booking->total_estimated ?? 0;
         $basePoints = floor($amountSpent * $baseEarningRate);
         
         // Apply tier multiplier

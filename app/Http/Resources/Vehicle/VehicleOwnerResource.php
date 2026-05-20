@@ -13,6 +13,7 @@ class VehicleOwnerResource extends JsonResource
         return [
             'id' => $this->id,
             'owner_type_id' => $this->owner_type_id,
+            'driver_id' => $this->driver_id,
             'address' => $this->address,
             'country_id' => $this->country_id,
             'state_id' => $this->state_id,
@@ -22,6 +23,7 @@ class VehicleOwnerResource extends JsonResource
             'email' => $this->user?->email,
             'phone' => $this->user?->phone,
             'user' => new UserResource($this->whenLoaded('user')),
+            'driver' => $this->whenLoaded('driver'),
             'postal_code' => $this->postal_code,
             'license_number' => $this->license_number,
             'license_expiry' => $this->license_expiry,
