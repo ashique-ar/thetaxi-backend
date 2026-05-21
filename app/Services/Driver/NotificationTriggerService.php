@@ -50,7 +50,7 @@ class NotificationTriggerService
      */
     public function processAssignmentNotificationAttempt(DriverAssignment $assignment, int $attempt = 1, array $context = []): void
     {
-        $assignment->loadMissing(['driver', 'booking', 'bookingItem']);
+        $assignment->loadMissing(['driver', 'booking.customer.user', 'bookingItem']);
 
         $driver = $assignment->driver;
         if (!$driver) {
@@ -59,11 +59,15 @@ class NotificationTriggerService
         }
 
         $payload = $this->buildPayload($assignment, $context);
+        $message = $this->buildAssignmentMessage($assignment, $payload);
+        $payload['title'] = $message['title'];
+        $payload['message'] = $message['body'];
+
         $this->storeDriverNotification(
             $driver,
             $payload,
-            (string) config('services.firebase.assignment_title', 'New Booking Assigned'),
-            (string) config('services.firebase.assignment_body', 'A new booking has been assigned to you.')
+            $message['title'],
+            $message['body']
         );
 
         $channels = [];
@@ -142,6 +146,9 @@ class NotificationTriggerService
      */
     public function buildPayload(DriverAssignment $assignment, array $context = []): array
     {
+        $assignment->loadMissing(['booking.customer.user', 'bookingItem']);
+
+        $booking = $assignment->booking;
         $bookingItem = $assignment->bookingItem;
         $dispatch = BookingDispatch::where('booking_id', $assignment->booking_id)->latest('updated_at')->first();
 
@@ -152,8 +159,12 @@ class NotificationTriggerService
             'booking_item_id' => $assignment->booking_item_id,
             'assignment_id' => $assignment->id,
             'driver_id' => $assignment->driver_id,
+            'booking_number' => $booking?->booking_number,
+            'customer_name' => $this->resolveCustomerName($assignment),
             'pickup_location' => $bookingItem?->pickup_location,
             'dropoff_location' => $bookingItem?->dropoff_location,
+            'pickup_location_label' => $this->extractLocationLabel($bookingItem?->pickup_location),
+            'dropoff_location_label' => $this->extractLocationLabel($bookingItem?->dropoff_location),
             'scheduled_datetime' => $assignment->assigned_from?->toIso8601String(),
             'dispatch_id' => $dispatch?->id,
             'dispatch_status' => $dispatch?->dispatch_status?->value,
@@ -202,11 +213,14 @@ class NotificationTriggerService
      */
     public function deliverViaPush(Driver $driver, array $payload): string|false
     {
+        $title = (string) ($payload['title'] ?? config('services.firebase.assignment_title', 'New Booking Assigned'));
+        $body = (string) ($payload['message'] ?? $payload['body'] ?? config('services.firebase.assignment_body', 'A new booking has been assigned to you.'));
+
         $result = $this->pushToDriverDevices(
             $driver,
             $payload,
-            (string) config('services.firebase.assignment_title', 'New Booking Assigned'),
-            (string) config('services.firebase.assignment_body', 'A new booking has been assigned to you.')
+            $title,
+            $body
         );
 
         return $result['success'] ? 'push' : false;
@@ -282,6 +296,77 @@ class NotificationTriggerService
         }
 
         return $normalized;
+    }
+
+    private function buildAssignmentMessage(DriverAssignment $assignment, array $payload): array
+    {
+        $bookingNumber = trim((string) ($payload['booking_number'] ?? ''));
+        $customerName = trim((string) ($payload['customer_name'] ?? ''));
+        $pickup = trim((string) ($payload['pickup_location_label'] ?? ''));
+        $dropoff = trim((string) ($payload['dropoff_location_label'] ?? ''));
+
+        $titleBase = (string) config('services.firebase.assignment_title', 'New Booking Assigned');
+        $title = $bookingNumber !== '' ? "{$titleBase} - {$bookingNumber}" : $titleBase;
+
+        $parts = [];
+        if ($bookingNumber !== '') {
+            $parts[] = "Booking {$bookingNumber}";
+        }
+        if ($customerName !== '') {
+            $parts[] = "Customer {$customerName}";
+        }
+        if ($pickup !== '' || $dropoff !== '') {
+            $route = ($pickup !== '' ? $pickup : 'Pickup TBA') . ' to ' . ($dropoff !== '' ? $dropoff : 'Dropoff TBA');
+            $parts[] = $route;
+        }
+
+        $body = !empty($parts)
+            ? implode(' | ', $parts)
+            : (string) config('services.firebase.assignment_body', 'A new booking has been assigned to you.');
+
+        return [
+            'title' => $title,
+            'body' => $body,
+        ];
+    }
+
+    private function resolveCustomerName(DriverAssignment $assignment): ?string
+    {
+        if (!empty($assignment->customer_name)) {
+            return $assignment->customer_name;
+        }
+
+        $customerUser = $assignment->booking?->customer?->user;
+        if (!$customerUser) {
+            return null;
+        }
+
+        $name = trim(($customerUser->first_name ?? '') . ' ' . ($customerUser->last_name ?? ''));
+        return $name !== '' ? $name : null;
+    }
+
+    private function extractLocationLabel(mixed $location): ?string
+    {
+        if (is_array($location)) {
+            return $location['address']
+                ?? $location['display_name']
+                ?? $location['name']
+                ?? null;
+        }
+
+        if (!is_string($location) || trim($location) === '') {
+            return null;
+        }
+
+        $decoded = json_decode($location, true);
+        if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+            return $decoded['address']
+                ?? $decoded['display_name']
+                ?? $decoded['name']
+                ?? $location;
+        }
+
+        return $location;
     }
 
     private function storeDriverNotification(Driver $driver, array $payload, string $title, string $message): void
