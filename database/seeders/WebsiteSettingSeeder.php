@@ -177,6 +177,18 @@ class WebsiteSettingSeeder extends Seeder
                 'type' => 'assignment_enable_maintenance_stage',
                 'value' => 'false',
             ],
+            [
+                'type' => 'driver_mobile_latest_version',
+                'value' => '1.0.0',
+            ],
+            [
+                'type' => 'driver_mobile_mandatory_update',
+                'value' => 'false',
+            ],
+            [
+                'type' => 'driver_mobile_update_message',
+                'value' => 'A new driver app version is available. Please update to continue.',
+            ],
         ];
 
         foreach ($settings as $setting) {

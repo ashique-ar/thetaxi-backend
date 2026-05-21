@@ -2,11 +2,171 @@
     "info": {
         "_postman_id": "driver-mobile-api-v1",
         "name": "TheTaxi Driver Mobile API",
-        "description": "Complete API collection for TheTaxi Driver Mobile Application. Includes authentication, status, location tracking, sessions, device management, booking assignments, hires, earnings, and trip lifecycle endpoints (with assignment-scoped canonical lifecycle endpoints).",
+        "description": "Complete API collection for TheTaxi Driver Mobile Application. Includes app version checks, authentication, status, location tracking, sessions, device management, notification management, booking assignments, hires, earnings, and trip lifecycle endpoints (with assignment-scoped canonical lifecycle endpoints).",
         "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
         "_exporter_id": "thetaxi-driver-api"
     },
     "item": [
+        {
+            "name": "App Settings",
+            "description": "Public pre-login endpoints used by the driver mobile app before authentication.",
+            "item": [
+                {
+                    "name": "Version Check",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"Status code is 200\", function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "const response = pm.response.json();",
+                                    "pm.test(\"Response has version check data\", function () {",
+                                    "    pm.expect(response.status).to.eql(\"success\");",
+                                    "    pm.expect(response.data).to.have.property(\"latest_version\");",
+                                    "    pm.expect(response.data).to.have.property(\"update_required\");",
+                                    "    pm.expect(response.data).to.have.property(\"mandatory_update\");",
+                                    "    pm.expect(response.data).to.have.property(\"can_continue\");",
+                                    "});",
+                                    "",
+                                    "if (response.data) {",
+                                    "    pm.environment.set(\"latest_driver_app_version\", response.data.latest_version);",
+                                    "    pm.environment.set(\"driver_app_can_continue\", String(response.data.can_continue));",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"version\": \"{{app_version}}\",\n    \"platform\": \"{{platform}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/version-check",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "version-check"
+                            ]
+                        },
+                        "description": "Public pre-login version check. If `can_continue` is false, the app should block usage and redirect to Play Store/App Store internally. The API does not return a store URL."
+                    },
+                    "response": [
+                        {
+                            "name": "Up To Date",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"current_version\": \"1.0.0\",\n        \"latest_version\": \"1.0.0\",\n        \"update_required\": false,\n        \"mandatory_update\": false,\n        \"can_continue\": true,\n        \"message\": \"A new driver app version is available. Please update to continue.\"\n    }\n}"
+                        },
+                        {
+                            "name": "Forced Update Required",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"current_version\": \"1.0.0\",\n        \"latest_version\": \"1.1.0\",\n        \"update_required\": true,\n        \"mandatory_update\": true,\n        \"can_continue\": false,\n        \"message\": \"A new driver app version is available. Please update to continue.\"\n    }\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "Version Check (Compatibility Alias)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"version\": \"{{app_version}}\",\n    \"platform\": \"{{platform}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/public/driver-mobile/version-check",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "public",
+                                "driver-mobile",
+                                "version-check"
+                            ]
+                        },
+                        "description": "Compatibility alias for older integrations. Prefer `/api/driver/version-check` for new driver app builds."
+                    },
+                    "response": [
+                        {
+                            "name": "Up To Date",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"current_version\": \"1.0.0\",\n        \"latest_version\": \"1.0.0\",\n        \"update_required\": false,\n        \"mandatory_update\": false,\n        \"can_continue\": true,\n        \"message\": \"A new driver app version is available. Please update to continue.\"\n    }\n}"
+                        },
+                        {
+                            "name": "Forced Update Required",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"current_version\": \"1.0.0\",\n        \"latest_version\": \"1.1.0\",\n        \"update_required\": true,\n        \"mandatory_update\": true,\n        \"can_continue\": false,\n        \"message\": \"A new driver app version is available. Please update to continue.\"\n    }\n}"
+                        }
+                    ]
+                }
+            ]
+        },
         {
             "name": "Authentication",
             "item": [
@@ -215,7 +375,32 @@
                         },
                         "description": "Refresh the access token using the refresh token."
                     },
-                    "response": []
+                    "response": [
+                        {
+                            "name": "Token Refreshed",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Token refreshed successfully\",\n    \"data\": {\n        \"access_token\": \"new-access-token\",\n        \"token_type\": \"Bearer\",\n        \"expires_at\": \"2026-05-22T08:00:00+05:30\",\n        \"refresh_token\": \"refresh-token-id\"\n    }\n}"
+                        },
+                        {
+                            "name": "Invalid Refresh Token",
+                            "status": "Unauthorized",
+                            "code": 401,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"error\",\n    \"message\": \"Token refresh failed\",\n    \"error_code\": \"AUTH_REFRESH_FAILED\",\n    \"errors\": []\n}"
+                        }
+                    ]
                 },
                 {
                     "name": "Logout",
@@ -251,7 +436,32 @@
                         },
                         "description": "Logout the authenticated driver by revoking their current token."
                     },
-                    "response": []
+                    "response": [
+                        {
+                            "name": "Logged Out",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Logged out successfully\"\n}"
+                        },
+                        {
+                            "name": "Logout Failed",
+                            "status": "Internal Server Error",
+                            "code": 500,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"error\",\n    \"message\": \"Logout failed\",\n    \"error_code\": \"AUTH_LOGOUT_FAILED\",\n    \"errors\": []\n}"
+                        }
+                    ]
                 }
             ],
             "description": "Driver authentication endpoints including login, logout, profile, and token refresh."
@@ -430,7 +640,32 @@
                         },
                         "description": "Retrieve the driver's current online/offline status and active session information."
                     },
-                    "response": []
+                    "response": [
+                        {
+                            "name": "Current Status",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"is_online\": true,\n        \"last_active_at\": \"2026-05-21T08:05:00+05:30\",\n        \"current_latitude\": \"6.9285\",\n        \"current_longitude\": \"79.8625\",\n        \"current_device_uuid\": \"device-uuid\",\n        \"current_session\": {\n            \"id\": \"session-uuid\",\n            \"driver_id\": \"driver-uuid\",\n            \"device_uuid\": \"device-uuid\",\n            \"status\": \"active\",\n            \"start_time\": \"2026-05-21T08:00:00+05:30\",\n            \"end_time\": null,\n            \"start_latitude\": \"6.9271\",\n            \"start_longitude\": \"79.8612\",\n            \"end_latitude\": null,\n            \"end_longitude\": null,\n            \"total_distance_km\": null,\n            \"assignment_id\": \"assignment-uuid\",\n            \"metadata\": {\n                \"app_version\": \"1.0.0\",\n                \"os\": \"ios 17.0\"\n            },\n            \"created_at\": \"2026-05-21T08:00:00+05:30\",\n            \"updated_at\": \"2026-05-21T08:00:00+05:30\"\n        }\n    }\n}"
+                        },
+                        {
+                            "name": "Not Driver",
+                            "status": "Forbidden",
+                            "code": 403,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"error\",\n    \"message\": \"User is not registered as a driver\",\n    \"error_code\": \"STATUS_NOT_DRIVER\",\n    \"errors\": []\n}"
+                        }
+                    ]
                 }
             ],
             "description": "Endpoints for managing driver online/offline status and sessions."
@@ -557,7 +792,44 @@
                         },
                         "description": "Send the driver's current GPS location. Creates a route point for the active session. During an active trip, the route point is also linked to the assignment_id. Should be sent every 10 seconds while moving."
                     },
-                    "response": []
+                    "response": [
+                        {
+                            "name": "Location Updated",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Location updated successfully\",\n    \"data\": {\n        \"id\": \"route-point-uuid\",\n        \"session_id\": \"session-uuid\",\n        \"assignment_id\": \"assignment-uuid\",\n        \"latitude\": 6.9285,\n        \"longitude\": 79.8625,\n        \"altitude\": 15.5,\n        \"speed\": 45.2,\n        \"heading\": 180.5,\n        \"accuracy\": 10,\n        \"recorded_at\": \"2026-05-21T08:05:00+05:30\",\n        \"created_at\": \"2026-05-21T08:05:01+05:30\"\n    }\n}"
+                        },
+                        {
+                            "name": "No Active Session",
+                            "status": "Bad Request",
+                            "code": 400,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"error\",\n    \"message\": \"No active session\",\n    \"error_code\": \"LOCATION_NO_SESSION\",\n    \"errors\": []\n}"
+                        },
+                        {
+                            "name": "Rate Limited",
+                            "status": "Too Many Requests",
+                            "code": 429,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"error\",\n    \"message\": \"Location updates must be at least 10 seconds apart\",\n    \"error_code\": \"LOCATION_RATE_LIMITED\",\n    \"errors\": []\n}"
+                        }
+                    ]
                 },
                 {
                     "name": "Bulk Upload Buffered Locations",
@@ -606,15 +878,13 @@
                             "name": "Bulk Upload Success",
                             "status": "OK",
                             "code": 200,
-                            "_postman_previewlanguage": "json",
                             "header": [
                                 {
                                     "key": "Content-Type",
                                     "value": "application/json"
                                 }
                             ],
-                            "cookie": [],
-                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Buffered locations processed successfully\",\n    \"data\": {\n        \"saved_count\": 2,\n        \"skipped_count\": 1,\n        \"duplicate_count\": 1,\n        \"latest_saved_point\": {\n            \"id\": \"point-uuid\",\n            \"session_id\": \"session-uuid\",\n            \"assignment_id\": \"assignment-uuid\",\n            \"latitude\": 6.9279,\n            \"longitude\": 79.862,\n            \"altitude\": 13.1,\n            \"speed\": 22.5,\n            \"heading\": 182,\n            \"accuracy\": 7,\n            \"recorded_at\": \"2026-04-07T09:10:15Z\",\n            \"created_at\": \"2026-04-07T09:15:00Z\"\n        }\n    }\n}"
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Buffered locations processed successfully\",\n    \"data\": {\n        \"saved_count\": 2,\n        \"skipped_count\": 1,\n        \"duplicate_count\": 1,\n        \"latest_saved_point\": {\n            \"id\": \"route-point-uuid\",\n            \"session_id\": \"session-uuid\",\n            \"assignment_id\": \"assignment-uuid\",\n            \"latitude\": 6.9285,\n            \"longitude\": 79.8625,\n            \"altitude\": 15.5,\n            \"speed\": 45.2,\n            \"heading\": 180.5,\n            \"accuracy\": 10,\n            \"recorded_at\": \"2026-05-21T08:05:00+05:30\",\n            \"created_at\": \"2026-05-21T08:05:01+05:30\"\n        }\n    }\n}"
                         }
                     ]
                 },
@@ -742,7 +1012,7 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/driver/sessions?page=1&per_page=15",
+                            "raw": "{{base_url}}/api/driver/sessions?page=1&per_page=15&status={{session_status}}",
                             "host": [
                                 "{{base_url}}"
                             ],
@@ -754,25 +1024,35 @@
                             "query": [
                                 {
                                     "key": "page",
-                                    "value": "1",
-                                    "description": "Page number"
+                                    "value": "1"
                                 },
                                 {
                                     "key": "per_page",
-                                    "value": "15",
-                                    "description": "Items per page (max 100)"
+                                    "value": "15"
                                 },
                                 {
                                     "key": "status",
-                                    "value": "completed",
-                                    "description": "Filter by status: active, completed, auto_closed",
+                                    "value": "{{session_status}}",
                                     "disabled": true
                                 }
                             ]
                         },
                         "description": "Retrieve paginated list of driver's session history."
                     },
-                    "response": []
+                    "response": [
+                        {
+                            "name": "Sessions List",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": [\n        {\n            \"id\": \"session-uuid\",\n            \"driver_id\": \"driver-uuid\",\n            \"device_uuid\": \"device-uuid\",\n            \"status\": \"active\",\n            \"start_time\": \"2026-05-21T08:00:00+05:30\",\n            \"end_time\": null,\n            \"start_latitude\": \"6.9271\",\n            \"start_longitude\": \"79.8612\",\n            \"end_latitude\": null,\n            \"end_longitude\": null,\n            \"total_distance_km\": null,\n            \"assignment_id\": \"assignment-uuid\",\n            \"metadata\": {\n                \"app_version\": \"1.0.0\",\n                \"os\": \"ios 17.0\"\n            },\n            \"created_at\": \"2026-05-21T08:00:00+05:30\",\n            \"updated_at\": \"2026-05-21T08:00:00+05:30\"\n        }\n    ],\n    \"meta\": {\n        \"current_page\": 1,\n        \"last_page\": 1,\n        \"per_page\": 15,\n        \"total\": 1\n    }\n}"
+                        }
+                    ]
                 },
                 {
                     "name": "Get Session Details",
@@ -808,7 +1088,32 @@
                         },
                         "description": "Retrieve detailed information about a specific session including route points and statistics."
                     },
-                    "response": []
+                    "response": [
+                        {
+                            "name": "Session Details",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"session\": {\n            \"id\": \"session-uuid\",\n            \"driver_id\": \"driver-uuid\",\n            \"device_uuid\": \"device-uuid\",\n            \"status\": \"active\",\n            \"start_time\": \"2026-05-21T08:00:00+05:30\",\n            \"end_time\": null,\n            \"start_latitude\": \"6.9271\",\n            \"start_longitude\": \"79.8612\",\n            \"end_latitude\": null,\n            \"end_longitude\": null,\n            \"total_distance_km\": null,\n            \"assignment_id\": \"assignment-uuid\",\n            \"metadata\": {\n                \"app_version\": \"1.0.0\",\n                \"os\": \"ios 17.0\"\n            },\n            \"created_at\": \"2026-05-21T08:00:00+05:30\",\n            \"updated_at\": \"2026-05-21T08:00:00+05:30\"\n        },\n        \"route_points\": [\n            {\n                \"id\": \"route-point-uuid\",\n                \"session_id\": \"session-uuid\",\n                \"assignment_id\": \"assignment-uuid\",\n                \"latitude\": 6.9285,\n                \"longitude\": 79.8625,\n                \"altitude\": 15.5,\n                \"speed\": 45.2,\n                \"heading\": 180.5,\n                \"accuracy\": 10,\n                \"recorded_at\": \"2026-05-21T08:05:00+05:30\",\n                \"created_at\": \"2026-05-21T08:05:01+05:30\"\n            }\n        ],\n        \"route_stats\": {\n            \"total_distance_km\": 12.5,\n            \"total_points\": 75,\n            \"start_time\": \"2026-05-21T08:00:00+05:30\",\n            \"end_time\": null\n        }\n    }\n}"
+                        },
+                        {
+                            "name": "Session Not Found",
+                            "status": "Not Found",
+                            "code": 404,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"error\",\n    \"message\": \"Session not found\",\n    \"error_code\": \"SESSION_NOT_FOUND\",\n    \"errors\": []\n}"
+                        }
+                    ]
                 }
             ],
             "description": "Endpoints for viewing session history and details."
@@ -837,7 +1142,7 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/driver/devices",
+                            "raw": "{{base_url}}/api/driver/devices?active_only=false",
                             "host": [
                                 "{{base_url}}"
                             ],
@@ -845,11 +1150,30 @@
                                 "api",
                                 "driver",
                                 "devices"
+                            ],
+                            "query": [
+                                {
+                                    "key": "active_only",
+                                    "value": "false"
+                                }
                             ]
                         },
                         "description": "Retrieve all devices registered for the authenticated driver."
                     },
-                    "response": []
+                    "response": [
+                        {
+                            "name": "Devices List",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": [\n        {\n            \"id\": \"device-record-uuid\",\n            \"driver_id\": \"driver-uuid\",\n            \"device_uuid\": \"device-uuid\",\n            \"device_name\": \"Test Device\",\n            \"device_model\": \"iPhone 14 Pro\",\n            \"device_manufacturer\": \"Apple\",\n            \"platform\": \"ios\",\n            \"platform_display\": \"iOS\",\n            \"os_version\": \"17.0\",\n            \"app_version\": \"1.0.0\",\n            \"app_build\": \"100\",\n            \"has_push_token\": true,\n            \"push_provider\": \"fcm\",\n            \"is_active\": true,\n            \"last_active_at\": \"2026-05-21T08:05:00+05:30\",\n            \"registered_at\": \"2026-05-20T10:00:00+05:30\",\n            \"locale\": \"en_US\",\n            \"timezone\": \"Asia/Colombo\",\n            \"display_name\": \"Test Device (iPhone 14 Pro)\",\n            \"created_at\": \"2026-05-20T10:00:00+05:30\",\n            \"updated_at\": \"2026-05-21T08:05:00+05:30\"\n        }\n    ]\n}"
+                        }
+                    ]
                 },
                 {
                     "name": "Get Current Device",
@@ -885,7 +1209,32 @@
                         },
                         "description": "Retrieve information about the current device."
                     },
-                    "response": []
+                    "response": [
+                        {
+                            "name": "Current Device",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"id\": \"device-record-uuid\",\n        \"driver_id\": \"driver-uuid\",\n        \"device_uuid\": \"device-uuid\",\n        \"device_name\": \"Test Device\",\n        \"device_model\": \"iPhone 14 Pro\",\n        \"device_manufacturer\": \"Apple\",\n        \"platform\": \"ios\",\n        \"platform_display\": \"iOS\",\n        \"os_version\": \"17.0\",\n        \"app_version\": \"1.0.0\",\n        \"app_build\": \"100\",\n        \"has_push_token\": true,\n        \"push_provider\": \"fcm\",\n        \"is_active\": true,\n        \"last_active_at\": \"2026-05-21T08:05:00+05:30\",\n        \"registered_at\": \"2026-05-20T10:00:00+05:30\",\n        \"locale\": \"en_US\",\n        \"timezone\": \"Asia/Colombo\",\n        \"display_name\": \"Test Device (iPhone 14 Pro)\",\n        \"created_at\": \"2026-05-20T10:00:00+05:30\",\n        \"updated_at\": \"2026-05-21T08:05:00+05:30\"\n    }\n}"
+                        },
+                        {
+                            "name": "No Current Device",
+                            "status": "Not Found",
+                            "code": 404,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"error\",\n    \"message\": \"No current device registered\",\n    \"errors\": []\n}"
+                        }
+                    ]
                 },
                 {
                     "name": "Update Device",
@@ -913,7 +1262,7 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"device_name\": \"{{device_name}}\",\n    \"app_version\": \"{{app_version}}\",\n    \"app_build\": \"{{app_build}}\",\n    \"os_version\": \"{{os_version}}\",\n    \"locale\": \"en_US\",\n    \"timezone\": \"Asia/Colombo\"\n}"
+                            "raw": "{\n    \"device_uuid\": \"{{device_uuid}}\",\n    \"device_name\": \"{{device_name}}\",\n    \"app_version\": \"{{app_version}}\",\n    \"app_build\": \"{{app_build}}\",\n    \"os_version\": \"{{os_version}}\",\n    \"locale\": \"en_US\",\n    \"timezone\": \"Asia/Colombo\"\n}"
                         },
                         "url": {
                             "raw": "{{base_url}}/api/driver/devices",
@@ -926,9 +1275,22 @@
                                 "devices"
                             ]
                         },
-                        "description": "Update device information (app version, push token, etc.)."
+                        "description": "Update the current driver device information. `device_uuid` is required so the backend can identify the device record."
                     },
-                    "response": []
+                    "response": [
+                        {
+                            "name": "Device Updated",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Device information updated\",\n    \"data\": {\n        \"id\": \"device-record-uuid\",\n        \"driver_id\": \"driver-uuid\",\n        \"device_uuid\": \"device-uuid\",\n        \"device_name\": \"Test Device\",\n        \"device_model\": \"iPhone 14 Pro\",\n        \"device_manufacturer\": \"Apple\",\n        \"platform\": \"ios\",\n        \"platform_display\": \"iOS\",\n        \"os_version\": \"17.0\",\n        \"app_version\": \"1.0.0\",\n        \"app_build\": \"100\",\n        \"has_push_token\": true,\n        \"push_provider\": \"fcm\",\n        \"is_active\": true,\n        \"last_active_at\": \"2026-05-21T08:05:00+05:30\",\n        \"registered_at\": \"2026-05-20T10:00:00+05:30\",\n        \"locale\": \"en_US\",\n        \"timezone\": \"Asia/Colombo\",\n        \"display_name\": \"Test Device (iPhone 14 Pro)\",\n        \"created_at\": \"2026-05-20T10:00:00+05:30\",\n        \"updated_at\": \"2026-05-21T08:05:00+05:30\"\n    }\n}"
+                        }
+                    ]
                 },
                 {
                     "name": "Update Push Token",
@@ -956,7 +1318,7 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"push_token\": \"{{push_token}}\",\n    \"push_provider\": \"{{push_provider}}\"\n}"
+                            "raw": "{\n    \"device_uuid\": \"{{device_uuid}}\",\n    \"push_token\": \"{{push_token}}\",\n    \"push_provider\": \"{{push_provider}}\"\n}"
                         },
                         "url": {
                             "raw": "{{base_url}}/api/driver/devices/push-token",
@@ -972,7 +1334,32 @@
                         },
                         "description": "Update the push notification token for the current device."
                     },
-                    "response": []
+                    "response": [
+                        {
+                            "name": "Push Token Updated",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Push token updated\",\n    \"data\": {\n        \"id\": \"device-record-uuid\",\n        \"driver_id\": \"driver-uuid\",\n        \"device_uuid\": \"device-uuid\",\n        \"device_name\": \"Test Device\",\n        \"device_model\": \"iPhone 14 Pro\",\n        \"device_manufacturer\": \"Apple\",\n        \"platform\": \"ios\",\n        \"platform_display\": \"iOS\",\n        \"os_version\": \"17.0\",\n        \"app_version\": \"1.0.0\",\n        \"app_build\": \"100\",\n        \"has_push_token\": true,\n        \"push_provider\": \"fcm\",\n        \"is_active\": true,\n        \"last_active_at\": \"2026-05-21T08:05:00+05:30\",\n        \"registered_at\": \"2026-05-20T10:00:00+05:30\",\n        \"locale\": \"en_US\",\n        \"timezone\": \"Asia/Colombo\",\n        \"display_name\": \"Test Device (iPhone 14 Pro)\",\n        \"created_at\": \"2026-05-20T10:00:00+05:30\",\n        \"updated_at\": \"2026-05-21T08:05:00+05:30\"\n    }\n}"
+                        },
+                        {
+                            "name": "Device Not Found",
+                            "status": "Not Found",
+                            "code": 404,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"error\",\n    \"message\": \"Device not found. Please register the device first.\",\n    \"errors\": []\n}"
+                        }
+                    ]
                 },
                 {
                     "name": "Deactivate Device",
@@ -1009,7 +1396,32 @@
                         },
                         "description": "Deactivate a specific device."
                     },
-                    "response": []
+                    "response": [
+                        {
+                            "name": "Device Deactivated",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Device deactivated\"\n}"
+                        },
+                        {
+                            "name": "Device Not Found",
+                            "status": "Not Found",
+                            "code": 404,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"error\",\n    \"message\": \"Device not found\",\n    \"errors\": []\n}"
+                        }
+                    ]
                 },
                 {
                     "name": "Remove Device",
@@ -1045,10 +1457,342 @@
                         },
                         "description": "Remove a device from the driver's account."
                     },
-                    "response": []
+                    "response": [
+                        {
+                            "name": "Device Removed",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Device removed\"\n}"
+                        },
+                        {
+                            "name": "Current Device",
+                            "status": "Bad Request",
+                            "code": 400,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"error\",\n    \"message\": \"Cannot remove the currently active device\",\n    \"errors\": []\n}"
+                        }
+                    ]
                 }
             ],
             "description": "Endpoints for managing driver devices and push notifications."
+        },
+        {
+            "name": "Notification Management",
+            "description": "Driver-scoped notification inbox endpoints for the authenticated driver user.",
+            "item": [
+                {
+                    "name": "List Notifications",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{access_token}}"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/notifications?page=1&per_page={{notification_per_page}}&unread_only={{notification_unread_only}}&type={{notification_type}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "notifications"
+                            ],
+                            "query": [
+                                {
+                                    "key": "page",
+                                    "value": "1"
+                                },
+                                {
+                                    "key": "per_page",
+                                    "value": "{{notification_per_page}}"
+                                },
+                                {
+                                    "key": "unread_only",
+                                    "value": "{{notification_unread_only}}"
+                                },
+                                {
+                                    "key": "type",
+                                    "value": "{{notification_type}}",
+                                    "disabled": true
+                                }
+                            ]
+                        },
+                        "description": "List driver notifications. Supports pagination, unread-only filtering, and optional notification type filtering."
+                    },
+                    "response": [
+                        {
+                            "name": "Notifications List",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": [\n        {\n            \"id\": \"notification-uuid\",\n            \"type\": \"App\\\\Notifications\\\\DriverAssignmentNotification\",\n            \"notification_type\": \"driver_assignment\",\n            \"title\": \"New assignment\",\n            \"message\": \"You have a new booking assignment.\",\n            \"data\": { \"assignment_id\": \"assignment-uuid\" },\n            \"read\": false,\n            \"read_at\": null,\n            \"created_at\": \"2026-05-21T10:00:00+05:30\",\n            \"updated_at\": \"2026-05-21T10:00:00+05:30\"\n        }\n    ],\n    \"meta\": {\n        \"current_page\": 1,\n        \"last_page\": 1,\n        \"per_page\": 20,\n        \"total\": 1,\n        \"unread_count\": 1\n    }\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "Get Unread Count",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{access_token}}"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/notifications/unread-count",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "notifications",
+                                "unread-count"
+                            ]
+                        },
+                        "description": "Get unread notification count for the authenticated driver user."
+                    },
+                    "response": [
+                        {
+                            "name": "Unread Count",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"unread_count\": 3\n    }\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "Get Notification Detail",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{access_token}}"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/notifications/{{notification_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "notifications",
+                                "{{notification_id}}"
+                            ]
+                        },
+                        "description": "Fetch one notification owned by the authenticated driver user."
+                    },
+                    "response": [
+                        {
+                            "name": "Notification Detail",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"id\": \"notification-uuid\",\n        \"type\": \"App\\\\Notifications\\\\DriverAssignmentNotification\",\n        \"notification_type\": \"driver_assignment\",\n        \"title\": \"New assignment\",\n        \"message\": \"You have a new booking assignment.\",\n        \"data\": {\n            \"assignment_id\": \"assignment-uuid\"\n        },\n        \"read\": false,\n        \"read_at\": null,\n        \"created_at\": \"2026-05-21T10:00:00+05:30\",\n        \"updated_at\": \"2026-05-21T10:00:00+05:30\"\n    }\n}"
+                        },
+                        {
+                            "name": "Notification Not Found",
+                            "status": "Not Found",
+                            "code": 404,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"error\",\n    \"message\": \"Notification not found\",\n    \"error_code\": \"NOTIFICATION_NOT_FOUND\",\n    \"errors\": []\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "Mark Notification Read",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{access_token}}"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/notifications/{{notification_id}}/mark-read",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "notifications",
+                                "{{notification_id}}",
+                                "mark-read"
+                            ]
+                        },
+                        "description": "Mark one notification as read."
+                    },
+                    "response": [
+                        {
+                            "name": "Notification Marked Read",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Notification marked as read\",\n    \"data\": {\n        \"id\": \"notification-uuid\",\n        \"type\": \"App\\\\Notifications\\\\DriverAssignmentNotification\",\n        \"notification_type\": \"driver_assignment\",\n        \"title\": \"New assignment\",\n        \"message\": \"You have a new booking assignment.\",\n        \"data\": {\n            \"assignment_id\": \"assignment-uuid\"\n        },\n        \"read\": true,\n        \"read_at\": \"2026-05-21T10:10:00+05:30\",\n        \"created_at\": \"2026-05-21T10:00:00+05:30\",\n        \"updated_at\": \"2026-05-21T10:00:00+05:30\"\n    }\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "Mark All Notifications Read",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{access_token}}"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/notifications/mark-all-read",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "notifications",
+                                "mark-all-read"
+                            ]
+                        },
+                        "description": "Mark all notifications as read for the authenticated driver user."
+                    },
+                    "response": [
+                        {
+                            "name": "All Notifications Marked Read",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"All notifications marked as read\",\n    \"data\": {\n        \"unread_count\": 0\n    }\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "Delete Notification",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{access_token}}"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/notifications/{{notification_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "notifications",
+                                "{{notification_id}}"
+                            ]
+                        },
+                        "description": "Delete one notification owned by the authenticated driver user."
+                    },
+                    "response": [
+                        {
+                            "name": "Notification Deleted",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Notification deleted\"\n}"
+                        },
+                        {
+                            "name": "Notification Not Found",
+                            "status": "Not Found",
+                            "code": 404,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"error\",\n    \"message\": \"Notification not found\",\n    \"error_code\": \"NOTIFICATION_NOT_FOUND\",\n    \"errors\": []\n}"
+                        }
+                    ]
+                }
+            ]
         },
         {
             "name": "Booking Assignments",
@@ -1112,7 +1856,20 @@
                         },
                         "description": "List driver assignments with optional status/date/range filters. Multi-stop assignments include `route_stops`; use each stop `id` for stop action endpoints and `display_label`/`booking_stop_id` for UI identification."
                     },
-                    "response": []
+                    "response": [
+                        {
+                            "name": "Assignments List",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": [\n        {\n            \"id\": \"assignment-uuid\",\n            \"driver_id\": \"driver-uuid\",\n            \"booking_id\": \"booking-uuid\",\n            \"booking_item_id\": \"item-uuid\",\n            \"status\": \"active\",\n            \"trip_phase\": \"accepted\",\n            \"payment_type\": \"cash\",\n            \"fare_amount\": 12500,\n            \"total_amount\": 12500,\n            \"currency\": \"LKR\",\n            \"booking_number\": \"BK-2026-0001\",\n            \"service_type_name\": \"Airport Transfer\",\n            \"customer_name\": \"John Customer\",\n            \"customer_phone\": \"+94771111111\",\n            \"customer_email\": \"customer@example.com\",\n            \"pickup_location_label\": \"Colombo Airport\",\n            \"dropoff_location_label\": \"Hilton Colombo\",\n            \"is_multi_stop\": true,\n            \"route_stops\": [\n                {\n                    \"id\": \"stop-uuid-1\",\n                    \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n                    \"type\": \"pickup\",\n                    \"type_sequence\": 1,\n                    \"route_order\": 1,\n                    \"status\": \"picked_up\",\n                    \"label\": \"Pickup 1\",\n                    \"display_label\": \"Pickup 1\",\n                    \"address\": \"Passenger 2 pickup\",\n                    \"latitude\": 6.9271,\n                    \"longitude\": 79.8612,\n                    \"contact\": {\n                        \"employee_id\": null,\n                        \"contact_name\": \"Passenger Two\",\n                        \"contact_phone\": \"+94770000000\",\n                        \"contact_note\": null\n                    },\n                    \"arrived_at\": null,\n                    \"arrived_latitude\": null,\n                    \"arrived_longitude\": null,\n                    \"completed_at\": null,\n                    \"completed_latitude\": null,\n                    \"completed_longitude\": null,\n                    \"completed_action\": \"picked_up\",\n                    \"skip_reason\": null,\n                    \"notes\": null,\n                    \"allowed_actions\": []\n                },\n                {\n                    \"id\": \"stop-uuid-2\",\n                    \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n                    \"type\": \"pickup\",\n                    \"type_sequence\": 2,\n                    \"route_order\": 2,\n                    \"status\": \"pending\",\n                    \"label\": \"Pickup 2\",\n                    \"display_label\": \"Pickup 2\",\n                    \"address\": \"Passenger 2 pickup\",\n                    \"latitude\": 6.9271,\n                    \"longitude\": 79.8612,\n                    \"contact\": {\n                        \"employee_id\": null,\n                        \"contact_name\": \"Passenger Two\",\n                        \"contact_phone\": \"+94770000000\",\n                        \"contact_note\": null\n                    },\n                    \"arrived_at\": null,\n                    \"arrived_latitude\": null,\n                    \"arrived_longitude\": null,\n                    \"completed_at\": null,\n                    \"completed_latitude\": null,\n                    \"completed_longitude\": null,\n                    \"completed_action\": null,\n                    \"skip_reason\": null,\n                    \"notes\": null,\n                    \"allowed_actions\": [\n                        \"arrived\",\n                        \"skip\"\n                    ]\n                },\n                {\n                    \"id\": \"stop-uuid-3\",\n                    \"booking_stop_id\": \"booking-item:item-uuid:dropoff-client-stop-1\",\n                    \"type\": \"dropoff\",\n                    \"type_sequence\": 1,\n                    \"route_order\": 3,\n                    \"status\": \"pending\",\n                    \"label\": \"Drop-off 1\",\n                    \"display_label\": \"Drop-off 1\",\n                    \"address\": \"Hotel dropoff\",\n                    \"latitude\": 6.9271,\n                    \"longitude\": 79.8612,\n                    \"contact\": {\n                        \"employee_id\": null,\n                        \"contact_name\": \"Passenger Two\",\n                        \"contact_phone\": \"+94770000000\",\n                        \"contact_note\": null\n                    },\n                    \"arrived_at\": null,\n                    \"arrived_latitude\": null,\n                    \"arrived_longitude\": null,\n                    \"completed_at\": null,\n                    \"completed_latitude\": null,\n                    \"completed_longitude\": null,\n                    \"completed_action\": null,\n                    \"skip_reason\": null,\n                    \"notes\": null,\n                    \"allowed_actions\": [\n                        \"arrived\",\n                        \"skip\"\n                    ]\n                }\n            ],\n            \"scheduled_from\": \"2026-05-21T08:00:00+05:30\",\n            \"scheduled_to\": \"2026-05-21T10:00:00+05:30\",\n            \"trip_completed_at\": null,\n            \"booking\": {\n                \"id\": \"booking-uuid\",\n                \"booking_number\": \"BK-2026-0001\"\n            },\n            \"booking_item\": {\n                \"id\": \"item-uuid\"\n            }\n        }\n    ],\n    \"meta\": {\n        \"current_page\": 1,\n        \"last_page\": 1,\n        \"per_page\": 15,\n        \"total\": 1\n    }\n}"
+                        }
+                    ]
                 },
                 {
                     "name": "Get Current Assignment",
@@ -1148,7 +1905,32 @@
                         },
                         "description": "Get current active assignment for the authenticated driver. Multi-stop assignments include `route_stops`; use each stop `id` for stop action endpoints and `display_label`/`booking_stop_id` for UI identification."
                     },
-                    "response": []
+                    "response": [
+                        {
+                            "name": "Current Assignment",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"id\": \"assignment-uuid\",\n        \"driver_id\": \"driver-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"booking_item_id\": \"item-uuid\",\n        \"status\": \"active\",\n        \"trip_phase\": \"accepted\",\n        \"payment_type\": \"cash\",\n        \"fare_amount\": 12500,\n        \"total_amount\": 12500,\n        \"currency\": \"LKR\",\n        \"booking_number\": \"BK-2026-0001\",\n        \"service_type_name\": \"Airport Transfer\",\n        \"customer_name\": \"John Customer\",\n        \"customer_phone\": \"+94771111111\",\n        \"customer_email\": \"customer@example.com\",\n        \"pickup_location_label\": \"Colombo Airport\",\n        \"dropoff_location_label\": \"Hilton Colombo\",\n        \"is_multi_stop\": true,\n        \"route_stops\": [\n            {\n                \"id\": \"stop-uuid-1\",\n                \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n                \"type\": \"pickup\",\n                \"type_sequence\": 1,\n                \"route_order\": 1,\n                \"status\": \"picked_up\",\n                \"label\": \"Pickup 1\",\n                \"display_label\": \"Pickup 1\",\n                \"address\": \"Passenger 2 pickup\",\n                \"latitude\": 6.9271,\n                \"longitude\": 79.8612,\n                \"contact\": {\n                    \"employee_id\": null,\n                    \"contact_name\": \"Passenger Two\",\n                    \"contact_phone\": \"+94770000000\",\n                    \"contact_note\": null\n                },\n                \"arrived_at\": null,\n                \"arrived_latitude\": null,\n                \"arrived_longitude\": null,\n                \"completed_at\": null,\n                \"completed_latitude\": null,\n                \"completed_longitude\": null,\n                \"completed_action\": \"picked_up\",\n                \"skip_reason\": null,\n                \"notes\": null,\n                \"allowed_actions\": []\n            },\n            {\n                \"id\": \"stop-uuid-2\",\n                \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n                \"type\": \"pickup\",\n                \"type_sequence\": 2,\n                \"route_order\": 2,\n                \"status\": \"pending\",\n                \"label\": \"Pickup 2\",\n                \"display_label\": \"Pickup 2\",\n                \"address\": \"Passenger 2 pickup\",\n                \"latitude\": 6.9271,\n                \"longitude\": 79.8612,\n                \"contact\": {\n                    \"employee_id\": null,\n                    \"contact_name\": \"Passenger Two\",\n                    \"contact_phone\": \"+94770000000\",\n                    \"contact_note\": null\n                },\n                \"arrived_at\": null,\n                \"arrived_latitude\": null,\n                \"arrived_longitude\": null,\n                \"completed_at\": null,\n                \"completed_latitude\": null,\n                \"completed_longitude\": null,\n                \"completed_action\": null,\n                \"skip_reason\": null,\n                \"notes\": null,\n                \"allowed_actions\": [\n                    \"arrived\",\n                    \"skip\"\n                ]\n            },\n            {\n                \"id\": \"stop-uuid-3\",\n                \"booking_stop_id\": \"booking-item:item-uuid:dropoff-client-stop-1\",\n                \"type\": \"dropoff\",\n                \"type_sequence\": 1,\n                \"route_order\": 3,\n                \"status\": \"pending\",\n                \"label\": \"Drop-off 1\",\n                \"display_label\": \"Drop-off 1\",\n                \"address\": \"Hotel dropoff\",\n                \"latitude\": 6.9271,\n                \"longitude\": 79.8612,\n                \"contact\": {\n                    \"employee_id\": null,\n                    \"contact_name\": \"Passenger Two\",\n                    \"contact_phone\": \"+94770000000\",\n                    \"contact_note\": null\n                },\n                \"arrived_at\": null,\n                \"arrived_latitude\": null,\n                \"arrived_longitude\": null,\n                \"completed_at\": null,\n                \"completed_latitude\": null,\n                \"completed_longitude\": null,\n                \"completed_action\": null,\n                \"skip_reason\": null,\n                \"notes\": null,\n                \"allowed_actions\": [\n                    \"arrived\",\n                    \"skip\"\n                ]\n            }\n        ],\n        \"scheduled_from\": \"2026-05-21T08:00:00+05:30\",\n        \"scheduled_to\": \"2026-05-21T10:00:00+05:30\",\n        \"trip_completed_at\": null,\n        \"booking\": {\n            \"id\": \"booking-uuid\",\n            \"booking_number\": \"BK-2026-0001\"\n        },\n        \"booking_item\": {\n            \"id\": \"item-uuid\"\n        }\n    }\n}"
+                        },
+                        {
+                            "name": "No Current Assignment",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": null\n}"
+                        }
+                    ]
                 },
                 {
                     "name": "Accept Assignment",
@@ -1198,7 +1980,32 @@
                             }
                         }
                     },
-                    "response": []
+                    "response": [
+                        {
+                            "name": "Assignment Accepted",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Assignment accepted\",\n    \"data\": {\n        \"id\": \"assignment-uuid\",\n        \"driver_id\": \"driver-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"booking_item_id\": \"item-uuid\",\n        \"status\": \"active\",\n        \"trip_phase\": \"accepted\",\n        \"payment_type\": \"cash\",\n        \"fare_amount\": 12500,\n        \"total_amount\": 12500,\n        \"currency\": \"LKR\",\n        \"booking_number\": \"BK-2026-0001\",\n        \"service_type_name\": \"Airport Transfer\",\n        \"customer_name\": \"John Customer\",\n        \"customer_phone\": \"+94771111111\",\n        \"customer_email\": \"customer@example.com\",\n        \"pickup_location_label\": \"Colombo Airport\",\n        \"dropoff_location_label\": \"Hilton Colombo\",\n        \"is_multi_stop\": true,\n        \"route_stops\": [\n            {\n                \"id\": \"stop-uuid-1\",\n                \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n                \"type\": \"pickup\",\n                \"type_sequence\": 1,\n                \"route_order\": 1,\n                \"status\": \"picked_up\",\n                \"label\": \"Pickup 1\",\n                \"display_label\": \"Pickup 1\",\n                \"address\": \"Passenger 2 pickup\",\n                \"latitude\": 6.9271,\n                \"longitude\": 79.8612,\n                \"contact\": {\n                    \"employee_id\": null,\n                    \"contact_name\": \"Passenger Two\",\n                    \"contact_phone\": \"+94770000000\",\n                    \"contact_note\": null\n                },\n                \"arrived_at\": null,\n                \"arrived_latitude\": null,\n                \"arrived_longitude\": null,\n                \"completed_at\": null,\n                \"completed_latitude\": null,\n                \"completed_longitude\": null,\n                \"completed_action\": \"picked_up\",\n                \"skip_reason\": null,\n                \"notes\": null,\n                \"allowed_actions\": []\n            },\n            {\n                \"id\": \"stop-uuid-2\",\n                \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n                \"type\": \"pickup\",\n                \"type_sequence\": 2,\n                \"route_order\": 2,\n                \"status\": \"pending\",\n                \"label\": \"Pickup 2\",\n                \"display_label\": \"Pickup 2\",\n                \"address\": \"Passenger 2 pickup\",\n                \"latitude\": 6.9271,\n                \"longitude\": 79.8612,\n                \"contact\": {\n                    \"employee_id\": null,\n                    \"contact_name\": \"Passenger Two\",\n                    \"contact_phone\": \"+94770000000\",\n                    \"contact_note\": null\n                },\n                \"arrived_at\": null,\n                \"arrived_latitude\": null,\n                \"arrived_longitude\": null,\n                \"completed_at\": null,\n                \"completed_latitude\": null,\n                \"completed_longitude\": null,\n                \"completed_action\": null,\n                \"skip_reason\": null,\n                \"notes\": null,\n                \"allowed_actions\": [\n                    \"arrived\",\n                    \"skip\"\n                ]\n            },\n            {\n                \"id\": \"stop-uuid-3\",\n                \"booking_stop_id\": \"booking-item:item-uuid:dropoff-client-stop-1\",\n                \"type\": \"dropoff\",\n                \"type_sequence\": 1,\n                \"route_order\": 3,\n                \"status\": \"pending\",\n                \"label\": \"Drop-off 1\",\n                \"display_label\": \"Drop-off 1\",\n                \"address\": \"Hotel dropoff\",\n                \"latitude\": 6.9271,\n                \"longitude\": 79.8612,\n                \"contact\": {\n                    \"employee_id\": null,\n                    \"contact_name\": \"Passenger Two\",\n                    \"contact_phone\": \"+94770000000\",\n                    \"contact_note\": null\n                },\n                \"arrived_at\": null,\n                \"arrived_latitude\": null,\n                \"arrived_longitude\": null,\n                \"completed_at\": null,\n                \"completed_latitude\": null,\n                \"completed_longitude\": null,\n                \"completed_action\": null,\n                \"skip_reason\": null,\n                \"notes\": null,\n                \"allowed_actions\": [\n                    \"arrived\",\n                    \"skip\"\n                ]\n            }\n        ],\n        \"scheduled_from\": \"2026-05-21T08:00:00+05:30\",\n        \"scheduled_to\": \"2026-05-21T10:00:00+05:30\",\n        \"trip_completed_at\": null,\n        \"booking\": {\n            \"id\": \"booking-uuid\",\n            \"booking_number\": \"BK-2026-0001\"\n        },\n        \"booking_item\": {\n            \"id\": \"item-uuid\"\n        }\n    }\n}"
+                        },
+                        {
+                            "name": "Invalid State",
+                            "status": "Bad Request",
+                            "code": 400,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"error\",\n    \"message\": \"Assignment is not in a valid state for acceptance\",\n    \"error_code\": \"ASSIGNMENT_INVALID_STATE\",\n    \"errors\": []\n}"
+                        }
+                    ]
                 },
                 {
                     "name": "Decline Assignment",
@@ -1248,7 +2055,32 @@
                             }
                         }
                     },
-                    "response": []
+                    "response": [
+                        {
+                            "name": "Assignment Declined",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Assignment declined\",\n    \"data\": {\n        \"id\": \"assignment-uuid\",\n        \"driver_id\": \"driver-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"booking_item_id\": \"item-uuid\",\n        \"status\": \"declined\",\n        \"trip_phase\": \"accepted\",\n        \"payment_type\": \"cash\",\n        \"fare_amount\": 12500,\n        \"total_amount\": 12500,\n        \"currency\": \"LKR\",\n        \"booking_number\": \"BK-2026-0001\",\n        \"service_type_name\": \"Airport Transfer\",\n        \"customer_name\": \"John Customer\",\n        \"customer_phone\": \"+94771111111\",\n        \"customer_email\": \"customer@example.com\",\n        \"pickup_location_label\": \"Colombo Airport\",\n        \"dropoff_location_label\": \"Hilton Colombo\",\n        \"is_multi_stop\": true,\n        \"route_stops\": [\n            {\n                \"id\": \"stop-uuid-1\",\n                \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n                \"type\": \"pickup\",\n                \"type_sequence\": 1,\n                \"route_order\": 1,\n                \"status\": \"picked_up\",\n                \"label\": \"Pickup 1\",\n                \"display_label\": \"Pickup 1\",\n                \"address\": \"Passenger 2 pickup\",\n                \"latitude\": 6.9271,\n                \"longitude\": 79.8612,\n                \"contact\": {\n                    \"employee_id\": null,\n                    \"contact_name\": \"Passenger Two\",\n                    \"contact_phone\": \"+94770000000\",\n                    \"contact_note\": null\n                },\n                \"arrived_at\": null,\n                \"arrived_latitude\": null,\n                \"arrived_longitude\": null,\n                \"completed_at\": null,\n                \"completed_latitude\": null,\n                \"completed_longitude\": null,\n                \"completed_action\": \"picked_up\",\n                \"skip_reason\": null,\n                \"notes\": null,\n                \"allowed_actions\": []\n            },\n            {\n                \"id\": \"stop-uuid-2\",\n                \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n                \"type\": \"pickup\",\n                \"type_sequence\": 2,\n                \"route_order\": 2,\n                \"status\": \"pending\",\n                \"label\": \"Pickup 2\",\n                \"display_label\": \"Pickup 2\",\n                \"address\": \"Passenger 2 pickup\",\n                \"latitude\": 6.9271,\n                \"longitude\": 79.8612,\n                \"contact\": {\n                    \"employee_id\": null,\n                    \"contact_name\": \"Passenger Two\",\n                    \"contact_phone\": \"+94770000000\",\n                    \"contact_note\": null\n                },\n                \"arrived_at\": null,\n                \"arrived_latitude\": null,\n                \"arrived_longitude\": null,\n                \"completed_at\": null,\n                \"completed_latitude\": null,\n                \"completed_longitude\": null,\n                \"completed_action\": null,\n                \"skip_reason\": null,\n                \"notes\": null,\n                \"allowed_actions\": [\n                    \"arrived\",\n                    \"skip\"\n                ]\n            },\n            {\n                \"id\": \"stop-uuid-3\",\n                \"booking_stop_id\": \"booking-item:item-uuid:dropoff-client-stop-1\",\n                \"type\": \"dropoff\",\n                \"type_sequence\": 1,\n                \"route_order\": 3,\n                \"status\": \"pending\",\n                \"label\": \"Drop-off 1\",\n                \"display_label\": \"Drop-off 1\",\n                \"address\": \"Hotel dropoff\",\n                \"latitude\": 6.9271,\n                \"longitude\": 79.8612,\n                \"contact\": {\n                    \"employee_id\": null,\n                    \"contact_name\": \"Passenger Two\",\n                    \"contact_phone\": \"+94770000000\",\n                    \"contact_note\": null\n                },\n                \"arrived_at\": null,\n                \"arrived_latitude\": null,\n                \"arrived_longitude\": null,\n                \"completed_at\": null,\n                \"completed_latitude\": null,\n                \"completed_longitude\": null,\n                \"completed_action\": null,\n                \"skip_reason\": null,\n                \"notes\": null,\n                \"allowed_actions\": [\n                    \"arrived\",\n                    \"skip\"\n                ]\n            }\n        ],\n        \"scheduled_from\": \"2026-05-21T08:00:00+05:30\",\n        \"scheduled_to\": \"2026-05-21T10:00:00+05:30\",\n        \"trip_completed_at\": null,\n        \"booking\": {\n            \"id\": \"booking-uuid\",\n            \"booking_number\": \"BK-2026-0001\"\n        },\n        \"booking_item\": {\n            \"id\": \"item-uuid\"\n        }\n    }\n}"
+                        },
+                        {
+                            "name": "Invalid State",
+                            "status": "Bad Request",
+                            "code": 400,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"error\",\n    \"message\": \"Assignment is not in a valid state for declining\",\n    \"error_code\": \"ASSIGNMENT_INVALID_STATE\",\n    \"errors\": []\n}"
+                        }
+                    ]
                 },
                 {
                     "name": "List Hires (Completed)",
@@ -1305,7 +2137,20 @@
                         },
                         "description": "List completed hire history for the authenticated driver."
                     },
-                    "response": []
+                    "response": [
+                        {
+                            "name": "Completed Hires",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": [\n        {\n            \"id\": \"assignment-uuid\",\n            \"driver_id\": \"driver-uuid\",\n            \"booking_id\": \"booking-uuid\",\n            \"booking_item_id\": \"item-uuid\",\n            \"status\": \"completed\",\n            \"trip_phase\": \"completed\",\n            \"payment_type\": \"cash\",\n            \"fare_amount\": 12500,\n            \"total_amount\": 12500,\n            \"currency\": \"LKR\",\n            \"booking_number\": \"BK-2026-0001\",\n            \"service_type_name\": \"Airport Transfer\",\n            \"customer_name\": \"John Customer\",\n            \"customer_phone\": \"+94771111111\",\n            \"customer_email\": \"customer@example.com\",\n            \"pickup_location_label\": \"Colombo Airport\",\n            \"dropoff_location_label\": \"Hilton Colombo\",\n            \"is_multi_stop\": true,\n            \"route_stops\": [\n                {\n                    \"id\": \"stop-uuid-1\",\n                    \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n                    \"type\": \"pickup\",\n                    \"type_sequence\": 1,\n                    \"route_order\": 1,\n                    \"status\": \"picked_up\",\n                    \"label\": \"Pickup 1\",\n                    \"display_label\": \"Pickup 1\",\n                    \"address\": \"Passenger 2 pickup\",\n                    \"latitude\": 6.9271,\n                    \"longitude\": 79.8612,\n                    \"contact\": {\n                        \"employee_id\": null,\n                        \"contact_name\": \"Passenger Two\",\n                        \"contact_phone\": \"+94770000000\",\n                        \"contact_note\": null\n                    },\n                    \"arrived_at\": null,\n                    \"arrived_latitude\": null,\n                    \"arrived_longitude\": null,\n                    \"completed_at\": null,\n                    \"completed_latitude\": null,\n                    \"completed_longitude\": null,\n                    \"completed_action\": \"picked_up\",\n                    \"skip_reason\": null,\n                    \"notes\": null,\n                    \"allowed_actions\": []\n                },\n                {\n                    \"id\": \"stop-uuid-2\",\n                    \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n                    \"type\": \"pickup\",\n                    \"type_sequence\": 2,\n                    \"route_order\": 2,\n                    \"status\": \"pending\",\n                    \"label\": \"Pickup 2\",\n                    \"display_label\": \"Pickup 2\",\n                    \"address\": \"Passenger 2 pickup\",\n                    \"latitude\": 6.9271,\n                    \"longitude\": 79.8612,\n                    \"contact\": {\n                        \"employee_id\": null,\n                        \"contact_name\": \"Passenger Two\",\n                        \"contact_phone\": \"+94770000000\",\n                        \"contact_note\": null\n                    },\n                    \"arrived_at\": null,\n                    \"arrived_latitude\": null,\n                    \"arrived_longitude\": null,\n                    \"completed_at\": null,\n                    \"completed_latitude\": null,\n                    \"completed_longitude\": null,\n                    \"completed_action\": null,\n                    \"skip_reason\": null,\n                    \"notes\": null,\n                    \"allowed_actions\": [\n                        \"arrived\",\n                        \"skip\"\n                    ]\n                },\n                {\n                    \"id\": \"stop-uuid-3\",\n                    \"booking_stop_id\": \"booking-item:item-uuid:dropoff-client-stop-1\",\n                    \"type\": \"dropoff\",\n                    \"type_sequence\": 1,\n                    \"route_order\": 3,\n                    \"status\": \"pending\",\n                    \"label\": \"Drop-off 1\",\n                    \"display_label\": \"Drop-off 1\",\n                    \"address\": \"Hotel dropoff\",\n                    \"latitude\": 6.9271,\n                    \"longitude\": 79.8612,\n                    \"contact\": {\n                        \"employee_id\": null,\n                        \"contact_name\": \"Passenger Two\",\n                        \"contact_phone\": \"+94770000000\",\n                        \"contact_note\": null\n                    },\n                    \"arrived_at\": null,\n                    \"arrived_latitude\": null,\n                    \"arrived_longitude\": null,\n                    \"completed_at\": null,\n                    \"completed_latitude\": null,\n                    \"completed_longitude\": null,\n                    \"completed_action\": null,\n                    \"skip_reason\": null,\n                    \"notes\": null,\n                    \"allowed_actions\": [\n                        \"arrived\",\n                        \"skip\"\n                    ]\n                }\n            ],\n            \"scheduled_from\": \"2026-05-21T08:00:00+05:30\",\n            \"scheduled_to\": \"2026-05-21T10:00:00+05:30\",\n            \"trip_completed_at\": \"2026-05-21T10:00:00+05:30\",\n            \"booking\": {\n                \"id\": \"booking-uuid\",\n                \"booking_number\": \"BK-2026-0001\"\n            },\n            \"booking_item\": {\n                \"id\": \"item-uuid\"\n            }\n        }\n    ],\n    \"meta\": {\n        \"current_page\": 1,\n        \"last_page\": 1,\n        \"per_page\": 15,\n        \"total\": 1\n    }\n}"
+                        }
+                    ]
                 }
             ],
             "description": "Booking assignment and completed hire history endpoints."
@@ -1368,60 +2213,28 @@
                     ],
                     "response": [
                         {
-                            "name": "Trip Status - Accepted Phase",
+                            "name": "Trip Status",
                             "status": "OK",
                             "code": 200,
-                            "_postman_previewlanguage": "json",
                             "header": [
                                 {
                                     "key": "Content-Type",
                                     "value": "application/json"
                                 }
                             ],
-                            "cookie": [],
-                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"trip_phase\": \"accepted\",\n        \"pickup_location\": {\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841,\n            \"landmark\": \"Colombo Airport\"\n        },\n        \"pickup_arrival\": null,\n        \"trip_started_at\": null,\n        \"estimated_distance_to_pickup_km\": 2.5,\n        \"near_pickup\": false,\n        \"cumulative_distance_km\": 0,\n        \"total_waiting_time_seconds\": 0,\n        \"waiting_period_count\": 0,\n        \"route_point_count\": 5\n    }\n}"
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"trip_phase\": \"in_progress\",\n        \"is_multi_stop\": true,\n        \"pickup_location\": {\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841,\n            \"landmark\": \"Colombo Airport\"\n        },\n        \"pickup_arrival\": {\n            \"arrived_at\": \"2026-05-21T08:10:00+05:30\",\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841\n        },\n        \"trip_started_at\": \"2026-05-21T08:15:00+05:30\",\n        \"stops\": [\n            {\n                \"id\": \"stop-uuid-1\",\n                \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n                \"type\": \"pickup\",\n                \"type_sequence\": 1,\n                \"route_order\": 1,\n                \"status\": \"picked_up\",\n                \"label\": \"Pickup 1\",\n                \"display_label\": \"Pickup 1\",\n                \"address\": \"Passenger 2 pickup\",\n                \"latitude\": 6.9271,\n                \"longitude\": 79.8612,\n                \"contact\": {\n                    \"employee_id\": null,\n                    \"contact_name\": \"Passenger Two\",\n                    \"contact_phone\": \"+94770000000\",\n                    \"contact_note\": null\n                },\n                \"arrived_at\": null,\n                \"arrived_latitude\": null,\n                \"arrived_longitude\": null,\n                \"completed_at\": null,\n                \"completed_latitude\": null,\n                \"completed_longitude\": null,\n                \"completed_action\": \"picked_up\",\n                \"skip_reason\": null,\n                \"notes\": null,\n                \"allowed_actions\": []\n            },\n            {\n                \"id\": \"stop-uuid-2\",\n                \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n                \"type\": \"pickup\",\n                \"type_sequence\": 2,\n                \"route_order\": 2,\n                \"status\": \"pending\",\n                \"label\": \"Pickup 2\",\n                \"display_label\": \"Pickup 2\",\n                \"address\": \"Passenger 2 pickup\",\n                \"latitude\": 6.9271,\n                \"longitude\": 79.8612,\n                \"contact\": {\n                    \"employee_id\": null,\n                    \"contact_name\": \"Passenger Two\",\n                    \"contact_phone\": \"+94770000000\",\n                    \"contact_note\": null\n                },\n                \"arrived_at\": null,\n                \"arrived_latitude\": null,\n                \"arrived_longitude\": null,\n                \"completed_at\": null,\n                \"completed_latitude\": null,\n                \"completed_longitude\": null,\n                \"completed_action\": null,\n                \"skip_reason\": null,\n                \"notes\": null,\n                \"allowed_actions\": [\n                    \"arrived\",\n                    \"skip\"\n                ]\n            },\n            {\n                \"id\": \"stop-uuid-3\",\n                \"booking_stop_id\": \"booking-item:item-uuid:dropoff-client-stop-1\",\n                \"type\": \"dropoff\",\n                \"type_sequence\": 1,\n                \"route_order\": 3,\n                \"status\": \"pending\",\n                \"label\": \"Drop-off 1\",\n                \"display_label\": \"Drop-off 1\",\n                \"address\": \"Hotel dropoff\",\n                \"latitude\": 6.9271,\n                \"longitude\": 79.8612,\n                \"contact\": {\n                    \"employee_id\": null,\n                    \"contact_name\": \"Passenger Two\",\n                    \"contact_phone\": \"+94770000000\",\n                    \"contact_note\": null\n                },\n                \"arrived_at\": null,\n                \"arrived_latitude\": null,\n                \"arrived_longitude\": null,\n                \"completed_at\": null,\n                \"completed_latitude\": null,\n                \"completed_longitude\": null,\n                \"completed_action\": null,\n                \"skip_reason\": null,\n                \"notes\": null,\n                \"allowed_actions\": [\n                    \"arrived\",\n                    \"skip\"\n                ]\n            }\n        ],\n        \"current_stop\": {\n            \"id\": \"stop-uuid-2\",\n            \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n            \"type\": \"pickup\",\n            \"type_sequence\": 2,\n            \"route_order\": 2,\n            \"status\": \"pending\",\n            \"label\": \"Pickup 2\",\n            \"display_label\": \"Pickup 2\",\n            \"address\": \"Passenger 2 pickup\",\n            \"latitude\": 6.9271,\n            \"longitude\": 79.8612,\n            \"contact\": {\n                \"employee_id\": null,\n                \"contact_name\": \"Passenger Two\",\n                \"contact_phone\": \"+94770000000\",\n                \"contact_note\": null\n            },\n            \"arrived_at\": null,\n            \"arrived_latitude\": null,\n            \"arrived_longitude\": null,\n            \"completed_at\": null,\n            \"completed_latitude\": null,\n            \"completed_longitude\": null,\n            \"completed_action\": null,\n            \"skip_reason\": null,\n            \"notes\": null,\n            \"allowed_actions\": [\n                \"arrived\",\n                \"skip\"\n            ]\n        },\n        \"allowed_actions\": [\n            \"stop_action\"\n        ],\n        \"estimated_distance_to_pickup_km\": null,\n        \"near_pickup\": false,\n        \"cumulative_distance_km\": 12.5,\n        \"total_waiting_time_seconds\": 300,\n        \"waiting_period_count\": 1,\n        \"route_point_count\": 75\n    }\n}"
                         },
                         {
-                            "name": "Trip Status - In Progress Phase",
-                            "status": "OK",
-                            "code": 200,
-                            "_postman_previewlanguage": "json",
+                            "name": "Assignment Not Found",
+                            "status": "Not Found",
+                            "code": 404,
                             "header": [
                                 {
                                     "key": "Content-Type",
                                     "value": "application/json"
                                 }
                             ],
-                            "cookie": [],
-                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"trip_phase\": \"in_progress\",\n        \"pickup_location\": {\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841,\n            \"landmark\": \"Colombo Airport\"\n        },\n        \"pickup_arrival\": {\n            \"arrived_at\": \"2026-03-01T08:15:00Z\",\n            \"latitude\": 7.1810,\n            \"longitude\": 79.8839\n        },\n        \"trip_started_at\": \"2026-03-01T08:20:00Z\",\n        \"estimated_distance_to_pickup_km\": null,\n        \"near_pickup\": false,\n        \"cumulative_distance_km\": 12.5,\n        \"total_waiting_time_seconds\": 300,\n        \"waiting_period_count\": 1,\n        \"route_point_count\": 75\n    }\n}"
-                        },
-                        {
-                            "name": "Trip Status - Multi Stop",
-                            "status": "OK",
-                            "code": 200,
-                            "_postman_previewlanguage": "json",
-                            "header": [
-                                {
-                                    "key": "Content-Type",
-                                    "value": "application/json"
-                                }
-                            ],
-                            "cookie": [],
-                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"trip_phase\": \"in_progress\",\n        \"is_multi_stop\": true,\n        \"pickup_location\": {\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841,\n            \"landmark\": \"Colombo Airport\"\n        },\n        \"pickup_arrival\": null,\n        \"trip_started_at\": \"2026-04-27T08:20:00+05:30\",\n        \"stops\": [\n            {\n                \"id\": \"stop-uuid-1\",\n                \"booking_stop_id\": \"booking-item:item-uuid:primary-pickup\",\n                \"type\": \"pickup\",\n                \"type_sequence\": 1,\n                \"route_order\": 1,\n                \"status\": \"picked_up\",\n                \"label\": \"Pickup 1\",\n                \"display_label\": \"Pickup 1\",\n                \"address\": \"Colombo Airport\",\n                \"latitude\": 7.1808,\n                \"longitude\": 79.8841,\n                \"arrived_at\": \"2026-04-27T08:20:00+05:30\",\n                \"completed_at\": \"2026-04-27T08:20:00+05:30\",\n                \"completed_action\": \"picked_up\",\n                \"allowed_actions\": []\n            },\n            {\n                \"id\": \"stop-uuid-2\",\n                \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n                \"type\": \"pickup\",\n                \"type_sequence\": 2,\n                \"route_order\": 2,\n                \"status\": \"pending\",\n                \"label\": \"Pickup 2\",\n                \"display_label\": \"Pickup 2\",\n                \"address\": \"Passenger 2 pickup\",\n                \"latitude\": 6.9271,\n                \"longitude\": 79.8612,\n                \"arrived_at\": null,\n                \"completed_at\": null,\n                \"completed_action\": null,\n                \"allowed_actions\": [\"arrived\", \"skip\"]\n            },\n            {\n                \"id\": \"stop-uuid-3\",\n                \"booking_stop_id\": \"booking-item:item-uuid:dropoff-client-stop-1\",\n                \"type\": \"dropoff\",\n                \"type_sequence\": 1,\n                \"route_order\": 3,\n                \"status\": \"pending\",\n                \"label\": \"Drop-off 1\",\n                \"display_label\": \"Drop-off 1\",\n                \"address\": \"Hotel dropoff\",\n                \"latitude\": 6.9344,\n                \"longitude\": 79.8428,\n                \"arrived_at\": null,\n                \"completed_at\": null,\n                \"completed_action\": null,\n                \"allowed_actions\": [\"arrived\", \"skip\"]\n            }\n        ],\n        \"current_stop\": {\n            \"id\": \"stop-uuid-2\",\n            \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n            \"type\": \"pickup\",\n            \"type_sequence\": 2,\n            \"route_order\": 2,\n            \"status\": \"pending\",\n            \"label\": \"Pickup 2\",\n            \"display_label\": \"Pickup 2\",\n            \"address\": \"Passenger 2 pickup\",\n            \"latitude\": 6.9271,\n            \"longitude\": 79.8612,\n            \"allowed_actions\": [\"arrived\", \"skip\"]\n        },\n        \"allowed_actions\": [\"stop_action\"],\n        \"estimated_distance_to_pickup_km\": null,\n        \"near_pickup\": false,\n        \"cumulative_distance_km\": 12.5,\n        \"total_waiting_time_seconds\": 300,\n        \"waiting_period_count\": 1,\n        \"route_point_count\": 75\n    }\n}"
-                        },
-                        {
-                            "name": "No Active Trip",
-                            "status": "OK",
-                            "code": 200,
-                            "_postman_previewlanguage": "json",
-                            "header": [
-                                {
-                                    "key": "Content-Type",
-                                    "value": "application/json"
-                                }
-                            ],
-                            "cookie": [],
-                            "body": "{\n    \"status\": \"success\",\n    \"data\": null\n}"
+                            "body": "{\n    \"status\": \"error\",\n    \"message\": \"Assignment not found\",\n    \"error_code\": \"TRIP_ASSIGNMENT_NOT_FOUND\",\n    \"errors\": []\n}"
                         }
                     ]
                 },
@@ -1478,15 +2291,13 @@
                             "name": "Pickup Arrival Confirmed",
                             "status": "OK",
                             "code": 200,
-                            "_postman_previewlanguage": "json",
                             "header": [
                                 {
                                     "key": "Content-Type",
                                     "value": "application/json"
                                 }
                             ],
-                            "cookie": [],
-                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Pickup arrival confirmed\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"trip_phase\": \"pickup_arrived\",\n        \"pickup_location\": {\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841,\n            \"landmark\": \"Colombo Airport\"\n        },\n        \"pickup_arrival\": {\n            \"arrived_at\": \"2026-03-01T08:15:00Z\",\n            \"latitude\": 7.1810,\n            \"longitude\": 79.8839\n        },\n        \"trip_started_at\": null,\n        \"estimated_distance_to_pickup_km\": null,\n        \"near_pickup\": true,\n        \"cumulative_distance_km\": 0,\n        \"total_waiting_time_seconds\": 0,\n        \"waiting_period_count\": 0,\n        \"route_point_count\": 15\n    }\n}"
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Pickup arrival confirmed\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"trip_phase\": \"pickup_arrived\",\n        \"is_multi_stop\": true,\n        \"pickup_location\": {\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841,\n            \"landmark\": \"Colombo Airport\"\n        },\n        \"pickup_arrival\": {\n            \"arrived_at\": \"2026-05-21T08:10:00+05:30\",\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841\n        },\n        \"trip_started_at\": \"2026-05-21T08:15:00+05:30\",\n        \"stops\": [\n            {\n                \"id\": \"stop-uuid-1\",\n                \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n                \"type\": \"pickup\",\n                \"type_sequence\": 1,\n                \"route_order\": 1,\n                \"status\": \"picked_up\",\n                \"label\": \"Pickup 1\",\n                \"display_label\": \"Pickup 1\",\n                \"address\": \"Passenger 2 pickup\",\n                \"latitude\": 6.9271,\n                \"longitude\": 79.8612,\n                \"contact\": {\n                    \"employee_id\": null,\n                    \"contact_name\": \"Passenger Two\",\n                    \"contact_phone\": \"+94770000000\",\n                    \"contact_note\": null\n                },\n                \"arrived_at\": null,\n                \"arrived_latitude\": null,\n                \"arrived_longitude\": null,\n                \"completed_at\": null,\n                \"completed_latitude\": null,\n                \"completed_longitude\": null,\n                \"completed_action\": \"picked_up\",\n                \"skip_reason\": null,\n                \"notes\": null,\n                \"allowed_actions\": []\n            },\n            {\n                \"id\": \"stop-uuid-2\",\n                \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n                \"type\": \"pickup\",\n                \"type_sequence\": 2,\n                \"route_order\": 2,\n                \"status\": \"pending\",\n                \"label\": \"Pickup 2\",\n                \"display_label\": \"Pickup 2\",\n                \"address\": \"Passenger 2 pickup\",\n                \"latitude\": 6.9271,\n                \"longitude\": 79.8612,\n                \"contact\": {\n                    \"employee_id\": null,\n                    \"contact_name\": \"Passenger Two\",\n                    \"contact_phone\": \"+94770000000\",\n                    \"contact_note\": null\n                },\n                \"arrived_at\": null,\n                \"arrived_latitude\": null,\n                \"arrived_longitude\": null,\n                \"completed_at\": null,\n                \"completed_latitude\": null,\n                \"completed_longitude\": null,\n                \"completed_action\": null,\n                \"skip_reason\": null,\n                \"notes\": null,\n                \"allowed_actions\": [\n                    \"arrived\",\n                    \"skip\"\n                ]\n            },\n            {\n                \"id\": \"stop-uuid-3\",\n                \"booking_stop_id\": \"booking-item:item-uuid:dropoff-client-stop-1\",\n                \"type\": \"dropoff\",\n                \"type_sequence\": 1,\n                \"route_order\": 3,\n                \"status\": \"pending\",\n                \"label\": \"Drop-off 1\",\n                \"display_label\": \"Drop-off 1\",\n                \"address\": \"Hotel dropoff\",\n                \"latitude\": 6.9271,\n                \"longitude\": 79.8612,\n                \"contact\": {\n                    \"employee_id\": null,\n                    \"contact_name\": \"Passenger Two\",\n                    \"contact_phone\": \"+94770000000\",\n                    \"contact_note\": null\n                },\n                \"arrived_at\": null,\n                \"arrived_latitude\": null,\n                \"arrived_longitude\": null,\n                \"completed_at\": null,\n                \"completed_latitude\": null,\n                \"completed_longitude\": null,\n                \"completed_action\": null,\n                \"skip_reason\": null,\n                \"notes\": null,\n                \"allowed_actions\": [\n                    \"arrived\",\n                    \"skip\"\n                ]\n            }\n        ],\n        \"current_stop\": {\n            \"id\": \"stop-uuid-2\",\n            \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n            \"type\": \"pickup\",\n            \"type_sequence\": 2,\n            \"route_order\": 2,\n            \"status\": \"pending\",\n            \"label\": \"Pickup 2\",\n            \"display_label\": \"Pickup 2\",\n            \"address\": \"Passenger 2 pickup\",\n            \"latitude\": 6.9271,\n            \"longitude\": 79.8612,\n            \"contact\": {\n                \"employee_id\": null,\n                \"contact_name\": \"Passenger Two\",\n                \"contact_phone\": \"+94770000000\",\n                \"contact_note\": null\n            },\n            \"arrived_at\": null,\n            \"arrived_latitude\": null,\n            \"arrived_longitude\": null,\n            \"completed_at\": null,\n            \"completed_latitude\": null,\n            \"completed_longitude\": null,\n            \"completed_action\": null,\n            \"skip_reason\": null,\n            \"notes\": null,\n            \"allowed_actions\": [\n                \"arrived\",\n                \"skip\"\n            ]\n        },\n        \"allowed_actions\": [\n            \"stop_action\"\n        ],\n        \"estimated_distance_to_pickup_km\": null,\n        \"near_pickup\": false,\n        \"cumulative_distance_km\": 12.5,\n        \"total_waiting_time_seconds\": 300,\n        \"waiting_period_count\": 1,\n        \"route_point_count\": 75\n    }\n}"
                         }
                     ]
                 },
@@ -1538,29 +2349,25 @@
                             "name": "Trip Started",
                             "status": "OK",
                             "code": 200,
-                            "_postman_previewlanguage": "json",
                             "header": [
                                 {
                                     "key": "Content-Type",
                                     "value": "application/json"
                                 }
                             ],
-                            "cookie": [],
-                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Trip started\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"trip_phase\": \"in_progress\",\n        \"pickup_location\": {\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841,\n            \"landmark\": \"Colombo Airport\"\n        },\n        \"pickup_arrival\": {\n            \"arrived_at\": \"2026-03-01T08:15:00Z\",\n            \"latitude\": 7.1810,\n            \"longitude\": 79.8839\n        },\n        \"trip_started_at\": \"2026-03-01T08:20:00Z\",\n        \"estimated_distance_to_pickup_km\": null,\n        \"near_pickup\": false,\n        \"cumulative_distance_km\": 0,\n        \"total_waiting_time_seconds\": 0,\n        \"waiting_period_count\": 0,\n        \"route_point_count\": 18\n    }\n}"
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Trip started\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"trip_phase\": \"in_progress\",\n        \"is_multi_stop\": true,\n        \"pickup_location\": {\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841,\n            \"landmark\": \"Colombo Airport\"\n        },\n        \"pickup_arrival\": {\n            \"arrived_at\": \"2026-05-21T08:10:00+05:30\",\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841\n        },\n        \"trip_started_at\": \"2026-05-21T08:15:00+05:30\",\n        \"stops\": [\n            {\n                \"id\": \"stop-uuid-1\",\n                \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n                \"type\": \"pickup\",\n                \"type_sequence\": 1,\n                \"route_order\": 1,\n                \"status\": \"picked_up\",\n                \"label\": \"Pickup 1\",\n                \"display_label\": \"Pickup 1\",\n                \"address\": \"Passenger 2 pickup\",\n                \"latitude\": 6.9271,\n                \"longitude\": 79.8612,\n                \"contact\": {\n                    \"employee_id\": null,\n                    \"contact_name\": \"Passenger Two\",\n                    \"contact_phone\": \"+94770000000\",\n                    \"contact_note\": null\n                },\n                \"arrived_at\": null,\n                \"arrived_latitude\": null,\n                \"arrived_longitude\": null,\n                \"completed_at\": null,\n                \"completed_latitude\": null,\n                \"completed_longitude\": null,\n                \"completed_action\": \"picked_up\",\n                \"skip_reason\": null,\n                \"notes\": null,\n                \"allowed_actions\": []\n            },\n            {\n                \"id\": \"stop-uuid-2\",\n                \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n                \"type\": \"pickup\",\n                \"type_sequence\": 2,\n                \"route_order\": 2,\n                \"status\": \"pending\",\n                \"label\": \"Pickup 2\",\n                \"display_label\": \"Pickup 2\",\n                \"address\": \"Passenger 2 pickup\",\n                \"latitude\": 6.9271,\n                \"longitude\": 79.8612,\n                \"contact\": {\n                    \"employee_id\": null,\n                    \"contact_name\": \"Passenger Two\",\n                    \"contact_phone\": \"+94770000000\",\n                    \"contact_note\": null\n                },\n                \"arrived_at\": null,\n                \"arrived_latitude\": null,\n                \"arrived_longitude\": null,\n                \"completed_at\": null,\n                \"completed_latitude\": null,\n                \"completed_longitude\": null,\n                \"completed_action\": null,\n                \"skip_reason\": null,\n                \"notes\": null,\n                \"allowed_actions\": [\n                    \"arrived\",\n                    \"skip\"\n                ]\n            },\n            {\n                \"id\": \"stop-uuid-3\",\n                \"booking_stop_id\": \"booking-item:item-uuid:dropoff-client-stop-1\",\n                \"type\": \"dropoff\",\n                \"type_sequence\": 1,\n                \"route_order\": 3,\n                \"status\": \"pending\",\n                \"label\": \"Drop-off 1\",\n                \"display_label\": \"Drop-off 1\",\n                \"address\": \"Hotel dropoff\",\n                \"latitude\": 6.9271,\n                \"longitude\": 79.8612,\n                \"contact\": {\n                    \"employee_id\": null,\n                    \"contact_name\": \"Passenger Two\",\n                    \"contact_phone\": \"+94770000000\",\n                    \"contact_note\": null\n                },\n                \"arrived_at\": null,\n                \"arrived_latitude\": null,\n                \"arrived_longitude\": null,\n                \"completed_at\": null,\n                \"completed_latitude\": null,\n                \"completed_longitude\": null,\n                \"completed_action\": null,\n                \"skip_reason\": null,\n                \"notes\": null,\n                \"allowed_actions\": [\n                    \"arrived\",\n                    \"skip\"\n                ]\n            }\n        ],\n        \"current_stop\": {\n            \"id\": \"stop-uuid-2\",\n            \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n            \"type\": \"pickup\",\n            \"type_sequence\": 2,\n            \"route_order\": 2,\n            \"status\": \"pending\",\n            \"label\": \"Pickup 2\",\n            \"display_label\": \"Pickup 2\",\n            \"address\": \"Passenger 2 pickup\",\n            \"latitude\": 6.9271,\n            \"longitude\": 79.8612,\n            \"contact\": {\n                \"employee_id\": null,\n                \"contact_name\": \"Passenger Two\",\n                \"contact_phone\": \"+94770000000\",\n                \"contact_note\": null\n            },\n            \"arrived_at\": null,\n            \"arrived_latitude\": null,\n            \"arrived_longitude\": null,\n            \"completed_at\": null,\n            \"completed_latitude\": null,\n            \"completed_longitude\": null,\n            \"completed_action\": null,\n            \"skip_reason\": null,\n            \"notes\": null,\n            \"allowed_actions\": [\n                \"arrived\",\n                \"skip\"\n            ]\n        },\n        \"allowed_actions\": [\n            \"stop_action\"\n        ],\n        \"estimated_distance_to_pickup_km\": null,\n        \"near_pickup\": false,\n        \"cumulative_distance_km\": 12.5,\n        \"total_waiting_time_seconds\": 300,\n        \"waiting_period_count\": 1,\n        \"route_point_count\": 75\n    }\n}"
                         },
                         {
-                            "name": "Pickup Not Confirmed Error",
+                            "name": "Pickup Not Confirmed",
                             "status": "Bad Request",
                             "code": 400,
-                            "_postman_previewlanguage": "json",
                             "header": [
                                 {
                                     "key": "Content-Type",
                                     "value": "application/json"
                                 }
                             ],
-                            "cookie": [],
-                            "body": "{\n    \"status\": \"error\",\n    \"message\": \"Pickup arrival must be confirmed before starting the trip\",\n    \"error_code\": \"TRIP_PICKUP_NOT_CONFIRMED\",\n    \"errors\": {}\n}"
+                            "body": "{\n    \"status\": \"error\",\n    \"message\": \"Pickup arrival must be confirmed before starting the trip\",\n    \"error_code\": \"TRIP_PICKUP_NOT_CONFIRMED\",\n    \"errors\": []\n}"
                         }
                     ]
                 },
@@ -1619,15 +2426,13 @@
                             "name": "Route Stop Arrived",
                             "status": "OK",
                             "code": 200,
-                            "_postman_previewlanguage": "json",
                             "header": [
                                 {
                                     "key": "Content-Type",
                                     "value": "application/json"
                                 }
                             ],
-                            "cookie": [],
-                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Stop arrival confirmed\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"trip_phase\": \"in_progress\",\n        \"current_stop\": {\n            \"id\": \"stop-uuid-2\",\n            \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n            \"type\": \"pickup\",\n            \"type_sequence\": 2,\n            \"route_order\": 2,\n            \"status\": \"arrived\",\n            \"label\": \"Pickup 2\",\n            \"display_label\": \"Pickup 2\",\n            \"address\": \"Passenger 2 pickup\",\n            \"allowed_actions\": [\n                \"picked_up\",\n                \"skip\"\n            ]\n        },\n        \"processed_stop\": {\n            \"id\": \"stop-uuid-2\",\n            \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n            \"type\": \"pickup\",\n            \"type_sequence\": 2,\n            \"route_order\": 2,\n            \"status\": \"arrived\",\n            \"label\": \"Pickup 2\",\n            \"display_label\": \"Pickup 2\",\n            \"address\": \"Passenger 2 pickup\",\n            \"arrived_at\": \"2026-04-27T08:35:00+05:30\",\n            \"completed_at\": null,\n            \"completed_action\": null,\n            \"skip_reason\": null\n        },\n        \"allowed_actions\": [\n            \"stop_action\"\n        ]\n    }\n}"
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Stop arrival confirmed\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"trip_phase\": \"in_progress\",\n        \"is_multi_stop\": true,\n        \"pickup_location\": {\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841,\n            \"landmark\": \"Colombo Airport\"\n        },\n        \"pickup_arrival\": {\n            \"arrived_at\": \"2026-05-21T08:10:00+05:30\",\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841\n        },\n        \"trip_started_at\": \"2026-05-21T08:15:00+05:30\",\n        \"stops\": [\n            {\n                \"id\": \"stop-uuid-1\",\n                \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n                \"type\": \"pickup\",\n                \"type_sequence\": 1,\n                \"route_order\": 1,\n                \"status\": \"picked_up\",\n                \"label\": \"Pickup 1\",\n                \"display_label\": \"Pickup 1\",\n                \"address\": \"Passenger 2 pickup\",\n                \"latitude\": 6.9271,\n                \"longitude\": 79.8612,\n                \"contact\": {\n                    \"employee_id\": null,\n                    \"contact_name\": \"Passenger Two\",\n                    \"contact_phone\": \"+94770000000\",\n                    \"contact_note\": null\n                },\n                \"arrived_at\": null,\n                \"arrived_latitude\": null,\n                \"arrived_longitude\": null,\n                \"completed_at\": null,\n                \"completed_latitude\": null,\n                \"completed_longitude\": null,\n                \"completed_action\": \"picked_up\",\n                \"skip_reason\": null,\n                \"notes\": null,\n                \"allowed_actions\": []\n            },\n            {\n                \"id\": \"stop-uuid-2\",\n                \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n                \"type\": \"pickup\",\n                \"type_sequence\": 2,\n                \"route_order\": 2,\n                \"status\": \"pending\",\n                \"label\": \"Pickup 2\",\n                \"display_label\": \"Pickup 2\",\n                \"address\": \"Passenger 2 pickup\",\n                \"latitude\": 6.9271,\n                \"longitude\": 79.8612,\n                \"contact\": {\n                    \"employee_id\": null,\n                    \"contact_name\": \"Passenger Two\",\n                    \"contact_phone\": \"+94770000000\",\n                    \"contact_note\": null\n                },\n                \"arrived_at\": null,\n                \"arrived_latitude\": null,\n                \"arrived_longitude\": null,\n                \"completed_at\": null,\n                \"completed_latitude\": null,\n                \"completed_longitude\": null,\n                \"completed_action\": null,\n                \"skip_reason\": null,\n                \"notes\": null,\n                \"allowed_actions\": [\n                    \"arrived\",\n                    \"skip\"\n                ]\n            },\n            {\n                \"id\": \"stop-uuid-3\",\n                \"booking_stop_id\": \"booking-item:item-uuid:dropoff-client-stop-1\",\n                \"type\": \"dropoff\",\n                \"type_sequence\": 1,\n                \"route_order\": 3,\n                \"status\": \"pending\",\n                \"label\": \"Drop-off 1\",\n                \"display_label\": \"Drop-off 1\",\n                \"address\": \"Hotel dropoff\",\n                \"latitude\": 6.9271,\n                \"longitude\": 79.8612,\n                \"contact\": {\n                    \"employee_id\": null,\n                    \"contact_name\": \"Passenger Two\",\n                    \"contact_phone\": \"+94770000000\",\n                    \"contact_note\": null\n                },\n                \"arrived_at\": null,\n                \"arrived_latitude\": null,\n                \"arrived_longitude\": null,\n                \"completed_at\": null,\n                \"completed_latitude\": null,\n                \"completed_longitude\": null,\n                \"completed_action\": null,\n                \"skip_reason\": null,\n                \"notes\": null,\n                \"allowed_actions\": [\n                    \"arrived\",\n                    \"skip\"\n                ]\n            }\n        ],\n        \"current_stop\": {\n            \"id\": \"stop-uuid-2\",\n            \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n            \"type\": \"pickup\",\n            \"type_sequence\": 2,\n            \"route_order\": 2,\n            \"status\": \"pending\",\n            \"label\": \"Pickup 2\",\n            \"display_label\": \"Pickup 2\",\n            \"address\": \"Passenger 2 pickup\",\n            \"latitude\": 6.9271,\n            \"longitude\": 79.8612,\n            \"contact\": {\n                \"employee_id\": null,\n                \"contact_name\": \"Passenger Two\",\n                \"contact_phone\": \"+94770000000\",\n                \"contact_note\": null\n            },\n            \"arrived_at\": null,\n            \"arrived_latitude\": null,\n            \"arrived_longitude\": null,\n            \"completed_at\": null,\n            \"completed_latitude\": null,\n            \"completed_longitude\": null,\n            \"completed_action\": null,\n            \"skip_reason\": null,\n            \"notes\": null,\n            \"allowed_actions\": [\n                \"arrived\",\n                \"skip\"\n            ]\n        },\n        \"allowed_actions\": [\n            \"stop_action\"\n        ],\n        \"estimated_distance_to_pickup_km\": null,\n        \"near_pickup\": false,\n        \"cumulative_distance_km\": 12.5,\n        \"total_waiting_time_seconds\": 300,\n        \"waiting_period_count\": 1,\n        \"route_point_count\": 75,\n        \"processed_stop\": {\n            \"id\": \"stop-uuid-2\",\n            \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n            \"type\": \"pickup\",\n            \"type_sequence\": 2,\n            \"route_order\": 2,\n            \"status\": \"arrived\",\n            \"label\": \"Pickup 2\",\n            \"display_label\": \"Pickup 2\",\n            \"address\": \"Passenger 2 pickup\",\n            \"latitude\": 6.9271,\n            \"longitude\": 79.8612,\n            \"contact\": {\n                \"employee_id\": null,\n                \"contact_name\": \"Passenger Two\",\n                \"contact_phone\": \"+94770000000\",\n                \"contact_note\": null\n            },\n            \"arrived_at\": \"2026-05-21T08:30:00+05:30\",\n            \"arrived_latitude\": null,\n            \"arrived_longitude\": null,\n            \"completed_at\": null,\n            \"completed_latitude\": null,\n            \"completed_longitude\": null,\n            \"completed_action\": null,\n            \"skip_reason\": null,\n            \"notes\": null,\n            \"allowed_actions\": [\n                \"picked_up\",\n                \"skip\"\n            ]\n        }\n    }\n}"
                         }
                     ]
                 },
@@ -1686,15 +2491,13 @@
                             "name": "Pickup Stop Completed",
                             "status": "OK",
                             "code": 200,
-                            "_postman_previewlanguage": "json",
                             "header": [
                                 {
                                     "key": "Content-Type",
                                     "value": "application/json"
                                 }
                             ],
-                            "cookie": [],
-                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Pickup stop completed\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"trip_phase\": \"in_progress\",\n        \"current_stop\": {\n            \"id\": \"stop-uuid-3\",\n            \"booking_stop_id\": \"booking-item:item-uuid:dropoff-client-stop-1\",\n            \"type\": \"dropoff\",\n            \"type_sequence\": 1,\n            \"route_order\": 3,\n            \"status\": \"pending\",\n            \"label\": \"Drop-off 1\",\n            \"display_label\": \"Drop-off 1\",\n            \"address\": \"Hotel dropoff\",\n            \"allowed_actions\": [\n                \"arrived\",\n                \"skip\"\n            ]\n        },\n        \"processed_stop\": {\n            \"id\": \"stop-uuid-2\",\n            \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n            \"type\": \"pickup\",\n            \"type_sequence\": 2,\n            \"route_order\": 2,\n            \"status\": \"picked_up\",\n            \"label\": \"Pickup 2\",\n            \"display_label\": \"Pickup 2\",\n            \"address\": \"Passenger 2 pickup\",\n            \"arrived_at\": \"2026-04-27T08:35:00+05:30\",\n            \"completed_at\": \"2026-04-27T08:37:00+05:30\",\n            \"completed_action\": \"picked_up\",\n            \"skip_reason\": null\n        },\n        \"allowed_actions\": [\n            \"stop_action\"\n        ]\n    }\n}"
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Pickup stop completed\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"trip_phase\": \"in_progress\",\n        \"is_multi_stop\": true,\n        \"pickup_location\": {\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841,\n            \"landmark\": \"Colombo Airport\"\n        },\n        \"pickup_arrival\": {\n            \"arrived_at\": \"2026-05-21T08:10:00+05:30\",\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841\n        },\n        \"trip_started_at\": \"2026-05-21T08:15:00+05:30\",\n        \"stops\": [\n            {\n                \"id\": \"stop-uuid-1\",\n                \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n                \"type\": \"pickup\",\n                \"type_sequence\": 1,\n                \"route_order\": 1,\n                \"status\": \"picked_up\",\n                \"label\": \"Pickup 1\",\n                \"display_label\": \"Pickup 1\",\n                \"address\": \"Passenger 2 pickup\",\n                \"latitude\": 6.9271,\n                \"longitude\": 79.8612,\n                \"contact\": {\n                    \"employee_id\": null,\n                    \"contact_name\": \"Passenger Two\",\n                    \"contact_phone\": \"+94770000000\",\n                    \"contact_note\": null\n                },\n                \"arrived_at\": null,\n                \"arrived_latitude\": null,\n                \"arrived_longitude\": null,\n                \"completed_at\": null,\n                \"completed_latitude\": null,\n                \"completed_longitude\": null,\n                \"completed_action\": \"picked_up\",\n                \"skip_reason\": null,\n                \"notes\": null,\n                \"allowed_actions\": []\n            },\n            {\n                \"id\": \"stop-uuid-2\",\n                \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n                \"type\": \"pickup\",\n                \"type_sequence\": 2,\n                \"route_order\": 2,\n                \"status\": \"pending\",\n                \"label\": \"Pickup 2\",\n                \"display_label\": \"Pickup 2\",\n                \"address\": \"Passenger 2 pickup\",\n                \"latitude\": 6.9271,\n                \"longitude\": 79.8612,\n                \"contact\": {\n                    \"employee_id\": null,\n                    \"contact_name\": \"Passenger Two\",\n                    \"contact_phone\": \"+94770000000\",\n                    \"contact_note\": null\n                },\n                \"arrived_at\": null,\n                \"arrived_latitude\": null,\n                \"arrived_longitude\": null,\n                \"completed_at\": null,\n                \"completed_latitude\": null,\n                \"completed_longitude\": null,\n                \"completed_action\": null,\n                \"skip_reason\": null,\n                \"notes\": null,\n                \"allowed_actions\": [\n                    \"arrived\",\n                    \"skip\"\n                ]\n            },\n            {\n                \"id\": \"stop-uuid-3\",\n                \"booking_stop_id\": \"booking-item:item-uuid:dropoff-client-stop-1\",\n                \"type\": \"dropoff\",\n                \"type_sequence\": 1,\n                \"route_order\": 3,\n                \"status\": \"pending\",\n                \"label\": \"Drop-off 1\",\n                \"display_label\": \"Drop-off 1\",\n                \"address\": \"Hotel dropoff\",\n                \"latitude\": 6.9271,\n                \"longitude\": 79.8612,\n                \"contact\": {\n                    \"employee_id\": null,\n                    \"contact_name\": \"Passenger Two\",\n                    \"contact_phone\": \"+94770000000\",\n                    \"contact_note\": null\n                },\n                \"arrived_at\": null,\n                \"arrived_latitude\": null,\n                \"arrived_longitude\": null,\n                \"completed_at\": null,\n                \"completed_latitude\": null,\n                \"completed_longitude\": null,\n                \"completed_action\": null,\n                \"skip_reason\": null,\n                \"notes\": null,\n                \"allowed_actions\": [\n                    \"arrived\",\n                    \"skip\"\n                ]\n            }\n        ],\n        \"current_stop\": {\n            \"id\": \"stop-uuid-2\",\n            \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n            \"type\": \"pickup\",\n            \"type_sequence\": 2,\n            \"route_order\": 2,\n            \"status\": \"pending\",\n            \"label\": \"Pickup 2\",\n            \"display_label\": \"Pickup 2\",\n            \"address\": \"Passenger 2 pickup\",\n            \"latitude\": 6.9271,\n            \"longitude\": 79.8612,\n            \"contact\": {\n                \"employee_id\": null,\n                \"contact_name\": \"Passenger Two\",\n                \"contact_phone\": \"+94770000000\",\n                \"contact_note\": null\n            },\n            \"arrived_at\": null,\n            \"arrived_latitude\": null,\n            \"arrived_longitude\": null,\n            \"completed_at\": null,\n            \"completed_latitude\": null,\n            \"completed_longitude\": null,\n            \"completed_action\": null,\n            \"skip_reason\": null,\n            \"notes\": null,\n            \"allowed_actions\": [\n                \"arrived\",\n                \"skip\"\n            ]\n        },\n        \"allowed_actions\": [\n            \"stop_action\"\n        ],\n        \"estimated_distance_to_pickup_km\": null,\n        \"near_pickup\": false,\n        \"cumulative_distance_km\": 12.5,\n        \"total_waiting_time_seconds\": 300,\n        \"waiting_period_count\": 1,\n        \"route_point_count\": 75,\n        \"processed_stop\": {\n            \"id\": \"stop-uuid-2\",\n            \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n            \"type\": \"pickup\",\n            \"type_sequence\": 2,\n            \"route_order\": 2,\n            \"status\": \"picked_up\",\n            \"label\": \"Pickup 2\",\n            \"display_label\": \"Pickup 2\",\n            \"address\": \"Passenger 2 pickup\",\n            \"latitude\": 6.9271,\n            \"longitude\": 79.8612,\n            \"contact\": {\n                \"employee_id\": null,\n                \"contact_name\": \"Passenger Two\",\n                \"contact_phone\": \"+94770000000\",\n                \"contact_note\": null\n            },\n            \"arrived_at\": null,\n            \"arrived_latitude\": null,\n            \"arrived_longitude\": null,\n            \"completed_at\": \"2026-05-21T08:35:00+05:30\",\n            \"completed_latitude\": null,\n            \"completed_longitude\": null,\n            \"completed_action\": \"picked_up\",\n            \"skip_reason\": null,\n            \"notes\": null,\n            \"allowed_actions\": []\n        }\n    }\n}"
                         }
                     ]
                 },
@@ -1753,15 +2556,13 @@
                             "name": "Drop-off Stop Completed",
                             "status": "OK",
                             "code": 200,
-                            "_postman_previewlanguage": "json",
                             "header": [
                                 {
                                     "key": "Content-Type",
                                     "value": "application/json"
                                 }
                             ],
-                            "cookie": [],
-                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Drop-off stop completed\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"trip_phase\": \"in_progress\",\n        \"current_stop\": null,\n        \"processed_stop\": {\n            \"id\": \"stop-uuid-3\",\n            \"booking_stop_id\": \"booking-item:item-uuid:dropoff-client-stop-1\",\n            \"type\": \"dropoff\",\n            \"type_sequence\": 1,\n            \"route_order\": 3,\n            \"status\": \"dropped_off\",\n            \"label\": \"Drop-off 1\",\n            \"display_label\": \"Drop-off 1\",\n            \"address\": \"Hotel dropoff\",\n            \"arrived_at\": \"2026-04-27T09:05:00+05:30\",\n            \"completed_at\": \"2026-04-27T09:08:00+05:30\",\n            \"completed_action\": \"dropped_off\",\n            \"skip_reason\": null\n        },\n        \"allowed_actions\": [\n            \"complete\"\n        ]\n    }\n}"
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Drop-off stop completed\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"trip_phase\": \"in_progress\",\n        \"is_multi_stop\": true,\n        \"pickup_location\": {\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841,\n            \"landmark\": \"Colombo Airport\"\n        },\n        \"pickup_arrival\": {\n            \"arrived_at\": \"2026-05-21T08:10:00+05:30\",\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841\n        },\n        \"trip_started_at\": \"2026-05-21T08:15:00+05:30\",\n        \"stops\": [\n            {\n                \"id\": \"stop-uuid-1\",\n                \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n                \"type\": \"pickup\",\n                \"type_sequence\": 1,\n                \"route_order\": 1,\n                \"status\": \"picked_up\",\n                \"label\": \"Pickup 1\",\n                \"display_label\": \"Pickup 1\",\n                \"address\": \"Passenger 2 pickup\",\n                \"latitude\": 6.9271,\n                \"longitude\": 79.8612,\n                \"contact\": {\n                    \"employee_id\": null,\n                    \"contact_name\": \"Passenger Two\",\n                    \"contact_phone\": \"+94770000000\",\n                    \"contact_note\": null\n                },\n                \"arrived_at\": null,\n                \"arrived_latitude\": null,\n                \"arrived_longitude\": null,\n                \"completed_at\": null,\n                \"completed_latitude\": null,\n                \"completed_longitude\": null,\n                \"completed_action\": \"picked_up\",\n                \"skip_reason\": null,\n                \"notes\": null,\n                \"allowed_actions\": []\n            },\n            {\n                \"id\": \"stop-uuid-2\",\n                \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n                \"type\": \"pickup\",\n                \"type_sequence\": 2,\n                \"route_order\": 2,\n                \"status\": \"pending\",\n                \"label\": \"Pickup 2\",\n                \"display_label\": \"Pickup 2\",\n                \"address\": \"Passenger 2 pickup\",\n                \"latitude\": 6.9271,\n                \"longitude\": 79.8612,\n                \"contact\": {\n                    \"employee_id\": null,\n                    \"contact_name\": \"Passenger Two\",\n                    \"contact_phone\": \"+94770000000\",\n                    \"contact_note\": null\n                },\n                \"arrived_at\": null,\n                \"arrived_latitude\": null,\n                \"arrived_longitude\": null,\n                \"completed_at\": null,\n                \"completed_latitude\": null,\n                \"completed_longitude\": null,\n                \"completed_action\": null,\n                \"skip_reason\": null,\n                \"notes\": null,\n                \"allowed_actions\": [\n                    \"arrived\",\n                    \"skip\"\n                ]\n            },\n            {\n                \"id\": \"stop-uuid-3\",\n                \"booking_stop_id\": \"booking-item:item-uuid:dropoff-client-stop-1\",\n                \"type\": \"dropoff\",\n                \"type_sequence\": 1,\n                \"route_order\": 3,\n                \"status\": \"pending\",\n                \"label\": \"Drop-off 1\",\n                \"display_label\": \"Drop-off 1\",\n                \"address\": \"Hotel dropoff\",\n                \"latitude\": 6.9271,\n                \"longitude\": 79.8612,\n                \"contact\": {\n                    \"employee_id\": null,\n                    \"contact_name\": \"Passenger Two\",\n                    \"contact_phone\": \"+94770000000\",\n                    \"contact_note\": null\n                },\n                \"arrived_at\": null,\n                \"arrived_latitude\": null,\n                \"arrived_longitude\": null,\n                \"completed_at\": null,\n                \"completed_latitude\": null,\n                \"completed_longitude\": null,\n                \"completed_action\": null,\n                \"skip_reason\": null,\n                \"notes\": null,\n                \"allowed_actions\": [\n                    \"arrived\",\n                    \"skip\"\n                ]\n            }\n        ],\n        \"current_stop\": {\n            \"id\": \"stop-uuid-2\",\n            \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n            \"type\": \"pickup\",\n            \"type_sequence\": 2,\n            \"route_order\": 2,\n            \"status\": \"pending\",\n            \"label\": \"Pickup 2\",\n            \"display_label\": \"Pickup 2\",\n            \"address\": \"Passenger 2 pickup\",\n            \"latitude\": 6.9271,\n            \"longitude\": 79.8612,\n            \"contact\": {\n                \"employee_id\": null,\n                \"contact_name\": \"Passenger Two\",\n                \"contact_phone\": \"+94770000000\",\n                \"contact_note\": null\n            },\n            \"arrived_at\": null,\n            \"arrived_latitude\": null,\n            \"arrived_longitude\": null,\n            \"completed_at\": null,\n            \"completed_latitude\": null,\n            \"completed_longitude\": null,\n            \"completed_action\": null,\n            \"skip_reason\": null,\n            \"notes\": null,\n            \"allowed_actions\": [\n                \"arrived\",\n                \"skip\"\n            ]\n        },\n        \"allowed_actions\": [\n            \"stop_action\"\n        ],\n        \"estimated_distance_to_pickup_km\": null,\n        \"near_pickup\": false,\n        \"cumulative_distance_km\": 12.5,\n        \"total_waiting_time_seconds\": 300,\n        \"waiting_period_count\": 1,\n        \"route_point_count\": 75,\n        \"processed_stop\": {\n            \"id\": \"stop-uuid-2\",\n            \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n            \"type\": \"dropoff\",\n            \"type_sequence\": 2,\n            \"route_order\": 2,\n            \"status\": \"dropped_off\",\n            \"label\": \"Pickup 2\",\n            \"display_label\": \"Pickup 2\",\n            \"address\": \"Passenger 2 pickup\",\n            \"latitude\": 6.9271,\n            \"longitude\": 79.8612,\n            \"contact\": {\n                \"employee_id\": null,\n                \"contact_name\": \"Passenger Two\",\n                \"contact_phone\": \"+94770000000\",\n                \"contact_note\": null\n            },\n            \"arrived_at\": null,\n            \"arrived_latitude\": null,\n            \"arrived_longitude\": null,\n            \"completed_at\": \"2026-05-21T09:10:00+05:30\",\n            \"completed_latitude\": null,\n            \"completed_longitude\": null,\n            \"completed_action\": \"dropped_off\",\n            \"skip_reason\": null,\n            \"notes\": null,\n            \"allowed_actions\": []\n        }\n    }\n}"
                         }
                     ]
                 },
@@ -1820,15 +2621,13 @@
                             "name": "Route Stop Skipped",
                             "status": "OK",
                             "code": 200,
-                            "_postman_previewlanguage": "json",
                             "header": [
                                 {
                                     "key": "Content-Type",
                                     "value": "application/json"
                                 }
                             ],
-                            "cookie": [],
-                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Stop skipped\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"trip_phase\": \"in_progress\",\n        \"current_stop\": {\n            \"id\": \"stop-uuid-3\",\n            \"booking_stop_id\": \"booking-item:item-uuid:dropoff-client-stop-1\",\n            \"type\": \"dropoff\",\n            \"type_sequence\": 1,\n            \"route_order\": 3,\n            \"status\": \"pending\",\n            \"label\": \"Drop-off 1\",\n            \"display_label\": \"Drop-off 1\",\n            \"address\": \"Hotel dropoff\",\n            \"allowed_actions\": [\n                \"arrived\",\n                \"skip\"\n            ]\n        },\n        \"processed_stop\": {\n            \"id\": \"stop-uuid-2\",\n            \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n            \"type\": \"pickup\",\n            \"type_sequence\": 2,\n            \"route_order\": 2,\n            \"status\": \"skipped\",\n            \"label\": \"Pickup 2\",\n            \"display_label\": \"Pickup 2\",\n            \"address\": \"Passenger 2 pickup\",\n            \"arrived_at\": null,\n            \"completed_at\": \"2026-04-27T08:40:00+05:30\",\n            \"completed_action\": \"skipped\",\n            \"skip_reason\": \"Passenger did not arrive\"\n        },\n        \"allowed_actions\": [\n            \"stop_action\"\n        ]\n    }\n}"
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Stop skipped\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"trip_phase\": \"in_progress\",\n        \"is_multi_stop\": true,\n        \"pickup_location\": {\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841,\n            \"landmark\": \"Colombo Airport\"\n        },\n        \"pickup_arrival\": {\n            \"arrived_at\": \"2026-05-21T08:10:00+05:30\",\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841\n        },\n        \"trip_started_at\": \"2026-05-21T08:15:00+05:30\",\n        \"stops\": [\n            {\n                \"id\": \"stop-uuid-1\",\n                \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n                \"type\": \"pickup\",\n                \"type_sequence\": 1,\n                \"route_order\": 1,\n                \"status\": \"picked_up\",\n                \"label\": \"Pickup 1\",\n                \"display_label\": \"Pickup 1\",\n                \"address\": \"Passenger 2 pickup\",\n                \"latitude\": 6.9271,\n                \"longitude\": 79.8612,\n                \"contact\": {\n                    \"employee_id\": null,\n                    \"contact_name\": \"Passenger Two\",\n                    \"contact_phone\": \"+94770000000\",\n                    \"contact_note\": null\n                },\n                \"arrived_at\": null,\n                \"arrived_latitude\": null,\n                \"arrived_longitude\": null,\n                \"completed_at\": null,\n                \"completed_latitude\": null,\n                \"completed_longitude\": null,\n                \"completed_action\": \"picked_up\",\n                \"skip_reason\": null,\n                \"notes\": null,\n                \"allowed_actions\": []\n            },\n            {\n                \"id\": \"stop-uuid-2\",\n                \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n                \"type\": \"pickup\",\n                \"type_sequence\": 2,\n                \"route_order\": 2,\n                \"status\": \"pending\",\n                \"label\": \"Pickup 2\",\n                \"display_label\": \"Pickup 2\",\n                \"address\": \"Passenger 2 pickup\",\n                \"latitude\": 6.9271,\n                \"longitude\": 79.8612,\n                \"contact\": {\n                    \"employee_id\": null,\n                    \"contact_name\": \"Passenger Two\",\n                    \"contact_phone\": \"+94770000000\",\n                    \"contact_note\": null\n                },\n                \"arrived_at\": null,\n                \"arrived_latitude\": null,\n                \"arrived_longitude\": null,\n                \"completed_at\": null,\n                \"completed_latitude\": null,\n                \"completed_longitude\": null,\n                \"completed_action\": null,\n                \"skip_reason\": null,\n                \"notes\": null,\n                \"allowed_actions\": [\n                    \"arrived\",\n                    \"skip\"\n                ]\n            },\n            {\n                \"id\": \"stop-uuid-3\",\n                \"booking_stop_id\": \"booking-item:item-uuid:dropoff-client-stop-1\",\n                \"type\": \"dropoff\",\n                \"type_sequence\": 1,\n                \"route_order\": 3,\n                \"status\": \"pending\",\n                \"label\": \"Drop-off 1\",\n                \"display_label\": \"Drop-off 1\",\n                \"address\": \"Hotel dropoff\",\n                \"latitude\": 6.9271,\n                \"longitude\": 79.8612,\n                \"contact\": {\n                    \"employee_id\": null,\n                    \"contact_name\": \"Passenger Two\",\n                    \"contact_phone\": \"+94770000000\",\n                    \"contact_note\": null\n                },\n                \"arrived_at\": null,\n                \"arrived_latitude\": null,\n                \"arrived_longitude\": null,\n                \"completed_at\": null,\n                \"completed_latitude\": null,\n                \"completed_longitude\": null,\n                \"completed_action\": null,\n                \"skip_reason\": null,\n                \"notes\": null,\n                \"allowed_actions\": [\n                    \"arrived\",\n                    \"skip\"\n                ]\n            }\n        ],\n        \"current_stop\": {\n            \"id\": \"stop-uuid-2\",\n            \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n            \"type\": \"pickup\",\n            \"type_sequence\": 2,\n            \"route_order\": 2,\n            \"status\": \"pending\",\n            \"label\": \"Pickup 2\",\n            \"display_label\": \"Pickup 2\",\n            \"address\": \"Passenger 2 pickup\",\n            \"latitude\": 6.9271,\n            \"longitude\": 79.8612,\n            \"contact\": {\n                \"employee_id\": null,\n                \"contact_name\": \"Passenger Two\",\n                \"contact_phone\": \"+94770000000\",\n                \"contact_note\": null\n            },\n            \"arrived_at\": null,\n            \"arrived_latitude\": null,\n            \"arrived_longitude\": null,\n            \"completed_at\": null,\n            \"completed_latitude\": null,\n            \"completed_longitude\": null,\n            \"completed_action\": null,\n            \"skip_reason\": null,\n            \"notes\": null,\n            \"allowed_actions\": [\n                \"arrived\",\n                \"skip\"\n            ]\n        },\n        \"allowed_actions\": [\n            \"stop_action\"\n        ],\n        \"estimated_distance_to_pickup_km\": null,\n        \"near_pickup\": false,\n        \"cumulative_distance_km\": 12.5,\n        \"total_waiting_time_seconds\": 300,\n        \"waiting_period_count\": 1,\n        \"route_point_count\": 75,\n        \"processed_stop\": {\n            \"id\": \"stop-uuid-2\",\n            \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n            \"type\": \"pickup\",\n            \"type_sequence\": 2,\n            \"route_order\": 2,\n            \"status\": \"skipped\",\n            \"label\": \"Pickup 2\",\n            \"display_label\": \"Pickup 2\",\n            \"address\": \"Passenger 2 pickup\",\n            \"latitude\": 6.9271,\n            \"longitude\": 79.8612,\n            \"contact\": {\n                \"employee_id\": null,\n                \"contact_name\": \"Passenger Two\",\n                \"contact_phone\": \"+94770000000\",\n                \"contact_note\": null\n            },\n            \"arrived_at\": null,\n            \"arrived_latitude\": null,\n            \"arrived_longitude\": null,\n            \"completed_at\": null,\n            \"completed_latitude\": null,\n            \"completed_longitude\": null,\n            \"completed_action\": null,\n            \"skip_reason\": \"Passenger did not arrive\",\n            \"notes\": null,\n            \"allowed_actions\": []\n        }\n    }\n}"
                         }
                     ]
                 },
@@ -1885,29 +2684,25 @@
                             "name": "Trip Completed - Summary",
                             "status": "OK",
                             "code": 200,
-                            "_postman_previewlanguage": "json",
                             "header": [
                                 {
                                     "key": "Content-Type",
                                     "value": "application/json"
                                 }
                             ],
-                            "cookie": [],
-                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Trip completed\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"total_distance_km\": 45.2,\n        \"total_duration_minutes\": 95,\n        \"total_waiting_time_seconds\": 600,\n        \"waiting_period_count\": 2,\n        \"pickup_coordinates\": {\n            \"latitude\": 7.1810,\n            \"longitude\": 79.8839\n        },\n        \"dropoff_coordinates\": {\n            \"latitude\": 6.9344,\n            \"longitude\": 79.8428\n        },\n        \"route_point_count\": 570\n    }\n}"
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Trip completed\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"booking_item_id\": \"item-uuid\",\n        \"total_distance_km\": 18.75,\n        \"total_duration_minutes\": 95,\n        \"total_waiting_time_seconds\": 300,\n        \"waiting_period_count\": 1,\n        \"pickup_coordinates\": {\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841\n        },\n        \"dropoff_coordinates\": {\n            \"latitude\": 6.9344,\n            \"longitude\": 79.8428\n        },\n        \"route_point_count\": 75,\n        \"hire_completed\": true\n    }\n}"
                         },
                         {
-                            "name": "Trip Not In Progress Error",
+                            "name": "Stops Incomplete",
                             "status": "Bad Request",
                             "code": 400,
-                            "_postman_previewlanguage": "json",
                             "header": [
                                 {
                                     "key": "Content-Type",
                                     "value": "application/json"
                                 }
                             ],
-                            "cookie": [],
-                            "body": "{\n    \"status\": \"error\",\n    \"message\": \"Trip is not in progress\",\n    \"error_code\": \"TRIP_NOT_IN_PROGRESS\",\n    \"errors\": {}\n}"
+                            "body": "{\n    \"status\": \"error\",\n    \"message\": \"All route stops must be completed or skipped before ending the hire\",\n    \"error_code\": \"TRIP_STOPS_INCOMPLETE\",\n    \"errors\": []\n}"
                         }
                     ]
                 }
@@ -1951,7 +2746,20 @@
                         },
                         "description": "Get earnings summary for today/this week/this month."
                     },
-                    "response": []
+                    "response": [
+                        {
+                            "name": "Earnings Summary",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"today\": {\n            \"date\": \"2026-05-21\",\n            \"total\": 12500,\n            \"trip_count\": 1\n        },\n        \"this_week\": {\n            \"from\": \"2026-05-18\",\n            \"to\": \"2026-05-24\",\n            \"total\": 37500,\n            \"trip_count\": 3\n        },\n        \"this_month\": {\n            \"from\": \"2026-05-01\",\n            \"to\": \"2026-05-31\",\n            \"total\": 150000,\n            \"trip_count\": 12\n        },\n        \"currency\": \"LKR\"\n    }\n}"
+                        }
+                    ]
                 },
                 {
                     "name": "Get Daily Earnings",
@@ -1993,7 +2801,20 @@
                         },
                         "description": "Get earnings breakdown for a specific date."
                     },
-                    "response": []
+                    "response": [
+                        {
+                            "name": "Daily Earnings",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"date\": \"2026-05-21\",\n        \"total\": 12500,\n        \"trip_count\": 1,\n        \"items\": [\n            {\n                \"id\": \"assignment-uuid\",\n                \"driver_id\": \"driver-uuid\",\n                \"booking_id\": \"booking-uuid\",\n                \"booking_item_id\": \"item-uuid\",\n                \"status\": \"completed\",\n                \"trip_phase\": \"completed\",\n                \"payment_type\": \"cash\",\n                \"fare_amount\": 12500,\n                \"total_amount\": 12500,\n                \"currency\": \"LKR\",\n                \"booking_number\": \"BK-2026-0001\",\n                \"service_type_name\": \"Airport Transfer\",\n                \"customer_name\": \"John Customer\",\n                \"customer_phone\": \"+94771111111\",\n                \"customer_email\": \"customer@example.com\",\n                \"pickup_location_label\": \"Colombo Airport\",\n                \"dropoff_location_label\": \"Hilton Colombo\",\n                \"is_multi_stop\": true,\n                \"route_stops\": [\n                    {\n                        \"id\": \"stop-uuid-1\",\n                        \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n                        \"type\": \"pickup\",\n                        \"type_sequence\": 1,\n                        \"route_order\": 1,\n                        \"status\": \"picked_up\",\n                        \"label\": \"Pickup 1\",\n                        \"display_label\": \"Pickup 1\",\n                        \"address\": \"Passenger 2 pickup\",\n                        \"latitude\": 6.9271,\n                        \"longitude\": 79.8612,\n                        \"contact\": {\n                            \"employee_id\": null,\n                            \"contact_name\": \"Passenger Two\",\n                            \"contact_phone\": \"+94770000000\",\n                            \"contact_note\": null\n                        },\n                        \"arrived_at\": null,\n                        \"arrived_latitude\": null,\n                        \"arrived_longitude\": null,\n                        \"completed_at\": null,\n                        \"completed_latitude\": null,\n                        \"completed_longitude\": null,\n                        \"completed_action\": \"picked_up\",\n                        \"skip_reason\": null,\n                        \"notes\": null,\n                        \"allowed_actions\": []\n                    },\n                    {\n                        \"id\": \"stop-uuid-2\",\n                        \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n                        \"type\": \"pickup\",\n                        \"type_sequence\": 2,\n                        \"route_order\": 2,\n                        \"status\": \"pending\",\n                        \"label\": \"Pickup 2\",\n                        \"display_label\": \"Pickup 2\",\n                        \"address\": \"Passenger 2 pickup\",\n                        \"latitude\": 6.9271,\n                        \"longitude\": 79.8612,\n                        \"contact\": {\n                            \"employee_id\": null,\n                            \"contact_name\": \"Passenger Two\",\n                            \"contact_phone\": \"+94770000000\",\n                            \"contact_note\": null\n                        },\n                        \"arrived_at\": null,\n                        \"arrived_latitude\": null,\n                        \"arrived_longitude\": null,\n                        \"completed_at\": null,\n                        \"completed_latitude\": null,\n                        \"completed_longitude\": null,\n                        \"completed_action\": null,\n                        \"skip_reason\": null,\n                        \"notes\": null,\n                        \"allowed_actions\": [\n                            \"arrived\",\n                            \"skip\"\n                        ]\n                    },\n                    {\n                        \"id\": \"stop-uuid-3\",\n                        \"booking_stop_id\": \"booking-item:item-uuid:dropoff-client-stop-1\",\n                        \"type\": \"dropoff\",\n                        \"type_sequence\": 1,\n                        \"route_order\": 3,\n                        \"status\": \"pending\",\n                        \"label\": \"Drop-off 1\",\n                        \"display_label\": \"Drop-off 1\",\n                        \"address\": \"Hotel dropoff\",\n                        \"latitude\": 6.9271,\n                        \"longitude\": 79.8612,\n                        \"contact\": {\n                            \"employee_id\": null,\n                            \"contact_name\": \"Passenger Two\",\n                            \"contact_phone\": \"+94770000000\",\n                            \"contact_note\": null\n                        },\n                        \"arrived_at\": null,\n                        \"arrived_latitude\": null,\n                        \"arrived_longitude\": null,\n                        \"completed_at\": null,\n                        \"completed_latitude\": null,\n                        \"completed_longitude\": null,\n                        \"completed_action\": null,\n                        \"skip_reason\": null,\n                        \"notes\": null,\n                        \"allowed_actions\": [\n                            \"arrived\",\n                            \"skip\"\n                        ]\n                    }\n                ],\n                \"scheduled_from\": \"2026-05-21T08:00:00+05:30\",\n                \"scheduled_to\": \"2026-05-21T10:00:00+05:30\",\n                \"trip_completed_at\": null,\n                \"booking\": {\n                    \"id\": \"booking-uuid\",\n                    \"booking_number\": \"BK-2026-0001\"\n                },\n                \"booking_item\": {\n                    \"id\": \"item-uuid\"\n                }\n            }\n        ]\n    }\n}"
+                        }
+                    ]
                 },
                 {
                     "name": "Get Range Earnings",
@@ -2039,7 +2860,20 @@
                         },
                         "description": "Get earnings breakdown for a custom date range."
                     },
-                    "response": []
+                    "response": [
+                        {
+                            "name": "Range Earnings",
+                            "status": "OK",
+                            "code": 200,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"from\": \"2026-05-01\",\n        \"to\": \"2026-05-31\",\n        \"total\": 150000,\n        \"trip_count\": 12,\n        \"items\": [\n            {\n                \"id\": \"assignment-uuid\",\n                \"driver_id\": \"driver-uuid\",\n                \"booking_id\": \"booking-uuid\",\n                \"booking_item_id\": \"item-uuid\",\n                \"status\": \"completed\",\n                \"trip_phase\": \"completed\",\n                \"payment_type\": \"cash\",\n                \"fare_amount\": 12500,\n                \"total_amount\": 12500,\n                \"currency\": \"LKR\",\n                \"booking_number\": \"BK-2026-0001\",\n                \"service_type_name\": \"Airport Transfer\",\n                \"customer_name\": \"John Customer\",\n                \"customer_phone\": \"+94771111111\",\n                \"customer_email\": \"customer@example.com\",\n                \"pickup_location_label\": \"Colombo Airport\",\n                \"dropoff_location_label\": \"Hilton Colombo\",\n                \"is_multi_stop\": true,\n                \"route_stops\": [\n                    {\n                        \"id\": \"stop-uuid-1\",\n                        \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n                        \"type\": \"pickup\",\n                        \"type_sequence\": 1,\n                        \"route_order\": 1,\n                        \"status\": \"picked_up\",\n                        \"label\": \"Pickup 1\",\n                        \"display_label\": \"Pickup 1\",\n                        \"address\": \"Passenger 2 pickup\",\n                        \"latitude\": 6.9271,\n                        \"longitude\": 79.8612,\n                        \"contact\": {\n                            \"employee_id\": null,\n                            \"contact_name\": \"Passenger Two\",\n                            \"contact_phone\": \"+94770000000\",\n                            \"contact_note\": null\n                        },\n                        \"arrived_at\": null,\n                        \"arrived_latitude\": null,\n                        \"arrived_longitude\": null,\n                        \"completed_at\": null,\n                        \"completed_latitude\": null,\n                        \"completed_longitude\": null,\n                        \"completed_action\": \"picked_up\",\n                        \"skip_reason\": null,\n                        \"notes\": null,\n                        \"allowed_actions\": []\n                    },\n                    {\n                        \"id\": \"stop-uuid-2\",\n                        \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n                        \"type\": \"pickup\",\n                        \"type_sequence\": 2,\n                        \"route_order\": 2,\n                        \"status\": \"pending\",\n                        \"label\": \"Pickup 2\",\n                        \"display_label\": \"Pickup 2\",\n                        \"address\": \"Passenger 2 pickup\",\n                        \"latitude\": 6.9271,\n                        \"longitude\": 79.8612,\n                        \"contact\": {\n                            \"employee_id\": null,\n                            \"contact_name\": \"Passenger Two\",\n                            \"contact_phone\": \"+94770000000\",\n                            \"contact_note\": null\n                        },\n                        \"arrived_at\": null,\n                        \"arrived_latitude\": null,\n                        \"arrived_longitude\": null,\n                        \"completed_at\": null,\n                        \"completed_latitude\": null,\n                        \"completed_longitude\": null,\n                        \"completed_action\": null,\n                        \"skip_reason\": null,\n                        \"notes\": null,\n                        \"allowed_actions\": [\n                            \"arrived\",\n                            \"skip\"\n                        ]\n                    },\n                    {\n                        \"id\": \"stop-uuid-3\",\n                        \"booking_stop_id\": \"booking-item:item-uuid:dropoff-client-stop-1\",\n                        \"type\": \"dropoff\",\n                        \"type_sequence\": 1,\n                        \"route_order\": 3,\n                        \"status\": \"pending\",\n                        \"label\": \"Drop-off 1\",\n                        \"display_label\": \"Drop-off 1\",\n                        \"address\": \"Hotel dropoff\",\n                        \"latitude\": 6.9271,\n                        \"longitude\": 79.8612,\n                        \"contact\": {\n                            \"employee_id\": null,\n                            \"contact_name\": \"Passenger Two\",\n                            \"contact_phone\": \"+94770000000\",\n                            \"contact_note\": null\n                        },\n                        \"arrived_at\": null,\n                        \"arrived_latitude\": null,\n                        \"arrived_longitude\": null,\n                        \"completed_at\": null,\n                        \"completed_latitude\": null,\n                        \"completed_longitude\": null,\n                        \"completed_action\": null,\n                        \"skip_reason\": null,\n                        \"notes\": null,\n                        \"allowed_actions\": [\n                            \"arrived\",\n                            \"skip\"\n                        ]\n                    }\n                ],\n                \"scheduled_from\": \"2026-05-21T08:00:00+05:30\",\n                \"scheduled_to\": \"2026-05-21T10:00:00+05:30\",\n                \"trip_completed_at\": null,\n                \"booking\": {\n                    \"id\": \"booking-uuid\",\n                    \"booking_number\": \"BK-2026-0001\"\n                },\n                \"booking_item\": {\n                    \"id\": \"item-uuid\"\n                }\n            }\n        ]\n    }\n}"
+                        }
+                    ]
                 }
             ],
             "description": "Driver earnings summary endpoints."

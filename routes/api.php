@@ -366,6 +366,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('website-settings/security/settings', [WebsiteSettingController::class, 'security']);
         Route::get('website-settings/email/settings', [WebsiteSettingController::class, 'email']);
         Route::get('website-settings/booking/settings', [WebsiteSettingController::class, 'booking']);
+        Route::get('website-settings/driver-mobile/settings', [WebsiteSettingController::class, 'driverMobile']);
         Route::get('website-settings/appearance/settings', [WebsiteSettingController::class, 'appearance']);
         Route::apiResource('vip-types', VipTypeController::class);
         Route::apiResource('service-types', ServiceTypeController::class);

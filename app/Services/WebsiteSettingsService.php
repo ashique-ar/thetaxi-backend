@@ -828,6 +828,20 @@ class WebsiteSettingsService
     }
 
     /**
+     * Get all driver mobile app settings.
+     */
+    public function getDriverMobileSettings(): array
+    {
+        $types = [
+            'driver_mobile_latest_version',
+            'driver_mobile_mandatory_update',
+            'driver_mobile_update_message',
+        ];
+
+        return $this->getMultiple($types);
+    }
+
+    /**
      * Get all appearance settings
      */
     public function getHeaderSettings(): array
@@ -1061,6 +1075,7 @@ class WebsiteSettingsService
             'contact' => $this->getContactPageSettings(),
             'payment' => $this->getPaymentSettings(),
             'booking' => $this->getBookingSettings(),
+            'driverMobile' => $this->getDriverMobileSettings(),
             'security' => $this->getSecuritySettings(),
             'email' => $this->getEmailSettings(),
             'sms' => $this->getSmsSettings(),

@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\Driver\Mobile\DeviceController;
 use App\Http\Controllers\Api\Driver\Mobile\TripController;
 use App\Http\Controllers\Api\Driver\Mobile\EarningsController;
 use App\Http\Controllers\Api\Driver\Mobile\NotificationController;
+use App\Http\Controllers\Api\Driver\Mobile\AppSettingsController;
 
 /*
 |--------------------------------------------------------------------------
@@ -24,6 +25,8 @@ use App\Http\Controllers\Api\Driver\Mobile\NotificationController;
 */
 
 // Public authentication routes (no auth required)
+Route::match(['get', 'post'], 'version-check', [AppSettingsController::class, 'versionCheck']);
+
 Route::prefix('auth')->group(function () {
     Route::post('login', [AuthController::class, 'login']);
 });

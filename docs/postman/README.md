@@ -1,374 +1,1217 @@
-# TheTaxi Driver Mobile API - Postman Collection
+# TheTaxi Driver Mobile API
 
-## Overview
+Postman assets for testing the TheTaxi driver mobile backend.
 
-This Postman collection provides complete API testing for the TheTaxi Driver Mobile Application, including authentication, assignments, hires, earnings, device management, notification management, status tracking, and location services.
+Files:
+- `TheTaxi-Driver-API.postman_collection.json`
+- `TheTaxi-Driver-API.postman_environment.json`
 
-## Files
+Base URLs:
+- Driver API: `{{base_url}}/api/driver`
+- Public compatibility API: `{{base_url}}/api/public`
 
-- **TheTaxi-Driver-API.postman_collection.json** - Complete API collection
-- **TheTaxi-Driver-API.postman_environment.json** - Development environment variables
+Most driver endpoints require:
+
+```http
+Authorization: Bearer {{access_token}}
+Accept: application/json
+Content-Type: application/json
+```
+
+Public endpoints:
+- `POST /api/driver/version-check`
+- `POST /api/public/driver-mobile/version-check`
+- `POST /api/driver/auth/login`
 
 ## Quick Start
 
-### 1. Import Collection
+1. Import both Postman JSON files.
+2. Select **TheTaxi Driver API - Development** environment.
+3. Set `base_url`, `driver_email`, `driver_password`, and device variables.
+4. Run **App Settings > Version Check**.
+5. Run **Authentication > Login**. The collection saves `access_token`, `refresh_token`, `driver_id`, `user_id`, `device_uuid`, and `assignment_id` where present.
+6. Run authenticated requests.
 
-1. Open Postman
-2. Click **Import**
-3. Select both JSON files
-4. Collection and environment will be imported
+## Environment Variables
 
-### 2. Select Environment
+Authentication:
+- `access_token`
+- `refresh_token`
+- `driver_id`
+- `user_id`
 
-1. Click the environment dropdown (top right)
-2. Select **"TheTaxi Driver API - Development"**
+App and device:
+- `app_version`
+- `app_build`
+- `platform`
+- `os_version`
+- `device_uuid`
+- `device_fingerprint`
+- `device_name`
+- `device_model`
+- `device_manufacturer`
+- `push_token`
+- `push_provider`
+- `latest_driver_app_version`
+- `driver_app_can_continue`
 
-### 3. Update Environment Variables
+Session and location:
+- `session_id`
+- `session_status`
+- `start_latitude`
+- `start_longitude`
+- `current_latitude`
+- `current_longitude`
+- `end_latitude`
+- `end_longitude`
+- `history_assignment_id`
+- `history_session_id`
+- `history_from`
+- `history_to`
+- `history_limit`
 
-Click the eye icon next to the environment dropdown and update:
+Assignments and trips:
+- `assignment_id`
+- `assignment_status`
+- `stop_id`
+- `booking_stop_id`
+- `ending_mileage`
+- `trip_end_notes`
+- `filter_date`
+- `filter_from`
+- `filter_to`
 
+Notifications:
+- `notification_id`
+- `notification_per_page`
+- `notification_unread_only`
+- `notification_type`
+
+## Endpoint Index
+
+### App Settings
+
+| Method | Endpoint | Auth | Purpose |
+|---|---|---:|---|
+| POST | `/api/driver/version-check` | No | Primary pre-login app version check |
+| POST | `/api/public/driver-mobile/version-check` | No | Compatibility alias |
+
+### Authentication
+
+| Method | Endpoint | Auth | Purpose |
+|---|---|---:|---|
+| POST | `/api/driver/auth/login` | No | Login and register/update device |
+| GET | `/api/driver/auth/profile` | Yes | Current driver profile and assignment stats |
+| POST | `/api/driver/auth/refresh` | Yes | Refresh access token |
+| POST | `/api/driver/auth/logout` | Yes | Revoke current token/session |
+
+### Status, Session, and Location
+
+| Method | Endpoint | Auth | Purpose |
+|---|---|---:|---|
+| POST | `/api/driver/status/online` | Yes | Start online session |
+| POST | `/api/driver/status/offline` | Yes | End online session |
+| GET | `/api/driver/status` | Yes | Current online/session status |
+| POST | `/api/driver/heartbeat` | Yes | Keep driver active |
+| POST | `/api/driver/location` | Yes | Update current GPS point |
+| POST | `/api/driver/location/bulk` | Yes | Upload buffered GPS points |
+| GET | `/api/driver/location/history` | Yes | Route history by session or assignment |
+| GET | `/api/driver/sessions` | Yes | List driver sessions |
+| GET | `/api/driver/sessions/{session_id}` | Yes | Session detail with route replay |
+
+### Devices
+
+| Method | Endpoint | Auth | Purpose |
+|---|---|---:|---|
+| GET | `/api/driver/devices` | Yes | List registered devices |
+| GET | `/api/driver/devices/current` | Yes | Current device |
+| PUT | `/api/driver/devices` | Yes | Update/register device info |
+| POST | `/api/driver/devices/push-token` | Yes | Update device push token |
+| POST | `/api/driver/devices/{device_uuid}/deactivate` | Yes | Deactivate device |
+| DELETE | `/api/driver/devices/{device_uuid}` | Yes | Remove device |
+
+### Notifications
+
+| Method | Endpoint | Auth | Purpose |
+|---|---|---:|---|
+| GET | `/api/driver/notifications` | Yes | List driver notifications |
+| GET | `/api/driver/notifications/unread-count` | Yes | Unread count |
+| GET | `/api/driver/notifications/{notification_id}` | Yes | Notification detail |
+| POST | `/api/driver/notifications/{notification_id}/mark-read` | Yes | Mark one as read |
+| POST | `/api/driver/notifications/mark-all-read` | Yes | Mark all as read |
+| DELETE | `/api/driver/notifications/{notification_id}` | Yes | Delete one notification |
+
+### Assignments, Hires, and Earnings
+
+| Method | Endpoint | Auth | Purpose |
+|---|---|---:|---|
+| GET | `/api/driver/assignments` | Yes | List assignments |
+| GET | `/api/driver/assignments/current` | Yes | Current assignment |
+| POST | `/api/driver/assignments/{assignment_id}/accept` | Yes | Accept assignment |
+| POST | `/api/driver/assignments/{assignment_id}/decline` | Yes | Decline assignment |
+| GET | `/api/driver/hires` | Yes | Completed hires |
+| GET | `/api/driver/earnings/summary` | Yes | Today/week/month earnings |
+| GET | `/api/driver/earnings/daily` | Yes | Earnings for one date |
+| GET | `/api/driver/earnings/range` | Yes | Earnings for date range |
+
+### Trip Tracking
+
+| Method | Endpoint | Auth | Purpose |
+|---|---|---:|---|
+| GET | `/api/driver/assignments/{assignment_id}/status` | Yes | Assignment trip state |
+| POST | `/api/driver/assignments/{assignment_id}/arrived` | Yes | Confirm pickup arrival |
+| POST | `/api/driver/assignments/{assignment_id}/start` | Yes | Start hire |
+| POST | `/api/driver/assignments/{assignment_id}/stops/{stop_id}/arrived` | Yes | Mark route stop arrived |
+| POST | `/api/driver/assignments/{assignment_id}/stops/{stop_id}/picked-up` | Yes | Complete pickup stop |
+| POST | `/api/driver/assignments/{assignment_id}/stops/{stop_id}/dropped-off` | Yes | Complete dropoff stop |
+| POST | `/api/driver/assignments/{assignment_id}/stops/{stop_id}/skip` | Yes | Skip route stop |
+| POST | `/api/driver/assignments/{assignment_id}/complete` | Yes | Complete hire |
+
+## API Details
+
+### Version Check
+
+Use before login or app bootstrap.
+
+```http
+POST /api/driver/version-check
 ```
-base_url: http://thetaxi.test (or your API URL)
-driver_email: your-driver@example.com
-driver_password: your-password
-device_fingerprint: (auto-generated on login, or use test value)
-```
 
-### 4. Test Login
-
-1. Open **Authentication → Login**
-2. Click **Send**
-3. Access token will be automatically saved to environment
-
-## New: Backend-Generated UUID Approach
-
-### What Changed
-
-The API now uses a **device fingerprint** approach where:
-- Mobile app sends a fingerprint (SHA-256 hash of device characteristics)
-- Backend generates and returns a UUID
-- Same fingerprint = same device recognized
-- No need to store UUID on mobile app
-
-### Device Fingerprint
-
-The `device_fingerprint` is a SHA-256 hash of device characteristics:
-
-```
-Components:
-- Device model (e.g., "iPhone 14 Pro")
-- OS version (e.g., "17.2")
-- Platform ID (IDFV for iOS, Android ID for Android)
-- Screen dimensions
-- Time zone
-
-Example:
-"iPhone 14 Pro|iOS|17.2|ABC-123-DEF|1170x2532|Asia/Colombo"
-↓ SHA-256
-"a3f5b2c1d4e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2"
-```
-
-### Login Request (New Format)
+Request:
 
 ```json
 {
-  "email": "driver@example.com",
-  "password": "password123",
-  "device_fingerprint": "a3f5b2c1d4e6f7a8...",
-  "platform": "ios",
-  "device_model": "iPhone 14 Pro",
-  "os_version": "17.2"
+  "version": "1.0.0",
+  "platform": "android"
 }
 ```
 
-### Login Response
+Response:
 
 ```json
 {
   "status": "success",
   "data": {
+    "current_version": "1.0.0",
+    "latest_version": "1.1.0",
+    "update_required": true,
+    "mandatory_update": true,
+    "can_continue": false,
+    "message": "A new driver app version is available. Please update to continue."
+  }
+}
+```
+
+Mobile behavior:
+- If `can_continue` is `true`, continue app flow.
+- If `can_continue` is `false`, block usage and route to Play Store/App Store inside the app.
+- The API does not return a store URL.
+
+Admin settings live in the portal under **System Settings > Driver Mobile**.
+
+### Login
+
+```http
+POST /api/driver/auth/login
+```
+
+Request:
+
+```json
+{
+  "email": "{{driver_email}}",
+  "password": "{{driver_password}}",
+  "device_fingerprint": "{{device_fingerprint}}",
+  "device_name": "{{device_name}}",
+  "device_model": "{{device_model}}",
+  "device_manufacturer": "{{device_manufacturer}}",
+  "platform": "{{platform}}",
+  "os_version": "{{os_version}}",
+  "app_version": "{{app_version}}",
+  "app_build": "{{app_build}}",
+  "push_token": "{{push_token}}",
+  "push_provider": "{{push_provider}}",
+  "locale": "en_US",
+  "timezone": "Asia/Colombo"
+}
+```
+
+Response:
+
+```json
+{
+  "status": "success",
+  "message": "Login successful",
+  "data": {
+    "user": {
+      "id": "user-uuid",
+      "email": "driver@example.com"
+    },
+    "driver": {
+      "id": "driver-uuid",
+      "code": "DRV001",
+      "is_online": false,
+      "availability_status": "available"
+    },
     "device": {
-      "device_uuid": "550e8400-e29b-41d4-a716-446655440000",
-      "device_fingerprint": "a3f5b2c1d4e6f7a8...",
-      "platform": "ios"
+      "id": "device-record-uuid",
+      "device_uuid": "device-uuid",
+      "platform": "ios",
+      "app_version": "1.0.0",
+      "is_active": true
     },
     "token": {
-      "access_token": "eyJ0eXAiOiJKV1QiLCJhbGc...",
-      "refresh_token": "token-id"
+      "access_token": "access-token",
+      "token_type": "Bearer",
+      "expires_at": "2026-05-22T08:00:00+05:30",
+      "refresh_token": "refresh-token-id"
+    },
+    "current_assignment": null,
+    "trip_phase": null
+  }
+}
+```
+
+Error:
+
+```json
+{
+  "status": "error",
+  "message": "Invalid credentials",
+  "error_code": "AUTH_INVALID_CREDENTIALS",
+  "errors": {}
+}
+```
+
+Login is rate-limited to 5 failed attempts per minute per email/IP.
+
+### Profile
+
+```http
+GET /api/driver/auth/profile
+```
+
+Response:
+
+```json
+{
+  "status": "success",
+  "data": {
+    "user": {
+      "id": "user-uuid",
+      "email": "driver@example.com"
+    },
+    "driver": {
+      "id": "driver-uuid",
+      "code": "DRV001",
+      "license_no": "B1234567",
+      "is_online": true,
+      "current_latitude": "6.9285",
+      "current_longitude": "79.8625"
+    },
+    "assignment_statistics": {
+      "total_assignments": 25,
+      "active_assignments": 2,
+      "completed_assignments": 20
     }
   }
 }
 ```
 
-The `device_uuid` is automatically saved to the environment for subsequent requests.
+### Refresh Token
 
-## Environment Variables
+```http
+POST /api/driver/auth/refresh
+```
 
-### Authentication
-- `access_token` - Bearer token (auto-set on login)
-- `refresh_token` - Refresh token ID (auto-set on login)
-- `driver_id` - Driver UUID (auto-set on login)
-- `user_id` - User UUID (auto-set on login)
+Request:
 
-### Device Information
-- `device_uuid` - Device UUID (returned by backend)
-- `device_fingerprint` - Device fingerprint hash
-- `device_name` - User-friendly device name
-- `device_model` - Device model (e.g., "iPhone 14 Pro")
-- `device_manufacturer` - Manufacturer (e.g., "Apple")
-- `platform` - OS platform ("ios" or "android")
-- `os_version` - OS version (e.g., "17.2")
-- `app_version` - App version (e.g., "1.0.0")
-- `app_build` - Build number (e.g., "100")
-- `push_token` - FCM/APNs push token
-- `push_provider` - Push provider ("fcm" or "apns")
+```json
+{
+  "refresh_token": "{{refresh_token}}"
+}
+```
 
-### Location
-- `start_latitude` - Session start latitude (Colombo: 6.9271)
-- `start_longitude` - Session start longitude (Colombo: 79.8612)
-- `current_latitude` - Current location latitude
-- `current_longitude` - Current location longitude
-- `end_latitude` - Session end latitude
-- `end_longitude` - Session end longitude
-- `history_assignment_id` - Optional assignment ID for trip-specific replay
-- `history_session_id` - Optional session ID for session-specific replay
-- `history_from` - Optional ISO datetime lower bound for history window
-- `history_to` - Optional ISO datetime upper bound for history window
-- `history_limit` - Optional max route points to return (default `5000`)
+Response:
 
-### Session
-- `session_id` - Active session UUID (auto-set on go online)
+```json
+{
+  "status": "success",
+  "message": "Token refreshed successfully",
+  "data": {
+    "access_token": "new-access-token",
+    "token_type": "Bearer",
+    "expires_at": "2026-05-22T08:00:00+05:30",
+    "refresh_token": "refresh-token-id"
+  }
+}
+```
 
-## API Endpoints
+### Logout
 
-### Authentication
-- **POST** `/api/driver/auth/login` - Login with credentials
-- **GET** `/api/driver/auth/profile` - Get driver profile
-- **POST** `/api/driver/auth/refresh` - Refresh access token
-- **POST** `/api/driver/auth/logout` - Logout and revoke token
+```http
+POST /api/driver/auth/logout
+```
 
-### Status Management
-- **POST** `/api/driver/status/online` - Go online (start session)
-- **POST** `/api/driver/status/offline` - Go offline (end session)
-- **GET** `/api/driver/status` - Get current status
+Request:
+
+```json
+{
+  "device_uuid": "{{device_uuid}}"
+}
+```
+
+Response:
+
+```json
+{
+  "status": "success",
+  "message": "Logged out successfully"
+}
+```
+
+### Go Online
+
+```http
+POST /api/driver/status/online
+```
+
+Request:
+
+```json
+{
+  "device_uuid": "{{device_uuid}}",
+  "latitude": 6.9271,
+  "longitude": 79.8612,
+  "metadata": {
+    "app_version": "1.0.0",
+    "os": "ios 17.0"
+  }
+}
+```
+
+Response:
+
+```json
+{
+  "status": "success",
+  "message": "Driver is now online",
+  "data": {
+    "session": {
+      "id": "session-uuid",
+      "driver_id": "driver-uuid",
+      "device_uuid": "device-uuid",
+      "status": "active",
+      "start_time": "2026-05-21T08:00:00+05:30",
+      "start_latitude": "6.9271",
+      "start_longitude": "79.8612",
+      "assignment_id": null
+    },
+    "pending_assignments": []
+  }
+}
+```
+
+Already online error:
+
+```json
+{
+  "status": "error",
+  "message": "Driver is already online",
+  "error_code": "STATUS_ALREADY_ONLINE",
+  "data": {
+    "current_session": {}
+  }
+}
+```
+
+### Go Offline
+
+```http
+POST /api/driver/status/offline
+```
+
+Request:
+
+```json
+{
+  "latitude": 6.935,
+  "longitude": 79.85
+}
+```
+
+Response:
+
+```json
+{
+  "status": "success",
+  "message": "Driver is now offline",
+  "data": {
+    "session": {
+      "id": "session-uuid",
+      "status": "completed",
+      "end_time": "2026-05-21T10:00:00+05:30",
+      "end_latitude": "6.935",
+      "end_longitude": "79.85"
+    }
+  }
+}
+```
+
+If a trip is still in progress, the response includes:
+
+```json
+{
+  "trip_warning": "Trip is still in progress. The trip tracking session remains active.",
+  "active_trip": {
+    "assignment_id": "assignment-uuid",
+    "trip_phase": "in_progress"
+  }
+}
+```
+
+### Current Status
+
+```http
+GET /api/driver/status
+```
+
+Response:
+
+```json
+{
+  "status": "success",
+  "data": {
+    "is_online": true,
+    "last_active_at": "2026-05-21T08:05:00+05:30",
+    "current_latitude": "6.9285",
+    "current_longitude": "79.8625",
+    "current_device_uuid": "device-uuid",
+    "current_session": {
+      "id": "session-uuid",
+      "status": "active"
+    }
+  }
+}
+```
 
 ### Heartbeat
-- **POST** `/api/driver/heartbeat` - Send heartbeat (every 60s)
 
-### Location Tracking
-- **POST** `/api/driver/location` - Update location (every 10s)
-- **GET** `/api/driver/location/history` - Get location history (active/latest session by default, optional `assignment_id`, `session_id`, `from`, `to`, `limit`)
+```http
+POST /api/driver/heartbeat
+```
+
+Request:
+
+```json
+{}
+```
+
+Response:
+
+```json
+{
+  "status": "success",
+  "message": "Heartbeat received",
+  "data": {
+    "last_active_at": "2026-05-21T08:05:00+05:30",
+    "is_online": true,
+    "trip_phase": "in_progress",
+    "assignment_id": "assignment-uuid"
+  }
+}
+```
+
+### Location Update
+
+```http
+POST /api/driver/location
+```
+
+Request:
+
+```json
+{
+  "latitude": 6.9285,
+  "longitude": 79.8625,
+  "altitude": 15.5,
+  "speed": 45.2,
+  "heading": 180.5,
+  "accuracy": 10.0,
+  "recorded_at": "2026-05-21T08:05:00+05:30"
+}
+```
+
+Response:
+
+```json
+{
+  "status": "success",
+  "message": "Location updated successfully",
+  "data": {
+    "id": "route-point-uuid",
+    "session_id": "session-uuid",
+    "assignment_id": "assignment-uuid",
+    "latitude": 6.9285,
+    "longitude": 79.8625,
+    "altitude": 15.5,
+    "speed": 45.2,
+    "heading": 180.5,
+    "accuracy": 10.0,
+    "recorded_at": "2026-05-21T08:05:00+05:30"
+  }
+}
+```
+
+Errors:
+- `LOCATION_NO_SESSION`
+- `LOCATION_RATE_LIMITED`
+
+### Bulk Location Upload
+
+```http
+POST /api/driver/location/bulk
+```
+
+Request:
+
+```json
+{
+  "locations": [
+    {
+      "latitude": 6.9271,
+      "longitude": 79.8612,
+      "altitude": 12.4,
+      "speed": 0,
+      "heading": 180,
+      "accuracy": 8,
+      "recorded_at": "2026-05-21T08:05:00+05:30",
+      "assignment_id": "assignment-uuid"
+    }
+  ]
+}
+```
+
+Rules:
+- `locations` must contain 1 to 1000 points.
+- Each point requires `latitude`, `longitude`, and `recorded_at`.
+- Duplicate points are skipped.
+
+Response:
+
+```json
+{
+  "status": "success",
+  "message": "Buffered locations processed successfully",
+  "data": {
+    "saved_count": 2,
+    "skipped_count": 1,
+    "duplicate_count": 1,
+    "latest_saved_point": {
+      "id": "route-point-uuid",
+      "latitude": 6.9285,
+      "longitude": 79.8625
+    }
+  }
+}
+```
+
+### Location History
+
+```http
+GET /api/driver/location/history?assignment_id={{history_assignment_id}}&session_id={{history_session_id}}&from={{history_from}}&to={{history_to}}&limit={{history_limit}}
+```
+
+Response by assignment:
+
+```json
+{
+  "status": "success",
+  "data": {
+    "scope": "assignment",
+    "assignment_id": "assignment-uuid",
+    "trip_phase": "in_progress",
+    "session_id": "session-uuid",
+    "route_points": [],
+    "total_points": 0
+  }
+}
+```
+
+Response by session:
+
+```json
+{
+  "status": "success",
+  "data": {
+    "scope": "session",
+    "session_id": "session-uuid",
+    "assignment_id": null,
+    "session_status": "completed",
+    "route_points": [],
+    "total_points": 0
+  }
+}
+
+```
 
 ### Sessions
-- **GET** `/api/driver/sessions` - List session history
-- **GET** `/api/driver/sessions/{id}` - Get session details
 
-### Device Management
-- **GET** `/api/driver/devices` - List all devices
-- **GET** `/api/driver/devices/current` - Get current device
-- **PUT** `/api/driver/devices` - Update device info
-- **POST** `/api/driver/devices/push-token` - Update push token
-- **POST** `/api/driver/devices/{uuid}/deactivate` - Deactivate device
-- **DELETE** `/api/driver/devices/{uuid}` - Remove device
+```http
+GET /api/driver/sessions?page=1&per_page=15&status={{session_status}}
+GET /api/driver/sessions/{{session_id}}
+```
 
-### Notification Management
-- **GET** `/api/driver/notifications` - List driver notifications (supports `unread_only`, `type`, `page`, `per_page`)
-- **GET** `/api/driver/notifications/unread-count` - Get unread notification count
-- **GET** `/api/driver/notifications/{id}` - Get notification detail
-- **POST** `/api/driver/notifications/{id}/mark-read` - Mark one notification as read
-- **POST** `/api/driver/notifications/mark-all-read` - Mark all notifications as read
-- **DELETE** `/api/driver/notifications/{id}` - Delete one notification
+List response:
+
+```json
+{
+  "status": "success",
+  "data": [
+    {
+      "id": "session-uuid",
+      "driver_id": "driver-uuid",
+      "device_uuid": "device-uuid",
+      "status": "active",
+      "start_time": "2026-05-21T08:00:00+05:30",
+      "end_time": null
+    }
+  ],
+  "meta": {
+    "current_page": 1,
+    "last_page": 1,
+    "per_page": 15,
+    "total": 1
+  }
+}
+```
+
+Detail response:
+
+```json
+{
+  "status": "success",
+  "data": {
+    "session": {
+      "id": "session-uuid",
+      "status": "completed"
+    },
+    "route_points": [],
+    "route_stats": {
+      "total_distance_km": 12.5,
+      "total_points": 75
+    }
+  }
+}
+```
+
+### Devices
+
+List:
+
+```http
+GET /api/driver/devices?active_only=false
+```
+
+Update device:
+
+```http
+PUT /api/driver/devices
+```
+
+Request:
+
+```json
+{
+  "device_uuid": "{{device_uuid}}",
+  "device_name": "{{device_name}}",
+  "device_model": "{{device_model}}",
+  "device_manufacturer": "{{device_manufacturer}}",
+  "platform": "{{platform}}",
+  "os_version": "{{os_version}}",
+  "app_version": "{{app_version}}",
+  "app_build": "{{app_build}}",
+  "locale": "en_US",
+  "timezone": "Asia/Colombo"
+}
+```
+
+Push token request:
+
+```json
+{
+  "device_uuid": "{{device_uuid}}",
+  "push_token": "{{push_token}}",
+  "push_provider": "{{push_provider}}"
+}
+```
+
+Device response shape:
+
+```json
+{
+  "status": "success",
+  "data": {
+    "id": "device-record-uuid",
+    "driver_id": "driver-uuid",
+    "device_uuid": "device-uuid",
+    "device_name": "Test Device",
+    "device_model": "iPhone 14 Pro",
+    "device_manufacturer": "Apple",
+    "platform": "ios",
+    "platform_display": "iOS",
+    "os_version": "17.0",
+    "app_version": "1.0.0",
+    "app_build": "100",
+    "has_push_token": true,
+    "push_provider": "fcm",
+    "is_active": true,
+    "last_active_at": "2026-05-21T08:05:00+05:30",
+    "registered_at": "2026-05-20T10:00:00+05:30",
+    "locale": "en_US",
+    "timezone": "Asia/Colombo",
+    "display_name": "Test Device (iPhone 14 Pro)"
+  }
+}
+```
+
+### Notifications
+
+```http
+GET /api/driver/notifications?page=1&per_page=20&unread_only=false&type=
+GET /api/driver/notifications/unread-count
+GET /api/driver/notifications/{{notification_id}}
+POST /api/driver/notifications/{{notification_id}}/mark-read
+POST /api/driver/notifications/mark-all-read
+DELETE /api/driver/notifications/{{notification_id}}
+```
+
+List response:
+
+```json
+{
+  "status": "success",
+  "data": [
+    {
+      "id": "notification-uuid",
+      "type": "App\\Notifications\\DriverAssignmentNotification",
+      "notification_type": "driver_assignment",
+      "title": "New assignment",
+      "message": "You have a new booking assignment.",
+      "data": {
+        "assignment_id": "assignment-uuid"
+      },
+      "read": false,
+      "read_at": null,
+      "created_at": "2026-05-21T10:00:00+05:30"
+    }
+  ],
+  "meta": {
+    "current_page": 1,
+    "last_page": 1,
+    "per_page": 20,
+    "total": 1,
+    "unread_count": 1
+  }
+}
+```
 
 ### Assignments
-- **GET** `/api/driver/assignments` - List assignments (supports `status`, `date`, `from`, `to`, `page`, `per_page`)
-- **GET** `/api/driver/assignments/current` - Get current assignment
-- **POST** `/api/driver/assignments/{id}/accept` - Accept assignment
-- **POST** `/api/driver/assignments/{id}/decline` - Decline assignment
+
+```http
+GET /api/driver/assignments?page=1&per_page=15&status={{assignment_status}}&date={{filter_date}}&from={{filter_from}}&to={{filter_to}}
+GET /api/driver/assignments/current
+POST /api/driver/assignments/{{assignment_id}}/accept
+POST /api/driver/assignments/{{assignment_id}}/decline
+```
+
+Decline request:
+
+```json
+{
+  "decline_reason": "Unable to take this trip"
+}
+```
+
+Assignment response shape:
+
+```json
+{
+  "status": "success",
+  "data": {
+    "id": "assignment-uuid",
+    "driver_id": "driver-uuid",
+    "booking_id": "booking-uuid",
+    "booking_item_id": "item-uuid",
+    "status": "active",
+    "trip_phase": "accepted",
+    "payment_type": "cash",
+    "fare_amount": 12500,
+    "total_amount": 12500,
+    "currency": "LKR",
+    "booking_number": "BK-2026-0001",
+    "service_type_name": "Airport Transfer",
+    "customer_name": "John Customer",
+    "customer_phone": "+94771111111",
+    "customer_email": "customer@example.com",
+    "pickup_location_label": "Colombo Airport",
+    "dropoff_location_label": "Hilton Colombo",
+    "is_multi_stop": true,
+    "route_stops": [],
+    "scheduled_from": "2026-05-21T08:00:00+05:30",
+    "scheduled_to": "2026-05-21T10:00:00+05:30",
+    "trip_completed_at": null
+  }
+}
+```
+
+List endpoints return:
+
+```json
+{
+  "status": "success",
+  "data": [],
+  "meta": {
+    "current_page": 1,
+    "last_page": 1,
+    "per_page": 15,
+    "total": 0
+  }
+}
+```
 
 ### Hires
-- **GET** `/api/driver/hires` - Completed hire history (`date`, `from`, `to`, pagination supported)
+
+```http
+GET /api/driver/hires?page=1&per_page=15&date={{filter_date}}&from={{filter_from}}&to={{filter_to}}
+```
+
+Returns completed assignment payloads using the same assignment response shape, with `trip_phase: "completed"`.
 
 ### Earnings
-- **GET** `/api/driver/earnings/summary` - Today/week/month summary
-- **GET** `/api/driver/earnings/daily?date=YYYY-MM-DD` - Daily breakdown
-- **GET** `/api/driver/earnings/range?from=YYYY-MM-DD&to=YYYY-MM-DD` - Date-range breakdown
 
-### Trip Tracking
-- **GET** `/api/driver/assignments/{id}/status` - Trip status for an assignment
-- **POST** `/api/driver/assignments/{id}/arrived` - Mark pickup arrived
-- **POST** `/api/driver/assignments/{id}/start` - Start trip
-- **POST** `/api/driver/assignments/{id}/stops/{stopId}/arrived` - Mark a route stop as arrived
-- **POST** `/api/driver/assignments/{id}/stops/{stopId}/picked-up` - Complete a pickup stop
-- **POST** `/api/driver/assignments/{id}/stops/{stopId}/dropped-off` - Complete a dropoff stop
-- **POST** `/api/driver/assignments/{id}/stops/{stopId}/skip` - Skip a pickup/dropoff stop with optional reason
-- **POST** `/api/driver/assignments/{id}/complete` - Complete trip (supports optional `ending_mileage`, `notes`)
-
-Multi-stop data is returned in assignment and status responses:
-- Assignment list/current payloads include `is_multi_stop` and `route_stops`.
-- Trip status includes `stops`, `current_stop`, and `allowed_actions`.
-- Use `current_stop.id` / `route_stops[].id` as `{stopId}` in stop action endpoints.
-- Use `booking_stop_id`, `type_sequence`, and `display_label` to show exactly which booking pickup/dropoff is being handled, for example `Pickup 2` or `Drop-off 1`.
-- Stop action responses include `processed_stop` for the stop just changed and `current_stop` for the next actionable stop.
-- Stop statuses are `pending`, `arrived`, `picked_up`, `dropped_off`, or `skipped`.
-- For multi-stop hires, call `start` at the starting place first. The starting pickup is auto-completed, then process each remaining stop in order. `complete` is blocked until every stop is completed or skipped.
-
-## Testing Workflow
-
-### 1. Authentication Flow
-
-```
-1. Login → Saves access_token, device_uuid
-2. Get Profile → Verify authentication
-3. Refresh Token → Get new access token
-4. Logout → Revoke token
+```http
+GET /api/driver/earnings/summary
+GET /api/driver/earnings/daily?date={{filter_date}}
+GET /api/driver/earnings/range?from={{filter_from}}&to={{filter_to}}
 ```
 
-### 2. Session Flow
-
-```
-1. Login
-2. Go Online → Saves session_id
-3. Send Heartbeat (every 60s)
-4. Update Location (every 10s)
-5. Go Offline → Ends session
-```
-
-### 3. Device Management Flow
-
-```
-1. Login → Device registered/updated
-2. List Devices → See all devices
-3. Get Current Device → Current device info
-4. Update Device → Update app version, etc.
-5. Update Push Token → Register for notifications
-```
-
-## Testing Different Scenarios
-
-### Test New Device
+Summary response:
 
 ```json
 {
-  "email": "driver@test.com",
-  "password": "password",
-  "device_fingerprint": "new-fingerprint-abc123...",
-  "platform": "ios"
+  "status": "success",
+  "data": {
+    "today": {
+      "date": "2026-05-21",
+      "total": 12500,
+      "trip_count": 1
+    },
+    "this_week": {
+      "from": "2026-05-18",
+      "to": "2026-05-24",
+      "total": 37500,
+      "trip_count": 3
+    },
+    "this_month": {
+      "from": "2026-05-01",
+      "to": "2026-05-31",
+      "total": 150000,
+      "trip_count": 12
+    },
+    "currency": "LKR"
+  }
 }
 ```
 
-**Expected:** Backend generates new UUID, returns it in response.
+Daily and range responses include `items`, which are completed assignment payloads.
 
-### Test Returning Device
+### Trip Status
+
+```http
+GET /api/driver/assignments/{{assignment_id}}/status
+```
+
+Response:
 
 ```json
 {
-  "email": "driver@test.com",
-  "password": "password",
-  "device_fingerprint": "new-fingerprint-abc123...",
-  "platform": "ios"
+  "status": "success",
+  "data": {
+    "assignment_id": "assignment-uuid",
+    "booking_id": "booking-uuid",
+    "trip_phase": "in_progress",
+    "is_multi_stop": true,
+    "pickup_location": {
+      "latitude": 7.1808,
+      "longitude": 79.8841,
+      "landmark": "Colombo Airport"
+    },
+    "pickup_arrival": {
+      "arrived_at": "2026-05-21T08:10:00+05:30",
+      "latitude": 7.1808,
+      "longitude": 79.8841
+    },
+    "trip_started_at": "2026-05-21T08:15:00+05:30",
+    "stops": [],
+    "current_stop": null,
+    "allowed_actions": [
+      "stop_action"
+    ],
+    "estimated_distance_to_pickup_km": null,
+    "near_pickup": false,
+    "cumulative_distance_km": 12.5,
+    "total_waiting_time_seconds": 300,
+    "waiting_period_count": 1,
+    "route_point_count": 75
+  }
 }
 ```
 
-**Expected:** Backend recognizes fingerprint, returns same UUID as before.
+### Trip Lifecycle
 
-### Test App Reinstall
+Pickup arrival:
+
+```http
+POST /api/driver/assignments/{{assignment_id}}/arrived
+```
 
 ```json
 {
-  "email": "driver@test.com",
-  "password": "password",
-  "device_fingerprint": "new-fingerprint-abc123...",
-  "platform": "ios"
+  "latitude": 7.181,
+  "longitude": 79.8839
 }
 ```
 
-**Expected:** Same fingerprint = same device recognized, same UUID returned.
+Start trip:
 
-### Test Different Device
+```http
+POST /api/driver/assignments/{{assignment_id}}/start
+```
+
+```json
+{}
+```
+
+Complete trip:
+
+```http
+POST /api/driver/assignments/{{assignment_id}}/complete
+```
 
 ```json
 {
-  "email": "driver@test.com",
-  "password": "password",
-  "device_fingerprint": "different-fingerprint-xyz789...",
-  "platform": "android"
+  "latitude": 6.9344,
+  "longitude": 79.8428,
+  "ending_mileage": 125000,
+  "notes": "Completed successfully"
 }
 ```
 
-**Expected:** Different fingerprint = new device, new UUID generated.
+Complete response:
 
-## Automated Tests
+```json
+{
+  "status": "success",
+  "message": "Trip completed",
+  "data": {
+    "assignment_id": "assignment-uuid",
+    "booking_id": "booking-uuid",
+    "booking_item_id": "item-uuid",
+    "total_distance_km": 18.75,
+    "total_duration_minutes": 95,
+    "total_waiting_time_seconds": 300,
+    "waiting_period_count": 1,
+    "pickup_coordinates": {
+      "latitude": 7.1808,
+      "longitude": 79.8841
+    },
+    "dropoff_coordinates": {
+      "latitude": 6.9344,
+      "longitude": 79.8428
+    },
+    "route_point_count": 75,
+    "hire_completed": true
+  }
+}
+```
 
-The collection includes automated tests that:
+### Multi-Stop Actions
 
-1. **Save tokens on login** - Access and refresh tokens saved to environment
-2. **Save device UUID** - Device UUID returned by backend saved to environment
-3. **Save session ID** - Session ID saved when going online
-4. **Verify responses** - Check status codes and response structure
+Use `current_stop.id` from trip status as `{{stop_id}}`.
 
-## Rate Limiting
+Mark arrived:
 
-The login endpoint has rate limiting:
-- **5 attempts per minute** per email/IP combination
-- After 5 failed attempts, wait 1 minute before retrying
+```http
+POST /api/driver/assignments/{{assignment_id}}/stops/{{stop_id}}/arrived
+```
 
-## Error Responses
+```json
+{
+  "latitude": 6.9285,
+  "longitude": 79.8625,
+  "notes": "Arrived at route stop"
+}
+```
 
-### 401 Unauthorized
+Complete pickup stop:
+
+```http
+POST /api/driver/assignments/{{assignment_id}}/stops/{{stop_id}}/picked-up
+```
+
+```json
+{
+  "latitude": 6.9285,
+  "longitude": 79.8625,
+  "notes": "Passenger picked up"
+}
+```
+
+Complete dropoff stop:
+
+```http
+POST /api/driver/assignments/{{assignment_id}}/stops/{{stop_id}}/dropped-off
+```
+
+```json
+{
+  "latitude": 6.9285,
+  "longitude": 79.8625,
+  "notes": "Passenger dropped off"
+}
+```
+
+Skip stop:
+
+```http
+POST /api/driver/assignments/{{assignment_id}}/stops/{{stop_id}}/skip
+```
+
+```json
+{
+  "latitude": 6.9285,
+  "longitude": 79.8625,
+  "reason": "Passenger did not arrive",
+  "notes": "Waited and skipped stop"
+}
+```
+
+Stop-action responses return full trip status plus `processed_stop`:
+
+```json
+{
+  "status": "success",
+  "message": "Stop arrival confirmed",
+  "data": {
+    "assignment_id": "assignment-uuid",
+    "trip_phase": "in_progress",
+    "current_stop": {},
+    "allowed_actions": [
+      "stop_action"
+    ],
+    "processed_stop": {
+      "id": "stop-uuid",
+      "booking_stop_id": "booking-item:item-uuid:pickup-client-stop-2",
+      "type": "pickup",
+      "type_sequence": 2,
+      "route_order": 2,
+      "status": "arrived",
+      "label": "Pickup 2",
+      "display_label": "Pickup 2",
+      "address": "Passenger 2 pickup",
+      "allowed_actions": [
+        "picked_up",
+        "skip"
+      ]
+    }
+  }
+}
+```
+
+Common trip stop errors:
+- `TRIP_NOT_IN_PROGRESS`
+- `STOP_ALREADY_COMPLETED`
+- `STOP_INVALID_STATE`
+- `STOP_OUT_OF_SEQUENCE`
+- `STOP_TYPE_MISMATCH`
+- `STOP_ARRIVAL_REQUIRED`
+- `TRIP_STOPS_INCOMPLETE`
+
+## Recommended Test Flows
+
+### First App Launch
+
+1. Version Check.
+2. Login.
+3. Get Profile.
+4. Update Device.
+5. Update Push Token.
+
+### Online Session
+
+1. Login.
+2. Go Online.
+3. Heartbeat.
+4. Update Location.
+5. Bulk Upload Buffered Locations if the device was offline.
+6. Go Offline.
+
+### Assignment and Hire
+
+1. List Assignments.
+2. Accept Assignment.
+3. Get Trip Status.
+4. Confirm Pickup Arrival.
+5. Start Trip.
+6. Process stops if `is_multi_stop` is true.
+7. Complete Trip.
+8. Check Hires.
+9. Check Earnings.
+
+### Notifications
+
+1. List Notifications.
+2. Get Unread Count.
+3. Show Notification.
+4. Mark Notification Read.
+5. Mark All Notifications Read.
+6. Delete Notification when needed.
+
+## Error Format
+
+Most errors follow:
+
 ```json
 {
   "status": "error",
-  "message": "Invalid credentials",
-  "error_code": "AUTH_INVALID_CREDENTIALS"
+  "message": "Human readable message",
+  "error_code": "ERROR_CODE",
+  "errors": {}
 }
 ```
 
-### 429 Too Many Requests
-```json
-{
-  "status": "error",
-  "message": "Too many login attempts. Please try again in 0:45 minutes."
-}
-```
-
-### 500 Server Error
-```json
-{
-  "status": "error",
-  "message": "Login failed",
-  "error_code": "AUTH_FAILED",
-  "error": "Detailed error message"
-}
-```
-
-## Tips
-
-1. **Use environment variables** - Don't hardcode values in requests
-2. **Check auto-saved values** - Tokens and IDs are saved automatically
-3. **Test error cases** - Try invalid credentials, expired tokens, etc.
-4. **Monitor rate limits** - Wait between failed login attempts
-5. **Update device info** - Keep device information current
-
-## Support
-
-For issues or questions:
-- Check the API documentation: `public-thetaxi/docs/DRIVER_MOBILE_API.md`
-- Review implementation guides:
-  - `MOBILE_DEVICE_FINGERPRINT_GUIDE.md` - Fingerprint generation
-  - `BACKEND_UUID_SOLUTION_SUMMARY.md` - Backend UUID approach
-- Check application logs for detailed error messages
+Validation errors return HTTP `422`.
+Authentication failures return HTTP `401`.
+Driver-context failures return HTTP `403`.
+Missing records return HTTP `404`.
 
 ## Version History
 
+### v2.2 (2026-05-21)
+- Rebuilt README with endpoint index, auth requirements, request examples, response examples, and workflow guidance.
+- Updated docs for current request/response shapes across driver settings, auth, sessions, devices, notifications, assignments, trips, and earnings.
+
+### v2.1 (2026-05-21)
+- Added public driver mobile version-check endpoint.
+- Added portal-managed latest version, mandatory update flag, and update message.
+- Documented app-owned Play Store/App Store redirect behavior.
+
 ### v2.0 (2026-02-10)
-- Added device fingerprint support
-- Backend now generates device UUIDs
-- Updated login request/response format
-- Added example responses
-- Improved documentation
+- Added device fingerprint support.
+- Backend generates device UUIDs.
+- Updated login request/response format.
+- Added current assignment in login response.
 
 ### v1.0 (2026-02-05)
-- Initial release
-- Basic authentication and device management
-- Status and location tracking
-- Session management
+- Initial driver mobile API collection.

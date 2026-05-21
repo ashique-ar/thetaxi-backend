@@ -325,6 +325,19 @@ class WebsiteSettingController extends Controller
     }
 
     /**
+     * Get driver mobile app settings
+     */
+    public function driverMobile(): JsonResponse
+    {
+        $settings = $this->settingsService->getDriverMobileSettings();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $settings
+        ]);
+    }
+
+    /**
      * Get appearance settings
      */
     public function appearance(): JsonResponse
