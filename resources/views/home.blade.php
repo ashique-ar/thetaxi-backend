@@ -1138,31 +1138,31 @@
                             <div class="cart-breakdown">
                                 <div class="cart-subtotal mb-2">
                                     <span>Subtotal:</span>
-                                    <span id="cartSubtotalPrice"><span class="currency-symbol">{{ getCurrencySymbol() }}</span> <span class="amount">0.00</span></span>
+                                    <span id="cartSubtotalPrice"><span class="currency-symbol">{{ getCurrencySymbol() }}</span> <span class="amount">0</span></span>
                                 </div>
                                 <div class="cart-addon-charges mb-1" style="display: none;">
                                     <span>Addon Charges:</span>
-                                    <span id="cartAddonCharges"><span class="currency-symbol">{{ getCurrencySymbol() }}</span> <span class="amount">0.00</span></span>
+                                    <span id="cartAddonCharges"><span class="currency-symbol">{{ getCurrencySymbol() }}</span> <span class="amount">0</span></span>
                                 </div>
                                 <div class="cart-extra-km-charges mb-1" style="display: none;">
                                     <span>Extra KM Charges:</span>
-                                    <span id="cartExtraKmCharges"><span class="currency-symbol">{{ getCurrencySymbol() }}</span> <span class="amount">0.00</span></span>
+                                    <span id="cartExtraKmCharges"><span class="currency-symbol">{{ getCurrencySymbol() }}</span> <span class="amount">0</span></span>
                                 </div>
                                 <div class="cart-service-fee mb-1" style="display: none;">
                                     <span>Service Fee:</span>
-                                    <span id="cartServiceFee"><span class="currency-symbol">{{ getCurrencySymbol() }}</span> <span class="amount">0.00</span></span>
+                                    <span id="cartServiceFee"><span class="currency-symbol">{{ getCurrencySymbol() }}</span> <span class="amount">0</span></span>
                                 </div>
                                 <div class="cart-tax mb-1" style="display: none;">
                                     <span>Tax:</span>
-                                    <span id="cartTax"><span class="currency-symbol">{{ getCurrencySymbol() }}</span> <span class="amount">0.00</span></span>
+                                    <span id="cartTax"><span class="currency-symbol">{{ getCurrencySymbol() }}</span> <span class="amount">0</span></span>
                                 </div>
                                 <div class="cart-vat mb-1" style="display: none;">
                                     <span>VAT:</span>
-                                    <span id="cartVat"><span class="currency-symbol">{{ getCurrencySymbol() }}</span> <span class="amount">0.00</span></span>
+                                    <span id="cartVat"><span class="currency-symbol">{{ getCurrencySymbol() }}</span> <span class="amount">0</span></span>
                                 </div>
                                 <div class="cart-total mb-2 mt-2" style="border-top: 1px solid rgba(255,255,255,0.2); padding-top: 8px;">
                                     <span><strong>Total:</strong></span>
-                                    <strong id="cartTotalPrice"><span class="currency-symbol">{{ getCurrencySymbol() }}</span> <span class="amount">0.00</span></strong>
+                                    <strong id="cartTotalPrice"><span class="currency-symbol">{{ getCurrencySymbol() }}</span> <span class="amount">0</span></strong>
                                 </div>
                             </div>
                             <a href="{{ route('cart') }}" class="btn btn-light w-100">
@@ -1222,11 +1222,11 @@
             let pricingHtml = '';
             if (fixedRate) {
                 pricingHtml =
-                    `<span>${pricingLabel}: <small class="currency-symbol">${currencySymbol}</small> ${itemTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>`;
+                    `<span>${pricingLabel}: <small class="currency-symbol">${currencySymbol}</small> ${Math.floor(Math.max(0, itemTotal)).toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0})}</span>`;
             } else {
                 pricingHtml = `
-                        <span>${pricingLabel}: <small class="currency-symbol">${currencySymbol}</small> ${price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
-                        <strong><small class="currency-symbol">${currencySymbol}</small> ${itemTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</strong>
+                        <span>${pricingLabel}: <small class="currency-symbol">${currencySymbol}</small> ${Math.floor(Math.max(0, price)).toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0})}</span>
+                        <strong><small class="currency-symbol">${currencySymbol}</small> ${Math.floor(Math.max(0, itemTotal)).toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0})}</strong>
                     `;
             }
 
@@ -1253,14 +1253,14 @@
 
         // For home page, we calculate from individual cart items
         $('#cartTotalPrice .amount').text(total.toLocaleString('en-US', {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0
         }));
 
         // Set subtotal to the calculated base total (before any server-side charges)
         $('#cartSubtotalPrice .amount').text(total.toLocaleString('en-US', {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0
         }));
 
         // Hide all breakdown items for now since we don't have the server data on home page

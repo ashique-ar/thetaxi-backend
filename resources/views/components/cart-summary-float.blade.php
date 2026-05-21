@@ -181,7 +181,7 @@
                     <span>Subtotal:</span>
                     <span id="cartSubtotalPrice">
                         <span class="currency-symbol">{{ $currencySymbol }}</span> 
-                        <span class="amount">0.00</span>
+                        <span class="amount">0</span>
                     </span>
                 </div>
                 
@@ -190,7 +190,7 @@
                     <span>Addon Charges:</span>
                     <span id="cartAddonCharges">
                         <span class="currency-symbol">{{ $currencySymbol }}</span> 
-                        <span class="amount">0.00</span>
+                        <span class="amount">0</span>
                     </span>
                 </div>
                 
@@ -199,7 +199,7 @@
                     <span>Extra KM Charges:</span>
                     <span id="cartExtraKmCharges">
                         <span class="currency-symbol">{{ $currencySymbol }}</span> 
-                        <span class="amount">0.00</span>
+                        <span class="amount">0</span>
                     </span>
                 </div>
                 
@@ -208,7 +208,7 @@
                     <span>Service Fee:</span>
                     <span id="cartServiceFee">
                         <span class="currency-symbol">{{ $currencySymbol }}</span> 
-                        <span class="amount">0.00</span>
+                        <span class="amount">0</span>
                     </span>
                 </div>
                 
@@ -217,7 +217,7 @@
                     <span>Tax:</span>
                     <span id="cartTax">
                         <span class="currency-symbol">{{ $currencySymbol }}</span> 
-                        <span class="amount">0.00</span>
+                        <span class="amount">0</span>
                     </span>
                 </div>
                 
@@ -226,7 +226,7 @@
                     <span>VAT:</span>
                     <span id="cartVat">
                         <span class="currency-symbol">{{ $currencySymbol }}</span> 
-                        <span class="amount">0.00</span>
+                        <span class="amount">0</span>
                     </span>
                 </div>
                 
@@ -235,7 +235,7 @@
                     <span><strong>Total:</strong></span>
                     <strong id="cartTotalPrice">
                         <span class="currency-symbol">{{ $currencySymbol }}</span> 
-                        <span class="amount">0.00</span>
+                        <span class="amount">0</span>
                     </strong>
                 </div>
             </div>
@@ -367,22 +367,22 @@
                     pricingHtml = `
                         <div class="return-trip-breakdown text-white-0">
                             <div style="color: #fff; font-size: 13px;">
-                                <i class="bi bi-arrow-right-circle"></i> Outbound: <small class="currency-symbol">${cartCurrencySymbol}</small> ${oneWay.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                <i class="bi bi-arrow-right-circle"></i> Outbound: <small class="currency-symbol">${cartCurrencySymbol}</small> ${Math.floor(Math.max(0, oneWay)).toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0})}
                             </div>
                             <div style="color: #fff; font-size: 13px;">
-                                <i class="bi bi-arrow-left-circle"></i> Return: ${returnPct > 0 ? '<span class="badge bg-success" style="font-size: 11px; margin-left: 6px;">' + returnPct + '% off</span>' : ''} <small class="currency-symbol">${cartCurrencySymbol}</small> ${returnPrice.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                <i class="bi bi-arrow-left-circle"></i> Return: ${returnPct > 0 ? '<span class="badge bg-success" style="font-size: 11px; margin-left: 6px;">' + returnPct + '% off</span>' : ''} <small class="currency-symbol">${cartCurrencySymbol}</small> ${Math.floor(Math.max(0, returnPrice)).toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0})}
                             </div>
                             <div style="margin-top:6px; font-weight:700;">
-                                <small class="currency-symbol">${cartCurrencySymbol}</small> ${itemTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                <small class="currency-symbol">${cartCurrencySymbol}</small> ${Math.floor(Math.max(0, itemTotal)).toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0})}
                             </div>
                         </div>
                     `;
                 } else if (fixedRate) {
-                    pricingHtml = `<span>${pricingLabel}: <small class="currency-symbol">${cartCurrencySymbol}</small> ${itemTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>`;
+                    pricingHtml = `<span>${pricingLabel}: <small class="currency-symbol">${cartCurrencySymbol}</small> ${Math.floor(Math.max(0, itemTotal)).toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0})}</span>`;
                 } else {
                     pricingHtml = `
-                        <span>${pricingLabel}: <small class="currency-symbol">${cartCurrencySymbol}</small> ${price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
-                        <strong><small class="currency-symbol">${cartCurrencySymbol}</small> ${itemTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</strong>
+                        <span>${pricingLabel}: <small class="currency-symbol">${cartCurrencySymbol}</small> ${Math.floor(Math.max(0, price)).toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0})}</span>
+                        <strong><small class="currency-symbol">${cartCurrencySymbol}</small> ${Math.floor(Math.max(0, itemTotal)).toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0})}</strong>
                     `;
                 }
 
@@ -413,16 +413,16 @@
 
             // Update subtotal (base amount before additional charges)
             $('#cartSubtotalPrice .amount').text(subtotal.toLocaleString('en-US', {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0
             }));
 
             // Update breakdown items - show/hide based on value (Requirements 1.6, 1.7, 1.8, 1.9, 1.10)
             const updateBreakdownItem = (selector, value) => {
                 if (value && parseFloat(value) > 0) {
                     $(selector + ' .amount').text(parseFloat(value).toLocaleString('en-US', {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0
                     }));
                     $(selector).show();
                 } else {
@@ -438,8 +438,8 @@
 
             // Update final total (should be subtotal + all charges)
             $('#cartTotalPrice .amount').text(finalTotal.toLocaleString('en-US', {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0
             }));
         }
 

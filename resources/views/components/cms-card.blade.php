@@ -51,7 +51,7 @@
     }
 
     // Format price
-    $price = $itemPrice ? number_format($itemPrice, 2) : null;
+    $price = $itemPrice ? number_format(floor(max(0, $itemPrice)), 0) : null;
 
     // Format date
     $date = $publishedDate

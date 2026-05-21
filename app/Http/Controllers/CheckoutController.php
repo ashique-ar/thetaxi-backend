@@ -398,6 +398,13 @@ class CheckoutController extends Controller
             $discount = $totals['coupon_discount'] ?? 0;
             $total = $totals['total'] ?? 0;
 
+            $subtotal = max(0, $this->currencyService->normalizeAmount($subtotal));
+            $serviceFee = max(0, $this->currencyService->normalizeAmount($serviceFee));
+            $tax = max(0, $this->currencyService->normalizeAmount($tax));
+            $vat = max(0, $this->currencyService->normalizeAmount($vat));
+            $discount = max(0, $this->currencyService->normalizeAmount($discount));
+            $total = max(0, $this->currencyService->normalizeAmount($total));
+
             // Log total amounts for debugging
             Log::info('Cart totals retrieved', [
                 'cart_id' => $cartModel->id,
@@ -424,6 +431,7 @@ class CheckoutController extends Controller
                 $paymentAmount = max($paymentAmount, $advanceMinAmount);
                 $paymentAmount = min($paymentAmount, $total);
             }
+            $paymentAmount = max(0, $this->currencyService->normalizeAmount($paymentAmount));
 
             // Prepare flight details
             $flightDetails = null;
@@ -558,18 +566,18 @@ class CheckoutController extends Controller
 
                 // Cart items have 'price' (unit price) and 'total_price' (total price)
                 if (isset($item['price'])) {
-                    $unitPrice = floatval($item['price']);
+                    $unitPrice = max(0, $this->currencyService->normalizeAmount($item['price']));
                 }
 
                 if (isset($item['total_price'])) {
-                    $totalPrice = floatval($item['total_price']);
+                    $totalPrice = max(0, $this->currencyService->normalizeAmount($item['total_price']));
                 } elseif (isset($item['total'])) {
-                    $totalPrice = floatval($item['total']);
+                    $totalPrice = max(0, $this->currencyService->normalizeAmount($item['total']));
                 } elseif (isset($item['amount'])) {
-                    $totalPrice = floatval($item['amount']);
+                    $totalPrice = max(0, $this->currencyService->normalizeAmount($item['amount']));
                 } elseif ($unitPrice > 0 && $durationDays > 0) {
                     // Fallback: calculate total from unit price and duration
-                    $totalPrice = $unitPrice * $durationDays;
+                    $totalPrice = max(0, $this->currencyService->normalizeAmount($unitPrice * $durationDays));
                 }
 
                 // Normalize service_type_id: extract from service_type_data['id'] or ensure it's a valid UUID or null

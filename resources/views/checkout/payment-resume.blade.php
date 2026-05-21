@@ -159,15 +159,15 @@
                                             <div class="return-pricing" style="margin-top:12px; padding-top:10px; border-top:1px solid #eee;">
                                                 <div style="display:flex; justify-content:space-between; padding:4px 0;">
                                                     <div>Outbound Trip</div>
-                                                    <div>{{ $currencySymbol }} {{ number_format((float) ($oneWayPrice ?? 0), 2) }}</div>
+                                                    <div>{{ $currencySymbol }} {{ number_format(floor(max(0, (float) ($oneWayPrice ?? 0))), 0) }}</div>
                                                 </div>
                                                 <div style="display:flex; justify-content:space-between; padding:4px 0;">
                                                     <div>Return Trip @if(!empty($returnDiscount) && $returnDiscount > 0) <small class="text-success">({{ $returnDiscount }}% off)</small>@endif</div>
-                                                    <div>{{ $currencySymbol }} {{ number_format((float) ($returnPrice ?? 0), 2) }}</div>
+                                                    <div>{{ $currencySymbol }} {{ number_format(floor(max(0, (float) ($returnPrice ?? 0))), 0) }}</div>
                                                 </div>
                                                 <div style="display:flex; justify-content:space-between; font-weight:700; padding-top:6px; border-top:1px dashed #eee; margin-top:6px;">
                                                     <div>Combined</div>
-                                                    <div>{{ $currencySymbol }} {{ number_format((float) (($oneWayPrice ?? 0) + ($returnPrice ?? 0)), 2) }}</div>
+                                                    <div>{{ $currencySymbol }} {{ number_format(floor(max(0, (float) (($oneWayPrice ?? 0) + ($returnPrice ?? 0)))), 0) }}</div>
                                                 </div>
                                             </div>
                                         @endif
@@ -186,15 +186,15 @@
                                                             <small style="color: #777; margin-left: 4px;">
                                                                 (Qty: {{ $addon['qty'] }}@if ($addon['rate'] > 0)
                                                                     ×
-                                                                    {{ $currencySymbol }}{{ number_format($addon['rate'], 2) }}
+                                                                    {{ $currencySymbol }}{{ number_format(floor(max(0, $addon['rate'])), 0) }}
                                                                 @elseif($addon['total'] > 0 && $addon['qty'] > 0)
                                                                     - Avg:
-                                                                    {{ $currencySymbol }}{{ number_format($addon['total'] / $addon['qty'], 2) }}
+                                                                    {{ $currencySymbol }}{{ number_format(floor(max(0, $addon['total'] / $addon['qty'])), 0) }}
                                                                 @endif)
                                                             </small>
                                                         </span>
                                                         <span
-                                                            style="color: #BF2629; font-weight: 600;">{{ $currencySymbol }}{{ number_format($addon['total'], 2) }}</span>
+                                                            style="color: #BF2629; font-weight: 600;">{{ $currencySymbol }}{{ number_format(floor(max(0, $addon['total'])), 0) }}</span>
                                                     </div>
                                                 @endforeach
                                             </div>
@@ -211,12 +211,12 @@
                                                         <strong>{{ number_format($extraKilometers) }} km</strong>
                                                         @if ($extraKmRate > 0)
                                                             <small style="color: #777;"> @
-                                                                {{ $currencySymbol }}{{ number_format($extraKmRate, 2) }}/km</small>
+                                                                {{ $currencySymbol }}{{ number_format(floor(max(0, $extraKmRate)), 0) }}/km</small>
                                                         @endif
                                                     </span>
                                                     @if ($extraKmTotal > 0)
                                                         <span
-                                                            style="color: #BF2629; font-weight: 600;">{{ $currencySymbol }}{{ number_format($extraKmTotal, 2) }}</span>
+                                                            style="color: #BF2629; font-weight: 600;">{{ $currencySymbol }}{{ number_format(floor(max(0, $extraKmTotal)), 0) }}</span>
                                                     @endif
                                                 </div>
                                             </div>
@@ -239,14 +239,14 @@
                                         @if ($contextAddonCharges > 0)
                                             <tr>
                                                 <td>Addon Charges</td>
-                                                <td>{{ $currencySymbol }} {{ number_format($contextAddonCharges, 2) }}
+                                                <td>{{ $currencySymbol }} {{ number_format(floor(max(0, $contextAddonCharges)), 0) }}
                                                 </td>
                                             </tr>
                                         @endif
                                         @if ($contextExtraKmCharges > 0)
                                             <tr>
                                                 <td>Extra KM Charges</td>
-                                                <td>{{ $currencySymbol }} {{ number_format($contextExtraKmCharges, 2) }}
+                                                <td>{{ $currencySymbol }} {{ number_format(floor(max(0, $contextExtraKmCharges)), 0) }}
                                                 </td>
                                             </tr>
                                         @endif
@@ -303,53 +303,53 @@
                                 <tr>
                                     <td>Base Amount</td>
                                     <td>{{ $currencySymbol }}
-                                        {{ number_format($context['pricing']['base_amount'], 2) }}
+                                        {{ number_format(floor(max(0, $context['pricing']['base_amount'])), 0) }}
                                     </td>
                                 </tr>
                                 @if ($context['pricing']['service_fee'] > 0)
                                     <tr>
                                         <td>Service Fee</td>
                                         <td>{{ $currencySymbol }}
-                                            {{ number_format($context['pricing']['service_fee'], 2) }}</td>
+                                            {{ number_format(floor(max(0, $context['pricing']['service_fee'])), 0) }}</td>
                                     </tr>
                                 @endif
                                 @if ($context['pricing']['tax_amount'] > 0)
                                     <tr>
                                         <td>Tax</td>
                                         <td>{{ $currencySymbol }}
-                                            {{ number_format($context['pricing']['tax_amount'], 2) }}</td>
+                                            {{ number_format(floor(max(0, $context['pricing']['tax_amount'])), 0) }}</td>
                                     </tr>
                                 @endif
                                 @if (($context['pricing']['vat_amount'] ?? 0) > 0)
                                     <tr>
                                         <td>VAT</td>
                                         <td>{{ $currencySymbol }}
-                                            {{ number_format($context['pricing']['vat_amount'], 2) }}</td>
+                                            {{ number_format(floor(max(0, $context['pricing']['vat_amount'])), 0) }}</td>
                                     </tr>
                                 @endif
                                 @if ($context['pricing']['discount_amount'] > 0)
                                     <tr style="color: #16a34a;">
                                         <td>Discount</td>
                                         <td>-{{ $currencySymbol }}
-                                            {{ number_format($context['pricing']['discount_amount'], 2) }}</td>
+                                            {{ number_format(floor(max(0, $context['pricing']['discount_amount'])), 0) }}</td>
                                     </tr>
                                 @endif
                                 <tr class="price-total">
                                     <td>Total Booking Amount</td>
                                     <td>{{ $currencySymbol }}
-                                        {{ number_format($context['pricing']['total_estimated'], 2) }}</td>
+                                        {{ number_format(floor(max(0, $context['pricing']['total_estimated'])), 0) }}</td>
                                 </tr>
                                 @if ($context['pricing']['amount_paid'] > 0)
                                     <tr style="background: #eff6ff;">
                                         <td><strong>Amount Already Paid</strong></td>
                                         <td><strong>{{ $currencySymbol }}
-                                                {{ number_format($context['pricing']['amount_paid'], 2) }}</strong>
+                                                {{ number_format(floor(max(0, $context['pricing']['amount_paid'])), 0) }}</strong>
                                         </td>
                                     </tr>
                                 @endif
                                 <tr style="background: #fef3c7;">
                                     <td><strong>Amount Due Today</strong></td>
-                                    <td><strong>{{ $currencySymbol }} {{ number_format($amountDue, 2) }}</strong></td>
+                                    <td><strong>{{ $currencySymbol }} {{ number_format(floor(max(0, $amountDue)), 0) }}</strong></td>
                                 </tr>
                                 <tr>
                                     <td>Payment Status</td>
@@ -399,7 +399,7 @@
                                 <!-- Payment CTA -->
                                 <div class="btn-container" style="margin: 30px 0;">
                                     <button type="submit" class="btn">
-                                        Pay {{ $currencySymbol }} {{ number_format($amountDue, 2) }}
+                                        Pay {{ $currencySymbol }} {{ number_format(floor(max(0, $amountDue)), 0) }}
                                     </button>
                                     <p style="text-align: center; color: #717171; font-size: 13px; margin: 10px 0;">
                                         <span style="color: #28a745;">✓ Secure SSL Encryption</span> •

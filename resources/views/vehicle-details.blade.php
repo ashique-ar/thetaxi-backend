@@ -297,7 +297,7 @@
                                     data-initial-days="{{ $numDays }}">
                                     <small>Current</small>
                                     <strong id="vehicleHeaderPriceValue">{{ getCurrencySymbol() }}
-                                        {{ number_format((float) ($pricing['base_amount'] ?? 0), 2) }}</strong>
+                                        {{ number_format(floor(max(0, (float) ($pricing['base_amount'] ?? 0))), 0) }}</strong>
                                 </div>
                             </div>
                             <div class="booking-shell-body">
@@ -318,12 +318,12 @@
                                 <div class="text-end">
                                     <div class="vehicle-summary-price" id="vehicleSummaryPrice">
                                         {{ getCurrencySymbol() }}
-                                        {{ number_format((float) ($pricing['base_amount'] ?? 0), 2) }}
+                                        {{ number_format(floor(max(0, (float) ($pricing['base_amount'] ?? 0))), 0) }}
                                     </div>
                                     @if (($pricing['base_amount'] ?? 0) > 0 && $numDays > 1)
                                         <div class="vehicle-summary-unit" id="vehicleSummaryUnit">
                                             {{ getCurrencySymbol() }}
-                                            {{ number_format((float) ($pricing['base_amount'] ?? 0) / $numDays, 2) }}/day
+                                            {{ number_format(floor(max(0, (float) ($pricing['base_amount'] ?? 0) / $numDays)), 0) }}/day
                                         </div>
                                     @else
                                         <div class="vehicle-summary-unit" id="vehicleSummaryUnit">per day</div>
@@ -929,7 +929,7 @@
             function formatMoney(amount) {
                 const value = Number(amount || 0);
                 const symbol = (priceHeader && priceHeader.dataset.currencySymbol) || '{{ getCurrencySymbol() }}';
-                return `${symbol} ${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                return `${symbol} ${Math.floor(Math.max(0, value)).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
             }
 
             function resolveServiceLabel(code) {
@@ -1009,7 +1009,7 @@
                         summaryUnit.textContent = durationLabel;
                     }
                 }
-                if (offerPriceMeta) offerPriceMeta.setAttribute('content', amount.toFixed(2));
+                if (offerPriceMeta) offerPriceMeta.setAttribute('content', Math.floor(Math.max(0, amount)).toFixed(0));
                 if (offerCurrencyMeta) offerCurrencyMeta.setAttribute('content', currencyCode);
                 if (priceHeader) {
                     priceHeader.dataset.currencyCode = currencyCode;

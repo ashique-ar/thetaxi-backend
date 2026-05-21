@@ -277,7 +277,7 @@ class PromoCode extends BaseModel
                 'error_code' => 'PROMO_CODE_MINIMUM_NOT_MET',
                 'message' => sprintf(
                     'Minimum order amount of %s is required to use this promo code.',
-                    number_format($this->minimum_order_amount, 2)
+                    number_format(floor(max(0, $this->minimum_order_amount)), 0)
                 ),
                 'details' => [
                     'minimum_required' => $this->minimum_order_amount,

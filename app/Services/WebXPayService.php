@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use App\Models\Booking\Booking;
 use App\Models\Website\WebsiteSetting;
+use App\Services\CurrencyService;
 use phpseclib3\Crypt\RSA;
 use phpseclib3\Crypt\PublicKeyLoader;
 use phpseclib3\Crypt\Common\AsymmetricKey;
@@ -100,12 +101,13 @@ class WebXPayService
         }
 
         try {
+            $amount = max(0, app(CurrencyService::class)->normalizeAmount($amount));
             $orderId = $booking->booking_number . '-' . time();
 
             // Step 1: Create plaintext payment data
             // Format: unique_order_id|total_amount
-            // WebXPay expects amount as decimal with 2 decimal places (e.g., 240696.51)
-            $amountFormatted = number_format($amount, 2, '.', '');
+            // WebXPay receives whole-unit amounts after pricing/currency normalization.
+            $amountFormatted = number_format($amount, 0, '.', '');
             $plaintext = $orderId . '|' . $amountFormatted;
 
             // Step 2: Encrypt with RSA public key

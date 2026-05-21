@@ -88,7 +88,7 @@
         <table class="info-table">
             <tr class="price-total">
                 <td>Amount to Pay</td>
-                <td>{{ $currencySymbol }} {{ number_format($amount, 2) }}</td>
+                <td>{{ $currencySymbol }} {{ number_format(floor(max(0, $amount)), 0) }}</td>
             </tr>
             <tr>
                 <td>Payment Type</td>
@@ -156,7 +156,7 @@
         @if (!$isFallbackPaymentLink)
             <a href="{{ $paymentLink }}" class="btn"
                 style="display: inline-block; background-color: #15803d; background-image: linear-gradient(135deg, #15803d 0%, #166534 100%); box-shadow: 0 4px 12px rgba(21, 128, 61, 0.24); color: #FFFFFF; padding: 15px 40px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 0; font-size: 16px;">
-                Pay {{ $currencySymbol }} {{ number_format($amount, 2) }}
+                Pay {{ $currencySymbol }} {{ number_format(floor(max(0, $amount)), 0) }}
             </a>
             <p style="text-align: center; color: #717171; font-size: 13px; margin: 10px 0;">
                 <span style="color: #28a745;">✓ Secure SSL Encryption</span> •

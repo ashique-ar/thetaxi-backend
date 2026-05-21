@@ -878,7 +878,7 @@ class CartController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Coupon applied successfully! ' . $coupon['description'],
-            'discount_amount' => number_format($discountAmount, 2),
+            'discount_amount' => number_format(floor(max(0, $discountAmount)), 0),
             'coupon_code' => $couponCode
         ]);
     }
@@ -912,14 +912,14 @@ class CartController extends Controller
             return response()->json([
                 'success' => true,
                 'cart_count' => count($dbCart->items ?? []),
-                'subtotal' => number_format($cartTotals['subtotal'] ?? 0, 2),
-                'service_fee' => number_format($cartTotals['service_fee'] ?? 0, 2),
-                'addon_charges' => number_format($cartTotals['addon_charges'] ?? 0, 2),
-                'extra_km_charges' => number_format($cartTotals['extra_km_charges'] ?? 0, 2),
-                'tax' => number_format($cartTotals['tax'] ?? 0, 2),
-                'vat' => number_format($cartTotals['vat'] ?? 0, 2),
-                'discount' => number_format($cartTotals['coupon_discount'] ?? 0, 2),
-                'total' => number_format($cartTotals['total'] ?? 0, 2),
+                'subtotal' => number_format(floor(max(0, $cartTotals['subtotal'] ?? 0)), 0),
+                'service_fee' => number_format(floor(max(0, $cartTotals['service_fee'] ?? 0)), 0),
+                'addon_charges' => number_format(floor(max(0, $cartTotals['addon_charges'] ?? 0)), 0),
+                'extra_km_charges' => number_format(floor(max(0, $cartTotals['extra_km_charges'] ?? 0)), 0),
+                'tax' => number_format(floor(max(0, $cartTotals['tax'] ?? 0)), 0),
+                'vat' => number_format(floor(max(0, $cartTotals['vat'] ?? 0)), 0),
+                'discount' => number_format(floor(max(0, $cartTotals['coupon_discount'] ?? 0)), 0),
+                'total' => number_format(floor(max(0, $cartTotals['total'] ?? 0)), 0),
                 'applied_coupon' => session()->get('applied_coupon')
             ]);
         } catch (\Exception $e) {

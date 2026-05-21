@@ -237,7 +237,7 @@ class CmsContent extends BaseModel
             return null;
         }
 
-        return $this->price_currency . ' ' . number_format($this->price, 2);
+        return $this->price_currency . ' ' . number_format(floor(max(0, $this->price)), 0);
     }
 
     /**

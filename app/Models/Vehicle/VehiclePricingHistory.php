@@ -135,7 +135,8 @@ class VehiclePricingHistory extends BaseModel
     public function getFormattedRateChangeAttribute()
     {
         $sign = $this->rate_change >= 0 ? '+' : '';
-        return $sign . number_format($this->rate_change, 2);
+        $amount = (float) $this->rate_change;
+        return $sign . number_format($amount < 0 ? ceil($amount) : floor($amount), 0);
     }
 
     /**

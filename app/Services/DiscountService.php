@@ -449,7 +449,7 @@ class DiscountService
                 'base_amount' => $baseAmount,
                 'addons_amount' => $addonsAmount,
                 'subtotal' => $priceBeforeCustomizations,
-                'formatted' => 'LKR ' . number_format($priceBeforeCustomizations, 2),
+                'formatted' => 'LKR ' . number_format(floor(max(0, $priceBeforeCustomizations)), 0),
             ],
             'customizations' => [
                 'total_adjustments' => $customizationAdjustments,
@@ -459,24 +459,24 @@ class DiscountService
             ],
             'price_after_customizations' => [
                 'amount' => $priceAfterCustomizations,
-                'formatted' => 'LKR ' . number_format($priceAfterCustomizations, 2),
+                'formatted' => 'LKR ' . number_format(floor(max(0, $priceAfterCustomizations)), 0),
             ],
             'discounts' => [
                 'new_discount' => [
                     'name' => $discount->discount_name,
                     'type' => $discount->type,
                     'amount' => $discountAmount,
-                    'formatted' => '-LKR ' . number_format($discountAmount, 2),
+                    'formatted' => '-LKR ' . number_format(floor(max(0, $discountAmount)), 0),
                 ],
                 'existing_discounts' => $existingDiscounts,
                 'total_discount_amount' => $totalDiscountAmount,
-                'formatted_total' => '-LKR ' . number_format($totalDiscountAmount, 2),
+                'formatted_total' => '-LKR ' . number_format(floor(max(0, $totalDiscountAmount)), 0),
             ],
             'tax_calculation' => [
                 'taxable_amount' => $subtotalAfterDiscounts,
                 'tax_amount' => $taxAmount,
                 'tax_rate' => '0%', // Adjust based on your tax calculation
-                'formatted' => 'LKR ' . number_format($taxAmount, 2),
+                'formatted' => 'LKR ' . number_format(floor(max(0, $taxAmount)), 0),
             ],
             'final_totals' => [
                 'subtotal_after_discounts' => $subtotalAfterDiscounts,
@@ -485,8 +485,8 @@ class DiscountService
                 'original_amount' => $originalAmount,
                 'total_savings' => max(0, $originalAmount - $finalTotal),
                 'formatted' => [
-                    'subtotal' => 'LKR ' . number_format($subtotalAfterDiscounts, 2),
-                    'tax' => 'LKR ' . number_format($taxAmount, 2),
+                    'subtotal' => 'LKR ' . number_format(floor(max(0, $subtotalAfterDiscounts)), 0),
+                    'tax' => 'LKR ' . number_format(floor(max(0, $taxAmount)), 0),
                     'total' => 'LKR ' . number_format($finalTotal, 2),
                     'savings' => 'LKR ' . number_format(max(0, $originalAmount - $finalTotal), 2),
                 ],

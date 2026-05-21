@@ -178,30 +178,30 @@
                                 <table class="info-table">
                                     <tr>
                                         <td>Subtotal</td>
-                                        <td>{{ $currencySymbol }} {{ number_format($booking->base_amount, 2) }}</td>
+                                        <td>{{ $currencySymbol }} {{ number_format(floor(max(0, $booking->base_amount)), 0) }}</td>
                                     </tr>
                                     @if ($booking->service_fee > 0)
                                         <tr>
                                             <td>Service Fee</td>
-                                            <td>{{ $currencySymbol }} {{ number_format($booking->service_fee, 2) }}</td>
+                                            <td>{{ $currencySymbol }} {{ number_format(floor(max(0, $booking->service_fee)), 0) }}</td>
                                         </tr>
                                     @endif
                                     @if ($booking->tax_amount > 0)
                                         <tr>
                                             <td>{{ config('booking.tax.label', 'NBT') }} ({{ $taxRateDisplay }}%)</td>
-                                            <td>{{ $currencySymbol }} {{ number_format($booking->tax_amount, 2) }}</td>
+                                            <td>{{ $currencySymbol }} {{ number_format(floor(max(0, $booking->tax_amount)), 0) }}</td>
                                         </tr>
                                     @endif
                                     @if (($booking->vat_amount ?? 0) > 0)
                                         <tr>
                                             <td>{{ config('booking.vat.label', 'VAT') }} ({{ $vatRateDisplay }}%)</td>
-                                            <td>{{ $currencySymbol }} {{ number_format($booking->vat_amount, 2) }}</td>
+                                            <td>{{ $currencySymbol }} {{ number_format(floor(max(0, $booking->vat_amount)), 0) }}</td>
                                         </tr>
                                     @endif
                                     @if ($booking->discount_amount > 0)
                                         <tr style="color: #16a34a;">
                                             <td>Discount</td>
-                                            <td>-{{ $currencySymbol }} {{ number_format($booking->discount_amount, 2) }}
+                                            <td>-{{ $currencySymbol }} {{ number_format(floor(max(0, $booking->discount_amount)), 0) }}
                                             </td>
                                         </tr>
                                     @endif
@@ -228,44 +228,44 @@
                                     @if ($addonCharges > 0)
                                         <tr>
                                             <td>Addon Charges</td>
-                                            <td>{{ $currencySymbol }} {{ number_format($addonCharges, 2) }}</td>
+                                            <td>{{ $currencySymbol }} {{ number_format(floor(max(0, $addonCharges)), 0) }}</td>
                                         </tr>
                                     @endif
 
                                     @if ($extraKmCharges > 0)
                                         <tr>
                                             <td>Extra KM Charges</td>
-                                            <td>{{ $currencySymbol }} {{ number_format($extraKmCharges, 2) }}</td>
+                                            <td>{{ $currencySymbol }} {{ number_format(floor(max(0, $extraKmCharges)), 0) }}</td>
                                         </tr>
                                     @endif
 
                                     <tr class="price-total">
                                         <td>Total Amount</td>
-                                        <td>{{ $currencySymbol }} {{ number_format($booking->total_estimated, 2) }}</td>
+                                        <td>{{ $currencySymbol }} {{ number_format(floor(max(0, $booking->total_estimated)), 0) }}</td>
                                     </tr>
                                     @if ($booking->payment_type === 'advance')
                                         <tr style="background: #eff6ff;">
                                             <td><strong>Amount Paid ({{ $advancePercentage }}%)</strong></td>
                                             <td><strong>{{ $currencySymbol }}
-                                                    {{ number_format($booking->amount_to_pay ?? 0, 2) }}</strong></td>
+                                                    {{ number_format(floor(max(0, $booking->amount_to_pay ?? 0)), 0) }}</strong></td>
                                         </tr>
                                         <tr style="background: #eff6ff;">
                                             <td>Balance Due at Pickup</td>
                                             <td>{{ $currencySymbol }}
-                                                {{ number_format($booking->total_estimated - ($booking->amount_to_pay ?? 0), 2) }}
+                                                {{ number_format(floor(max(0, $booking->total_estimated - ($booking->amount_to_pay ?? 0))), 0) }}
                                             </td>
                                         </tr>
                                     @elseif($booking->payment_type === 'checkin')
                                         <tr style="background: #fff7ed;">
                                             <td><strong>Amount Due at Check-in</strong></td>
                                             <td><strong>{{ $currencySymbol }}
-                                                    {{ number_format($booking->total_estimated, 2) }}</strong></td>
+                                                    {{ number_format(floor(max(0, $booking->total_estimated)), 0) }}</strong></td>
                                         </tr>
                                     @elseif($booking->payment_status === 'paid')
                                         <tr style="background: #f0fdf4;">
                                             <td><strong>Amount Paid</strong></td>
                                             <td><strong>{{ $currencySymbol }}
-                                                    {{ number_format($booking->amount_to_pay ?? $booking->total_estimated, 2) }}</strong>
+                                                    {{ number_format(floor(max(0, $booking->amount_to_pay ?? $booking->total_estimated)), 0) }}</strong>
                                             </td>
                                         </tr>
                                     @endif
@@ -365,9 +365,9 @@
                                         <h3>✓ Advance Payment Confirmed!</h3>
                                         <p>You have successfully paid {{ $advancePercentage }}% advance
                                             ({{ $currencySymbol }}
-                                            {{ number_format($booking->amount_to_pay ?? 0, 2) }}).</p>
+                                            {{ number_format(floor(max(0, $booking->amount_to_pay ?? 0)), 0) }}).</p>
                                         <p><strong>Balance Due at Pickup:</strong> {{ $currencySymbol }}
-                                            {{ number_format($booking->total_estimated - ($booking->amount_to_pay ?? 0), 2) }}
+                                            {{ number_format(floor(max(0, $booking->total_estimated - ($booking->amount_to_pay ?? 0))), 0) }}
                                         </p>
                                         <p style="margin-bottom: 8px;"><strong>Important Reminders:</strong></p>
                                         <ul>
@@ -376,7 +376,7 @@
                                             <li>A credit card may be required for security deposit</li>
                                             <li>Arrive 15 minutes before scheduled pickup time</li>
                                             <li><strong>Pay remaining balance at pickup: {{ $currencySymbol }}
-                                                    {{ number_format($booking->total_estimated - ($booking->amount_to_pay ?? 0), 2) }}</strong>
+                                                    {{ number_format(floor(max(0, $booking->total_estimated - ($booking->amount_to_pay ?? 0))), 0) }}</strong>
                                             </li>
                                         </ul>
                                     </div>
@@ -386,7 +386,7 @@
                                         <p>Your booking is confirmed. Please pay the full amount when you check-in to
                                             collect the vehicle.</p>
                                         <p><strong>Amount Due at Check-in:</strong> {{ $currencySymbol }}
-                                            {{ number_format($booking->total_estimated, 2) }}</p>
+                                            {{ number_format(floor(max(0, $booking->total_estimated)), 0) }}</p>
                                         <p style="margin-bottom: 8px;"><strong>Important Reminders:</strong></p>
                                         <ul>
                                             <li>Bring valid government-issued ID/Passport</li>
@@ -410,7 +410,7 @@
                                             @if (!$isFallbackPaymentLink)
                                                 <a href="{{ $paymentLink }}" class="btn btn-new">
                                                     Pay {{ $currencySymbol }}
-                                                    {{ number_format($booking->amount_to_pay ?? $booking->total_estimated, 2) }}
+                                                    {{ number_format(floor(max(0, $booking->amount_to_pay ?? $booking->total_estimated)), 0) }}
                                                 </a>
                                                 <p
                                                     style="text-align: center; color: #717171; font-size: 13px; margin: 10px 0;">
@@ -518,7 +518,7 @@
                                     @if (!$isFallbackPaymentLink)
                                         <a href="{{ $paymentLink }}" class="btn btn-new">Complete Payment -
                                             {{ $currencySymbol }}
-                                            {{ number_format($booking->amount_to_pay ?? $booking->total_estimated - ($booking->amount_paid ?? 0), 2) }}</a>
+                                            {{ number_format(floor(max(0, $booking->amount_to_pay ?? $booking->total_estimated - ($booking->amount_paid ?? 0))), 0) }}</a>
                                     @else
                                         <a href="mailto:{{ config('mail.from.address', 'bookings@casonsrentacar.lk') }}"
                                             class="btn btn-new">Contact Support to Complete Payment</a>

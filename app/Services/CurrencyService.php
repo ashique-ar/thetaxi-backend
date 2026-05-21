@@ -9,16 +9,26 @@ use Illuminate\Support\Facades\Log;
 class CurrencyService
 {
     /**
+     * Normalize calculated monetary amounts for customer-facing totals and charges.
+     */
+    public function normalizeAmount(float|int|string|null $amount): float
+    {
+        $numericAmount = is_numeric($amount) ? (float) $amount : 0.0;
+
+        return (float) ($numericAmount < 0 ? ceil($numericAmount) : floor($numericAmount));
+    }
+
+    /**
      * Convert amount from one currency to another
      */
     public function convert(float $amount, string $fromCurrency, string $toCurrency): float
     {
         if ($fromCurrency === $toCurrency) {
-            return $amount;
+            return $this->normalizeAmount($amount);
         }
 
         $exchangeRate = $this->getExchangeRate($fromCurrency, $toCurrency);
-        return round($amount * $exchangeRate, 2);
+        return $this->normalizeAmount($amount * $exchangeRate);
     }
 
     /**
@@ -77,7 +87,7 @@ class CurrencyService
         $currency = Currency::where('code', $currencyCode)->first();
         $symbol = $currency ? $currency->symbol : $currencyCode;
         
-        return $symbol . ' ' . number_format($amount, 2);
+        return $symbol . ' ' . number_format($this->normalizeAmount($amount), 0);
     }
 
     /**
@@ -104,7 +114,7 @@ class CurrencyService
     public function convertFromLKR(float $lkrAmount, string $targetCurrencyCode): float
     {
         if ($targetCurrencyCode === 'LKR') {
-            return $lkrAmount;
+            return $this->normalizeAmount($lkrAmount);
         }
 
         $targetCurrency = Currency::where('code', $targetCurrencyCode)->first();
@@ -113,12 +123,12 @@ class CurrencyService
                 'target_currency' => $targetCurrencyCode,
                 'exrate' => $targetCurrency?->exrate
             ]);
-            return $lkrAmount; // Return original amount if conversion fails
+            return $this->normalizeAmount($lkrAmount); // Return original amount if conversion fails
         }
 
         $exchangeRate = (float) $targetCurrency->exrate;
         // Since exrate is "1 LKR = X foreign currency", multiply by the rate
-        return round($lkrAmount * $exchangeRate, 2);
+        return $this->normalizeAmount($lkrAmount * $exchangeRate);
     }
 
     /**
@@ -128,7 +138,7 @@ class CurrencyService
     public function convertToLKR(float $amount, string $fromCurrencyCode): float
     {
         if ($fromCurrencyCode === 'LKR') {
-            return $amount;
+            return $this->normalizeAmount($amount);
         }
 
         $fromCurrency = Currency::where('code', $fromCurrencyCode)->first();
@@ -137,12 +147,12 @@ class CurrencyService
                 'from_currency' => $fromCurrencyCode,
                 'exrate' => $fromCurrency?->exrate
             ]);
-            return $amount; // Return original amount if conversion fails
+            return $this->normalizeAmount($amount); // Return original amount if conversion fails
         }
 
         $exchangeRate = (float) $fromCurrency->exrate;
         // Since exrate is "1 LKR = X foreign currency", divide by the rate to get LKR
-        return round($amount / $exchangeRate, 2);
+        return $this->normalizeAmount($amount / $exchangeRate);
     }
 
     /**
@@ -205,7 +215,7 @@ class CurrencyService
         
         foreach ($amountFields as $field) {
             if (isset($convertedPricing[$field])) {
-                $convertedPricing[$field] = round($convertedPricing[$field] * $exchangeRate, 2);
+                $convertedPricing[$field] = $this->normalizeAmount($convertedPricing[$field] * $exchangeRate);
             }
         }
 
@@ -213,7 +223,7 @@ class CurrencyService
         if (isset($convertedPricing['breakdown']) && is_array($convertedPricing['breakdown'])) {
             foreach ($convertedPricing['breakdown'] as &$item) {
                 if (isset($item['amount'])) {
-                    $item['amount'] = round($item['amount'] * $exchangeRate, 2);
+                    $item['amount'] = $this->normalizeAmount($item['amount'] * $exchangeRate);
                 }
             }
         }
@@ -222,10 +232,10 @@ class CurrencyService
         if (isset($convertedPricing['base_pricing']) && is_array($convertedPricing['base_pricing'])) {
             foreach ($convertedPricing['base_pricing'] as &$item) {
                 if (isset($item['amount'])) {
-                    $item['amount'] = round($item['amount'] * $exchangeRate, 2);
+                    $item['amount'] = $this->normalizeAmount($item['amount'] * $exchangeRate);
                 }
                 if (isset($item['original_amount'])) {
-                    $item['original_amount'] = round($item['original_amount'] * $exchangeRate, 2);
+                    $item['original_amount'] = $this->normalizeAmount($item['original_amount'] * $exchangeRate);
                 }
             }
         }
@@ -234,13 +244,13 @@ class CurrencyService
         if (isset($convertedPricing['addons_pricing']['addons']) && is_array($convertedPricing['addons_pricing']['addons'])) {
             foreach ($convertedPricing['addons_pricing']['addons'] as &$addon) {
                 if (isset($addon['unit_price'])) {
-                    $addon['unit_price'] = round($addon['unit_price'] * $exchangeRate, 2);
+                    $addon['unit_price'] = $this->normalizeAmount($addon['unit_price'] * $exchangeRate);
                 }
                 if (isset($addon['total_price'])) {
-                    $addon['total_price'] = round($addon['total_price'] * $exchangeRate, 2);
+                    $addon['total_price'] = $this->normalizeAmount($addon['total_price'] * $exchangeRate);
                 }
                 if (isset($addon['original_price'])) {
-                    $addon['original_price'] = round($addon['original_price'] * $exchangeRate, 2);
+                    $addon['original_price'] = $this->normalizeAmount($addon['original_price'] * $exchangeRate);
                 }
             }
         }

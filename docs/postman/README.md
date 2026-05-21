@@ -2,7 +2,7 @@
 
 ## Overview
 
-This Postman collection provides complete API testing for the TheTaxi Driver Mobile Application, including authentication, assignments, hires, earnings, device management, status tracking, and location services.
+This Postman collection provides complete API testing for the TheTaxi Driver Mobile Application, including authentication, assignments, hires, earnings, device management, notification management, status tracking, and location services.
 
 ## Files
 
@@ -170,6 +170,14 @@ The `device_uuid` is automatically saved to the environment for subsequent reque
 - **POST** `/api/driver/devices/push-token` - Update push token
 - **POST** `/api/driver/devices/{uuid}/deactivate` - Deactivate device
 - **DELETE** `/api/driver/devices/{uuid}` - Remove device
+
+### Notification Management
+- **GET** `/api/driver/notifications` - List driver notifications (supports `unread_only`, `type`, `page`, `per_page`)
+- **GET** `/api/driver/notifications/unread-count` - Get unread notification count
+- **GET** `/api/driver/notifications/{id}` - Get notification detail
+- **POST** `/api/driver/notifications/{id}/mark-read` - Mark one notification as read
+- **POST** `/api/driver/notifications/mark-all-read` - Mark all notifications as read
+- **DELETE** `/api/driver/notifications/{id}` - Delete one notification
 
 ### Assignments
 - **GET** `/api/driver/assignments` - List assignments (supports `status`, `date`, `from`, `to`, `page`, `per_page`)

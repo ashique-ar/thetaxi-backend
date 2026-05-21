@@ -450,6 +450,10 @@ Route::middleware(['auth:api'])->group(function () {
             Route::apiResource('vehicle-insurance-types', VehicleInsuranceTypeController::class);
             Route::apiResource('vehicle-maintenance-schedules', VehicleMaintenanceScheduleController::class);
             Route::apiResource('vehicle-maintenance-records', VehicleMaintenanceRecordController::class);
+            Route::apiResource('maintenance/schedules', VehicleMaintenanceScheduleController::class)
+                ->parameters(['schedules' => 'vehicleMaintenanceSchedule']);
+            Route::apiResource('maintenance/records', VehicleMaintenanceRecordController::class)
+                ->parameters(['records' => 'vehicleMaintenanceRecord']);
             Route::apiResource('vehicle-makes', VehicleMakeController::class);
             Route::apiResource('vehicle-models', VehicleModelController::class);
             Route::apiResource('vehicle-owners', VehicleOwnerController::class);

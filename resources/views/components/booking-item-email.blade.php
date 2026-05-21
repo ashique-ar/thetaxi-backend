@@ -416,7 +416,7 @@
                     Rate per Day
                 </td>
                 <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
-                    {{ $currencySymbol }} {{ number_format($unitPrice, 2) }}
+                    {{ $currencySymbol }} {{ number_format(floor(max(0, $unitPrice)), 0) }}
                 </td>
             </tr>
         @endif
@@ -528,10 +528,10 @@
                 <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
                     {{ number_format($extraKilometers) }} km
                     @if ($extraKmPrice > 0)
-                        @ {{ $currencySymbol }}{{ number_format($extraKmPrice, 2) }}/km
+                        @ {{ $currencySymbol }}{{ number_format(floor(max(0, $extraKmPrice)), 0) }}/km
                     @endif
                     @if ($extraKmTotal > 0)
-                        <span style="float: right; color: #BF2629;">{{ $currencySymbol }}{{ number_format($extraKmTotal, 2) }}</span>
+                        <span style="float: right; color: #BF2629;">{{ $currencySymbol }}{{ number_format(floor(max(0, $extraKmTotal)), 0) }}</span>
                     @endif
                 </td>
             </tr>
@@ -540,7 +540,7 @@
         @if ($extraKmPrice)
             <tr>
                 <td>Extra KM Rate</td>
-                <td><strong>{{ $currencySymbol }}{{ number_format($extraKmPrice, 2) }}</strong> per km</td>
+                <td><strong>{{ $currencySymbol }}{{ number_format(floor(max(0, $extraKmPrice)), 0) }}</strong> per km</td>
             </tr>
         @endif
 
@@ -557,13 +557,13 @@
                                 <strong>{{ $addon['name'] }}</strong>
                                 <small style="color: #777; margin-left: 4px;">
                                     (Qty: {{ $addon['qty'] }}@if ($addon['rate'] > 0)
-                                        x {{ $currencySymbol }}{{ number_format($addon['rate'], 2) }}
+                                        x {{ $currencySymbol }}{{ number_format(floor(max(0, $addon['rate'])), 0) }}
                                     @elseif ($addon['total'] > 0 && $addon['qty'] > 0)
-                                        - Avg: {{ $currencySymbol }}{{ number_format($addon['total'] / $addon['qty'], 2) }}
+                                        - Avg: {{ $currencySymbol }}{{ number_format(floor(max(0, $addon['total'] / $addon['qty'])), 0) }}
                                     @endif)
                                 </small>
                             </div>
-                            <span style="color: #BF2629; font-weight: 600;">{{ $currencySymbol }}{{ number_format($addon['total'], 2) }}</span>
+                            <span style="color: #BF2629; font-weight: 600;">{{ $currencySymbol }}{{ number_format(floor(max(0, $addon['total'])), 0) }}</span>
                         </div>
                     @endforeach
                 </td>
@@ -575,7 +575,7 @@
                 {{ $totalLabel }}
             </td>
             <td style="padding: 4px 0; color: #555; font-weight: 600;">
-                {{ $currencySymbol }} {{ number_format($totalPrice, 2) }}
+                {{ $currencySymbol }} {{ number_format(floor(max(0, $totalPrice)), 0) }}
                 @if ($isReturnTrip && !empty($returnDiscountPct) && $returnDiscountPct > 0)
                     <small class="text-success" style="margin-left: 8px;">({{ $returnDiscountPct }}% return discount applied)</small>
                 @endif
@@ -625,7 +625,7 @@
                                 @endif
                             </td>
                             <td style="padding:6px 0; border-bottom:1px solid #eef0f2; text-align:right;">
-                                {{ $currencySymbol }} {{ number_format($addonTotal, 2) }}</td>
+                                {{ $currencySymbol }} {{ number_format(floor(max(0, $addonTotal)), 0) }}</td>
                         </tr>
                     @endforeach
                 </table>
@@ -635,7 +635,7 @@
                 <h4 style="margin:8px 0 6px 0; font-size:14px;">Extra KM</h4>
                 <div style="color:#555;">
                     {{ $bookingExtra['km'] ?? ($bookingExtra['quantity'] ?? 0) }} km - {{ $currencySymbol }}
-                    {{ number_format($bookingExtra['total_cost'] ?? ($bookingExtra['calculated_amount'] ?? 0), 2) }}
+                    {{ number_format(floor(max(0, $bookingExtra['total_cost'] ?? ($bookingExtra['calculated_amount'] ?? 0))), 0) }}
                 </div>
             @endif
         </div>

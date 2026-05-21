@@ -12,6 +12,8 @@ use Google\Auth\Credentials\ServiceAccountCredentials;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
+use Illuminate\Notifications\DatabaseNotification;
 
 /**
  * Notification Trigger Service
@@ -57,6 +59,13 @@ class NotificationTriggerService
         }
 
         $payload = $this->buildPayload($assignment, $context);
+        $this->storeDriverNotification(
+            $driver,
+            $payload,
+            (string) config('services.firebase.assignment_title', 'New Booking Assigned'),
+            (string) config('services.firebase.assignment_body', 'A new booking has been assigned to you.')
+        );
+
         $channels = [];
 
         $websocketChannel = $this->deliverViaWebSocket($driver, $payload);
@@ -90,12 +99,15 @@ class NotificationTriggerService
 
         $payload = [
             'event_type' => 'driver_test_notification',
+            'notification_type' => 'driver_test_notification',
             'driver_id' => $driver->id,
             'title' => $title,
             'message' => $body,
             'triggered_at' => Carbon::now()->toIso8601String(),
             'triggered_by' => $context['triggered_by'] ?? null,
         ];
+
+        $this->storeDriverNotification($driver, $payload, $title, $body);
 
         $channels = [];
 
@@ -270,6 +282,53 @@ class NotificationTriggerService
         }
 
         return $normalized;
+    }
+
+    private function storeDriverNotification(Driver $driver, array $payload, string $title, string $message): void
+    {
+        try {
+            $driver->loadMissing('user');
+
+            if (!$driver->user) {
+                Log::warning('Driver notification inbox persistence skipped: driver has no user', [
+                    'driver_id' => $driver->id,
+                ]);
+                return;
+            }
+
+            if (
+                ($payload['notification_type'] ?? $payload['event_type'] ?? null) === 'assignment_created'
+                && !empty($payload['assignment_id'])
+                && DatabaseNotification::where('notifiable_type', $driver->user->getMorphClass())
+                    ->where('notifiable_id', $driver->user->id)
+                    ->where('data->notification_type', 'assignment_created')
+                    ->where('data->data->assignment_id', $payload['assignment_id'])
+                    ->exists()
+            ) {
+                return;
+            }
+
+            DatabaseNotification::create([
+                'id' => (string) Str::uuid(),
+                'type' => 'driver_mobile',
+                'notifiable_type' => $driver->user->getMorphClass(),
+                'notifiable_id' => $driver->user->id,
+                'data' => [
+                    'title' => $title,
+                    'message' => $message,
+                    'type' => $payload['notification_type'] ?? $payload['event_type'] ?? 'driver_notification',
+                    'notification_type' => $payload['notification_type'] ?? $payload['event_type'] ?? 'driver_notification',
+                    'data' => $payload,
+                ],
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to persist driver notification inbox item', [
+                'driver_id' => $driver->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     private function resolveFirebaseCredentialsPath(): ?string

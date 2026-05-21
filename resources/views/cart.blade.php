@@ -344,7 +344,7 @@
                                                                         Extra:
                                                                         <small
                                                                             class="currency-symbol">{{ $currencySymbol }}</small>
-                                                                        {{ number_format($extraKmPrice, 2) }}/km
+                                                                        {{ number_format(floor(max(0, $extraKmPrice)), 0) }}/km
                                                                     </span>
                                                                 @endif
                                                             </p>
@@ -380,7 +380,7 @@
                                                                 Outbound:</span>
                                                             <span class="price-value"><small
                                                                     class="currency-symbol">{{ $currencySymbol }}</small>
-                                                                {{ number_format($oneWayPrice, 2) }}</span>
+                                                                {{ number_format(floor(max(0, $oneWayPrice)), 0) }}</span>
                                                         </div>
                                                         <div class="price-row">
                                                             <span class="price-label">
@@ -393,7 +393,7 @@
                                                             </span>
                                                             <span class="price-value"><small
                                                                     class="currency-symbol">{{ $currencySymbol }}</small>
-                                                                {{ number_format($returnPrice, 2) }}</span>
+                                                                {{ number_format(floor(max(0, $returnPrice)), 0) }}</span>
                                                         </div>
                                                     </div>
                                                 @elseif (!$isFixedRate)
@@ -401,7 +401,7 @@
                                                         <span class="price-label">{{ $pricingLabel }}:</span>
                                                         <span class="price-value"><small
                                                                 class="currency-symbol">{{ $currencySymbol }}</small>
-                                                            {{ number_format($item['price'] ?? 0, 2) }}</span>
+                                                            {{ number_format(floor(max(0, $item['price'] ?? 0)), 0) }}</span>
                                                     </div>
                                                 @endif
                                                 {{-- Show discount badge and original price only for discounts --}}
@@ -416,13 +416,13 @@
                                                         <span class="price-label text-muted">Was:</span>
                                                         <span class="price-value original-price"><small
                                                                 class="currency-symbol">{{ $currencySymbol }}</small>
-                                                            {{ number_format($originalAmount, 2) }}</span>
+                                                            {{ number_format(floor(max(0, $originalAmount)), 0) }}</span>
                                                     </div>
                                                     <div class="price-row savings-row">
                                                         <span class="price-label text-success">You Save:</span>
                                                         <span class="price-value text-success"><small
                                                                 class="currency-symbol">{{ $currencySymbol }}</small>
-                                                            {{ number_format($discountAmount, 2) }}</span>
+                                                            {{ number_format(floor(max(0, $discountAmount)), 0) }}</span>
                                                     </div>
                                                 @endif
                                                 <div class="price-row total-row">
@@ -430,7 +430,7 @@
                                                         class="price-label">{{ $isFixedRate ? $pricingLabel : 'Total' }}:</span>
                                                     <span class="price-value item-total"><small
                                                             class="currency-symbol">{{ $currencySymbol }}</small>
-                                                        {{ number_format($itemTotal, 2) }}</span>
+                                                        {{ number_format(floor(max(0, $itemTotal)), 0) }}</span>
                                                 </div>
                                             </div>
                                             <div class="cart-item-actions">
@@ -501,7 +501,7 @@
                                                         <span class="rate-label">Rate per km:</span>
                                                         <span class="rate-value"><small
                                                                 class="currency-symbol">{{ $currencySymbol }}</small>
-                                                            <span class="extra-km-rate">0.00</span></span>
+                                                            <span class="extra-km-rate">0</span></span>
                                                     </div>
                                                     <div class="extra-km-input-group">
                                                         <label for="extra-km-input-{{ $key }}">Extra
@@ -523,7 +523,7 @@
                                                         <span class="total-value"><small
                                                                 class="currency-symbol">{{ $currencySymbol }}</small>
                                                             <span
-                                                                class="extra-km-total-amount">{{ number_format($item['extra_km']['total_cost'] ?? 0, 2) }}</span></span>
+                                                                class="extra-km-total-amount">{{ number_format(floor(max(0, $item['extra_km']['total_cost'] ?? 0)), 0) }}</span></span>
                                                     </div>
                                                     <div class="extra-km-actions mt-3">
                                                         <button type="button"
@@ -563,7 +563,7 @@
                                         <strong>Subtotal</strong>
                                         <strong class="cart-subtotal">
                                             <small class="currency-symbol">{{ $currencySymbol }}</small>
-                                            {{ number_format($cartTotals['subtotal'] ?? 0, 2) }}
+                                            {{ number_format(floor(max(0, $cartTotals['subtotal'] ?? 0)), 0) }}
                                         </strong>
                                     </li>
 
@@ -575,7 +575,7 @@
                                             </strong>
                                             <strong class="price-adjustment-discount-amount text-success">
                                                 -<small class="currency-symbol">{{ $currencySymbol }}</small>
-                                                {{ number_format($cartTotals['price_adjustment_discount'] ?? 0, 2) }}
+                                                {{ number_format(floor(max(0, $cartTotals['price_adjustment_discount'] ?? 0)), 0) }}
                                             </strong>
                                         </li>
                                     @endif
@@ -587,7 +587,7 @@
                                                 <p>Additional Services</p>
                                                 <span class="addon-charges-amount">
                                                     <small class="currency-symbol">{{ $currencySymbol }}</small>
-                                                    {{ number_format($cartTotals['addon_charges'] ?? 0, 2) }}
+                                                    {{ number_format(floor(max(0, $cartTotals['addon_charges'] ?? 0)), 0) }}
                                                 </span>
                                             </div>
                                         </li>
@@ -599,7 +599,7 @@
                                                 <p>Additional Kilometers</p>
                                                 <span class="extra-km-charges-amount">
                                                     <small class="currency-symbol">{{ $currencySymbol }}</small>
-                                                    {{ number_format($cartTotals['extra_km_charges'] ?? 0, 2) }}
+                                                    {{ number_format(floor(max(0, $cartTotals['extra_km_charges'] ?? 0)), 0) }}
                                                 </span>
                                             </div>
                                         </li>
@@ -611,7 +611,7 @@
                                                 <p>Processing Fee</p>
                                                 <span class="service-fee"><small
                                                         class="currency-symbol">{{ $currencySymbol }}</small>
-                                                    {{ number_format($cartTotals['service_fee'] ?? 0, 2) }}</span>
+                                                    {{ number_format(floor(max(0, $cartTotals['service_fee'] ?? 0)), 0) }}</span>
                                             </div>
                                         </li>
                                     @endif
@@ -622,7 +622,7 @@
                                                 <p>Government Tax</p>
                                                 <span class="tax-amount">
                                                     <small class="currency-symbol">{{ $currencySymbol }}</small>
-                                                    {{ number_format($cartTotals['tax'] ?? 0, 2) }}
+                                                    {{ number_format(floor(max(0, $cartTotals['tax'] ?? 0)), 0) }}
                                                 </span>
                                             </div>
                                         </li>
@@ -634,7 +634,7 @@
                                                 <p>Value Added Tax</p>
                                                 <span class="vat-amount">
                                                     <small class="currency-symbol">{{ $currencySymbol }}</small>
-                                                    {{ number_format($cartTotals['vat'] ?? 0, 2) }}
+                                                    {{ number_format(floor(max(0, $cartTotals['vat'] ?? 0)), 0) }}
                                                 </span>
                                             </div>
                                         </li>
@@ -657,7 +657,7 @@
                                                         <small class="text-success">
                                                             You save
                                                             {{ $currencySymbol }}
-                                                            {{ number_format($cartTotals['coupon_discount'] ?? 0, 2) }}
+                                                            {{ number_format(floor(max(0, $cartTotals['coupon_discount'] ?? 0)), 0) }}
                                                         </small>
                                                     </div>
                                                 </div>
@@ -686,14 +686,14 @@
                                             <strong class="text-success"><i class="bi bi-tag-fill"></i> Discount</strong>
                                             <strong class="discount-amount text-success">-<small
                                                     class="currency-symbol">{{ $currencySymbol }}</small>
-                                                {{ number_format($cartTotals['coupon_discount'] ?? 0, 2) }}</strong>
+                                                {{ number_format(floor(max(0, $cartTotals['coupon_discount'] ?? 0)), 0) }}</strong>
                                         </li>
                                     @endif
                                     <li>
                                         <strong>Total</strong>
                                         <strong class="cart-total">
                                             <small class="currency-symbol">{{ $currencySymbol }}</small>
-                                            {{ number_format($cartTotals['total'] ?? 0, 2) }}
+                                            {{ number_format(floor(max(0, $cartTotals['total'] ?? 0)), 0) }}
                                         </strong>
                                     </li>
                                 </ul>
@@ -1562,7 +1562,7 @@
                             $('.addon-charges-amount').text(getCurrencySymbol() + response
                                 .addon_charges);
                             $('.extra-km-charges-amount').text(getCurrencySymbol() + (response
-                                .extra_km_charges || '0.00'));
+                                .extra_km_charges || '0'));
                             $('.discount-amount').text('-' + getCurrencySymbol() + response.discount);
                             $('.cart-total').text(getCurrencySymbol() + response.total);
 
@@ -1950,7 +1950,7 @@
                                 <h6 class="addon-title-unified">${addon.name}</h6>
                                 <small class="addon-desc-unified">${addon.description || 'Service'}</small>
                                 <div class="addon-price-unified">
-                                    <strong><small class="currency-symbol">${getCurrencySymbol()}</small> ${parseFloat(addon.amount).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</strong>
+                                    <strong><small class="currency-symbol">${getCurrencySymbol()}</small> ${Math.floor(Math.max(0, parseFloat(addon.amount))).toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0})}</strong>
                                     <span>${addon.rate_type === 'percentage' ? '%/day' : `${getCurrencySymbol()}/one-time`}</span>
                                 </div>
                             </div>
@@ -2305,8 +2305,8 @@
                         if (rateObj && rateObj.rate) {
                             const rate = parseFloat(rateObj.rate);
                             container.find('.extra-km-rate').text(rate.toLocaleString('en-US', {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2
+                                minimumFractionDigits: 0,
+                                maximumFractionDigits: 0
                             }));
                             container.data('rate', rate);
                         }
@@ -2316,8 +2316,8 @@
                             container.find('.extra-km-input').val(currentExtraKm.km);
                             container.find('.extra-km-total-amount').text(parseFloat(currentExtraKm
                                 .total_cost).toLocaleString('en-US', {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2
+                                minimumFractionDigits: 0,
+                                maximumFractionDigits: 0
                             }));
                             container.find('.remove-extra-km').show();
                             // Enable apply button since there is a value
@@ -2384,8 +2384,8 @@
                 const total = km * rate;
 
                 container.find('.extra-km-total-amount').text(total.toLocaleString('en-US', {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 0
                 }));
 
                 // Disable apply button when km is zero

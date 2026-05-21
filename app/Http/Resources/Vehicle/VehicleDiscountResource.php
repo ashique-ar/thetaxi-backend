@@ -78,7 +78,7 @@ class VehicleDiscountResource extends JsonResource
             // Computed fields
             'formatted_amount' => $this->is_percentage 
                 ? $this->amount . '%' 
-                : '$' . number_format($this->amount, 2),
+                : '$' . number_format(floor(max(0, $this->amount)), 0),
                 
             'status_badge' => [
                 'text' => $this->getStatusText(),

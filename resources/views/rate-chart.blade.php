@@ -579,7 +579,7 @@
                                 @if(($vehicle['daily_rate']['amount'] ?? 0) > 0 && !($vehicle['is_inquiry_only'] ?? false))
                                     <a href="{{ route('vehicle.details', ['id' => $vehicle['id'], 'preset' => 'daily']) }}" class="rate-link" title="Open vehicle with 1-day rental preset">
                                         <div class="rate-amount">
-                                            {{ getCurrencySymbol() }} {{ number_format($vehicle['daily_rate']['amount'], 2) }}
+                                            {{ getCurrencySymbol() }} {{ number_format(floor(max(0, $vehicle['daily_rate']['amount'])), 0) }}
                                         </div>
                                     </a>
                                     <div class="rate-per-day">per day</div>
@@ -602,11 +602,11 @@
                                 @if(($vehicle['monthly_rate']['amount'] ?? 0) > 0 && !($vehicle['is_inquiry_only'] ?? false))
                                     <a href="{{ route('vehicle.details', ['id' => $vehicle['id'], 'preset' => 'monthly']) }}" class="rate-link" title="Open vehicle with 30-day rental preset">
                                         <div class="rate-amount">
-                                            {{ getCurrencySymbol() }} {{ number_format($vehicle['monthly_rate']['amount'], 2) }}
+                                            {{ getCurrencySymbol() }} {{ number_format(floor(max(0, $vehicle['monthly_rate']['amount'])), 0) }}
                                         </div>
                                     </a>
                                     <div class="rate-per-day">
-                                        {{ getCurrencySymbol() }} {{ number_format($vehicle['monthly_rate']['per_day'], 2) }}/day
+                                        {{ getCurrencySymbol() }} {{ number_format(floor(max(0, $vehicle['monthly_rate']['per_day'])), 0) }}/day
                                     </div>
                                 @else
                                     <div class="rate-unavailable">
@@ -626,7 +626,7 @@
                             <td style="text-align: center;">
                                 @if(isset($vehicle['extra_km_rate']) && $vehicle['extra_km_rate'] > 0 && !($vehicle['is_inquiry_only'] ?? false))
                                     <div class="rate-amount">
-                                        {{ getCurrencySymbol() }} {{ number_format($vehicle['extra_km_rate'], 2) }}
+                                        {{ getCurrencySymbol() }} {{ number_format(floor(max(0, $vehicle['extra_km_rate'])), 0) }}
                                     </div>
                                     <div class="rate-per-day">per km</div>
                                 @else
@@ -731,7 +731,7 @@
                             @if(($vehicle['daily_rate']['amount'] ?? 0) > 0 && !($vehicle['is_inquiry_only'] ?? false))
                                 <a href="{{ route('vehicle.details', ['id' => $vehicle['id'], 'preset' => 'daily']) }}" class="rate-link" title="Open vehicle with 1-day rental preset">
                                     <div class="rate-amount">
-                                        {{ getCurrencySymbol() }} {{ number_format($vehicle['daily_rate']['amount'], 2) }}
+                                        {{ getCurrencySymbol() }} {{ number_format(floor(max(0, $vehicle['daily_rate']['amount'])), 0) }}
                                     </div>
                                 </a>
                                 <div class="rate-per-day">per day</div>
@@ -754,11 +754,11 @@
                             @if(($vehicle['monthly_rate']['amount'] ?? 0) > 0 && !($vehicle['is_inquiry_only'] ?? false))
                                 <a href="{{ route('vehicle.details', ['id' => $vehicle['id'], 'preset' => 'monthly']) }}" class="rate-link" title="Open vehicle with 30-day rental preset">
                                     <div class="rate-amount">
-                                        {{ getCurrencySymbol() }} {{ number_format($vehicle['monthly_rate']['amount'], 2) }}
+                                        {{ getCurrencySymbol() }} {{ number_format(floor(max(0, $vehicle['monthly_rate']['amount'])), 0) }}
                                     </div>
                                 </a>
                                 <div class="rate-per-day">
-                                    {{ getCurrencySymbol() }} {{ number_format($vehicle['monthly_rate']['per_day'], 2) }}/day
+                                    {{ getCurrencySymbol() }} {{ number_format(floor(max(0, $vehicle['monthly_rate']['per_day'])), 0) }}/day
                                 </div>
                             @else
                                 <div class="rate-unavailable">
@@ -778,7 +778,7 @@
                             <div class="rate-label">Extra KM Rate</div>
                             @if(isset($vehicle['extra_km_rate']) && $vehicle['extra_km_rate'] > 0 && !($vehicle['is_inquiry_only'] ?? false))
                                 <div class="rate-amount">
-                                    {{ getCurrencySymbol() }} {{ number_format($vehicle['extra_km_rate'], 2) }}
+                                    {{ getCurrencySymbol() }} {{ number_format(floor(max(0, $vehicle['extra_km_rate'])), 0) }}
                                 </div>
                                 <div class="rate-per-day">per km</div>
                             @else

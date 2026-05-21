@@ -1242,7 +1242,7 @@ class BookingFlowService
         $days = $durationInfo['days'] ?? 0;
         $hours = $durationInfo['hours'] ?? 0;
 
-        $note = "Starting from LKR " . number_format($amount, 2);
+        $note = "Starting from LKR " . number_format(floor(max(0, $amount)), 0);
 
         if ($days > 0) {
             $note .= " for {$days} day(s)";

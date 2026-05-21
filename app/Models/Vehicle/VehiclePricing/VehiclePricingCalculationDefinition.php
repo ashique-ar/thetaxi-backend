@@ -1163,7 +1163,7 @@ class VehiclePricingCalculationDefinition extends Model
             'total_increase' => $totalIncrease,
             'has_discount' => $hasDiscount,
             'has_increase' => $hasIncrease,
-            'savings_display' => $hasDiscount ? 'LKR ' . number_format($totalDiscount, 2) : null,
+            'savings_display' => $hasDiscount ? 'LKR ' . number_format(floor(max(0, $totalDiscount)), 0) : null,
             'discount_percentage' => $hasDiscount && $baseAmount > 0
                 ? round(($totalDiscount / $baseAmount) * 100, 1)
                 : 0,

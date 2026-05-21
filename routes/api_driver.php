@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\Driver\Mobile\AssignmentController;
 use App\Http\Controllers\Api\Driver\Mobile\DeviceController;
 use App\Http\Controllers\Api\Driver\Mobile\TripController;
 use App\Http\Controllers\Api\Driver\Mobile\EarningsController;
+use App\Http\Controllers\Api\Driver\Mobile\NotificationController;
 
 /*
 |--------------------------------------------------------------------------
@@ -68,6 +69,16 @@ Route::middleware(['auth:api', 'ensure.driver'])->group(function () {
         Route::post('push-token', [DeviceController::class, 'updatePushToken']);
         Route::post('{deviceUuid}/deactivate', [DeviceController::class, 'deactivate']);
         Route::delete('{deviceUuid}', [DeviceController::class, 'destroy']);
+    });
+
+    // Notification inbox routes
+    Route::prefix('notifications')->group(function () {
+        Route::get('', [NotificationController::class, 'index']);
+        Route::get('unread-count', [NotificationController::class, 'unreadCount']);
+        Route::get('{id}', [NotificationController::class, 'show']);
+        Route::post('{id}/mark-read', [NotificationController::class, 'markAsRead']);
+        Route::post('mark-all-read', [NotificationController::class, 'markAllAsRead']);
+        Route::delete('{id}', [NotificationController::class, 'destroy']);
     });
     
     // Assignment routes

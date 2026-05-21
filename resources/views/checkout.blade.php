@@ -88,6 +88,7 @@
             'quotation' => 0,
             default => $total,
         };
+        $paymentAmount = floor(max(0, $paymentAmount));
     @endphp
 
     <!-- Checkout Page Start-->
@@ -461,10 +462,10 @@
                                                                         @if ($isFixedRate)
                                                                             <span>{{ $pricingLabel }}:
                                                                                 {{ $currencySymbol }}
-                                                                                {{ number_format($itemTotal, 2) }}</span>
+                                                                                {{ number_format(floor(max(0, $itemTotal)), 0) }}</span>
                                                                         @else
                                                                             <span>{{ $currencySymbol }}
-                                                                                {{ number_format($item['price'] ?? 0, 2) }}/day
+                                                                                {{ number_format(floor(max(0, $item['price'] ?? 0)), 0) }}/day
                                                                                 × {{ $durationLabel }}</span>
                                                                         @endif
                                                                         <h6>
@@ -594,7 +595,7 @@
                                                                                             Extra:
                                                                                             <small
                                                                                                 class="currency-symbol">{{ $currencySymbol }}</small>
-                                                                                            {{ number_format($extraKmPrice, 2) }}/km</span>
+                                                                                            {{ number_format(floor(max(0, $extraKmPrice)), 0) }}/km</span>
                                                                                     @endif
                                                                                 </small></p>
                                                                         @endif
@@ -692,12 +693,12 @@
                                                                             <i class="bi bi-arrow-right-circle"></i>
                                                                             Outbound:
                                                                             <small
-                                                                                class="currency-symbol">{{ $currencySymbol }}</small>{{ number_format($oneWayPrice, 2) }}
+                                                                                class="currency-symbol">{{ $currencySymbol }}</small>{{ number_format(floor(max(0, $oneWayPrice)), 0) }}
                                                                         </div>
                                                                         <div style="color: #198754;">
                                                                             <i class="bi bi-arrow-left-circle"></i> Return:
                                                                             <small
-                                                                                class="currency-symbol">{{ $currencySymbol }}</small>{{ number_format($returnPrice, 2) }}
+                                                                                class="currency-symbol">{{ $currencySymbol }}</small>{{ number_format(floor(max(0, $returnPrice)), 0) }}
                                                                             @if ($returnDiscountPct > 0)
                                                                                 <span class="badge bg-success"
                                                                                     style="font-size: 9px;">{{ $returnDiscountPct }}%
@@ -714,19 +715,19 @@
                                                                     </span>
                                                                     {{-- Show original price with strikethrough --}}
                                                                     <div class="checkout-original-price">
-                                                                        <del>{{ $currencySymbol }}{{ number_format($itemOriginalAmount, 2) }}</del>
+                                                                        <del>{{ $currencySymbol }}{{ number_format(floor(max(0, $itemOriginalAmount)), 0) }}</del>
                                                                     </div>
                                                                 @endif
                                                                 <div
                                                                     class="checkout-final-price {{ $hasItemDiscount ? 'discounted' : '' }}">
                                                                     <small
                                                                         class="currency-symbol">{{ $currencySymbol }}</small>
-                                                                    {{ number_format($itemTotal, 2) }}
+                                                                    {{ number_format(floor(max(0, $itemTotal)), 0) }}
                                                                 </div>
                                                                 @if ($hasItemDiscount && $itemDiscountAmount > 0)
                                                                     <div class="checkout-savings">
                                                                         <small>Save
-                                                                            {{ $currencySymbol }}{{ number_format($itemDiscountAmount, 2) }}</small>
+                                                                            {{ $currencySymbol }}{{ number_format(floor(max(0, $itemDiscountAmount)), 0) }}</small>
                                                                     </div>
                                                                 @endif
                                                             </div>
@@ -742,7 +743,7 @@
                                                     <li>
                                                         <strong>Subtotal</strong>
                                                         <strong>{{ $currencySymbol }}
-                                                            {{ number_format($subtotal, 2) }}</strong>
+                                                            {{ number_format(floor(max(0, $subtotal)), 0) }}</strong>
                                                     </li>
                                                     @php
                                                         $addonCharges = $totals['addon_charges'] ?? 0;
@@ -753,7 +754,7 @@
                                                             Addon Charges
                                                             <div class="order-info text-success">
                                                                 <span>{{ $currencySymbol }}
-                                                                    {{ number_format($addonCharges, 2) }}</span>
+                                                                    {{ number_format(floor(max(0, $addonCharges)), 0) }}</span>
                                                             </div>
                                                         </li>
                                                     @endif
@@ -762,7 +763,7 @@
                                                             Extra KM Charges
                                                             <div class="order-info text-info">
                                                                 <span>{{ $currencySymbol }}
-                                                                    {{ number_format($extraKmCharges, 2) }}</span>
+                                                                    {{ number_format(floor(max(0, $extraKmCharges)), 0) }}</span>
                                                             </div>
                                                         </li>
                                                     @endif
@@ -771,7 +772,7 @@
                                                             Service Fee
                                                             <div class="order-info">
                                                                 <span>{{ $currencySymbol }}
-                                                                    {{ number_format($serviceFee, 2) }}</span>
+                                                                    {{ number_format(floor(max(0, $serviceFee)), 0) }}</span>
                                                             </div>
                                                         </li>
                                                     @endif
@@ -781,7 +782,7 @@
                                                             ({{ $taxPercentageLabel }}%)
                                                             <div class="order-info">
                                                                 <span>{{ $currencySymbol }}
-                                                                    {{ number_format($tax, 2) }}</span>
+                                                                    {{ number_format(floor(max(0, $tax)), 0) }}</span>
                                                             </div>
                                                         </li>
                                                     @endif
@@ -791,7 +792,7 @@
                                                             ({{ $vatPercentageLabel }}%)
                                                             <div class="order-info">
                                                                 <span>{{ $currencySymbol }}
-                                                                    {{ number_format($vat, 2) }}</span>
+                                                                    {{ number_format(floor(max(0, $vat)), 0) }}</span>
                                                             </div>
                                                         </li>
                                                     @endif
@@ -852,7 +853,7 @@
                                                             </span>
                                                             <div class="order-info text-success">
                                                                 <span>-{{ $currencySymbol }}
-                                                                    {{ number_format($priceAdjustmentDiscount, 2) }}</span>
+                                                                    {{ number_format(floor(max(0, $priceAdjustmentDiscount)), 0) }}</span>
                                                             </div>
                                                         </li>
                                                     @endif
@@ -862,14 +863,14 @@
                                                                 Discount</strong>
                                                             <div class="order-info text-success">
                                                                 <span>-{{ $currencySymbol }}
-                                                                    {{ number_format($discount, 2) }}</span>
+                                                                    {{ number_format(floor(max(0, $discount)), 0) }}</span>
                                                             </div>
                                                         </li>
                                                     @endif
                                                     <li class="total-row">
                                                         <strong>Total</strong>
                                                         <strong>{{ $currencySymbol }}
-                                                            {{ number_format($total, 2) }}</strong>
+                                                            {{ number_format(floor(max(0, $total)), 0) }}</strong>
                                                     </li>
                                                     @if ($paymentType !== 'full')
                                                         <li class="payment-amount-row">
@@ -888,10 +889,10 @@
                                                                     No Payment Required
                                                                 @elseif($paymentType === 'checkin')
                                                                     {{ $currencySymbol }}
-                                                                    {{ number_format($total, 2) }}
+                                                                    {{ number_format(floor(max(0, $total)), 0) }}
                                                                 @else
                                                                     {{ $currencySymbol }}
-                                                                    {{ number_format($paymentAmount, 2) }}
+                                                                    {{ number_format(floor(max(0, $paymentAmount)), 0) }}
                                                                 @endif
                                                             </strong>
                                                         </li>
@@ -923,7 +924,7 @@
                                                                             <p class="mb-0">Complete payment now</p>
                                                                             <small class="text-muted">Total:
                                                                                 {{ $currencySymbol }}
-                                                                                {{ number_format($total, 2) }}</small>
+                                                                                {{ number_format(floor(max(0, $total)), 0) }}</small>
                                                                         </div>
                                                                     </label>
                                                                 </div>
@@ -946,7 +947,7 @@
                                                                                 </p>
                                                                                 <small class="text-muted">Now:
                                                                                     {{ $currencySymbol }}
-                                                                                    {{ number_format($total * ($advancePercentage / 100), 2) }}</small>
+                                                                                    {{ number_format(floor(max(0, $total * ($advancePercentage / 100))), 0) }}</small>
                                                                             </div>
                                                                         </label>
                                                                     </div>
@@ -968,7 +969,7 @@
                                                                                 <p class="mb-0">Pay when you collect</p>
                                                                                 <small class="text-muted">Due:
                                                                                     {{ $currencySymbol }}
-                                                                                    {{ number_format($total, 2) }}</small>
+                                                                                    {{ number_format(floor(max(0, $total)), 0) }}</small>
                                                                             </div>
                                                                         </label>
                                                                     </div>
@@ -1040,7 +1041,7 @@
                                                     @else
                                                         Complete Booking -
                                                         <small class="currency-symbol">{{ $currencySymbol }}</small>
-                                                        {{ number_format($paymentAmount, 2) }}
+                                                        {{ number_format(floor(max(0, $paymentAmount)), 0) }}
                                                     @endif
                                                     <svg width="10" height="10" viewBox="0 0 10 10"
                                                         xmlns="http://www.w3.org/2000/svg">
@@ -1835,7 +1836,7 @@
                 `);
                         paymentMethodSection.show();
                         submitBtn.html(
-                            `Complete Booking - ${currencySymbol}${advanceAmount.toFixed(2)} <svg width="10" height="10" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg"><path d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z"></path></svg>`
+                            `Complete Booking - ${currencySymbol}${Math.floor(Math.max(0, advanceAmount)).toFixed(0)} <svg width="10" height="10" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg"><path d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z"></path></svg>`
                         );
                         break;
                     case 'quotation':
@@ -1865,7 +1866,7 @@
                 `);
                         paymentMethodSection.show();
                         submitBtn.html(
-                            `Complete Booking - ${currencySymbol}${fullAmount.toFixed(2)} <svg width="10" height="10" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg"><path d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z"></path></svg>`
+                            `Complete Booking - ${currencySymbol}${Math.floor(Math.max(0, fullAmount)).toFixed(0)} <svg width="10" height="10" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg"><path d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z"></path></svg>`
                         );
                         break;
                 }

@@ -9,9 +9,7 @@ use App\Models\DriverAssignment;
 use App\Models\Vehicle\VehicleAssignment;
 use App\Models\Booking\BookingItem;
 use App\Enums\TripPhase;
-use App\Events\AdminAssignmentUpdated;
 use App\Services\AssignmentService;
-use App\Services\Driver\NotificationTriggerService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -21,14 +19,11 @@ use Illuminate\Support\Str;
 class BookingAssignmentController extends Controller
 {
     protected AssignmentService $assignmentService;
-    protected NotificationTriggerService $notificationService;
 
     public function __construct(
-        AssignmentService $assignmentService,
-        NotificationTriggerService $notificationService
+        AssignmentService $assignmentService
     ) {
         $this->assignmentService = $assignmentService;
-        $this->notificationService = $notificationService;
 
         $this->middleware('permission:vehicles.edit')->only([
             'getVehicleDefaultDriver', 'updateVehicleDefaultDriver',
@@ -255,7 +250,7 @@ class BookingAssignmentController extends Controller
      *
      * POST /api/booking-items/{bookingItem}/assign
      *
-     * Triggers NotificationTriggerService when a Driver_Assignment is created.
+     * Driver mobile notification is intentionally not sent here; dispatch sends it.
      */
     public function createBookingAssignment(Request $request, BookingItem $bookingItem): JsonResponse
     {
@@ -324,37 +319,6 @@ class BookingAssignmentController extends Controller
                             'status' => 'active',
                             'requires_approval' => false,
                         ]);
-
-                        // Trigger mobile notification
-                        try {
-                            $this->notificationService->sendAssignmentNotification($da);
-                        } catch (\Exception $e) {
-                            Log::warning('Failed to send assignment notification', [
-                                'assignment_id' => $da->id,
-                                'error' => $e->getMessage(),
-                            ]);
-                        }
-
-                        // Broadcast admin assignment update to driver's mobile channel
-                        try {
-                            broadcast(new AdminAssignmentUpdated($request->driver_id, [
-                                'assignment_id' => $da->id,
-                                'booking_id' => $booking->id,
-                                'booking_item_id' => $bookingItem->id,
-                                'action' => 'created',
-                                'status' => $da->status,
-                                'trip_phase' => $da->trip_phase?->value ?? 'active',
-                                'assigned_from' => $da->assigned_from?->toIso8601String(),
-                                'assigned_to' => $da->assigned_to?->toIso8601String(),
-                                'pickup_location' => $bookingItem->pickup_location,
-                                'dropoff_location' => $bookingItem->dropoff_location,
-                            ]));
-                        } catch (\Exception $e) {
-                            Log::warning('Failed to broadcast admin assignment update', [
-                                'assignment_id' => $da->id,
-                                'error' => $e->getMessage(),
-                            ]);
-                        }
 
                         $results['driver_assignment'] = $da;
                     } else {

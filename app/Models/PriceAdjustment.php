@@ -314,7 +314,7 @@ class PriceAdjustment extends BaseModel
             'discount_percentage' => $discountPercentage,
             'total_discount' => $totalSavings,
             'savings_display' => $hasDiscount
-                ? getCurrencySymbol() . number_format($totalSavings, 2)
+                ? getCurrencySymbol() . number_format(floor(max(0, $totalSavings)), 0)
                 : null
         ];
     }
