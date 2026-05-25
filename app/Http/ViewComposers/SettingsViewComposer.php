@@ -91,6 +91,7 @@ class SettingsViewComposer
                     'footer_company_tagline',
                     'footer_inquiry_heading',
                     'footer_inquiry_subheading',
+                    'footer_whatsapp_number',
                     'footer_whatsapp_label',
                     'footer_email_label',
                     'footer_phone_label',

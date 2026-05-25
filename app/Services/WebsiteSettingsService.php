@@ -1094,6 +1094,7 @@ class WebsiteSettingsService
         $settings['site_name'] = $this->filled($settings['site_name'] ?? null) ? $settings['site_name'] : $brandName;
         $settings['site_tagline'] = $this->filled($settings['site_tagline'] ?? null) ? $settings['site_tagline'] : $tagline;
         $settings['company_name'] = $companyName;
+        $settings['company_whatsapp'] = $this->firstFilled($settings, ['company_whatsapp', 'footer_whatsapp_number'], $settings['company_phone'] ?? '');
         $settings['footer_company_name'] = $this->firstFilled($settings, ['footer_company_name'], $companyName);
 
         $settings['brand_logo_primary'] = $primaryLogo;
