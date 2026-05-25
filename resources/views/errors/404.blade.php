@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Your Cart - TheTaxi')
+@section('title', 'Your Cart - ' . ($settings['site_name'] ?? $settings['brand_name'] ?? 'Company') . '')
 
 @section('content')
 
@@ -20,7 +20,7 @@
                         </svg>
                         <h2>Oops! Looks like you’ve taken a wrong turn.</h2>
                         <p>The page you’re looking for doesn’t exist. Let’s get you back on track!</p>
-                        <a href="index.html" class="primary-btn1 two black-bg">
+                        <a href="{{ route('home') }}" class="primary-btn1 two black-bg">
                             <span>
                                 Go to Homepage
                                 <svg width="10" height="10" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg">

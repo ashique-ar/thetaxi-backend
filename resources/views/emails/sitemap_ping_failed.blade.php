@@ -11,4 +11,4 @@
 <p>Please check the ping endpoint and Google/Bing Search Console for errors. If you'd like, you can enable Search
     Console API submission in the future for more reliable submissions.</p>
 
-<p>Regards,<br>TheTaxi system</p>
+<p>Regards,<br>{{ $settings['brand_name'] ?? $settings['site_name'] ?? 'Company' }} system</p>

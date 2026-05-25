@@ -13,6 +13,9 @@
             @php
                 $corporateBanner = $settings['corporate_banner_image'] ?? null;
                 $fallbackBanner = $settings['banner_image'] ?? null;
+                $corporatePhone = $settings['company_phone'] ?? '';
+                $corporatePhoneTel = preg_replace('/[^0-9+]/', '', $corporatePhone);
+                $corporateEmail = $settings['company_email'] ?? '';
             @endphp
             <img src="{{ $corporateBanner ? s3_asset($corporateBanner) : ($fallbackBanner ? s3_asset($fallbackBanner) : asset('assets/img/home4/home4-banner-img.jpg')) }}"
                 alt="{{ $settings['corporate_hero_heading'] ?? 'Corporate Transport Solutions' }}" loading="lazy">
@@ -241,8 +244,15 @@
                                         <hr class="flex-grow-1">
                                     </div>
                                 </div>
-                                <a href="tel:+94717680000" class="text-primary fw-bold">+94 71 768 00 00</a> /
-                                <a href="mailto:zufer@thetaxi.lk" class="text-primary fw-bold">zufer@thetaxi.lk</a>
+                                @if($corporatePhone)
+                                    <a href="tel:{{ $corporatePhoneTel }}" class="text-primary fw-bold">{{ $corporatePhone }}</a>
+                                @endif
+                                @if($corporatePhone && $corporateEmail)
+                                    /
+                                @endif
+                                @if($corporateEmail)
+                                    <a href="mailto:{{ $corporateEmail }}" class="text-primary fw-bold">{{ $corporateEmail }}</a>
+                                @endif
                             </form>
                         </div>
                     </div>

@@ -1,5 +1,5 @@
 /**
- * TheTaxi Enhanced Booking Form - Complete Implementation
+ * Company Enhanced Booking Form - Complete Implementation
  * Handles all service types with Google Maps integration and fallbacks
  * 
  * IMPORTANT FIX (2026-02-10):

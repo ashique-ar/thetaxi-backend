@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', $settings['about_page_title'] ?? 'About - TheTaxi')
+@section('title', $settings['about_page_title'] ?? 'About - ' . ($settings['site_name'] ?? $settings['brand_name'] ?? 'Company'))
 
 @push('meta')
     @include('partials.seo')
@@ -12,10 +12,10 @@
         style="background-image:linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url({{ s3_asset($settings['about_breadcrumb_image'] ?? 'assets/img/innerpages/breadcrumb-bg.jpg') }});">
         <div class="container">
             <div class="banner-content">
-                <h1>{{ $settings['about_hero_heading'] ?? 'About TheTaxi' }}</h1>
+                <h1>{{ $settings['about_hero_heading'] ?? 'About ' . ($settings['brand_name'] ?? $settings['company_name'] ?? 'Company') }}</h1>
                 <ul class="breadcrumb-list">
                     <li><a href="{{ route('home') }}">Home</a></li>
-                    <li>{{ $settings['about_hero_subheading'] ?? 'About TheTaxi' }}</li>
+                    <li>{{ $settings['about_hero_subheading'] ?? 'About ' . ($settings['brand_name'] ?? $settings['company_name'] ?? 'Company') }}</li>
                 </ul>
             </div>
         </div>
@@ -30,10 +30,10 @@
                     <div class="col-xl-6 col-lg-7 wow animate fadeInLeft" data-wow-delay="200ms" data-wow-duration="1500ms">
                         <div class="about-content">
                             <div class="section-title">
-                                <h2>{{ $settings['about_section_title'] ?? "Why We're Best Agency" }}</h2>
-                                <h4>{{ $settings['about_section_subtitle'] ?? 'Welcome to TheTaxi Travel Agency – Your Gateway to Unforgettable Journeys!' }}
+                                <h2>{{ $settings['about_section_title'] ?? "Why Choose Us" }}</h2>
+                                <h4>{{ $settings['about_section_subtitle'] ?? 'Welcome to our travel service - your gateway to unforgettable journeys!' }}
                                 </h4>
-                                <p>{{ $settings['about_section_description_1'] ?? 'TheTaxi Travel Agency is a trusted name in the travel industry, offering seamless travel planning, personalized itineraries, and unforgettable adventures. With years of experience and a network of global partners, we ensure a hassle-free and memorable journey for every traveler.' }}
+                                <p>{{ $settings['about_section_description_1'] ?? 'We offer seamless travel planning, personalized itineraries, and reliable transport services. With years of experience and a strong partner network, we help every traveler enjoy a hassle-free journey.' }}
                                 </p>
                                 <p>{{ $settings['about_section_description_2'] ?? "We believe that travel is more than just moving from one place to another—it's about discovering new cultures, creating unforgettable experiences, and making lifelong memories." }}
                                 </p>
@@ -43,7 +43,7 @@
                                     alt="{{ $settings['founder_name'] ?? 'Founder Signature' }}">
                                 <div class="founder-info">
                                     <h6>{{ $settings['founder_name'] ?? 'Robert Harringson' }}</h6>
-                                    <span>{{ $settings['founder_title'] ?? 'Founder at TheTaxi' }}</span>
+                                    <span>{{ $settings['founder_title'] ?? 'Founder' }}</span>
                                 </div>
                             </div>
                         </div>
@@ -163,7 +163,7 @@
                     data-wow-duration="1500ms">
                     <div class="batch">
                         <span>Flat 30% Discounts All Packages</span>
-                        <a href="travel-package-01.html">Check Offer
+                        <a href="{{ route('booking.search') }}">Check Offer
                             <svg width="10" height="10" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg">
                                 <path d="M1 9L9 1M9 1C7.22222 1.33333 3.33333 2 1 1M9 1C8.66667 2.66667 8 6.33333 9 9"
                                     stroke-width="1.5" stroke-linecap="round" />
@@ -439,7 +439,7 @@
                                         </div>
                                         <div class="author-info">
                                             <h5>Robert Kcarery </h5>
-                                            <span>TheTaxi Traveler</span>
+                                            <span>Traveler</span>
                                         </div>
                                     </div>
                                     <ul class="rating-area">
@@ -465,7 +465,7 @@
                                         </div>
                                         <div class="author-info">
                                             <h5>Selina Henry</h5>
-                                            <span>TheTaxi Traveler</span>
+                                            <span>Traveler</span>
                                         </div>
                                     </div>
                                     <ul class="rating-area trustpilot">
@@ -534,7 +534,7 @@
                                         </div>
                                         <div class="author-info">
                                             <h5>James Bonde</h5>
-                                            <span>TheTaxi Traveler</span>
+                                            <span>Traveler</span>
                                         </div>
                                     </div>
                                     <ul class="rating-area">
@@ -572,7 +572,7 @@
                                         </div>
                                         <div class="author-info">
                                             <h5>Michael D Linda</h5>
-                                            <span>TheTaxi Traveler</span>
+                                            <span>Traveler</span>
                                         </div>
                                     </div>
                                     <ul class="rating-area">
@@ -598,7 +598,7 @@
                                         </div>
                                         <div class="author-info">
                                             <h5>Amber Lashley</h5>
-                                            <span>TheTaxi Traveler</span>
+                                            <span>Traveler</span>
                                         </div>
                                     </div>
                                     <ul class="rating-area trustpilot">

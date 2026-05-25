@@ -45,6 +45,8 @@ class QuotationRequestConfirmation extends Mailable
      */
     public function content(): Content
     {
+        $settings = app(\App\Services\WebsiteSettingsService::class);
+
         return new Content(
             view: 'emails.quotation-request-confirmation',
             with: [
@@ -54,8 +56,8 @@ class QuotationRequestConfirmation extends Mailable
                 'customerName' => $this->requestData['customer_name'] ?? 'Dear Customer',
                 'inquiryNumber' => $this->inquiry->inquiry_number ?? $this->inquiry->id,
                 'estimatedResponseTime' => '2 business hours',
-                'supportEmail' => config('mail.support_email', 'info@thetaxi.lk'),
-                'supportPhone' => config('app.support_phone', '+94 71 1 615 615'),
+                'supportEmail' => $settings->get('company_email', config('mail.support_email', '')),
+                'supportPhone' => $settings->get('company_phone', ''),
             ]
         );
     }

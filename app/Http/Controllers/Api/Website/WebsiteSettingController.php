@@ -30,7 +30,7 @@ class WebsiteSettingController extends Controller
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        $q = WebsiteSetting::query();
+        $q = WebsiteSetting::query()->whereNull('company_id');
         if ($request->filled('search')) {
             $q->where('type', 'like', '%' . $request->search . '%');
         }
@@ -43,6 +43,7 @@ class WebsiteSettingController extends Controller
     {
         $data = $request->validated();
         $data['value'] = WebsiteSetting::normalizeValue($data['value'] ?? null);
+        $data['company_id'] = null;
         $data['created_user_id'] = $request->user()->id;
         $setting = WebsiteSetting::create($data);
 
@@ -117,7 +118,7 @@ class WebsiteSettingController extends Controller
 
         foreach ($request->settings as $settingData) {
             $setting = WebsiteSetting::updateOrCreate(
-                ['type' => $settingData['type']],
+                ['type' => $settingData['type'], 'company_id' => null],
                 [
                     'value' => WebsiteSetting::normalizeValue($settingData['value'] ?? null),
                     'updated_user_id' => $request->user()->id,
@@ -196,7 +197,7 @@ class WebsiteSettingController extends Controller
 
             foreach ($request->settings as $type => $value) {
                 $setting = WebsiteSetting::updateOrCreate(
-                    ['type' => $type],
+                    ['type' => $type, 'company_id' => null],
                     [
                         'value' => WebsiteSetting::normalizeValue($value),
                         'updated_user_id' => $request->user()->id,

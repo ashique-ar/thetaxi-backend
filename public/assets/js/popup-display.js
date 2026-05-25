@@ -14,8 +14,8 @@
     // Configuration
     const CONFIG = {
         apiEndpoint: '/api/popups/highest-priority',
-        storageKeyPrefix: 'thetaxi_popup_',
-        sessionStorageKey: 'thetaxi_popup_session_shown',
+        storageKeyPrefix: 'Company_popup_',
+        sessionStorageKey: 'Company_popup_session_shown',
         dayInMs: 24 * 60 * 60 * 1000, // 24 hours in milliseconds
         displayDelay: 1500, // Delay before showing popup (ms)
         animationDuration: 300 // Animation duration (ms)

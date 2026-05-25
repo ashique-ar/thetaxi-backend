@@ -1102,3 +1102,222 @@ body:has(.t2-header) .featured-vehicles-btn:hover {
     transform: translateY(-3px) !important;
     box-shadow: 0 8px 25px rgba(var(--primary-color1-rgb, 191, 38, 41), 0.4) !important;
 }
+
+/* ============================================
+   8. THEME-02 SCOPED STABILIZATION
+   These rules intentionally use the body theme class added by the layout so
+   Theme 2 can evolve without leaking premium styling into the default theme.
+   ============================================ */
+.theme-theme-02 .t2-hero .banner-wrapper {
+    min-height: clamp(560px, 82vh, 760px) !important;
+}
+
+.theme-theme-02 .t2-hero-badge {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    color: #fff !important;
+    background: rgba(255, 255, 255, 0.12) !important;
+    border: 1px solid rgba(255, 255, 255, 0.22) !important;
+    backdrop-filter: blur(14px) saturate(160%) !important;
+    -webkit-backdrop-filter: blur(14px) saturate(160%) !important;
+    border-radius: 999px !important;
+    padding: 9px 14px !important;
+    margin-bottom: 22px !important;
+    font-size: 13px !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.02em !important;
+    text-transform: uppercase !important;
+}
+
+.theme-theme-02 .t2-header .menu-list > li > a {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+}
+
+.theme-theme-02 .section-title h2 {
+    color: #0f172a !important;
+    font-weight: 800 !important;
+    line-height: 1.12 !important;
+    letter-spacing: 0 !important;
+}
+
+.theme-theme-02 .section-title p {
+    color: #64748b !important;
+    max-width: 680px !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+}
+
+.theme-theme-02 .home-booking-form-section {
+    margin-top: -120px !important;
+    position: relative !important;
+    z-index: 20 !important;
+}
+
+.theme-theme-02 .featured-vehicles-section {
+    background: #fff !important;
+    padding: 80px 0 !important;
+}
+
+.theme-theme-02 .home4-blog-section,
+.theme-theme-02 .home3-travel-inspiration-section,
+.theme-theme-02 .home4-testimonial-section,
+.theme-theme-02 .home4-why-choose-us-section,
+.theme-theme-02 .home4-faq-section,
+.theme-theme-02 .partner-section,
+.theme-theme-02 .home4-offer-slider-section {
+    background: #fff !important;
+}
+
+.theme-theme-02 .cms-content-section {
+    background: #fff !important;
+    padding: 86px 0 !important;
+}
+
+.theme-theme-02 .cms-content-section .section-title h2,
+.theme-theme-02 .cms-content-section .section-title p {
+    color: inherit !important;
+}
+
+.theme-theme-02 .cms-content-section .cms-content-card {
+    border-color: rgba(17, 24, 39, 0.08) !important;
+    box-shadow: 0 16px 42px rgba(15, 23, 42, 0.08) !important;
+}
+
+.theme-theme-02 .cms-content-section .cms-content-card .blog-content {
+    background: #fff !important;
+}
+
+.theme-theme-02 .cms-header {
+    background: linear-gradient(135deg, #0f172a 0%, #334155 100%) !important;
+}
+
+.theme-theme-02 .cms-filters {
+    background: #f8fafc !important;
+    box-shadow: inset 0 -1px 0 rgba(15, 23, 42, 0.08) !important;
+}
+
+.theme-theme-02 .enhanced-blog-card,
+.theme-theme-02 .cms-content-card {
+    border-radius: 8px !important;
+}
+
+.theme-theme-02 .checkout-page .order-sum-area,
+.theme-theme-02 .checkout-page .inquiry-form,
+.theme-theme-02 .cart-shopping-wrapper,
+.theme-theme-02 .cart-order-sum-area,
+.theme-theme-02 .search-summary-card,
+.theme-theme-02 .booking-form-shell,
+.theme-theme-02 .vehicle-info-card,
+.theme-theme-02 .vehicle-price-summary,
+.theme-theme-02 .vehicle-details-page .booking-area,
+.theme-theme-02 .service-page-wrapper,
+.theme-theme-02 .contact-page {
+    border-radius: 18px !important;
+    border: 1px solid rgba(15, 23, 42, 0.08) !important;
+    box-shadow: 0 18px 45px rgba(15, 23, 42, 0.08) !important;
+}
+
+.theme-theme-02 .cart-page,
+.theme-theme-02 .checkout-page {
+    background:
+        linear-gradient(180deg, #111827 0, #111827 210px, #f8fafc 210px, #ffffff 100%) !important;
+}
+
+.theme-theme-02 .cart-shopping-wrapper,
+.theme-theme-02 .cart-order-sum-area,
+.theme-theme-02 .checkout-form-wrapper,
+.theme-theme-02 .checkout-page .order-sum-area {
+    border-color: rgba(15, 23, 42, 0.1) !important;
+    box-shadow: 0 24px 64px rgba(15, 23, 42, 0.13) !important;
+}
+
+.theme-theme-02 .cart-widget-title h4,
+.theme-theme-02 .checkout-form-title h4 {
+    color: #0f172a !important;
+}
+
+.theme-theme-02 .cart-item-card {
+    border-radius: 8px !important;
+    border-left: 4px solid var(--primary-color1) !important;
+}
+
+.theme-theme-02 .service-type-badge {
+    background: #ecfeff !important;
+    color: #0e7490 !important;
+    border-color: #a5f3fc !important;
+}
+
+.theme-theme-02 .payment-card {
+    border-radius: 8px !important;
+    background: #f8fafc !important;
+}
+
+.theme-theme-02 .payment-radio:checked + .payment-label .payment-card {
+    background: #fff !important;
+    border-color: var(--primary-color1) !important;
+}
+
+.theme-theme-02 .search-booking-panel .t2-filter-wrapper,
+.theme-theme-02 .vehicle-details-wrapper .t2-filter-wrapper {
+    box-shadow: 0 24px 64px rgba(15, 23, 42, 0.13) !important;
+}
+
+.theme-theme-02 .vehicle-image-gallery .main-vehicle-image img {
+    border-radius: 20px !important;
+    box-shadow: 0 24px 64px rgba(15, 23, 42, 0.14) !important;
+}
+
+.theme-theme-02 .vehicle-thumbnails .thumbnail-img {
+    border: 2px solid transparent;
+    transition: border-color 0.2s ease, transform 0.2s ease, opacity 0.2s ease;
+}
+
+.theme-theme-02 .vehicle-thumbnails .thumbnail-img.active,
+.theme-theme-02 .vehicle-thumbnails .thumbnail-img:hover {
+    border-color: var(--primary-color1);
+    opacity: 0.95;
+    transform: translateY(-1px);
+}
+
+.theme-theme-02 .search-summary-card {
+    background: linear-gradient(135deg, #111827 0%, #1f2937 100%) !important;
+}
+
+.theme-theme-02 .primary-btn1,
+.theme-theme-02 .btn-primary {
+    border-radius: 12px !important;
+    font-weight: 700 !important;
+}
+
+.theme-theme-02 .primary-btn1:hover,
+.theme-theme-02 .btn-primary:hover {
+    transform: translateY(-2px) !important;
+}
+
+@media (max-width: 991px) {
+    .theme-theme-02 .home-booking-form-section {
+        margin-top: -90px !important;
+    }
+}
+
+@media (max-width: 767px) {
+    .theme-theme-02 .t2-hero .banner-wrapper {
+        min-height: 620px !important;
+    }
+
+    .theme-theme-02 .featured-vehicles-section {
+        padding: 56px 0 !important;
+    }
+
+    .theme-theme-02 .featured-vehicles-section .section-title h2 {
+        font-size: 28px !important;
+    }
+}
+
+@media (max-width: 575px) {
+    .theme-theme-02 .home-booking-form-section {
+        margin-top: -72px !important;
+    }
+}

@@ -213,7 +213,7 @@ class DefaultFormConfigService
                 'submit_as' => 'pickup',
                 'location_mode' => 'predefined_or_custom',
                 'placeholder' => 'Select pickup location',
-                'default' => 'Casons Head Office',
+                'default' => 'Head Office',
                 'default_lat' => '6.9187556338924585',
                 'default_lng' => '79.88803557115918',
             ],

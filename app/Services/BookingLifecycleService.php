@@ -10,6 +10,7 @@ use App\Models\DriverAssignment;
 use App\Models\Vehicle\Vehicle;
 use App\Models\Website\WebsiteSetting;
 use App\Services\Driver\NotificationTriggerService;
+use App\Services\InvoiceService;
 use App\Models\User;
 use App\Enums\BookingLifecycleStatus;
 use App\Enums\DispatchStatus;
@@ -33,17 +34,29 @@ class BookingLifecycleService
     protected BookingFlowService $bookingFlowService;
     protected CurrencyService $currencyService;
     protected NotificationTriggerService $notificationTriggerService;
+    protected InvoiceService $invoiceService;
+    protected AvailabilityEnforcementService $availabilityEnforcement;
+    protected LoyaltyService $loyaltyService;
+    protected AgentCommissionService $agentCommissionService;
 
     public function __construct(
         AssignmentService $assignmentService,
         BookingFlowService $bookingFlowService,
         CurrencyService $currencyService,
-        NotificationTriggerService $notificationTriggerService
+        NotificationTriggerService $notificationTriggerService,
+        InvoiceService $invoiceService,
+        AvailabilityEnforcementService $availabilityEnforcement,
+        LoyaltyService $loyaltyService,
+        AgentCommissionService $agentCommissionService
     ) {
         $this->assignmentService = $assignmentService;
         $this->bookingFlowService = $bookingFlowService;
         $this->currencyService = $currencyService;
         $this->notificationTriggerService = $notificationTriggerService;
+        $this->invoiceService = $invoiceService;
+        $this->availabilityEnforcement = $availabilityEnforcement;
+        $this->loyaltyService = $loyaltyService;
+        $this->agentCommissionService = $agentCommissionService;
     }
 
     /**
@@ -654,8 +667,39 @@ class BookingLifecycleService
             // Mark as returned
             $dispatch->markReturned((string) $actorUserId, $returnData);
 
-            // Update vehicle availability (pending QC)
+            // Post-trip maintenance trigger check (non-blocking)
             $vehicleId = $dispatch->vehicle_id ?: $context['vehicle_id'];
+            if ($vehicleId) {
+                $mileageIn = (int) ($returnData['mileage_in'] ?? $dispatch->mileage_in ?? 0);
+                if ($mileageIn > 0) {
+                    try {
+                        $vehicleForMaintenance = Vehicle::find($vehicleId);
+                        if ($vehicleForMaintenance) {
+                            $triggered = $this->availabilityEnforcement->checkPostTripMaintenanceTriggers(
+                                $vehicleForMaintenance,
+                                $mileageIn
+                            );
+                            if (!empty($triggered)) {
+                                Log::info('Post-trip maintenance triggered', [
+                                    'vehicle_id' => $vehicleId,
+                                    'mileage'    => $mileageIn,
+                                    'triggered'  => array_column($triggered, 'schedule_id'),
+                                ]);
+                            }
+                        }
+                    } catch (\Throwable $e) {
+                        Log::error('Post-trip maintenance check failed', [
+                            'vehicle_id' => $vehicleId,
+                            'error'      => $e->getMessage(),
+                        ]);
+                    }
+                }
+            }
+
+            // Update vehicle availability (pending QC)
+            if (!$vehicleId) {
+                throw new \Exception('Vehicle not found for return processing');
+            }
             if (!$vehicleId) {
                 throw new \Exception('Vehicle not found for return processing');
             }
@@ -848,6 +892,43 @@ class BookingLifecycleService
 
             $this->logLifecycleTransition($booking, BookingLifecycleStatus::QC_COMPLETED, BookingLifecycleStatus::COMPLETED, $completionData);
 
+            // Generate and email invoice on completion
+            try {
+                $this->invoiceService->generateAndSend($booking->fresh([
+                    'customer.user',
+                    'bookingItems.serviceType',
+                    'bookingItems.vehicle.group',
+                    'bookingItems.driver.user',
+                    'bookingAddons',
+                ]));
+            } catch (\Throwable $e) {
+                // Invoice failure must not roll back the booking completion.
+                Log::error('Invoice generation failed on booking completion', [
+                    'booking_id' => $bookingId,
+                    'error'      => $e->getMessage(),
+                ]);
+            }
+
+            // Award loyalty points (non-blocking)
+            try {
+                $this->loyaltyService->awardPointsForBooking($booking->fresh());
+            } catch (\Throwable $e) {
+                Log::error('Loyalty points award failed on booking completion', [
+                    'booking_id' => $bookingId,
+                    'error'      => $e->getMessage(),
+                ]);
+            }
+
+            // Record agent commission (non-blocking)
+            try {
+                $this->agentCommissionService->recordForBooking($booking->fresh());
+            } catch (\Throwable $e) {
+                Log::error('Agent commission recording failed on booking completion', [
+                    'booking_id' => $bookingId,
+                    'error'      => $e->getMessage(),
+                ]);
+            }
+
             // Notify corporate employee about booking completion
             if ($booking->is_corporate_booking && $booking->corporate_account_id) {
                 \App\Models\AuditLog::create([
@@ -857,10 +938,10 @@ class BookingLifecycleService
                     'entity_id' => $booking->id,
                     'timestamp' => now(),
                     'details'   => [
-                        'corporate_id' => $booking->corporate_account_id,
-                        'employee_id'  => $booking->employee_id,
+                        'corporate_id'   => $booking->corporate_account_id,
+                        'employee_id'    => $booking->employee_id,
                         'booking_number' => $booking->booking_number,
-                        'completed_at' => now()->toISOString(),
+                        'completed_at'   => now()->toISOString(),
                     ],
                 ]);
             }
@@ -925,12 +1006,62 @@ class BookingLifecycleService
     }
 
     /**
-     * Check if allocation requires approval
+     * Check if allocation requires approval before dispatch.
+     *
+     * Rules (all configurable via website_settings):
+     * 1. Global setting "allocation_requires_approval" forces approval on every booking.
+     * 2. Corporate bookings require approval if their corporate account mandates it.
+     * 3. Bookings with pricing overrides require approval when "allocation_approval_on_override" is enabled.
+     * 4. Bookings above a certain value require approval when "allocation_approval_amount_threshold" is set.
      */
     private function checkAllocationRequiresApproval(Booking $booking): bool
     {
-        // Add logic to determine if allocation requires approval
-        // Based on conflicts, overrides, etc.
+        // 1. Global override
+        $globalRequired = $this->normalizeSettingBoolean(
+            WebsiteSetting::getValue('allocation_requires_approval', 'false'),
+            false
+        );
+        if ($globalRequired) {
+            return true;
+        }
+
+        // 2. Corporate account policy
+        if ($booking->is_corporate_booking && $booking->corporate_account_id) {
+            $corporate = $booking->corporateAccount;
+            if ($corporate && !empty($corporate->require_booking_approval)) {
+                // Coordinator exemption
+                if (!empty($corporate->approval_exempt_coordinators)) {
+                    $userId = \Illuminate\Support\Facades\Auth::id();
+                    $exempted = is_array($corporate->approval_exempt_coordinators)
+                        ? in_array($userId, $corporate->approval_exempt_coordinators)
+                        : false;
+                    if (!$exempted) {
+                        return true;
+                    }
+                } else {
+                    return true;
+                }
+            }
+        }
+
+        // 3. Pricing override triggers approval
+        $approvalOnOverride = $this->normalizeSettingBoolean(
+            WebsiteSetting::getValue('allocation_approval_on_override', 'false'),
+            false
+        );
+        if ($approvalOnOverride && $booking->has_overrides) {
+            return true;
+        }
+
+        // 4. Amount threshold
+        $amountThreshold = (float) (WebsiteSetting::getValue('allocation_approval_amount_threshold', 0) ?? 0);
+        if ($amountThreshold > 0) {
+            $bookingAmount = $booking->total_actual ?? $booking->total_estimated ?? 0;
+            if ($bookingAmount >= $amountThreshold) {
+                return true;
+            }
+        }
+
         return false;
     }
 
@@ -1457,11 +1588,12 @@ class BookingLifecycleService
             })
             ->exists();
 
-        // Check booking conflicts through booking_items
+        // Check booking conflicts through booking_items.
+        // Use the bookings.status column (lifecycle_status is a computed property, not a DB column).
         $bookingConflicts = DB::table('booking_items')
             ->join('bookings', 'booking_items.booking_id', '=', 'bookings.id')
             ->where('booking_items.vehicle_id', $vehicleId)
-            ->where('bookings.lifecycle_status', '!=', BookingLifecycleStatus::COMPLETED)
+            ->whereNotIn('bookings.status', ['completed', 'cancelled', 'inquiry_cancelled'])
             ->where(function ($query) use ($start, $end) {
                 $query->whereBetween('booking_items.from_date', [$start, $end])
                     ->orWhereBetween('booking_items.to_date', [$start, $end])
@@ -1520,8 +1652,8 @@ class BookingLifecycleService
         return DB::transaction(function () use ($bookingId) {
             $booking = Booking::findOrFail($bookingId);
 
-            // Ensure booking is completed
-            if ($booking->lifecycle_status !== BookingLifecycleStatus::COMPLETED) {
+            // Ensure booking is completed (getLifecycleStatus() derives status from the status column).
+            if ($booking->getLifecycleStatus() !== BookingLifecycleStatus::COMPLETED) {
                 throw new \InvalidArgumentException('Booking must be completed to update availability pool');
             }
 

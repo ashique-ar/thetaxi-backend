@@ -125,16 +125,11 @@ return [
     |
     */
 
-    'customer_cc' => [
-        'info@thetaxi.lk',
-        // 'inquiry@thetaxi.lk',
-    ],
+    'customer_cc' => array_filter(explode(',', env('MAIL_CUSTOMER_CC', ''))),
 
-    'bcc_all' => [
-        // 'sales@thetaxi.lk',
-    ],
+    'bcc_all' => array_filter(explode(',', env('MAIL_BCC_ALL', ''))),
 
-    'corporate_transport_admin' => env('CORPORATE_TRANSPORT_ADMIN_EMAIL', 'info@thetaxi.lk'),
+    'corporate_transport_admin' => env('CORPORATE_TRANSPORT_ADMIN_EMAIL', ''),
 
     /*
     |--------------------------------------------------------------------------
@@ -148,17 +143,14 @@ return [
     */
     'inquiry_routing' => [
         'default' => [
-            'cc' => ['info@thetaxi.lk',
-            //  'inquiry@thetaxi.lk'
-            ],
-            // 'cc' => ['info@thetaxi.lk', 'inquiry@thetaxi.lk'],
-            // 'bcc' => ['sales@thetaxi.lk'],
+            'cc' => array_filter(explode(',', env('MAIL_INQUIRY_DEFAULT_CC', ''))),
+            'bcc' => array_filter(explode(',', env('MAIL_INQUIRY_DEFAULT_BCC', ''))),
             'include_default_cc' => true,
             'include_default_bcc' => true,
         ],
         'corporate' => [
-            'cc' => [],
-            'bcc' => ['zufer@thetaxi.lk'],
+            'cc' => array_filter(explode(',', env('MAIL_INQUIRY_CORPORATE_CC', ''))),
+            'bcc' => array_filter(explode(',', env('MAIL_INQUIRY_CORPORATE_BCC', ''))),
             'include_default_cc' => false,
             'include_default_bcc' => false,
         ],

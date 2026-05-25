@@ -64,19 +64,19 @@ class CmsSeeder extends Seeder
         ]);
 
         // Create sample content for blog
-        CmsContent::firstOrCreate(['slug' => 'welcome-to-thetaxi-blog'], [
+        CmsContent::firstOrCreate(['slug' => 'welcome-to-Company-blog'], [
             'cms_content_type_id' => $blogType->id,
-            'title' => 'Welcome to TheTaxi Blog',
+            'title' => 'Welcome to Company Blog',
             'excerpt' => 'Learn about our car rental services and latest updates.',
-            'body' => '<p>Welcome to the official TheTaxi blog! Here you\'ll find the latest updates about our car rental services, travel tips, and company news.</p><p>We\'re committed to providing the best car rental experience in Sri Lanka.</p>',
+            'body' => '<p>Welcome to the official Company blog! Here you\'ll find the latest updates about our car rental services, travel tips, and company news.</p><p>We\'re committed to providing the best car rental experience in Sri Lanka.</p>',
             'status' => CmsContentStatus::PUBLISHED,
             'published_at' => now(),
             'is_featured' => true,
             'allow_comments' => true,
-            'meta_title' => 'Welcome to TheTaxi Blog - Car Rental Services',
-            'meta_description' => 'Learn about TheTaxi car rental services and latest updates.',
+            'meta_title' => 'Welcome to Company Blog - Car Rental Services',
+            'meta_description' => 'Learn about Company car rental services and latest updates.',
             'custom_fields' => [
-                'author_name' => 'TheTaxi Team',
+                'author_name' => 'Company Team',
                 'read_time' => '2 min read',
             ],
             'views_count' => 0,
@@ -106,12 +106,12 @@ class CmsSeeder extends Seeder
             'cms_content_type_id' => $newsType->id,
             'title' => 'New Fleet Addition - Luxury SUVs',
             'excerpt' => 'We have added premium luxury SUVs to our fleet for enhanced comfort.',
-            'body' => '<p>We are excited to announce the addition of new luxury SUVs to our fleet. These vehicles offer premium comfort and advanced features for your travel needs.</p><p>Book now to experience luxury travel with TheTaxi!</p>',
+            'body' => '<p>We are excited to announce the addition of new luxury SUVs to our fleet. These vehicles offer premium comfort and advanced features for your travel needs.</p><p>Book now to experience luxury travel with Company!</p>',
             'status' => CmsContentStatus::PUBLISHED,
             'published_at' => now()->subDays(1),
             'is_featured' => true,
             'allow_comments' => false,
-            'meta_title' => 'New Luxury SUVs Added to TheTaxi Fleet',
+            'meta_title' => 'New Luxury SUVs Added to Company Fleet',
             'meta_description' => 'Experience premium comfort with our new luxury SUV fleet.',
             'custom_fields' => [
                 'press_release' => true,
@@ -130,7 +130,7 @@ class CmsSeeder extends Seeder
             'published_at' => now()->subWeeks(1),
             'is_featured' => false,
             'allow_comments' => false,
-            'meta_title' => 'Airport Transfer Service - TheTaxi',
+            'meta_title' => 'Airport Transfer Service - Company',
             'meta_description' => 'Reliable airport transfer service with professional drivers and competitive pricing.',
             'custom_fields' => [
                 'service_category' => 'Transportation',

@@ -2,19 +2,22 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Contracts\PaymentGatewayInterface;
 use App\Http\Controllers\Controller;
 use App\Models\Booking\Booking;
+use App\Services\Payment\PaymentGatewayManager;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 
 class PaymentController extends Controller
 {
-    // Enforce authentication and permissions for payment endpoints
-    public function __construct()
-    {
+    public function __construct(
+        private readonly PaymentGatewayManager $gatewayManager,
+    ) {
         $this->middleware('auth:api');
         $this->middleware('permission:payments.initiate')->only(['initiatePayment']);
         $this->middleware('permission:payments.callback')->only(['paymentCallback']);
@@ -49,34 +52,62 @@ class PaymentController extends Controller
 
         try {
             $booking = Booking::findOrFail($request->booking_id);
-            
-            // Create payment transaction record
-            $transaction = DB::table('payment_transactions')->insert([
-                'id' => Str::uuid(),
-                'booking_id' => $booking->id,
-                'amount' => $request->amount,
-                'currency' => $request->currency,
+
+            $transactionId = $this->generateTransactionId();
+            $recordId = (string) Str::uuid();
+
+            DB::table('payment_transactions')->insert([
+                'id'             => $recordId,
+                'booking_id'     => $booking->id,
+                'amount'         => $request->amount,
+                'currency'       => $request->currency,
                 'payment_method' => $request->payment_method,
-                'status' => 'pending',
-                'transaction_id' => $this->generateTransactionId(),
-                'created_at' => now(),
-                'updated_at' => now()
+                'status'         => 'pending',
+                'transaction_id' => $transactionId,
+                'created_at'     => now(),
+                'updated_at'     => now(),
             ]);
 
-            // Here you would integrate with your payment provider
-            // For now, returning a mock response
-            $paymentUrl = $this->generatePaymentUrl($request->payment_method, $transaction);
+            $transaction = DB::table('payment_transactions')->where('id', $recordId)->first();
+
+            // Delegate to the appropriate payment gateway
+            try {
+                $gateway    = $this->gatewayManager->resolve($request->payment_method);
+                $gatewayResult = $gateway->initiatePayment(
+                    $booking,
+                    (float) $request->amount,
+                    $request->currency,
+                    ['payment_type' => $request->get('payment_type', 'full')]
+                );
+            } catch (\InvalidArgumentException $e) {
+                $gatewayResult = [
+                    'success'        => false,
+                    'payment_url'    => config('app.url') . "/payments/{$request->payment_method}/{$transactionId}",
+                    'transaction_id' => $transactionId,
+                    'message'        => $e->getMessage(),
+                ];
+            }
+
+            // Persist gateway transaction ID if provided
+            if (!empty($gatewayResult['transaction_id']) && $gatewayResult['transaction_id'] !== $transactionId) {
+                DB::table('payment_transactions')
+                    ->where('id', $recordId)
+                    ->update(['gateway_transaction_id' => $gatewayResult['transaction_id'], 'updated_at' => now()]);
+            }
 
             return response()->json([
-                'status' => 'success',
+                'status'  => 'success',
                 'message' => 'Payment initiated successfully',
-                'data' => [
-                    'transaction_id' => $transaction,
-                    'payment_url' => $paymentUrl,
-                    'amount' => $request->amount,
-                    'currency' => $request->currency,
-                    'status' => 'pending'
-                ]
+                'data'    => [
+                    'transaction_id'         => $transactionId,
+                    'record_id'              => $recordId,
+                    'payment_url'            => $gatewayResult['payment_url'] ?? '',
+                    'gateway_data'           => $gatewayResult['gateway_data'] ?? null,
+                    'amount'                 => $request->amount,
+                    'currency'               => $request->currency,
+                    'status'                 => 'pending',
+                    'gateway_success'        => $gatewayResult['success'] ?? false,
+                ],
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -236,27 +267,54 @@ class PaymentController extends Controller
             }
 
             $refundAmount = $request->amount ?? $transaction->amount;
+            if ($refundAmount > $transaction->amount) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Refund amount cannot exceed transaction amount',
+                ], 422);
+            }
 
-            // Create refund record
-            $refundId = Str::uuid();
+            // Attempt gateway refund
+            $gatewayRefundId = null;
+            $refundStatus    = 'pending';
+            $refundNotes     = null;
+
+            try {
+                $gateway      = $this->gatewayManager->resolve($transaction->payment_method ?? 'webxpay');
+                $gatewayResult = $gateway->refund(
+                    $transaction->gateway_transaction_id ?? $transaction->transaction_id,
+                    (float) $refundAmount,
+                    $request->reason
+                );
+
+                if ($gatewayResult['success']) {
+                    $gatewayRefundId = $gatewayResult['refund_id'] ?? null;
+                    $refundStatus    = 'completed';
+                } elseif (!empty($gatewayResult['manual'])) {
+                    $refundStatus = 'manual_required';
+                    $refundNotes  = $gatewayResult['message'] ?? null;
+                } else {
+                    $refundStatus = 'failed';
+                    $refundNotes  = $gatewayResult['message'] ?? null;
+                }
+            } catch (\Throwable $e) {
+                Log::error('Gateway refund call failed', ['transaction_id' => $id, 'error' => $e->getMessage()]);
+                $refundStatus = 'manual_required';
+                $refundNotes  = $e->getMessage();
+            }
+
+            $refundId = (string) Str::uuid();
             DB::table('payment_refunds')->insert([
-                'id' => $refundId,
-                'transaction_id' => $transaction->id,
-                'amount' => $refundAmount,
-                'reason' => $request->reason,
-                'status' => 'pending',
-                'created_at' => now(),
-                'updated_at' => now()
+                'id'                      => $refundId,
+                'transaction_id'          => $transaction->id,
+                'amount'                  => $refundAmount,
+                'reason'                  => $request->reason,
+                'status'                  => $refundStatus,
+                'gateway_refund_id'       => $gatewayRefundId,
+                'notes'                   => $refundNotes,
+                'created_at'              => now(),
+                'updated_at'              => now(),
             ]);
-
-            // Here you would integrate with your payment provider for actual refund
-            // For now, marking as completed
-            DB::table('payment_refunds')
-                ->where('id', $refundId)
-                ->update([
-                    'status' => 'completed',
-                    'updated_at' => now()
-                ]);
 
             // Update booking payment status
             $booking = Booking::find($transaction->booking_id);
@@ -289,49 +347,27 @@ class PaymentController extends Controller
      */
     public function getPaymentMethods(): JsonResponse
     {
-        $methods = [
-            [
-                'id' => 'credit_card',
-                'name' => 'Credit Card',
-                'description' => 'Pay with your credit card',
-                'icon' => 'credit-card',
-                'is_active' => true
-            ],
-            [
-                'id' => 'debit_card',
-                'name' => 'Debit Card',
-                'description' => 'Pay with your debit card',
-                'icon' => 'debit-card',
-                'is_active' => true
-            ],
-            [
-                'id' => 'paypal',
-                'name' => 'PayPal',
-                'description' => 'Pay with PayPal',
-                'icon' => 'paypal',
-                'is_active' => true
-            ],
-            [
-                'id' => 'stripe',
-                'name' => 'Stripe',
-                'description' => 'Pay with Stripe',
-                'icon' => 'stripe',
-                'is_active' => true
-            ],
-            [
-                'id' => 'bank_transfer',
-                'name' => 'Bank Transfer',
-                'description' => 'Pay via bank transfer',
-                'icon' => 'bank',
-                'is_active' => true
-            ]
-        ];
+        $enabled = $this->gatewayManager->available();
+
+        $methods = array_merge(
+            // Gateways that are actually configured and enabled
+            array_map(fn ($gw) => [
+                'id'          => $gw['method'],
+                'name'        => $gw['gateway'],
+                'description' => "Pay via {$gw['gateway']}",
+                'icon'        => strtolower(str_replace(' ', '-', $gw['method'])),
+                'is_active'   => true,
+            ], $enabled)
+        );
+
+        // Always include at least one method so UI doesn't break
+        if (empty($methods)) {
+            $methods = [['id' => 'bank_transfer', 'name' => 'Bank Transfer', 'description' => 'Pay via bank transfer', 'icon' => 'bank', 'is_active' => true]];
+        }
 
         return response()->json([
             'status' => 'success',
-            'data' => [
-                'payment_methods' => $methods
-            ]
+            'data'   => ['payment_methods' => $methods],
         ]);
     }
 
@@ -444,20 +480,29 @@ class PaymentController extends Controller
     }
 
     /**
-     * Generate payment URL (mock implementation)
-     */
-    private function generatePaymentUrl(string $paymentMethod, $transactionId): string
-    {
-        // This would be replaced with actual payment provider URLs
-        return config('app.url') . "/payments/{$paymentMethod}/{$transactionId}";
-    }
-
-    /**
-     * Verify payment signature (mock implementation)
+     * Verify payment signature using HMAC-SHA256.
+     * Expected header: X-Payment-Signature = HMAC-SHA256(secret, sorted_payload_json)
      */
     private function verifyPaymentSignature(array $data): bool
     {
-        // This would be replaced with actual signature verification
-        return true;
+        $secret = config('booking.payment_callback_secret');
+        if (empty($secret)) {
+            // If no secret configured, skip verification but log a warning.
+            \Illuminate\Support\Facades\Log::warning('Payment signature verification skipped: payment_callback_secret not configured');
+            return true;
+        }
+
+        $providedSignature = $data['signature'] ?? '';
+        if (empty($providedSignature)) {
+            return false;
+        }
+
+        // Rebuild expected signature from payload (exclude the signature itself).
+        $payload = $data;
+        unset($payload['signature']);
+        ksort($payload);
+
+        $expectedSignature = hash_hmac('sha256', json_encode($payload), $secret);
+        return hash_equals($expectedSignature, $providedSignature);
     }
 }

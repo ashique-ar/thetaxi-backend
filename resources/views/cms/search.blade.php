@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Search Results - TheTaxi')
+@section('title', 'Search Results - ' . ($settings['site_name'] ?? $settings['brand_name'] ?? 'Company') . '')
 
 @section('content')
     <!-- Breadcrumb section Start-->

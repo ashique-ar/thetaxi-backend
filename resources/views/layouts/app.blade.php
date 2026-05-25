@@ -49,7 +49,7 @@
 
     @php
         $pageTitle = trim($__env->yieldContent('title'));
-        $siteName = $settings['site_name'] ?? 'TheTaxi - Your Reliable Taxi Service';
+        $siteName = $settings['site_name'] ?? $settings['brand_name'] ?? 'Company';
         $titleTemplate = $settings['seo_title_template'] ?? '';
         // Prefer explicit page title when available
         $computedTitle = $pageTitle !== '' ? $pageTitle : $siteName;
@@ -92,9 +92,10 @@
     @endif
     <meta property="og:site_name" content="{{ $settings['site_name'] ?? config('app.name') }}">
     <meta name="twitter:card" content="{{ $twitterCard }}">
+    @php($favicon = $settings['brand_favicon'] ?? $settings['favicon'] ?? null)
     <link rel="icon"
-        href="{{ isset($settings['favicon']) ? s3_asset($settings['favicon']) : asset('assets/img/favicon.ico') }}"
-        type="image/gif" sizes="20x20">
+        href="{{ $favicon ? s3_asset($favicon) : asset('assets/img/favicon.ico') }}"
+        type="image/x-icon">
 
     {!! $metaStack !!}
 
@@ -257,7 +258,7 @@
     </style>
 </head>
 
-<body class="tt-magic-cursor">
+<body class="tt-magic-cursor theme-{{ get_active_theme() }}">
     @if (!empty($settings['google_tag_manager_id']))
         <!-- Google Tag Manager (noscript) -->
         <noscript>

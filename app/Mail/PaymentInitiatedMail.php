@@ -40,6 +40,8 @@ class PaymentInitiatedMail extends Mailable
      */
     public function content(): Content
     {
+        $settings = app(\App\Services\WebsiteSettingsService::class);
+
         try {
             $this->booking = \App\Models\Booking\Booking::with([
                 'customer.user',
@@ -55,8 +57,8 @@ class PaymentInitiatedMail extends Mailable
             with: [
                 'booking' => $this->booking,
                 'amount' => $this->amount,
-                'supportEmail' => config('mail.from.address', 'info@thetaxi.lk'),
-                'supportPhone' => config('app.support_phone', '+94 711 92 00 00'),
+                'supportEmail' => $settings->get('company_email', config('mail.from.address', '')),
+                'supportPhone' => $settings->get('company_phone', ''),
             ]
         );
     }

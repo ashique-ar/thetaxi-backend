@@ -99,7 +99,7 @@ class NotificationTriggerService
     public function sendDriverTestNotification(Driver $driver, array $context = []): array
     {
         $title = trim((string) ($context['title'] ?? 'Driver Notification Test'));
-        $body = trim((string) ($context['body'] ?? 'This is a test notification from TheTaxi admin portal.'));
+        $body = trim((string) ($context['body'] ?? 'This is a test notification from the admin portal.'));
 
         $payload = [
             'event_type' => 'driver_test_notification',

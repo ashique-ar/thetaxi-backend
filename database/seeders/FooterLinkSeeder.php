@@ -151,7 +151,7 @@ class FooterLinkSeeder extends Seeder
         // Contact Information Links
         FooterLink::create([
             'title' => 'Head Office',
-            'url' => 'tel:+94112345678',
+            'url' => '#',
             'target' => '_self',
             'icon' => 'fas fa-phone',
             'description' => 'Call our head office',
@@ -159,13 +159,13 @@ class FooterLinkSeeder extends Seeder
             'sort_order' => 1,
             'is_active' => true,
             'additional_attributes' => [
-                'data-phone' => '+94112345678'
+                'data-setting' => 'company_phone'
             ]
         ]);
 
         FooterLink::create([
             'title' => '24/7 Hotline',
-            'url' => 'tel:+94701234567',
+            'url' => '#',
             'target' => '_self',
             'icon' => 'fas fa-phone-alt',
             'description' => '24/7 emergency assistance',
@@ -173,7 +173,7 @@ class FooterLinkSeeder extends Seeder
             'sort_order' => 2,
             'is_active' => true,
             'additional_attributes' => [
-                'data-phone' => '+94701234567',
+                'data-setting' => 'emergency_contact',
                 'class' => 'hotline-number'
             ]
         ]);
@@ -194,7 +194,7 @@ class FooterLinkSeeder extends Seeder
 
         FooterLink::create([
             'title' => 'WhatsApp',
-            'url' => 'https://wa.me/94701234567',
+            'url' => '#',
             'target' => '_blank',
             'icon' => 'fab fa-whatsapp',
             'description' => 'Chat with us on WhatsApp',
@@ -204,7 +204,7 @@ class FooterLinkSeeder extends Seeder
             'additional_attributes' => [
                 'class' => 'whatsapp-link',
                 'rel' => 'noopener noreferrer',
-                'data-phone' => '+94701234567'
+                'data-setting' => 'company_whatsapp'
             ]
         ]);
 

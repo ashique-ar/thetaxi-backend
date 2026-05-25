@@ -17,7 +17,7 @@ class TermsAndConditionsSeeder extends Seeder
             [
                 'title' => 'Vehicle Rental Agreement',
                 'slug' => 'vehicle-rental-agreement',
-                'content' => '<p>By booking a vehicle through TheTaxi, you agree to the following terms:</p>
+                'content' => '<p>By booking a vehicle through Company, you agree to the following terms:</p>
                 <ul>
                     <li><strong>Age Requirement:</strong> Driver must be at least 23 years old with a valid driving license</li>
                     <li><strong>Valid License:</strong> An International Driving Permit (IDP) or valid national license is required</li>
@@ -101,7 +101,7 @@ class TermsAndConditionsSeeder extends Seeder
                     <li>Windshield and tire damage are typically covered by insurance</li>
                 </ul>
                 <p><strong>Traffic Violations & Fines:</strong> Renter is responsible for all traffic violations and parking fines incurred during rental period</p>
-                <p><strong>Accident Reporting:</strong> Must report all accidents to TheTaxi within 24 hours with photos and police report number</p>',
+                <p><strong>Accident Reporting:</strong> Must report all accidents to Company within 24 hours with photos and police report number</p>',
                 'service_type' => 'vehicle_rental',
                 'payment_type' => null,
                 'version' => 1,
@@ -119,7 +119,7 @@ class TermsAndConditionsSeeder extends Seeder
                     <li>You may request data deletion anytime (subject to legal requirements)</li>
                     <li>We use cookies to improve your browsing experience</li>
                 </ul>
-                <p><strong>Contact Us:</strong> For privacy concerns, contact privacy@thetaxi.com</p>',
+                <p><strong>Contact Us:</strong> For privacy concerns, contact privacy@example.com</p>',
                 'service_type' => 'general',
                 'payment_type' => null,
                 'version' => 1,

@@ -2508,7 +2508,7 @@ class BookingController extends Controller
     {
         try {
             // Send notification to corporate transport admin
-            $adminEmail = config('mail.corporate_transport_admin', 'admin@thetaxi.lk');
+            $adminEmail = config('mail.corporate_transport_admin', '');
             $this->mailDispatchService->sendToInternal(
                 $adminEmail,
                 new \App\Mail\QuotationRequestNotification($inquiry, $requestData, $vehicleGroup)

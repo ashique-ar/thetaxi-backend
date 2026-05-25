@@ -39,15 +39,19 @@ class WebsiteSettingSeeder extends Seeder
             ],
             [
                 'type' => 'company_name',
-                'value' => 'TheTaxi',
+                'value' => 'Company',
             ],
             [
                 'type' => 'company_email',
-                'value' => 'info@thetaxi.lk',
+                'value' => 'info@Company',
             ],
             [
                 'type' => 'company_phone',
-                'value' => '+94771234567',
+                'value' => '',
+            ],
+            [
+                'type' => 'company_whatsapp',
+                'value' => '',
             ],
             [
                 'type' => 'advance_payment_percentage',

@@ -132,7 +132,7 @@ class NavigationMenuSeeder extends Seeder
             'url' => '/about',
             'target' => '_self',
             'icon' => 'info',
-            'description' => 'Learn about TheTaxi Company',
+            'description' => 'Learn about Company',
             'sort_order' => 4,
             'is_active' => true,
             'show_in_header' => true,

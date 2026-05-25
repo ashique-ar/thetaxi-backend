@@ -182,7 +182,7 @@
     "variable": [
         {
             "key": "base_url",
-            "value": "http://thetaxi.test",
+            "value": "http://localhost:8000",
             "type": "string",
             "description": "Base URL for the API - Update this to your environment URL"
         }

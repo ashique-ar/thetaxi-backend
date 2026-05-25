@@ -12,8 +12,8 @@
                     </g>
                 </svg>
                 <div class="content">
-                    <h6>{{ $settings['footer_inquiry_heading'] ?? 'To More Inquiry' }}</h6>
-                    <span>{{ $settings['footer_inquiry_subheading'] ?? "Don't hesitate Call to TheTaxi." }}</span>
+                    <h6>{{ $settings['footer_inquiry_heading'] ?? 'Need Help Booking?' }}</h6>
+                    <span>{{ $settings['footer_inquiry_subheading'] ?? 'Call or message us for quick assistance.' }}</span>
                 </div>
             </div>
             <ul class="contact-area">
@@ -23,7 +23,7 @@
                     </div>
                     <div class="content">
                         <span>{{ $settings['footer_whatsapp_label'] ?? 'WhatsApp' }}</span>
-                        <a href="https://wa.me/{{ preg_replace('/[^0-9+]/', '', $settings['company_whatsapp'] ?? $settings['company_phone'] ?? '+1234567890') }}">{{ $settings['company_whatsapp'] ?? $settings['company_phone'] ?? '+1 234 567 890' }}</a>
+                        <a href="https://wa.me/{{ preg_replace('/[^0-9+]/', '', $settings['company_whatsapp'] ?? $settings['company_phone'] ?? '') }}">{{ $settings['company_whatsapp'] ?? $settings['company_phone'] ?? 'Call us' }}</a>
                     </div>
                 </li>
                 <li class="single-contact">
@@ -32,7 +32,7 @@
                     </div>
                     <div class="content">
                         <span>{{ $settings['footer_email_label'] ?? 'Mail Us' }}</span>
-                        <a href="mailto:{{ $settings['company_email'] ?? 'info@thetaxi.com' }}">{{ $settings['company_email'] ?? 'info@thetaxi.com' }}</a>
+                        <a href="mailto:{{ $settings['company_email'] ?? '' }}">{{ $settings['company_email'] ?? 'Email us' }}</a>
                     </div>
                 </li>
                 <li class="single-contact">
@@ -41,7 +41,7 @@
                     </div>
                     <div class="content">
                         <span>{{ $settings['footer_phone_label'] ?? 'Call Us' }}</span>
-                        <a href="tel:{{ preg_replace('/[^0-9+]/', '', $settings['company_phone'] ?? '+1234567890') }}">{{ $settings['company_phone'] ?? '+1 234 567 890' }}</a>
+                        <a href="tel:{{ preg_replace('/[^0-9+]/', '', $settings['company_phone'] ?? '') }}">{{ $settings['company_phone'] ?? 'Call us' }}</a>
                     </div>
                 </li>
             </ul>
@@ -55,10 +55,10 @@
                 <div class="col-lg-3 col-md-4 col-sm-6">
                     <div class="footer-logo-and-addition-info">
                         <a href="{{ route('home') }}" class="footer-logo">
-                            <img src="{{ s3_asset($settings['logo_footer'] ?? $settings['logo_header'] ?? 'assets/img/header-logo.png') }}" alt="{{ $settings['logo_footer_alt'] ?? $settings['site_name'] ?? 'TheTaxi' }}">
+                            <img src="{{ s3_asset($settings['logo_footer'] ?? $settings['logo_header'] ?? 'assets/img/header-logo.png') }}" alt="{{ $settings['logo_footer_alt'] ?? $settings['site_name'] ?? $settings['brand_name'] ?? 'Company' }}">
                         </a>
                         <div class="address-area">
-                            <span>{{ $settings['footer_company_tagline'] ?? ($settings['site_tagline'] ?? 'TheTaxi Professional Services') }}</span>
+                            <span>{{ $settings['footer_company_tagline'] ?? ($settings['site_tagline'] ?? $settings['brand_tagline'] ?? 'Professional Services') }}</span>
                             <a href="#">{{ $settings['company_address'] ?? '123 Transport Avenue, Suite 100, Your City, State 12345, Country' }}</a>
                         </div>
                         <ul class="social-list">
@@ -203,7 +203,7 @@
         <div class="footer-bottom">
             <div class="container">
                 <div class="copyright-and-payment-method-area">
-                    <p>{{ $settings['footer_copyright_text'] ?? 'Copyright ' . date('Y')  }} <a href="{{ route('home') }}">{{ $settings['site_name'] ?? 'TheTaxi' }}</a> | All Rights Reserved.</p>
+                    <p>{{ $settings['footer_copyright_text'] ?? 'Copyright ' . date('Y')  }} <a href="{{ route('home') }}">{{ $settings['site_name'] ?? $settings['brand_name'] ?? 'Company' }}</a> | All Rights Reserved.</p>
                     {{-- <div class="payment-method-area">
                         <span>Accepted Payment Methods :</span>
                         <ul>
@@ -219,3 +219,5 @@
     </div>
 </footer>
 <!-- Footer Section End-->
+
+

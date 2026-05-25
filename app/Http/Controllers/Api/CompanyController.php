@@ -23,7 +23,7 @@ class CompanyController extends Controller
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        $q = Company::with(['region', 'country', 'district', 'city']);
+        $q = Company::with(['region', 'country', 'state']);
         if ($request->filled('search')) {
             $q->whereLikeInsensitive('name', $request->search);
         }
@@ -41,7 +41,7 @@ class CompanyController extends Controller
         return response()->json([
             'status' => 'success',
             'message' => 'Company created',
-            'data' => ['company' => new CompanyResource($company)]
+            'data' => new CompanyResource($company)
         ], 201);
     }
 
@@ -49,7 +49,7 @@ class CompanyController extends Controller
     {
         return response()->json([
             'status' => 'success',
-            'data' => ['company' => new CompanyResource($company)]
+            'data' => new CompanyResource($company->load(['region', 'country', 'state']))
         ]);
     }
 
@@ -62,7 +62,7 @@ class CompanyController extends Controller
         return response()->json([
             'status' => 'success',
             'message' => 'Company updated',
-            'data' => ['company' => new CompanyResource($company)]
+            'data' => new CompanyResource($company->load(['region', 'country', 'state']))
         ]);
     }
 

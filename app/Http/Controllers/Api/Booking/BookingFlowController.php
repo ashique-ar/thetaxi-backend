@@ -1148,10 +1148,14 @@ class BookingFlowController extends Controller
     /**
      * Validate self-driven eligibility for a customer
      */
-    public function validateSelfDrivenEligibility(string $customerId): JsonResponse
+    public function validateSelfDrivenEligibility(Request $request, string $customerId): JsonResponse
     {
         try {
-            $eligibility = $this->bookingFlowService->validateSelfDrivenEligibility($customerId);
+            $eligibility = $this->bookingFlowService->validateSelfDrivenEligibility(
+                $customerId,
+                $request->query('vehicle_id'),
+                $request->filled('from_date') ? \Carbon\Carbon::parse($request->query('from_date')) : null
+            );
 
             return response()->json([
                 'status' => 'success',

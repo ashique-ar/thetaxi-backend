@@ -251,7 +251,7 @@ class InquiryController extends Controller
                 'phone' => $data['phone'],
                 'subject' => 'Corporate Transport Inquiry - ' . ($data['company_name'] ?? 'Company'),
                 'message' => $this->buildMessage($type, $data),
-                'intro' => 'Thank you for contacting TheTaxi about corporate transport services. Our corporate team will review your requirements and respond shortly.',
+                'intro' => 'Thank you for contacting us about corporate transport services. Our corporate team will review your requirements and respond shortly.',
                 'success_message' => 'Thank you for your inquiry! Our corporate team will contact you within 24 hours.',
             ],
             'point_to_point' => [
@@ -271,7 +271,7 @@ class InquiryController extends Controller
                 'phone' => $data['phone'],
                 'subject' => 'General Inquiry - ' . ($data['name'] ?? 'Customer'),
                 'message' => $this->buildMessage($type, $data),
-                'intro' => 'Thank you for reaching out to TheTaxi. We have received your message and will respond shortly.',
+                'intro' => 'Thank you for reaching out. We have received your message and will respond shortly.',
                 'success_message' => 'Thank you for your inquiry! Our team will get back to you soon.',
             ],
         };

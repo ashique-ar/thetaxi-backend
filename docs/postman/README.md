@@ -1,10 +1,10 @@
-# TheTaxi Driver Mobile API
+# Company Driver Mobile API
 
-Postman assets for testing the TheTaxi driver mobile backend.
+Postman assets for testing the Company driver mobile backend.
 
 Files:
-- `TheTaxi-Driver-API.postman_collection.json`
-- `TheTaxi-Driver-API.postman_environment.json`
+- `Company-Driver-API.postman_collection.json`
+- `Company-Driver-API.postman_environment.json`
 
 Base URLs:
 - Driver API: `{{base_url}}/api/driver`
@@ -26,7 +26,7 @@ Public endpoints:
 ## Quick Start
 
 1. Import both Postman JSON files.
-2. Select **TheTaxi Driver API - Development** environment.
+2. Select **Company Driver API - Development** environment.
 3. Set `base_url`, `driver_email`, `driver_password`, and device variables.
 4. Run **App Settings > Version Check**.
 5. Run **Authentication > Login**. The collection saves `access_token`, `refresh_token`, `driver_id`, `user_id`, `device_uuid`, and `assignment_id` where present.

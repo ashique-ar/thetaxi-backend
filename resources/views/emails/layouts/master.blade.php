@@ -480,6 +480,13 @@
 </head>
 
 <body>
+    @php
+        $brandName = $settings['company_name'] ?? $settings['brand_name'] ?? $settings['site_name'] ?? 'Company';
+        $brandLogo = $settings['brand_logo_primary'] ?? $settings['logo_header'] ?? 'assets/img/header-logo.png';
+        $brandEmail = $settings['company_email'] ?? config('mail.from.address');
+        $brandPhone = $settings['company_phone'] ?? null;
+        $brandWebsite = $settings['company_website'] ?? config('app.url');
+    @endphp
     <div class="email-wrapper">
         <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
             <tr>
@@ -488,8 +495,8 @@
                         <!-- Header -->
                         <div class="email-header">
                             <div class="logo-container">
-                                <img src="{{ s3_asset($settings['logo_header'] ?? 'assets/img/header-logo.png') }}"
-                                    alt="{{ env('COMPANY_NAME', 'TheTaxi Company') }}">
+                                <img src="{{ s3_asset($brandLogo) }}"
+                                    alt="{{ $brandName }}">
                             </div>
                             <h1>@yield('header_title', 'Welcome')</h1>
                             @hasSection('header_subtitle')
@@ -505,24 +512,28 @@
                         <!-- Footer -->
                         <div class="email-footer">
                             <div class="footer-brand">
-                                <img src="{{ s3_asset($settings['logo_header'] ?? 'assets/img/header-logo.png') }}"
-                                    alt="{{ env('COMPANY_NAME', 'TheTaxi Company') }}">
+                                <img src="{{ s3_asset($brandLogo) }}"
+                                    alt="{{ $brandName }}">
                             </div>
 
                             <p class="footer-text">
                                 Best regards,<br>
-                                <strong>{{ env('COMPANY_NAME', 'TheTaxi Company') }} Team</strong>
+                                <strong>{{ $brandName }} Team</strong>
                             </p>
 
                             <div class="footer-links">
-                                <a href="{{ config('app.url') }}">Website</a>
-                                <a href="mailto:{{ config('mail.from.address', 'info@casonsrentacar.lk') }}">Email
+                                <a href="{{ $brandWebsite }}">Website</a>
+                                @if($brandEmail)
+                                <a href="mailto:{{ $brandEmail }}">Email
                                     Us</a>
-                                <a href="tel:+94711615615">Call Us</a>
+                                @endif
+                                @if($brandPhone)
+                                <a href="tel:{{ preg_replace('/[^0-9+]/', '', $brandPhone) }}">Call Us</a>
+                                @endif
                             </div>
 
                             <p class="copyright">
-                                © {{ date('Y') }} {{ env('COMPANY_NAME', 'TheTaxi Company') }} (Pvt) Ltd. All
+                                © {{ date('Y') }} {{ $brandName }}. All
                                 rights reserved.<br>
                                 <span style="font-size: 11px; color: #aaa;">This is an automated email. Please do not
                                     reply directly to this message.</span>

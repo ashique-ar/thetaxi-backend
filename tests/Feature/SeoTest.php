@@ -81,12 +81,12 @@ it('sends a notification email when ping attempts fail and notification enabled'
 
     // Set notification options
     $settingsService->set('sitemap_failure_notify', true);
-    $settingsService->set('sitemap_failure_notify_email', 'seo-admin@thetaxi.lk');
+    $settingsService->set('sitemap_failure_notify_email', 'seo-admin@Company');
 
     Artisan::call('sitemap:generate-and-ping');
 
     Mail::assertSent(\App\Mail\SitemapPingFailed::class, function ($mail) {
-        return $mail->hasTo('seo-admin@thetaxi.lk');
+        return $mail->hasTo('seo-admin@Company');
     });
 });
 

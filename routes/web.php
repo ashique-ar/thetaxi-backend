@@ -18,7 +18,7 @@ use App\Http\Controllers\Website\SitemapController;
 use App\Http\Controllers\TestController;
 use Illuminate\Support\Facades\Route;
 
-// TheTaxi Website Routes
+// Company Website Routes
 Route::get('/', [HomeController::class, 'index'])->name('home');
 
 // Short URL redirects - must be early in routes to avoid conflicts

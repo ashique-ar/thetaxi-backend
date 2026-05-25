@@ -27,7 +27,7 @@ class AgentSeeder extends Seeder
             [
                 'name' => 'Travel Lanka Agency',
                 'email' => 'contact@travellanka.lk',
-                'phone' => '+94112345678',
+                'phone' => fake()->e164PhoneNumber(),
                 'code' => 'TLA001',
                 'commission_rate' => 15.00,
                 'branding_config' => [
@@ -36,7 +36,7 @@ class AgentSeeder extends Seeder
                     'secondary_color' => '#F59E0B',
                     'company_name' => 'Travel Lanka Agency',
                     'website' => 'https://travellanka.lk',
-                    'contact_phone' => '+94112345678',
+                    'contact_phone' => fake()->e164PhoneNumber(),
                     'contact_email' => 'support@travellanka.lk',
                     'terms_url' => 'https://travellanka.lk/terms',
                     'privacy_url' => 'https://travellanka.lk/privacy'
@@ -45,7 +45,7 @@ class AgentSeeder extends Seeder
             [
                 'name' => 'Colombo Car Rentals',
                 'email' => 'info@colombocarrentals.com',
-                'phone' => '+94117654321',
+                'phone' => fake()->e164PhoneNumber(),
                 'code' => 'CCR002',
                 'commission_rate' => 12.50,
                 'branding_config' => [
@@ -54,7 +54,7 @@ class AgentSeeder extends Seeder
                     'secondary_color' => '#059669',
                     'company_name' => 'Colombo Car Rentals',
                     'website' => 'https://colombocarrentals.com',
-                    'contact_phone' => '+94117654321',
+                    'contact_phone' => fake()->e164PhoneNumber(),
                     'contact_email' => 'bookings@colombocarrentals.com',
                     'terms_url' => 'https://colombocarrentals.com/terms',
                     'privacy_url' => 'https://colombocarrentals.com/privacy'
@@ -63,7 +63,7 @@ class AgentSeeder extends Seeder
             [
                 'name' => 'Island Tours & Travels',
                 'email' => 'bookings@islandtours.lk',
-                'phone' => '+94118765432',
+                'phone' => fake()->e164PhoneNumber(),
                 'code' => 'ITT003',
                 'commission_rate' => 18.00,
                 'branding_config' => [
@@ -72,7 +72,7 @@ class AgentSeeder extends Seeder
                     'secondary_color' => '#F97316',
                     'company_name' => 'Island Tours & Travels',
                     'website' => 'https://islandtours.lk',
-                    'contact_phone' => '+94118765432',
+                    'contact_phone' => fake()->e164PhoneNumber(),
                     'contact_email' => 'hello@islandtours.lk',
                     'terms_url' => 'https://islandtours.lk/terms',
                     'privacy_url' => 'https://islandtours.lk/privacy'
@@ -81,7 +81,7 @@ class AgentSeeder extends Seeder
             [
                 'name' => 'Premium Vehicle Services',
                 'email' => 'admin@premiumvehicles.lk',
-                'phone' => '+94119876543',
+                'phone' => fake()->e164PhoneNumber(),
                 'code' => 'PVS004',
                 'commission_rate' => 20.00,
                 'branding_config' => [
@@ -90,7 +90,7 @@ class AgentSeeder extends Seeder
                     'secondary_color' => '#FCD34D',
                     'company_name' => 'Premium Vehicle Services',
                     'website' => 'https://premiumvehicles.lk',
-                    'contact_phone' => '+94119876543',
+                    'contact_phone' => fake()->e164PhoneNumber(),
                     'contact_email' => 'luxury@premiumvehicles.lk',
                     'terms_url' => 'https://premiumvehicles.lk/terms',
                     'privacy_url' => 'https://premiumvehicles.lk/privacy'
@@ -99,7 +99,7 @@ class AgentSeeder extends Seeder
             [
                 'name' => 'Quick Cab Solutions',
                 'email' => 'support@quickcab.lk',
-                'phone' => '+94115432167',
+                'phone' => fake()->e164PhoneNumber(),
                 'code' => 'QCS005',
                 'commission_rate' => 10.00,
                 'branding_config' => [
@@ -108,7 +108,7 @@ class AgentSeeder extends Seeder
                     'secondary_color' => '#FB7185',
                     'company_name' => 'Quick Cab Solutions',
                     'website' => 'https://quickcab.lk',
-                    'contact_phone' => '+94115432167',
+                    'contact_phone' => fake()->e164PhoneNumber(),
                     'contact_email' => 'dispatch@quickcab.lk',
                     'terms_url' => 'https://quickcab.lk/terms',
                     'privacy_url' => 'https://quickcab.lk/privacy'
@@ -117,7 +117,7 @@ class AgentSeeder extends Seeder
             [
                 'name' => 'Corporate Fleet Management',
                 'email' => 'corporate@fleetmanage.lk',
-                'phone' => '+94112468135',
+                'phone' => fake()->e164PhoneNumber(),
                 'code' => 'CFM006',
                 'commission_rate' => 25.00,
                 'branding_config' => [
@@ -126,7 +126,7 @@ class AgentSeeder extends Seeder
                     'secondary_color' => '#10B981',
                     'company_name' => 'Corporate Fleet Management',
                     'website' => 'https://fleetmanage.lk',
-                    'contact_phone' => '+94112468135',
+                    'contact_phone' => fake()->e164PhoneNumber(),
                     'contact_email' => 'enterprise@fleetmanage.lk',
                     'terms_url' => 'https://fleetmanage.lk/terms',
                     'privacy_url' => 'https://fleetmanage.lk/privacy'
@@ -135,7 +135,7 @@ class AgentSeeder extends Seeder
             [
                 'name' => 'Wedding Car Specialists',
                 'email' => 'weddings@weddingcars.lk',
-                'phone' => '+94113691470',
+                'phone' => fake()->e164PhoneNumber(),
                 'code' => 'WCS007',
                 'commission_rate' => 22.00,
                 'branding_config' => [
@@ -144,7 +144,7 @@ class AgentSeeder extends Seeder
                     'secondary_color' => '#FDE68A',
                     'company_name' => 'Wedding Car Specialists',
                     'website' => 'https://weddingcars.lk',
-                    'contact_phone' => '+94113691470',
+                    'contact_phone' => fake()->e164PhoneNumber(),
                     'contact_email' => 'bridal@weddingcars.lk',
                     'terms_url' => 'https://weddingcars.lk/terms',
                     'privacy_url' => 'https://weddingcars.lk/privacy'
@@ -153,7 +153,7 @@ class AgentSeeder extends Seeder
             [
                 'name' => 'Airport Express Service',
                 'email' => 'airport@expressservice.lk',
-                'phone' => '+94117418529',
+                'phone' => fake()->e164PhoneNumber(),
                 'code' => 'AES008',
                 'commission_rate' => 8.00,
                 'branding_config' => [
@@ -162,7 +162,7 @@ class AgentSeeder extends Seeder
                     'secondary_color' => '#F472B6',
                     'company_name' => 'Airport Express Service',
                     'website' => 'https://expressservice.lk',
-                    'contact_phone' => '+94117418529',
+                    'contact_phone' => fake()->e164PhoneNumber(),
                     'contact_email' => 'transfers@expressservice.lk',
                     'terms_url' => 'https://expressservice.lk/terms',
                     'privacy_url' => 'https://expressservice.lk/privacy'

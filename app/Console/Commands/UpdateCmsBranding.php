@@ -11,24 +11,31 @@ class UpdateCmsBranding extends Command
     protected $signature = 'cms:update-branding 
                             {--dry-run : Preview changes without updating data}';
 
-    protected $description = 'Replace Casons Taxi branding with TheTaxi branding across CMS contents';
+    protected $description = 'Replace legacy branding with configured branding across CMS contents';
 
     public function handle()
     {
         $this->info('Starting CMS branding update...');
 
-        $searchPatterns = [
-            '/casonstaxi\.com/i',
-            '/casons[\s\-]?taxi/i',
-            '/casonstaxi/i',
-        ];
+        $legacyTerms = array_filter(array_map('trim', explode(',', env('CMS_LEGACY_BRAND_TERMS', ''))));
+        $searchPatterns = array_map(
+            static fn (string $term): string => '/' . preg_quote($term, '/') . '/i',
+            $legacyTerms
+        );
+
+        if ($searchPatterns === []) {
+            $this->warn('No legacy brand terms configured. Set CMS_LEGACY_BRAND_TERMS to run replacements.');
+            return Command::SUCCESS;
+        }
 
 
-        $replaceWith = [
-            'thetaxi.lk',
-            'TheTaxi',
-            'TheTaxi',
-        ];
+        $brandName = app(\App\Services\WebsiteSettingsService::class)->get('brand_name', 'Company');
+        $website = app(\App\Services\WebsiteSettingsService::class)->get('company_website', config('app.url'));
+
+        $replaceWith = array_map(
+            static fn (string $term): string => str_contains($term, '.') ? $website : $brandName,
+            $legacyTerms
+        );
 
         $fieldsToUpdate = [
             'title',

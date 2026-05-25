@@ -3,8 +3,111 @@
     border-radius: 16px !important;
 }
 
+.theme-default .home4-banner-section .banner-content h1 {
+    max-width: 760px;
+    line-height: 1.05;
+}
+
+.theme-default .home4-banner-section .banner-content p {
+    max-width: 620px;
+    line-height: 1.65;
+}
+
+.theme-default .home-booking-form-section {
+    position: relative;
+    z-index: 3;
+}
+
+.theme-default .section-title h2 {
+    line-height: 1.15;
+}
+
+.theme-default .section-title p {
+    max-width: 680px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.theme-default .vehicle-card.modern-card {
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.07);
+    transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+.theme-default .vehicle-card.modern-card:hover {
+    border-color: rgba(191, 38, 41, 0.22);
+    box-shadow: 0 18px 40px rgba(15, 23, 42, 0.12);
+    transform: translateY(-3px);
+}
+
+.theme-default .vehicle-card .vehicle-name {
+    line-height: 1.25;
+}
+
+.theme-default .featured-vehicles-btn,
+.theme-default .primary-btn1,
+.theme-default .btn-primary {
+    transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+.theme-default .featured-vehicles-btn:hover,
+.theme-default .primary-btn1:hover,
+.theme-default .btn-primary:hover {
+    transform: translateY(-1px);
+}
+
+.theme-default .search-summary-card,
+.theme-default .vehicle-info-card,
+.theme-default .booking-form-shell,
+.theme-default .vehicle-price-summary,
+.theme-default .cart-shopping-wrapper,
+.theme-default .cart-order-sum-area,
+.theme-default .checkout-page .order-sum-area {
+    border-radius: 16px !important;
+    border: 1px solid rgba(15, 23, 42, 0.08) !important;
+    box-shadow: 0 14px 34px rgba(15, 23, 42, 0.08) !important;
+}
+
+.theme-default .search-booking-panel .filter-wrapper,
+.theme-default .vehicle-details-wrapper .filter-wrapper {
+    box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08) !important;
+}
+
+.theme-default .vehicle-image-gallery .main-vehicle-image img {
+    border-radius: 16px !important;
+}
+
+.theme-default .vehicle-thumbnails .thumbnail-img {
+    border: 2px solid transparent;
+    transition: border-color 0.2s ease, opacity 0.2s ease;
+}
+
+.theme-default .vehicle-thumbnails .thumbnail-img.active,
+.theme-default .vehicle-thumbnails .thumbnail-img:hover {
+    border-color: var(--primary-color1);
+    opacity: 0.95;
+}
+
 @media (max-width: 767px) {
     .filter-wrapper .filter-input-wrap {
         padding: 30px 15px 20px !important;
+    }
+
+    .theme-default .home4-banner-section .banner-content h1 {
+        font-size: 34px;
+    }
+
+    .theme-default .section-title {
+        margin-bottom: 28px !important;
+    }
+
+    .theme-default .search-summary-card,
+    .theme-default .vehicle-info-card,
+    .theme-default .booking-form-shell,
+    .theme-default .vehicle-price-summary,
+    .theme-default .cart-shopping-wrapper,
+    .theme-default .cart-order-sum-area,
+    .theme-default .checkout-page .order-sum-area {
+        border-radius: 12px !important;
     }
 }

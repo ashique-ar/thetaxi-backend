@@ -19,6 +19,12 @@ class Kernel extends ConsoleKernel
         // Clean up expired short URLs daily
         $schedule->command('short-urls:cleanup')->daily();
 
+        // Generate upcoming occurrences for recurring bookings each morning
+        $schedule->command('bookings:generate-recurring')->dailyAt('01:00');
+
+        // Mark overdue maintenance schedules as due and block affected vehicles
+        $schedule->command('maintenance:check-scheduled')->dailyAt('06:00');
+
         // Drain queued background jobs on environments where a dedicated
         // long-running worker / supervisor is not configured.
         $schedule->command(sprintf(

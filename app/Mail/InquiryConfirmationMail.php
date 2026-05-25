@@ -42,6 +42,8 @@ class InquiryConfirmationMail extends Mailable
      */
     public function content(): Content
     {
+        $settings = app(\App\Services\WebsiteSettingsService::class);
+
         return new Content(
             view: 'emails.inquiry-confirmation',
             with: [
@@ -49,8 +51,8 @@ class InquiryConfirmationMail extends Mailable
                 'typeLabel' => $this->typeLabel,
                 'intro' => $this->intro,
                 'contactName' => $this->inquiry->name ?? 'Valued Customer',
-                'supportEmail' => config('mail.from.address', 'info@thetaxi.lk'),
-                'supportPhone' => config('app.support_phone', '+94 711 92 00 00'),
+                'supportEmail' => $settings->get('company_email', config('mail.from.address', '')),
+                'supportPhone' => $settings->get('company_phone', ''),
             ]
         );
     }

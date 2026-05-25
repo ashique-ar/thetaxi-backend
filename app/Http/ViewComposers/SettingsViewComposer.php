@@ -18,11 +18,15 @@ class SettingsViewComposer
     public function compose(View $view): void
     {
         // ULTRA-OPTIMIZED: Use aggressive caching to avoid repeated database hits
-        $settings = Cache::remember('global_settings_flattened', 86400, function () {
+        $companyId = $this->settingsService->resolveCompanyId() ?: 'global';
+        $settings = Cache::remember('global_settings_flattened_' . $companyId, 86400, function () {
             try {
                 // Get ALL settings that templates might need (homepage + global + all pages)
                 $allSettingsKeys = [
                     // Basic site info
+                    'brand_name',
+                    'brand_tagline',
+                    'brand_short_name',
                     'site_name',
                     'company_name',
                     'company_phone',
@@ -49,6 +53,12 @@ class SettingsViewComposer
                     'google_site_verification',
 
                     // Logos
+                    'brand_logo_primary',
+                    'brand_logo_secondary',
+                    'brand_logo_icon',
+                    'brand_favicon',
+                    'portal_logo',
+                    'portal_title',
                     'logo_header',
                     'logo_header_alt',
                     'logo_mobile',
@@ -448,21 +458,27 @@ class SettingsViewComposer
 
                 // Add fallback defaults for missing values
                 $defaults = [
-                    'site_name' => 'TheTaxi',
-                    'company_name' => 'TheTaxi',
-                    'company_phone' => '+1 234 567 890',
+                    'brand_name' => 'Company',
+                    'brand_tagline' => 'Your Trusted Transport Partner',
+                    'brand_short_name' => 'Company',
+                    'site_name' => 'Company',
+                    'company_name' => 'Company',
+                    'company_phone' => '',
                     'primary_color' => '#BF2629',
                     'secondary_color' => '#717171',
                     'tertiary_color' => '#FFFFFF'
                 ];
 
-                return array_merge($defaults, $essentialSettings);
+                return $this->settingsService->withCanonicalBranding(array_merge($defaults, $essentialSettings));
             } catch (\Exception $e) {
                 // Fallback settings if database fails
                 return [
-                    'site_name' => 'TheTaxi',
-                    'company_name' => 'TheTaxi',
-                    'company_phone' => '+1 234 567 890',
+                    'brand_name' => 'Company',
+                    'brand_tagline' => 'Your Trusted Transport Partner',
+                    'brand_short_name' => 'Company',
+                    'site_name' => 'Company',
+                    'company_name' => 'Company',
+                    'company_phone' => '',
                     'primary_color' => '#BF2629',
                     'secondary_color' => '#717171',
                     'tertiary_color' => '#FFFFFF'

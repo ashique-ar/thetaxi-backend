@@ -2,6 +2,9 @@
 
 namespace App\Providers;
 
+use App\Services\Payment\PaymentGatewayManager;
+use App\Services\Payment\WebXPayGateway;
+use App\Services\WebXPayService;
 use App\Services\WebsiteSettingsService;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -27,6 +30,10 @@ class AppServiceProvider extends ServiceProvider
         require_once app_path('Helpers/Helper.php');
         require_once app_path('Helpers/CurrencyHelpers.php');
         require_once app_path('Helpers/theme_helpers.php');
+
+        // Payment gateway bindings
+        $this->app->singleton(WebXPayGateway::class, fn ($app) => new WebXPayGateway($app->make(WebXPayService::class)));
+        $this->app->singleton(PaymentGatewayManager::class, fn ($app) => new PaymentGatewayManager($app));
     }
 
     /**

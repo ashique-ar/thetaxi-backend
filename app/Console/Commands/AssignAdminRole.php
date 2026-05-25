@@ -27,7 +27,7 @@ class AssignAdminRole extends Command
      */
     public function handle()
     {
-        $user = User::where('email', 'admin@casons.lk')->first();
+        $user = User::where('email', env('ADMIN_EMAIL', 'admin@example.com'))->first();
 
         if (!$user) {
             $this->error('Admin user not found');

@@ -46,7 +46,7 @@ class SettingsCategoryService
                     'label' => 'Site Name',
                     'type' => 'text',
                     'required' => true,
-                    'placeholder' => 'TheTaxi - Car Rental Service',
+                    'placeholder' => 'Company - Transport Service',
                     'description' => 'The main name of your website'
                 ],
                 'site_tagline' => [
@@ -59,21 +59,27 @@ class SettingsCategoryService
                     'label' => 'Company Name',
                     'type' => 'text',
                     'required' => true,
-                    'placeholder' => 'TheTaxi Company',
+                    'placeholder' => 'Company',
                     'description' => 'Official company name'
                 ],
                 'company_phone' => [
                     'label' => 'Company Phone',
                     'type' => 'tel',
                     'required' => true,
-                    'placeholder' => '+94 71 1 615 615',
+                    'placeholder' => 'Primary company phone',
                     'description' => 'Main contact phone number'
+                ],
+                'company_whatsapp' => [
+                    'label' => 'Company WhatsApp',
+                    'type' => 'tel',
+                    'placeholder' => 'WhatsApp number if different',
+                    'description' => 'WhatsApp/mobile number. Leave blank to use the main company phone.'
                 ],
                 'company_email' => [
                     'label' => 'Company Email',
                     'type' => 'email',
                     'required' => true,
-                    'placeholder' => 'info@casons.lk',
+                    'placeholder' => 'info@example.com',
                     'description' => 'Main contact email address'
                 ],
                 'company_address' => [
@@ -85,7 +91,7 @@ class SettingsCategoryService
                 'company_website' => [
                     'label' => 'Company Website',
                     'type' => 'url',
-                    'placeholder' => 'https://www.casons.lk',
+                    'placeholder' => 'https://www.example.com',
                     'description' => 'Company website URL'
                 ],
                 'site_timezone' => [
@@ -129,7 +135,7 @@ class SettingsCategoryService
                 'seo_title_template' => [
                     'label' => 'Title Template',
                     'type' => 'text',
-                    'placeholder' => '{page_title} | TheTaxi - Car Rental Service',
+                    'placeholder' => '{page_title} | Company - Transport Service',
                     'description' => 'Template for page titles (use {page_title} placeholder)'
                 ],
                 'seo_meta_description' => [
@@ -194,37 +200,37 @@ class SettingsCategoryService
                 'social_facebook' => [
                     'label' => 'Facebook URL',
                     'type' => 'url',
-                    'placeholder' => 'https://facebook.com/thetaxi',
+                    'placeholder' => 'https://facebook.com/company',
                     'description' => 'Facebook page URL'
                 ],
                 'social_twitter' => [
                     'label' => 'Twitter URL',
                     'type' => 'url',
-                    'placeholder' => 'https://twitter.com/thetaxi',
+                    'placeholder' => 'https://twitter.com/company',
                     'description' => 'Twitter profile URL'
                 ],
                 'social_instagram' => [
                     'label' => 'Instagram URL',
                     'type' => 'url',
-                    'placeholder' => 'https://instagram.com/thetaxi',
+                    'placeholder' => 'https://instagram.com/company',
                     'description' => 'Instagram profile URL'
                 ],
                 'social_linkedin' => [
                     'label' => 'LinkedIn URL',
                     'type' => 'url',
-                    'placeholder' => 'https://linkedin.com/company/thetaxi',
+                    'placeholder' => 'https://linkedin.com/company/company',
                     'description' => 'LinkedIn company page URL'
                 ],
                 'social_youtube' => [
                     'label' => 'YouTube URL',
                     'type' => 'url',
-                    'placeholder' => 'https://youtube.com/@thetaxi',
+                    'placeholder' => 'https://youtube.com/@company',
                     'description' => 'YouTube channel URL'
                 ],
                 'social_tiktok' => [
                     'label' => 'TikTok URL',
                     'type' => 'url',
-                    'placeholder' => 'https://tiktok.com/@thetaxi',
+                    'placeholder' => 'https://tiktok.com/@company',
                     'description' => 'TikTok profile URL'
                 ]
             ]
@@ -268,13 +274,13 @@ class SettingsCategoryService
                 'contact_address_1_phone' => [
                     'label' => 'Office 1 Phone',
                     'type' => 'tel',
-                    'placeholder' => '+94 71 1 615 615',
-                    'description' => 'Phone number for first office'
+                    'placeholder' => 'Use company phone',
+                    'description' => 'Phone number for first office. Leave blank to use the main company phone.'
                 ],
                 'contact_address_1_email' => [
                     'label' => 'Office 1 Email',
                     'type' => 'email',
-                    'placeholder' => 'colombo@casons.lk',
+                    'placeholder' => 'colombo@example.com',
                     'description' => 'Email for first office'
                 ],
                 'contact_address_2_title' => [
@@ -292,13 +298,13 @@ class SettingsCategoryService
                 'contact_address_2_phone' => [
                     'label' => 'Office 2 Phone',
                     'type' => 'tel',
-                    'placeholder' => '+94 81 234 5678',
+                    'placeholder' => 'Branch phone',
                     'description' => 'Phone number for second office'
                 ],
                 'contact_address_2_email' => [
                     'label' => 'Office 2 Email',
                     'type' => 'email',
-                    'placeholder' => 'kandy@casons.lk',
+                    'placeholder' => 'kandy@example.com',
                     'description' => 'Email for second office'
                 ],
                 'contact_map_latitude' => [
@@ -318,7 +324,7 @@ class SettingsCategoryService
                 'emergency_contact' => [
                     'label' => '24/7 Emergency Contact',
                     'type' => 'tel',
-                    'placeholder' => '+94 70 123 4567',
+                    'placeholder' => 'Emergency contact number',
                     'description' => '24-hour emergency contact number'
                 ]
             ]
@@ -593,14 +599,14 @@ class SettingsCategoryService
                     'label' => 'From Name',
                     'type' => 'text',
                     'required' => true,
-                    'placeholder' => 'TheTaxi Support',
+                    'placeholder' => 'Company Support',
                     'description' => 'Name used in outgoing emails'
                 ],
                 'mail_from_address' => [
                     'label' => 'From Email',
                     'type' => 'email',
                     'required' => true,
-                    'placeholder' => 'noreply@casons.lk',
+                    'placeholder' => 'noreply@example.com',
                     'description' => 'Email address used for outgoing emails'
                 ],
                 'booking_confirmation_enabled' => [
@@ -616,13 +622,13 @@ class SettingsCategoryService
                 'contact_form_notification' => [
                     'label' => 'Contact Form Notifications',
                     'type' => 'email',
-                    'placeholder' => 'admin@casons.lk',
+                    'placeholder' => 'admin@example.com',
                     'description' => 'Email to receive contact form submissions'
                 ],
                 'email_footer_text' => [
                     'label' => 'Email Footer Text',
                     'type' => 'textarea',
-                    'placeholder' => 'Thank you for choosing TheTaxi. Safe travels!',
+                    'placeholder' => 'Thank you for choosing us. Safe travels!',
                     'description' => 'Text to include in email footers'
                 ]
             ]

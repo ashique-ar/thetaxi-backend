@@ -9,13 +9,16 @@ class WebsiteSettingsService
 {
     private const CACHE_PREFIX = 'website_settings_';
     private const CACHE_DURATION = 3600; // 1 hour
+    private const DEFAULT_BRAND_NAME = 'Company';
+    private const DEFAULT_TAGLINE = 'Your Trusted Transport Partner';
+    private const DEFAULT_LOGO = 'assets/img/header-logo.png';
 
     /**
      * Get a setting value with caching
      */
     public function get(string $type, $default = null)
     {
-        $cacheKey = self::CACHE_PREFIX . $type;
+        $cacheKey = self::CACHE_PREFIX . 'global_' . $type;
 
         return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($type, $default) {
             return WebsiteSetting::getValue($type, $default);
@@ -41,7 +44,7 @@ class WebsiteSettingsService
 
         // Check cache for each type
         foreach ($types as $type) {
-            $cacheKey = self::CACHE_PREFIX . $type;
+            $cacheKey = self::CACHE_PREFIX . 'global_' . $type;
             $cachedValue = Cache::get($cacheKey);
 
             if ($cachedValue !== null) {
@@ -56,7 +59,7 @@ class WebsiteSettingsService
             $uncachedValues = WebsiteSetting::getValues($uncachedTypes);
 
             foreach ($uncachedValues as $type => $value) {
-                $cacheKey = self::CACHE_PREFIX . $type;
+                $cacheKey = self::CACHE_PREFIX . 'global_' . $type;
                 Cache::put($cacheKey, $value, self::CACHE_DURATION);
                 $result[$type] = $value;
             }
@@ -553,9 +556,9 @@ class WebsiteSettingsService
      */
     public function clearCache(string $type): void
     {
-        $cacheKey = self::CACHE_PREFIX . $type;
-        Cache::forget($cacheKey);
+        Cache::forget(self::CACHE_PREFIX . 'global_' . $type);
         Cache::forget('global_settings_flattened');
+        Cache::forget('global_settings_flattened_global');
     }
 
     /**
@@ -629,6 +632,9 @@ class WebsiteSettingsService
     {
         $types = [
             'site_name',
+            'brand_name',
+            'brand_tagline',
+            'brand_short_name',
             'site_tagline',
             'company_name',
             'company_phone',
@@ -640,7 +646,7 @@ class WebsiteSettingsService
             'default_currency'
         ];
 
-        return $this->getMultiple($types);
+        return $this->withCanonicalBranding($this->getMultiple($types));
     }
 
     /**
@@ -1015,6 +1021,16 @@ class WebsiteSettingsService
     public function getBrandingSettings(): array
     {
         $types = [
+            // Canonical public/company identity
+            'site_name',
+            'site_tagline',
+            'company_name',
+            'company_phone',
+            'company_whatsapp',
+            'company_email',
+            'company_address',
+            'company_website',
+
             // Company Branding
             'brand_name',
             'brand_tagline',
@@ -1053,7 +1069,66 @@ class WebsiteSettingsService
             'footer_company_name',
         ];
 
-        return $this->getMultiple($types);
+        return $this->withCanonicalBranding($this->getMultiple($types));
+    }
+
+    /**
+     * Normalize legacy/duplicate branding keys into one usable shape.
+     *
+     * Canonical identity keys are brand_name, company_name, company_* contact
+     * fields, brand_logo_primary, brand_favicon, and portal_title. Legacy keys
+     * are still populated so older Blade/Angular templates keep working.
+     */
+    public function withCanonicalBranding(array $settings): array
+    {
+        $brandName = $this->firstFilled($settings, ['brand_name', 'site_name', 'company_name'], self::DEFAULT_BRAND_NAME);
+        $companyName = $this->firstFilled($settings, ['company_name', 'brand_name', 'site_name'], $brandName);
+        $tagline = $this->firstFilled($settings, ['brand_tagline', 'site_tagline'], self::DEFAULT_TAGLINE);
+        $shortName = $this->firstFilled($settings, ['brand_short_name', 'brand_name', 'site_name'], $brandName);
+        $primaryLogo = $this->firstFilled($settings, ['brand_logo_primary', 'logo_header', 'portal_logo'], self::DEFAULT_LOGO);
+        $favicon = $this->firstFilled($settings, ['brand_favicon', 'favicon', 'favicon_url'], 'favicon.ico');
+
+        $settings['brand_name'] = $brandName;
+        $settings['brand_short_name'] = $shortName;
+        $settings['brand_tagline'] = $tagline;
+        $settings['site_name'] = $this->filled($settings['site_name'] ?? null) ? $settings['site_name'] : $brandName;
+        $settings['site_tagline'] = $this->filled($settings['site_tagline'] ?? null) ? $settings['site_tagline'] : $tagline;
+        $settings['company_name'] = $companyName;
+        $settings['footer_company_name'] = $this->firstFilled($settings, ['footer_company_name'], $companyName);
+
+        $settings['brand_logo_primary'] = $primaryLogo;
+        $settings['brand_logo_secondary'] = $this->firstFilled($settings, ['brand_logo_secondary', 'logo_footer'], $primaryLogo);
+        $settings['brand_logo_icon'] = $this->firstFilled($settings, ['brand_logo_icon', 'logo_mobile'], $primaryLogo);
+        $settings['brand_favicon'] = $favicon;
+        $settings['logo_header'] = $this->firstFilled($settings, ['logo_header'], $primaryLogo);
+        $settings['logo_footer'] = $this->firstFilled($settings, ['logo_footer'], $settings['brand_logo_secondary']);
+        $settings['logo_mobile'] = $this->firstFilled($settings, ['logo_mobile'], $settings['brand_logo_icon']);
+        $settings['favicon'] = $favicon;
+        $settings['portal_logo'] = $this->firstFilled($settings, ['portal_logo'], $primaryLogo);
+        $settings['portal_title'] = $this->firstFilled($settings, ['portal_title'], $brandName . ' | Portal');
+
+        return $settings;
+    }
+
+    private function firstFilled(array $settings, array $keys, ?string $default = null): ?string
+    {
+        foreach ($keys as $key) {
+            if ($this->filled($settings[$key] ?? null)) {
+                return trim((string) $settings[$key]);
+            }
+        }
+
+        return $default;
+    }
+
+    private function filled($value): bool
+    {
+        return $value !== null && trim((string) $value) !== '';
+    }
+
+    public function resolveCompanyId(): ?string
+    {
+        return null;
     }
 
     /**

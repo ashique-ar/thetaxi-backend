@@ -42,7 +42,7 @@ class VehicleSeeder extends Seeder
                 'group' => 'Toyota Camry Standard',
                 'year' => 2024,
                 'color' => 'Pearl White',
-                'company' => 'TheTaxi Company - Head Office'
+                'company' => 'Company - Head Office'
             ],
             [
                 'name' => 'Toyota Corolla 2023',
@@ -52,7 +52,7 @@ class VehicleSeeder extends Seeder
                 'group' => 'Toyota Axio Economy',
                 'year' => 2023,
                 'color' => 'Silver Metallic',
-                'company' => 'TheTaxi Company - Head Office'
+                'company' => 'Company - Head Office'
             ],
             // Honda Vehicles
             [
@@ -63,7 +63,7 @@ class VehicleSeeder extends Seeder
                 'group' => 'Honda Accord Executive',
                 'year' => 2024,
                 'color' => 'Obsidian Blue',
-                'company' => 'TheTaxi Company - Head Office'
+                'company' => 'Company - Head Office'
             ],
             [
                 'name' => 'Honda CR-V 2023',
@@ -73,7 +73,7 @@ class VehicleSeeder extends Seeder
                 'group' => 'Honda CR-V Premium',
                 'year' => 2023,
                 'color' => 'Radiant Red',
-                'company' => 'TheTaxi Company - Head Office'
+                'company' => 'Company - Head Office'
             ],
             [
                 'name' => 'Honda Fit 2023',
@@ -83,7 +83,7 @@ class VehicleSeeder extends Seeder
                 'group' => 'Honda Fit Hybrid',
                 'year' => 2023,
                 'color' => 'Crystal Blue',
-                'company' => 'TheTaxi Company - Head Office'
+                'company' => 'Company - Head Office'
             ],
             // Toyota Commercial Vehicles
             [
@@ -94,7 +94,7 @@ class VehicleSeeder extends Seeder
                 'group' => 'Toyota Hiace Standard',
                 'year' => 2022,
                 'color' => 'Super White',
-                'company' => 'TheTaxi Company - Head Office'
+                'company' => 'Company - Head Office'
             ],
             [
                 'name' => 'Toyota Land Cruiser 2024',
@@ -104,7 +104,7 @@ class VehicleSeeder extends Seeder
                 'group' => 'Toyota Land Cruiser VX',
                 'year' => 2024,
                 'color' => 'Attitude Black',
-                'company' => 'TheTaxi Company - Head Office'
+                'company' => 'Company - Head Office'
             ],
             // Nissan Vehicle
             [
@@ -115,7 +115,7 @@ class VehicleSeeder extends Seeder
                 'group' => 'Nissan Caravan Executive',
                 'year' => 2023,
                 'color' => 'Brilliant Silver',
-                'company' => 'TheTaxi Company - BIA Branch'
+                'company' => 'Company - BIA Branch'
             ]
         ];
 

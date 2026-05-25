@@ -43,6 +43,12 @@
             $taxRateSetting > 0 && $taxRateSetting <= 1 ? round($taxRateSetting * 100, 2) : $taxRateSetting;
         $vatRateDisplay =
             $vatRateSetting > 0 && $vatRateSetting <= 1 ? round($vatRateSetting * 100, 2) : $vatRateSetting;
+        $supportPhone = $settings['company_phone'] ?? '';
+        $supportPhoneTel = preg_replace('/[^0-9+]/', '', $supportPhone);
+        $supportWhatsapp = $settings['company_whatsapp'] ?? $supportPhone;
+        $supportWhatsappUrl = preg_replace('/[^0-9]/', '', $supportWhatsapp);
+        $supportEmail = $settings['company_email'] ?? config('mail.from.address', 'bookings@example.com');
+        $supportWebsite = $settings['company_website'] ?? config('app.url');
     @endphp
 
     <!-- Greeting -->
@@ -52,13 +58,13 @@
 
     <p class="intro-text">
         @if ($booking->payment_status === 'paid')
-            Thank you for your booking with {{ env('COMPANY_NAME', 'TheTaxi Company') }}! Your reservation has been
+            Thank you for your booking with {{ ($settings['company_name'] ?? $settings['brand_name'] ?? $settings['site_name'] ?? 'Company') }}! Your reservation has been
             confirmed and we're excited to serve you.
         @elseif($booking->status === 'quotation_requested')
             Thank you for your quotation request. Our team will review your requirements and get back to you within 24
             hours.
         @else
-            Thank you for your booking with {{ env('COMPANY_NAME', 'TheTaxi Company') }}! We have received your
+            Thank you for your booking with {{ ($settings['company_name'] ?? $settings['brand_name'] ?? $settings['site_name'] ?? 'Company') }}! We have received your
             reservation request and will process it shortly.
         @endif
     </p>
@@ -440,7 +446,7 @@
                         <div class="highlight-box warning" style="text-align:center;">
                             <p style="font-weight:600;">We couldn't generate a secure direct payment link for this booking.
                             </p>
-                            <p>Please <a href="mailto:{{ config('mail.from.address', 'bookings@casonsrentacar.lk') }}"
+                            <p>Please <a href="mailto:{{ config('mail.from.address', 'bookings@example.com') }}"
                                     style="color:#BF2629; text-decoration:none;">contact support</a> or visit our <a
                                     href="{{ route('checkout') }}" style="color:#BF2629; text-decoration:none;">checkout
                                     page</a> to complete your payment.</p>
@@ -480,25 +486,29 @@
         <p style="color: #555; margin-bottom: 15px;">If you have any questions about your booking, please contact us:</p>
         <table class="info-table">
             <tr>
-                <td>📞 Phone</td>
-                <td><a href="tel:+94711920000" style="color: #BF2629; text-decoration: none;">+94 711 92 00 00</a></td>
-            </tr>
+            @if($supportPhone)
+                <tr>
+                    <td>Phone</td>
+                    <td><a href="tel:{{ $supportPhoneTel }}" style="color: #BF2629; text-decoration: none;">{{ $supportPhone }}</a></td>
+                </tr>
+            @endif
             <tr>
-                <td>📧 Email</td>
-                <td><a href="mailto:{{ config('mail.from.address', 'bookings@casonsrentacar.lk') }}"
-                        style="color: #BF2629; text-decoration: none;">{{ config('mail.from.address', 'bookings@casonsrentacar.lk') }}</a>
+                <td>Email</td>
+                <td><a href="mailto:{{ $supportEmail }}"
+                        style="color: #BF2629; text-decoration: none;">{{ $supportEmail }}</a>
                 </td>
             </tr>
             <tr>
-                <td>🌐 Website</td>
-                <td><a href="{{ config('app.url') }}"
-                        style="color: #BF2629; text-decoration: none;">{{ config('app.url') }}</a></td>
+                <td>Website</td>
+                <td><a href="{{ $supportWebsite }}"
+                        style="color: #BF2629; text-decoration: none;">{{ $supportWebsite }}</a></td>
             </tr>
-            <tr>
-                <td>💬 WhatsApp</td>
-                <td><a href="https://wa.me/94711920000" style="color: #BF2629; text-decoration: none;">+94 711 92 00 00</a>
-                </td>
-            </tr>
+            @if($supportWhatsapp)
+                <tr>
+                    <td>WhatsApp</td>
+                    <td><a href="https://wa.me/{{ $supportWhatsappUrl }}" style="color: #BF2629; text-decoration: none;">{{ $supportWhatsapp }}</a></td>
+                </tr>
+            @endif
         </table>
         <p style="text-align: center; color: #717171; margin-top: 15px; font-size: 13px;">Our customer support team is
             available 24/7 to assist you.</p>
@@ -516,7 +526,7 @@
                     {{ $currencySymbol }}
                     {{ number_format(floor(max(0, $booking->amount_to_pay ?? $booking->total_estimated - ($booking->amount_paid ?? 0))), 0) }}</a>
             @else
-                <a href="mailto:{{ config('mail.from.address', 'bookings@casonsrentacar.lk') }}" class="btn">Contact
+                <a href="mailto:{{ config('mail.from.address', 'bookings@example.com') }}" class="btn">Contact
                     Support to Complete Payment</a>
             @endif
         @elseif($booking->payment_status === 'paid')
@@ -527,5 +537,6 @@
     </div>
 
     <p style="text-align: center; color: #555; font-size: 15px;">Thank you for choosing
-        {{ env('COMPANY_NAME', 'TheTaxi Company') }}. We look forward to serving you!</p>
+        {{ ($settings['company_name'] ?? $settings['brand_name'] ?? $settings['site_name'] ?? 'Company') }}. We look forward to serving you!</p>
 @endsection
+

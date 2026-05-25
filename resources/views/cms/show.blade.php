@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', $content->meta_title ?? $content->title . ' - TheTaxi')
+@section('title', $content->meta_title ?? $content->title . ' - ' . ($settings['site_name'] ?? $settings['brand_name'] ?? 'Company') . '')
 
 @php
     $quotationCountries = $countries ?? \App\Models\Country::orderBy('name')->get(['id', 'name', 'code', 'callcode']);
@@ -183,7 +183,7 @@
                             {{ $content->published_at ? $content->published_at->format('F d, Y') : $content->created_at->format('F d, Y') }}
                             &nbsp; • &nbsp;
                             <i class="bi bi-person"></i>
-                            {{ $content->author ?? ($content->custom_fields['author_name'] ?? 'TheTaxi') }}
+                            {{ $content->author ?? ($content->custom_fields['author_name'] ?? ($settings['brand_name'] ?? 'Editorial Team')) }}
                             @if (isset($content->custom_fields['read_time']))
                                 &nbsp; • &nbsp; {{ $content->custom_fields['read_time'] }}
                             @endif

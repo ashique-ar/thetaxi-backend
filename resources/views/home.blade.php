@@ -116,7 +116,7 @@
 
         <!-- View All Button -->
         <div class="text-center mt-40 wow animate fadeInUp" data-wow-delay="400ms" data-wow-duration="1500ms">
-            <a href="{{ route('cms.index', ['type' => 'ride_now']) }}"
+            <a href="{{ route('cms.index', ['contentType' => 'ride_now']) }}"
                 class="btn btn-primary featured-vehicles-btn">
                 <i class="bi bi-car-front-fill me-2"></i>
                 {{ $settings['vehicles_view_all_text'] ?? 'View All Rental Vehicles' }}
@@ -160,12 +160,12 @@
                 <div class="swiper home4-offer-slider">
                     <div class="swiper-wrapper">
                         <div class="swiper-slide">
-                            <a href="travel-package-details.html"><img
+                            <a href="{{ $settings['offer_slider_link_1'] ?? route('booking.search') }}"><img
                                     src="{{ s3_asset($settings['offer_slider_img_1'] ?? 'assets/img/home4/home4-offer-slider-img1.jpg') }}"
                                     alt=""></a>
                         </div>
                         <div class="swiper-slide">
-                            <a href="travel-package-details.html"><img
+                            <a href="{{ $settings['offer_slider_link_2'] ?? route('booking.search') }}"><img
                                     src="{{ s3_asset($settings['offer_slider_img_2'] ?? 'assets/img/home4/home4-offer-slider-img2.jpg') }}"
                                     alt=""></a>
                         </div>
@@ -193,7 +193,7 @@
             data-wow-delay="200ms" data-wow-duration="1500ms">
             <div class="col-xxl-5 col-xl-6 col-lg-7">
                 <div class="section-title">
-                    <h2>Why We’re Best Agency</h2>
+                    <h2>{{ $settings['why_section_title'] ?? 'Why Choose Us' }}</h2>
                     <p>{{ $settings['offer_section_description'] ?? 'A curated list of the most popular travel packages based on different destinations.' }}
                     </p>
                 </div>
@@ -251,7 +251,7 @@
                         <img src="{{ s3_asset($settings['why_feature_icon_4'] ?? 'assets/img/home3/icon/destination-feature-icon4.svg') }}"
                             alt="">
                     </div>
-                    <h5>{{ $settings['why_feature_4'] ?? 'Local Experties' }}</h5>
+                    <h5>{{ $settings['why_feature_4'] ?? 'Local Expertise' }}</h5>
                 </div>
             </div>
         </div>
@@ -272,7 +272,7 @@
             </a>
             <div class="contact-wrap">
                 <div class="contact-area">
-                    <h6>Need to Help? Don’t Hesitate Friendly Collaboarte with Experties</h6>
+                    <h6>{{ $settings['why_help_text'] ?? 'Need help? Our transport team is ready to assist.' }}</h6>
                     <div class="single-contact">
                         <div class="icon">
                             <svg width="16" height="16" viewBox="0 0 16 16"
@@ -286,7 +286,7 @@
                         <div class="content">
                             <span>{{ $settings['header_help_label'] ?? 'Need Help?' }}</span>
                             <a
-                                href="tel:{{ preg_replace('/[^0-9+]/', '', $settings['company_phone'] ?? '+1234567890') }}">{{ $settings['company_phone'] ?? '+1 234 567 890' }}</a>
+                                href="tel:{{ preg_replace('/[^0-9+]/', '', $settings['company_phone'] ?? '') }}">{{ $settings['company_phone'] ?? 'Call us' }}</a>
                         </div>
                     </div>
                 </div>
@@ -1272,3 +1272,5 @@
     }
 </script>
 @endpush
+
+

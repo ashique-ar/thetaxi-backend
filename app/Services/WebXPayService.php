@@ -7,9 +7,6 @@ use Illuminate\Support\Facades\Log;
 use App\Models\Booking\Booking;
 use App\Models\Website\WebsiteSetting;
 use App\Services\CurrencyService;
-use phpseclib3\Crypt\RSA;
-use phpseclib3\Crypt\PublicKeyLoader;
-use phpseclib3\Crypt\Common\AsymmetricKey;
 
 class WebXPayService
 {
@@ -125,12 +122,12 @@ class WebXPayService
                 'contact_number' => $this->formatPhoneNumber($booking->customer?->user?->phone ?? '0000000000'),
                 'address_line_one' => $booking->customer->address ?? $booking->customer?->user?->address ?? '',
                 'address_line_two' => '',
-                'city' => $booking->customer->city ?? $booking->customer?->user?->city ?? '',
-                'state' => 'Western',
-                'postal_code' => '10000',
-                'country' => 'Sri Lanka',
+                'city'             => $booking->customer->city ?? $booking->customer?->user?->city ?? '',
+                'state'            => $this->getSettingValue('webxpay_customer_state', config('booking.webxpay.customer_state', '')),
+                'postal_code'      => $this->getSettingValue('webxpay_customer_postal_code', config('booking.webxpay.customer_postal_code', '')),
+                'country'          => $this->getSettingValue('webxpay_customer_country', config('booking.webxpay.customer_country', '')),
                 'process_currency' => $this->currency,
-                'cms' => 'Laravel',
+                'cms'              => $this->getSettingValue('webxpay_cms_identifier', config('booking.webxpay.cms_identifier', 'Laravel')),
             ];
 
             // Step 4: Prepare custom fields (booking_id|payment_type|booking_number|customer_id)
@@ -143,12 +140,9 @@ class WebXPayService
             $encryptedCustomFields = base64_encode($customFields);
 
             Log::info('WebXPay payment initiated (RSA Redirect)', [
-                'booking_id' => $booking->id,
-                'order_id' => $orderId,
-                'amount_original' => $amount,
-                'amount_test_fixed' => $amountFormatted,
-                'plaintext' => $plaintext,
-                'note' => 'Testing with fixed amount 100 to match WebXPay samples'
+                'booking_id'   => $booking->id,
+                'order_id'     => $orderId,
+                'amount'       => $amountFormatted,
             ]);
 
             Log::debug('WebXPay customer data', $customerData);
@@ -383,7 +377,7 @@ class WebXPayService
     /**
      * Format phone number for WebXPay
      * Removes + sign and country code prefix, keeps only digits
-     * e.g., +94772090741 becomes 0772090741
+     * Converts an international phone number into the local format expected by WebXPay.
      */
     protected function formatPhoneNumber(string $phone): string
     {

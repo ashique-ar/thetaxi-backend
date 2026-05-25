@@ -1,11 +1,11 @@
-{{-- Theme-02 Hero Section - Tailwind CSS - Full viewport cinematic banner --}}
+{{-- Theme-02 Hero Section - Premium cinematic banner --}}
 
 <!-- Hero Banner Section Start -->
 <div class="t2-hero home3-banner-section relative overflow-hidden">
     <div class="swiper home2-banner-slider">
         <div class="swiper-wrapper">
             <div class="swiper-slide">
-                <div class="banner-wrapper relative min-h-screen">
+                <div class="banner-wrapper relative">
                     <div class="banner-img-area absolute inset-0">
                         <img src="{{ !empty($settings['banner_image']) ? s3_asset($settings['banner_image']) : asset('assets/img/home3/banner-img1.jpg') }}"
                             alt="{{ $settings['banner_heading'] ?? 'Banner' }}"
@@ -15,8 +15,8 @@
                     <div class="banner-content-wrap absolute inset-0 z-[2] flex items-center">
                         <div class="container">
                             <div class="banner-content max-w-2xl px-4 md:px-0">
-                                <span class="inline-block bg-white/10 backdrop-blur-sm text-white text-sm font-semibold px-4 py-2 rounded-full mb-6 border border-white/20">
-                                    {{ $settings['banner_badge_text'] ?? '✨ Premium Transport Service' }}
+                                <span class="t2-hero-badge">
+                                    {{ $settings['banner_badge_text'] ?? 'Premium Transport Service' }}
                                 </span>
                                 <h2 class="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-extrabold text-white mb-5 leading-[1.1]">
                                     {{ $settings['banner_heading'] ?? '' }}
@@ -38,7 +38,7 @@
             </div>
             @if (isset($settings['banner_image_2']) && !empty($settings['banner_image_2']))
                 <div class="swiper-slide">
-                    <div class="banner-wrapper relative min-h-screen">
+                    <div class="banner-wrapper relative">
                         <div class="banner-img-area absolute inset-0">
                             <img src="{{ s3_asset($settings['banner_image_2']) }}"
                                 alt="{{ $settings['banner_heading_2'] ?? 'Banner' }}"
@@ -48,8 +48,8 @@
                         <div class="banner-content-wrap absolute inset-0 z-[2] flex items-center">
                             <div class="container">
                                 <div class="banner-content max-w-2xl px-4 md:px-0">
-                                    <span class="inline-block bg-white/10 backdrop-blur-sm text-white text-sm font-semibold px-4 py-2 rounded-full mb-6 border border-white/20">
-                                        {{ $settings['banner_badge_text_2'] ?? '🌍 Explore With Confidence' }}
+                                    <span class="t2-hero-badge">
+                                        {{ $settings['banner_badge_text_2'] ?? 'Travel With Confidence' }}
                                     </span>
                                     <h2 class="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-extrabold text-white mb-5 leading-[1.1]">
                                         {{ $settings['banner_heading_2'] ?? 'Fly First Class, Land Refreshed' }}

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Service\ServiceFormConfig;
 use App\Models\Service\ServiceType;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingSlabDefinition;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCommonRateDefinition;
@@ -611,7 +612,8 @@ class DynamicServiceConfigurationService
     }
 
     /**
-     * Get dynamic form configuration for a specific service type
+     * Get dynamic form configuration for a specific service type.
+     * DB record (service_form_configs) takes precedence over the hardcoded constant.
      */
     public function getServiceFormConfiguration(string $serviceCode): array
     {
@@ -624,32 +626,34 @@ class DynamicServiceConfigurationService
                 return [
                     'error' => 'Service type not found',
                     'fields' => [],
-                    'validation_rules' => []
+                    'validation_rules' => [],
                 ];
             }
 
-            $baseConfig = self::SERVICE_FIELD_CONFIGS[$serviceCode] ?? [
-                'required_fields' => ['pickup_location', 'from_date', 'passengers'],
-                'optional_fields' => [],
-                'special_fields' => [],
-                'validation_rules' => []
-            ];
+            // Prefer DB config; fall back to hardcoded constant
+            $dbConfig   = ServiceFormConfig::forCode($serviceCode);
+            $baseConfig = $dbConfig
+                ? $dbConfig->config
+                : (self::SERVICE_FIELD_CONFIGS[$serviceCode] ?? [
+                    'required_fields' => ['pickup_location', 'from_date', 'passengers'],
+                    'optional_fields' => [],
+                    'special_fields'  => [],
+                    'validation_rules' => [],
+                ]);
 
-            // Get pricing slabs for duration fields
-            $slabs = $this->getServicePricingSlabs($serviceType->id);
-
-            // Get common rates for additional field options
+            $slabs       = $this->getServicePricingSlabs($serviceType->id);
             $commonRates = $this->getServiceCommonRates($serviceType->id);
 
             return [
-                'service_type' => $serviceType,
-                'base_fields' => $baseConfig,
-                'pricing_slabs' => $slabs,
-                'common_rates' => $commonRates,
-                'frontend_category' => $this->determineServiceCategory($serviceCode),
-                'calculation_formula' => $this->getServiceCalculationFormula($serviceType->id),
+                'service_type'            => $serviceType,
+                'base_fields'             => $baseConfig,
+                'pricing_slabs'           => $slabs,
+                'common_rates'            => $commonRates,
+                'frontend_category'       => $this->determineServiceCategory($serviceCode),
+                'calculation_formula'     => $this->getServiceCalculationFormula($serviceType->id),
                 'estimated_duration_range' => $this->getServiceDurationRange($slabs),
-                'supported_features' => $this->getServiceFeatures($serviceCode)
+                'supported_features'      => $this->getServiceFeatures($serviceCode),
+                'config_source'           => $dbConfig ? 'database' : 'default',
             ];
         });
     }

@@ -1,10 +1,10 @@
 {
     "info": {
         "_postman_id": "driver-mobile-api-v1",
-        "name": "TheTaxi Driver Mobile API",
-        "description": "Complete API collection for TheTaxi Driver Mobile Application. Includes app version checks, authentication, status, location tracking, sessions, device management, notification management, booking assignments, hires, earnings, and trip lifecycle endpoints (with assignment-scoped canonical lifecycle endpoints).",
+        "name": "Company Driver Mobile API",
+        "description": "Complete API collection for Company Driver Mobile Application. Includes app version checks, authentication, status, location tracking, sessions, device management, notification management, booking assignments, hires, earnings, and trip lifecycle endpoints (with assignment-scoped canonical lifecycle endpoints).",
         "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-        "_exporter_id": "thetaxi-driver-api"
+        "_exporter_id": "Company-driver-api"
     },
     "item": [
         {

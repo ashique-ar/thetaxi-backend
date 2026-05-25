@@ -197,7 +197,8 @@ class BookingDispatch extends BaseModel
     }
 
     /**
-     * Calculate late return fee if applicable
+     * Calculate late return fee if applicable.
+     * Rate and grace period are read from website_settings so they are configurable.
      */
     public function calculateLateReturnFee(): float
     {
@@ -205,9 +206,15 @@ class BookingDispatch extends BaseModel
             return 0;
         }
 
-        $hoursLate = $this->expected_return_at->diffInHours(now());
-        // Basic calculation - $10 per hour late (configurable)
-        return $hoursLate * 10;
+        $hourlyRate   = (float) (\App\Models\Website\WebsiteSetting::getValue('late_return_fee_per_hour', 10) ?? 10);
+        $gracePeriod  = (int)   (\App\Models\Website\WebsiteSetting::getValue('late_return_grace_hours', 0) ?? 0);
+
+        $hoursLate = max(0, $this->expected_return_at->diffInHours(now()) - $gracePeriod);
+        if ($hoursLate <= 0) {
+            return 0;
+        }
+
+        return round($hoursLate * $hourlyRate, 2);
     }
 
     /**

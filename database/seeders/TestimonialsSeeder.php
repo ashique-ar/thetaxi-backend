@@ -17,7 +17,7 @@ class TestimonialsSeeder extends Seeder
         $testimonials = [
             [
                 'name' => 'James Bonde',
-                'position' => 'TheTaxi Traveler',
+                'position' => 'Company Traveler',
                 'company' => 'Adventure Seeker',
                 'content' => 'This was the best trip of my life! Everything was perfectly planned, from airport pickup to guided tours. The accommodations were fantastic, and the itinerary was well-balanced. Highly recommended!',
                 'rating' => 5,
@@ -59,7 +59,7 @@ class TestimonialsSeeder extends Seeder
                 'name' => 'David Thompson',
                 'position' => 'Retired Teacher',
                 'company' => 'Education Veteran',
-                'content' => 'At my age, comfort and reliability are paramount. TheTaxi delivered on both fronts. The pace was perfect, and every detail was thoughtfully planned.',
+                'content' => 'At my age, comfort and reliability are paramount. Company delivered on both fronts. The pace was perfect, and every detail was thoughtfully planned.',
                 'rating' => 5,
                 'location' => 'Sydney, Australia',
                 'is_featured' => true,

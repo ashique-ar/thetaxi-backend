@@ -39,9 +39,13 @@
                                 </svg>
                             </div>
                             <h4>{{ $settings['contact_address_1_title'] ?? 'United State' }}</h4>
-                            <h6><span>Contact :</span> <a
-                                    href="tel:{{ $settings['contact_address_1_phone'] ?? '+1 (212) 555-7890' }}">{{ $settings['contact_address_1_phone'] ?? '+1 (212) 555-7890' }}</a>
-                            </h6>
+                            @php
+                                $contactPhone = $settings['contact_address_1_phone'] ?? $settings['company_phone'] ?? '';
+                                $contactPhoneTel = preg_replace('/[^0-9+]/', '', $contactPhone);
+                            @endphp
+                            @if($contactPhone)
+                                <h6><span>Contact :</span> <a href="tel:{{ $contactPhoneTel }}">{{ $contactPhone }}</a></h6>
+                            @endif
                             <p>{{ $settings['contact_address_1_address'] ?? 'Skyline Plaza, 5th Floor, 123 Main Street Los Angeles, CA 90001, USA' }}
                             </p>
                         </div>

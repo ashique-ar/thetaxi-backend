@@ -3,15 +3,14 @@
 namespace App\Services;
 
 
+use App\Models\Booking\Booking;
 use App\Models\Booking\BookingDiscount;
 use App\Models\CustomerLoyaltyPoint;
 use App\Models\LoyaltyTier;
-use App\Models\Customer;
-use App\Models\Booking;
+use App\Models\Website\WebsiteSetting;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
-use Carbon\Carbon;
 
 class DiscountService
 {
@@ -133,12 +132,12 @@ class DiscountService
             throw new \Exception('Insufficient loyalty points for redemption');
         }
 
-        // Calculate redemption value (1 point = 0.01 LKR by default)
-        $pointValue = 0.01;
+        // Calculate redemption value. Base rate is configurable via website_settings.
+        $basePointValue = (float) (\App\Models\Website\WebsiteSetting::getValue('loyalty_point_base_value', config('booking.loyalty.point_base_value', 0.01)) ?? 0.01);
         $tier = LoyaltyTier::where('name', $customerLoyalty->current_tier)->first();
-        if ($tier) {
-            $pointValue = $pointValue * $tier->points_redemption_multiplier;
-        }
+        $pointValue = $tier
+            ? $basePointValue * (float) $tier->points_redemption_multiplier
+            : $basePointValue;
 
         $redemptionValue = $pointsToRedeem * $pointValue;
         $discountAmount = min($redemptionValue, $orderAmount);
@@ -259,18 +258,19 @@ class DiscountService
         $nextTier = $tier?->getNextTier();
 
         // Calculate redemption options
+        $currency = WebsiteSetting::getValue('default_currency', config('booking.default_currency', 'LKR'));
+        $basePointValue = (float) (WebsiteSetting::getValue('loyalty_point_base_value', config('booking.loyalty.point_base_value', 0.01)) ?? 0.01);
         $redemptionOptions = [];
         if ($customerLoyalty->available_points > 0) {
-            $pointValue = 0.01 * $customerLoyalty->redemption_rate_multiplier;
-            
-            // Different redemption tiers
+            $pointValue = $basePointValue * (float) $customerLoyalty->redemption_rate_multiplier;
+
             $redemptionTiers = [50, 100, 250, 500, 1000];
             foreach ($redemptionTiers as $points) {
                 if ($points <= $customerLoyalty->available_points) {
                     $redemptionOptions[] = [
-                        'points' => $points,
-                        'value' => $points * $pointValue,
-                        'formatted_value' => 'LKR ' . number_format($points * $pointValue, 2),
+                        'points'          => $points,
+                        'value'           => $points * $pointValue,
+                        'formatted_value' => $currency . ' ' . number_format($points * $pointValue, 2),
                     ];
                 }
             }
@@ -296,7 +296,7 @@ class DiscountService
                 'progress_percentage' => min(100, ($customerLoyalty->total_points / $nextTier->min_points) * 100),
             ] : null,
             'redemption_options' => $redemptionOptions,
-            'estimated_value' => $customerLoyalty->available_points * (0.01 * $customerLoyalty->redemption_rate_multiplier),
+            'estimated_value' => $customerLoyalty->available_points * ($basePointValue * (float) $customerLoyalty->redemption_rate_multiplier),
             'total_bookings' => $customerLoyalty->total_bookings,
             'total_spent' => $customerLoyalty->total_spent,
             'last_activity_date' => $customerLoyalty->last_activity_date,
@@ -324,10 +324,13 @@ class DiscountService
             ]
         );
 
-        // Calculate points based on amount spent
-        $baseEarningRate = 0.1; // 10 points per 100 LKR spent
-        $amountSpent = $booking->total_actual ?? $booking->total_estimated ?? 0;
-        $basePoints = floor($amountSpent * $baseEarningRate);
+        // Calculate points based on amount spent. Rate is configurable via website_settings.
+        $baseEarningRate = (float) (WebsiteSetting::getValue('loyalty_points_per_unit', config('booking.loyalty.points_per_unit', 0.1)) ?? 0.1);
+        $amountSpent = (float) ($booking->total_actual ?? $booking->total_estimated ?? 0);
+        if ($amountSpent < 0) {
+            $amountSpent = 0;
+        }
+        $basePoints = (int) floor($amountSpent * $baseEarningRate);
         
         // Apply tier multiplier
         $finalPoints = floor($basePoints * $customerLoyalty->earning_rate_multiplier);
@@ -410,15 +413,17 @@ class DiscountService
      * Calculate detailed pricing breakdown with discount integration
      */
     private function calculateDetailedPricingBreakdown(
-        array $currentPricingBreakdown, 
-        float $discountAmount, 
-        BookingDiscount $discount, 
+        array $currentPricingBreakdown,
+        float $discountAmount,
+        BookingDiscount $discount,
         float $originalAmount
     ): array {
+        $currency = $currentPricingBreakdown['currency']
+            ?? WebsiteSetting::getValue('default_currency', config('booking.default_currency', 'LKR'));
+
         // Extract components from current pricing breakdown
-        $basePricing = $currentPricingBreakdown['base_pricing'] ?? [];
+        $basePricing  = $currentPricingBreakdown['base_pricing'] ?? [];
         $addonsPricing = $currentPricingBreakdown['addons_pricing'] ?? [];
-        $summary = $currentPricingBreakdown['summary'] ?? [];
 
         // Calculate price before customizations
         $baseAmount = $basePricing['base_amount'] ?? 0;
@@ -449,53 +454,53 @@ class DiscountService
                 'base_amount' => $baseAmount,
                 'addons_amount' => $addonsAmount,
                 'subtotal' => $priceBeforeCustomizations,
-                'formatted' => 'LKR ' . number_format(floor(max(0, $priceBeforeCustomizations)), 0),
+                'formatted' => $currency . ' ' . number_format(floor(max(0, $priceBeforeCustomizations)), 0),
             ],
             'customizations' => [
                 'total_adjustments' => $customizationAdjustments,
                 'applied_count' => count($currentPricingBreakdown['applied_customizations'] ?? []),
                 'details' => $currentPricingBreakdown['applied_customizations'] ?? [],
-                'formatted' => ($customizationAdjustments >= 0 ? '+' : '') . 'LKR ' . number_format($customizationAdjustments, 2),
+                'formatted' => ($customizationAdjustments >= 0 ? '+' : '') . $currency . ' ' . number_format($customizationAdjustments, 2),
             ],
             'price_after_customizations' => [
-                'amount' => $priceAfterCustomizations,
-                'formatted' => 'LKR ' . number_format(floor(max(0, $priceAfterCustomizations)), 0),
+                'amount'    => $priceAfterCustomizations,
+                'formatted' => $currency . ' ' . number_format(floor(max(0, $priceAfterCustomizations)), 0),
             ],
             'discounts' => [
                 'new_discount' => [
-                    'name' => $discount->discount_name,
-                    'type' => $discount->type,
-                    'amount' => $discountAmount,
-                    'formatted' => '-LKR ' . number_format(floor(max(0, $discountAmount)), 0),
+                    'name'      => $discount->discount_name,
+                    'type'      => $discount->type,
+                    'amount'    => $discountAmount,
+                    'formatted' => '-' . $currency . ' ' . number_format(floor(max(0, $discountAmount)), 0),
                 ],
-                'existing_discounts' => $existingDiscounts,
+                'existing_discounts'   => $existingDiscounts,
                 'total_discount_amount' => $totalDiscountAmount,
-                'formatted_total' => '-LKR ' . number_format(floor(max(0, $totalDiscountAmount)), 0),
+                'formatted_total'       => '-' . $currency . ' ' . number_format(floor(max(0, $totalDiscountAmount)), 0),
             ],
             'tax_calculation' => [
                 'taxable_amount' => $subtotalAfterDiscounts,
-                'tax_amount' => $taxAmount,
-                'tax_rate' => '0%', // Adjust based on your tax calculation
-                'formatted' => 'LKR ' . number_format(floor(max(0, $taxAmount)), 0),
+                'tax_amount'     => $taxAmount,
+                'tax_rate'       => WebsiteSetting::getValue('tax_rate_display', '0%'),
+                'formatted'      => $currency . ' ' . number_format(floor(max(0, $taxAmount)), 0),
             ],
             'final_totals' => [
                 'subtotal_after_discounts' => $subtotalAfterDiscounts,
-                'tax_amount' => $taxAmount,
-                'final_total' => $finalTotal,
-                'original_amount' => $originalAmount,
-                'total_savings' => max(0, $originalAmount - $finalTotal),
+                'tax_amount'               => $taxAmount,
+                'final_total'              => $finalTotal,
+                'original_amount'          => $originalAmount,
+                'total_savings'            => max(0, $originalAmount - $finalTotal),
                 'formatted' => [
-                    'subtotal' => 'LKR ' . number_format(floor(max(0, $subtotalAfterDiscounts)), 0),
-                    'tax' => 'LKR ' . number_format(floor(max(0, $taxAmount)), 0),
-                    'total' => 'LKR ' . number_format($finalTotal, 2),
-                    'savings' => 'LKR ' . number_format(max(0, $originalAmount - $finalTotal), 2),
+                    'subtotal' => $currency . ' ' . number_format(floor(max(0, $subtotalAfterDiscounts)), 0),
+                    'tax'      => $currency . ' ' . number_format(floor(max(0, $taxAmount)), 0),
+                    'total'    => $currency . ' ' . number_format($finalTotal, 2),
+                    'savings'  => $currency . ' ' . number_format(max(0, $originalAmount - $finalTotal), 2),
                 ],
             ],
             'breakdown_summary' => [
                 'has_customizations' => !empty($currentPricingBreakdown['applied_customizations']),
-                'has_discounts' => $totalDiscountAmount > 0,
-                'requires_approval' => $discount->requires_approval,
-                'currency' => $currentPricingBreakdown['currency'] ?? 'LKR',
+                'has_discounts'      => $totalDiscountAmount > 0,
+                'requires_approval'  => $discount->requires_approval,
+                'currency'           => $currency,
             ],
         ];
     }

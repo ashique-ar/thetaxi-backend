@@ -286,7 +286,7 @@ class CheckoutController extends Controller
             'phone.min' => 'Phone number is too short.',
             'phone_country_code.required' => 'Please select a valid country for your phone number.',
             'phone_international.required' => 'Please enter a valid international phone number.',
-            'phone_international.regex' => 'Please enter a valid international phone number format (e.g., +94771234567).',
+            'phone_international.regex' => 'Please enter a valid international phone number format with country code.',
             'email.required' => 'Please enter your email address.',
             'email.email' => 'Please enter a valid email address.',
             'identification.required' => 'Please enter your identification number.',

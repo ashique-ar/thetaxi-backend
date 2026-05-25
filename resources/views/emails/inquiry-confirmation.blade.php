@@ -198,6 +198,6 @@
 
     <!-- CTA Button -->
     <div class="btn-container">
-        <a href="{{ route('home') }}" class="btn">Visit {{ env('COMPANY_NAME', 'TheTaxi Company') }}</a>
+        <a href="{{ route('home') }}" class="btn">Visit {{ ($settings['company_name'] ?? $settings['brand_name'] ?? $settings['site_name'] ?? 'Company') }}</a>
     </div>
 @endsection

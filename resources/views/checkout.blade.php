@@ -136,7 +136,7 @@
                                             <div class="form-inner two mb-25">
                                                 <label>Phone Number*</label>
                                                 <input type="tel" id="phone-input" name="phone"
-                                                    placeholder="+1 (201) 555-0123" autocomplete="phone" required
+                                                    placeholder="Phone number" autocomplete="phone" required
                                                     value="{{ old('phone') }}" style="padding-left: 48px;">
                                                 <div id="phone-error" class="text-danger mt-2" style="display: none;">
                                                 </div>
@@ -1134,6 +1134,73 @@
             margin-right: 0.25rem;
         }
 
+        .checkout-page {
+            background: linear-gradient(180deg, #f8fafc 0%, #ffffff 44%);
+            padding: 56px 0 84px;
+        }
+
+        .checkout-form-wrapper,
+        .checkout-page .order-sum-area,
+        .checkout-page .inquiry-form {
+            border: 1px solid rgba(15, 23, 42, 0.08);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.96);
+            box-shadow: 0 20px 50px rgba(15, 23, 42, 0.08);
+        }
+
+        .checkout-form-wrapper {
+            padding: 26px;
+        }
+
+        .checkout-form-title {
+            margin-bottom: 22px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .checkout-form-title h4 {
+            margin: 0;
+            color: #111827;
+            font-weight: 800;
+        }
+
+        .checkout-form .form-inner label {
+            margin-bottom: 8px;
+            color: #334155;
+            font-weight: 700;
+        }
+
+        .checkout-form .form-inner input,
+        .checkout-form .form-inner select,
+        .checkout-form .form-inner textarea {
+            border: 1px solid #dbe3ef;
+            border-radius: 8px;
+            background: #fff;
+            min-height: 48px;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .checkout-form .form-inner input:focus,
+        .checkout-form .form-inner select:focus,
+        .checkout-form .form-inner textarea:focus {
+            border-color: var(--primary-color1, #BF2629);
+            box-shadow: 0 0 0 4px rgba(191, 38, 41, 0.1);
+            outline: none;
+        }
+
+        .checkout-page .order-sum-area {
+            position: sticky;
+            top: 110px;
+            padding: 24px;
+        }
+
+        .checkout-page .order-sum-area h4,
+        .checkout-page .order-sum-area h5,
+        .checkout-page .order-sum-area h6 {
+            color: #111827;
+            font-weight: 800;
+        }
+
         /* Payment type selection styles */
         .payment-type-selection .payment-option {
             position: relative;
@@ -1150,23 +1217,25 @@
         }
 
         .payment-card {
-            border: 2px solid #e9ecef;
-            border-radius: 12px;
+            border: 1px solid #dbe3ef;
+            border-radius: 8px;
             padding: 20px;
             text-align: center;
             transition: all 0.3s ease;
             background: white;
+            min-height: 154px;
         }
 
         .payment-card:hover {
             border-color: var(--primary-color1);
             transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 16px 34px rgba(15, 23, 42, 0.1);
         }
 
         .payment-radio:checked+.payment-label .payment-card {
             border-color: var(--primary-color1);
-            background: rgba(201, 28, 35, 0.05);
+            background: linear-gradient(180deg, rgba(191, 38, 41, 0.08), rgba(191, 38, 41, 0.02));
+            box-shadow: inset 0 0 0 1px rgba(191, 38, 41, 0.12), 0 16px 34px rgba(191, 38, 41, 0.1);
         }
 
         .payment-card i {
@@ -1278,6 +1347,27 @@
             margin: 15px -20px 0;
             border-radius: 8px;
             border: none;
+        }
+
+        @media (max-width: 991px) {
+            .checkout-page .order-sum-area {
+                position: static;
+            }
+        }
+
+        @media (max-width: 575px) {
+            .checkout-page {
+                padding: 36px 0 56px;
+            }
+
+            .checkout-form-wrapper,
+            .checkout-page .order-sum-area {
+                padding: 18px;
+            }
+
+            .payment-card {
+                min-height: 0;
+            }
         }
 
         .single-item .item-area {
@@ -2145,7 +2235,7 @@
 
                     // Store formatted numbers
                     phoneCountryCodeField.value = countryData.dialCode;
-                    phoneInternationalField.value = e164Number; // Store E164 format (+94771234567)
+                    phoneInternationalField.value = e164Number; // Store E164 international format.
 
                     phoneErrorDiv.style.display = 'none';
                     phoneValidDiv.textContent = `✓ Valid ${countryData.name} number`;

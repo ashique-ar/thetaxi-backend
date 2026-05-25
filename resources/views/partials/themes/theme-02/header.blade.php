@@ -6,13 +6,13 @@
         <div class="logo-and-menu-area">
             <a href="{{ route('home') }}" class="header-logo">
                 <img src="{{ s3_asset($settings['logo_header'] ?? 'assets/img/header-logo3.svg') }}"
-                     alt="{{ $settings['logo_header_alt'] ?? $settings['site_name'] ?? 'TheTaxi' }}">
+                     alt="{{ $settings['logo_header_alt'] ?? $settings['site_name'] ?? $settings['brand_name'] ?? 'Company' }}">
             </a>
             <div class="main-menu">
                 <div class="mobile-logo-area d-xl-none d-flex align-items-center justify-content-between">
                     <a href="{{ route('home') }}" class="mobile-logo-wrap">
                         <img src="{{ s3_asset($settings['logo_mobile'] ?? $settings['logo_header'] ?? 'assets/img/header-logo2.svg') }}"
-                             alt="{{ $settings['logo_mobile_alt'] ?? $settings['site_name'] ?? 'TheTaxi' }}">
+                             alt="{{ $settings['logo_mobile_alt'] ?? $settings['site_name'] ?? $settings['brand_name'] ?? 'Company' }}">
                     </a>
                     <div class="menu-close-btn">
                         <i class="bi bi-x"></i>
@@ -34,7 +34,7 @@
                     </li>
                     @endif
                     <li><a href="{{ route('about') }}">About</a></li>
-                    <li><a href="{{ route('contact') }}">Contact</a></li>
+                    <li><a href="{{ route('inquiry') }}">Inquiry</a></li>
                 </ul>
                 <div class="contact-area d-xl-none d-flex">
                     <div class="icon">
@@ -44,7 +44,7 @@
                     </div>
                     <div class="content">
                         <span>{{ $settings['header_help_label'] ?? 'Need Help?' }}</span>
-                        <a href="tel:{{ preg_replace('/[^0-9+]/', '', $settings['company_phone'] ?? '+1234567890') }}">{{ $settings['company_phone'] ?? '+1 234 567 890' }}</a>
+                        <a href="tel:{{ preg_replace('/[^0-9+]/', '', $settings['company_phone'] ?? '') }}">{{ $settings['company_phone'] ?? 'Call us' }}</a>
                     </div>
                 </div>
                 <!-- Mobile Cart -->
@@ -100,7 +100,7 @@
                     </div>
                     <div class="content">
                         <span>{{ $settings['header_help_label'] ?? 'Need Help?' }}</span>
-                        <a href="tel:{{ preg_replace('/[^0-9+]/', '', $settings['company_phone'] ?? '+1234567890') }}">{{ $settings['company_phone'] ?? '+1 234 567 890' }}</a>
+                        <a href="tel:{{ preg_replace('/[^0-9+]/', '', $settings['company_phone'] ?? '') }}">{{ $settings['company_phone'] ?? 'Call us' }}</a>
                     </div>
                 </div>
             </div>
@@ -114,3 +114,5 @@
         </div>
     </div>
 </header>
+
+

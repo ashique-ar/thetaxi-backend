@@ -4,7 +4,7 @@
  * API Middleware Configuration
  * 
  * This file defines the middleware configuration for different API endpoints
- * and user roles/permissions in the Casons Transport Management System.
+ * and user roles/permissions in the transport management system.
  */
 
 return [

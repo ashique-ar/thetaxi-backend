@@ -5,23 +5,30 @@ namespace App\Console\Commands;
 use Illuminate\Console\Command;
 use App\Models\Website\CmsContent;
 
-class NormalizeTheTaxiBranding extends Command
+class NormalizeCmsBranding extends Command
 {
-    protected $signature = 'cms:normalize-thetaxi-branding 
+    protected $signature = 'cms:normalize-branding 
+                            {brand? : Brand text to normalize}
                             {--dry-run : Preview changes without updating data}';
 
-    protected $description = 'Normalize and style TheTaxi brand mentions inside CMS body content';
+    protected $description = 'Normalize and style configured brand mentions inside CMS body content';
 
     public function handle()
     {
-        $this->info('Normalizing TheTaxi branding in CMS body...');
+        $brand = trim((string) ($this->argument('brand') ?: app(\App\Services\WebsiteSettingsService::class)->get('brand_name', 'Company')));
+
+        if ($brand === '') {
+            $this->error('A brand name is required.');
+            return Command::FAILURE;
+        }
+
+        $this->info("Normalizing {$brand} branding in CMS body...");
 
         $dryRun = $this->option('dry-run');
         $updatedCount = 0;
 
-        // Match ONLY "thetaxi" in any case
-        $pattern = '/\bthetaxi\b/i';
-        $replacement = '<span class="brand-thetaxi">TheTaxi</span>';
+        $pattern = '/\b' . preg_quote($brand, '/') . '\b/i';
+        $replacement = '<span class="brand-name">' . e($brand) . '</span>';
 
         CmsContent::whereNotNull('body')
             ->chunkById(100, function ($contents) use (
@@ -33,14 +40,14 @@ class NormalizeTheTaxiBranding extends Command
                 foreach ($contents as $content) {
                     $originalBody = $content->body;
 
-                    // 1. Protect already-styled TheTaxi
+                    // 1. Protect already-styled brand mentions
                     $protectedBody = str_replace(
-                        '<span class="brand-thetaxi">TheTaxi</span>',
-                        '%%THETAXI_PROTECTED%%',
+                        $replacement,
+                        '%%BRAND_PROTECTED%%',
                         $originalBody
                     );
 
-                    // 2. Replace raw "thetaxi"
+                    // 2. Replace raw brand text
                     $updatedBody = preg_replace(
                         $pattern,
                         $replacement,
@@ -49,8 +56,8 @@ class NormalizeTheTaxiBranding extends Command
 
                     // 3. Restore protected branding
                     $updatedBody = str_replace(
-                        '%%THETAXI_PROTECTED%%',
-                        '<span class="brand-thetaxi">TheTaxi</span>',
+                        '%%BRAND_PROTECTED%%',
+                        $replacement,
                         $updatedBody
                     );
 

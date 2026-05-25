@@ -42,6 +42,11 @@ class Company extends BaseModel
     protected $fillable = [
         'name',
         'address',
+        'email',
+        'phone',
+        'website',
+        'domain',
+        'description',
         'latitude',
         'longitude',
         'region_id',
@@ -49,6 +54,7 @@ class Company extends BaseModel
         'state_id',
         'is_default',
         'city',
+        'is_active',
         'created_user_id',
         'updated_user_id'
     ];
@@ -61,6 +67,8 @@ class Company extends BaseModel
     protected $casts = [
         'latitude' => 'decimal:8',
         'longitude' => 'decimal:8',
+        'is_active' => 'boolean',
+        'is_default' => 'boolean',
     ];
 
     // Relations

@@ -192,10 +192,10 @@ class PricingVariableService
                 }
                 
             } else {
-                Log::info('🔍 Session-only variable customization (preview mode)', [
-                    'session_id' => $sessionId,
-                    'variable_name' => $customization['variable_name'],
-                    'vehicle_group_id' => $customization['vehicle_group_id'] ?? null
+                Log::debug('Session-only variable customization (preview mode)', [
+                    'session_id'       => $sessionId,
+                    'variable_name'    => $customization['variable_name'],
+                    'vehicle_group_id' => $customization['vehicle_group_id'] ?? null,
                 ]);
             }
 
@@ -272,24 +272,35 @@ class PricingVariableService
     }
 
     /**
-     * Check if variable customizations require approval
+     * Check if variable customizations require approval.
+     * Thresholds are read from website_settings so they can be configured per deployment.
      */
     public function requiresApproval(array $customizations): bool
     {
-        foreach ($customizations as $customization) {
-            $changePercentage = abs($customization['custom_value'] - $customization['original_value'])
-                / $customization['original_value'] * 100;
+        $generalThreshold  = (float) (\App\Models\Website\WebsiteSetting::getValue('pricing_approval_threshold_pct', 20));
+        $sensitiveThreshold = (float) (\App\Models\Website\WebsiteSetting::getValue('pricing_sensitive_approval_threshold_pct', 10));
+        $sensitiveVars = array_filter(
+            explode(',', \App\Models\Website\WebsiteSetting::getValue('pricing_sensitive_variables', 'slab_rate,driver_allowance') ?? '')
+        );
 
-            // Require approval for changes > 20%
-            if ($changePercentage > 20) {
+        foreach ($customizations as $customization) {
+            $original = (float) ($customization['original_value'] ?? 0);
+            $custom   = (float) ($customization['custom_value'] ?? 0);
+
+            // When the original value is zero we cannot compute a percentage change;
+            // treat any non-zero custom value as a 100% change.
+            if ($original == 0) {
+                $changePercentage = $custom != 0 ? 100.0 : 0.0;
+            } else {
+                $changePercentage = abs($custom - $original) / $original * 100;
+            }
+
+            if ($changePercentage > $generalThreshold) {
                 return true;
             }
 
-            // Require approval for sensitive variables
-            if (in_array($customization['variable_name'], ['slab_rate', 'driver_allowance'])) {
-                if ($changePercentage > 10) {
-                    return true;
-                }
+            if (in_array($customization['variable_name'], $sensitiveVars, true) && $changePercentage > $sensitiveThreshold) {
+                return true;
             }
         }
 
@@ -365,27 +376,29 @@ class PricingVariableService
     }
 
     /**
-     * Get variable unit for display
+     * Get variable unit for display using the configured default currency.
      */
     private function getVariableUnit(string $varName): string
     {
+        $currency = \App\Models\Website\WebsiteSetting::getValue('default_currency', config('booking.default_currency', 'LKR'));
+
         $units = [
-            'slab_rate' => 'LKR',
-            'driver_allowance' => 'LKR/day',
-            'extra_km_rate' => 'LKR/km',
-            'extra_hour_rate' => 'LKR/hour',
-            'vehicle_delivery_rate_per_km' => 'LKR/km',
-            'vehicle_pickup_rate_per_km' => 'LKR/km',
-            'service_rate_per_km' => 'LKR/km',
-            'stop_charge' => 'LKR/stop',
-            'waiting_charge_per_hour' => 'LKR/hour',
-            'decoration_charge' => 'LKR',
-            'emergency_base_rate' => 'LKR',
-            'hourly_rate' => 'LKR/hour',
-            'overtime_rate_per_hour' => 'LKR/hour',
+            'slab_rate'                    => $currency,
+            'driver_allowance'             => "{$currency}/day",
+            'extra_km_rate'                => "{$currency}/km",
+            'extra_hour_rate'              => "{$currency}/hour",
+            'vehicle_delivery_rate_per_km' => "{$currency}/km",
+            'vehicle_pickup_rate_per_km'   => "{$currency}/km",
+            'service_rate_per_km'          => "{$currency}/km",
+            'stop_charge'                  => "{$currency}/stop",
+            'waiting_charge_per_hour'      => "{$currency}/hour",
+            'decoration_charge'            => $currency,
+            'emergency_base_rate'          => $currency,
+            'hourly_rate'                  => "{$currency}/hour",
+            'overtime_rate_per_hour'       => "{$currency}/hour",
         ];
 
-        return $units[$varName] ?? 'LKR';
+        return $units[$varName] ?? $currency;
     }
 
     /**
@@ -398,19 +411,26 @@ class PricingVariableService
     }
 
     /**
-     * Get maximum allowable value for a variable
+     * Get maximum allowable value for a variable.
+     * Reads from website_settings so values are configurable per deployment.
      */
     private function getVariableMaxValue(string $varName): ?float
     {
-        // Set reasonable maximums to prevent extreme values
-        $maximums = [
-            'slab_rate' => 1000000, // 1M LKR
-            'driver_allowance' => 10000, // 10K LKR per day
-            'extra_km_rate' => 1000, // 1K LKR per km
-            'extra_hour_rate' => 5000, // 5K LKR per hour
+        $settingKey = "pricing_max_{$varName}";
+        $storedValue = \App\Models\Website\WebsiteSetting::getValue($settingKey, null);
+        if ($storedValue !== null) {
+            return (float) $storedValue;
+        }
+
+        // Sensible defaults (can be overridden via website_settings).
+        $defaults = [
+            'slab_rate'        => 1000000,
+            'driver_allowance' => 10000,
+            'extra_km_rate'    => 1000,
+            'extra_hour_rate'  => 5000,
         ];
 
-        return $maximums[$varName] ?? null;
+        return isset($defaults[$varName]) ? (float) $defaults[$varName] : null;
     }
 
     /**

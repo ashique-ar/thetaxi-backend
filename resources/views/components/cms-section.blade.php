@@ -16,11 +16,11 @@
 
 @php
     $displayItems = $items->count() > 0 ? $items->take($limit) : collect($fallbackItems)->take($limit);
-    $sectionClass = $customTemplate === 'blog-card2' ? 'home4-blog-section mb-100' : 'home3-travel-inspiration-section mb-120';
+    $sectionClass = $customTemplate === 'blog-card2' ? 'home4-blog-section' : 'home3-travel-inspiration-section';
 @endphp
 
 <!-- CMS Content Section Start -->
-<div class="{{ $sectionClass }}" @if($sectionId) id="{{ $sectionId }}" @endif>
+<div class="{{ $sectionClass }} cms-content-section" @if($sectionId) id="{{ $sectionId }}" @endif>
     <div class="container">
         <div class="row justify-content-center mb-50 wow animate fadeInDown" data-wow-delay="200ms" data-wow-duration="1500ms">
             <div class="col-xl-6 col-lg-8">
@@ -77,3 +77,34 @@
     </div>
 </div>
 <!-- CMS Content Section End -->
+
+@once
+    @push('styles')
+        <style>
+            .cms-content-section {
+                position: relative;
+                overflow: hidden;
+            }
+
+            .cms-content-section .section-title {
+                max-width: 760px;
+                margin: 0 auto;
+            }
+
+            .cms-content-section .section-title h2 {
+                letter-spacing: 0;
+            }
+
+            .cms-content-section .section-title p {
+                color: #64748b;
+                line-height: 1.7;
+            }
+
+            .cms-content-section .primary-btn1.two.transparent {
+                border-radius: 8px;
+                min-height: 48px;
+                padding-inline: 22px;
+            }
+        </style>
+    @endpush
+@endonce

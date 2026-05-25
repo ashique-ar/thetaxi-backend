@@ -23,7 +23,7 @@ class EmailTestController
             'customer' => (object) [
                 'full_name' => 'John Doe',
                 'email' => 'john@example.com',
-                'phone' => '+94 71 1 615 615',
+                'phone' => app(\App\Services\WebsiteSettingsService::class)->get('company_phone', ''),
             ],
             'from_date' => Carbon::now()->addDay()->setHour(9),
             'to_date' => Carbon::now()->addDays(4)->setHour(9),
@@ -66,7 +66,7 @@ class EmailTestController
      */
     public function testGeneral(): View
     {
-        $companyName = env('COMPANY_NAME', 'TheTaxi Company');
+        $companyName = app(\App\Services\WebsiteSettingsService::class)->get('company_name', app(\App\Services\WebsiteSettingsService::class)->get('brand_name', 'Company'));
         $message = "Thank you for choosing {$companyName}!\n\nWe are excited to serve you with our premium car rental services. If you have any questions, please don't hesitate to contact us.\n\nBest regards,\n{$companyName} Team";
 
         return view('emails.general', [
@@ -83,7 +83,7 @@ class EmailTestController
             'id' => 'INQ' . date('YmdHis'),
             'inquiry_number' => 'INQ' . date('YmdHis'),
             'email' => 'inquiry@example.com',
-            'phone' => '+94 71 987 6543',
+            'phone' => 'customer phone',
             'message' => 'I am interested in renting a vehicle for my family trip.',
             'created_at' => Carbon::now(),
             'payload' => [
@@ -107,8 +107,8 @@ class EmailTestController
             'contactName' => 'Jane Smith',
             'typeLabel' => 'General Inquiry',
             'intro' => 'Thank you for contacting us. We have received your inquiry and our team will get back to you soon.',
-            'supportEmail' => 'support@casonsrentacar.lk',
-            'supportPhone' => '+94 71 1 615 615',
+            'supportEmail' => 'support@example.com',
+            'supportPhone' => app(\App\Services\WebsiteSettingsService::class)->get('company_phone', ''),
             'inquiry' => $inquiry,
         ]);
     }
@@ -123,7 +123,7 @@ class EmailTestController
             'customer' => (object) [
                 'full_name' => 'Ahmed Hassan',
                 'email' => 'ahmed@example.com',
-                'phone' => '+94 71 111 2222',
+                'phone' => 'customer phone',
             ],
             'currency' => 'LKR',
             'payment_type' => 'advance',
@@ -134,8 +134,8 @@ class EmailTestController
         return view('emails.payment-initiated', [
             'booking' => $booking,
             'amount' => 8975.00,
-            'supportEmail' => 'payments@casonsrentacar.lk',
-            'supportPhone' => '+94 71 1 615 615',
+            'supportEmail' => 'payments@example.com',
+            'supportPhone' => app(\App\Services\WebsiteSettingsService::class)->get('company_phone', ''),
         ]);
     }
 
@@ -159,8 +159,8 @@ class EmailTestController
             'vehicleGroup' => $vehicleGroup,
             'inquiry' => $inquiry,
             'estimatedResponseTime' => 'Within 24 hours',
-            'supportEmail' => 'quotations@casonsrentacar.lk',
-            'supportPhone' => '+94 71 1 615 615',
+            'supportEmail' => 'quotations@example.com',
+            'supportPhone' => app(\App\Services\WebsiteSettingsService::class)->get('company_phone', ''),
         ]);
     }
 
@@ -183,7 +183,7 @@ class EmailTestController
             'vehicleGroup' => $vehicleGroup,
             'customerName' => 'Robert Wilson',
             'customerEmail' => 'robert@example.com',
-            'customerPhone' => '+94 71 555 4444',
+            'customerPhone' => 'customer phone',
             'companyName' => 'Wilson Enterprises',
             'serviceType' => 'Corporate Transport',
             'travelDate' => '2026-02-20',
@@ -205,7 +205,7 @@ class EmailTestController
             'customer' => (object) [
                 'full_name' => 'Michael Brown',
                 'email' => 'michael@example.com',
-                'phone' => '+94 71 666 7777',
+                'phone' => 'customer phone',
             ],
             'from_date' => Carbon::now()->addDays(5)->setHour(10),
             'to_date' => Carbon::now()->addDays(8)->setHour(10),
@@ -281,3 +281,4 @@ class EmailTestController
         ]);
     }
 }
+

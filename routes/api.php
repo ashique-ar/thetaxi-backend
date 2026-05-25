@@ -87,6 +87,7 @@ use App\Http\Controllers\Api\AvailabilityController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\FileUploadController;
 use App\Http\Controllers\Api\PaymentController;
+use App\Http\Controllers\Api\InvoiceController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\StaffController;
 use App\Http\Controllers\BookingController;
@@ -676,6 +677,8 @@ Route::middleware(['auth:api'])->group(function () {
             Route::apiResource('api-management', AgentApiController::class);
             Route::apiResource('agent-api-sessions', AgentApiSessionController::class);
             Route::apiResource('agent-commissions', AgentCommissionController::class);
+            Route::post('agent-commissions/settle', [AgentCommissionController::class, 'settle']);
+            Route::get('agents/{agentId}/commission-statement', [AgentCommissionController::class, 'statement']);
         });
         Route::apiResource('agents', AgentController::class);
     });
@@ -1235,6 +1238,20 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('{id}/refund', [PaymentController::class, 'refundTransaction'])->middleware('permission:payments.refund');
     });
 
+    // ── Invoice Routes ────────────────────────────────────────────────────────
+    Route::prefix('invoices')->group(function () {
+        Route::get('/', [InvoiceController::class, 'adminIndex']);
+        Route::get('{id}', [InvoiceController::class, 'show']);
+        Route::get('{id}/download', [InvoiceController::class, 'download']);
+        Route::post('{id}/regenerate', [InvoiceController::class, 'regenerate']);
+        Route::post('{id}/send', [InvoiceController::class, 'send']);
+        Route::post('{id}/void', [InvoiceController::class, 'void']);
+    });
+    Route::prefix('bookings/{bookingId}/invoices')->group(function () {
+        Route::get('/', [InvoiceController::class, 'index']);
+        Route::post('generate', [InvoiceController::class, 'generate']);
+    });
+
     /*
     |--------------------------------------------------------------------------
     | Corporate Portal Routes
@@ -1505,6 +1522,13 @@ Route::middleware(['auth:api'])->group(function () {
             ->middleware('permission:settings.edit');
         Route::post('booking-form-tabs/bulk-update', [\App\Http\Controllers\Api\Admin\BookingFormTabController::class, 'bulkUpdate'])
             ->middleware('permission:settings.edit');
+
+        // Service Form Configs — DB-driven overrides for DynamicServiceConfigurationService
+        Route::get('service-form-configs', [\App\Http\Controllers\Api\Admin\ServiceFormConfigController::class, 'index']);
+        Route::get('service-form-configs/{serviceCode}', [\App\Http\Controllers\Api\Admin\ServiceFormConfigController::class, 'show']);
+        Route::post('service-form-configs', [\App\Http\Controllers\Api\Admin\ServiceFormConfigController::class, 'store']);
+        Route::put('service-form-configs/{serviceCode}', [\App\Http\Controllers\Api\Admin\ServiceFormConfigController::class, 'update']);
+        Route::delete('service-form-configs/{serviceCode}', [\App\Http\Controllers\Api\Admin\ServiceFormConfigController::class, 'destroy']);
     });
 });
 

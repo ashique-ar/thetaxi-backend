@@ -15,6 +15,10 @@ use Illuminate\Support\Str;
 
 class AssignmentService
 {
+    public function __construct(
+        private readonly AvailabilityEnforcementService $availabilityEnforcement,
+    ) {}
+
     /**
      * Get enhanced vehicle availability with assignment information
      */
@@ -30,15 +34,20 @@ class AssignmentService
         $currentDriver = $vehicle->getCurrentDriver();
         $hasForceDefault = $vehicle->hasForceDefaultDriver();
 
+        $enforcementResult = $this->availabilityEnforcement->checkVehicle($vehicle, $fromDate, $toDate);
+
         return [
             'vehicle_id' => $vehicle->id,
             'vehicle_name' => $vehicle->title,
             'license_plate' => $vehicle->license_plate,
             'status' => $vehicle->status,
-            'availability_status' => $this->determineVehicleAvailabilityStatus($vehicle, $conflicts, $fromDate, $toDate),
+            'availability_status' => $enforcementResult['available']
+                ? $this->determineVehicleAvailabilityStatus($vehicle, $conflicts, $fromDate, $toDate)
+                : 'blocked',
             'allows_concurrent' => $vehicle->allowsConcurrentAssignments(),
             'has_conflicts' => count($conflicts) > 0,
             'conflicts' => $conflicts,
+            'enforcement' => $enforcementResult,
             'current_driver' => $currentDriver ? [
                 'id' => $currentDriver->id,
                 'name' => $currentDriver->user ? $currentDriver->user->first_name . ' ' . $currentDriver->user->last_name : 'Unknown Driver',
@@ -71,14 +80,19 @@ class AssignmentService
         $conflicts = $driver->getAssignmentConflicts($fromDate, $toDate, $excludeBookingId);
         $currentVehicle = $driver->getCurrentVehicle();
 
+        $enforcementResult = $this->availabilityEnforcement->checkDriver($driver, $fromDate, $toDate);
+
         return [
             'driver_id' => $driver->id,
             'driver_name' => $driver->user ? $driver->user->first_name . ' ' . $driver->user->last_name : 'Unknown Driver',
             'license_number' => $driver->license_no,
             'status' => $driver->status ?? 'active',
-            'availability_status' => $this->determineDriverAvailabilityStatus($driver, $conflicts, $fromDate, $toDate),
+            'availability_status' => $enforcementResult['available']
+                ? $this->determineDriverAvailabilityStatus($driver, $conflicts, $fromDate, $toDate)
+                : 'blocked',
             'has_conflicts' => count($conflicts) > 0,
             'conflicts' => $conflicts,
+            'enforcement' => $enforcementResult,
             'current_vehicle' => $currentVehicle ? [
                 'id' => $currentVehicle->id,
                 'name' => $currentVehicle->title,

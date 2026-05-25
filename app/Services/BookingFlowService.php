@@ -57,12 +57,18 @@ class BookingFlowService
     protected CurrencyService $currencyService;
     protected PricingVariableService $pricingVariableService;
     protected AssignmentService $assignmentService;
+    protected AvailabilityEnforcementService $availabilityEnforcement;
 
-    public function __construct(CurrencyService $currencyService, PricingVariableService $pricingVariableService, AssignmentService $assignmentService)
-    {
+    public function __construct(
+        CurrencyService $currencyService,
+        PricingVariableService $pricingVariableService,
+        AssignmentService $assignmentService,
+        AvailabilityEnforcementService $availabilityEnforcement
+    ) {
         $this->currencyService = $currencyService;
         $this->pricingVariableService = $pricingVariableService;
         $this->assignmentService = $assignmentService;
+        $this->availabilityEnforcement = $availabilityEnforcement;
     }
 
     /**
@@ -2950,29 +2956,61 @@ class BookingFlowService
      * Additional methods to implement all frontend endpoints...
      */
 
-    public function validateSelfDrivenEligibility(string $customerId): array
-    {
-        $customer = Customer::findOrFail($customerId);
+    /**
+     * Validate self-driven eligibility for a customer.
+     * Optionally scoped to a specific vehicle and booking start date.
+     */
+    public function validateSelfDrivenEligibility(
+        string $customerId,
+        ?string $vehicleId = null,
+        ?Carbon $from = null
+    ): array {
+        $customer = Customer::with('user')->findOrFail($customerId);
+        $from     = $from ?? Carbon::now();
 
-        // Check customer eligibility for self-driven service
-        $requirements = [
-            'valid_license' => !empty($customer->driving_license_number),
-            'license_verified' => $customer->license_verified ?? false,
-            'credit_check_passed' => $customer->credit_score >= 650,
-            'age_requirement' => $customer->age >= 21,
-            'experience_years' => $customer->driving_experience >= 2,
-        ];
+        if ($vehicleId) {
+            $vehicle = Vehicle::findOrFail($vehicleId);
+            $result  = $this->availabilityEnforcement->checkSelfDrivenEligibility($customer, $vehicle, $from);
 
-        $isEligible = array_reduce($requirements, function ($carry, $item) {
-            return $carry && $item;
-        }, true);
+            return [
+                'is_eligible'        => $result['available'],
+                'blocking_reasons'   => $result['blocking_reasons'],
+                'warnings'           => $result['warnings'],
+                'vehicle_compatible' => $vehicle->self_driven_compatible ?? false,
+            ];
+        }
+
+        // Customer-only checks when no vehicle is specified yet
+        $blocking = [];
+        $warnings = [];
+
+        $license = \DB::table('driving_licenses')
+            ->where('customer_id', $customer->id)
+            ->where('is_active', true)
+            ->orderByDesc('expiry_date')
+            ->first();
+
+        if (!$license) {
+            $blocking[] = 'No valid driving licence on file.';
+        } elseif ($license->expiry_date && Carbon::parse($license->expiry_date)->isPast()) {
+            $blocking[] = 'Driving licence has expired.';
+        }
+
+        $minAge = (int) (\App\Models\Website\WebsiteSetting::getValue('self_driven_min_age', 21) ?? 21);
+        if ($customer->user?->dob) {
+            $age = Carbon::parse($customer->user->dob)->age;
+            if ($age < $minAge) {
+                $blocking[] = "Customer must be at least $minAge years old.";
+            }
+        } else {
+            $warnings[] = 'Date of birth not on record — minimum age cannot be verified.';
+        }
 
         return [
-            'is_eligible' => $isEligible,
-            'requirements' => $requirements,
-            'missing_requirements' => array_keys(array_filter($requirements, function ($req) {
-                return !$req;
-            })),
+            'is_eligible'        => empty($blocking),
+            'blocking_reasons'   => $blocking,
+            'warnings'           => $warnings,
+            'vehicle_compatible' => null,
         ];
     }
 
@@ -6050,8 +6088,8 @@ class BookingFlowService
         if (empty($locations)) {
             $locations[] = [
                 'id' => 'default',
-                'name' => 'TheTaxi Company (Main)',
-                'address' => 'TheTaxi Company, Colombo, Sri Lanka',
+                'name' => 'Company (Main)',
+                'address' => 'Company, Colombo, Sri Lanka',
                 'latitude' => 6.9271,
                 'longitude' => 79.8612,
                 'is_default' => true,

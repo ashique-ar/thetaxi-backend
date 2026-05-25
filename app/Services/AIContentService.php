@@ -35,7 +35,7 @@ class AIContentService
      */
     public function generateContentFromTitle(string $title, ?string $contentType = 'blog', array $options = []): array
     {
-        $businessContext = $options['business_context'] ?? 'TheTaxi - a taxi booking service in Sri Lanka offering airport transfers, wedding cars, corporate travel, and tour packages';
+        $businessContext = $options['business_context'] ?? 'A taxi booking service offering airport transfers, wedding cars, corporate travel, and tour packages';
         $targetAudience = $options['target_audience'] ?? 'travelers, tourists, business professionals, and locals in Sri Lanka';
         $locale = $options['locale'] ?? 'en-US';
 
@@ -78,8 +78,8 @@ When generating content, always:
 - Include semantic keyword variations
 - Create content that answers user questions directly
 - Use headers and structure that search engines prefer
-- Subtly promote the TheTaxi application and branding: mention app features (easy booking, real-time driver tracking, airport transfers), highlight trusted brand voice, and use brand-aligned language
-- Include clear booking CTAs that map to the application's booking flow; provide both web URLs and in-app deep links (e.g., https://thetaxi.lk/) when relevant
+- Subtly promote the the application and configured branding: mention app features (easy booking, real-time driver tracking, airport transfers), highlight trusted brand voice, and use brand-aligned language
+- Include clear booking CTAs that map to the application's booking flow; provide both web URLs and in-app deep links (e.g., {{ config('app.url') }}/) when relevant
 - Make content shareable and linkable
 - Consider local SEO for Sri Lanka market when relevant
 
@@ -120,7 +120,7 @@ Return a JSON object with these exact fields:
         "Optional localized or question-based title 4"
     ],
     "read_time": "X min read",
-    "author": "TheTaxi Editorial",
+    "author": "Editorial Team",
     "faq_schema": [
         {"question": "Relevant question 1?", "answer": "Concise answer 1"},
         {"question": "Relevant question 2?", "answer": "Concise answer 2"},
@@ -130,14 +130,14 @@ Return a JSON object with these exact fields:
     "suggested_internal_links": ["Related topic 1", "Related topic 2"],
     "primary_keyword": "main target keyword",
     "secondary_keywords": ["secondary keyword 1", "secondary keyword 2", "secondary keyword 3"],
-    "booking_link": "URL or deep link for booking (e.g., https://thetaxi.lk/ or thetaxi://book)",
-    "booking_cta_html": "Small HTML snippet for a booking CTA (e.g., <a href=\"https://thetaxi.lk/\" class=\"btn btn-primary\">Book your ride</a>)",
-    "application_links": ["https://thetaxi.lk/"]
+    "booking_link": "URL or deep link for booking (e.g., {{ config('app.url') }}/ or app://book)",
+    "booking_cta_html": "Small HTML snippet for a booking CTA (e.g., <a href=\"{{ config('app.url') }}/\" class=\"btn btn-primary\">Book your ride</a>)",
+    "application_links": ["{{ config('app.url') }}/"]
 }
 
 Important:
 - The body should be well-structured HTML with semantic tags
-- Include a compelling introduction that addresses user intent and subtly highlights TheTaxi app features and branding
+- Include a compelling introduction that addresses user intent and subtly highlights the application features and branding
 - Add a clear conclusion with a strong booking call-to-action that points to the booking_link (both web URL and in-app deep link if possible)
 - Naturally incorporate keywords without stuffing
 - Make content valuable for both users and search engines
@@ -210,7 +210,7 @@ PROMPT;
             'meta_tags' => $data['meta_tags'] ?? [],
             'suggested_titles' => $data['suggested_titles'] ?? [],
             'read_time' => $data['read_time'] ?? '5 min read',
-            'author' => $data['author'] ?? 'TheTaxi Editorial',
+            'author' => $data['author'] ?? 'Editorial Team',
             'custom_fields' => [
                 'faq_schema' => $data['faq_schema'] ?? [],
                 'seo_score_tips' => $data['seo_score_tips'] ?? [],
@@ -265,7 +265,7 @@ PROMPT;
     public function improveContent(string $title, string $body, array $options = []): array
     {
         $systemPrompt = $this->buildSystemPrompt(
-            $options['business_context'] ?? 'TheTaxi - premium taxi booking service in Sri Lanka',
+            $options['business_context'] ?? 'Premium taxi booking service',
             $options['target_audience'] ?? 'travelers and business professionals'
         );
 

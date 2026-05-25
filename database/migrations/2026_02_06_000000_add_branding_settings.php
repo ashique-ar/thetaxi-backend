@@ -13,9 +13,9 @@ return new class extends Migration
         // Add branding settings to website_settings table
         $brandingSettings = [
             // Company Branding
-            ['type' => 'brand_name', 'value' => 'TheTaxi'],
+            ['type' => 'brand_name', 'value' => 'Company'],
             ['type' => 'brand_tagline', 'value' => 'Your Trusted Car Rental Partner'],
-            ['type' => 'brand_short_name', 'value' => 'TheTaxi'],
+            ['type' => 'brand_short_name', 'value' => 'Company'],
             
             // Logos
             ['type' => 'brand_logo_primary', 'value' => '/images/logo/logo.png'],
@@ -39,9 +39,9 @@ return new class extends Migration
             ['type' => 'brand_color_accent_dark', 'value' => '#059669'],
             
             // Portal Specific
-            ['type' => 'portal_title', 'value' => 'TheTaxi | Portal'],
+            ['type' => 'portal_title', 'value' => 'Company | Portal'],
             ['type' => 'portal_logo', 'value' => '/images/logo/logo.png'],
-            ['type' => 'portal_theme', 'value' => 'theme-casons'],
+            ['type' => 'portal_theme', 'value' => 'theme-brand'],
             
         ];
 

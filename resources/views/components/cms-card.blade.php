@@ -68,8 +68,8 @@
         : '#';
 @endphp
 
-<div class="col-lg-4 col-md-6 wow animate fadeInDown" data-wow-delay="{{ $delayMs }}ms" data-wow-duration="1500ms">
-    <div class="blog-card2 two">
+<div class="col-lg-3 col-md-4 col-sm-6 wow animate fadeInDown" data-wow-delay="{{ $delayMs }}ms" data-wow-duration="1500ms">
+    <div class="blog-card2 two cms-content-card">
         <div class="blog-img-wrap">
             <a href="{{ $detailLink }}" class="blog-img">
                 <img src="{{ $imageUrl }}" alt="{{ $title }}" loading="lazy">
@@ -148,7 +148,7 @@
         color: white;
         padding: 5px 10px;
         border-radius: 15px;
-        font-size: 12px;
+        font-size: 11px;
         font-weight: bold;
         z-index: 2;
     }
@@ -163,12 +163,12 @@
     .price {
         font-weight: bold;
         color: #c91c23;
-        font-size: 16px;
+        font-size: 14px;
     }
 
     .duration {
         color: #666;
-        font-size: 14px;
+        font-size: 12px;
     }
 
     .rating-info {
@@ -214,5 +214,118 @@
     .category:hover {
         background: #c91c23;
         color: white;
+    }
+
+    .cms-content-card {
+        height: 100%;
+        border: 1px solid rgba(17, 24, 39, 0.08);
+        border-radius: 8px;
+        overflow: hidden;
+        background: #fff;
+        box-shadow: 0 16px 42px rgba(15, 23, 42, 0.08);
+        transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+    }
+
+    .cms-content-card:hover {
+        transform: translateY(-6px);
+        border-color: rgba(191, 38, 41, 0.28);
+        box-shadow: 0 24px 60px rgba(15, 23, 42, 0.14);
+    }
+
+    .cms-content-card .blog-img-wrap {
+        position: relative;
+        aspect-ratio: 16 / 10;
+        background: #f3f4f6;
+    }
+
+    .cms-content-card .blog-img,
+    .cms-content-card .blog-img img {
+        display: block;
+        width: 100%;
+        height: 100%;
+    }
+
+    .cms-content-card .blog-img img {
+        object-fit: cover;
+        transition: transform 0.35s ease;
+    }
+
+    .cms-content-card:hover .blog-img img {
+        transform: scale(1.04);
+    }
+
+    .cms-content-card .location {
+        left: 14px;
+        bottom: 14px;
+        max-width: calc(100% - 28px);
+        border-radius: 999px;
+        backdrop-filter: blur(12px);
+        background: rgba(255, 255, 255, 0.92);
+        color: #111827;
+        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-size: 12px;
+    }
+
+    .cms-content-card .blog-content {
+        display: flex;
+        flex-direction: column;
+        min-height: 190px;
+        padding: 16px;
+    }
+
+    .cms-content-card .blog-content h4 {
+        margin-bottom: 8px;
+        font-size: 18px;
+        line-height: 1.25;
+    }
+
+    .cms-content-card .blog-content h4 a {
+        color: #111827;
+        transition: color 0.2s ease;
+    }
+
+    .cms-content-card:hover .blog-content h4 a {
+        color: var(--primary-color1, #BF2629);
+    }
+
+    .cms-content-card .blog-content p {
+        color: #64748b;
+        font-size: 13px;
+        line-height: 1.55;
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+
+    .cms-content-card .category-tag {
+        margin-top: auto;
+        padding-top: 10px;
+    }
+
+    .cms-content-card .price-info {
+        padding: 6px 10px;
+        width: fit-content;
+        border-radius: 999px;
+        background: rgba(191, 38, 41, 0.08);
+    }
+
+    .cms-content-card .category {
+        font-size: 11px;
+    }
+
+    .cms-content-card .booking-info-mini small {
+        font-size: 12px;
+        line-height: 1.35;
+    }
+
+    @media (max-width: 575px) {
+        .cms-content-card .blog-content {
+            min-height: 0;
+            padding: 18px;
+        }
     }
 </style>

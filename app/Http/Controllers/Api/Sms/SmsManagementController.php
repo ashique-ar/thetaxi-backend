@@ -140,7 +140,7 @@ class SmsManagementController extends Controller
 
         $message = $this->smsService->queueSingleMessage([
             'recipient' => $data['recipient'],
-            'message' => $data['message'] ?: 'TheTaxi SMS test message',
+            'message' => $data['message'] ?: 'Company SMS test message',
             'sender_mask' => $data['sender_mask'] ?? null,
             'channel' => 'test',
             'template_key' => 'sms.test',

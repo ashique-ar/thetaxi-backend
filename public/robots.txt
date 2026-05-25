@@ -2,4 +2,4 @@ User-agent: *
 Disallow:
 
 # Sitemap location (update if deploying to a subfolder)
-Sitemap: https://thetaxi.lk/sitemap.xml
+Sitemap: /sitemap.xml

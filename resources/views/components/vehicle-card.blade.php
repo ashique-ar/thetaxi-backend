@@ -110,30 +110,6 @@
     <div class="vehicle-image-container">
         <img src="{{ $mainImage }}" alt="{{ $vehicle['name'] ?? 'Unknown Vehicle' }}" class="vehicle-img" loading="lazy">
 
-        {{-- @if ($canAddToCart && $availability['available'] > 0)
-            <span class="availability-badge available">
-                <i class="bi bi-check-circle-fill"></i> Available
-            </span>
-        @elseif($showQuotationButton)
-            <span class="availability-badge quotation">
-                <i class="bi bi-calculator"></i> Quote Only
-            </span>
-        @elseif(!$hasAvailableVehicles && ($availability['total'] ?? 0) > 0)
-            <span class="availability-badge unavailable">
-                <i class="bi bi-clock"></i> Fully Booked
-            </span>
-        @else
-            <span class="availability-badge unavailable">
-                <i class="bi bi-x-circle-fill"></i> Not Available
-            </span>
-        @endif --}}
-
-        {{-- @if ($isRecommended)
-            <span class="recommended-badge">
-                <i class="bi bi-star-fill"></i> Recommended
-            </span>
-        @endif --}}
-
         @if ($showPublicPrice && $hasDiscount && $discountPercentage > 0)
             <span class="discount-badge">
                 {{ round($discountPercentage) }}% OFF
@@ -182,28 +158,6 @@
                 @endif
             </div>
         </div>
-        {{-- <div class="availability-indicator">
-            <small class="text-muted">
-                <i class="bi bi-car-front-fill"></i>
-                {{ $availability['available'] }} / {{ $availability['total'] }} Available
-            </small>
-        </div> --}}
-
-        <!-- Features/Inclusions -->
-        {{-- @if (isset($pricing['includes_driver']) || isset($pricing['includes_fuel']))
-        <div class="vehicle-inclusions">
-            @if ($pricing['includes_driver'] ?? false)
-            <span class="inclusion-badge">
-                <i class="bi bi-person-check-fill"></i> Driver
-            </span>
-            @endif
-            @if ($pricing['includes_fuel'] ?? false)
-            <span class="inclusion-badge">
-                <i class="bi bi-droplet-fill"></i> Fuel
-            </span>
-            @endif
-        </div>
-        @endif --}}
 
         <!-- Enhanced Pricing Section -->
         @if ($showPublicPrice)
@@ -371,23 +325,7 @@
                             <span class="price-value">{{ number_format(floor(max(0, $totalAmountConverted)), 0) }}</span>
                             <span
                                 class="price-unit">({{ getServiceDurationLabel($serviceType, $durationDays) }})</span>
-                            {{-- <span class="price-value">{{ number_format(floor(max(0, $perDayRateConverted)), 0) }}</span> --}}
-                            {{-- <span class="price-unit">/day</span> --}}
                         </h4>
-
-                        <!-- Total Price as Secondary Info for multi-day -->
-                        {{-- <div class="total-price-info mt-2 text-muted small">
-                            <span class="total-label">Total:</span>
-                            @if ($hasDiscount && $originalAmountLKR > $totalAmountLKR)
-                                <del
-                                    class="original-total-strike me-1">{{ $currencySymbol }} {{ number_format(floor(max(0, $originalAmountConverted)), 0) }}</del>
-                            @endif
-                            <strong class="{{ $hasDiscount ? 'discounted-total' : '' }}"><small
-                                    class="currency-code">{{ $currencySymbol }}</small>
-                                {{ number_format(floor(max(0, $totalAmountConverted)), 0) }}</strong>
-                            <span
-                                class="duration-label">({{ getServiceDurationLabel($serviceType, $durationDays) }})</span>
-                        </div> --}}
                     @endif
                 @endif
             @endif
@@ -411,12 +349,6 @@
         <!-- Vehicle Amenities & Additional Info -->
         @if (isset($vehicle['refundable_deposit']))
             <div class="vehicle-amenities">
-                {{-- @if ($vehicle['air_conditioning'] ?? false)
-                <span class="amenity-badge">
-                    <i class="bi bi-snow"></i> AC
-                </span>
-            @endif --}}
-
                 @if (isset($vehicle['refundable_deposit']) && $vehicle['refundable_deposit'] > 0)
                     <span class="amenity-badge">
                         <i class="bi bi-shield-check"></i> Deposit:
@@ -617,7 +549,6 @@
 @once
     @push('styles')
         <style>
-            /* ==================== THEME COLORS (From app.blade.php) ==================== */
             :root {
                 --primary-color: #BF2629;
                 --black-color: #717171;
@@ -1188,6 +1119,181 @@
                 text-align: center;
                 margin-top: 8px;
                 font-size: 12px;
+            }
+
+            /* Theme 2 vehicle cards: distinct search/home presentation */
+            .t2-vehicle-card.vehicle-card {
+                border: 1px solid color-mix(in srgb, var(--black-color, #717171) 16%, transparent) !important;
+                border-radius: 14px !important;
+                background: #ffffff !important;
+                box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08) !important;
+                padding: 10px !important;
+                overflow: visible !important;
+            }
+
+            .t2-vehicle-card.vehicle-card:hover {
+                transform: translateY(-6px) !important;
+                border-color: color-mix(in srgb, var(--primary-color1, #BF2629) 35%, transparent) !important;
+                box-shadow: 0 22px 54px rgba(15, 23, 42, 0.14) !important;
+            }
+
+            .t2-vehicle-card .vehicle-image-container {
+                height: 168px !important;
+                border-radius: 10px !important;
+                background: color-mix(in srgb, var(--black-color, #717171) 10%, #ffffff) !important;
+            }
+
+            .t2-vehicle-card .vehicle-image-container::after {
+                content: "";
+                position: absolute;
+                inset: auto 0 0;
+                height: 52%;
+                background: linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--black-color, #717171) 62%, transparent) 100%) !important;
+                pointer-events: none;
+            }
+
+            .t2-vehicle-card .vehicle-card-content {
+                padding: 14px 4px 2px !important;
+            }
+
+            .t2-vehicle-card .vehicle-name {
+                min-height: 0 !important;
+                margin-bottom: 10px !important;
+                color: color-mix(in srgb, var(--black-color, #717171) 82%, #000000) !important;
+                font-size: 17px !important;
+                line-height: 1.25 !important;
+            }
+
+            .t2-vehicle-card .category-badge {
+                left: 12px !important;
+                right: auto !important;
+                background: color-mix(in srgb, var(--black-color, #717171) 82%, transparent) !important;
+                border-radius: 6px !important;
+                padding: 4px 9px !important;
+                letter-spacing: 0 !important;
+            }
+
+            .t2-vehicle-card .discount-badge {
+                right: 12px !important;
+                left: auto !important;
+                background: var(--primary-color1, #BF2629) !important;
+                border-radius: 6px !important;
+            }
+
+            .t2-vehicle-card .vehicle-specs {
+                margin-bottom: 12px !important;
+                padding: 0 !important;
+                border-bottom: 0 !important;
+            }
+
+            .t2-vehicle-card .spec-item {
+                gap: 8px !important;
+                color: color-mix(in srgb, var(--black-color, #717171) 72%, #ffffff) !important;
+            }
+
+            .t2-vehicle-card .spec-item span {
+                display: inline-flex !important;
+                align-items: center !important;
+                min-height: 24px !important;
+                padding: 3px 8px !important;
+                border-radius: 999px !important;
+                background: color-mix(in srgb, var(--black-color, #717171) 8%, #ffffff) !important;
+                color: color-mix(in srgb, var(--black-color, #717171) 72%, #111827) !important;
+                font-size: 12px !important;
+            }
+
+            .t2-vehicle-card .spec-item i {
+                color: var(--primary-color1, #BF2629) !important;
+                font-size: 14px !important;
+            }
+
+            .t2-vehicle-card .vehicle-pricing {
+                margin-top: 12px !important;
+                padding: 12px !important;
+                border: 1px solid color-mix(in srgb, var(--primary-color1, #BF2629) 16%, transparent) !important;
+                border-radius: 10px !important;
+                background: color-mix(in srgb, var(--primary-color1, #BF2629) 6%, #ffffff) !important;
+            }
+
+            .t2-vehicle-card .price-display {
+                text-align: left !important;
+            }
+
+            .t2-vehicle-card .price-amount {
+                color: var(--primary-color1, #BF2629) !important;
+                font-size: 24px !important;
+                line-height: 1.15 !important;
+            }
+
+            .t2-vehicle-card .currency-code,
+            .t2-vehicle-card .price-unit {
+                color: var(--black-color, #717171) !important;
+            }
+
+            .t2-vehicle-card .original-price-display del {
+                color: color-mix(in srgb, var(--black-color, #717171) 62%, #ffffff) !important;
+            }
+
+            .t2-vehicle-card .pricing-details {
+                gap: 6px !important;
+            }
+
+            .t2-vehicle-card .pricing-detail-item {
+                background: color-mix(in srgb, var(--primary-color1, #BF2629) 8%, #ffffff) !important;
+                color: var(--primary-color1, #BF2629) !important;
+                border: 1px solid color-mix(in srgb, var(--primary-color1, #BF2629) 18%, transparent) !important;
+            }
+
+            .t2-vehicle-card .vehicle-actions {
+                display: grid !important;
+                grid-template-columns: 1fr !important;
+                gap: 8px !important;
+            }
+
+            .t2-vehicle-card .vehicle-actions .btn {
+                border-radius: 8px !important;
+                font-size: 13px !important;
+                padding: 10px 12px !important;
+            }
+
+            .t2-vehicle-card .vehicle-actions .btn-primary,
+            .t2-vehicle-card .vehicle-actions .book-now-btn {
+                background: var(--primary-color1, #BF2629) !important;
+                border-color: var(--primary-color1, #BF2629) !important;
+            }
+
+            .t2-vehicle-card .vehicle-actions .btn-primary:hover,
+            .t2-vehicle-card .vehicle-actions .book-now-btn:hover {
+                background: var(--black-color, #717171) !important;
+                border-color: var(--black-color, #717171) !important;
+            }
+
+            .t2-vehicle-card .vehicle-actions .btn-outline-primary,
+            .t2-vehicle-card .vehicle-actions .add-to-cart-btn,
+            .t2-vehicle-card .vehicle-actions .btn-outline-secondary {
+                background: #ffffff !important;
+                border-color: color-mix(in srgb, var(--black-color, #717171) 25%, transparent) !important;
+                color: var(--black-color, #717171) !important;
+            }
+
+            .t2-vehicle-card .vehicle-actions .btn-outline-primary:hover,
+            .t2-vehicle-card .vehicle-actions .add-to-cart-btn:hover,
+            .t2-vehicle-card .vehicle-actions .btn-outline-secondary:hover {
+                background: var(--black-color, #717171) !important;
+                border-color: var(--black-color, #717171) !important;
+                color: #ffffff !important;
+            }
+
+            .t2-vehicle-card .vehicle-actions .btn-warning {
+                background: var(--black-color, #717171) !important;
+                border-color: var(--black-color, #717171) !important;
+                color: #ffffff !important;
+            }
+
+            @media (min-width: 768px) {
+                .t2-vehicle-card .vehicle-actions:has(.btn:nth-child(2)) {
+                    grid-template-columns: 1fr 1fr !important;
+                }
             }
         </style>
     @endpush

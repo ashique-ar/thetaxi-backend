@@ -5,6 +5,7 @@ namespace App\Models\Website;
 use App\Models\BaseModel;
 use App\Traits\UUID;
 use App\Models\User;
+use App\Models\Company;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
@@ -34,6 +35,7 @@ class WebsiteSetting extends BaseModel
     protected $fillable = [
         'type',
         'value',
+        'company_id',
         'created_user_id',
         'updated_user_id',
     ];
@@ -65,22 +67,36 @@ class WebsiteSetting extends BaseModel
         return $this->belongsTo(User::class, 'updated_user_id');
     }
 
+    public function company(): BelongsTo
+    {
+        return $this->belongsTo(Company::class);
+    }
+
     /**
      * Get a setting value by type.
      */
-    public static function getValue(string $type, $default = null)
+    public static function getValue(string $type, $default = null, ?string $companyId = null)
     {
-        $setting = static::where('type', $type)->first();
+        $setting = static::query()
+            ->where('type', $type)
+            ->when($companyId, fn ($query) => $query->where('company_id', $companyId))
+            ->when(!$companyId, fn ($query) => $query->whereNull('company_id'))
+            ->first();
+
+        if (!$setting && $companyId) {
+            $setting = static::where('type', $type)->whereNull('company_id')->first();
+        }
+
         return $setting ? $setting->value : $default;
     }
 
     /**
      * Set a setting value by type.
      */
-    public static function setValue(string $type, $value): void
+    public static function setValue(string $type, $value, ?string $companyId = null): void
     {
         static::updateOrCreate(
-            ['type' => $type],
+            ['type' => $type, 'company_id' => $companyId],
             ['value' => static::normalizeValue($value)]
         );
     }
@@ -113,13 +129,25 @@ class WebsiteSetting extends BaseModel
     /**
      * Get multiple settings by types.
      */
-    public static function getValues(array $types): array
+    public static function getValues(array $types, ?string $companyId = null): array
     {
-        $settings = static::whereIn('type', $types)->get()->keyBy('type');
+        $globalSettings = static::whereIn('type', $types)
+            ->whereNull('company_id')
+            ->get()
+            ->keyBy('type');
+
+        $companySettings = collect();
+        if ($companyId) {
+            $companySettings = static::whereIn('type', $types)
+                ->where('company_id', $companyId)
+                ->get()
+                ->keyBy('type');
+        }
         
         $result = [];
         foreach ($types as $type) {
-            $result[$type] = $settings->has($type) ? $settings[$type]->value : null;
+            $setting = $companySettings->get($type) ?? $globalSettings->get($type);
+            $result[$type] = $setting ? $setting->value : null;
         }
         
         return $result;
