@@ -514,17 +514,8 @@
     </script>
     @stack('scripts')
 
-    @php
-        $floatingWhatsappNumber = preg_replace(
-            '/[^0-9]/',
-            '',
-            $settings['company_whatsapp']
-                ?? $settings['footer_whatsapp_number']
-                ?? $settings['company_phone']
-                ?? ''
-        );
-    @endphp
-    @if(!empty($floatingWhatsappNumber))
+    @php($floatingWhatsappNumber = preg_replace('/[^0-9]/', '', $settings['company_whatsapp'] ?? $settings['footer_whatsapp_number'] ?? $settings['company_phone'] ?? ''))
+    @if (!empty($floatingWhatsappNumber))
     <!-- WhatsApp Floating Button -->
     <a href="https://wa.me/{{ $floatingWhatsappNumber }}" target="_blank" rel="noopener noreferrer" class="whatsapp-float" aria-label="Chat on WhatsApp">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="28" height="28">
