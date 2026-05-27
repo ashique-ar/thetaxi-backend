@@ -1010,6 +1010,12 @@ Route::middleware(['auth:api'])->group(function () {
                 ->middleware('permission:bookings.complete_repairs');
             Route::post('complete-booking', [BookingLifecycleController::class, 'completeBooking'])
                 ->middleware('permission:bookings.complete');
+            Route::post('check-vehicle-availability', [BookingLifecycleController::class, 'checkVehicleAvailability'])
+                ->middleware('permission:bookings.view');
+            Route::get('maintenance-blocks', [BookingLifecycleController::class, 'getMaintenanceBlocks'])
+                ->middleware('permission:bookings.view');
+            Route::post('update-availability-pool', [BookingLifecycleController::class, 'updateAvailabilityPool'])
+                ->middleware('permission:bookings.update');
         });
 
 
