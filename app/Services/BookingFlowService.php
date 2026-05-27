@@ -3549,8 +3549,15 @@ class BookingFlowService
         $conflictMinutes = 0;
 
         foreach ($conflicts as $conflict) {
-            $conflictStart = Carbon::parse($conflict['from']);
-            $conflictEnd = Carbon::parse($conflict['to']);
+            $conflictFrom = $conflict['from'] ?? $conflict['from_datetime'] ?? null;
+            $conflictTo = $conflict['to'] ?? $conflict['to_datetime'] ?? null;
+
+            if (!$conflictFrom || !$conflictTo) {
+                continue;
+            }
+
+            $conflictStart = Carbon::parse($conflictFrom);
+            $conflictEnd = Carbon::parse($conflictTo);
             $conflictMinutes += $conflictStart->diffInMinutes($conflictEnd);
         }
 
