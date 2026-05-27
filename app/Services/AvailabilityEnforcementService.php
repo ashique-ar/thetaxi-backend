@@ -327,10 +327,19 @@ class AvailabilityEnforcementService
         $blocking = [];
         $warnings = [];
 
-        $insurance = DB::table('vehicle_insurances')
-            ->where('vehicle_id', $vehicle->id)
-            ->where('is_active', true)
-            ->orderByDesc('expiry_date')
+        $expiryColumn = Schema::hasColumn('vehicle_insurances', 'expiry_date')
+            ? 'expiry_date'
+            : 'end_date';
+
+        $insuranceQuery = DB::table('vehicle_insurances')
+            ->where('vehicle_id', $vehicle->id);
+
+        if (Schema::hasColumn('vehicle_insurances', 'is_active')) {
+            $insuranceQuery->where('is_active', true);
+        }
+
+        $insurance = $insuranceQuery
+            ->orderByDesc($expiryColumn)
             ->first();
 
         if (!$insurance) {
@@ -338,7 +347,12 @@ class AvailabilityEnforcementService
             return $this->result(true, $blocking, $warnings);
         }
 
-        $expiry = Carbon::parse($insurance->expiry_date)->endOfDay();
+        if (empty($insurance->{$expiryColumn})) {
+            $warnings[] = 'Active insurance record has no expiry date — verify before dispatch.';
+            return $this->result(true, $blocking, $warnings);
+        }
+
+        $expiry = Carbon::parse($insurance->{$expiryColumn})->endOfDay();
 
         if ($expiry->lt(now())) {
             $blocking[] = sprintf('Vehicle insurance expired on %s.', $expiry->format('d M Y'));
