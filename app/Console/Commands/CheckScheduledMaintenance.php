@@ -8,6 +8,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 
 class CheckScheduledMaintenance extends Command
 {
@@ -18,12 +19,19 @@ class CheckScheduledMaintenance extends Command
     {
         $dryRun = (bool) $this->option('dry-run');
         $today  = now()->toDateString();
+        $scheduleDateColumn = Schema::hasColumn('vehicle_maintenance_schedules', 'scheduled_date')
+            ? 'scheduled_date'
+            : 'next_due_date';
 
         // Fetch scheduled maintenance windows whose start date has passed
-        $overdue = DB::table('vehicle_maintenance_schedules')
-            ->where('status', 'scheduled')
-            ->where('scheduled_date', '<=', $today)
-            ->get();
+        $overdueQuery = DB::table('vehicle_maintenance_schedules')
+            ->where($scheduleDateColumn, '<=', $today);
+
+        if (Schema::hasColumn('vehicle_maintenance_schedules', 'status')) {
+            $overdueQuery->where('status', 'scheduled');
+        }
+
+        $overdue = $overdueQuery->get();
 
         if ($overdue->isEmpty()) {
             $this->info('No overdue maintenance schedules found.');
@@ -41,7 +49,7 @@ class CheckScheduledMaintenance extends Command
                 $schedule->id,
                 $plate,
                 $schedule->type ?? 'routine',
-                $schedule->scheduled_date,
+                $schedule->{$scheduleDateColumn},
                 $dryRun ? 'skipped (dry-run)' : 'updated',
             ];
 
@@ -49,12 +57,15 @@ class CheckScheduledMaintenance extends Command
                 continue;
             }
 
+            $update = ['updated_at' => now()];
+
+            if (Schema::hasColumn('vehicle_maintenance_schedules', 'status')) {
+                $update['status'] = 'due';
+            }
+
             DB::table('vehicle_maintenance_schedules')
                 ->where('id', $schedule->id)
-                ->update([
-                    'status'     => 'due',
-                    'updated_at' => now(),
-                ]);
+                ->update($update);
 
             // Block vehicle if not already blocked for maintenance
             if ($vehicle && $vehicle->availability_status !== 'unavailable_maintenance') {
@@ -70,7 +81,7 @@ class CheckScheduledMaintenance extends Command
                 'schedule_id' => $schedule->id,
                 'vehicle_id'  => $schedule->vehicle_id,
                 'type'        => $schedule->type,
-                'due_date'    => $schedule->scheduled_date,
+                'due_date'    => $schedule->{$scheduleDateColumn},
             ]);
         }
 
@@ -94,8 +105,11 @@ class CheckScheduledMaintenance extends Command
         }
 
         $lines = $schedules->map(function ($s) {
+            $scheduleDateColumn = Schema::hasColumn('vehicle_maintenance_schedules', 'scheduled_date')
+                ? 'scheduled_date'
+                : 'next_due_date';
             $plate = DB::table('vehicles')->where('id', $s->vehicle_id)->value('license_plate') ?? $s->vehicle_id;
-            return "- [{$plate}] " . ucfirst($s->type ?? 'routine') . " due on {$s->scheduled_date}";
+            return "- [{$plate}] " . ucfirst($s->type ?? 'routine') . " due on {$s->{$scheduleDateColumn}}";
         })->implode("\n");
 
         $body = "The following maintenance schedules are now due:\n\n{$lines}\n\n"

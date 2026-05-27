@@ -29,6 +29,7 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use App\Services\CurrencyService;
 use App\Services\DiscountService;
@@ -1489,19 +1490,27 @@ class BookingFlowService
         }
 
         // Check for maintenance schedules
-        $vehicle = Vehicle::with('maintenanceRecords')->findOrFail($vehicleId);
-        $maintenanceConflicts = $vehicle->maintenanceRecords()
-            ->where('status', 'scheduled')
-            ->whereBetween('scheduled_date', [$fromDate, $toDate])
-            ->get();
+        $scheduleDateColumn = Schema::hasColumn('vehicle_maintenance_schedules', 'scheduled_date')
+            ? 'scheduled_date'
+            : 'next_due_date';
+
+        $maintenanceQuery = DB::table('vehicle_maintenance_schedules')
+            ->where('vehicle_id', $vehicleId)
+            ->whereBetween($scheduleDateColumn, [$fromDate, $toDate]);
+
+        if (Schema::hasColumn('vehicle_maintenance_schedules', 'status')) {
+            $maintenanceQuery->where('status', 'scheduled');
+        }
+
+        $maintenanceConflicts = $maintenanceQuery->get();
 
         foreach ($maintenanceConflicts as $maintenance) {
             $conflicts[] = [
                 'type' => 'maintenance_conflict',
                 'maintenance_id' => $maintenance->id,
-                'description' => $maintenance->description,
-                'scheduled_date' => $maintenance->scheduled_date,
-                'estimated_duration' => $maintenance->estimated_duration,
+                'description' => $maintenance->description ?? ($maintenance->type ?? 'Scheduled maintenance'),
+                'scheduled_date' => $maintenance->{$scheduleDateColumn},
+                'estimated_duration' => $maintenance->estimated_duration ?? null,
                 'severity' => 'medium',
             ];
         }

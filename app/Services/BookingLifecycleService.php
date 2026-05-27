@@ -1578,15 +1578,19 @@ class BookingLifecycleService
         $end = Carbon::parse($endDate);
 
         // Check maintenance schedule conflicts
-        $maintenanceConflicts = DB::table('vehicle_maintenance_records')
+        $maintenanceQuery = DB::table('vehicle_maintenance_records')
             ->where('vehicle_id', $vehicleId)
             ->where('status', 'in_progress')
-            ->whereBetween('performed_date', [$start, $end])
-            ->orWhere(function ($query) use ($start, $end) {
-                $query->whereNull('completed_date')
-                    ->where('performed_date', '<=', $end);
-            })
-            ->exists();
+            ->where(function ($query) use ($start, $end) {
+                $query->whereBetween('performed_date', [$start, $end])
+                    ->orWhere('performed_date', '<=', $end);
+            });
+
+        if (Schema::hasColumn('vehicle_maintenance_records', 'completed_date')) {
+            $maintenanceQuery->whereNull('completed_date');
+        }
+
+        $maintenanceConflicts = $maintenanceQuery->exists();
 
         // Check booking conflicts through booking_items.
         // Use the bookings.status column (lifecycle_status is a computed property, not a DB column).
@@ -1623,21 +1627,31 @@ class BookingLifecycleService
      */
     public function getMaintenanceBlocks(): array
     {
-        $blocks = DB::table('vehicle_maintenance_records as vmr')
+        $selectColumns = [
+            'vmr.id',
+            'vmr.vehicle_id',
+            'v.name as vehicle_name',
+            'v.license_plate',
+            'vms.type as maintenance_type',
+            'vmr.performed_date as started_at',
+            'vmr.notes',
+        ];
+
+        if (Schema::hasColumn('vehicle_maintenance_records', 'estimated_completion_date')) {
+            $selectColumns[] = 'vmr.estimated_completion_date';
+        }
+
+        $blocksQuery = DB::table('vehicle_maintenance_records as vmr')
             ->join('vehicles as v', 'vmr.vehicle_id', '=', 'v.id')
             ->leftJoin('vehicle_maintenance_schedules as vms', 'vmr.schedule_id', '=', 'vms.id')
-            ->where('vmr.status', 'in_progress')
-            ->whereNull('vmr.completed_date')
-            ->select([
-                'vmr.id',
-                'vmr.vehicle_id',
-                'v.name as vehicle_name',
-                'v.license_plate',
-                'vms.type as maintenance_type',
-                'vmr.performed_date as started_at',
-                'vmr.notes',
-                'vmr.estimated_completion_date'
-            ])
+            ->where('vmr.status', 'in_progress');
+
+        if (Schema::hasColumn('vehicle_maintenance_records', 'completed_date')) {
+            $blocksQuery->whereNull('vmr.completed_date');
+        }
+
+        $blocks = $blocksQuery
+            ->select($selectColumns)
             ->get()
             ->toArray();
 

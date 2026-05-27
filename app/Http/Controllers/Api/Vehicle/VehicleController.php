@@ -16,6 +16,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class VehicleController extends Controller
 {
@@ -348,9 +349,13 @@ class VehicleController extends Controller
      */
     public function getMaintenanceHistory(Request $request, $vehicleId)
     {
+        $recordOrderColumn = Schema::hasColumn('vehicle_maintenance_records', 'completion_date')
+            ? 'completion_date'
+            : 'performed_date';
+
         $records = VehicleMaintenanceRecord::where('vehicle_id', $vehicleId)
-            ->with(['maintenanceType'])
-            ->orderBy('completion_date', 'desc')
+            ->with(['schedule'])
+            ->orderBy($recordOrderColumn, 'desc')
             ->paginate($request->per_page ?? 15);
 
         return response()->json([
@@ -364,11 +369,19 @@ class VehicleController extends Controller
      */
     public function getUpcomingMaintenance(Request $request)
     {
-        $schedules = VehicleMaintenanceSchedule::with(['vehicle', 'maintenanceType'])
-            ->where('scheduled_date', '>=', now())
-            ->where('status', 'scheduled')
-            ->orderBy('scheduled_date')
-            ->paginate($request->per_page ?? 15);
+        $scheduleDateColumn = Schema::hasColumn('vehicle_maintenance_schedules', 'scheduled_date')
+            ? 'scheduled_date'
+            : 'next_due_date';
+
+        $schedulesQuery = VehicleMaintenanceSchedule::with(['vehicle'])
+            ->where($scheduleDateColumn, '>=', now())
+            ->orderBy($scheduleDateColumn);
+
+        if (Schema::hasColumn('vehicle_maintenance_schedules', 'status')) {
+            $schedulesQuery->where('status', 'scheduled');
+        }
+
+        $schedules = $schedulesQuery->paginate($request->per_page ?? 15);
 
         return response()->json([
             'status' => 'success',
@@ -389,22 +402,30 @@ class VehicleController extends Controller
 
         $schedule = VehicleMaintenanceSchedule::findOrFail($scheduleId);
 
-        // Create maintenance record
-        $record = VehicleMaintenanceRecord::create([
+        $recordData = [
             'vehicle_id' => $schedule->vehicle_id,
-            'maintenance_type_id' => $schedule->maintenance_type_id,
-            'completion_date' => $request->completion_date,
+            'schedule_id' => $schedule->id,
+            'performed_date' => $request->completion_date,
             'cost' => $request->cost,
+            'status' => 'completed',
             'notes' => $request->notes,
-            'scheduled_maintenance_id' => $schedule->id
-        ]);
+        ];
+
+        if (Schema::hasColumn('vehicle_maintenance_records', 'maintenance_type_id') && isset($schedule->maintenance_type_id)) {
+            $recordData['maintenance_type_id'] = $schedule->maintenance_type_id;
+        }
+
+        // Create maintenance record
+        $record = VehicleMaintenanceRecord::create($recordData);
 
         // Update schedule status
-        $schedule->update(['status' => 'completed']);
+        if (Schema::hasColumn('vehicle_maintenance_schedules', 'status')) {
+            $schedule->update(['status' => 'completed']);
+        }
 
         return response()->json([
             'status' => 'success',
-            'data' => $record->load(['vehicle', 'maintenanceType'])
+            'data' => $record->load(['vehicle', 'schedule'])
         ]);
     }
 

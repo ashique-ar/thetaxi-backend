@@ -10,6 +10,7 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Centralises all non-booking-conflict availability checks:
@@ -239,11 +240,15 @@ class AvailabilityEnforcementService
         $warnings = [];
 
         // 1. Active maintenance records (vehicle currently in workshop)
-        $active = DB::table('vehicle_maintenance_records')
+        $activeMaintenanceQuery = DB::table('vehicle_maintenance_records')
             ->where('vehicle_id', $vehicle->id)
-            ->where('status', 'in_progress')
-            ->whereNull('completed_date')
-            ->first();
+            ->where('status', 'in_progress');
+
+        if (Schema::hasColumn('vehicle_maintenance_records', 'completed_date')) {
+            $activeMaintenanceQuery->whereNull('completed_date');
+        }
+
+        $active = $activeMaintenanceQuery->first();
 
         if ($active) {
             $blocking[] = sprintf(
@@ -256,19 +261,32 @@ class AvailabilityEnforcementService
         }
 
         // 2. Scheduled maintenance that overlaps the booking period
-        $scheduledConflicts = DB::table('vehicle_maintenance_schedules')
+        $scheduleDateColumn = Schema::hasColumn('vehicle_maintenance_schedules', 'scheduled_date')
+            ? 'scheduled_date'
+            : 'next_due_date';
+
+        $scheduledQuery = DB::table('vehicle_maintenance_schedules')
             ->where('vehicle_id', $vehicle->id)
-            ->where('status', 'scheduled')
-            ->where('scheduled_date', '<=', $to->toDateString())
-            ->where(function ($q) use ($from) {
+            ->where($scheduleDateColumn, '<=', $to->toDateString());
+
+        if (Schema::hasColumn('vehicle_maintenance_schedules', 'status')) {
+            $scheduledQuery->where('status', 'scheduled');
+        }
+
+        if (Schema::hasColumn('vehicle_maintenance_schedules', 'estimated_completion_date')) {
+            $scheduledQuery->where(function ($q) use ($from) {
                 $q->whereNull('estimated_completion_date')
-                  ->orWhere('estimated_completion_date', '>=', $from->toDateString());
-            })
-            ->get();
+                    ->orWhere('estimated_completion_date', '>=', $from->toDateString());
+            });
+        } else {
+            $scheduledQuery->where($scheduleDateColumn, '>=', $from->toDateString());
+        }
+
+        $scheduledConflicts = $scheduledQuery->get();
 
         foreach ($scheduledConflicts as $schedule) {
-            $schedStart = Carbon::parse($schedule->scheduled_date);
-            $schedEnd   = $schedule->estimated_completion_date
+            $schedStart = Carbon::parse($schedule->{$scheduleDateColumn});
+            $schedEnd = property_exists($schedule, 'estimated_completion_date') && $schedule->estimated_completion_date
                 ? Carbon::parse($schedule->estimated_completion_date)
                 : $schedStart->copy()->addDays(1);
 
@@ -283,12 +301,16 @@ class AvailabilityEnforcementService
         }
 
         // 3. Warn if maintenance is due soon after booking
-        $dueSoon = DB::table('vehicle_maintenance_schedules')
+        $dueSoonQuery = DB::table('vehicle_maintenance_schedules')
             ->where('vehicle_id', $vehicle->id)
-            ->where('status', 'scheduled')
-            ->where('scheduled_date', '>', $to->toDateString())
-            ->where('scheduled_date', '<=', $to->copy()->addDays(7)->toDateString())
-            ->count();
+            ->where($scheduleDateColumn, '>', $to->toDateString())
+            ->where($scheduleDateColumn, '<=', $to->copy()->addDays(7)->toDateString());
+
+        if (Schema::hasColumn('vehicle_maintenance_schedules', 'status')) {
+            $dueSoonQuery->where('status', 'scheduled');
+        }
+
+        $dueSoon = $dueSoonQuery->count();
 
         if ($dueSoon > 0) {
             $warnings[] = "Vehicle has $dueSoon maintenance session(s) scheduled within 7 days after the booking.";
@@ -420,12 +442,20 @@ class AvailabilityEnforcementService
     {
         $triggered = [];
 
-        $schedules = DB::table('vehicle_maintenance_schedules')
+        if (!Schema::hasColumn('vehicle_maintenance_schedules', 'trigger_mileage')) {
+            return $triggered;
+        }
+
+        $schedulesQuery = DB::table('vehicle_maintenance_schedules')
             ->where('vehicle_id', $vehicle->id)
-            ->where('status', 'scheduled')
             ->whereNotNull('trigger_mileage')
-            ->where('trigger_mileage', '<=', $currentMileage)
-            ->get();
+            ->where('trigger_mileage', '<=', $currentMileage);
+
+        if (Schema::hasColumn('vehicle_maintenance_schedules', 'status')) {
+            $schedulesQuery->where('status', 'scheduled');
+        }
+
+        $schedules = $schedulesQuery->get();
 
         foreach ($schedules as $schedule) {
             $triggered[] = [
@@ -435,14 +465,23 @@ class AvailabilityEnforcementService
                 'current_km'    => $currentMileage,
             ];
 
+            $scheduleDateColumn = Schema::hasColumn('vehicle_maintenance_schedules', 'scheduled_date')
+                ? 'scheduled_date'
+                : 'next_due_date';
+
+            $update = [
+                $scheduleDateColumn => now()->toDateString(),
+                'updated_at' => now(),
+            ];
+
+            if (Schema::hasColumn('vehicle_maintenance_schedules', 'status')) {
+                $update['status'] = 'due';
+            }
+
             // Mark schedule as due
             DB::table('vehicle_maintenance_schedules')
                 ->where('id', $schedule->id)
-                ->update([
-                    'status'            => 'due',
-                    'scheduled_date'    => now()->toDateString(),
-                    'updated_at'        => now(),
-                ]);
+                ->update($update);
         }
 
         if (!empty($triggered)) {
