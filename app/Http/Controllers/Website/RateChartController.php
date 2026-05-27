@@ -46,7 +46,11 @@ class RateChartController extends Controller
 
             $selectedCurrency = $this->currencyService->getSelectedCurrency();
             $cacheDate = Carbon::today()->format('Ymd');
-            $cacheKey = "rate_chart:day_rental:v5:{$dayRentalService->id}:{$selectedCurrency}:{$cacheDate}";
+            $vehicleGroupCacheToken = md5(json_encode([
+                VehicleGroup::withTrashed()->max('updated_at'),
+                VehicleGroup::withTrashed()->max('deleted_at'),
+            ]));
+            $cacheKey = "rate_chart:day_rental:v6:{$dayRentalService->id}:{$selectedCurrency}:{$cacheDate}:{$vehicleGroupCacheToken}";
 
             $cachedRateChart = Cache::store('file')->remember($cacheKey, now()->addHours(4), function () use ($dayRentalService, $selectedCurrency) {
                 // Get all active vehicle groups with relationships
