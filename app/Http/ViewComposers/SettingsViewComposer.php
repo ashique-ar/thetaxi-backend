@@ -177,6 +177,7 @@ class SettingsViewComposer
                     'banner_subheading',
                     'banner_video',
                     'banner_image',
+                    'theme_02_slider_images',
 
                     // Partner section
                     'partner_section_title',

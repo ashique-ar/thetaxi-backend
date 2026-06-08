@@ -80,6 +80,7 @@ class WebsiteSettingsService
             'banner_award_text',
             'banner_video',
             'banner_image',
+            'theme_02_slider_images',
             'banner_background',
             'homepage_breadcrumb_image',
 
@@ -985,7 +986,8 @@ class WebsiteSettingsService
             'favicon_url',
             'brand_image_1',
             'brand_image_2',
-            'brand_image_3'
+            'brand_image_3',
+            'theme_02_slider_images'
         ];
 
         return $this->getMultiple($types);
