@@ -148,4 +148,9 @@ class VehicleOwner extends BaseModel
     {
         return $this->hasMany(Vehicle::class, 'owner_id');
     }
+
+    public function paymentMethods()
+    {
+        return $this->morphMany(\App\Models\PaymentMethod::class, 'payable');
+    }
 }

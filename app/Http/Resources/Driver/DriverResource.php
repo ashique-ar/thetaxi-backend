@@ -6,6 +6,7 @@ use App\Http\Resources\CountryResource;
 use App\Http\Resources\DrivingLicenseTypeResource;
 use App\Http\Resources\StateResource;
 use App\Http\Resources\UserResource;
+use App\Http\Resources\PaymentMethodResource;
 use App\Models\State;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -29,6 +30,12 @@ class DriverResource extends JsonResource
             'city' => $this->city,
             'remarks' => $this->remarks,
             'postal_code' => $this->postal_code,
+            'emergency_contact_name' => $this->emergency_contact_name,
+            'emergency_contact_phone' => $this->emergency_contact_phone,
+            'blood_group' => $this->blood_group,
+            'medical_conditions' => $this->medical_conditions,
+            'hire_date' => $this->hire_date,
+            'termination_date' => $this->termination_date,
             'is_active' => $this->is_active,
             // Real-time status fields
             'is_online' => $this->is_online ?? false,
@@ -38,6 +45,7 @@ class DriverResource extends JsonResource
             'current_device_uuid' => $this->current_device_uuid,
             // Availability status
             'availability_status' => $this->availability_status,
+            'payment_method' => new PaymentMethodResource($this->whenLoaded('paymentMethod')),
             // Relations
             'licenseType' => new DrivingLicenseTypeResource($this->whenLoaded('licenseType')),
             'state' => new StateResource($this->whenLoaded('state')),

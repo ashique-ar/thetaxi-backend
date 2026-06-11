@@ -20,6 +20,7 @@ class StaffResource extends JsonResource
             'country_id'      => $this->country_id,
             'state_id'        => $this->state_id,
             'city'         => $this->city,
+            'payment_methods' => PaymentMethodResource::collection($this->whenLoaded('paymentMethods')),
             'created_at'      => $this->created_at,
             'updated_at'      => $this->updated_at,
         ];

@@ -12,6 +12,7 @@ use App\Http\Requests\Vehicle\VehicleOwner\CreateVehicleOwnerRequest;
 use App\Http\Requests\Vehicle\VehicleOwner\UpdateVehicleOwnerRequest;
 use App\Http\Resources\Vehicle\VehicleOwnerResource;
 use App\Services\UserContextService;
+use App\Services\PaymentMethodSyncService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -32,7 +33,7 @@ class VehicleOwnerController extends Controller
 
     public function index(Request $request)
     {
-        $q = VehicleOwner::with('user');
+        $q = VehicleOwner::with(['user', 'paymentMethods']);
         if ($request->filled('search')) {
             $q->whereHas('user', function($query) use ($request) {
                 $query->whereLikeInsensitive('first_name', $request->get('search'))
@@ -71,9 +72,14 @@ class VehicleOwnerController extends Controller
                     $this->buildOwnerContextData($data, $request->user()->id)
                 );
 
-                $vehicleOwner = VehicleOwner::with('user')->findOrFail(
+                $vehicleOwner = VehicleOwner::with(['user', 'paymentMethods'])->findOrFail(
                     $ownerContext->getAttribute('context_id')
                 );
+
+                if (array_key_exists('payment_methods', $data)) {
+                    app(PaymentMethodSyncService::class)->syncMany($vehicleOwner, $data['payment_methods'] ?? [], $request->user()->id);
+                    $vehicleOwner->load('paymentMethods');
+                }
 
                 $driver = null;
                 if ($request->boolean('create_driver_profile')) {
@@ -129,6 +135,7 @@ class VehicleOwnerController extends Controller
 
                 $vehicleOwnerData = array_diff_key($this->buildOwnerContextData($data, $request->user()->id), [
                     'roles' => true,
+                    'payment_methods' => true,
                 ]);
 
                 if (!empty($userData)) {
@@ -137,6 +144,10 @@ class VehicleOwnerController extends Controller
 
                 if (!empty($vehicleOwnerData)) {
                     $vehicleOwner->update($vehicleOwnerData);
+                }
+
+                if (array_key_exists('payment_methods', $data)) {
+                    app(PaymentMethodSyncService::class)->syncMany($vehicleOwner, $data['payment_methods'] ?? [], $request->user()->id);
                 }
 
                 $driver = null;
@@ -149,7 +160,7 @@ class VehicleOwnerController extends Controller
                     $vehicleOwner->update(['driver_id' => $driver->id]);
                 }
 
-                $vehicleOwner->load(['user', 'driver.user']);
+                $vehicleOwner->load(['user', 'driver.user', 'paymentMethods']);
 
                 return [
                     'owner' => $vehicleOwner,

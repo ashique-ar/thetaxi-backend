@@ -41,6 +41,7 @@ class CustomerResource extends JsonResource
             'state'           => $this->state?->name,
             'city'            => $this->city,
             'postal_code'     => $this->postal_code,
+            'payment_methods' => PaymentMethodResource::collection($this->whenLoaded('paymentMethods')),
             'created_at'      => $this->created_at,
             'updated_at'      => $this->updated_at,
         ];

@@ -10,6 +10,7 @@ use App\Http\Resources\StaffResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use App\Services\PaymentMethodSyncService;
 
 class StaffController extends Controller
 {
@@ -23,7 +24,7 @@ class StaffController extends Controller
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        $q = Staff::with('user');
+        $q = Staff::with(['user', 'paymentMethods']);
         if ($request->filled('search')) {
             $q->where(function ($query) use ($request) {
                 $query->whereLikeInsensitive('staff_type', $request->search)
@@ -39,7 +40,14 @@ class StaffController extends Controller
     {
         $data = $request->validated();
         $data['created_user_id'] = $request->user()->id;
+        $paymentMethods = $data['payment_methods'] ?? null;
+        unset($data['payment_methods']);
         $staff = Staff::create($data);
+
+        if ($paymentMethods !== null) {
+            app(PaymentMethodSyncService::class)->syncMany($staff, $paymentMethods, $request->user()->id);
+            $staff->load('paymentMethods');
+        }
 
         return response()->json([
             'status'=>'success',
@@ -60,7 +68,15 @@ class StaffController extends Controller
     {
         $data = $request->validated();
         $data['updated_user_id'] = $request->user()->id;
+        $paymentMethods = $data['payment_methods'] ?? null;
+        unset($data['payment_methods']);
         $staff->update($data);
+
+        if ($paymentMethods !== null) {
+            app(PaymentMethodSyncService::class)->syncMany($staff, $paymentMethods, $request->user()->id);
+        }
+
+        $staff->load('paymentMethods');
 
         return response()->json([
             'status'=>'success',

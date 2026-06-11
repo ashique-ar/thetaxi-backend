@@ -14,6 +14,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use App\Services\PaymentMethodSyncService;
 
 class CustomerController extends Controller
 {
@@ -30,7 +31,7 @@ class CustomerController extends Controller
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        $q = Customer::with(['user', 'state']);
+        $q = Customer::with(['user', 'state', 'paymentMethods']);
 
         if ($request->filled('search')) {
             $search = $request->get('search');
@@ -169,7 +170,12 @@ class CustomerController extends Controller
                 ];
 
                 $context = $this->contextService->switchContext($existingUser, 'customer', $contextData);
-                $customer = Customer::with(['user', 'state'])->find($context->getAttribute('context_id'));
+                $customer = Customer::with(['user', 'state', 'paymentMethods'])->find($context->getAttribute('context_id'));
+
+                if (array_key_exists('payment_methods', $data)) {
+                    app(PaymentMethodSyncService::class)->syncMany($customer, $data['payment_methods'] ?? [], $data['created_user_id']);
+                    $customer->load('paymentMethods');
+                }
 
                 return response()->json([
                     'status' => 'success',
@@ -211,7 +217,12 @@ class CustomerController extends Controller
                 ];
 
                 $context = $this->contextService->switchContext($user, 'customer', $contextData);
-                $customer = Customer::with(['user', 'state'])->find($context->getAttribute('context_id'));
+                $customer = Customer::with(['user', 'state', 'paymentMethods'])->find($context->getAttribute('context_id'));
+
+                if (array_key_exists('payment_methods', $data)) {
+                    app(PaymentMethodSyncService::class)->syncMany($customer, $data['payment_methods'] ?? [], $data['created_user_id']);
+                    $customer->load('paymentMethods');
+                }
 
                 return response()->json([
                     'status' => 'success',
@@ -232,7 +243,7 @@ class CustomerController extends Controller
 
     public function show(Customer $customer): JsonResponse
     {
-        $customer->load(['user', 'state']);
+        $customer->load(['user', 'state', 'paymentMethods']);
         return response()->json([
             'status' => 'success',
             'data' => new CustomerResource($customer)
@@ -249,7 +260,7 @@ class CustomerController extends Controller
                 'first_name', 'last_name', 'email', 'phone'
             ]));
 
-            $customerData = array_diff_key($data, $userData);
+            $customerData = array_diff_key($data, $userData, ['payment_methods' => true]);
 
             if (!empty($userData)) {
                 $customer->user->update($userData);
@@ -257,7 +268,11 @@ class CustomerController extends Controller
 
             $customer->update($customerData);
 
-            $customer->load(['user', 'state']);
+            if (array_key_exists('payment_methods', $data)) {
+                app(PaymentMethodSyncService::class)->syncMany($customer, $data['payment_methods'] ?? [], $request->user()->id);
+            }
+
+            $customer->load(['user', 'state', 'paymentMethods']);
 
             return response()->json([
                 'status' => 'success',

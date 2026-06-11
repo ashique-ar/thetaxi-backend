@@ -52,7 +52,13 @@ class VehicleInsurance extends BaseModel
         'policy_number',
         'start_date',
         'end_date',
+        'renewal_reminder_date',
+        'renewal_date',
+        'status',
+        'renewed_from_id',
         'premium_amount',
+        'document_files',
+        'remarks',
         'created_user_id',
         'updated_user_id',
     ];
@@ -63,6 +69,9 @@ class VehicleInsurance extends BaseModel
     protected $casts = [
         'start_date' => 'date',
         'end_date' => 'date',
+        'renewal_reminder_date' => 'date',
+        'renewal_date' => 'date',
+        'document_files' => 'array',
         'premium_amount' => 'decimal:2',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',

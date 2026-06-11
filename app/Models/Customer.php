@@ -157,6 +157,11 @@ class Customer extends BaseModel
         return $this->hasMany(BillingAddress::class);
     }
 
+    public function paymentMethods()
+    {
+        return $this->morphMany(PaymentMethod::class, 'payable');
+    }
+
     // Accessor Methods
 
     /**

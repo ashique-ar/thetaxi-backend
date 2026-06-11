@@ -77,7 +77,17 @@ class Vehicle extends BaseModel
         'ownership_type',
         'usage_type',
         'payment_model',
+        'owner_payment_method_id',
         'assignment_policy',
+        'agreement_start_date',
+        'agreement_end_date',
+        'agreement_status',
+        'initial_mileage',
+        'current_mileage',
+        'handover_mileage',
+        'handover_at',
+        'handover_location',
+        'handover_notes',
         'monthly_payment_commitment',
         'monthly_mileage_limit',
         'excess_mileage_rate',
@@ -90,6 +100,7 @@ class Vehicle extends BaseModel
         'color',
         'ac',
         'thumbnail',
+        'actual_vehicle_images',
         'slug',
         'bags',
         'seats',
@@ -114,8 +125,15 @@ class Vehicle extends BaseModel
 
     protected $casts = [
         'thumbnail' => 'array',
+        'actual_vehicle_images' => 'array',
         'ac' => 'boolean',
         'is_active' => 'boolean',
+        'agreement_start_date' => 'date',
+        'agreement_end_date' => 'date',
+        'handover_at' => 'datetime',
+        'initial_mileage' => 'integer',
+        'current_mileage' => 'integer',
+        'handover_mileage' => 'integer',
         'monthly_payment_commitment' => 'decimal:2',
         'monthly_mileage_limit' => 'decimal:2',
         'excess_mileage_rate' => 'decimal:2',
@@ -141,6 +159,11 @@ class Vehicle extends BaseModel
     public function owner()
     {
         return $this->belongsTo(VehicleOwner::class, 'owner_id');
+    }
+
+    public function ownerPaymentMethod()
+    {
+        return $this->belongsTo(\App\Models\PaymentMethod::class, 'owner_payment_method_id');
     }
 
     /**
@@ -201,6 +224,25 @@ class Vehicle extends BaseModel
     public function insurances()
     {
         return $this->hasMany(VehicleInsurance::class);
+    }
+
+    public function revenueLicenses()
+    {
+        return $this->hasMany(VehicleRevenueLicense::class);
+    }
+
+    public function activeInsurance()
+    {
+        return $this->hasOne(VehicleInsurance::class)
+            ->where('status', 'active')
+            ->latest('end_date');
+    }
+
+    public function activeRevenueLicense()
+    {
+        return $this->hasOne(VehicleRevenueLicense::class)
+            ->where('status', 'active')
+            ->latest('expiry_date');
     }
 
     /**

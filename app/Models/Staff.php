@@ -118,4 +118,9 @@ class Staff extends BaseModel
     {
         return $this->belongsTo(User::class, 'updated_user_id');
     }
+
+    public function paymentMethods()
+    {
+        return $this->morphMany(PaymentMethod::class, 'payable');
+    }
 }

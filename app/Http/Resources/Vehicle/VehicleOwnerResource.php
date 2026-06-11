@@ -4,6 +4,7 @@
 namespace App\Http\Resources\Vehicle;
 
 use App\Http\Resources\UserResource;
+use App\Http\Resources\PaymentMethodResource;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 class VehicleOwnerResource extends JsonResource
@@ -24,6 +25,7 @@ class VehicleOwnerResource extends JsonResource
             'phone' => $this->user?->phone,
             'user' => new UserResource($this->whenLoaded('user')),
             'driver' => $this->whenLoaded('driver'),
+            'payment_methods' => PaymentMethodResource::collection($this->whenLoaded('paymentMethods')),
             'postal_code' => $this->postal_code,
             'license_number' => $this->license_number,
             'license_expiry' => $this->license_expiry,

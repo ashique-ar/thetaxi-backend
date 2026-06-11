@@ -204,6 +204,11 @@ class Driver extends BaseModel
             ->where('is_active', true);
     }
 
+    public function paymentMethod(): HasOne
+    {
+        return $this->morphOne(\App\Models\PaymentMethod::class, 'payable')->where('is_active', true);
+    }
+
     /**
      * Get the current active session.
      */

@@ -49,6 +49,22 @@ class UpdateDriverRequest extends FormRequest
             'postal_code' => ['sometimes', 'nullable', 'string', 'max:20'],
             'default_vehicle_id' => ['sometimes', 'nullable', 'exists:vehicles,id'],
             'remarks' => ['sometimes', 'nullable', 'string'],
+            'emergency_contact_name' => ['sometimes', 'nullable', 'string', 'max:120'],
+            'emergency_contact_phone' => ['sometimes', 'nullable', 'string', 'max:30'],
+            'blood_group' => ['sometimes', 'nullable', 'string', 'in:A+,A-,B+,B-,AB+,AB-,O+,O-'],
+            'medical_conditions' => ['sometimes', 'nullable', 'string'],
+            'hire_date' => ['sometimes', 'nullable', 'date'],
+            'termination_date' => ['sometimes', 'nullable', 'date', 'after_or_equal:hire_date'],
+            'availability_status' => ['sometimes', 'nullable', 'string', 'in:available,busy,on_break,offline'],
+            'status' => ['sometimes', 'nullable', 'string', 'in:available,busy,on_break,offline'],
+            'payment_method' => ['sometimes', 'nullable', 'array'],
+            'payment_method.method_type' => ['required_with:payment_method', 'string', 'in:cash,bank_transfer,cheque,card,wallet,online,other'],
+            'payment_method.label' => ['nullable', 'string', 'max:120'],
+            'payment_method.account_holder_name' => ['nullable', 'string', 'max:255'],
+            'payment_method.bank_name' => ['nullable', 'string', 'max:255'],
+            'payment_method.bank_branch' => ['nullable', 'string', 'max:255'],
+            'payment_method.account_number' => ['nullable', 'string', 'max:100'],
+            'payment_method.routing_number' => ['nullable', 'string', 'max:100'],
             'is_active' => ['sometimes', 'nullable', 'boolean']
         ];
     }

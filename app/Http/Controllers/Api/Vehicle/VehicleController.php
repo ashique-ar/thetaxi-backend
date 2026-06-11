@@ -30,7 +30,7 @@ class VehicleController extends Controller
 
     public function index(Request $request)
     {
-        $q = Vehicle::with(['owner.driver.user', 'grade', 'group.class', 'group.fuelType', 'group.transmission', 'group.category', 'group.make', 'group.model', 'group.grade', 'contractType', 'activeCommission']);
+        $q = Vehicle::with(['owner.driver.user', 'owner.paymentMethods', 'ownerPaymentMethod', 'grade', 'group.class', 'group.fuelType', 'group.transmission', 'group.category', 'group.make', 'group.model', 'group.grade', 'contractType', 'activeCommission', 'insurances.provider', 'insurances.insuranceType', 'revenueLicenses', 'activeInsurance.provider', 'activeInsurance.insuranceType', 'activeRevenueLicense']);
         if ($request->filled('search')) {
             $q->where(function ($query) use ($request) {
                 $query->whereLikeInsensitive('title', $request->search)
@@ -103,7 +103,7 @@ class VehicleController extends Controller
 
     public function show(Vehicle $vehicle): JsonResponse
     {
-        $vehicle->load(['owner.driver.user', 'grade', 'group.class', 'group.fuelType', 'group.transmission', 'group.category', 'group.make', 'group.model', 'group.grade', 'contractType', 'activeCommission']);
+        $vehicle->load(['owner.driver.user', 'owner.paymentMethods', 'ownerPaymentMethod', 'grade', 'group.class', 'group.fuelType', 'group.transmission', 'group.category', 'group.make', 'group.model', 'group.grade', 'contractType', 'activeCommission', 'insurances.provider', 'insurances.insuranceType', 'revenueLicenses', 'activeInsurance.provider', 'activeInsurance.insuranceType', 'activeRevenueLicense']);
 
         return response()->json([
             'status' => 'success',
@@ -152,6 +152,29 @@ class VehicleController extends Controller
             ->pluck('booking_items.vehicle_id')
             ->unique();
 
+        $activeHireMovements = DB::table('driver_assignments')
+            ->join('booking_items', 'driver_assignments.booking_item_id', '=', 'booking_items.id')
+            ->leftJoin('bookings', 'booking_items.booking_id', '=', 'bookings.id')
+            ->whereIn('booking_items.vehicle_id', $vehicleIds)
+            ->whereIn('driver_assignments.trip_phase', ['active', 'confirmed', 'accepted', 'pickup_arrived', 'in_progress'])
+            ->where('driver_assignments.status', '!=', 'cancelled')
+            ->orderByDesc('driver_assignments.assigned_from')
+            ->select([
+                'booking_items.vehicle_id',
+                'booking_items.booking_id',
+                'driver_assignments.driver_id',
+                'driver_assignments.trip_phase',
+                'driver_assignments.assigned_from',
+                'driver_assignments.trip_started_at',
+                'driver_assignments.pickup_arrived_at',
+                'driver_assignments.total_distance_km',
+                'bookings.booking_number',
+                'bookings.status as booking_status',
+            ])
+            ->get()
+            ->unique('vehicle_id')
+            ->keyBy('vehicle_id');
+
         $performance = DB::table('booking_items')
             ->leftJoin('bookings', 'booking_items.booking_id', '=', 'bookings.id')
             ->leftJoin('driver_assignments', 'booking_items.id', '=', 'driver_assignments.booking_item_id')
@@ -167,7 +190,7 @@ class VehicleController extends Controller
             ->get()
             ->keyBy('vehicle_id');
 
-        $vehicleRows = $vehicles->map(function (Vehicle $vehicle) use ($performance, $activeVehicleIds) {
+        $vehicleRows = $vehicles->map(function (Vehicle $vehicle) use ($performance, $activeVehicleIds, $activeHireMovements) {
             $row = $performance->get($vehicle->id);
             $hireCount = (int) ($row->hire_count ?? 0);
             $revenue = (float) ($row->revenue ?? 0);
@@ -175,6 +198,7 @@ class VehicleController extends Controller
             $limit = $vehicle->monthly_mileage_limit !== null ? (float) $vehicle->monthly_mileage_limit : null;
             $commission = $vehicle->activeCommission;
             $commissionPayable = 0.0;
+            $movement = $activeHireMovements->get($vehicle->id);
 
             if ($commission) {
                 $commissionPayable = $commission->commission_type === 'fixed_amount'
@@ -193,6 +217,14 @@ class VehicleController extends Controller
                 'status' => $vehicle->status,
                 'is_active' => (bool) $vehicle->is_active,
                 'is_on_hire' => $activeVehicleIds->contains($vehicle->id),
+                'movement_status' => $movement?->trip_phase ?? 'not_on_hire',
+                'movement_status_label' => $movement?->trip_phase ? str_replace('_', ' ', $movement->trip_phase) : 'Not on hire',
+                'movement_booking_id' => $movement?->booking_id,
+                'movement_booking_number' => $movement?->booking_number,
+                'movement_driver_id' => $movement?->driver_id,
+                'movement_started_at' => $movement?->trip_started_at ?? $movement?->assigned_from,
+                'movement_pickup_arrived_at' => $movement?->pickup_arrived_at,
+                'movement_distance_km' => $movement?->total_distance_km !== null ? (float) $movement->total_distance_km : null,
                 'default_driver' => $vehicle->defaultDriver?->user ? trim($vehicle->defaultDriver->user->first_name . ' ' . $vehicle->defaultDriver->user->last_name) : null,
                 'owner' => $vehicle->owner?->user ? trim($vehicle->owner->user->first_name . ' ' . $vehicle->owner->user->last_name) : null,
                 'hire_count' => $hireCount,
@@ -273,8 +305,32 @@ class VehicleController extends Controller
             $data['registration_no'] = $identifier;
         }
 
+        if (array_key_exists('actual_vehicle_images', $data) && is_array($data['actual_vehicle_images'])) {
+            $uploadedAt = now()->toIso8601String();
+            $data['actual_vehicle_images'] = collect($data['actual_vehicle_images'])
+                ->filter(fn ($image) => is_array($image) || is_string($image))
+                ->map(function ($image) use ($uploadedAt) {
+                    $payload = is_string($image) ? ['path' => $image] : $image;
+                    $payload['uploaded_at'] = $payload['uploaded_at'] ?? $uploadedAt;
+
+                    return $payload;
+                })
+                ->values()
+                ->all();
+        }
+
+        if (!empty($data['owner_payment_method_id']) && !empty($data['owner_id'])) {
+            $belongsToOwner = \App\Models\PaymentMethod::whereKey($data['owner_payment_method_id'])
+                ->where('payable_type', \App\Models\Vehicle\VehicleOwner::class)
+                ->where('payable_id', $data['owner_id'])
+                ->exists();
+
+            abort_unless($belongsToOwner, 422, 'Selected payment method does not belong to the selected owner.');
+        }
+
         return $data;
     }
+
 
     /**
      * Get available vehicles

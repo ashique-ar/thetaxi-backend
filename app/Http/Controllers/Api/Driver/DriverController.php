@@ -17,6 +17,7 @@ use App\Models\DriverAssignment;
 use App\Models\User;
 use App\Services\Driver\NotificationTriggerService;
 use App\Services\UserContextService;
+use App\Services\PaymentMethodSyncService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -43,7 +44,7 @@ class DriverController extends Controller
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        $q = Driver::with(['user', 'licenseType']);
+        $q = Driver::with(['user', 'licenseType', 'paymentMethod']);
         if ($request->filled('search')) {
             $q->where('code', 'like', '%' . $request->search . '%');
         }
@@ -53,6 +54,7 @@ class DriverController extends Controller
     public function store(CreateDriverRequest $request): JsonResponse
     {
         $data = $request->validated();
+        $data = $this->normalizeDriverPayload($data);
 
         try {
             $existingUser = User::where('email', $data['email'])->first();
@@ -87,12 +89,22 @@ class DriverController extends Controller
                     'postal_code' => $data['postal_code'] ?? null,
                     'default_vehicle_id' => $data['default_vehicle_id'] ?? null,
                     'remarks' => $data['remarks'] ?? null,
+                    'emergency_contact_name' => $data['emergency_contact_name'] ?? null,
+                    'emergency_contact_phone' => $data['emergency_contact_phone'] ?? null,
+                    'blood_group' => $data['blood_group'] ?? null,
+                    'medical_conditions' => $data['medical_conditions'] ?? null,
+                    'hire_date' => $data['hire_date'] ?? null,
+                    'termination_date' => $data['termination_date'] ?? null,
+                    'availability_status' => $data['availability_status'] ?? null,
                     'is_active' => $data['is_active'] ?? true,
                 ];
 
                 $context = $this->contextService->switchContext($existingUser, 'driver', $contextData);
                 $driver = Driver::find($context->getAttribute('context_id'));
-                $driver?->load(['user', 'licenseType']);
+                if ($driver && array_key_exists('payment_method', $data)) {
+                    app(PaymentMethodSyncService::class)->syncOne($driver, $data['payment_method'], request()->user()->id);
+                }
+                $driver?->load(['user', 'licenseType', 'paymentMethod']);
 
                 return response()->json([
                     'status' => 'success',
@@ -125,12 +137,22 @@ class DriverController extends Controller
                     'postal_code' => $data['postal_code'] ?? null,
                     'default_vehicle_id' => $data['default_vehicle_id'] ?? null,
                     'remarks' => $data['remarks'] ?? null,
+                    'emergency_contact_name' => $data['emergency_contact_name'] ?? null,
+                    'emergency_contact_phone' => $data['emergency_contact_phone'] ?? null,
+                    'blood_group' => $data['blood_group'] ?? null,
+                    'medical_conditions' => $data['medical_conditions'] ?? null,
+                    'hire_date' => $data['hire_date'] ?? null,
+                    'termination_date' => $data['termination_date'] ?? null,
+                    'availability_status' => $data['availability_status'] ?? null,
                     'is_active' => $data['is_active'] ?? true,
                 ];
 
                 $context = $this->contextService->switchContext($user, 'driver', $contextData);
                 $driver = Driver::find($context->getAttribute('context_id'));
-                $driver?->load(['user', 'licenseType']);
+                if ($driver && array_key_exists('payment_method', $data)) {
+                    app(PaymentMethodSyncService::class)->syncOne($driver, $data['payment_method'], request()->user()->id);
+                }
+                $driver?->load(['user', 'licenseType', 'paymentMethod']);
 
                 return response()->json([
                     'status' => 'success',
@@ -150,7 +172,7 @@ class DriverController extends Controller
 
     public function show(Driver $driver): JsonResponse
     {
-        $driver->load(['user', 'country', 'state', 'licenseType']);
+        $driver->load(['user', 'country', 'state', 'licenseType', 'paymentMethod']);
         return response()->json([
             'status' => 'success',
             'data' => new DriverResource($driver)
@@ -160,7 +182,7 @@ class DriverController extends Controller
     public function update(UpdateDriverRequest $request, Driver $driver): JsonResponse
     {
         try {
-            $data = $request->validated();
+            $data = $this->normalizeDriverPayload($request->validated());
             $data['updated_user_id'] = $request->user()->id;
 
             // Separate user data from vehicle owner data
@@ -179,10 +201,16 @@ class DriverController extends Controller
             }
 
             // Update driver data
+            $paymentMethod = $driverData['payment_method'] ?? null;
+            unset($driverData['payment_method']);
             $driver->update($driverData);
 
+            if ($paymentMethod !== null) {
+                app(PaymentMethodSyncService::class)->syncOne($driver, $paymentMethod, $request->user()->id);
+            }
+
             // Reload the relationship to get updated data
-            $driver->load(['user', 'licenseType']);
+            $driver->load(['user', 'licenseType', 'paymentMethod']);
 
             return response()->json([
                 'status' => 'success',
@@ -206,6 +234,17 @@ class DriverController extends Controller
             'status' => 'success',
             'message' => 'Driver deleted'
         ]);
+    }
+
+    private function normalizeDriverPayload(array $data): array
+    {
+        if (isset($data['status']) && !isset($data['availability_status'])) {
+            $data['availability_status'] = $data['status'];
+        }
+
+        unset($data['status']);
+
+        return $data;
     }
 
     /**

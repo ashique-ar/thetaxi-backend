@@ -31,6 +31,7 @@ use App\Http\Controllers\Api\NotificationLogController;
 use App\Http\Controllers\Api\NotificationTemplateController;
 use App\Http\Controllers\Api\PublicInquiryServiceController;
 use App\Http\Controllers\Api\PhoneCallController;
+use App\Http\Controllers\Api\PaymentMethodController;
 use App\Http\Controllers\Api\ServiceTypeController;
 use App\Http\Controllers\Api\Service\ServicePackageController;
 use App\Http\Controllers\Api\Service\ServiceFormConfigController;
@@ -57,6 +58,7 @@ use App\Http\Controllers\Api\Vehicle\VehicleMakeController;
 use App\Http\Controllers\Api\Vehicle\VehicleModelController;
 use App\Http\Controllers\Api\Vehicle\VehicleOwnerController;
 use App\Http\Controllers\Api\Vehicle\VehicleOwnerTypeController;
+use App\Http\Controllers\Api\Vehicle\VehicleRevenueLicenseController;
 
 use App\Http\Controllers\Api\Vehicle\VehicleTransmissionController;
 use App\Http\Controllers\Api\Vehicle\VehicleDiscountController;
@@ -301,6 +303,7 @@ Route::middleware(['auth:api'])->group(function () {
     */
 
     Route::middleware(['permission:customers.view'])->group(function () {
+        Route::apiResource('payment-methods', PaymentMethodController::class);
         Route::get('customers/search', [CustomerController::class, 'search']);
         Route::get('customers/check-email', [CustomerController::class, 'checkEmail']);
         Route::get('customers/stats', [CustomerController::class, 'getCustomerAnalytics'])->middleware('permission:customers.analytics');
@@ -447,7 +450,10 @@ Route::middleware(['auth:api'])->group(function () {
             Route::apiResource('vehicle-grades', VehicleGradeController::class);
             Route::apiResource('vehicle-groups', VehicleGroupController::class);
             Route::apiResource('vehicle-images', VehicleImageController::class);
+            Route::post('vehicle-insurances/{vehicleInsurance}/renew', [VehicleInsuranceController::class, 'renew']);
             Route::apiResource('vehicle-insurances', VehicleInsuranceController::class);
+            Route::post('vehicle-revenue-licenses/{vehicleRevenueLicense}/renew', [VehicleRevenueLicenseController::class, 'renew']);
+            Route::apiResource('vehicle-revenue-licenses', VehicleRevenueLicenseController::class);
             Route::apiResource('vehicle-insurance-providers', VehicleInsuranceProviderController::class);
             Route::apiResource('vehicle-insurance-types', VehicleInsuranceTypeController::class);
             Route::apiResource('vehicle-maintenance-schedules', VehicleMaintenanceScheduleController::class);
