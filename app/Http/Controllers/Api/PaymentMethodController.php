@@ -27,6 +27,13 @@ class PaymentMethodController extends Controller
 
     public function index(Request $request)
     {
+        if ($request->has('is_active')) {
+            $normalizedIsActive = filter_var($request->query('is_active'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+            if ($normalizedIsActive !== null) {
+                $request->merge(['is_active' => $normalizedIsActive]);
+            }
+        }
+
         $validated = $request->validate([
             'payable_type' => ['nullable', 'string', 'in:vehicle_owner,driver,customer,staff'],
             'payable_id' => ['nullable', 'uuid'],
