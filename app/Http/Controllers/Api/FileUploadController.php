@@ -69,11 +69,11 @@ class FileUploadController extends Controller
             $originalName = $file->getClientOriginalName();
             $mimeType = $file->getMimeType();
             $fileSize = $file->getSize();
+            $extension = $file->getClientOriginalExtension();
             $isImage = str_starts_with($mimeType, 'image/');
             $shouldProcessImage = $isImage && !in_array(strtolower($extension), ['svg', 'ico', 'gif'], true);
 
             // Generate unique filename
-            $extension = $file->getClientOriginalExtension();
             $fileName = $this->generateUniqueFilename($originalName, $extension);
 
             // Build storage path
