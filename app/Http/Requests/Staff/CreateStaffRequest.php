@@ -14,6 +14,7 @@ class CreateStaffRequest extends FormRequest
             'user_id' => ['required', 'exists:users,id'],
             'staff_type' => ['required', 'string', 'max:100'],
             'code' => ['nullable', 'string', 'max:100', 'unique:staff,code'],
+            'nic' => ['nullable', 'string', 'max:20'],
             'dob' => ['nullable', 'date'],
             'license_no' => ['nullable', 'string', 'max:100'],
             'license_expiry' => ['nullable', 'date', 'after_or_equal:dob'],

@@ -37,6 +37,7 @@ class UpdateVehicleOwnerRequest extends FormRequest
                 },
             ],
             'phone' => ['sometimes', 'nullable', 'string', 'max:20'],
+            'nic' => ['sometimes', 'nullable', 'string', 'max:20'],
             'owner_type_id' => ['sometimes', 'required', 'exists:vehicle_owner_types,id'],
             'address' => ['sometimes', 'nullable', 'string'],
             'country_id' => ['sometimes', 'nullable', 'exists:countries,id'],

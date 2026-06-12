@@ -28,7 +28,8 @@ class StaffController extends Controller
         if ($request->filled('search')) {
             $q->where(function ($query) use ($request) {
                 $query->whereLikeInsensitive('staff_type', $request->search)
-                    ->orWhereLikeInsensitive('code', $request->search);
+                    ->orWhereLikeInsensitive('code', $request->search)
+                    ->orWhereLikeInsensitive('nic', $request->search);
             });
         }
         return StaffResource::collection(

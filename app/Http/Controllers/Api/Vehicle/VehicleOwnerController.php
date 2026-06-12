@@ -35,10 +35,13 @@ class VehicleOwnerController extends Controller
     {
         $q = VehicleOwner::with(['user', 'type', 'paymentMethods']);
         if ($request->filled('search')) {
-            $q->whereHas('user', function($query) use ($request) {
-                $query->whereLikeInsensitive('first_name', $request->get('search'))
-                      ->orWhereLikeInsensitive('last_name', $request->get('search'))
-                      ->orWhereLikeInsensitive('email', $request->get('search'));
+            $q->where(function ($query) use ($request) {
+                $query->whereLikeInsensitive('nic', $request->get('search'))
+                    ->orWhereHas('user', function($userQuery) use ($request) {
+                        $userQuery->whereLikeInsensitive('first_name', $request->get('search'))
+                            ->orWhereLikeInsensitive('last_name', $request->get('search'))
+                            ->orWhereLikeInsensitive('email', $request->get('search'));
+                    });
             });
         }
         return VehicleOwnerResource::collection($q->paginate($request->per_page ?? 15));
@@ -192,6 +195,7 @@ class VehicleOwnerController extends Controller
     {
         return [
             'owner_type_id' => $data['owner_type_id'] ?? null,
+            'nic' => $data['nic'] ?? null,
             'address' => $data['address'] ?? null,
             'country_id' => $data['country_id'] ?? null,
             'state_id' => $data['state_id'] ?? null,

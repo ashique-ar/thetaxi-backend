@@ -45,6 +45,7 @@ class Staff extends BaseModel
         'user_id',
         'staff_type',
         'code',
+        'nic',
         'dob',
         'license_no',
         'license_expiry',

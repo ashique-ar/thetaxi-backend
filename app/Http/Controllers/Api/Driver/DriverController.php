@@ -46,7 +46,10 @@ class DriverController extends Controller
     {
         $q = Driver::with(['user', 'licenseType', 'paymentMethod']);
         if ($request->filled('search')) {
-            $q->where('code', 'like', '%' . $request->search . '%');
+            $q->where(function ($query) use ($request) {
+                $query->where('code', 'like', '%' . $request->search . '%')
+                    ->orWhere('nic', 'like', '%' . $request->search . '%');
+            });
         }
         return DriverResource::collection($q->paginate($request->per_page ?? 15));
     }

@@ -15,6 +15,7 @@ class VehicleOwnerResource extends JsonResource
             'id' => $this->id,
             'owner_type_id' => $this->owner_type_id,
             'driver_id' => $this->driver_id,
+            'nic' => $this->nic,
             'address' => $this->address,
             'country_id' => $this->country_id,
             'state_id' => $this->state_id,

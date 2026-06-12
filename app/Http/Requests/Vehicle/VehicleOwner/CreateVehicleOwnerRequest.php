@@ -21,6 +21,7 @@ class CreateVehicleOwnerRequest extends FormRequest
             'last_name' => ['nullable', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255'],
             'phone' => ['nullable', 'string', 'max:20'],
+            'nic' => ['nullable', 'string', 'max:20'],
             'country_id' => ['nullable', 'exists:countries,id'],
             'state_id' => ['nullable', 'exists:states,id'],
             'city' => ['nullable', 'string'],

@@ -16,6 +16,7 @@ class UpdateStaffRequest extends FormRequest
             'user_id' => ['sometimes', 'required', 'exists:users,id'],
             'staff_type' => ['sometimes', 'required', 'string', 'max:100'],
             'code' => ["sometimes", "nullable", "string", "max:100", "unique:staff,code,{$id}"],
+            'nic' => ['sometimes', 'nullable', 'string', 'max:20'],
             'dob' => ['sometimes', 'nullable', 'date'],
             'license_no' => ['sometimes', 'nullable', 'string', 'max:100'],
             'license_expiry' => ['sometimes', 'nullable', 'date', 'after_or_equal:dob'],

@@ -44,6 +44,7 @@ class VehicleOwner extends BaseModel
         'user_id',
         'driver_id',
         'owner_type_id',
+        'nic',
         'address',
         'country_id',
         'state_id',

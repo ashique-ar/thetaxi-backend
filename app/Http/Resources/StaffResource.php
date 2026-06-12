@@ -13,6 +13,7 @@ class StaffResource extends JsonResource
             'user_id'         => $this->user_id,
             'staff_type'      => $this->staff_type,
             'code'            => $this->code,
+            'nic'             => $this->nic,
             'dob'             => $this->dob,
             'license_no'      => $this->license_no,
             'license_expiry'  => $this->license_expiry,
