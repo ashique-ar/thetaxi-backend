@@ -173,6 +173,10 @@ class FileUploadController extends Controller
                 'category' => $request->get('category', 'general'),
                 'path' => $request->get('path', ''),
                 'disk' => config('filesystems.default'),
+                's3_bucket' => config('filesystems.disks.s3.bucket'),
+                's3_region' => config('filesystems.disks.s3.region'),
+                's3_url' => config('filesystems.disks.s3.url'),
+                's3_endpoint' => config('filesystems.disks.s3.endpoint'),
                 'user_id' => $request->user()?->id,
             ]);
 
@@ -521,7 +525,9 @@ class FileUploadController extends Controller
     {
         if (config('filesystems.default') === 's3') {
             // Store to S3
-            $stored = Storage::disk('s3')->put($path, $content);
+            $s3Config = config('filesystems.disks.s3');
+            $s3Config['throw'] = true;
+            $stored = Storage::build($s3Config)->put($path, $content);
 
             if (!$stored) {
                 throw new \RuntimeException("S3 upload failed for {$path}");
