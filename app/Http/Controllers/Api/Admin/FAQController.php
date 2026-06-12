@@ -63,7 +63,7 @@ class FAQController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'faq_category_id' => 'nullable|exists:f_a_q_categories,id',
+            'faq_category_id' => 'nullable|exists:faq_categories,id',
             'question' => 'required|string|max:500',
             'answer' => 'required|string',
             'sort_order' => 'integer|min:0',
@@ -102,7 +102,7 @@ class FAQController extends Controller
     public function update(Request $request, FAQ $faq): JsonResponse
     {
         $validated = $request->validate([
-            'faq_category_id' => 'nullable|exists:f_a_q_categories,id',
+            'faq_category_id' => 'nullable|exists:faq_categories,id',
             'question' => 'required|string|max:500',
             'answer' => 'required|string',
             'sort_order' => 'integer|min:0',
@@ -138,7 +138,7 @@ class FAQController extends Controller
     {
         $validated = $request->validate([
             'faqs' => 'required|array',
-            'faqs.*.id' => 'required|exists:f_a_q_s,id',
+            'faqs.*.id' => 'required|exists:faqs,id',
             'faqs.*.sort_order' => 'integer|min:0',
             'faqs.*.is_active' => 'boolean',
             'faqs.*.is_featured' => 'boolean',

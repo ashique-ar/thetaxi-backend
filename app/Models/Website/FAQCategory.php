@@ -11,7 +11,7 @@ class FAQCategory extends BaseModel
 {
     use SoftDeletes;
 
-    protected $table = 'f_a_q_categories';
+    protected $table = 'faq_categories';
 
     protected $fillable = [
         'name',
@@ -28,12 +28,12 @@ class FAQCategory extends BaseModel
 
     public function faqs(): HasMany
     {
-        return $this->hasMany(FAQ::class);
+        return $this->hasMany(FAQ::class, 'faq_category_id');
     }
 
     public function activeFaqs(): HasMany
     {
-        return $this->hasMany(FAQ::class)->where('is_active', true)->orderBy('sort_order');
+        return $this->hasMany(FAQ::class, 'faq_category_id')->where('is_active', true)->orderBy('sort_order');
     }
 
     public static function active()

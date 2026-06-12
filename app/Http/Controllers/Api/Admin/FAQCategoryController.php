@@ -57,7 +57,7 @@ class FAQCategoryController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'slug' => 'nullable|string|max:255|unique:f_a_q_categories,slug',
+            'slug' => 'nullable|string|max:255|unique:faq_categories,slug',
             'description' => 'nullable|string',
             'sort_order' => 'integer|min:0',
             'is_active' => 'boolean',
@@ -99,7 +99,7 @@ class FAQCategoryController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'slug' => 'nullable|string|max:255|unique:f_a_q_categories,slug,' . $faqCategory->id,
+            'slug' => 'nullable|string|max:255|unique:faq_categories,slug,' . $faqCategory->id,
             'description' => 'nullable|string',
             'sort_order' => 'integer|min:0',
             'is_active' => 'boolean',
@@ -145,7 +145,7 @@ class FAQCategoryController extends Controller
     {
         $validated = $request->validate([
             'categories' => 'required|array',
-            'categories.*.id' => 'required|exists:f_a_q_categories,id',
+            'categories.*.id' => 'required|exists:faq_categories,id',
             'categories.*.sort_order' => 'required|integer|min:0',
         ]);
 
