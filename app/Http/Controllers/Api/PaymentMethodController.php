@@ -60,6 +60,16 @@ class PaymentMethodController extends Controller
         $method = DB::transaction(function () use ($data, $request) {
             $this->assertDriverSingleMethod($data['payable_type'], $data['payable_id']);
 
+            $existing = $this->findDuplicateMethod($data);
+            if ($existing) {
+                if (($data['is_default'] ?? false) === true) {
+                    $this->clearDefault($data['payable_type'], $data['payable_id'], $existing->id);
+                    $existing->update(['is_default' => true, 'updated_user_id' => $request->user()->id]);
+                }
+
+                return $existing;
+            }
+
             if (($data['is_default'] ?? false) === true) {
                 $this->clearDefault($data['payable_type'], $data['payable_id']);
             }
@@ -139,6 +149,45 @@ class PaymentMethodController extends Controller
             ->where('payable_id', $payableId)
             ->when($exceptId, fn ($q) => $q->where('id', '!=', $exceptId))
             ->update(['is_default' => false]);
+    }
+
+    private function findDuplicateMethod(array $data): ?PaymentMethod
+    {
+        $fields = [
+            'method_type',
+            'label',
+            'account_holder_name',
+            'bank_name',
+            'bank_branch',
+            'account_number',
+            'routing_number',
+            'card_brand',
+            'card_last_four',
+            'card_expiry_month',
+            'card_expiry_year',
+            'wallet_provider',
+            'wallet_identifier',
+            'cheque_payee_name',
+            'cheque_bank_name',
+        ];
+
+        $query = PaymentMethod::whereIn('payable_type', $this->payableTypeVariants($data['payable_type']))
+            ->where('payable_id', $data['payable_id'])
+            ->where('is_active', true);
+
+        foreach ($fields as $field) {
+            $value = $data[$field] ?? null;
+            $query->where(function ($q) use ($field, $value) {
+                if ($value === null || $value === '') {
+                    $q->whereNull($field)->orWhere($field, '');
+                    return;
+                }
+
+                $q->where($field, $value);
+            });
+        }
+
+        return $query->first();
     }
 
     private function payableTypeVariants(string $payableType): array
