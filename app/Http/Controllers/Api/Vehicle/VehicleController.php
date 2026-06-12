@@ -321,7 +321,7 @@ class VehicleController extends Controller
 
         if (!empty($data['owner_payment_method_id']) && !empty($data['owner_id'])) {
             $belongsToOwner = \App\Models\PaymentMethod::whereKey($data['owner_payment_method_id'])
-                ->where('payable_type', \App\Models\Vehicle\VehicleOwner::class)
+                ->whereIn('payable_type', ['vehicle_owner', \App\Models\Vehicle\VehicleOwner::class])
                 ->where('payable_id', $data['owner_id'])
                 ->exists();
 

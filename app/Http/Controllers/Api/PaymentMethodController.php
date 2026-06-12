@@ -19,10 +19,10 @@ use Illuminate\Validation\ValidationException;
 class PaymentMethodController extends Controller
 {
     private const PAYABLES = [
-        'vehicle_owner' => VehicleOwner::class,
-        'driver' => Driver::class,
-        'customer' => Customer::class,
-        'staff' => Staff::class,
+        'vehicle_owner' => ['alias' => 'vehicle_owner', 'class' => VehicleOwner::class],
+        'driver' => ['alias' => 'driver', 'class' => Driver::class],
+        'customer' => ['alias' => 'customer', 'class' => Customer::class],
+        'staff' => ['alias' => 'staff', 'class' => Staff::class],
     ];
 
     public function index(Request $request)
@@ -34,7 +34,10 @@ class PaymentMethodController extends Controller
         ]);
 
         $query = PaymentMethod::query()
-            ->when(isset($validated['payable_type']), fn ($q) => $q->where('payable_type', self::PAYABLES[$validated['payable_type']]))
+            ->when(isset($validated['payable_type']), function ($q) use ($validated) {
+                $payable = self::PAYABLES[$validated['payable_type']];
+                $q->whereIn('payable_type', [$payable['alias'], $payable['class']]);
+            })
             ->when(isset($validated['payable_id']), fn ($q) => $q->where('payable_id', $validated['payable_id']))
             ->when($request->has('is_active'), fn ($q) => $q->where('is_active', $request->boolean('is_active')))
             ->orderByDesc('is_default')
@@ -102,13 +105,14 @@ class PaymentMethodController extends Controller
 
     private function normalizePayable(array $data): array
     {
-        $class = self::PAYABLES[$data['payable_type']];
+        $payable = self::PAYABLES[$data['payable_type']];
+        $class = $payable['class'];
 
         if (!$class::whereKey($data['payable_id'])->exists()) {
             throw ValidationException::withMessages(['payable_id' => ['The selected payable record does not exist.']]);
         }
 
-        $data['payable_type'] = $class;
+        $data['payable_type'] = $payable['alias'];
         $data['is_default'] = $data['is_default'] ?? false;
         $data['is_active'] = $data['is_active'] ?? true;
 
@@ -117,16 +121,27 @@ class PaymentMethodController extends Controller
 
     private function assertDriverSingleMethod(string $payableType, string $payableId): void
     {
-        if ($payableType === Driver::class && PaymentMethod::where('payable_type', Driver::class)->where('payable_id', $payableId)->where('is_active', true)->exists()) {
+        if (in_array($payableType, ['driver', Driver::class], true) && PaymentMethod::whereIn('payable_type', ['driver', Driver::class])->where('payable_id', $payableId)->where('is_active', true)->exists()) {
             throw ValidationException::withMessages(['payable_id' => ['Drivers can only have one active payment method.']]);
         }
     }
 
     private function clearDefault(string $payableType, string $payableId, ?string $exceptId = null): void
     {
-        PaymentMethod::where('payable_type', $payableType)
+        PaymentMethod::whereIn('payable_type', $this->payableTypeVariants($payableType))
             ->where('payable_id', $payableId)
             ->when($exceptId, fn ($q) => $q->where('id', '!=', $exceptId))
             ->update(['is_default' => false]);
+    }
+
+    private function payableTypeVariants(string $payableType): array
+    {
+        foreach (self::PAYABLES as $payable) {
+            if (in_array($payableType, [$payable['alias'], $payable['class']], true)) {
+                return [$payable['alias'], $payable['class']];
+            }
+        }
+
+        return [$payableType];
     }
 }
