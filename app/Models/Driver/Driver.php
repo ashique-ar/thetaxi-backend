@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\MorphOne;
 
 /**
  * Driver Model
@@ -204,7 +205,7 @@ class Driver extends BaseModel
             ->where('is_active', true);
     }
 
-    public function paymentMethod(): HasOne
+    public function paymentMethod(): MorphOne
     {
         return $this->morphOne(\App\Models\PaymentMethod::class, 'payable')->where('is_active', true);
     }

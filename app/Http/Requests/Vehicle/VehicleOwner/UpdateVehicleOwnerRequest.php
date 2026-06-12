@@ -10,8 +10,9 @@ class UpdateVehicleOwnerRequest extends FormRequest
 
     public function rules()
     {
-        $vehicleOwnerId = $this->route('vehicleOwner')->id;
-        $existingDriverId = $this->route('vehicleOwner')->user?->driverContext()?->context_id;
+        $vehicleOwner = $this->route('vehicle_owner') ?? $this->route('vehicleOwner');
+        $vehicleOwnerId = $vehicleOwner?->id;
+        $existingDriverId = $vehicleOwner?->user?->driverContext()?->context_id;
 
         return [
             'first_name' => ['sometimes', 'required', 'string', 'max:255'],
@@ -26,7 +27,6 @@ class UpdateVehicleOwnerRequest extends FormRequest
                         ->whereHas('contexts', function ($q) use ($vehicleOwnerId) {
                             $q->where('context_type', 'vehicle_owner')
                                 ->where('is_active', true)
-                                // ← just compare the foreign key directly
                                 ->where('context_id', '!=', $vehicleOwnerId);
                         })
                         ->exists();
