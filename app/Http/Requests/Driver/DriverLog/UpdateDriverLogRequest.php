@@ -18,8 +18,12 @@ class UpdateDriverLogRequest extends FormRequest
             'end_time' => ['sometimes', 'nullable', 'date_format:H:i', 'after_or_equal:start_time'],
             'start_km' => ['sometimes', 'nullable', 'integer'],
             'end_km' => ['sometimes', 'nullable', 'integer', 'gte:start_km'],
+            'total_km' => ['sometimes', 'nullable', 'integer', 'min:0'],
             'start_image' => ['sometimes', 'nullable', 'string'],
             'end_image' => ['sometimes', 'nullable', 'string'],
+            'particulars' => ['sometimes', 'nullable', 'string'],
+            'entry_source' => ['sometimes', 'nullable', 'string', 'in:manual,paper_entry,mobile_app,gps'],
+            'attachments' => ['sometimes', 'nullable', 'array'],
             'status' => ['sometimes', 'required', 'in:pending,approved,rejected'],
         ];
     }

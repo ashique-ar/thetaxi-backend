@@ -28,6 +28,7 @@ class SettingsCategoryService
             'email' => $this->getEmailSettingsConfig(),
             'homepage' => $this->getHomepageSettingsConfig(),
             'booking' => $this->getBookingSettingsConfig(),
+            'branding' => $this->getBrandingSettingsConfig(),
             'appearance' => $this->getAppearanceSettingsConfig(),
         ];
     }
@@ -841,6 +842,154 @@ class SettingsCategoryService
                     'accept' => '.ico,image/*',
                     'description' => 'Website favicon (16x16 or 32x32 pixels)'
                 ]
+            ]
+        ];
+    }
+
+    /**
+     * Get white-label branding settings configuration
+     */
+    public function getBrandingSettingsConfig(): array
+    {
+        return [
+            'title' => 'Branding',
+            'description' => 'Portal logos, brand identity, and theme colors',
+            'icon' => 'brush',
+            'settings' => [
+                'brand_name' => [
+                    'label' => 'Brand Name',
+                    'type' => 'text',
+                    'placeholder' => 'The Taxi',
+                    'description' => 'Customer-facing brand name'
+                ],
+                'brand_tagline' => [
+                    'label' => 'Brand Tagline',
+                    'type' => 'text',
+                    'placeholder' => 'Your Trusted Transport Partner',
+                    'description' => 'Short brand message shown in portal and auth screens'
+                ],
+                'brand_short_name' => [
+                    'label' => 'Brand Short Name',
+                    'type' => 'text',
+                    'placeholder' => 'The Taxi',
+                    'description' => 'Short display name for compact spaces'
+                ],
+                'portal_title' => [
+                    'label' => 'Portal Title',
+                    'type' => 'text',
+                    'placeholder' => 'The Taxi | Portal',
+                    'description' => 'Browser title for the portal'
+                ],
+                'brand_logo_primary' => [
+                    'label' => 'Primary Logo',
+                    'type' => 'file',
+                    'accept' => 'image/*',
+                    'description' => 'Main brand logo'
+                ],
+                'brand_logo_secondary' => [
+                    'label' => 'Secondary Logo',
+                    'type' => 'file',
+                    'accept' => 'image/*',
+                    'description' => 'Logo variant for dark or alternate backgrounds'
+                ],
+                'brand_logo_icon' => [
+                    'label' => 'Logo Icon',
+                    'type' => 'file',
+                    'accept' => 'image/*',
+                    'description' => 'Compact logo or icon'
+                ],
+                'brand_favicon' => [
+                    'label' => 'Favicon',
+                    'type' => 'file',
+                    'accept' => '.ico,image/*',
+                    'description' => 'Browser favicon'
+                ],
+                'portal_logo' => [
+                    'label' => 'Portal Logo',
+                    'type' => 'file',
+                    'accept' => 'image/*',
+                    'description' => 'Logo used in portal loading, auth, and dashboard screens'
+                ],
+                'brand_color_primary' => [
+                    'label' => 'Primary Color',
+                    'type' => 'color',
+                    'placeholder' => '#BF2629',
+                    'description' => 'Main portal action color'
+                ],
+                'brand_color_primary_light' => [
+                    'label' => 'Primary Light Color',
+                    'type' => 'color',
+                    'placeholder' => '#F4E2E2',
+                    'description' => 'Light primary shade'
+                ],
+                'brand_color_primary_dark' => [
+                    'label' => 'Primary Dark Color',
+                    'type' => 'color',
+                    'placeholder' => '#891318',
+                    'description' => 'Dark primary shade'
+                ],
+                'brand_color_secondary' => [
+                    'label' => 'Secondary Color',
+                    'type' => 'color',
+                    'placeholder' => '#717171',
+                    'description' => 'Secondary/accent portal color'
+                ],
+                'brand_color_secondary_light' => [
+                    'label' => 'Secondary Light Color',
+                    'type' => 'color',
+                    'placeholder' => '#E5E5E5',
+                    'description' => 'Light secondary shade'
+                ],
+                'brand_color_secondary_dark' => [
+                    'label' => 'Secondary Dark Color',
+                    'type' => 'color',
+                    'placeholder' => '#404040',
+                    'description' => 'Dark secondary shade'
+                ],
+                'brand_color_accent' => [
+                    'label' => 'Accent Color',
+                    'type' => 'color',
+                    'placeholder' => '#FFFFFF',
+                    'description' => 'Additional brand accent color'
+                ],
+                'brand_color_accent_light' => [
+                    'label' => 'Accent Light Color',
+                    'type' => 'color',
+                    'placeholder' => '#FFFFFF',
+                    'description' => 'Light accent shade'
+                ],
+                'brand_color_accent_dark' => [
+                    'label' => 'Accent Dark Color',
+                    'type' => 'color',
+                    'placeholder' => '#F5F5F5',
+                    'description' => 'Dark accent shade'
+                ],
+                'portal_theme' => [
+                    'label' => 'Portal Theme',
+                    'type' => 'select',
+                    'options' => [
+                        'theme-brand' => 'Brand',
+                        'theme-default' => 'Default',
+                        'theme-casons' => 'Casons',
+                        'theme-teal' => 'Teal',
+                        'theme-rose' => 'Rose',
+                        'theme-purple' => 'Purple',
+                        'theme-amber' => 'Amber',
+                    ],
+                    'description' => 'Base portal theme class'
+                ],
+                'footer_copyright_text' => [
+                    'label' => 'Footer Copyright Text',
+                    'type' => 'text',
+                    'placeholder' => 'The Taxi. All rights reserved.',
+                    'description' => 'Portal footer copyright text'
+                ],
+                'footer_company_name' => [
+                    'label' => 'Footer Company Name',
+                    'type' => 'text',
+                    'placeholder' => 'The Taxi',
+                    'description' => 'Company name shown in portal footer'
+                ],
             ]
         ];
     }

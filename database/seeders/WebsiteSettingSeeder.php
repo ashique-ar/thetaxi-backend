@@ -39,11 +39,11 @@ class WebsiteSettingSeeder extends Seeder
             ],
             [
                 'type' => 'company_name',
-                'value' => 'Company',
+                'value' => 'The Taxi',
             ],
             [
                 'type' => 'company_email',
-                'value' => 'info@Company',
+                'value' => 'info@thetaxi.lk',
             ],
             [
                 'type' => 'company_phone',
@@ -192,6 +192,98 @@ class WebsiteSettingSeeder extends Seeder
             [
                 'type' => 'driver_mobile_update_message',
                 'value' => 'A new driver app version is available. Please update to continue.',
+            ],
+            [
+                'type' => 'site_name',
+                'value' => 'The Taxi',
+            ],
+            [
+                'type' => 'site_tagline',
+                'value' => 'Your Trusted Transport Partner',
+            ],
+            [
+                'type' => 'brand_name',
+                'value' => 'The Taxi',
+            ],
+            [
+                'type' => 'brand_tagline',
+                'value' => 'Your Trusted Transport Partner',
+            ],
+            [
+                'type' => 'brand_short_name',
+                'value' => 'The Taxi',
+            ],
+            [
+                'type' => 'brand_logo_primary',
+                'value' => '/images/logo/logo.png',
+            ],
+            [
+                'type' => 'brand_logo_secondary',
+                'value' => '/images/logo/logo-text-on-dark.svg',
+            ],
+            [
+                'type' => 'brand_logo_icon',
+                'value' => '/images/logo/logo1.svg',
+            ],
+            [
+                'type' => 'brand_favicon',
+                'value' => '/favicon.ico',
+            ],
+            [
+                'type' => 'portal_title',
+                'value' => 'The Taxi | Portal',
+            ],
+            [
+                'type' => 'portal_logo',
+                'value' => '/images/logo/logo.png',
+            ],
+            [
+                'type' => 'portal_theme',
+                'value' => 'theme-brand',
+            ],
+            [
+                'type' => 'brand_color_primary',
+                'value' => '#BF2629',
+            ],
+            [
+                'type' => 'brand_color_primary_light',
+                'value' => '#F4E2E2',
+            ],
+            [
+                'type' => 'brand_color_primary_dark',
+                'value' => '#891318',
+            ],
+            [
+                'type' => 'brand_color_secondary',
+                'value' => '#717171',
+            ],
+            [
+                'type' => 'brand_color_secondary_light',
+                'value' => '#E5E5E5',
+            ],
+            [
+                'type' => 'brand_color_secondary_dark',
+                'value' => '#404040',
+            ],
+            [
+                'type' => 'brand_color_accent',
+                'value' => '#FFFFFF',
+            ],
+            [
+                'type' => 'brand_color_accent_light',
+                'value' => '#FFFFFF',
+            ],
+            [
+                'type' => 'brand_color_accent_dark',
+                'value' => '#F5F5F5',
+            ],
+            [
+                'type' => 'footer_company_name',
+                'value' => 'The Taxi',
+            ],
+            [
+                'type' => 'footer_copyright_text',
+                'value' => 'The Taxi. All rights reserved.',
             ],
         ];
 

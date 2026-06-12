@@ -25,6 +25,8 @@ class VehicleOwnerResource extends JsonResource
             'phone' => $this->user?->phone,
             'user' => new UserResource($this->whenLoaded('user')),
             'driver' => $this->whenLoaded('driver'),
+            'ownerType' => $this->whenLoaded('type'),
+            'type' => $this->whenLoaded('type'),
             'payment_methods' => PaymentMethodResource::collection($this->whenLoaded('paymentMethods')),
             'postal_code' => $this->postal_code,
             'license_number' => $this->license_number,

@@ -18,8 +18,12 @@ class CreateDriverLogRequest extends FormRequest
             'end_time' => ['nullable', 'date_format:H:i', 'after_or_equal:start_time'],
             'start_km' => ['nullable', 'integer'],
             'end_km' => ['nullable', 'integer', 'gte:start_km'],
+            'total_km' => ['nullable', 'integer', 'min:0'],
             'start_image' => ['nullable', 'string'],
             'end_image' => ['nullable', 'string'],
+            'particulars' => ['nullable', 'string'],
+            'entry_source' => ['nullable', 'string', 'in:manual,paper_entry,mobile_app,gps'],
+            'attachments' => ['nullable', 'array'],
             'status' => ['required', 'in:pending,approved,rejected'],
         ];
     }

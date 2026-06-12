@@ -10,6 +10,7 @@ class DriverLogResource extends JsonResource
     {
         return [
             'id' => $this->id,
+            'log_sheet_number' => $this->log_code ?: $this->id,
             'driver_id' => $this->driver_id,
             'booking_id' => $this->booking_id,
             'log_code' => $this->log_code,
@@ -18,9 +19,20 @@ class DriverLogResource extends JsonResource
             'end_time' => $this->end_time,
             'start_km' => $this->start_km,
             'end_km' => $this->end_km,
+            'total_km' => $this->total_km,
+            'vehicle_id' => $this->booking?->primaryItem()?->vehicle_id,
+            'vehicle_group_id' => $this->booking?->primaryItem()?->vehicle_group_id,
             'start_image' => $this->start_image,
             'end_image' => $this->end_image,
+            'particulars' => $this->particulars,
+            'entry_source' => $this->entry_source,
+            'attachments' => $this->attachments ?? [],
             'status' => $this->status,
+            'verification_status' => $this->status === 'pending' ? 'pending' : $this->status,
+            'calculated_allowance' => 0,
+            'approved_allowance' => null,
+            'driver' => $this->whenLoaded('driver'),
+            'booking' => $this->whenLoaded('booking'),
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];

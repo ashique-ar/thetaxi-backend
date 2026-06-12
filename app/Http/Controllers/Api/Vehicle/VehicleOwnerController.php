@@ -33,7 +33,7 @@ class VehicleOwnerController extends Controller
 
     public function index(Request $request)
     {
-        $q = VehicleOwner::with(['user', 'paymentMethods']);
+        $q = VehicleOwner::with(['user', 'type', 'paymentMethods']);
         if ($request->filled('search')) {
             $q->whereHas('user', function($query) use ($request) {
                 $query->whereLikeInsensitive('first_name', $request->get('search'))

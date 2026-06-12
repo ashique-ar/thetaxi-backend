@@ -44,7 +44,7 @@ class DriverLogController extends Controller
 
     public function store(CreateDriverLogRequest $request): JsonResponse
     {
-        $data = $request->validated();
+        $data = $this->normalizeLogPayload($request->validated());
         $data['created_user_id'] = $request->user()->id;
         $log = DriverLog::create($data);
         return response()->json([
@@ -64,7 +64,7 @@ class DriverLogController extends Controller
 
     public function update(UpdateDriverLogRequest $request, DriverLog $driverLog): JsonResponse
     {
-        $data = $request->validated();
+        $data = $this->normalizeLogPayload($request->validated(), $driverLog);
         $data['updated_user_id'] = $request->user()->id;
         $driverLog->update($data);
         return response()->json([
@@ -81,5 +81,36 @@ class DriverLogController extends Controller
             'status' => 'success',
             'message' => 'Driver log deleted'
         ]);
+    }
+
+    public function stats(): JsonResponse
+    {
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'total_sheets' => DriverLog::count(),
+                'pending_review' => DriverLog::where('status', 'pending')->count(),
+                'approved_today' => DriverLog::where('status', 'approved')
+                    ->whereDate('updated_at', now()->toDateString())
+                    ->count(),
+                'total_allowances_paid' => 0,
+                'average_km_per_trip' => round((float) DriverLog::whereNotNull('total_km')->avg('total_km'), 2),
+                'average_hours_per_trip' => 0,
+            ],
+        ]);
+    }
+
+    private function normalizeLogPayload(array $data, ?DriverLog $existing = null): array
+    {
+        $startKm = $data['start_km'] ?? $existing?->start_km;
+        $endKm = $data['end_km'] ?? $existing?->end_km;
+
+        if (!array_key_exists('total_km', $data) && $startKm !== null && $endKm !== null) {
+            $data['total_km'] = max((int) $endKm - (int) $startKm, 0);
+        }
+
+        $data['entry_source'] = $data['entry_source'] ?? $existing?->entry_source ?? 'paper_entry';
+
+        return $data;
     }
 }
