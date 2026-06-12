@@ -162,8 +162,19 @@ class FileUploadController extends Controller
 
             return response()->json($response, 201);
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             DB::rollBack();
+
+            Log::error('File upload failed', [
+                'message' => $e->getMessage(),
+                'exception' => get_class($e),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'category' => $request->get('category', 'general'),
+                'path' => $request->get('path', ''),
+                'disk' => config('filesystems.default'),
+                'user_id' => $request->user()?->id,
+            ]);
 
             return response()->json([
                 'status' => 'error',
@@ -510,9 +521,9 @@ class FileUploadController extends Controller
     {
         if (config('filesystems.default') === 's3') {
             // Store to S3
-            Storage::disk('s3')->put($path, $content);
+            $stored = Storage::disk('s3')->put($path, $content);
 
-            if (!Storage::disk('s3')->exists($path)) {
+            if (!$stored) {
                 throw new \RuntimeException("S3 upload failed for {$path}");
             }
         } else {
