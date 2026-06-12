@@ -70,6 +70,7 @@ class FileUploadController extends Controller
             $mimeType = $file->getMimeType();
             $fileSize = $file->getSize();
             $isImage = str_starts_with($mimeType, 'image/');
+            $shouldProcessImage = $isImage && !in_array(strtolower($extension), ['svg', 'ico', 'gif'], true);
 
             // Generate unique filename
             $extension = $file->getClientOriginalExtension();
@@ -78,15 +79,16 @@ class FileUploadController extends Controller
             // Build storage path
             $storagePath = $this->buildStoragePath($category, $customPath);
             $fullPath = $storagePath . '/' . $fileName;
+            $originalFullPath = $fullPath;
 
             // Validate file type based on category
             $this->validateFileByCategory($file, $category);
 
             // Process and store the file
-            $uploadResult = $this->processAndStoreFile($file, $fullPath, $isImage, $request);
+            $uploadResult = $this->processAndStoreFile($file, $fullPath, $shouldProcessImage, $request);
             
             // Update the filename and full path if file was converted (e.g., to WebP)
-            if ($uploadResult['converted_path'] !== $fullPath) {
+            if ($uploadResult['converted_path'] !== $originalFullPath) {
                 $fullPath = $uploadResult['converted_path'];
                 $fileName = basename($fullPath);
             }
@@ -115,7 +117,7 @@ class FileUploadController extends Controller
             }
 
             // Update MIME type if file was converted to WebP
-            if ($uploadResult['converted_path'] !== $fullPath) {
+            if ($uploadResult['converted_path'] !== $originalFullPath) {
                 $mediaData['mime_type'] = 'image/webp';
             }
 
@@ -378,6 +380,23 @@ class FileUploadController extends Controller
             'documents' => 'documents',
             'avatars' => 'avatars',
             'thumbnails' => 'thumbnails',
+            'thumbnail' => 'thumbnails',
+            'branding' => 'branding',
+            'logos' => 'logos',
+            'logo' => 'logos',
+            'banners' => 'banners',
+            'breadcrumbs' => 'breadcrumbs',
+            'sliders' => 'sliders',
+            'team' => 'team',
+            'vectors' => 'vectors',
+            'icons' => 'icons',
+            'sections' => 'sections',
+            'heroes' => 'heroes',
+            'maps' => 'maps',
+            'popups' => 'popups/media',
+            'seo' => 'seo',
+            'videos' => 'videos',
+            'signatures' => 'general/signatures',
         ];
 
         $categoryPath = $categoryPaths[$category] ?? 'general';
@@ -397,6 +416,23 @@ class FileUploadController extends Controller
             'documents' => ['mimes:pdf,doc,docx,xls,xlsx,txt,rtf', 'max:20480'],
             'avatars' => ['image', 'mimes:jpg,jpeg,png,gif', 'max:2048'],
             'thumbnails' => ['image', 'mimes:jpg,jpeg,png,gif,webp', 'max:1024'],
+            'thumbnail' => ['image', 'mimes:jpg,jpeg,png,gif,webp', 'max:1024'],
+            'branding' => ['image', 'mimes:jpg,jpeg,png,gif,webp,svg,ico', 'max:10240'],
+            'logos' => ['image', 'mimes:jpg,jpeg,png,gif,webp,svg,ico', 'max:10240'],
+            'logo' => ['image', 'mimes:jpg,jpeg,png,gif,webp,svg,ico', 'max:10240'],
+            'banners' => ['image', 'mimes:jpg,jpeg,png,gif,webp,svg', 'max:20480'],
+            'breadcrumbs' => ['image', 'mimes:jpg,jpeg,png,gif,webp,svg', 'max:20480'],
+            'sliders' => ['image', 'mimes:jpg,jpeg,png,gif,webp,svg', 'max:20480'],
+            'team' => ['image', 'mimes:jpg,jpeg,png,gif,webp', 'max:10240'],
+            'vectors' => ['mimes:svg,png,jpg,jpeg,webp', 'max:10240'],
+            'icons' => ['mimes:svg,png,jpg,jpeg,webp,ico', 'max:5120'],
+            'sections' => ['mimes:jpg,jpeg,png,gif,webp,svg,mp4,webm,pdf', 'max:51200'],
+            'heroes' => ['image', 'mimes:jpg,jpeg,png,gif,webp,svg', 'max:20480'],
+            'maps' => ['image', 'mimes:jpg,jpeg,png,gif,webp,svg', 'max:10240'],
+            'popups' => ['image', 'mimes:jpg,jpeg,png,gif,webp,svg', 'max:10240'],
+            'seo' => ['image', 'mimes:jpg,jpeg,png,gif,webp,svg', 'max:10240'],
+            'videos' => ['mimes:mp4,webm,ogg,mov,avi', 'max:51200'],
+            'signatures' => ['image', 'mimes:jpg,jpeg,png,gif,webp,svg', 'max:5120'],
         ];
 
         $categoryRules = $rules[$category] ?? $rules['general'];
@@ -475,6 +511,10 @@ class FileUploadController extends Controller
         if (config('filesystems.default') === 's3') {
             // Store to S3
             Storage::disk('s3')->put($path, $content);
+
+            if (!Storage::disk('s3')->exists($path)) {
+                throw new \RuntimeException("S3 upload failed for {$path}");
+            }
         } else {
             // Store locally and ensure directory exists
             $fullPath = storage_path('app/public/' . $path);
@@ -485,6 +525,10 @@ class FileUploadController extends Controller
             }
 
             file_put_contents($fullPath, $content);
+
+            if (!File::exists($fullPath)) {
+                throw new \RuntimeException("Local upload failed for {$path}");
+            }
         }
     }
 
