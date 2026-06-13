@@ -11,6 +11,7 @@ use App\Http\Resources\Vehicle\VehicleInsuranceResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Carbon;
 
 class VehicleInsuranceController extends Controller
 {
@@ -34,7 +35,11 @@ class VehicleInsuranceController extends Controller
 
     public function store(CreateVehicleInsuranceRequest $request): JsonResponse
     {
-        $ins = VehicleInsurance::create($request->validated()+['created_user_id'=>$request->user()->id]);
+        $payload = $request->validated();
+        $payload['renewal_reminder_date'] = $this->managedReminderDate($payload['end_date'] ?? null);
+        $payload['renewal_date'] = null;
+
+        $ins = VehicleInsurance::create($payload + ['created_user_id'=>$request->user()->id]);
         return response()->json(['status'=>'success','message'=>'Insurance created','data'=>['insurance'=>new VehicleInsuranceResource($ins)]],201);
     }
 
@@ -45,7 +50,12 @@ class VehicleInsuranceController extends Controller
 
     public function update(UpdateVehicleInsuranceRequest $request, VehicleInsurance $vehicleInsurance): JsonResponse
     {
-        $vehicleInsurance->update($request->validated()+['updated_user_id'=>$request->user()->id]);
+        $payload = $request->validated();
+        if (array_key_exists('end_date', $payload)) {
+            $payload['renewal_reminder_date'] = $this->managedReminderDate($payload['end_date']);
+        }
+
+        $vehicleInsurance->update($payload + ['updated_user_id'=>$request->user()->id]);
         return response()->json(['status'=>'success','message'=>'Insurance updated','data'=>['insurance'=>new VehicleInsuranceResource($vehicleInsurance)]]);
     }
 
@@ -57,11 +67,14 @@ class VehicleInsuranceController extends Controller
                 'updated_user_id' => $request->user()->id,
             ]);
 
-            return VehicleInsurance::create($request->validated() + [
+            $payload = $request->validated();
+            $payload['renewal_reminder_date'] = $this->managedReminderDate($payload['end_date'] ?? null);
+            $payload['renewal_date'] = now()->toDateString();
+
+            return VehicleInsurance::create($payload + [
                 'vehicle_id' => $vehicleInsurance->vehicle_id,
                 'renewed_from_id' => $vehicleInsurance->id,
                 'status' => 'active',
-                'renewal_date' => $request->input('renewal_date', now()->toDateString()),
                 'created_user_id' => $request->user()->id,
             ]);
         });
@@ -77,5 +90,14 @@ class VehicleInsuranceController extends Controller
     {
         $vehicleInsurance->delete();
         return response()->json(['status'=>'success','message'=>'Insurance deleted']);
+    }
+
+    private function managedReminderDate(mixed $expiryDate): ?string
+    {
+        if (!$expiryDate) {
+            return null;
+        }
+
+        return Carbon::parse($expiryDate)->subMonthNoOverflow()->toDateString();
     }
 }

@@ -10,6 +10,7 @@ use App\Models\Vehicle\VehicleRevenueLicense;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Carbon;
 
 class VehicleRevenueLicenseController extends Controller
 {
@@ -33,7 +34,11 @@ class VehicleRevenueLicenseController extends Controller
 
     public function store(CreateVehicleRevenueLicenseRequest $request): JsonResponse
     {
-        $license = VehicleRevenueLicense::create($request->validated() + ['created_user_id' => $request->user()->id]);
+        $payload = $request->validated();
+        $payload['renewal_reminder_date'] = $this->managedReminderDate($payload['expiry_date'] ?? null);
+        $payload['renewal_date'] = null;
+
+        $license = VehicleRevenueLicense::create($payload + ['created_user_id' => $request->user()->id]);
 
         return response()->json([
             'status' => 'success',
@@ -52,7 +57,12 @@ class VehicleRevenueLicenseController extends Controller
 
     public function update(UpdateVehicleRevenueLicenseRequest $request, VehicleRevenueLicense $vehicleRevenueLicense): JsonResponse
     {
-        $vehicleRevenueLicense->update($request->validated() + ['updated_user_id' => $request->user()->id]);
+        $payload = $request->validated();
+        if (array_key_exists('expiry_date', $payload)) {
+            $payload['renewal_reminder_date'] = $this->managedReminderDate($payload['expiry_date']);
+        }
+
+        $vehicleRevenueLicense->update($payload + ['updated_user_id' => $request->user()->id]);
 
         return response()->json([
             'status' => 'success',
@@ -69,11 +79,14 @@ class VehicleRevenueLicenseController extends Controller
                 'updated_user_id' => $request->user()->id,
             ]);
 
-            return VehicleRevenueLicense::create($request->validated() + [
+            $payload = $request->validated();
+            $payload['renewal_reminder_date'] = $this->managedReminderDate($payload['expiry_date'] ?? null);
+            $payload['renewal_date'] = now()->toDateString();
+
+            return VehicleRevenueLicense::create($payload + [
                 'vehicle_id' => $vehicleRevenueLicense->vehicle_id,
                 'renewed_from_id' => $vehicleRevenueLicense->id,
                 'status' => 'active',
-                'renewal_date' => $request->input('renewal_date', now()->toDateString()),
                 'created_user_id' => $request->user()->id,
             ]);
         });
@@ -90,5 +103,14 @@ class VehicleRevenueLicenseController extends Controller
         $vehicleRevenueLicense->delete();
 
         return response()->json(['status' => 'success', 'message' => 'Revenue license deleted']);
+    }
+
+    private function managedReminderDate(mixed $expiryDate): ?string
+    {
+        if (!$expiryDate) {
+            return null;
+        }
+
+        return Carbon::parse($expiryDate)->subMonthNoOverflow()->toDateString();
     }
 }
