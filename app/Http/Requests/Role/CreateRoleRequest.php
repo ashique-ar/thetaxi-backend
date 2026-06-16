@@ -34,7 +34,6 @@ class CreateRoleRequest extends FormRequest
         return [
             'name.required' => 'Role name is required',
             'name.unique' => 'Role name must be unique',
-            'permissions.*.exists' => 'One or more selected permissions are invalid',
         ];
     }
 

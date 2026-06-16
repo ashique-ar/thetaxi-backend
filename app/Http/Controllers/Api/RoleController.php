@@ -287,9 +287,15 @@ class RoleController extends Controller
             return [];
         }
 
+        $ids = $identifiers->filter(fn ($value) => ctype_digit($value))->values();
+        $names = $identifiers->reject(fn ($value) => ctype_digit($value))->values();
+
         $permissions = Permission::query()
-            ->whereIn('id', $identifiers)
-            ->orWhereIn('name', $identifiers)
+            ->when($ids->isNotEmpty(), fn ($query) => $query->whereIn('id', $ids))
+            ->when($names->isNotEmpty(), function ($query) use ($names, $ids) {
+                $method = $ids->isNotEmpty() ? 'orWhereIn' : 'whereIn';
+                $query->{$method}('name', $names);
+            })
             ->get(['id', 'name']);
 
         $resolvedNames = $permissions->pluck('name')->unique()->values();

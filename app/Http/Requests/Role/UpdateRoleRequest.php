@@ -41,7 +41,6 @@ class UpdateRoleRequest extends FormRequest
     {
         return [
             'name.unique' => 'Role name must be unique',
-            'permissions.*.exists' => 'One or more selected permissions are invalid',
         ];
     }
 
