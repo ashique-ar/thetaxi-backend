@@ -54,6 +54,8 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        \Sentry\Laravel\Integration::handles($exceptions);
+
         $exceptions->render(function (UnauthorizedException $exception, Request $request) {
             $payload = [
                 'message' => $exception->getMessage(),

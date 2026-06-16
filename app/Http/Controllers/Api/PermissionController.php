@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Permission\CreatePermissionRequest;
 use App\Http\Requests\Permission\UpdatePermissionRequest;
 use App\Http\Resources\PermissionResource;
+use App\Services\PermissionRegistry;
 use Spatie\Permission\Models\Permission;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -13,6 +14,14 @@ use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
 class PermissionController extends Controller
 {
+    public function registry(PermissionRegistry $registry): JsonResponse
+    {
+        return response()->json([
+            'status' => 'success',
+            'data' => $registry->grouped(),
+        ]);
+    }
+
     public function __construct()
     {
         $this->middleware('permission:permissions.view')->only(['index', 'show']);
@@ -54,33 +63,17 @@ class PermissionController extends Controller
         try {
             $data = $request->validated();
 
-            // Always create permission for both guards (web and api) if not explicitly provided
-            $guardProvided = isset($data['guard_name']) && !empty($data['guard_name']);
-            $created = [];
+            $data['guard_name'] = $data['guard_name'] ?? config('permissions.canonical_guard', 'api');
 
             \DB::beginTransaction();
             try {
-                // Create the primary permission as requested
                 $permission = Permission::firstOrCreate([
                     'name' => $data['name'],
-                    'guard_name' => $data['guard_name'] ?? 'web'
+                    'guard_name' => $data['guard_name']
                 ], [
                     'display_name' => $data['display_name'] ?? null,
                     'description' => $data['description'] ?? null,
                 ]);
-                $created[] = $permission;
-
-                // If guard not explicitly provided, mirror for 'api' (if different)
-                if (!$guardProvided) {
-                    $mirror = Permission::firstOrCreate([
-                        'name' => $data['name'],
-                        'guard_name' => 'api'
-                    ], [
-                        'display_name' => $data['display_name'] ?? null,
-                        'description' => ($data['description'] ?? null) . ' (api guard)'
-                    ]);
-                    $created[] = $mirror;
-                }
 
                 \DB::commit();
             } catch (\Exception $e) {
@@ -93,7 +86,6 @@ class PermissionController extends Controller
                 'message' => 'Permission created successfully',
                 'data' => [
                     'permission' => new PermissionResource($permission),
-                    'mirrors' => array_map(fn($p) => new PermissionResource($p), $created)
                 ]
             ], 201);
         } catch (\Exception $e) {

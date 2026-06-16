@@ -14,8 +14,7 @@ class CreatePermissionRequest extends FormRequest
      */
     public function rules(): array
     {
-        // Ensure uniqueness of permission name scoped to guard_name so same name can exist for different guards (web/api)
-        $guard = $this->input('guard_name', 'web');
+        $guard = $this->input('guard_name', config('permissions.canonical_guard', 'api'));
 
         return [
             'name' => [
@@ -52,7 +51,7 @@ class CreatePermissionRequest extends FormRequest
     {
         $this->merge([
             'name' => strtolower($this->input('name')),
-            'guard_name' => $this->input('guard_name', 'web'),
+            'guard_name' => $this->input('guard_name', config('permissions.canonical_guard', 'api')),
         ]);
     }
 }

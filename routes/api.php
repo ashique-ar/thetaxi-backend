@@ -220,6 +220,7 @@ Route::middleware(['auth:api'])->group(function () {
     Route::post('users/{user}/reset-password', [UserController::class, 'resetPassword'])->middleware('permission:users.manage');
     Route::post('users/{user}/permissions', [UserController::class, 'assignPermissions'])->middleware('permission:permissions.manage');
     Route::delete('users/{user}/permissions', [UserController::class, 'revokePermissions'])->middleware('permission:permissions.manage');
+    Route::put('users/{user}/permissions/sync-direct', [UserController::class, 'syncDirectPermissions'])->middleware('permission:permissions.manage');
     Route::post('users/{user}/roles', [UserController::class, 'assignRoles'])->middleware('permission:users.edit');
     Route::delete('users/{user}/roles', [UserController::class, 'revokeRoles'])->middleware('permission:users.edit');
     Route::post('users/{user}/contexts/activate', [UserController::class, 'activateContext'])->middleware('permission:users.edit');
@@ -262,7 +263,9 @@ Route::middleware(['auth:api'])->group(function () {
 
     Route::middleware(['permission:roles.view'])->group(function () {
         Route::apiResource('roles', RoleController::class);
-        Route::get('roles/{role}/permissions', [RoleController::class, 'permissions']);
+    Route::get('roles/{role}/permissions', [RoleController::class, 'permissions']);
+        Route::put('roles/{role}/permissions/sync', [RoleController::class, 'syncPermissions'])->middleware('permission:permissions.manage');
+        Route::post('roles/{role}/permissions/apply-template', [RoleController::class, 'applyTemplate'])->middleware('permission:permissions.manage');
         Route::post('roles/{role}/permissions', [RoleController::class, 'assignPermissions'])->middleware('permission:permissions.manage');
         Route::delete('roles/{role}/permissions', [RoleController::class, 'revokePermissions'])->middleware('permission:permissions.manage');
         Route::get('roles/{role}/users', [RoleController::class, 'users']);
@@ -274,6 +277,7 @@ Route::middleware(['auth:api'])->group(function () {
     |--------------------------------------------------------------------------
     */
 
+    Route::get('permissions/registry', [PermissionController::class, 'registry'])->middleware('permission:permissions.view');
     Route::get('permissions', [PermissionController::class, 'index'])->middleware('permission:permissions.view');
     Route::get('permissions/{permission}', [PermissionController::class, 'show'])->middleware('permission:permissions.view');
     Route::post('permissions', [PermissionController::class, 'store'])->middleware('permission:permissions.manage');

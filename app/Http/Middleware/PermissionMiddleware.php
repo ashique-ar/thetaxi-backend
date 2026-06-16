@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use Closure;
+use App\Services\PermissionEvaluator;
 use Illuminate\Support\Facades\Auth;
 use Spatie\Permission\Exceptions\UnauthorizedException;
 use Spatie\Permission\Guard;
@@ -29,18 +30,7 @@ class PermissionMiddleware
 
         $permissions = explode('|', $this->parsePermissionsToString($permission));
 
-        $guardsToCheck = collect([$guard])
-            ->when($guard === 'api', fn ($guards) => $guards->push('web'))
-            ->filter()
-            ->unique()
-            ->values();
-
-        $hasPermission = collect($permissions)
-            ->contains(function ($permission) use ($user, $guardsToCheck) {
-                return $guardsToCheck->contains(
-                    fn ($guardName) => $user->checkPermissionTo($permission, $guardName)
-                );
-            });
+        $hasPermission = app(PermissionEvaluator::class)->userHasAny($user, $permissions);
 
         if (! $hasPermission) {
             throw UnauthorizedException::forPermissions($permissions);

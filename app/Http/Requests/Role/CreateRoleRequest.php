@@ -46,7 +46,7 @@ class CreateRoleRequest extends FormRequest
     {
         $this->merge([
             'name' => strtolower($this->input('name')),
-            'guard_name' => $this->input('guard_name', 'web'),
+            'guard_name' => $this->input('guard_name', config('permissions.canonical_guard', 'api')),
         ]);
     }
 }

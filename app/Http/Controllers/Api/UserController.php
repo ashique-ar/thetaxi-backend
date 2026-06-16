@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Services\AuthService;
 use App\Services\UserService;
 use App\Services\UserContextService;
+use App\Services\PermissionAssignmentService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -26,12 +27,19 @@ class UserController extends Controller
     protected $userService;
     protected $contextService;
     protected $authService;
+    protected $permissionAssignmentService;
 
-    public function __construct(UserService $userService, UserContextService $contextService, AuthService $authService)
+    public function __construct(
+        UserService $userService,
+        UserContextService $contextService,
+        AuthService $authService,
+        PermissionAssignmentService $permissionAssignmentService
+    )
     {
         $this->userService = $userService;
         $this->contextService = $contextService;
         $this->authService = $authService;
+        $this->permissionAssignmentService = $permissionAssignmentService;
         // $this->middleware('permission:permissions.view')->only(['index', 'show']);
         // $this->middleware('permission:permissions.create')->only(['store']);
         // $this->middleware('permission:permissions.edit')->only(['update']);
@@ -261,7 +269,9 @@ class UserController extends Controller
             ->select('permissions.*')
             ->get();
 
-        $permissions = $directPermissions->merge($rolePermissions)->unique('id')->values();
+        $directNames = $directPermissions->pluck('name')->unique();
+        $roleNames = $rolePermissions->pluck('name')->unique();
+        $permissions = $directPermissions->merge($rolePermissions)->unique('name')->values();
         
         return response()->json([
             'status' => 'success',
@@ -271,6 +281,14 @@ class UserController extends Controller
                         'id' => $permission->id,
                         'name' => $permission->name,
                         'guard_name' => $permission->guard_name,
+                        'source' => $directNames->contains($permission->name)
+                            ? 'direct grant'
+                            : 'role',
+                        'sources' => array_values(array_filter([
+                            $directNames->contains($permission->name) ? 'direct grant' : null,
+                            $roleNames->contains($permission->name) ? 'role' : null,
+                            $permission->guard_name !== config('permissions.canonical_guard', 'api') ? 'legacy' : null,
+                        ])),
                         'created_at' => $permission->created_at,
                     ];
                 })
@@ -295,22 +313,15 @@ class UserController extends Controller
         ]);
 
         try {
-            $guards = $this->resolveGuards($request);
-            $permissionIds = Permission::whereIn('name', $request->permissions)
-                ->whereIn('guard_name', $guards)
-                ->pluck('id')
-                ->all();
+            $permissions = $this->permissionAssignmentService
+                ->syncDirectUserPermissions($user, array_values(array_unique(array_merge(
+                    $user->permissions()->pluck('name')->all(),
+                    $request->permissions
+                ))));
 
-            if (empty($permissionIds)) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'No matching permissions found for the selected guards.'
-                ], 422);
-            }
-
-            foreach ($permissionIds as $permissionId) {
+            foreach ($permissions as $permission) {
                 DB::table('model_has_permissions')->updateOrInsert([
-                    'permission_id' => $permissionId,
+                    'permission_id' => $permission->id,
                     'model_type' => User::class,
                     'model_id' => $user->id,
                 ]);
@@ -347,25 +358,13 @@ class UserController extends Controller
         ]);
 
         try {
-            $guards = $this->resolveGuards($request);
-            $permissionIds = Permission::whereIn('name', $request->permissions)
-                ->whereIn('guard_name', $guards)
-                ->pluck('id')
+            $remove = $this->permissionAssignmentService->normalizePermissionNames($request->permissions);
+            $permissions = collect($user->permissions()->pluck('name')->all())
+                ->reject(fn ($permission) => in_array($permission, $remove, true))
+                ->values()
                 ->all();
 
-            if (empty($permissionIds)) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'No matching permissions found for the selected guards.'
-                ], 422);
-            }
-
-            DB::table('model_has_permissions')
-                ->where('model_type', User::class)
-                ->where('model_id', $user->id)
-                ->whereIn('permission_id', $permissionIds)
-                ->delete();
-            app(PermissionRegistrar::class)->forgetCachedPermissions();
+            $this->permissionAssignmentService->syncDirectUserPermissions($user, $permissions);
             
             return response()->json([
                 'status' => 'success',
@@ -437,6 +436,30 @@ class UserController extends Controller
                 'primary_role' => $contextState['primary_role'],
                 'has_multiple_contexts' => $contextState['has_multiple_contexts'],
             ]
+        ]);
+    }
+
+    public function syncDirectPermissions(Request $request, User $user): JsonResponse
+    {
+        $request->validate([
+            'permissions' => ['present', 'array'],
+            'permissions.*' => ['string'],
+        ]);
+
+        $permissions = $this->permissionAssignmentService->syncDirectUserPermissions($user, $request->permissions);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Direct user permissions synced successfully',
+            'data' => [
+                'permissions' => $permissions->map(fn ($permission) => [
+                    'id' => $permission->id,
+                    'name' => $permission->name,
+                    'guard_name' => $permission->guard_name,
+                    'source' => 'direct grant',
+                    'sources' => ['direct grant'],
+                ])->values(),
+            ],
         ]);
     }
 

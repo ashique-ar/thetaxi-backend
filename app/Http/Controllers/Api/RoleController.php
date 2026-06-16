@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Role\CreateRoleRequest;
 use App\Http\Requests\Role\UpdateRoleRequest;
 use App\Http\Resources\RoleResource;
+use App\Services\PermissionAssignmentService;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Illuminate\Http\Request;
@@ -15,8 +16,11 @@ use Illuminate\Validation\ValidationException;
 
 class RoleController extends Controller
 {
-    public function __construct()
+    private PermissionAssignmentService $assignmentService;
+
+    public function __construct(PermissionAssignmentService $assignmentService)
     {
+        $this->assignmentService = $assignmentService;
         $this->middleware('permission:roles.view')->only(['index', 'show']);
         $this->middleware('permission:roles.create')->only(['store']);
         $this->middleware('permission:roles.edit')->only(['update']);
@@ -61,7 +65,7 @@ class RoleController extends Controller
             $role = Role::create($data);
             
             if ($permissions !== null) {
-                $role->syncPermissions($this->resolvePermissionNames($permissions));
+                $this->assignmentService->syncRolePermissions($role, $permissions);
             }
 
             return response()->json([
@@ -113,7 +117,7 @@ class RoleController extends Controller
             $role->update($data);
             
             if ($permissions !== null) {
-                $role->syncPermissions($this->resolvePermissionNames($permissions));
+                $this->assignmentService->syncRolePermissions($role, $permissions);
             }
 
             return response()->json([
@@ -204,7 +208,9 @@ class RoleController extends Controller
         ]);
 
         try {
-            $role->givePermissionTo($this->resolvePermissionNames($request->permissions));
+            $current = $role->permissions()->pluck('name')->all();
+            $permissions = array_values(array_unique(array_merge($current, $request->permissions)));
+            $this->assignmentService->syncRolePermissions($role, $permissions);
             
             return response()->json([
                 'status' => 'success',
@@ -234,7 +240,12 @@ class RoleController extends Controller
         ]);
 
         try {
-            $role->revokePermissionTo($this->resolvePermissionNames($request->permissions));
+            $remove = $this->assignmentService->normalizePermissionNames($request->permissions);
+            $permissions = collect($role->permissions()->pluck('name')->all())
+                ->reject(fn ($permission) => in_array($permission, $remove, true))
+                ->values()
+                ->all();
+            $this->assignmentService->syncRolePermissions($role, $permissions);
             
             return response()->json([
                 'status' => 'success',
@@ -264,6 +275,54 @@ class RoleController extends Controller
             'data' => [
                 'users' => $users
             ]
+        ]);
+    }
+
+    public function syncPermissions(Request $request, Role $role): JsonResponse
+    {
+        $request->validate([
+            'permissions' => ['present', 'array'],
+            'permissions.*' => ['string'],
+        ]);
+
+        $permissions = $this->assignmentService->syncRolePermissions($role, $request->permissions);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Role permissions synced successfully',
+            'data' => [
+                'permissions' => $permissions->map(fn ($permission) => [
+                    'id' => $permission->id,
+                    'name' => $permission->name,
+                    'guard_name' => $permission->guard_name,
+                ])->values(),
+            ],
+        ]);
+    }
+
+    public function applyTemplate(Request $request, Role $role): JsonResponse
+    {
+        $request->validate([
+            'template' => ['required', 'string'],
+            'mode' => ['sometimes', Rule::in(['merge', 'replace'])],
+        ]);
+
+        $permissions = $this->assignmentService->applyTemplate(
+            $role,
+            $request->input('template'),
+            $request->input('mode', 'merge')
+        );
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Permission template applied successfully',
+            'data' => [
+                'permissions' => $permissions->map(fn ($permission) => [
+                    'id' => $permission->id,
+                    'name' => $permission->name,
+                    'guard_name' => $permission->guard_name,
+                ])->values(),
+            ],
         ]);
     }
 
@@ -313,6 +372,6 @@ class RoleController extends Controller
             ]);
         }
 
-        return $resolvedNames->all();
+        return $this->assignmentService->normalizePermissionNames($resolvedNames->all());
     }
 }
