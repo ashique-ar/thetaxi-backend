@@ -44,12 +44,18 @@ class DriverController extends Controller
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        $q = Driver::with(['user', 'licenseType', 'paymentMethod']);
+        $q = Driver::with(['user', 'licenseType', 'paymentMethod', 'defaultVehicle'])
+            ->withCount(['assignments as total_trips' => function ($query) {
+                $query->where('trip_phase', 'completed');
+            }]);
         if ($request->filled('search')) {
             $q->where(function ($query) use ($request) {
                 $query->where('code', 'like', '%' . $request->search . '%')
                     ->orWhere('nic', 'like', '%' . $request->search . '%');
             });
+        }
+        if ($request->filled('availability_status')) {
+            $q->where('availability_status', $request->availability_status);
         }
         return DriverResource::collection($q->paginate($request->per_page ?? 15));
     }
@@ -237,6 +243,70 @@ class DriverController extends Controller
             'status' => 'success',
             'message' => 'Driver deleted'
         ]);
+    }
+
+    private function driverAssignmentBaseQuery()
+    {
+        return DriverAssignment::query()
+            ->with([
+                'driver.user',
+                'booking:id,booking_number,status,total_estimated,total_actual,estimated_distance,estimated_duration',
+                'bookingItem:id,booking_id,vehicle_id,pickup_location,dropoff_location,pickup_latitude,pickup_longitude,dropoff_latitude,dropoff_longitude,duration_hours',
+                'bookingItem.vehicle:id,title,license_plate,registration_no',
+            ]);
+    }
+
+    private function activeTripPhases(): array
+    {
+        return ['active', 'confirmed', 'accepted', 'pickup_arrived', 'in_progress'];
+    }
+
+    private function mapDashboardAssignment(DriverAssignment $assignment): array
+    {
+        $driver = $assignment->driver;
+        $driverName = trim(($driver?->user?->first_name ?? '') . ' ' . ($driver?->user?->last_name ?? ''));
+        $vehicle = $assignment->bookingItem?->vehicle;
+        $distance = $assignment->total_distance_km ?? $assignment->booking?->estimated_distance ?? 0;
+        $duration = $assignment->actual_end && $assignment->actual_start
+            ? $assignment->actual_start->diffInMinutes($assignment->actual_end) / 60
+            : ($assignment->booking?->estimated_duration ?? $assignment->bookingItem?->duration_hours ?? 0);
+
+        return [
+            'id' => $assignment->id,
+            'booking_id' => $assignment->booking_id,
+            'booking_number' => $assignment->booking?->booking_number,
+            'driver_id' => $assignment->driver_id,
+            'vehicle_id' => $assignment->bookingItem?->vehicle_id,
+            'assigned_at' => $assignment->assigned_from?->toIso8601String() ?? $assignment->created_at?->toIso8601String(),
+            'assigned_from' => $assignment->assigned_from?->toIso8601String(),
+            'assigned_to' => $assignment->assigned_to?->toIso8601String(),
+            'status' => $assignment->status,
+            'trip_phase' => $assignment->trip_phase?->value ?? $assignment->trip_phase,
+            'pickup_location' => $this->extractMappedLocation(
+                $assignment->bookingItem?->pickup_location,
+                $assignment->bookingItem?->pickup_latitude,
+                $assignment->bookingItem?->pickup_longitude
+            ),
+            'dropoff_location' => $this->extractMappedLocation(
+                $assignment->bookingItem?->dropoff_location,
+                $assignment->bookingItem?->dropoff_latitude,
+                $assignment->bookingItem?->dropoff_longitude
+            ),
+            'estimated_duration_hours' => round((float) $duration, 2),
+            'estimated_distance_km' => round((float) $distance, 2),
+            'driver' => $driver ? [
+                'id' => $driver->id,
+                'employee_id' => $driver->code,
+                'full_name' => $driverName !== '' ? $driverName : ($driver->code ?? 'Driver'),
+                'phone' => $driver->user?->phone,
+                'availability_status' => $driver->availability_status,
+            ] : null,
+            'vehicle' => $vehicle ? [
+                'id' => $vehicle->id,
+                'plate_number' => $vehicle->license_plate ?? $vehicle->registration_no,
+                'model' => $vehicle->title,
+            ] : null,
+        ];
     }
 
     private function normalizeDriverPayload(array $data): array
@@ -721,6 +791,123 @@ class DriverController extends Controller
                 'segments' => $segments,
                 'markers' => $markers,
                 'assignments' => $assignmentPayload,
+            ],
+        ]);
+    }
+
+    public function realTimeStatus(Request $request): JsonResponse
+    {
+        $drivers = Driver::query()
+            ->with(['user', 'licenseType', 'paymentMethod', 'defaultVehicle'])
+            ->withCount(['assignments as total_trips' => function ($query) {
+                $query->where('trip_phase', 'completed');
+            }])
+            ->when($request->filled('availability_status'), fn ($query) => $query->where('availability_status', $request->availability_status))
+            ->orderByDesc('is_online')
+            ->orderByDesc('last_active_at')
+            ->limit((int) $request->get('limit', 100))
+            ->get();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => DriverResource::collection($drivers),
+        ]);
+    }
+
+    public function activeDriverAssignments(): JsonResponse
+    {
+        $assignments = $this->driverAssignmentBaseQuery()
+            ->whereIn('trip_phase', $this->activeTripPhases())
+            ->where('status', '!=', 'cancelled')
+            ->orderByDesc('assigned_from')
+            ->limit(50)
+            ->get()
+            ->map(fn (DriverAssignment $assignment) => $this->mapDashboardAssignment($assignment))
+            ->values();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $assignments,
+        ]);
+    }
+
+    public function recentDriverAssignments(Request $request): JsonResponse
+    {
+        $assignments = $this->driverAssignmentBaseQuery()
+            ->orderByDesc('assigned_from')
+            ->orderByDesc('created_at')
+            ->limit(min(max((int) $request->get('per_page', 10), 1), 50))
+            ->get()
+            ->map(fn (DriverAssignment $assignment) => $this->mapDashboardAssignment($assignment))
+            ->values();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $assignments,
+        ]);
+    }
+
+    public function driverAssignmentDashboardStats(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'date_from' => ['nullable', 'date'],
+            'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
+        ]);
+
+        $from = isset($validated['date_from'])
+            ? Carbon::parse($validated['date_from'])->startOfDay()
+            : now()->startOfDay();
+        $to = isset($validated['date_to'])
+            ? Carbon::parse($validated['date_to'])->endOfDay()
+            : now()->endOfDay();
+
+        $totalDrivers = Driver::count();
+        $activeDrivers = Driver::where('is_active', true)->count();
+        $availableDrivers = Driver::where('availability_status', 'available')->count();
+        $offDutyDrivers = Driver::whereIn('availability_status', ['off_duty', 'unavailable'])->count();
+        $activeAssignments = DriverAssignment::whereIn('trip_phase', $this->activeTripPhases())
+            ->where('status', '!=', 'cancelled')
+            ->count();
+        $completedToday = DriverAssignment::where('trip_phase', 'completed')
+            ->whereBetween('trip_completed_at', [$from, $to])
+            ->count();
+        $pendingAssignments = DriverAssignment::whereIn('status', ['pending', 'pending_approval'])
+            ->count();
+
+        $recentAssignments = $this->driverAssignmentBaseQuery()
+            ->orderByDesc('assigned_from')
+            ->orderByDesc('created_at')
+            ->limit(10)
+            ->get()
+            ->map(fn (DriverAssignment $assignment) => $this->mapDashboardAssignment($assignment))
+            ->values();
+
+        $topPerformers = Driver::query()
+            ->with(['user', 'licenseType', 'paymentMethod', 'defaultVehicle'])
+            ->withCount(['assignments as total_trips' => function ($query) use ($from, $to) {
+                $query->where('trip_phase', 'completed')
+                    ->whereBetween('trip_completed_at', [$from, $to]);
+            }])
+            ->orderByDesc('total_trips')
+            ->limit(5)
+            ->get();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'total_drivers' => $totalDrivers,
+                'active_drivers' => $activeDrivers,
+                'available_drivers' => $availableDrivers,
+                'busy_drivers' => $activeAssignments,
+                'off_duty_drivers' => $offDutyDrivers,
+                'active_assignments' => $activeAssignments,
+                'completed_assignments_today' => $completedToday,
+                'pending_assignments' => $pendingAssignments,
+                'average_response_time_minutes' => 0,
+                'average_completion_rate' => $activeDrivers > 0 ? round(($completedToday / max($activeDrivers, 1)) * 100, 1) : 0,
+                'top_performers' => DriverResource::collection($topPerformers),
+                'recent_assignments' => $recentAssignments,
+                'geographic_distribution' => [],
             ],
         ]);
     }

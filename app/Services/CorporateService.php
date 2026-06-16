@@ -32,6 +32,10 @@ class CorporateService
             'corporate.view',
             'bookings.view',
             'bookings.create',
+            'staff-transport.view',
+            'staff-transport.manage',
+            'staff-transport.override',
+            'staff-transport.generate',
         ],
         'Transport_Coordinator' => [
             'corporate.view',
@@ -41,6 +45,10 @@ class CorporateService
             'view_all_bookings',
             'bookings.view',
             'bookings.create',
+            'staff-transport.view',
+            'staff-transport.manage',
+            'staff-transport.override',
+            'staff-transport.generate',
         ],
         'Approval_Manager' => [
             'corporate.view',
@@ -52,6 +60,7 @@ class CorporateService
             'create_bookings',
             'bookings.view',
             'bookings.create',
+            'staff-transport.view',
         ],
     ];
 

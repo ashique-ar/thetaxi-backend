@@ -12,6 +12,7 @@ use App\Services\ServiceTypeCloneService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
 class ServiceTypeController extends Controller
@@ -27,6 +28,9 @@ class ServiceTypeController extends Controller
     public function index(Request $request): AnonymousResourceCollection
     {
         [$context, $ownerType, $ownerId] = $this->resolveScope($request);
+        $hasSearch = $request->filled('search');
+        $perPage = (int) ($request->per_page ?? 15);
+        $page = (int) ($request->get('page', 1));
 
         if ($context === 'corporate' && $ownerType === 'corporate' && $ownerId !== '') {
             $assignedIds = Corporate::findOrFail($ownerId)
@@ -43,14 +47,14 @@ class ServiceTypeController extends Controller
                 $q->where('is_active', true);
             }
 
-            if ($request->filled('search')) {
+            if ($hasSearch) {
                 $q->where(function ($builder) use ($request) {
                     $builder->whereLikeInsensitive('name', $request->search)
                         ->orWhereLikeInsensitive('code', $request->search);
                 });
             }
 
-            return ServiceTypeResource::collection($q->paginate($request->per_page ?? 15));
+            return ServiceTypeResource::collection($q->paginate($perPage));
         }
 
         $q = $this->buildScopedIndexQuery($request, $context, $ownerType, $ownerId);
@@ -61,7 +65,14 @@ class ServiceTypeController extends Controller
             $q = $this->buildScopedIndexQuery($request, $fallbackContext, $fallbackOwnerType, $fallbackOwnerId);
         }
 
-        return ServiceTypeResource::collection($q->paginate($request->per_page ?? 15));
+        if (!$hasSearch) {
+            $v = (int) Cache::get('ref.service-types.v', 0);
+            $cacheKey = "ref.service-types.v{$v}.ctx{$context}.ot{$ownerType}.oi{$ownerId}.p{$perPage}.pg{$page}";
+            $results = Cache::remember($cacheKey, 3600, fn () => $q->paginate($perPage));
+            return ServiceTypeResource::collection($results);
+        }
+
+        return ServiceTypeResource::collection($q->paginate($perPage));
     }
 
     public function store(CreateServiceTypeRequest $request): JsonResponse
@@ -74,6 +85,7 @@ class ServiceTypeController extends Controller
         $data['slug'] = $data['slug'] ?? Str::slug($data['code']);
         $data['created_user_id'] = $request->user()->id;
         $svc = ServiceType::create($data);
+        Cache::put('ref.service-types.v', ((int) Cache::get('ref.service-types.v', 0)) + 1, 86400);
 
         return response()->json([
             'status'=>'success',
@@ -118,6 +130,7 @@ class ServiceTypeController extends Controller
             $serviceType->slug = Str::slug($serviceType->code);
         }
         $serviceType->save();
+        Cache::put('ref.service-types.v', ((int) Cache::get('ref.service-types.v', 0)) + 1, 86400);
         return response()->json([
             'status'=>'success',
             'message'=>'Service type updated',
@@ -141,6 +154,7 @@ class ServiceTypeController extends Controller
     public function destroy(ServiceType $serviceType): JsonResponse
     {
         $serviceType->delete();
+        Cache::put('ref.service-types.v', ((int) Cache::get('ref.service-types.v', 0)) + 1, 86400);
         return response()->json([
             'status'=>'success',
             'message'=>'Service type deleted'

@@ -1080,13 +1080,14 @@ class BookingFlowController extends Controller
             'booking_id' => 'required|uuid|exists:bookings,id',
             'action' => 'required|in:approve,reject',
             'note' => 'nullable|string|max:1000',
+            'comments' => 'nullable|string|max:1000',
         ]);
 
         try {
             $result = $this->bookingFlowService->processApproval(
                 $request->booking_id,
                 $request->action,
-                $request->note,
+                $request->input('note') ?? $request->input('comments'),
                 Auth::id()
             );
 
@@ -1966,6 +1967,41 @@ class BookingFlowController extends Controller
                 'status' => 'error',
                 'message' => 'Failed to delete booking',
                 'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Update booking status (cancel, revert to draft, etc.)
+     */
+    public function updateBookingStatus(Request $request, string $bookingId): JsonResponse
+    {
+        $request->validate([
+            'status' => 'required|string|in:draft,pending_approval,approved,confirmed,allocated,in_progress,completed,cancelled',
+            'reason' => 'nullable|string|max:1000',
+        ]);
+
+        try {
+            $result = $this->bookingFlowService->updateBookingStatus(
+                $bookingId,
+                $request->status,
+                $request->reason,
+                Auth::id()
+            );
+
+            return response()->json([
+                'status' => 'success',
+                'data' => $result,
+                'message' => 'Booking status updated successfully',
+            ]);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json(['status' => 'error', 'message' => 'Booking not found'], 404);
+        } catch (\Exception $e) {
+            Log::error('Error updating booking status: ' . $e->getMessage());
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to update booking status',
+                'error' => $e->getMessage(),
             ], 500);
         }
     }

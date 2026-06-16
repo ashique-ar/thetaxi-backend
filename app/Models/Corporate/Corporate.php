@@ -71,6 +71,11 @@ class Corporate extends BaseModel
         return $this->hasMany(Booking::class, 'corporate_account_id');
     }
 
+    public function transportPrograms()
+    {
+        return $this->hasMany(CorporateTransportProgram::class, 'corporate_id');
+    }
+
     // Scopes
 
     public function scopeActive($query)

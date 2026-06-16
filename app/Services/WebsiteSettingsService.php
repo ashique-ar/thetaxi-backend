@@ -828,7 +828,9 @@ class WebsiteSettingsService
             'show_return_trip_toggle',
             'include_garage_distance_in_pricing',
             'assignment_enable_qc_stage',
-            'assignment_enable_maintenance_stage'
+            'assignment_enable_maintenance_stage',
+            'feature_corporate_management_enabled',
+            'feature_vehicle_return_management_enabled',
         ];
 
         return $this->getMultiple($types);

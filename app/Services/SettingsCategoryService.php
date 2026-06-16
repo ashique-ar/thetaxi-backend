@@ -797,6 +797,16 @@ class SettingsCategoryService
                     'label' => 'Guest Booking',
                     'type' => 'toggle',
                     'description' => 'Allow bookings without account registration'
+                ],
+                'feature_corporate_management_enabled' => [
+                    'label' => 'Corporate Management',
+                    'type' => 'toggle',
+                    'description' => 'Enable corporate accounts, corporate portal, employees, departments, approvals, and staff transport features. Disabled by default.'
+                ],
+                'feature_vehicle_return_management_enabled' => [
+                    'label' => 'Vehicle Return Management',
+                    'type' => 'toggle',
+                    'description' => 'Enable hire return, vehicle inspection, post-return availability, and return workflow screens. Disabled by default.'
                 ]
             ]
         ];

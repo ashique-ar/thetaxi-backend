@@ -66,6 +66,16 @@ class CorporateEmployee extends BaseModel
         return $this->locations()->where('is_active', true);
     }
 
+    public function transportRouteMembers()
+    {
+        return $this->hasMany(CorporateTransportRouteMember::class, 'corporate_employee_id');
+    }
+
+    public function transportParticipations()
+    {
+        return $this->hasMany(CorporateTransportParticipation::class, 'corporate_employee_id');
+    }
+
     public function userContext()
     {
         return $this->hasOne(UserContext::class, 'context_id')

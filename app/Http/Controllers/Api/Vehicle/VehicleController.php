@@ -6,15 +6,19 @@ namespace App\Http\Controllers\Api\Vehicle;
 use App\Http\Controllers\Controller;
 use App\Models\Corporate\Corporate;
 use App\Models\Booking\Booking;
+use App\Models\Booking\BookingItem;
 use App\Models\DriverAssignment;
 use App\Models\Service\ServiceType;
 use App\Models\Vehicle\Vehicle;
+use App\Models\Vehicle\VehicleMaintenanceRecord;
+use App\Models\Vehicle\VehicleMaintenanceSchedule;
 use App\Http\Requests\Vehicle\Vehicle\CreateVehicleRequest;
 use App\Http\Requests\Vehicle\Vehicle\UpdateVehicleRequest;
 use App\Http\Resources\Vehicle\VehicleResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\CarbonPeriod;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -273,6 +277,155 @@ class VehicleController extends Controller
         ]);
     }
 
+    public function availabilityAnalytics(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'start_date' => ['nullable', 'date'],
+            'end_date' => ['nullable', 'date', 'after_or_equal:start_date'],
+            'granularity' => ['nullable', 'in:day,month,year'],
+            'search' => ['nullable', 'string'],
+            'ownership_type' => ['nullable', 'string'],
+            'usage_type' => ['nullable', 'string'],
+            'payment_model' => ['nullable', 'string'],
+            'vehicle_group_id' => ['nullable', 'uuid'],
+            'driver_id' => ['nullable', 'uuid'],
+            'owner_id' => ['nullable', 'uuid'],
+            'hire_status' => ['nullable', 'string'],
+        ]);
+
+        $granularity = $validated['granularity'] ?? 'day';
+        $start = isset($validated['start_date'])
+            ? Carbon::parse($validated['start_date'])->startOfDay()
+            : now()->startOfMonth();
+        $end = isset($validated['end_date'])
+            ? Carbon::parse($validated['end_date'])->endOfDay()
+            : now()->endOfMonth();
+
+        $vehicles = Vehicle::query()
+            ->with(['owner.driver.user', 'group.category', 'defaultDriver.user'])
+            ->when($request->filled('search'), function ($q) use ($request) {
+                $q->where(function ($query) use ($request) {
+                    $query->whereLikeInsensitive('title', $request->search)
+                        ->orWhereLikeInsensitive('license_plate', $request->search)
+                        ->orWhereLikeInsensitive('registration_no', $request->search);
+                });
+            })
+            ->when($request->filled('ownership_type'), fn ($q) => $q->where('ownership_type', $request->ownership_type))
+            ->when($request->filled('usage_type'), fn ($q) => $q->where('usage_type', $request->usage_type))
+            ->when($request->filled('payment_model'), fn ($q) => $q->where('payment_model', $request->payment_model))
+            ->when($request->filled('vehicle_group_id'), fn ($q) => $q->where('vehicle_group_id', $request->vehicle_group_id))
+            ->when($request->filled('owner_id'), fn ($q) => $q->where('owner_id', $request->owner_id))
+            ->when($request->filled('driver_id'), fn ($q) => $q->where('default_driver_id', $request->driver_id))
+            ->orderBy('title')
+            ->get();
+
+        $vehicleIds = $vehicles->pluck('id')->values();
+        $periods = $this->buildAvailabilityPeriods($start, $end, $granularity);
+
+        $bookingItems = BookingItem::query()
+            ->join('bookings', 'booking_items.booking_id', '=', 'bookings.id')
+            ->whereIn('booking_items.vehicle_id', $vehicleIds)
+            ->whereNotIn('bookings.status', ['cancelled', 'rejected'])
+            ->when($request->filled('hire_status'), fn ($q) => $q->where('bookings.status', $request->hire_status))
+            ->where(function ($q) use ($start, $end) {
+                $q->whereDate('booking_items.from_date', '<=', $end->toDateString())
+                    ->whereDate(DB::raw('COALESCE(booking_items.to_date, booking_items.from_date)'), '>=', $start->toDateString());
+            })
+            ->select([
+                'booking_items.id',
+                'booking_items.vehicle_id',
+                'booking_items.from_date',
+                'booking_items.to_date',
+                'bookings.id as booking_id',
+                'bookings.booking_number',
+                'bookings.status as booking_status',
+            ])
+            ->get()
+            ->groupBy('vehicle_id');
+
+        $maintenanceByVehicle = $this->maintenanceDatesByVehicle($vehicleIds, $start, $end);
+
+        $rows = $vehicles->map(function (Vehicle $vehicle) use ($periods, $bookingItems, $maintenanceByVehicle) {
+            $vehicleBookings = $bookingItems->get($vehicle->id, collect());
+            $maintenanceDates = $maintenanceByVehicle->get($vehicle->id, collect());
+            $availability = collect($periods)->map(function ($period) use ($vehicle, $vehicleBookings, $maintenanceDates) {
+                $periodStart = Carbon::parse($period['start_date'])->startOfDay();
+                $periodEnd = Carbon::parse($period['end_date'])->endOfDay();
+
+                $matchedBookings = $vehicleBookings->filter(function ($booking) use ($periodStart, $periodEnd) {
+                    $bookingStart = Carbon::parse($booking->from_date)->startOfDay();
+                    $bookingEnd = $booking->to_date ? Carbon::parse($booking->to_date)->endOfDay() : $bookingStart->copy()->endOfDay();
+
+                    return $bookingStart->lte($periodEnd) && $bookingEnd->gte($periodStart);
+                });
+
+                $hasMaintenance = $maintenanceDates->contains(function ($date) use ($periodStart, $periodEnd) {
+                    $maintenanceDate = Carbon::parse($date)->startOfDay();
+
+                    return $maintenanceDate->betweenIncluded($periodStart, $periodEnd);
+                });
+
+                $status = 'available';
+                if (!$vehicle->is_active || in_array($vehicle->status, ['inactive', 'blocked', 'unavailable'], true)) {
+                    $status = 'unavailable';
+                } elseif ($hasMaintenance || $vehicle->status === 'maintenance') {
+                    $status = 'maintenance';
+                } elseif ($matchedBookings->isNotEmpty()) {
+                    $status = 'booked';
+                }
+
+                return [
+                    'period_key' => $period['key'],
+                    'period_start' => $period['start_date'],
+                    'period_end' => $period['end_date'],
+                    'label' => $period['label'],
+                    'status' => $status,
+                    'available' => $status === 'available',
+                    'booking_count' => $matchedBookings->count(),
+                    'booking_numbers' => $matchedBookings->pluck('booking_number')->filter()->unique()->values(),
+                ];
+            });
+
+            return [
+                'id' => $vehicle->id,
+                'title' => $vehicle->title,
+                'license_plate' => $vehicle->license_plate ?? $vehicle->registration_no,
+                'ownership_type' => $vehicle->ownership_type,
+                'usage_type' => $vehicle->usage_type,
+                'payment_model' => $vehicle->payment_model,
+                'status' => $vehicle->status,
+                'is_active' => (bool) $vehicle->is_active,
+                'default_driver' => $vehicle->defaultDriver?->user ? trim($vehicle->defaultDriver->user->first_name . ' ' . $vehicle->defaultDriver->user->last_name) : null,
+                'owner' => $vehicle->owner?->user ? trim($vehicle->owner->user->first_name . ' ' . $vehicle->owner->user->last_name) : null,
+                'available_periods' => $availability->where('status', 'available')->count(),
+                'booked_periods' => $availability->where('status', 'booked')->count(),
+                'maintenance_periods' => $availability->where('status', 'maintenance')->count(),
+                'unavailable_periods' => $availability->where('status', 'unavailable')->count(),
+                'availability' => $availability->values(),
+            ];
+        })->values();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'period' => [
+                    'start_date' => $start->toDateString(),
+                    'end_date' => $end->toDateString(),
+                    'granularity' => $granularity,
+                ],
+                'periods' => $periods,
+                'summary' => [
+                    'total_vehicles' => $rows->count(),
+                    'fully_available' => $rows->filter(fn ($row) => $row['booked_periods'] === 0 && $row['maintenance_periods'] === 0 && $row['unavailable_periods'] === 0)->count(),
+                    'has_bookings' => $rows->where('booked_periods', '>', 0)->count(),
+                    'has_maintenance' => $rows->where('maintenance_periods', '>', 0)->count(),
+                    'unavailable' => $rows->where('unavailable_periods', '>', 0)->count(),
+                ],
+                'vehicles' => $rows,
+            ],
+        ]);
+    }
+
     public function update(UpdateVehicleRequest $request, Vehicle $vehicle): JsonResponse
     {
         $data = $this->normalizeVehicleIdentifierPayload($request->validated());
@@ -329,6 +482,91 @@ class VehicleController extends Controller
         }
 
         return $data;
+    }
+
+    private function buildAvailabilityPeriods(Carbon $start, Carbon $end, string $granularity): array
+    {
+        if ($granularity === 'year') {
+            $period = CarbonPeriod::create($start->copy()->startOfYear(), '1 year', $end->copy()->startOfYear());
+
+            return collect($period)->map(function (Carbon $date) use ($start, $end) {
+                $periodStart = $date->copy()->startOfYear()->max($start);
+                $periodEnd = $date->copy()->endOfYear()->min($end);
+
+                return [
+                    'key' => $date->format('Y'),
+                    'label' => $date->format('Y'),
+                    'start_date' => $periodStart->toDateString(),
+                    'end_date' => $periodEnd->toDateString(),
+                ];
+            })->values()->all();
+        }
+
+        if ($granularity === 'month') {
+            $period = CarbonPeriod::create($start->copy()->startOfMonth(), '1 month', $end->copy()->startOfMonth());
+
+            return collect($period)->map(function (Carbon $date) use ($start, $end) {
+                $periodStart = $date->copy()->startOfMonth()->max($start);
+                $periodEnd = $date->copy()->endOfMonth()->min($end);
+
+                return [
+                    'key' => $date->format('Y-m'),
+                    'label' => $date->format('M Y'),
+                    'start_date' => $periodStart->toDateString(),
+                    'end_date' => $periodEnd->toDateString(),
+                ];
+            })->values()->all();
+        }
+
+        $period = CarbonPeriod::create($start->copy()->startOfDay(), '1 day', $end->copy()->startOfDay());
+
+        return collect($period)->map(fn (Carbon $date) => [
+            'key' => $date->format('Y-m-d'),
+            'label' => $date->format('d M'),
+            'start_date' => $date->toDateString(),
+            'end_date' => $date->toDateString(),
+        ])->values()->all();
+    }
+
+    private function maintenanceDatesByVehicle($vehicleIds, Carbon $start, Carbon $end)
+    {
+        $dates = collect();
+
+        if (Schema::hasTable('vehicle_maintenance_records')) {
+            $recordDateColumn = Schema::hasColumn('vehicle_maintenance_records', 'completion_date')
+                ? 'completion_date'
+                : 'performed_date';
+
+            $dates = $dates->merge(
+                VehicleMaintenanceRecord::query()
+                    ->whereIn('vehicle_id', $vehicleIds)
+                    ->whereBetween($recordDateColumn, [$start->toDateString(), $end->toDateString()])
+                    ->get(['vehicle_id', $recordDateColumn])
+                    ->map(fn ($record) => [
+                        'vehicle_id' => $record->vehicle_id,
+                        'date' => $record->{$recordDateColumn},
+                    ])
+            );
+        }
+
+        if (Schema::hasTable('vehicle_maintenance_schedules')) {
+            $scheduleDateColumn = Schema::hasColumn('vehicle_maintenance_schedules', 'scheduled_date')
+                ? 'scheduled_date'
+                : 'next_due_date';
+
+            $dates = $dates->merge(
+                VehicleMaintenanceSchedule::query()
+                    ->whereIn('vehicle_id', $vehicleIds)
+                    ->whereBetween($scheduleDateColumn, [$start->toDateString(), $end->toDateString()])
+                    ->get(['vehicle_id', $scheduleDateColumn])
+                    ->map(fn ($schedule) => [
+                        'vehicle_id' => $schedule->vehicle_id,
+                        'date' => $schedule->{$scheduleDateColumn},
+                    ])
+            );
+        }
+
+        return $dates->groupBy('vehicle_id')->map(fn ($items) => $items->pluck('date')->filter()->values());
     }
 
 

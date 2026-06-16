@@ -14,6 +14,10 @@ Schedule::command('sitemap:generate-and-ping')->daily();
 
 Schedule::command('short-urls:cleanup')->daily();
 
+Schedule::command('corporate-transport:generate-bookings')
+    ->everyFifteenMinutes()
+    ->withoutOverlapping(10);
+
 Schedule::command(sprintf(
     'queue:work %s --stop-when-empty --queue=%s --tries=%d --timeout=%d --sleep=%d --max-time=%d',
     config('queue.default', 'database'),

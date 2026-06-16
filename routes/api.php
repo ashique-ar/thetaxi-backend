@@ -273,9 +273,13 @@ Route::middleware(['auth:api'])->group(function () {
     |--------------------------------------------------------------------------
     */
 
-    Route::apiResource('permissions', PermissionController::class);
-    Route::get('permissions/{permission}/roles', [PermissionController::class, 'roles']);
-    Route::get('permissions/{permission}/users', [PermissionController::class, 'users']);
+    Route::get('permissions', [PermissionController::class, 'index'])->middleware('permission:permissions.view');
+    Route::get('permissions/{permission}', [PermissionController::class, 'show'])->middleware('permission:permissions.view');
+    Route::post('permissions', [PermissionController::class, 'store'])->middleware('permission:permissions.manage');
+    Route::put('permissions/{permission}', [PermissionController::class, 'update'])->middleware('permission:permissions.manage');
+    Route::delete('permissions/{permission}', [PermissionController::class, 'destroy'])->middleware('permission:permissions.manage');
+    Route::get('permissions/{permission}/roles', [PermissionController::class, 'roles'])->middleware('permission:permissions.view');
+    Route::get('permissions/{permission}/users', [PermissionController::class, 'users'])->middleware('permission:permissions.view');
 
 
     /*
@@ -304,8 +308,13 @@ Route::middleware(['auth:api'])->group(function () {
     |--------------------------------------------------------------------------
     */
 
+    Route::apiResource('payment-methods', PaymentMethodController::class)
+        ->middleware('permission:payment-methods.manage')
+        ->except(['index', 'show']);
+    Route::get('payment-methods', [PaymentMethodController::class, 'index'])->middleware('permission:bookings.view');
+    Route::get('payment-methods/{payment_method}', [PaymentMethodController::class, 'show'])->middleware('permission:bookings.view');
+
     Route::middleware(['permission:customers.view'])->group(function () {
-        Route::apiResource('payment-methods', PaymentMethodController::class);
         Route::get('customers/search', [CustomerController::class, 'search']);
         Route::get('customers/check-email', [CustomerController::class, 'checkEmail']);
         Route::get('customers/stats', [CustomerController::class, 'getCustomerAnalytics'])->middleware('permission:customers.analytics');
@@ -604,6 +613,7 @@ Route::middleware(['auth:api'])->group(function () {
 
         Route::get('/vehicles/available', [VehicleController::class, 'getAvailableVehicles']);
         Route::get('/vehicles/operations-dashboard', [VehicleController::class, 'operationsDashboard']);
+        Route::get('/vehicles/availability-analytics', [VehicleController::class, 'availabilityAnalytics']);
         Route::get('/vehicles/{vehicle}/commissions', [VehicleCommissionController::class, 'index']);
         Route::post('/vehicles/{vehicle}/commissions', [VehicleCommissionController::class, 'store']);
         Route::put('/vehicles/{vehicle}/commissions/{commission}', [VehicleCommissionController::class, 'update']);
@@ -700,7 +710,11 @@ Route::middleware(['auth:api'])->group(function () {
     Route::middleware(['permission:drivers.view'])->group(function () {
         // Driver status and location endpoints (place specific routes before resource registration)
         Route::get('drivers/locations', [DriverController::class, 'locations']);
+        Route::get('drivers/realtime-status', [DriverController::class, 'realTimeStatus']);
         Route::get('drivers/with-status', [\App\Http\Controllers\Api\Admin\BookingAssignmentController::class, 'driversWithStatus']);
+        Route::get('driver-assignments/dashboard-stats', [DriverController::class, 'driverAssignmentDashboardStats']);
+        Route::get('driver-assignments/active', [DriverController::class, 'activeDriverAssignments']);
+        Route::get('driver-assignments/recent', [DriverController::class, 'recentDriverAssignments']);
         Route::get('drivers/{driver}/status', [DriverController::class, 'status']);
         Route::post('drivers/{driver}/test-notification', [DriverController::class, 'testNotification']);
         Route::get('drivers/{driver}/activity', [DriverController::class, 'activity']);
@@ -947,8 +961,10 @@ Route::middleware(['auth:api'])->group(function () {
             // Approval details and processing routes
             Route::get('approval/details/{bookingId}', [BookingFlowController::class, 'getApprovalDetails'])
                 ->middleware('permission:bookings.view');
-            Route::post('approval/process', [BookingFlowController::class, 'processApproval'])
+            Route::post('approval/process', [BookingFlowController::class, 'processBookingApproval'])
                 ->middleware('permission:bookings.approve');
+            Route::post('bookings/{bookingId}/status', [BookingFlowController::class, 'updateBookingStatus'])
+                ->middleware('permission:bookings.update');
 
             // ========================
             // BOOKING LIST MANAGEMENT
@@ -1357,6 +1373,37 @@ Route::middleware(['auth:api'])->group(function () {
             return \App\Http\Resources\ServiceTypeResource::collection($serviceTypes);
         });
 
+        // Staff Transport
+        Route::prefix('staff-transport')->group(function () {
+            Route::get('programs', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'programs']);
+            Route::post('programs', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'storeProgram']);
+            Route::put('programs/{program}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'updateProgram']);
+
+            Route::get('programs/{program}/shifts', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'shifts']);
+            Route::post('programs/{program}/shifts', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'storeShift']);
+            Route::put('programs/{program}/shifts/{shift}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'updateShift']);
+            Route::delete('programs/{program}/shifts/{shift}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'deleteShift']);
+
+            Route::get('programs/{program}/routes', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'routes']);
+            Route::post('programs/{program}/routes', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'storeRoute']);
+            Route::put('programs/{program}/routes/{route}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'updateRoute']);
+            Route::delete('programs/{program}/routes/{route}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'deleteRoute']);
+
+            Route::get('programs/{program}/routes/{route}/members', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'members']);
+            Route::post('programs/{program}/routes/{route}/members', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'storeMember']);
+            Route::put('programs/{program}/routes/{route}/members/{member}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'updateMember']);
+            Route::delete('programs/{program}/routes/{route}/members/{member}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'deleteMember']);
+
+            Route::post('roster/build', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'buildRoster']);
+            Route::get('roster', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'roster']);
+            Route::get('my-calendar', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'myCalendar']);
+            Route::post('my-calendar/{participation}/status', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'setMyParticipation']);
+            Route::post('roster/{participation}/status', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'setParticipation']);
+            Route::post('generate', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'generate']);
+            Route::get('logs', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'logs']);
+            Route::get('generated-bookings/{booking}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'generatedBooking']);
+        });
+
         // Booking Management
         Route::get('bookings/my', [\App\Http\Controllers\Api\Corporate\CorporateBookingController::class, 'myBookings']);
         Route::get('bookings/export', [\App\Http\Controllers\Api\Corporate\CorporateBookingController::class, 'export']);
@@ -1475,6 +1522,32 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('{corporate}/employees/{id}/role', [\App\Http\Controllers\Api\Corporate\AdminCorporateEmployeeController::class, 'assignRole']);
 
         Route::post('{corporate}/bookings/for-employee', [\App\Http\Controllers\Api\Corporate\AdminCorporateBookingController::class, 'storeForEmployee']);
+
+        Route::prefix('{corporate}/staff-transport')->group(function () {
+            Route::get('programs', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'programs']);
+            Route::post('programs', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'storeProgram']);
+            Route::put('programs/{program}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'updateProgram']);
+            Route::get('programs/{program}/shifts', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'shifts']);
+            Route::post('programs/{program}/shifts', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'storeShift']);
+            Route::put('programs/{program}/shifts/{shift}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'updateShift']);
+            Route::delete('programs/{program}/shifts/{shift}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'deleteShift']);
+            Route::get('programs/{program}/routes', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'routes']);
+            Route::post('programs/{program}/routes', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'storeRoute']);
+            Route::put('programs/{program}/routes/{route}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'updateRoute']);
+            Route::delete('programs/{program}/routes/{route}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'deleteRoute']);
+            Route::get('programs/{program}/routes/{route}/members', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'members']);
+            Route::post('programs/{program}/routes/{route}/members', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'storeMember']);
+            Route::put('programs/{program}/routes/{route}/members/{member}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'updateMember']);
+            Route::delete('programs/{program}/routes/{route}/members/{member}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'deleteMember']);
+            Route::post('roster/build', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'buildRoster']);
+            Route::get('roster', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'roster']);
+            Route::get('my-calendar', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'myCalendar']);
+            Route::post('my-calendar/{participation}/status', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'setMyParticipation']);
+            Route::post('roster/{participation}/status', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'setParticipation']);
+            Route::post('generate', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'generate']);
+            Route::get('logs', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'logs']);
+            Route::get('generated-bookings/{booking}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'generatedBooking']);
+        });
     });
 });
 
@@ -1487,14 +1560,7 @@ Route::middleware(['auth:api'])->group(function () {
 |
 */
 
-Route::get('health', function () {
-    return response()->json([
-        'status' => 'healthy',
-        'timestamp' => now(),
-        'version' => config('app.version', '1.0.0'),
-        'environment' => config('app.env'),
-    ]);
-});
+Route::get('health', \App\Http\Controllers\Api\HealthController::class);
 
 
 

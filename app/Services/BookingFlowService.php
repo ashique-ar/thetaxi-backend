@@ -33,6 +33,10 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use App\Services\CurrencyService;
 use App\Services\DiscountService;
+use App\Services\MailDispatchService;
+use App\Services\Sms\SmsService;
+use App\Mail\GeneralMail;
+use Illuminate\Notifications\DatabaseNotification;
 use Ramsey\Uuid\Uuid;
 use App\Services\PricingVariableService;
 use App\Services\AssignmentService;
@@ -59,17 +63,23 @@ class BookingFlowService
     protected PricingVariableService $pricingVariableService;
     protected AssignmentService $assignmentService;
     protected AvailabilityEnforcementService $availabilityEnforcement;
+    protected MailDispatchService $mailDispatchService;
+    protected SmsService $smsService;
 
     public function __construct(
         CurrencyService $currencyService,
         PricingVariableService $pricingVariableService,
         AssignmentService $assignmentService,
-        AvailabilityEnforcementService $availabilityEnforcement
+        AvailabilityEnforcementService $availabilityEnforcement,
+        MailDispatchService $mailDispatchService,
+        SmsService $smsService
     ) {
         $this->currencyService = $currencyService;
         $this->pricingVariableService = $pricingVariableService;
         $this->assignmentService = $assignmentService;
         $this->availabilityEnforcement = $availabilityEnforcement;
+        $this->mailDispatchService = $mailDispatchService;
+        $this->smsService = $smsService;
     }
 
     /**
@@ -6622,12 +6632,73 @@ class BookingFlowService
      */
     private function notifyApprovalRequested(Booking $booking, BookingApproval $approval): void
     {
-        // TODO: Implement notification logic
-        // This would typically:
-        // 1. Find appropriate managers/approvers
-        // 2. Send email notifications
-        // 3. Create in-app notifications
-        // 4. Log the notification attempt
+        try {
+            // Find users in this company who can approve bookings
+            $approvers = User::permission('bookings.approve')
+                ->when($booking->company_id, fn($q) => $q->where('company_id', $booking->company_id))
+                ->get();
+
+            $bookingNumber = $booking->booking_number ?? (string) $booking->id;
+            $subject = "Booking #{$bookingNumber} Requires Approval";
+            $message = "A booking requires your approval.\n\n"
+                . "Booking Number: {$bookingNumber}\n"
+                . "Priority: " . ($approval->priority ?? 'normal') . "\n"
+                . "Please log in to the portal to review and process this request.";
+
+            // Send email to each approver
+            foreach ($approvers as $approver) {
+                if ($approver->email) {
+                    try {
+                        $this->mailDispatchService->sendToInternal(
+                            $approver->email,
+                            new GeneralMail([
+                                'subject' => $subject,
+                                'message' => $message,
+                                'data' => [
+                                    'booking_id' => (string) $booking->id,
+                                    'booking_number' => $bookingNumber,
+                                    'approval_id' => (string) $approval->id,
+                                ],
+                            ])
+                        );
+                    } catch (\Throwable $e) {
+                        Log::warning('Failed to send approval request email', [
+                            'approver_id' => $approver->id,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                }
+
+                // Create in-app database notification
+                try {
+                    DatabaseNotification::create([
+                        'id' => Uuid::uuid4()->toString(),
+                        'type' => 'App\Notifications\BookingApprovalRequested',
+                        'notifiable_type' => 'App\Models\User',
+                        'notifiable_id' => $approver->id,
+                        'data' => [
+                            'booking_id' => (string) $booking->id,
+                            'booking_number' => $bookingNumber,
+                            'approval_id' => (string) $approval->id,
+                            'notification_type' => 'booking_approval_requested',
+                            'title' => "Booking #{$bookingNumber} awaiting approval",
+                            'message' => "Priority: " . ($approval->priority ?? 'normal'),
+                        ],
+                        'read_at' => null,
+                    ]);
+                } catch (\Throwable $e) {
+                    Log::warning('Failed to create in-app approval notification', [
+                        'approver_id' => $approver->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('notifyApprovalRequested failed', [
+                'booking_id' => $booking->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         Log::info('Booking approval requested', [
             'booking_id' => $booking->id,
@@ -6643,13 +6714,68 @@ class BookingFlowService
      */
     private function sendBookingConfirmation(Booking $booking): void
     {
-        // TODO: Implement confirmation notification logic
-        // This would typically:
-        // 1. Send confirmation email to customer
-        // 2. Send notification to driver
-        // 3. Create calendar events
-        // 4. Update vehicle/driver schedules
-        // 5. Log the confirmation
+        $bookingNumber = $booking->booking_number ?? (string) $booking->id;
+        $confirmationNumber = $booking->confirmation_number ?? $bookingNumber;
+
+        try {
+            // Load customer relation if not already loaded
+            $customer = $booking->customer ?? ($booking->customer_id ? Customer::find($booking->customer_id) : null);
+
+            $customerEmail = $customer?->email ?? $booking->notification_email ?? null;
+            $customerPhone = $customer?->phone ?? null;
+            $customerName = $customer ? trim(($customer->first_name ?? '') . ' ' . ($customer->last_name ?? '')) : 'Valued Customer';
+
+            // Send confirmation email to customer
+            if ($customerEmail) {
+                try {
+                    $this->mailDispatchService->sendToCustomer(
+                        $customerEmail,
+                        new GeneralMail([
+                            'subject' => "Booking Confirmed — #{$bookingNumber}",
+                            'message' => "Dear {$customerName},\n\n"
+                                . "Your booking has been confirmed.\n\n"
+                                . "Booking Number: {$bookingNumber}\n"
+                                . "Confirmation Number: {$confirmationNumber}\n\n"
+                                . "Thank you for choosing our service.",
+                            'data' => [
+                                'booking_id' => (string) $booking->id,
+                                'booking_number' => $bookingNumber,
+                                'confirmation_number' => $confirmationNumber,
+                            ],
+                        ])
+                    );
+                } catch (\Throwable $e) {
+                    Log::warning('Failed to send booking confirmation email', [
+                        'booking_id' => $booking->id,
+                        'customer_email' => $customerEmail,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+
+            // Send SMS confirmation to customer if phone available
+            if ($customerPhone) {
+                try {
+                    $this->smsService->queueSingleMessage([
+                        'recipient' => $customerPhone,
+                        'message' => "Your booking #{$bookingNumber} has been confirmed. Confirmation: {$confirmationNumber}.",
+                        'context_type' => 'booking',
+                        'context_id' => (string) $booking->id,
+                        'template_key' => 'booking_confirmation',
+                    ]);
+                } catch (\Throwable $e) {
+                    Log::warning('Failed to send booking confirmation SMS', [
+                        'booking_id' => $booking->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('sendBookingConfirmation failed', [
+                'booking_id' => $booking->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         Log::info('Booking confirmed', [
             'booking_id' => $booking->id,
@@ -8808,6 +8934,28 @@ class BookingFlowService
     }
 
     /**
+     * Update booking status directly (cancellation, manual status overrides)
+     */
+    public function updateBookingStatus(string $bookingId, string $status, ?string $reason, string $userId): array
+    {
+        $booking = Booking::findOrFail($bookingId);
+
+        if ($status === 'cancelled') {
+            $this->cancelBookingRecord($booking, $userId, $reason ?: 'Cancelled by user');
+        } else {
+            $booking->update(['status' => $status]);
+        }
+
+        $booking->refresh();
+
+        return [
+            'booking_id' => $bookingId,
+            'status' => $booking->status,
+            'updated_by' => $userId,
+        ];
+    }
+
+    /**
      * Perform bulk operations on bookings
      */
     public function bulkOperations(string $operation, array $bookingIds, array $data, string $userId, ?string $reason = null): array
@@ -8912,14 +9060,14 @@ class BookingFlowService
 
         return [
             'overview' => [
-                'total_bookings' => $query->count(),
-                'confirmed_bookings' => $query->where('status', 'confirmed')->count(),
-                'pending_approval' => $query->where('status', 'pending_approval')->count(),
-                'in_progress' => $query->where('status', 'in_progress')->count(),
-                'completed' => $query->where('status', 'completed')->count(),
-                'cancelled' => $query->where('status', 'cancelled')->count(),
-                'total_revenue' => $query->where('status', 'completed')->sum('total_actual'),
-                'pending_revenue' => $query->whereIn('status', ['confirmed', 'in_progress'])->sum('total_estimated'),
+                'total_bookings' => (clone $query)->count(),
+                'confirmed_bookings' => (clone $query)->where('status', 'confirmed')->count(),
+                'pending_approval' => (clone $query)->where('status', 'pending_approval')->count(),
+                'in_progress' => (clone $query)->where('status', 'in_progress')->count(),
+                'completed' => (clone $query)->where('status', 'completed')->count(),
+                'cancelled' => (clone $query)->where('status', 'cancelled')->count(),
+                'total_revenue' => (clone $query)->where('status', 'completed')->sum('total_actual'),
+                'pending_revenue' => (clone $query)->whereIn('status', ['confirmed', 'in_progress'])->sum('total_estimated'),
             ],
             'trends' => $this->getDashboardTrends($startDate, $endDate),
             'top_customers' => $this->getTopCustomers($startDate, $endDate),

@@ -60,9 +60,7 @@ return Application::configure(basePath: dirname(__DIR__))
             ];
 
             $shouldExposeAccessDiagnostics = config('app.debug')
-                || app()->environment(['local', 'development', 'staging', 'testing']) || true;
-            // $shouldExposeAccessDiagnostics = config('app.debug')
-            //     || app()->environment(['local', 'development', 'staging', 'testing']);
+                || app()->environment(['local', 'development', 'staging', 'testing']);
 
             if ($shouldExposeAccessDiagnostics) {
                 $user = $request->user();

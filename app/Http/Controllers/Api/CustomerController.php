@@ -451,14 +451,32 @@ class CustomerController extends Controller
         $activeCustomers = Customer::whereHas('bookings', function ($q) {
             $q->where('created_at', '>=', now()->subDays(30));
         })->count();
+        $inactiveCustomers = max($totalCustomers - $activeCustomers, 0);
+        $customersWithLicense = Customer::whereNotNull('license_no')
+            ->where('license_no', '!=', '')
+            ->count();
+        $totalBookings = DB::table('bookings')->count();
 
         $analytics = [
+            // Dashboard-compatible keys used by the portal customer dashboard.
+            'total' => $totalCustomers,
+            'active' => $activeCustomers,
+            'inactive' => $inactiveCustomers,
+            'withLicense' => $customersWithLicense,
+            'totalBookings' => $totalBookings,
+
+            // Analytics keys used by the richer analytics screens.
             'total_customers' => $totalCustomers,
             'new_customers_this_month' => $newThisMonth,
             'active_customers' => $activeCustomers,
+            'inactive_customers' => $inactiveCustomers,
+            'customers_with_license' => $customersWithLicense,
+            'total_bookings' => $totalBookings,
             'totalCustomers' => $totalCustomers,
             'newCustomersThisMonth' => $newThisMonth,
             'activeCustomers' => $activeCustomers,
+            'inactiveCustomers' => $inactiveCustomers,
+            'customersWithLicense' => $customersWithLicense,
             'averageLifetimeValue' => (float) (DB::table('bookings')
                 ->selectRaw('AVG(COALESCE(total_actual, total_estimated, 0)) as average_lifetime_value')
                 ->value('average_lifetime_value') ?? 0),

@@ -10,6 +10,7 @@ use App\Models\Country;
 use App\Models\State;
 use App\Models\SystemConstant;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class UtilityController extends Controller
 {
@@ -18,8 +19,12 @@ class UtilityController extends Controller
      */
     public function countries()
     {
-        $countries = Country::select('id', 'name', 'code')->get();
-        return CountryResource::collection($countries);
+        $countries = Cache::remember('ref.countries', 86400, fn () =>
+            Country::select('id', 'name', 'code')->get()
+        );
+        return response()
+            ->json(CountryResource::collection($countries))
+            ->header('Cache-Control', 'public, max-age=86400');
     }
 
     /**
@@ -27,8 +32,13 @@ class UtilityController extends Controller
      */
     public function states(Request $request)
     {
-        $states = State::where('country_id', $request->country)->get();
-        return StateResource::collection($states);
+        $countryId = (string) $request->country;
+        $states = Cache::remember("ref.states.{$countryId}", 86400, fn () =>
+            State::where('country_id', $countryId)->get()
+        );
+        return response()
+            ->json(StateResource::collection($states))
+            ->header('Cache-Control', 'public, max-age=86400');
     }
 
     public function constants(Request $request)
