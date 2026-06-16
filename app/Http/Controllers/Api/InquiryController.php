@@ -18,7 +18,7 @@ class InquiryController extends Controller
     {
         $this->middleware('permission:inquiries.view')->only(['index', 'show']);
         $this->middleware('permission:inquiries.create')->only(['store']);
-        $this->middleware('permission:inquiries.edit')->only(['update']);
+        $this->middleware('permission:inquiries.edit')->only(['update', 'assign', 'updateStatus', 'respond', 'markRead']);
         $this->middleware('permission:inquiries.delete')->only(['destroy']);
     }
 
@@ -71,6 +71,78 @@ class InquiryController extends Controller
         return response()->json([
             'status' => 'success',
             'message' => 'Inquiry deleted'
+        ]);
+    }
+
+    public function assign(Request $request, Inquiry $inquiry): JsonResponse
+    {
+        $data = $request->validate([
+            'assigned_to' => ['required', 'string', 'max:255'],
+        ]);
+
+        $inquiry->update([
+            'assigned_to' => $data['assigned_to'],
+            'status' => $inquiry->status ?: 'assigned',
+            'updated_user_id' => $request->user()->id,
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Inquiry assigned',
+            'data' => ['inquiry' => new InquiryResource($inquiry)]
+        ]);
+    }
+
+    public function updateStatus(Request $request, Inquiry $inquiry): JsonResponse
+    {
+        $data = $request->validate([
+            'status' => ['required', 'string', 'max:50'],
+        ]);
+
+        $inquiry->update([
+            'status' => $data['status'],
+            'updated_user_id' => $request->user()->id,
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Inquiry status updated',
+            'data' => ['inquiry' => new InquiryResource($inquiry)]
+        ]);
+    }
+
+    public function respond(Request $request, Inquiry $inquiry): JsonResponse
+    {
+        $data = $request->validate([
+            'message' => ['required', 'string'],
+            'status' => ['sometimes', 'nullable', 'string', 'max:50'],
+        ]);
+
+        $inquiry->update([
+            'response' => $data['message'],
+            'status' => $data['status'] ?? 'responded',
+            'responded_at' => now(),
+            'updated_user_id' => $request->user()->id,
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Inquiry response saved',
+            'data' => ['inquiry' => new InquiryResource($inquiry)]
+        ]);
+    }
+
+    public function markRead(Request $request, Inquiry $inquiry): JsonResponse
+    {
+        $inquiry->update([
+            'status' => $inquiry->status ?: 'read',
+            'updated_user_id' => $request->user()->id,
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Inquiry marked as read',
+            'data' => ['inquiry' => new InquiryResource($inquiry)]
         ]);
     }
 }

@@ -17,7 +17,7 @@ class NotificationTemplateController extends Controller
     public function __construct()
     {
         $this->middleware('permission:notification-templates.view')->only(['index', 'show']);
-        $this->middleware('permission:notification-templates.create')->only(['store']);
+        $this->middleware('permission:notification-templates.create')->only(['store', 'sendTest']);
         $this->middleware('permission:notification-templates.edit')->only(['update']);
         $this->middleware('permission:notification-templates.delete')->only(['destroy']);
     }
@@ -69,5 +69,58 @@ class NotificationTemplateController extends Controller
             'status' => 'success',
             'message' => 'Template deleted'
         ]);
+    }
+
+    public function preview(Request $request, NotificationTemplate $notification_template): JsonResponse
+    {
+        $data = $request->input('data', []);
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'subject' => $this->renderTemplate($notification_template->subject ?? '', $data),
+                'body' => $this->renderTemplate($notification_template->body, $data),
+            ],
+        ]);
+    }
+
+    public function sendTest(Request $request, NotificationTemplate $notification_template): JsonResponse
+    {
+        $data = $request->validate([
+            'recipient' => ['required', 'string', 'max:255'],
+            'data' => ['sometimes', 'array'],
+        ]);
+
+        $body = $this->renderTemplate($notification_template->body, $data['data'] ?? []);
+        $log = $notification_template->logs()->create([
+            'content' => $body,
+            'channel' => $notification_template->channel,
+            'sent_at' => now(),
+            'status' => 'queued',
+            'created_user_id' => $request->user()->id,
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Test notification queued',
+            'data' => ['log' => $log, 'recipient' => $data['recipient']],
+        ], 202);
+    }
+
+    private function renderTemplate(?string $template, array $data): string
+    {
+        $rendered = $template ?? '';
+
+        foreach ($data as $key => $value) {
+            if (is_scalar($value) || $value === null) {
+                $rendered = str_replace(
+                    ['{{' . $key . '}}', '{{ ' . $key . ' }}'],
+                    (string) $value,
+                    $rendered
+                );
+            }
+        }
+
+        return $rendered;
     }
 }

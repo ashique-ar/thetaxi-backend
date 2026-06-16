@@ -17,9 +17,9 @@ class CmsContentController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('permission:cms-contents.view')->only(['index', 'show', 'filterUsers']);
+        $this->middleware('permission:cms-contents.view')->only(['index', 'show', 'filterUsers', 'search']);
         $this->middleware('permission:cms-contents.create')->only(['store']);
-        $this->middleware('permission:cms-contents.edit')->only(['update']);
+        $this->middleware('permission:cms-contents.edit')->only(['update', 'publish', 'unpublish']);
         $this->middleware('permission:cms-contents.delete')->only(['destroy']);
     }
 
@@ -161,6 +161,46 @@ class CmsContentController extends Controller
         return response()->json([
             'status' => 'success',
             'message' => 'Content deleted'
+        ]);
+    }
+
+    public function search(Request $request): AnonymousResourceCollection
+    {
+        $request->merge([
+            'search' => $request->input('search', $request->input('q')),
+            'content_type_slug' => $request->input('content_type_slug', $request->input('content_type')),
+        ]);
+
+        return $this->index($request);
+    }
+
+    public function publish(Request $request, CmsContent $cms_content): JsonResponse
+    {
+        $cms_content->update([
+            'status' => 'published',
+            'published_at' => $cms_content->published_at ?? now(),
+            'is_active' => true,
+            'updated_user_id' => $request->user()->id,
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Content published',
+            'data' => ['content' => new CmsContentResource($cms_content->fresh(['contentType', 'createdBy', 'updatedBy']))],
+        ]);
+    }
+
+    public function unpublish(Request $request, CmsContent $cms_content): JsonResponse
+    {
+        $cms_content->update([
+            'status' => 'draft',
+            'updated_user_id' => $request->user()->id,
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Content unpublished',
+            'data' => ['content' => new CmsContentResource($cms_content->fresh(['contentType', 'createdBy', 'updatedBy']))],
         ]);
     }
 

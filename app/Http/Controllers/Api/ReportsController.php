@@ -225,12 +225,14 @@ class ReportsController extends Controller
     // Export
     // ─────────────────────────────────────────────────────────────────
 
-    public function exportReport(Request $request, string $type): Response|JsonResponse
+    public function exportReport(Request $request, ?string $type = null): Response|JsonResponse
     {
         $request->validate([
-            'format' => 'required|in:csv,pdf',
+            'format' => 'sometimes|in:csv,pdf',
+            'type' => 'sometimes|string|in:bookings,customers,vehicles,financial',
         ]);
 
+        $type = $type ?? $request->get('type', 'bookings');
         $format  = $request->get('format', 'csv');
         $filters = $this->parseFilters($request);
 

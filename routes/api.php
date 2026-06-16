@@ -427,6 +427,9 @@ Route::middleware(['auth:api'])->group(function () {
     // CMS content management (protected by controller permissions)
     Route::apiResource('cms-content-types', CmsContentTypeController::class);
     Route::get('cms-contents/filter-users', [CmsContentController::class, 'filterUsers']);
+    Route::get('cms-contents/search', [CmsContentController::class, 'search']);
+    Route::put('cms-contents/{cms_content}/publish', [CmsContentController::class, 'publish']);
+    Route::put('cms-contents/{cms_content}/unpublish', [CmsContentController::class, 'unpublish']);
     Route::apiResource('cms-contents', CmsContentController::class);
 
     // AI Content Generation Routes
@@ -771,8 +774,16 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('galleries/categories', [ImageGalleryController::class, 'categories']);
         Route::apiResource('galleries', ImageGalleryController::class)->parameters(['galleries' => 'imageGallery']);
         Route::apiResource('image-galleries', ImageGalleryController::class);
+        Route::put('inquiries/{inquiry}/assign', [InquiryController::class, 'assign']);
+        Route::put('inquiries/{inquiry}/status', [InquiryController::class, 'updateStatus']);
+        Route::post('inquiries/{inquiry}/respond', [InquiryController::class, 'respond']);
+        Route::put('inquiries/{inquiry}/mark-read', [InquiryController::class, 'markRead']);
         Route::apiResource('inquiries', InquiryController::class);
+        Route::post('notification-logs/{notificationLog}/retry', [NotificationLogController::class, 'retry']);
+        Route::post('notifications/send-bulk', [NotificationLogController::class, 'sendBulk']);
         Route::apiResource('notification-logs', NotificationLogController::class);
+        Route::post('notification-templates/{notification_template}/preview', [NotificationTemplateController::class, 'preview']);
+        Route::post('notification-templates/{notification_template}/send-test', [NotificationTemplateController::class, 'sendTest']);
         Route::apiResource('notification-templates', NotificationTemplateController::class);
         Route::apiResource('phone-calls', PhoneCallController::class);
     });
