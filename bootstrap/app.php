@@ -3,8 +3,10 @@
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
+use Spatie\Permission\Exceptions\UnauthorizedException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -52,5 +54,30 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        $exceptions->render(function (UnauthorizedException $exception, Request $request) {
+            $payload = [
+                'message' => $exception->getMessage(),
+            ];
+
+            $shouldExposeAccessDiagnostics = config('app.debug')
+                || app()->environment(['local', 'development', 'staging', 'testing']) || true;
+            // $shouldExposeAccessDiagnostics = config('app.debug')
+            //     || app()->environment(['local', 'development', 'staging', 'testing']);
+
+            if ($shouldExposeAccessDiagnostics) {
+                $user = $request->user();
+
+                $payload['debug'] = [
+                    'required_permissions' => $exception->getRequiredPermissions(),
+                    'required_roles' => $exception->getRequiredRoles(),
+                    'user_id' => $user?->id,
+                    'user_roles' => $user ? $user->getRoleNames()->values() : [],
+                    'user_permissions' => $user ? $user->getAllPermissions()->pluck('name')->values() : [],
+                    'route' => optional($request->route())->uri(),
+                    'method' => $request->method(),
+                ];
+            }
+
+            return response()->json($payload, 403);
+        });
     })->create();
