@@ -342,7 +342,8 @@ Route::middleware(['auth:api'])->group(function () {
     */
 
     Route::middleware(['permission:staff.view'])->group(function () {
-        Route::apiResource('staff', StaffController::class);
+        Route::get('staff/roles', [StaffController::class, 'roles']);
+        Route::apiResource('staff', StaffController::class)->whereUuid('staff');
     });
 
     /*

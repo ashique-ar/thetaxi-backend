@@ -37,6 +37,27 @@ class StaffController extends Controller
         );
     }
 
+    public function roles(): JsonResponse
+    {
+        $roles = Staff::query()
+            ->select('staff_type')
+            ->whereNotNull('staff_type')
+            ->distinct()
+            ->orderBy('staff_type')
+            ->pluck('staff_type')
+            ->map(fn (string $staffType) => [
+                'id' => $staffType,
+                'name' => $staffType,
+                'display_name' => $staffType,
+            ])
+            ->values();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => ['roles' => $roles],
+        ]);
+    }
+
     public function store(CreateStaffRequest $request): JsonResponse
     {
         $data = $request->validated();
