@@ -121,7 +121,7 @@ class AuthService
 
                 // Prefer client provided IP/location when available, otherwise fallback to server-detected IP
                 $clientIp = $request->input('client_ip', $request->ip());
-                $clientLocation = $request->input('client_location');
+                $clientLocation = $this->resolveClientLocation($request, $clientIp);
 
                 // Log what we're receiving for diagnostics
                 \Log::info('AuthService::createToken - request ip: ' . $request->ip() . ' client_ip: ' . ($clientIp ?? 'NULL') . ' client_location: ' . ($clientLocation ?? 'NULL') . ' ua: ' . substr(($ua ?? 'NULL'), 0, 200));
@@ -202,7 +202,7 @@ class AuthService
                 $parsed = $this->parseUserAgent($ua);
 
                 $clientIp = $request->input('client_ip', $request->ip());
-                $clientLocation = $request->input('client_location');
+                $clientLocation = $this->resolveClientLocation($request, $clientIp);
 
                 \Log::info('AuthService::authenticateWithRefresh - request ip: ' . $request->ip() . ' client_ip: ' . ($clientIp ?? 'NULL') . ' client_location: ' . ($clientLocation ?? 'NULL') . ' ua: ' . substr(($ua ?? 'NULL'), 0, 200));
 
@@ -282,7 +282,7 @@ class AuthService
                 $parsed = $this->parseUserAgent($ua);
 
                 $clientIp = $request->input('client_ip', $request->ip());
-                $clientLocation = $request->input('client_location');
+                $clientLocation = $this->resolveClientLocation($request, $clientIp);
 
                 $meta['ip_address'] = $clientIp;
                 $meta['user_agent'] = $ua;
@@ -678,6 +678,57 @@ class AuthService
         }
 
         return $result;
+    }
+
+    /**
+     * Prefer browser-provided coordinates, then fall back to coarse IP location.
+     *
+     * @param mixed $request
+     * @param string|null $clientIp
+     * @return string|null
+     */
+    private function resolveClientLocation($request, ?string $clientIp): ?string
+    {
+        $clientLocation = $request->input('client_location');
+        if (is_string($clientLocation) && trim($clientLocation) !== '') {
+            return trim($clientLocation);
+        }
+
+        $countryCode = $request->header('CF-IPCountry');
+        if (is_string($countryCode) && trim($countryCode) !== '' && strtoupper($countryCode) !== 'XX') {
+            $countryCode = strtoupper(trim($countryCode));
+        } else {
+            $countryCode = null;
+        }
+
+        if (!$clientIp || !filter_var($clientIp, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+            return $countryCode;
+        }
+
+        try {
+            $response = Http::timeout(2)->acceptJson()->get("http://ip-api.com/json/{$clientIp}", [
+                'fields' => 'status,country,regionName,city,query',
+            ]);
+
+            if (!$response->ok()) {
+                return $countryCode;
+            }
+
+            $data = $response->json();
+            if (($data['status'] ?? null) !== 'success') {
+                return $countryCode;
+            }
+
+            $parts = array_filter([
+                $data['city'] ?? null,
+                $data['regionName'] ?? null,
+                $data['country'] ?? null,
+            ], fn ($part) => is_string($part) && trim($part) !== '');
+
+            return $parts ? implode(', ', $parts) : $countryCode;
+        } catch (\Throwable $e) {
+            return $countryCode;
+        }
     }
 
     /**
