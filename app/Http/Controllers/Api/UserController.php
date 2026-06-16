@@ -724,11 +724,11 @@ class UserController extends Controller
 
         try {
             $guards = $this->resolveGuards($request);
-            $rolesToRevoke = Role::whereIn('name', $request->roles)
+            $rolesToAssign = Role::whereIn('name', $request->roles)
                 ->whereIn('guard_name', $guards)
                 ->with('permissions:id,name,guard_name')
                 ->get();
-            $roleIds = $rolesToRevoke->pluck('id')->all();
+            $roleIds = $rolesToAssign->pluck('id')->all();
 
             if (empty($roleIds)) {
                 return response()->json([
@@ -747,7 +747,7 @@ class UserController extends Controller
 
             // Auto-assign permissions from roles if requested
             if ($request->boolean('auto_assign_permissions', true)) {
-                $this->autoAssignPermissionsFromRoles($user, $request->roles, $guards);
+                $this->assignPermissionsFromRoleModels($user, $rolesToAssign);
             }
 
             app(PermissionRegistrar::class)->forgetCachedPermissions();
@@ -773,21 +773,21 @@ class UserController extends Controller
      * @param array $guards
      * @return void
      */
-    private function autoAssignPermissionsFromRoles(User $user, array $roleNames, array $guards): void
+    private function assignPermissionsFromRoleModels(User $user, $roles): void
     {
-        $roles = Role::whereIn('name', $roleNames)
-            ->whereIn('guard_name', $guards)
-            ->with('permissions')
-            ->get();
-        
-        foreach ($roles as $role) {
-            foreach ($role->permissions as $permission) {
-                DB::table('model_has_permissions')->updateOrInsert([
-                    'permission_id' => $permission->id,
-                    'model_type' => User::class,
-                    'model_id' => $user->id,
-                ]);
-            }
+        $permissionIds = collect($roles)
+            ->flatMap(fn ($role) => $role->permissions)
+            ->pluck('id')
+            ->filter()
+            ->unique()
+            ->values();
+
+        foreach ($permissionIds as $permissionId) {
+            DB::table('model_has_permissions')->updateOrInsert([
+                'permission_id' => $permissionId,
+                'model_type' => User::class,
+                'model_id' => $user->id,
+            ]);
         }
     }
 
@@ -809,10 +809,11 @@ class UserController extends Controller
 
         try {
             $guards = $this->resolveGuards($request);
-            $roleIds = Role::whereIn('name', $request->roles)
+            $rolesToRevoke = Role::whereIn('name', $request->roles)
                 ->whereIn('guard_name', $guards)
-                ->pluck('id')
-                ->all();
+                ->with('permissions:id,name,guard_name')
+                ->get();
+            $roleIds = $rolesToRevoke->pluck('id')->all();
 
             if (empty($roleIds)) {
                 return response()->json([

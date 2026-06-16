@@ -70,6 +70,7 @@ return Application::configure(basePath: dirname(__DIR__))
                 $payload['debug'] = [
                     'required_permissions' => $exception->getRequiredPermissions(),
                     'required_roles' => $exception->getRequiredRoles(),
+                    'checked_guards' => $request->is('api/*') ? ['api', 'web'] : [config('auth.defaults.guard')],
                     'user_id' => $user?->id,
                     'user_roles' => $user ? $user->getRoleNames()->values() : [],
                     'user_permissions' => $user

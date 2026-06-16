@@ -191,11 +191,15 @@ class UserService
 
             // Assign roles if provided
             if (isset($userData['roles'])) {
-                $user->assignRole($userData['roles']);
+                $roles = Role::whereIn('name', $userData['roles'])
+                    ->with('permissions')
+                    ->get();
+
+                $user->assignRole($roles);
                 
                 // Auto-assign permissions from roles
                 if (!isset($userData['auto_assign_permissions']) || $userData['auto_assign_permissions'] === true) {
-                    $this->autoAssignPermissionsFromRoles($user, $userData['roles']);
+                    $this->assignPermissionsFromRoleModels($user, $roles);
                 }
             }
 
@@ -239,11 +243,15 @@ class UserService
 
             // Update roles if provided
             if (isset($userData['roles'])) {
-                $user->syncRoles($userData['roles']);
+                $roles = Role::whereIn('name', $userData['roles'])
+                    ->with('permissions')
+                    ->get();
+
+                $user->syncRoles($roles);
                 
                 // Auto-assign permissions from roles if enabled
                 if (!isset($userData['auto_assign_permissions']) || $userData['auto_assign_permissions'] === true) {
-                    $this->autoAssignPermissionsFromRoles($user, $userData['roles']);
+                    $this->assignPermissionsFromRoleModels($user, $roles);
                 }
             }
 
@@ -486,15 +494,6 @@ class UserService
      * @param array $roleNames
      * @return void
      */
-    private function autoAssignPermissionsFromRoles(User $user, array $roleNames): void
-    {
-        $roles = Role::whereIn('name', $roleNames)
-            ->with('permissions')
-            ->get();
-
-        $this->assignPermissionsFromRoleModels($user, $roles);
-    }
-
     private function assignPermissionsFromRoleModels(User $user, $roles): void
     {
         $permissionIds = collect($roles)

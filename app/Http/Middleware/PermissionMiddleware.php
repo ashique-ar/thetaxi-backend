@@ -29,8 +29,18 @@ class PermissionMiddleware
 
         $permissions = explode('|', $this->parsePermissionsToString($permission));
 
+        $guardsToCheck = collect([$guard])
+            ->when($guard === 'api', fn ($guards) => $guards->push('web'))
+            ->filter()
+            ->unique()
+            ->values();
+
         $hasPermission = collect($permissions)
-            ->contains(fn ($permission) => $user->checkPermissionTo($permission, $guard));
+            ->contains(function ($permission) use ($user, $guardsToCheck) {
+                return $guardsToCheck->contains(
+                    fn ($guardName) => $user->checkPermissionTo($permission, $guardName)
+                );
+            });
 
         if (! $hasPermission) {
             throw UnauthorizedException::forPermissions($permissions);
