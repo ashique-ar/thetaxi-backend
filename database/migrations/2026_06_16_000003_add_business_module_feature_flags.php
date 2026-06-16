@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 return new class extends Migration
 {
@@ -23,10 +24,27 @@ return new class extends Migration
         ];
 
         foreach ($settings as $setting) {
-            DB::table('website_settings')->updateOrInsert(
-                ['type' => $setting['type'], 'company_id' => null],
-                $setting
-            );
+            $query = DB::table('website_settings')
+                ->where('type', $setting['type'])
+                ->whereNull('company_id');
+
+            if ($query->exists()) {
+                $query->update([
+                    'value' => $setting['value'],
+                    'updated_at' => $setting['updated_at'],
+                ]);
+
+                continue;
+            }
+
+            DB::table('website_settings')->insert([
+                'id' => (string) Str::uuid(),
+                'type' => $setting['type'],
+                'company_id' => null,
+                'value' => $setting['value'],
+                'created_at' => $setting['created_at'],
+                'updated_at' => $setting['updated_at'],
+            ]);
         }
     }
 
