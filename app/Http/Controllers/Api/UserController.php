@@ -724,10 +724,11 @@ class UserController extends Controller
 
         try {
             $guards = $this->resolveGuards($request);
-            $roleIds = Role::whereIn('name', $request->roles)
+            $rolesToRevoke = Role::whereIn('name', $request->roles)
                 ->whereIn('guard_name', $guards)
-                ->pluck('id')
-                ->all();
+                ->with('permissions:id,name,guard_name')
+                ->get();
+            $roleIds = $rolesToRevoke->pluck('id')->all();
 
             if (empty($roleIds)) {
                 return response()->json([
@@ -820,11 +821,44 @@ class UserController extends Controller
                 ], 422);
             }
 
-            DB::table('model_has_roles')
-                ->where('model_type', User::class)
-                ->where('model_id', $user->id)
-                ->whereIn('role_id', $roleIds)
-                ->delete();
+            DB::transaction(function () use ($user, $roleIds, $rolesToRevoke) {
+                DB::table('model_has_roles')
+                    ->where('model_type', User::class)
+                    ->where('model_id', $user->id)
+                    ->whereIn('role_id', $roleIds)
+                    ->delete();
+
+                $revokedPermissionIds = $rolesToRevoke
+                    ->flatMap(fn ($role) => $role->permissions)
+                    ->pluck('id')
+                    ->unique()
+                    ->values();
+
+                if ($revokedPermissionIds->isEmpty()) {
+                    return;
+                }
+
+                $remainingRolePermissionIds = Permission::query()
+                    ->join('role_has_permissions', 'permissions.id', '=', 'role_has_permissions.permission_id')
+                    ->join('model_has_roles', 'role_has_permissions.role_id', '=', 'model_has_roles.role_id')
+                    ->where('model_has_roles.model_type', User::class)
+                    ->where('model_has_roles.model_id', $user->id)
+                    ->pluck('permissions.id')
+                    ->unique();
+
+                $permissionIdsToRemove = $revokedPermissionIds
+                    ->diff($remainingRolePermissionIds)
+                    ->values();
+
+                if ($permissionIdsToRemove->isNotEmpty()) {
+                    DB::table('model_has_permissions')
+                        ->where('model_type', User::class)
+                        ->where('model_id', $user->id)
+                        ->whereIn('permission_id', $permissionIdsToRemove->all())
+                        ->delete();
+                }
+            });
+
             app(PermissionRegistrar::class)->forgetCachedPermissions();
             
             return response()->json([
