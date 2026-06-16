@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Spatie\Permission\Models\Role;
+use Spatie\Permission\PermissionRegistrar;
 
 class UserService
 {
@@ -173,9 +174,18 @@ class UserService
 
             // Assign default role if not provided
             if (!isset($userData['role_id']) && !isset($userData['roles'])) {
-                $defaultRole = \Spatie\Permission\Models\Role::where('name', 'customer')->first();
+                $defaultRole = Role::with('permissions')->where('name', 'customer')->first();
                 if ($defaultRole) {
                     $user->assignRole($defaultRole);
+                    $this->assignPermissionsFromRoleModels($user, collect([$defaultRole]));
+                }
+            }
+
+            if (isset($userData['role_id'])) {
+                $role = Role::with('permissions')->find($userData['role_id']);
+                if ($role) {
+                    $user->assignRole($role);
+                    $this->assignPermissionsFromRoleModels($user, collect([$role]));
                 }
             }
 
@@ -234,6 +244,17 @@ class UserService
                 // Auto-assign permissions from roles if enabled
                 if (!isset($userData['auto_assign_permissions']) || $userData['auto_assign_permissions'] === true) {
                     $this->autoAssignPermissionsFromRoles($user, $userData['roles']);
+                }
+            }
+
+            if (isset($userData['role_id'])) {
+                $role = Role::with('permissions')->find($userData['role_id']);
+                if ($role) {
+                    $user->assignRole($role);
+
+                    if (!isset($userData['auto_assign_permissions']) || $userData['auto_assign_permissions'] === true) {
+                        $this->assignPermissionsFromRoleModels($user, collect([$role]));
+                    }
                 }
             }
 
@@ -467,15 +488,32 @@ class UserService
      */
     private function autoAssignPermissionsFromRoles(User $user, array $roleNames): void
     {
-        $roles = \Spatie\Permission\Models\Role::whereIn('name', $roleNames)->get();
-        
-        foreach ($roles as $role) {
-            $permissions = $role->permissions;
-            foreach ($permissions as $permission) {
-                if (!$user->hasPermissionTo($permission->name)) {
-                    $user->givePermissionTo($permission->name);
-                }
-            }
+        $roles = Role::whereIn('name', $roleNames)
+            ->with('permissions')
+            ->get();
+
+        $this->assignPermissionsFromRoleModels($user, $roles);
+    }
+
+    private function assignPermissionsFromRoleModels(User $user, $roles): void
+    {
+        $permissionIds = collect($roles)
+            ->flatMap(fn ($role) => $role->permissions)
+            ->pluck('id')
+            ->filter()
+            ->unique()
+            ->values();
+
+        foreach ($permissionIds as $permissionId) {
+            DB::table('model_has_permissions')->updateOrInsert([
+                'permission_id' => $permissionId,
+                'model_type' => User::class,
+                'model_id' => $user->id,
+            ]);
+        }
+
+        if ($permissionIds->isNotEmpty()) {
+            app(PermissionRegistrar::class)->forgetCachedPermissions();
         }
     }
 

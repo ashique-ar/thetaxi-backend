@@ -261,7 +261,7 @@ Route::middleware(['auth:api'])->group(function () {
 
     Route::middleware(['permission:roles.view'])->group(function () {
         Route::apiResource('roles', RoleController::class);
-        Route::get('roles/{role}/permissions', [RoleController::class, 'permissions'])->middleware('permission:permissions.manage');
+        Route::get('roles/{role}/permissions', [RoleController::class, 'permissions']);
         Route::post('roles/{role}/permissions', [RoleController::class, 'assignPermissions'])->middleware('permission:permissions.manage');
         Route::delete('roles/{role}/permissions', [RoleController::class, 'revokePermissions'])->middleware('permission:permissions.manage');
         Route::get('roles/{role}/users', [RoleController::class, 'users']);
