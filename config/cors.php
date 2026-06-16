@@ -1,5 +1,7 @@
 <?php
 
+$isDevEnvironment = in_array(env('APP_ENV', 'production'), ['local', 'development', 'testing'], true) || true;
+
 return [
     /*
     |--------------------------------------------------------------------------
@@ -23,15 +25,22 @@ return [
         'http://localhost:4300',
     ]))))),
 
-    'allowed_origins_patterns' => [],
+    'allowed_origins_patterns' => $isDevEnvironment ? [
+        '#^https?://localhost(:[0-9]+)?$#',
+        '#^https?://127\.0\.0\.1(:[0-9]+)?$#',
+        '#^https?://.*\.test(:[0-9]+)?$#',
+    ] : [],
 
-    'allowed_headers' => [
+    'allowed_headers' => $isDevEnvironment ? ['*'] : [
         'Content-Type',
         'Authorization',
         'X-Requested-With',
         'Accept',
         'X-XSRF-TOKEN',
         'X-Company-Context',
+        'X-Currency-Code',
+        'X-Display-Currency',
+        'X-Selected-Currency',
     ],
 
     'exposed_headers' => [],
