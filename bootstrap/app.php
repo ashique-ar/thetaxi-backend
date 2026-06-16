@@ -32,7 +32,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         // Register Spatie Permission middleware
         $middleware->alias([
-            'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
+            'permission' => \App\Http\Middleware\PermissionMiddleware::class,
             'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
             'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
             // Driver mobile app middleware
@@ -72,7 +72,14 @@ return Application::configure(basePath: dirname(__DIR__))
                     'required_roles' => $exception->getRequiredRoles(),
                     'user_id' => $user?->id,
                     'user_roles' => $user ? $user->getRoleNames()->values() : [],
-                    'user_permissions' => $user ? $user->getAllPermissions()->pluck('name')->values() : [],
+                    'user_permissions' => $user
+                        ? $user->getAllPermissions()
+                            ->map(fn ($permission) => [
+                                'name' => $permission->name,
+                                'guard_name' => $permission->guard_name,
+                            ])
+                            ->values()
+                        : [],
                     'route' => optional($request->route())->uri(),
                     'method' => $request->method(),
                 ];
