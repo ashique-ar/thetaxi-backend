@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\Booking\BookingFlowController;
 use App\Http\Controllers\Api\Booking\BookingLifecycleController;
 use App\Http\Controllers\Api\AssignmentController;
+use App\Http\Controllers\Api\AgreementController;
 use App\Http\Controllers\Api\GooglePlacesController;
 use App\Http\Controllers\Api\MedicalRecordController;
 use App\Http\Controllers\Api\ReportsController;
@@ -761,11 +762,22 @@ Route::middleware(['auth:api'])->group(function () {
     */
 
     Route::middleware(['permission:system.view'])->group(function () {
+        Route::get('galleries/stats', [ImageGalleryController::class, 'stats']);
+        Route::get('galleries/search', [ImageGalleryController::class, 'search']);
+        Route::get('galleries/categories', [ImageGalleryController::class, 'categories']);
+        Route::apiResource('galleries', ImageGalleryController::class)->parameters(['galleries' => 'imageGallery']);
         Route::apiResource('image-galleries', ImageGalleryController::class);
         Route::apiResource('inquiries', InquiryController::class);
         Route::apiResource('notification-logs', NotificationLogController::class);
         Route::apiResource('notification-templates', NotificationTemplateController::class);
         Route::apiResource('phone-calls', PhoneCallController::class);
+    });
+
+    Route::middleware(['permission:agreements.view'])->group(function () {
+        Route::get('agreements/stats', [AgreementController::class, 'stats']);
+        Route::get('agreements/reports', [AgreementController::class, 'reports']);
+        Route::get('agreement-templates', [AgreementController::class, 'templates']);
+        Route::apiResource('agreements', AgreementController::class);
     });
 
     /*

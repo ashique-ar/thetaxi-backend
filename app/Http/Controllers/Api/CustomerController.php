@@ -528,11 +528,25 @@ class CustomerController extends Controller
 
     public function getCustomerCohort(): JsonResponse
     {
-        $cohorts = Customer::selectRaw("DATE_FORMAT(created_at, '%Y-%m') as cohort, COUNT(*) as customers")
+        $cohortExpression = DB::connection()->getDriverName() === 'pgsql'
+            ? "TO_CHAR(created_at, 'YYYY-MM')"
+            : "DATE_FORMAT(created_at, '%Y-%m')";
+
+        $cohorts = Customer::selectRaw("{$cohortExpression} as month, COUNT(*) as customers")
             ->where('created_at', '>=', now()->subMonths(12))
-            ->groupBy('cohort')
-            ->orderBy('cohort')
-            ->get();
+            ->groupBy('month')
+            ->orderBy('month')
+            ->get()
+            ->map(fn ($cohort) => [
+                'month' => $cohort->month,
+                'customers' => (int) $cohort->customers,
+                'retention' => collect(range(1, 6))
+                    ->map(fn ($month) => [
+                        'month' => $month,
+                        'rate' => 0,
+                    ])
+                    ->values(),
+            ]);
 
         return response()->json([
             'status' => 'success',

@@ -32,6 +32,38 @@ class ImageGalleryController extends Controller
         );
     }
 
+    public function stats(): JsonResponse
+    {
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'total' => ImageGallery::count(),
+                'active' => ImageGallery::where('is_active', true)->count(),
+                'inactive' => ImageGallery::where('is_active', false)->count(),
+            ],
+        ]);
+    }
+
+    public function search(Request $request): AnonymousResourceCollection
+    {
+        $q = ImageGallery::query();
+        if ($request->filled('q')) {
+            $q->where('title', 'like', '%' . $request->q . '%');
+        }
+
+        return ImageGalleryResource::collection(
+            $q->paginate($request->per_page ?? 15)
+        );
+    }
+
+    public function categories(): JsonResponse
+    {
+        return response()->json([
+            'status' => 'success',
+            'data' => [],
+        ]);
+    }
+
     public function store(CreateImageGalleryRequest $request): JsonResponse
     {
         $data = $request->validated();

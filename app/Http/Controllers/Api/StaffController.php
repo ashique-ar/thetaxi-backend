@@ -54,7 +54,7 @@ class StaffController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'data' => ['roles' => $roles],
+            'data' => $roles,
         ]);
     }
 
