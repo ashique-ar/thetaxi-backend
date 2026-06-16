@@ -22,9 +22,9 @@ class WebsiteSettingController extends Controller
     public function __construct(WebsiteSettingsService $settingsService)
     {
         $this->settingsService = $settingsService;
-        $this->middleware('permission:website-settings.view')->only(['index', 'show']);
+        $this->middleware('permission:website-settings.view')->only(['index', 'show', 'getByKey']);
         $this->middleware('permission:website-settings.create')->only(['store']);
-        $this->middleware('permission:website-settings.edit')->only(['update', 'optimizeClear']);
+        $this->middleware('permission:website-settings.edit')->only(['update', 'updateByKey', 'optimizeClear']);
         $this->middleware('permission:website-settings.delete')->only(['destroy']);
     }
 
@@ -77,6 +77,48 @@ class WebsiteSettingController extends Controller
             'status' => 'success',
             'message' => 'Website setting updated',
             'data' => ['setting' => new WebsiteSettingResource($websiteSetting)]
+        ]);
+    }
+
+    public function getByKey(string $section, string $key): JsonResponse
+    {
+        $type = "{$section}.{$key}";
+        $setting = WebsiteSetting::where('type', $type)
+            ->whereNull('company_id')
+            ->first();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'setting' => $setting ? new WebsiteSettingResource($setting) : null,
+                'value' => $setting?->value,
+            ],
+        ]);
+    }
+
+    public function updateByKey(Request $request, string $section, string $key): JsonResponse
+    {
+        $data = $request->validate([
+            'setting_value' => ['nullable'],
+            'value' => ['nullable'],
+        ]);
+
+        $type = "{$section}.{$key}";
+        $value = array_key_exists('setting_value', $data) ? $data['setting_value'] : ($data['value'] ?? null);
+        $setting = WebsiteSetting::updateOrCreate(
+            ['type' => $type, 'company_id' => null],
+            [
+                'value' => WebsiteSetting::normalizeValue($value),
+                'updated_user_id' => $request->user()->id,
+            ]
+        );
+
+        $this->settingsService->clearCache($type);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Website setting updated',
+            'data' => ['setting' => new WebsiteSettingResource($setting)]
         ]);
     }
 

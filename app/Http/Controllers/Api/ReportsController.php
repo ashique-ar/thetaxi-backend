@@ -201,6 +201,22 @@ class ReportsController extends Controller
         return response()->json(['status' => 'success', 'data' => $analytics]);
     }
 
+    public function getCustomerSegmentation(Request $request): JsonResponse
+    {
+        return response()->json([
+            'status' => 'success',
+            'data' => $this->getCustomerSegments($this->parseFilters($request)),
+        ]);
+    }
+
+    public function getLoyaltyMetricsEndpoint(Request $request): JsonResponse
+    {
+        return response()->json([
+            'status' => 'success',
+            'data' => $this->getLoyaltyMetrics($this->parseFilters($request)),
+        ]);
+    }
+
     // ─────────────────────────────────────────────────────────────────
     // Vehicle / fleet analytics
     // ─────────────────────────────────────────────────────────────────
@@ -219,6 +235,133 @@ class ReportsController extends Controller
         ];
 
         return response()->json(['status' => 'success', 'data' => $analytics]);
+    }
+
+    public function getFleetPerformance(Request $request): JsonResponse
+    {
+        return response()->json([
+            'status' => 'success',
+            'data' => $this->getFleetMetrics($this->parseFilters($request)),
+        ]);
+    }
+
+    public function getMaintenanceAnalytics(Request $request): JsonResponse
+    {
+        return response()->json([
+            'status' => 'success',
+            'data' => $this->getMaintenanceMetrics($this->parseFilters($request)),
+        ]);
+    }
+
+    public function getProfitabilityAnalysis(Request $request): JsonResponse
+    {
+        $filters = $this->parseFilters($request);
+        $query = Booking::where('status', 'completed');
+        $this->applyFilters($query, $filters);
+
+        $revenue = (float) (clone $query)->sum('total_actual');
+        $commission = (float) (clone $query)->sum('commission_amount');
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'total_revenue' => $revenue,
+                'total_commission' => $commission,
+                'estimated_profit' => $revenue - $commission,
+                'profit_margin' => $revenue > 0 ? round((($revenue - $commission) / $revenue) * 100, 2) : 0,
+            ],
+        ]);
+    }
+
+    public function getBookingReports(Request $request): JsonResponse
+    {
+        $filters = $this->parseFilters($request);
+        $query = Booking::with(['customer.user', 'bookingItems.vehicle'])
+            ->select('id', 'booking_number', 'customer_id', 'agent_id', 'from_date', 'to_date', 'total_actual', 'commission_amount', 'status', 'created_at');
+
+        $this->applyFilters($query, $filters);
+
+        $rows = $query->orderByDesc('created_at')->limit(500)->get()->map(fn ($booking) => [
+            'id' => (string) $booking->id,
+            'booking_number' => $booking->booking_number,
+            'customer_name' => trim(($booking->customer?->user?->first_name ?? '') . ' ' . ($booking->customer?->user?->last_name ?? '')),
+            'vehicle_info' => $booking->bookingItems->pluck('vehicle.title')->filter()->first()
+                ?? $booking->bookingItems->pluck('vehicle.license_plate')->filter()->first()
+                ?? '',
+            'start_date' => $booking->from_date,
+            'end_date' => $booking->to_date,
+            'total_amount' => (float) $booking->total_actual,
+            'status' => $booking->status,
+            'commission' => (float) $booking->commission_amount,
+            'agent_name' => '',
+        ]);
+
+        return response()->json(['status' => 'success', 'data' => $rows]);
+    }
+
+    public function getCustomerReports(Request $request): JsonResponse
+    {
+        $filters = $this->parseFilters($request);
+
+        $rows = Customer::with('user')
+            ->when(!empty($filters['date_from']), fn ($q) => $q->where('created_at', '>=', $filters['date_from']))
+            ->when(!empty($filters['date_to']), fn ($q) => $q->where('created_at', '<=', $filters['date_to'] . ' 23:59:59'))
+            ->withCount('bookings')
+            ->withSum(['bookings as completed_revenue' => fn ($q) => $q->where('status', 'completed')], 'total_actual')
+            ->orderByDesc('created_at')
+            ->limit(500)
+            ->get()
+            ->map(function ($customer) {
+                $totalBookings = (int) $customer->bookings_count;
+                $totalSpent = (float) $customer->completed_revenue;
+
+                return [
+                    'id' => (string) $customer->id,
+                    'name' => trim(($customer->user?->first_name ?? '') . ' ' . ($customer->user?->last_name ?? '')),
+                    'customer_name' => trim(($customer->user?->first_name ?? '') . ' ' . ($customer->user?->last_name ?? '')),
+                    'email' => $customer->user?->email,
+                    'phone' => $customer->user?->phone,
+                    'total_bookings' => $totalBookings,
+                    'total_spent' => $totalSpent,
+                    'average_booking_value' => $totalBookings > 0 ? round($totalSpent / $totalBookings, 2) : 0,
+                    'customer_lifetime_value' => $totalSpent,
+                    'last_booking_date' => optional($customer->bookings()->latest('created_at')->first())->created_at,
+                    'registration_date' => $customer->created_at,
+                    'status' => $customer->status ?? 'active',
+                    'loyalty_tier' => CustomerLoyaltyPoint::where('customer_id', $customer->id)->value('current_tier') ?? '',
+                ];
+            });
+
+        return response()->json(['status' => 'success', 'data' => $rows]);
+    }
+
+    public function getVehicleReports(Request $request): JsonResponse
+    {
+        $rows = Vehicle::with('group')
+            ->withCount('bookings')
+            ->withSum(['bookings as completed_revenue' => fn ($q) => $q->where('status', 'completed')], 'total_actual')
+            ->orderBy('title')
+            ->limit(500)
+            ->get()
+            ->map(fn ($vehicle) => [
+                'id' => (string) $vehicle->id,
+                'registration_number' => $vehicle->license_plate,
+                'vehicle_info' => $vehicle->title ?? $vehicle->license_plate,
+                'make' => '',
+                'model' => '',
+                'category' => $vehicle->group?->name ?? '',
+                'total_bookings' => (int) $vehicle->bookings_count,
+                'total_revenue' => (float) $vehicle->completed_revenue,
+                'revenue' => (float) $vehicle->completed_revenue,
+                'utilization_rate' => (int) $vehicle->bookings_count > 0 ? 100 : 0,
+                'maintenance_cost' => 0,
+                'profit' => (float) $vehicle->completed_revenue,
+                'status' => $vehicle->status ?? $vehicle->availability_status,
+                'last_service_date' => null,
+                'next_service_date' => null,
+            ]);
+
+        return response()->json(['status' => 'success', 'data' => $rows]);
     }
 
     // ─────────────────────────────────────────────────────────────────
@@ -480,11 +623,11 @@ class ReportsController extends Controller
 
         return [
             'total_enrolled'         => $query->count(),
-            'total_points_issued'    => (clone $query)->sum('lifetime_points_earned'),
-            'total_points_redeemed'  => (clone $query)->sum('lifetime_points_redeemed'),
-            'active_point_balances'  => (clone $query)->sum('current_balance'),
+            'total_points_issued'    => (clone $query)->sum('total_points'),
+            'total_points_redeemed'  => (clone $query)->sum('redeemed_points'),
+            'active_point_balances'  => (clone $query)->sum('available_points'),
             'by_tier'                => (clone $query)
-                ->selectRaw('current_tier, COUNT(*) as customers, SUM(current_balance) as total_points')
+                ->selectRaw('current_tier, COUNT(*) as customers, SUM(available_points) as total_points')
                 ->groupBy('current_tier')
                 ->get()
                 ->toArray(),

@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\AgreementController;
 use App\Http\Controllers\Api\GooglePlacesController;
 use App\Http\Controllers\Api\MedicalRecordController;
 use App\Http\Controllers\Api\ReportsController;
+use App\Http\Controllers\Api\SystemController;
 use App\Http\Controllers\Api\UtilityController;
 use App\Http\Controllers\Api\UserContextController;
 use Illuminate\Support\Facades\Route;
@@ -358,6 +359,13 @@ Route::middleware(['auth:api'])->group(function () {
     */
 
     Route::middleware(['permission:system.view'])->group(function () {
+        Route::get('system/health', [SystemController::class, 'health']);
+        Route::get('system/info', [SystemController::class, 'info']);
+        Route::get('system/stats', [SystemController::class, 'stats']);
+        Route::get('system/performance', [SystemController::class, 'performance']);
+        Route::post('system/clear-cache', [SystemController::class, 'clearCache']);
+        Route::post('system/optimize-database', [SystemController::class, 'optimizeDatabase']);
+
         Route::apiResource('countries', CountryController::class);
         Route::apiResource('states', StateController::class);
         Route::apiResource('business-settings', BusinessSettingController::class);
@@ -368,7 +376,6 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('public/cms-contents/published', [CmsContentController::class, 'published'])->name('api.cms-contents.published');
         Route::get('public/{contentTypeSlug}/{contentSlug}', [CmsContentController::class, 'getBySlug'])->name('api.cms-contents.public');
 
-        Route::apiResource('website-settings', WebsiteSettingController::class);
         Route::post('website-settings/update-multiple', [WebsiteSettingController::class, 'updateMultiple']);
         Route::get('website-settings/homepage/settings', [WebsiteSettingController::class, 'homepage']);
         // Trigger server-side cache clear (optimize:clear) - admin only
@@ -389,6 +396,9 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('website-settings/booking/settings', [WebsiteSettingController::class, 'booking']);
         Route::get('website-settings/driver-mobile/settings', [WebsiteSettingController::class, 'driverMobile']);
         Route::get('website-settings/appearance/settings', [WebsiteSettingController::class, 'appearance']);
+        Route::get('website-settings/{section}/{key}', [WebsiteSettingController::class, 'getByKey']);
+        Route::put('website-settings/{section}/{key}', [WebsiteSettingController::class, 'updateByKey']);
+        Route::apiResource('website-settings', WebsiteSettingController::class);
         Route::apiResource('vip-types', VipTypeController::class);
         Route::apiResource('service-types', ServiceTypeController::class);
         Route::post('service-types/{serviceType}/clone', [ServiceTypeController::class, 'clone']);
@@ -647,8 +657,40 @@ Route::middleware(['auth:api'])->group(function () {
             ->middleware('permission:reports.view');
         Route::get('/booking-analytics', [ReportsController::class, 'getBookingAnalytics'])
             ->middleware('permission:reports.view');
+        Route::get('/bookings/analytics', [ReportsController::class, 'getBookingAnalytics'])
+            ->middleware('permission:reports.view');
+        Route::get('/bookings/trends', [ReportsController::class, 'getBookingTrendsEndpoint'])
+            ->middleware('permission:reports.view');
+        Route::get('/bookings/service-type-performance', [ReportsController::class, 'getServiceTypePerformance'])
+            ->middleware('permission:reports.view');
+        Route::get('/bookings', [ReportsController::class, 'getBookingReports'])
+            ->middleware('permission:reports.view');
         Route::get('/financial-reports', [ReportsController::class, 'getFinancialReports'])
             ->middleware('permission:reports.view');
+        Route::get('/financial', [ReportsController::class, 'getFinancialReports'])
+            ->middleware('permission:reports.view');
+        Route::get('/financial/revenue-analytics', [ReportsController::class, 'getRevenueAnalytics'])
+            ->middleware('permission:reports.view');
+        Route::get('/financial/profitability', [ReportsController::class, 'getProfitabilityAnalysis'])
+            ->middleware('permission:reports.view');
+        Route::get('/customers/analytics', [ReportsController::class, 'getCustomerAnalytics'])
+            ->middleware('permission:reports.view');
+        Route::get('/customers/segmentation', [ReportsController::class, 'getCustomerSegmentation'])
+            ->middleware('permission:reports.view');
+        Route::get('/customers/loyalty', [ReportsController::class, 'getLoyaltyMetricsEndpoint'])
+            ->middleware('permission:reports.view');
+        Route::get('/customers', [ReportsController::class, 'getCustomerReports'])
+            ->middleware('permission:reports.view');
+        Route::get('/vehicles/analytics', [ReportsController::class, 'getVehicleAnalytics'])
+            ->middleware('permission:reports.view');
+        Route::get('/vehicles/fleet-performance', [ReportsController::class, 'getFleetPerformance'])
+            ->middleware('permission:reports.view');
+        Route::get('/vehicles/maintenance', [ReportsController::class, 'getMaintenanceAnalytics'])
+            ->middleware('permission:reports.view');
+        Route::get('/vehicles', [ReportsController::class, 'getVehicleReports'])
+            ->middleware('permission:reports.view');
+        Route::get('/export/{type}', [ReportsController::class, 'exportReport'])
+            ->middleware('permission:reports.generate');
         Route::post('/export', [ReportsController::class, 'exportReport'])
             ->middleware('permission:reports.generate');
         Route::get('/performance-metrics', [ReportsController::class, 'getPerformanceMetrics'])
