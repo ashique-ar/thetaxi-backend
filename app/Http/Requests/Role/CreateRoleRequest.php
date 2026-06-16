@@ -20,7 +20,7 @@ class CreateRoleRequest extends FormRequest
             'description' => ['nullable', 'string', 'max:1000'],
             'guard_name' => ['nullable', 'string', 'max:255'],
             'permissions' => ['nullable', 'array'],
-            'permissions.*' => ['required', 'string', 'exists:permissions,name'],
+            'permissions.*' => ['required', 'string'],
         ];
     }
 

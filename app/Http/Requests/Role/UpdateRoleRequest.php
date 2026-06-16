@@ -28,7 +28,7 @@ class UpdateRoleRequest extends FormRequest
             'description' => ['sometimes', 'string', 'max:1000'],
             'guard_name' => ['sometimes', 'string', 'max:255'],
             'permissions' => ['sometimes', 'array'],
-            'permissions.*' => ['required', 'string', 'exists:permissions,name'],
+            'permissions.*' => ['required', 'string'],
         ];
     }
 

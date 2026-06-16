@@ -6,10 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Role\CreateRoleRequest;
 use App\Http\Requests\Role\UpdateRoleRequest;
 use App\Http\Resources\RoleResource;
+use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Validation\ValidationException;
 
 class RoleController extends Controller
 {
@@ -52,10 +54,14 @@ class RoleController extends Controller
     public function store(CreateRoleRequest $request): JsonResponse
     {
         try {
-            $role = Role::create($request->validated());
+            $data = $request->validated();
+            $permissions = $data['permissions'] ?? null;
+            unset($data['permissions']);
+
+            $role = Role::create($data);
             
-            if ($request->filled('permissions')) {
-                $role->syncPermissions($request->permissions);
+            if ($permissions !== null) {
+                $role->syncPermissions($this->resolvePermissionNames($permissions));
             }
 
             return response()->json([
@@ -100,10 +106,14 @@ class RoleController extends Controller
     public function update(UpdateRoleRequest $request, Role $role): JsonResponse
     {
         try {
-            $role->update($request->validated());
+            $data = $request->validated();
+            $permissions = $data['permissions'] ?? null;
+            unset($data['permissions']);
+
+            $role->update($data);
             
-            if ($request->filled('permissions')) {
-                $role->syncPermissions($request->permissions);
+            if ($permissions !== null) {
+                $role->syncPermissions($this->resolvePermissionNames($permissions));
             }
 
             return response()->json([
@@ -190,11 +200,11 @@ class RoleController extends Controller
     {
         $request->validate([
             'permissions' => ['required', 'array'],
-            'permissions.*' => ['required', 'string', 'exists:permissions,name']
+            'permissions.*' => ['required', 'string']
         ]);
 
         try {
-            $role->givePermissionTo($request->permissions);
+            $role->givePermissionTo($this->resolvePermissionNames($request->permissions));
             
             return response()->json([
                 'status' => 'success',
@@ -220,11 +230,11 @@ class RoleController extends Controller
     {
         $request->validate([
             'permissions' => ['required', 'array'],
-            'permissions.*' => ['required', 'string', 'exists:permissions,name']
+            'permissions.*' => ['required', 'string']
         ]);
 
         try {
-            $role->revokePermissionTo($request->permissions);
+            $role->revokePermissionTo($this->resolvePermissionNames($request->permissions));
             
             return response()->json([
                 'status' => 'success',
@@ -255,5 +265,48 @@ class RoleController extends Controller
                 'users' => $users
             ]
         ]);
+    }
+
+    /**
+     * Resolve permission IDs or names to permission names for Spatie permission APIs.
+     *
+     * @param array $permissionIdentifiers
+     * @return array
+     *
+     * @throws ValidationException
+     */
+    private function resolvePermissionNames(array $permissionIdentifiers): array
+    {
+        $identifiers = collect($permissionIdentifiers)
+            ->filter(fn ($value) => $value !== null && $value !== '')
+            ->map(fn ($value) => (string) $value)
+            ->unique()
+            ->values();
+
+        if ($identifiers->isEmpty()) {
+            return [];
+        }
+
+        $permissions = Permission::query()
+            ->whereIn('id', $identifiers)
+            ->orWhereIn('name', $identifiers)
+            ->get(['id', 'name']);
+
+        $resolvedNames = $permissions->pluck('name')->unique()->values();
+        $resolvedIds = $permissions->pluck('id')->map(fn ($id) => (string) $id);
+        $resolvedIdentifiers = $resolvedNames
+            ->concat($resolvedIds)
+            ->map(fn ($value) => (string) $value)
+            ->unique();
+
+        $invalid = $identifiers->diff($resolvedIdentifiers)->values();
+
+        if ($invalid->isNotEmpty()) {
+            throw ValidationException::withMessages([
+                'permissions' => 'One or more selected permissions are invalid.',
+            ]);
+        }
+
+        return $resolvedNames->all();
     }
 }
