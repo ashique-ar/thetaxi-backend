@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -32,11 +33,29 @@ return new class extends Migration
                 ->onDelete('restrict');
         });
 
-        // Composite index for date-range queries on bookings (very common filter)
-        Schema::table('bookings', function (Blueprint $table) {
-            $table->index(['from_date', 'to_date'], 'bookings_date_range_idx');
-            $table->index(['status', 'from_date'], 'bookings_status_date_idx');
-        });
+        // Composite indexes for date-range queries. Newer schemas keep trip dates
+        // on booking_items; older schemas may still have them on bookings.
+        if ($this->hasColumns('booking_items', ['from_date', 'to_date'])) {
+            Schema::table('booking_items', function (Blueprint $table) {
+                if (!$this->indexExists('booking_items', 'booking_items_date_range_idx')) {
+                    $table->index(['from_date', 'to_date'], 'booking_items_date_range_idx');
+                }
+                if ($this->hasColumns('booking_items', ['booking_id', 'from_date']) && !$this->indexExists('booking_items', 'booking_items_booking_date_idx')) {
+                    $table->index(['booking_id', 'from_date'], 'booking_items_booking_date_idx');
+                }
+            });
+        }
+
+        if ($this->hasColumns('bookings', ['from_date', 'to_date'])) {
+            Schema::table('bookings', function (Blueprint $table) {
+                if (!$this->indexExists('bookings', 'bookings_date_range_idx')) {
+                    $table->index(['from_date', 'to_date'], 'bookings_date_range_idx');
+                }
+                if ($this->hasColumns('bookings', ['status', 'from_date']) && !$this->indexExists('bookings', 'bookings_status_date_idx')) {
+                    $table->index(['status', 'from_date'], 'bookings_status_date_idx');
+                }
+            });
+        }
     }
 
     public function down(): void
@@ -51,9 +70,32 @@ return new class extends Migration
             $table->dropForeign(['slab_definition_id']);
         });
 
-        Schema::table('bookings', function (Blueprint $table) {
-            $table->dropIndex('bookings_date_range_idx');
-            $table->dropIndex('bookings_status_date_idx');
-        });
+        foreach ([
+            'booking_items_date_range_idx',
+            'booking_items_booking_date_idx',
+            'bookings_date_range_idx',
+            'bookings_status_date_idx',
+        ] as $indexName) {
+            DB::statement(sprintf('DROP INDEX IF EXISTS "%s"', $indexName));
+        }
+    }
+
+    private function hasColumns(string $table, array $columns): bool
+    {
+        foreach ($columns as $column) {
+            if (!Schema::hasColumn($table, $column)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function indexExists(string $table, string $indexName): bool
+    {
+        return collect(DB::select(
+            'SELECT indexname FROM pg_indexes WHERE tablename = ? AND indexname = ?',
+            [$table, $indexName]
+        ))->isNotEmpty();
     }
 };

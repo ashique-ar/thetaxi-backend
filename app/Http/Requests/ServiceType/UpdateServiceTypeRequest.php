@@ -55,6 +55,7 @@ class UpdateServiceTypeRequest extends FormRequest
             'frontend_category' => ['sometimes', 'nullable', 'string', 'max:100'],
             'priority' => ['sometimes', 'nullable', 'integer'],
             'is_internal' => ['sometimes', 'boolean'],
+            'is_active' => ['sometimes', 'boolean'],
             'terms' => ['sometimes', 'nullable', 'string'],
             'minimum_km' => ['sometimes', 'nullable'],
         ];

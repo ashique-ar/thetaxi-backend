@@ -7,6 +7,7 @@ use App\Models\Driver\Driver;
 use App\Models\Booking\Booking;
 use App\Models\Vehicle\VehicleAssignment;
 use App\Models\DriverAssignment;
+use App\Services\Sms\SmsAutomationService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -17,6 +18,7 @@ class AssignmentService
 {
     public function __construct(
         private readonly AvailabilityEnforcementService $availabilityEnforcement,
+        private readonly SmsAutomationService $smsAutomation,
     ) {}
 
     /**
@@ -167,6 +169,13 @@ class AssignmentService
                 'assigned_by' => $userId,
                 'created_user_id' => $userId,
             ]);
+
+            $booking = Booking::find($params['booking_id']);
+            if ($booking) {
+                $driver = Driver::find($params['driver_id']);
+                $driverName = $driver?->full_name ?? $driver?->name ?? 'Your driver';
+                $this->smsAutomation->queueDriverAssignment($booking, $driverName);
+            }
 
             return $assignment;
         });

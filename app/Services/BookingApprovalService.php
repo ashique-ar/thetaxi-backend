@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Booking\Booking;
 use App\Models\User;
+use App\Services\Sms\SmsAutomationService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -11,6 +12,8 @@ use Illuminate\Support\Facades\Notification;
 
 class BookingApprovalService
 {
+    public function __construct(private SmsAutomationService $smsAutomation) {}
+
     /**
      * Process booking approval workflow
      */
@@ -151,6 +154,8 @@ class BookingApprovalService
             'approved_by' => 'system',
             'approval_reason' => 'Auto-approved: meets standard criteria',
         ]);
+
+        $this->smsAutomation->queueBookingConfirmation($booking);
 
         return [
             'requires_approval' => false,
@@ -455,8 +460,10 @@ class BookingApprovalService
                         'confirmed_by' => $userId,
                     ]);
 
+                    $this->smsAutomation->queueBookingConfirmation($booking);
+
                     DB::commit();
-                    
+
                     return [
                         'status' => 'approved',
                         'final_decision' => true,

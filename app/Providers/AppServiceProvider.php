@@ -181,6 +181,11 @@ class AppServiceProvider extends ServiceProvider
             // Non-fatal: ensure app still boots even if alias can't be registered
             \Log::warning('Failed to register middleware alias update.api.session: ' . $e->getMessage());
         }
+
+        // Restrict Scramble API docs to non-production environments
+        if (class_exists(\Dedoc\Scramble\Scramble::class)) {
+            \Dedoc\Scramble\Scramble::shouldGenerateDocs(fn () => !app()->isProduction());
+        }
     }
 
     /**
