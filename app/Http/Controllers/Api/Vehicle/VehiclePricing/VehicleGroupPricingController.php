@@ -1330,4 +1330,101 @@ class VehicleGroupPricingController extends Controller
 
         $query->orderByRaw('1');
     }
+
+    public function getBulkOperations(\Illuminate\Http\Request $request): \Illuminate\Http\JsonResponse
+    {
+        // Bulk operations are tracked via the pricing history log
+        $operations = VehiclePricingHistory::query()
+            ->where('change_type', 'bulk_update')
+            ->orderByDesc('created_at')
+            ->paginate(20);
+
+        return response()->json(['status' => 'success', 'data' => $operations]);
+    }
+
+    public function getBulkOperationStatus(\Illuminate\Http\Request $request, string $operationId): \Illuminate\Http\JsonResponse
+    {
+        $operation = VehiclePricingHistory::where('id', $operationId)
+            ->where('change_type', 'bulk_update')
+            ->firstOrFail();
+
+        return response()->json(['status' => 'success', 'data' => $operation]);
+    }
+
+    public function importPricing(\Illuminate\Http\Request $request): \Illuminate\Http\JsonResponse
+    {
+        $request->validate([
+            'file'             => 'required|file|mimes:csv,txt|max:5120',
+            'vehicle_group_id' => 'required|uuid|exists:vehicle_groups,id',
+        ]);
+
+        $lines        = file($request->file('file')->getRealPath());
+        $headers      = array_map('trim', str_getcsv(array_shift($lines)));
+        $vehicleGroup = VehicleGroup::findOrFail($request->input('vehicle_group_id'));
+        $imported     = 0;
+
+        \Illuminate\Support\Facades\DB::beginTransaction();
+        try {
+            foreach ($lines as $line) {
+                $row = array_combine($headers, array_map('trim', str_getcsv($line)));
+                VehicleGroupPricing::updateOrCreate(
+                    [
+                        'vehicle_group_id' => $vehicleGroup->id,
+                        'service_type_id'  => $row['service_type_id'] ?? null,
+                    ],
+                    [
+                        'base_price'    => (float) ($row['base_price'] ?? 0),
+                        'price_per_km'  => (float) ($row['price_per_km'] ?? 0),
+                        'price_per_hour'=> (float) ($row['price_per_hour'] ?? 0),
+                        'is_active'     => strtolower($row['is_active'] ?? 'yes') === 'yes',
+                    ]
+                );
+                $imported++;
+            }
+            \Illuminate\Support\Facades\DB::commit();
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\DB::rollBack();
+            return response()->json(['status' => 'error', 'message' => 'Import failed: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['status' => 'success', 'data' => ['imported' => $imported]]);
+    }
+
+    public function exportPricing(\Illuminate\Http\Request $request)
+    {
+        $query = VehicleGroupPricing::with(['vehicleGroup', 'serviceType']);
+
+        if ($request->filled('vehicle_group_id')) {
+            $query->where('vehicle_group_id', $request->input('vehicle_group_id'));
+        }
+
+        $rows   = $query->get()->map(fn($p) => [
+            '"' . $p->vehicle_group_id . '"',
+            '"' . str_replace('"', '""', $p->vehicleGroup?->name ?? '') . '"',
+            '"' . ($p->service_type_id ?? '') . '"',
+            '"' . str_replace('"', '""', $p->serviceType?->name ?? '') . '"',
+            $p->base_price,
+            $p->price_per_km,
+            $p->price_per_hour,
+            $p->is_active ? '"yes"' : '"no"',
+        ]);
+        $header = '"vehicle_group_id","vehicle_group","service_type_id","service_type","base_price","price_per_km","price_per_hour","is_active"';
+        $csv    = $header . "\n" . $rows->map(fn($r) => implode(',', $r))->implode("\n");
+
+        return response($csv, 200, [
+            'Content-Type'        => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="vehicle-group-pricing.csv"',
+        ]);
+    }
+
+    public function downloadTemplate()
+    {
+        $csv = "vehicle_group_id,service_type_id,base_price,price_per_km,price_per_hour,is_active\n"
+             . "\"\",\"\",\"0.00\",\"0.00\",\"0.00\",\"yes\"\n";
+
+        return response($csv, 200, [
+            'Content-Type'        => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="vehicle-group-pricing-template.csv"',
+        ]);
+    }
 }

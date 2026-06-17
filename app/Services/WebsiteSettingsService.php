@@ -1065,6 +1065,9 @@ class WebsiteSettingsService
             'portal_title',
             'portal_logo',
             'portal_theme',
+            'portal_scheme',
+            'portal_sidebar_appearance',
+            'portal_sidebar_style',
             // Legacy/alternate key used in admin UI and helpers
             'active_theme',
             
@@ -1111,8 +1114,29 @@ class WebsiteSettingsService
         $settings['favicon'] = $favicon;
         $settings['portal_logo'] = $this->firstFilled($settings, ['portal_logo'], $primaryLogo);
         $settings['portal_title'] = $this->firstFilled($settings, ['portal_title'], $brandName . ' | Portal');
+        $settings['portal_theme'] = $this->firstFilled($settings, ['portal_theme'], 'theme-brand');
+        $settings['portal_scheme'] = $this->normalizeAllowed(
+            $this->firstFilled($settings, ['portal_scheme'], 'light'),
+            ['light', 'dark', 'auto'],
+            'light'
+        );
+        $settings['portal_sidebar_appearance'] = $this->normalizeAllowed(
+            $this->firstFilled($settings, ['portal_sidebar_appearance'], 'default'),
+            ['default', 'dense', 'thin', 'compact'],
+            'default'
+        );
+        $settings['portal_sidebar_style'] = $this->normalizeAllowed(
+            $this->firstFilled($settings, ['portal_sidebar_style'], 'dark'),
+            ['dark', 'light', 'brand'],
+            'dark'
+        );
 
         return $settings;
+    }
+
+    private function normalizeAllowed(?string $value, array $allowed, string $default): string
+    {
+        return in_array($value, $allowed, true) ? $value : $default;
     }
 
     private function firstFilled(array $settings, array $keys, ?string $default = null): ?string

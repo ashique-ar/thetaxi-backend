@@ -464,4 +464,86 @@ class MedicalRecordController extends Controller
 
         return round(($complianceWeight / $totalWeight) * 100);
     }
+
+    public function bulkUpdate(Request $request): JsonResponse
+    {
+        $request->validate([
+            'ids'    => 'required|array|min:1',
+            'ids.*'  => 'uuid',
+            'action' => 'required|in:activate,deactivate,delete',
+        ]);
+
+        $records = MedicalRecord::whereIn('id', $request->input('ids'));
+
+        $count = match ($request->input('action')) {
+            'activate'   => $records->update(['status' => 'active']),
+            'deactivate' => $records->update(['status' => 'inactive']),
+            'delete'     => tap($records->count(), fn() => $records->delete()),
+        };
+
+        return response()->json([
+            'status'  => 'success',
+            'message' => "{$count} records updated",
+            'data'    => ['affected' => $count],
+        ]);
+    }
+
+    public function getComplianceReport(Request $request): JsonResponse
+    {
+        $subjectType = $request->input('subject_type', 'driver');
+        $records     = MedicalRecord::where('subject_type', $subjectType)
+            ->with('category')
+            ->get();
+
+        $total    = $records->count();
+        $active   = $records->where('status', 'active')->count();
+        $expired  = $records->where('status', 'expired')->count();
+        $expiring = $records->filter(fn($r) => $r->valid_until && $r->valid_until->between(now(), now()->addDays(30)))->count();
+
+        return response()->json([
+            'status' => 'success',
+            'data'   => [
+                'subject_type'    => $subjectType,
+                'total'           => $total,
+                'active'          => $active,
+                'expired'         => $expired,
+                'expiring_soon'   => $expiring,
+                'compliance_rate' => $total > 0 ? round($active / $total * 100, 1) : 0,
+            ],
+        ]);
+    }
+
+    public function uploadDocument(Request $request, string $id): JsonResponse
+    {
+        $request->validate([
+            'document' => 'required|file|mimes:pdf,jpg,jpeg,png|max:10240',
+        ]);
+
+        $record = MedicalRecord::findOrFail($id);
+        $path   = $request->file('document')->store('medical-records/' . $record->id, 's3');
+
+        $documents   = $record->documents ?? [];
+        $documents[] = [
+            'path'        => $path,
+            'name'        => $request->file('document')->getClientOriginalName(),
+            'uploaded_at' => now()->toISOString(),
+        ];
+        $record->update(['documents' => $documents]);
+
+        return response()->json([
+            'status'  => 'success',
+            'message' => 'Document uploaded',
+            'data'    => ['path' => Storage::disk('s3')->url($path)],
+        ]);
+    }
+
+    public function getCategories(Request $request): JsonResponse
+    {
+        $categories = MedicalCategory::orderBy('name')->get();
+
+        return response()->json([
+            'status' => 'success',
+            'data'   => $categories,
+        ]);
+    }
 }

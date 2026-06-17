@@ -110,13 +110,13 @@ use App\Http\Controllers\BookingController;
 // Dynamic service configuration API routes
 
 Route::prefix('auth')->group(function () {
-    // Public authentication routes
-    Route::post('register', [AuthController::class, 'register']);
+    // Public authentication routes — strict throttle to prevent brute-force / enumeration
+    Route::post('register', [AuthController::class, 'register'])->middleware('throttle:10,1');
     // Route::post('login', [AuthController::class, 'login']);
-    Route::post('login', [AuthController::class, 'loginWithRefresh']);
-    Route::post('refresh', [AuthController::class, 'refreshToken']);
-    Route::post('forgot-password', [AuthController::class, 'forgotPassword']);
-    Route::post('reset-password', [AuthController::class, 'resetPassword']);
+    Route::post('login', [AuthController::class, 'loginWithRefresh'])->middleware('throttle:10,1');
+    Route::post('refresh', [AuthController::class, 'refreshToken'])->middleware('throttle:30,1');
+    Route::post('forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:5,1');
+    Route::post('reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:10,1');
 
     // Social authentication routes
     Route::prefix('social')->group(function () {
@@ -854,8 +854,8 @@ Route::middleware(['auth:api'])->group(function () {
             Route::get('drivers/availability', [BookingFlowController::class, 'getAvailableDrivers'])
                 ->middleware('permission:bookings.view');
 
-            Route::get('/availability/vehicle', [BookingFlowController::class, 'vehicleAvailability']);
-            Route::get('/availability/driver', [BookingFlowController::class, 'driverAvailability']);
+            Route::get('/availability/vehicle', [BookingFlowController::class, 'getAvailableVehicleGroups']);
+            Route::get('/availability/driver', [BookingFlowController::class, 'getAvailableDrivers']);
 
 
             // Conflict Checking Routes - Updated to match frontend service
@@ -1029,7 +1029,7 @@ Route::middleware(['auth:api'])->group(function () {
                 ->middleware('permission:bookings.update');
 
             // Approval details and processing routes
-            Route::get('approval/details/{bookingId}', [BookingFlowController::class, 'getApprovalDetails'])
+            Route::get('approval/details/{bookingId}', [BookingFlowController::class, 'getBookingApprovalDetails'])
                 ->middleware('permission:bookings.view');
             Route::post('approval/process', [BookingFlowController::class, 'processBookingApproval'])
                 ->middleware('permission:bookings.approve');

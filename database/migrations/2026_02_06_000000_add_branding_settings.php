@@ -42,6 +42,9 @@ return new class extends Migration
             ['type' => 'portal_title', 'value' => 'Company | Portal'],
             ['type' => 'portal_logo', 'value' => '/images/logo/logo.png'],
             ['type' => 'portal_theme', 'value' => 'theme-brand'],
+            ['type' => 'portal_scheme', 'value' => 'light'],
+            ['type' => 'portal_sidebar_appearance', 'value' => 'default'],
+            ['type' => 'portal_sidebar_style', 'value' => 'dark'],
             
         ];
 
@@ -78,6 +81,9 @@ return new class extends Migration
             'portal_title',
             'portal_logo',
             'portal_theme',
+            'portal_scheme',
+            'portal_sidebar_appearance',
+            'portal_sidebar_style',
         ];
 
         WebsiteSetting::whereIn('type', $types)->delete();

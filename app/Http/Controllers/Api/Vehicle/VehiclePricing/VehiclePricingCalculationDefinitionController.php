@@ -687,7 +687,7 @@ class VehiclePricingCalculationDefinitionController extends Controller
                     'calculation_definition_name' => $calculationDefinition->name,
                     'formula' => $calculationDefinition->formula,
                     'total_price' => $calculatedPrice,
-                    'currency' => 'LKR', // TODO: Make this configurable
+                    'currency' => config('booking.base_currency', 'LKR'),
                 ]
             ];
 

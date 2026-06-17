@@ -826,4 +826,28 @@ class ReportsController extends Controller
             'Content-Disposition' => "attachment; filename=\"$filename\"",
         ]);
     }
+
+    public function getPerformanceMetrics(Request $request): JsonResponse
+    {
+        $period = $request->input('period', 30);
+        $from   = now()->subDays($period);
+
+        $totalBookings    = Booking::where('created_at', '>=', $from)->count();
+        $completedBookings= Booking::where('created_at', '>=', $from)->where('status', 'completed')->count();
+        $cancelledBookings= Booking::where('created_at', '>=', $from)->where('status', 'cancelled')->count();
+        $completionRate   = $totalBookings > 0 ? round($completedBookings / $totalBookings * 100, 1) : 0;
+        $cancellationRate = $totalBookings > 0 ? round($cancelledBookings / $totalBookings * 100, 1) : 0;
+
+        return response()->json([
+            'status' => 'success',
+            'data'   => [
+                'period_days'       => $period,
+                'total_bookings'    => $totalBookings,
+                'completed'         => $completedBookings,
+                'cancelled'         => $cancelledBookings,
+                'completion_rate'   => $completionRate,
+                'cancellation_rate' => $cancellationRate,
+            ],
+        ]);
+    }
 }

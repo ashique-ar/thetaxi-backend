@@ -242,6 +242,18 @@ class WebsiteSettingSeeder extends Seeder
                 'value' => 'theme-brand',
             ],
             [
+                'type' => 'portal_scheme',
+                'value' => 'light',
+            ],
+            [
+                'type' => 'portal_sidebar_appearance',
+                'value' => 'default',
+            ],
+            [
+                'type' => 'portal_sidebar_style',
+                'value' => 'dark',
+            ],
+            [
                 'type' => 'brand_color_primary',
                 'value' => '#BF2629',
             ],

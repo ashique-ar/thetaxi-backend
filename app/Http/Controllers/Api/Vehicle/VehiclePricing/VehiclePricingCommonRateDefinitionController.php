@@ -541,4 +541,88 @@ class VehiclePricingCommonRateDefinitionController extends Controller
             default => "LKR {$formatted($rateValue)}"
         };
     }
+
+    public function validateName(\Illuminate\Http\Request $request): \Illuminate\Http\JsonResponse
+    {
+        $request->validate(['name' => 'required|string|max:255']);
+
+        $query = VehiclePricingCommonRateDefinition::where('name', $request->input('name'));
+        if ($request->filled('exclude_id')) {
+            $query->where('id', '!=', $request->input('exclude_id'));
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'data'   => ['is_unique' => !$query->exists()],
+        ]);
+    }
+
+    public function export(\Illuminate\Http\Request $request)
+    {
+        $definitions = VehiclePricingCommonRateDefinition::with('serviceType')
+            ->when($request->filled('service_type_id'), fn($q) => $q->forServiceType($request->input('service_type_id')))
+            ->get();
+
+        if ($definitions->isEmpty()) {
+            return response()->json(['status' => 'error', 'message' => 'No records to export'], 404);
+        }
+
+        $rows   = $definitions->map(fn($d) => [
+            '"' . $d->id . '"',
+            '"' . str_replace('"', '""', $d->name) . '"',
+            '"' . str_replace('"', '""', $d->serviceType?->name ?? '') . '"',
+            '"' . $d->common_rate_type . '"',
+            $d->rate_value,
+            $d->is_active ? '"yes"' : '"no"',
+        ]);
+        $header = '"id","name","service_type","common_rate_type","rate_value","is_active"';
+        $csv    = $header . "\n" . $rows->map(fn($r) => implode(',', $r))->implode("\n");
+
+        return response($csv, 200, [
+            'Content-Type'        => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="common-rate-definitions.csv"',
+        ]);
+    }
+
+    public function import(\Illuminate\Http\Request $request): \Illuminate\Http\JsonResponse
+    {
+        $request->validate(['file' => 'required|file|mimes:csv,txt|max:2048']);
+
+        $lines   = file($request->file('file')->getRealPath());
+        $headers = array_map('trim', str_getcsv(array_shift($lines)));
+        $created = 0;
+
+        DB::beginTransaction();
+        try {
+            foreach ($lines as $line) {
+                $row  = array_combine($headers, array_map('trim', str_getcsv($line)));
+                VehiclePricingCommonRateDefinition::updateOrCreate(
+                    ['name' => $row['name'] ?? ''],
+                    [
+                        'common_rate_type' => $row['common_rate_type'] ?? 'fixed_amount',
+                        'rate_value'       => (float) ($row['rate_value'] ?? 0),
+                        'is_active'        => strtolower($row['is_active'] ?? 'yes') === 'yes',
+                    ]
+                );
+                $created++;
+            }
+            DB::commit();
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json(['status' => 'error', 'message' => 'Import failed: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['status' => 'success', 'data' => ['imported' => $created]]);
+    }
+
+    public function downloadTemplate()
+    {
+        $csv = "name,service_type_id,common_rate_type,rate_value,is_active\n"
+             . "\"Example Rate\",\"\",\"fixed_amount\",\"10.00\",\"yes\"\n";
+
+        return response($csv, 200, [
+            'Content-Type'        => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="common-rate-definitions-template.csv"',
+        ]);
+    }
 }

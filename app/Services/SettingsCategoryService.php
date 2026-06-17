@@ -988,6 +988,37 @@ class SettingsCategoryService
                     ],
                     'description' => 'Base portal theme class'
                 ],
+                'portal_scheme' => [
+                    'label' => 'Portal Scheme',
+                    'type' => 'select',
+                    'options' => [
+                        'light' => 'Light',
+                        'dark' => 'Dark',
+                        'auto' => 'Auto',
+                    ],
+                    'description' => 'Light, dark, or operating-system driven portal scheme'
+                ],
+                'portal_sidebar_appearance' => [
+                    'label' => 'Sidebar Appearance',
+                    'type' => 'select',
+                    'options' => [
+                        'default' => 'Default',
+                        'dense' => 'Dense',
+                        'thin' => 'Thin',
+                        'compact' => 'Compact',
+                    ],
+                    'description' => 'Sidebar density and label behavior'
+                ],
+                'portal_sidebar_style' => [
+                    'label' => 'Sidebar Style',
+                    'type' => 'select',
+                    'options' => [
+                        'dark' => 'Dark',
+                        'light' => 'Light',
+                        'brand' => 'Brand Color',
+                    ],
+                    'description' => 'Sidebar background style'
+                ],
                 'footer_copyright_text' => [
                     'label' => 'Footer Copyright Text',
                     'type' => 'text',

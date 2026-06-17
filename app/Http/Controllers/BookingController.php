@@ -6,8 +6,10 @@ use App\Services\BookingFlowService;
 use App\Services\CurrencyService;
 use App\Services\DiscountService;
 use App\Services\MailDispatchService;
+use App\Models\Booking\BookingItem;
 use App\Models\BookingSearch;
 use App\Models\BookingFormTab;
+use App\Models\PromoCode;
 use App\Models\Vehicle\VehicleGroup;
 use App\Models\Service\ServiceType;
 use App\Http\Requests\BookingSearchRequest;
@@ -1717,14 +1719,15 @@ class BookingController extends Controller
     private function getPopularDestinations(): array
     {
         return Cache::remember('popular_destinations', 3600, function () {
-            // TODO: Query from database based on booking history
-            return [
-                ['name' => 'Airport Terminal 1', 'bookings' => 1250],
-                ['name' => 'City Center Mall', 'bookings' => 980],
-                ['name' => 'Business District', 'bookings' => 750],
-                ['name' => 'Train Station', 'bookings' => 650],
-                ['name' => 'University Campus', 'bookings' => 500]
-            ];
+            return BookingItem::whereNotNull('pickup_landmark')
+                ->where('pickup_landmark', '!=', '')
+                ->selectRaw('pickup_landmark as name, COUNT(*) as bookings')
+                ->groupBy('pickup_landmark')
+                ->orderByDesc('bookings')
+                ->limit(5)
+                ->get()
+                ->map(fn($row) => ['name' => $row->name, 'bookings' => $row->bookings])
+                ->toArray();
         });
     }
 
@@ -1734,17 +1737,20 @@ class BookingController extends Controller
      */
     private function getActivePromotionalOffers($search): array
     {
-        // TODO: Query active promotions from database
-        // Accept both BookingSearch model and stdClass/array for session-based searches
-        return [
-            [
-                'title' => 'First Time User Discount',
-                'description' => '15% off your first booking',
-                'discount_percentage' => 15,
-                'code' => 'WELCOME15',
-                'valid_until' => '2025-12-31'
-            ]
-        ];
+        return Cache::remember('active_promotions', 3600, function () {
+            return PromoCode::active()
+                ->select('name', 'description', 'discount_type', 'discount_value', 'code', 'end_date')
+                ->limit(5)
+                ->get()
+                ->map(fn($promo) => [
+                    'title'               => $promo->name,
+                    'description'         => $promo->description,
+                    'discount_percentage' => $promo->discount_type === 'percentage' ? (float) $promo->discount_value : null,
+                    'code'                => $promo->code,
+                    'valid_until'         => $promo->end_date?->format('Y-m-d'),
+                ])
+                ->toArray();
+        });
     }
 
     /**

@@ -283,4 +283,48 @@ class VehiclePricingSlabDefinitionController extends Controller
             ], 500);
         }
     }
+
+    public function toggleStatus(Request $request, string $id): JsonResponse
+    {
+        $definition = VehiclePricingSlabDefinition::findOrFail($id);
+        $definition->update(['is_active' => !$definition->is_active]);
+
+        return response()->json([
+            'status'  => 'success',
+            'message' => 'Slab definition status updated',
+            'data'    => $definition->fresh(),
+        ]);
+    }
+
+    public function findForHours(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'hours'           => 'required|numeric|min:0',
+            'service_type_id' => 'nullable|uuid|exists:service_types,id',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['status' => 'error', 'errors' => $validator->errors()], 422);
+        }
+
+        $hours = (float) $request->input('hours');
+
+        $query = VehiclePricingSlabDefinition::active()
+            ->where('min_hours', '<=', $hours)
+            ->where(function ($q) use ($hours) {
+                $q->whereNull('max_hours')->orWhere('max_hours', '>=', $hours);
+            })
+            ->orderBy('min_hours', 'desc');
+
+        if ($request->filled('service_type_id')) {
+            $query->forServiceType($request->input('service_type_id'));
+        }
+
+        $slab = $query->first();
+
+        return response()->json([
+            'status' => 'success',
+            'data'   => $slab,
+        ]);
+    }
 }
