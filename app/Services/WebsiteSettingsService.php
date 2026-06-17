@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Website\WebsiteSetting;
+use App\Models\Company;
 use Illuminate\Support\Facades\Cache;
 
 class WebsiteSettingsService
@@ -18,20 +19,22 @@ class WebsiteSettingsService
      */
     public function get(string $type, $default = null)
     {
-        $cacheKey = self::CACHE_PREFIX . 'global_' . $type;
+        $companyId = $this->resolveCurrentCompanyId();
+        $cacheKey = self::CACHE_PREFIX . ($companyId ?: 'global') . '_' . $type;
 
-        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($type, $default) {
-            return WebsiteSetting::getValue($type, $default);
+        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($type, $default, $companyId) {
+            return WebsiteSetting::getValue($type, $default, $companyId);
         });
     }
 
     /**
      * Set a setting value and clear cache
      */
-    public function set(string $type, $value): void
+    public function set(string $type, $value, ?string $companyId = null): void
     {
-        WebsiteSetting::setValue($type, $value);
-        $this->clearCache($type);
+        $companyId ??= $this->resolveCurrentCompanyId();
+        WebsiteSetting::setValue($type, $value, $companyId);
+        $this->clearCache($type, $companyId);
     }
 
     /**
@@ -39,12 +42,13 @@ class WebsiteSettingsService
      */
     public function getMultiple(array $types): array
     {
+        $companyId = $this->resolveCurrentCompanyId();
         $result = [];
         $uncachedTypes = [];
 
         // Check cache for each type
         foreach ($types as $type) {
-            $cacheKey = self::CACHE_PREFIX . 'global_' . $type;
+            $cacheKey = self::CACHE_PREFIX . ($companyId ?: 'global') . '_' . $type;
             $cachedValue = Cache::get($cacheKey);
 
             if ($cachedValue !== null) {
@@ -56,10 +60,10 @@ class WebsiteSettingsService
 
         // Fetch uncached values from database
         if (!empty($uncachedTypes)) {
-            $uncachedValues = WebsiteSetting::getValues($uncachedTypes);
+            $uncachedValues = WebsiteSetting::getValues($uncachedTypes, $companyId);
 
             foreach ($uncachedValues as $type => $value) {
-                $cacheKey = self::CACHE_PREFIX . 'global_' . $type;
+                $cacheKey = self::CACHE_PREFIX . ($companyId ?: 'global') . '_' . $type;
                 Cache::put($cacheKey, $value, self::CACHE_DURATION);
                 $result[$type] = $value;
             }
@@ -555,11 +559,17 @@ class WebsiteSettingsService
     /**
      * Clear cache for a specific type
      */
-    public function clearCache(string $type): void
+    public function clearCache(string $type, ?string $companyId = null): void
     {
         Cache::forget(self::CACHE_PREFIX . 'global_' . $type);
+        if ($companyId) {
+            Cache::forget(self::CACHE_PREFIX . $companyId . '_' . $type);
+        }
         Cache::forget('global_settings_flattened');
         Cache::forget('global_settings_flattened_global');
+        if ($companyId) {
+            Cache::forget('global_settings_flattened_' . $companyId);
+        }
     }
 
     /**
@@ -812,6 +822,7 @@ class WebsiteSettingsService
     {
         $types = [
             'booking_advance_hours',
+            'booking_notice_html',
             'booking_max_days',
             'cancellation_allowed',
             'cancellation_hours',
@@ -1017,6 +1028,41 @@ class WebsiteSettingsService
         foreach ($settings as $type => $value) {
             $this->set($type, $value);
         }
+    }
+
+    public function resolveCurrentCompanyId(): ?string
+    {
+        if (!app()->bound('request')) {
+            return null;
+        }
+
+        $request = request();
+        $companyId = $request->header('X-Company-Id') ?: $request->query('company_id');
+        if ($companyId) {
+            return (string) $companyId;
+        }
+
+        $userCompanyId = optional($request->user())->company_id;
+        if ($userCompanyId) {
+            return (string) $userCompanyId;
+        }
+
+        $host = strtolower((string) $request->getHost());
+        if ($host === '') {
+            return null;
+        }
+
+        $company = Company::query()
+            ->where('is_active', true)
+            ->where(function ($query) use ($host) {
+                $query->whereRaw('LOWER(domain) = ?', [$host])
+                    ->orWhereRaw('LOWER(website) = ?', [$host])
+                    ->orWhereRaw('LOWER(website) = ?', ['https://' . $host])
+                    ->orWhereRaw('LOWER(website) = ?', ['http://' . $host]);
+            })
+            ->first(['id']);
+
+        return $company?->id;
     }
 
     /**

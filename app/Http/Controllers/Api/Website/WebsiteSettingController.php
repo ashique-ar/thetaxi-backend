@@ -30,7 +30,10 @@ class WebsiteSettingController extends Controller
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        $q = WebsiteSetting::query()->whereNull('company_id');
+        $companyId = $this->settingsService->resolveCurrentCompanyId();
+        $q = WebsiteSetting::query()
+            ->when($companyId, fn ($query) => $query->where('company_id', $companyId))
+            ->when(!$companyId, fn ($query) => $query->whereNull('company_id'));
         if ($request->filled('search')) {
             $q->where('type', 'like', '%' . $request->search . '%');
         }
@@ -43,7 +46,7 @@ class WebsiteSettingController extends Controller
     {
         $data = $request->validated();
         $data['value'] = WebsiteSetting::normalizeValue($data['value'] ?? null);
-        $data['company_id'] = null;
+        $data['company_id'] = $this->settingsService->resolveCurrentCompanyId();
         $data['created_user_id'] = $request->user()->id;
         $setting = WebsiteSetting::create($data);
 
@@ -71,7 +74,7 @@ class WebsiteSettingController extends Controller
         $data['updated_user_id'] = $request->user()->id;
         $websiteSetting->update($data);
 
-        $this->settingsService->clearCache($websiteSetting->type);
+        $this->settingsService->clearCache($websiteSetting->type, $websiteSetting->company_id);
 
         return response()->json([
             'status' => 'success',
@@ -83,8 +86,10 @@ class WebsiteSettingController extends Controller
     public function getByKey(string $section, string $key): JsonResponse
     {
         $type = "{$section}.{$key}";
+        $companyId = $this->settingsService->resolveCurrentCompanyId();
         $setting = WebsiteSetting::where('type', $type)
-            ->whereNull('company_id')
+            ->when($companyId, fn ($query) => $query->where('company_id', $companyId))
+            ->when(!$companyId, fn ($query) => $query->whereNull('company_id'))
             ->first();
 
         return response()->json([
@@ -104,16 +109,17 @@ class WebsiteSettingController extends Controller
         ]);
 
         $type = "{$section}.{$key}";
+        $companyId = $this->settingsService->resolveCurrentCompanyId();
         $value = array_key_exists('setting_value', $data) ? $data['setting_value'] : ($data['value'] ?? null);
         $setting = WebsiteSetting::updateOrCreate(
-            ['type' => $type, 'company_id' => null],
+            ['type' => $type, 'company_id' => $companyId],
             [
                 'value' => WebsiteSetting::normalizeValue($value),
                 'updated_user_id' => $request->user()->id,
             ]
         );
 
-        $this->settingsService->clearCache($type);
+        $this->settingsService->clearCache($type, $companyId);
 
         return response()->json([
             'status' => 'success',
@@ -128,7 +134,7 @@ class WebsiteSettingController extends Controller
         $websiteSetting->delete();
 
         // Clear cache
-        $this->settingsService->clearCache($type);
+        $this->settingsService->clearCache($type, $websiteSetting->company_id);
 
         return response()->json([
             'status' => 'success',
@@ -157,10 +163,11 @@ class WebsiteSettingController extends Controller
 
         $updatedSettings = [];
         $types = [];
+        $companyId = $this->settingsService->resolveCurrentCompanyId();
 
         foreach ($request->settings as $settingData) {
             $setting = WebsiteSetting::updateOrCreate(
-                ['type' => $settingData['type'], 'company_id' => null],
+                ['type' => $settingData['type'], 'company_id' => $companyId],
                 [
                     'value' => WebsiteSetting::normalizeValue($settingData['value'] ?? null),
                     'updated_user_id' => $request->user()->id,
@@ -173,7 +180,7 @@ class WebsiteSettingController extends Controller
 
         // Clear cache for all updated types
         foreach ($types as $type) {
-            $this->settingsService->clearCache($type);
+            $this->settingsService->clearCache($type, $companyId);
         }
 
         return response()->json([
@@ -236,10 +243,11 @@ class WebsiteSettingController extends Controller
 
         try {
             $updatedSettings = [];
+            $companyId = $this->settingsService->resolveCurrentCompanyId();
 
             foreach ($request->settings as $type => $value) {
                 $setting = WebsiteSetting::updateOrCreate(
-                    ['type' => $type, 'company_id' => null],
+                    ['type' => $type, 'company_id' => $companyId],
                     [
                         'value' => WebsiteSetting::normalizeValue($value),
                         'updated_user_id' => $request->user()->id,
@@ -247,7 +255,7 @@ class WebsiteSettingController extends Controller
                 );
 
                 $updatedSettings[] = new WebsiteSettingResource($setting);
-                $this->settingsService->clearCache($type);
+                $this->settingsService->clearCache($type, $companyId);
             }
 
             return response()->json([

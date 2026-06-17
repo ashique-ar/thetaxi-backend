@@ -183,7 +183,10 @@ class AppServiceProvider extends ServiceProvider
         }
 
         // Restrict Scramble API docs to non-production environments
-        if (class_exists(\Dedoc\Scramble\Scramble::class)) {
+        if (
+            class_exists(\Dedoc\Scramble\Scramble::class)
+            && method_exists(\Dedoc\Scramble\Scramble::class, 'shouldGenerateDocs')
+        ) {
             \Dedoc\Scramble\Scramble::shouldGenerateDocs(fn () => !app()->isProduction());
         }
     }

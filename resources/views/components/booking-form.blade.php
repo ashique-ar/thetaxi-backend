@@ -284,9 +284,41 @@
     try {
         $bookingSettings = app(\App\Services\WebsiteSettingsService::class)->getBookingSettings();
         $bookingAdvanceHours = (int) ($bookingSettings['booking_advance_hours'] ?? 4);
+        $bookingNoticeHtml = trim((string) ($bookingSettings['booking_notice_html'] ?? ''));
     } catch (Exception $e) {
         $bookingAdvanceHours = 0;
+        $bookingNoticeHtml = '';
     }
+
+    if ($bookingNoticeHtml === '' && $bookingAdvanceHours > 0) {
+        $hourLabel = $bookingAdvanceHours . ' hour' . ($bookingAdvanceHours > 1 ? 's' : '');
+        $bookingNoticeHtml = 'Booking Notice: Bookings must be made at least <strong>' . e($hourLabel) . '</strong> in advance.';
+    }
+
+    $formatBookingNotice = function (string $html): string {
+        $allowedTags = '<strong><b><em><i><br><p><span><a>';
+        $clean = strip_tags($html, $allowedTags);
+        $clean = preg_replace('/<(?!a\b)([a-z][a-z0-9]*)\b[^>]*>/i', '<$1>', $clean);
+        $clean = preg_replace_callback('/<a\b([^>]*)>/i', function ($matches) {
+            $attrs = $matches[1] ?? '';
+            if (preg_match('/href\s*=\s*([\'"])(.*?)\1/i', $attrs, $hrefMatch)) {
+                $href = trim($hrefMatch[2]);
+                if (str_starts_with(strtolower($href), 'tel:')) {
+                    return '<a href="' . e($href) . '">';
+                }
+            }
+            return '<a>';
+        }, $clean);
+        $clean = preg_replace_callback('/(?<![\\w"=:+>])(\+?\d[\d\s().-]{6,}\d)(?![^<]*>)/', function ($matches) {
+            $display = $matches[1];
+            $tel = preg_replace('/[^\d+]/', '', $display);
+            if (strlen(preg_replace('/\D/', '', $tel)) < 7) {
+                return e($display);
+            }
+            return '<a href="tel:' . e($tel) . '">' . e($display) . '</a>';
+        }, $clean);
+        return nl2br($clean, false);
+    };
 
     // Predefined locations
     try {
@@ -363,14 +395,13 @@
             @endif
         @endforeach
 
-        @if ($bookingAdvanceHours && $bookingAdvanceHours > 0)
+        @if ($bookingNoticeHtml !== '')
             <div class="booking-advance-note alert alert-warning d-flex align-items-center mt-3" role="note" style="margin-bottom:12px;">
                 <svg width="18" height="18" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin-right:8px;flex-shrink:0;">
                     <path d="M8 1.333c-3.683 0-6.667 2.984-6.667 6.667S4.317 14.667 8 14.667 14.667 11.683 14.667 8 11.683 1.333 8 1.333zm0 9.334a.667.667 0 110 1.334.667.667 0 010-1.334zM7.333 4.667h1.334V9.33H7.333V4.667z" fill="#856404" />
                 </svg>
                 <div style="color:#856404;">
-                    <strong>Booking Notice:</strong>
-                    <span> Bookings must be made at least <strong>{{ $bookingAdvanceHours }} hour{{ $bookingAdvanceHours > 1 ? 's' : '' }}</strong> in advance.</span>
+                    {!! $formatBookingNotice($bookingNoticeHtml) !!}
                 </div>
             </div>
         @endif

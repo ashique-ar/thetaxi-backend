@@ -299,9 +299,14 @@ class BookingSearchRequest extends FormRequest
             if ($advanceHours > 0) {
                 $minimumDateTime = now()->addHours($advanceHours);
                 if ($startDateTime->lt($minimumDateTime)) {
+                    $customNotice = trim((string) ($settings['booking_notice_html'] ?? ''));
+                    $message = $customNotice !== ''
+                        ? trim(html_entity_decode(strip_tags(str_replace(['<br>', '<br/>', '<br />'], "\n", $customNotice))))
+                        : "Bookings must be made at least {$advanceHours} hours in advance.";
+
                     $validator->errors()->add(
                         $dateField,
-                        "Bookings must be made at least {$advanceHours} hours in advance."
+                        $message
                     );
                 }
             }

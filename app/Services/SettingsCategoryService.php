@@ -715,6 +715,12 @@ class SettingsCategoryService
                     'placeholder' => '2',
                     'description' => 'Minimum hours in advance for booking'
                 ],
+                'booking_notice_html' => [
+                    'label' => 'Public Booking Notice',
+                    'type' => 'textarea',
+                    'placeholder' => 'Booking Notice: Bookings must be made at least <strong>4 hours</strong> in advance.',
+                    'description' => 'Shown below the public booking form. Supports basic formatting and tel: links.'
+                ],
                 // Service visibility toggles
                 'enable_airport_transfers' => [
                     'label' => 'Enable Airport Transfers',
