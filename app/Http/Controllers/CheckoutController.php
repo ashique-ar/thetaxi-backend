@@ -1296,29 +1296,36 @@ class CheckoutController extends Controller
             if (!empty($verificationResult['success']) && ($verificationResult['status'] === 'completed' || $verificationResult['status'] === 'success')) {
                 Log::info('WebXPay: payment successful, processing booking', ['booking_id' => $booking->id, 'transaction_id' => $verificationResult['transaction_id'] ?? null]);
                 $this->paymentEventService->recordEvent('payment_success', ['booking_id' => $booking->id, 'booking_number' => $booking->booking_number, 'transaction_id' => $verificationResult['transaction_id'] ?? null, 'payload' => $verificationResult, 'source' => 'webxpay', 'status' => 'success']);
+
+                $wasPaid = false;
                 DB::beginTransaction();
 
-                // Update booking with payment confirmation
-                $wasPaid = $booking->payment_status === 'paid';
-                $booking->update([
-                    'status' => config('booking.status.confirmed'),
-                    'payment_status' => 'paid',
-                    'payment_gateway_transaction_id' => $verificationResult['transaction_id'] ?? null,
-                    'paid_at' => $verificationResult['paid_at'] ?? now(),
-                    'confirmed_at' => now(),
-                ]);
+                // Re-fetch with a pessimistic lock to guard against concurrent callback/notify
+                $lockedBooking = Booking::where('id', $booking->id)->lockForUpdate()->first();
 
-                Log::info('WebXPay: booking updated to confirmed', ['booking_id' => $booking->id]);
+                if ($lockedBooking && $lockedBooking->payment_status !== 'paid') {
+                    $lockedBooking->update([
+                        'status' => config('booking.status.confirmed'),
+                        'payment_status' => 'paid',
+                        'payment_gateway_transaction_id' => $verificationResult['transaction_id'] ?? null,
+                        'paid_at' => $verificationResult['paid_at'] ?? now(),
+                        'confirmed_at' => now(),
+                    ]);
+                    $booking = $lockedBooking;
 
-                // Mark cart as checked out and record promo code usage
-                $dbCart = $this->cartService->getOrCreateCart();
+                    Log::info('WebXPay: booking updated to confirmed', ['booking_id' => $booking->id]);
 
-                // Record promo code usage if a promo code was applied
-                if (!$wasPaid) {
+                    // Mark cart as checked out and record promo code usage
+                    $dbCart = $this->cartService->getOrCreateCart();
                     $this->recordPromoCodeUsageFromCart($dbCart, $booking);
-                }
+                    $this->cartService->markAsCheckedOut($dbCart);
 
-                $this->cartService->markAsCheckedOut($dbCart);
+                    $wasPaid = false; // just set to paid — send the email
+                } else {
+                    // Already paid by concurrent webhook — still commit (nothing to roll back)
+                    $wasPaid = true;
+                    Log::info('WebXPay callback: booking already paid, skipping duplicate update', ['booking_id' => $booking->id]);
+                }
 
                 // Send confirmation email
                 try {
@@ -1368,7 +1375,8 @@ class CheckoutController extends Controller
     }
 
     /**
-     * WebXPay notification handler (webhook)
+     * WebXPay notification handler (server-to-server webhook).
+     * Uses a pessimistic lock to ensure only one concurrent delivery marks the booking paid.
      */
     public function webxpayNotify(Request $request)
     {
@@ -1377,7 +1385,6 @@ class CheckoutController extends Controller
 
             Log::info('WebXPay notification received', $callbackData);
 
-            // Verify payment
             $verificationResult = $this->webxPayService->verifyPayment($callbackData);
 
             if ($verificationResult['success']) {
@@ -1386,27 +1393,44 @@ class CheckoutController extends Controller
                 // Extract booking number from order ID (format: BK12345678-timestamp)
                 $bookingNumber = explode('-', $orderId)[0] ?? null;
 
-                if ($bookingNumber) {
-                    $booking = Booking::where('booking_number', $bookingNumber)->first();
+                if ($bookingNumber && $verificationResult['status'] === 'completed') {
+                    $emailBooking = null;
 
-                    if ($booking && $verificationResult['status'] === 'completed') {
-                        $wasPaid = $booking->payment_status === 'paid';
+                    DB::transaction(function () use ($bookingNumber, $verificationResult, &$emailBooking) {
+                        // Lock the row — prevents duplicate delivery race conditions
+                        $booking = Booking::where('booking_number', $bookingNumber)
+                            ->lockForUpdate()
+                            ->first();
+
+                        if (!$booking) return;
+
+                        // Idempotency: if already paid, nothing to do
+                        if ($booking->payment_status === 'paid') return;
+
                         $booking->update([
-                            'status' => config('booking.status.confirmed'),
-                            'payment_status' => 'paid',
-                            'payment_gateway_transaction_id' => $verificationResult['transaction_id'],
-                            'paid_at' => $verificationResult['paid_at'] ?? now(),
-                            'confirmed_at' => now(),
+                            'status'                           => config('booking.status.confirmed'),
+                            'payment_status'                   => 'paid',
+                            'payment_gateway_transaction_id'   => $verificationResult['transaction_id'],
+                            'paid_at'                          => $verificationResult['paid_at'] ?? now(),
+                            'confirmed_at'                     => now(),
                         ]);
 
-                        if (!$wasPaid) {
-                            // Reload booking with eager loaded relations for email
-                            $bookingForEmail = $this->reloadBookingForEmail($booking);
-                            $this->sendBookingEmail($bookingForEmail, new CheckoutConfirmationMail($bookingForEmail));
-                        }
+                        $emailBooking = $booking;
+                    });
 
-                        return response()->json(['status' => 'success']);
+                    if ($emailBooking) {
+                        try {
+                            $bookingForEmail = $this->reloadBookingForEmail($emailBooking);
+                            $this->sendBookingEmail($bookingForEmail, new CheckoutConfirmationMail($bookingForEmail));
+                        } catch (\Exception $e) {
+                            Log::error('WebXPay notify: failed to send confirmation email', [
+                                'booking_id' => $emailBooking->id,
+                                'error' => $e->getMessage(),
+                            ]);
+                        }
                     }
+
+                    return response()->json(['status' => 'success']);
                 }
             }
 

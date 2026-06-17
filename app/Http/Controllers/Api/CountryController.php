@@ -11,6 +11,7 @@ use App\Http\Resources\CountryResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\Cache;
 
 class CountryController extends Controller
 {
@@ -24,13 +25,19 @@ class CountryController extends Controller
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        $q = Country::query();
-        if ($request->filled('search')) {
-            $q->whereLikeInsensitive('name', $request->search);
+        $perPage = $request->per_page ?? 15;
+        $search  = $request->search ?? '';
+        $page    = $request->page ?? 1;
+
+        if ($search) {
+            $q = Country::query()->whereLikeInsensitive('name', $search);
+            return CountryResource::collection($q->paginate($perPage));
         }
-        return CountryResource::collection(
-            $q->paginate($request->per_page ?? 15)
-        );
+
+        $v = (int) Cache::get('ref.countries.v', 0);
+        $key = "ref.countries.v{$v}.p{$perPage}.pg{$page}";
+        $results = Cache::remember($key, 3600, fn () => Country::query()->paginate($perPage));
+        return CountryResource::collection($results);
     }
 
     public function store(CreateCountryRequest $request): JsonResponse
@@ -38,6 +45,7 @@ class CountryController extends Controller
         $data = $request->validated();
         $data['created_user_id'] = $request->user()->id;
         $country = Country::create($data);
+        Cache::put('ref.countries.v', ((int) Cache::get('ref.countries.v', 0)) + 1, 86400);
 
         return response()->json([
             'status' => 'success',
@@ -59,6 +67,7 @@ class CountryController extends Controller
         $data = $request->validated();
         $data['updated_user_id'] = $request->user()->id;
         $country->update($data);
+        Cache::put('ref.countries.v', ((int) Cache::get('ref.countries.v', 0)) + 1, 86400);
 
         return response()->json([
             'status' => 'success',
@@ -70,6 +79,7 @@ class CountryController extends Controller
     public function destroy(Country $country): JsonResponse
     {
         $country->delete();
+        Cache::put('ref.countries.v', ((int) Cache::get('ref.countries.v', 0)) + 1, 86400);
         return response()->json([
             'status' => 'success',
             'message' => 'Country deleted'

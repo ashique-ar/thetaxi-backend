@@ -45,11 +45,16 @@ class WebsiteSettingsService
         $companyId = $this->resolveCurrentCompanyId();
         $result = [];
         $uncachedTypes = [];
+        $cacheKeysByType = [];
 
-        // Check cache for each type
         foreach ($types as $type) {
-            $cacheKey = self::CACHE_PREFIX . ($companyId ?: 'global') . '_' . $type;
-            $cachedValue = Cache::get($cacheKey);
+            $cacheKeysByType[$type] = self::CACHE_PREFIX . ($companyId ?: 'global') . '_' . $type;
+        }
+
+        $cachedValues = Cache::many(array_values($cacheKeysByType));
+
+        foreach ($cacheKeysByType as $type => $cacheKey) {
+            $cachedValue = $cachedValues[$cacheKey] ?? null;
 
             if ($cachedValue !== null) {
                 $result[$type] = $cachedValue;
@@ -61,12 +66,15 @@ class WebsiteSettingsService
         // Fetch uncached values from database
         if (!empty($uncachedTypes)) {
             $uncachedValues = WebsiteSetting::getValues($uncachedTypes, $companyId);
+            $valuesToCache = [];
 
             foreach ($uncachedValues as $type => $value) {
-                $cacheKey = self::CACHE_PREFIX . ($companyId ?: 'global') . '_' . $type;
-                Cache::put($cacheKey, $value, self::CACHE_DURATION);
+                $cacheKey = $cacheKeysByType[$type];
+                $valuesToCache[$cacheKey] = $value;
                 $result[$type] = $value;
             }
+
+            Cache::putMany($valuesToCache, self::CACHE_DURATION);
         }
 
         return $result;

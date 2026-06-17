@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Airport;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Validator;
 
 class AirportController extends Controller
@@ -16,27 +17,32 @@ class AirportController extends Controller
     public function index(Request $request): JsonResponse
     {
         try {
-            $query = Airport::query();
+            $search   = $request->input('search', '');
+            $isActive = $request->has('is_active') ? $request->boolean('is_active') : null;
 
-            // Filter by active status
-            if ($request->has('is_active')) {
-                $query->where('is_active', $request->boolean('is_active'));
-            }
-
-            // Search by name or code
-            if ($request->has('search')) {
-                $search = $request->input('search');
+            // Only cache non-search requests (search results are too varied to cache usefully)
+            if (!$search) {
+                $v   = (int) Cache::get('ref.airports.v', 0);
+                $key = "ref.airports.v{$v}.active" . ($isActive === null ? 'all' : ($isActive ? '1' : '0'));
+                $airports = Cache::remember($key, 3600, function () use ($isActive) {
+                    $query = Airport::query()->ordered();
+                    if ($isActive !== null) {
+                        $query->where('is_active', $isActive);
+                    }
+                    return $query->get();
+                });
+            } else {
+                $query = Airport::query()->ordered();
+                if ($isActive !== null) {
+                    $query->where('is_active', $isActive);
+                }
                 $query->where(function ($q) use ($search) {
                     $q->where('name', 'ILIKE', "%{$search}%")
                       ->orWhere('code', 'ILIKE', "%{$search}%")
                       ->orWhere('city', 'ILIKE', "%{$search}%");
                 });
+                $airports = $query->get();
             }
-
-            // Order by sort_order and name
-            $query->ordered();
-
-            $airports = $query->get();
 
             return response()->json([
                 'status' => 'success',
@@ -79,6 +85,7 @@ class AirportController extends Controller
             }
 
             $airport = Airport::create($validator->validated());
+            Cache::put('ref.airports.v', ((int) Cache::get('ref.airports.v', 0)) + 1, 86400);
 
             return response()->json([
                 'status' => 'success',
@@ -144,6 +151,7 @@ class AirportController extends Controller
             }
 
             $airport->update($validator->validated());
+            Cache::put('ref.airports.v', ((int) Cache::get('ref.airports.v', 0)) + 1, 86400);
 
             return response()->json([
                 'status' => 'success',
@@ -167,6 +175,7 @@ class AirportController extends Controller
         try {
             $airport = Airport::findOrFail($id);
             $airport->delete();
+            Cache::put('ref.airports.v', ((int) Cache::get('ref.airports.v', 0)) + 1, 86400);
 
             return response()->json([
                 'status' => 'success',

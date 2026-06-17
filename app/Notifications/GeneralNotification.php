@@ -3,11 +3,13 @@
 namespace App\Notifications;
 
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Notifications\Messages\BroadcastMessage;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class GeneralNotification extends Notification implements ShouldQueue
+class GeneralNotification extends Notification implements ShouldQueue, ShouldBroadcast
 {
     use Queueable;
 
@@ -31,7 +33,18 @@ class GeneralNotification extends Notification implements ShouldQueue
      */
     public function via($notifiable)
     {
-        return ['database', 'mail'];
+        return ['database', 'mail', 'broadcast'];
+    }
+
+    public function toBroadcast($notifiable): BroadcastMessage
+    {
+        return new BroadcastMessage([
+            'title'       => $this->notificationData['title'],
+            'description' => $this->notificationData['message'],
+            'type'        => $this->notificationData['type'] ?? 'info',
+            'link'        => $this->notificationData['action_url'] ?? null,
+            'icon'        => $this->notificationData['icon'] ?? 'heroicons_outline:bell',
+        ]);
     }
 
     /**

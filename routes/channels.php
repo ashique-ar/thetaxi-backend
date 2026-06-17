@@ -42,3 +42,12 @@ Broadcast::channel('driver.{driverId}.assignments', function ($user, string $dri
 Broadcast::channel('admin.assignments', function ($user) {
     return $user->hasAnyPermission(['bookings.view', 'bookings.create', 'bookings.edit']);
 });
+
+/**
+ * Private channel for per-user database notifications broadcast via Laravel Echo.
+ * This is the default channel used by Laravel's Notifiable trait; authorizes the
+ * authenticated user to listen to their own notification stream.
+ */
+Broadcast::channel('App.Models.User.{id}', function ($user, string $id) {
+    return (string) $user->id === $id;
+});
