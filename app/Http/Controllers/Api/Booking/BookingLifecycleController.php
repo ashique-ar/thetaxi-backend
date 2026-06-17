@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Api\Booking;
 
 use App\Http\Controllers\Controller;
+use App\Models\Booking\Booking;
 use App\Services\BookingLifecycleService;
+use App\Services\Sms\SmsAutomationService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -14,8 +16,10 @@ class BookingLifecycleController extends Controller
 {
     protected $lifecycleService;
 
-    public function __construct(BookingLifecycleService $lifecycleService)
-    {
+    public function __construct(
+        BookingLifecycleService $lifecycleService,
+        private SmsAutomationService $smsAutomation,
+    ) {
         $this->lifecycleService = $lifecycleService;
     }
 
