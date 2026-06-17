@@ -11,6 +11,7 @@ use App\Http\Resources\CurrencyResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\Cache;
 
 class CurrencyController extends Controller
 {
@@ -31,9 +32,18 @@ class CurrencyController extends Controller
                     ->orWhereLikeInsensitive('code', $request->search);
             });
         }
-        return CurrencyResource::collection(
-            $q->paginate($request->per_page ?? 15)
-        );
+
+        if (!$request->filled('search')) {
+            $perPage  = (int) ($request->per_page ?? 15);
+            $page     = (int) ($request->page ?? 1);
+            $v        = (int) Cache::get('ref.currencies.v', 0);
+            $cacheKey = "ref.currencies.v{$v}.p{$perPage}.pg{$page}";
+            $results  = Cache::remember($cacheKey, 3600, fn () => $q->paginate($perPage));
+
+            return CurrencyResource::collection($results);
+        }
+
+        return CurrencyResource::collection($q->paginate($request->per_page ?? 15));
     }
 
     public function store(CreateCurrencyRequest $request): JsonResponse
@@ -41,6 +51,8 @@ class CurrencyController extends Controller
         $data = $request->validated();
         $data['created_user_id'] = $request->user()->id;
         $currency = Currency::create($data);
+
+        Cache::put('ref.currencies.v', ((int) Cache::get('ref.currencies.v', 0)) + 1, 86400);
 
         return response()->json([
             'status' => 'success',
@@ -63,6 +75,8 @@ class CurrencyController extends Controller
         $data['updated_user_id'] = $request->user()->id;
         $currency->update($data);
 
+        Cache::put('ref.currencies.v', ((int) Cache::get('ref.currencies.v', 0)) + 1, 86400);
+
         return response()->json([
             'status' => 'success',
             'message' => 'Currency updated',
@@ -73,6 +87,9 @@ class CurrencyController extends Controller
     public function destroy(Currency $currency): JsonResponse
     {
         $currency->delete();
+
+        Cache::put('ref.currencies.v', ((int) Cache::get('ref.currencies.v', 0)) + 1, 86400);
+
         return response()->json([
             'status' => 'success',
             'message' => 'Currency deleted'

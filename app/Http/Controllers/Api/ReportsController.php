@@ -504,15 +504,27 @@ class ReportsController extends Controller
 
     private function getServiceTypeDistribution($query): array
     {
-        return (clone $query)
+        $rows = (clone $query)
             ->join('booking_items', 'bookings.id', '=', 'booking_items.booking_id')
             ->join('service_types', 'booking_items.service_type_id', '=', 'service_types.id')
             ->select('service_types.name as service_type')
-            ->selectRaw('COUNT(DISTINCT bookings.id) as count')
+            ->selectRaw('COUNT(DISTINCT bookings.id) as bookings')
             ->groupBy('service_types.id', 'service_types.name')
-            ->orderByDesc('count')
+            ->orderByDesc('bookings')
             ->get()
             ->toArray();
+
+        $total = collect($rows)->sum('bookings');
+
+        return array_map(function ($row) use ($total) {
+            $bookings = (int) $row->bookings;
+
+            return [
+                'service_type' => $row->service_type,
+                'bookings' => $bookings,
+                'percentage' => $total > 0 ? round(($bookings / $total) * 100, 2) : 0,
+            ];
+        }, $rows);
     }
 
     // ─────────────────────────────────────────────────────────────────

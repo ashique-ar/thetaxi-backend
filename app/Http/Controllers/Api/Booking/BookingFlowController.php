@@ -174,7 +174,6 @@ class BookingFlowController extends Controller
                 'message' => 'Specific vehicles search completed successfully'
             ]);
         } catch (\Exception $e) {
-            throw $e;
             Log::error('Error searching specific vehicles: ' . $e->getMessage());
             return response()->json([
                 'status' => 'error',
@@ -873,12 +872,12 @@ class BookingFlowController extends Controller
             ])->findOrFail($bookingId);
 
             // Check permissions
-            // if (!Gate::allows('update', $booking)) {
-            //     return response()->json([
-            //         'status' => 'error',
-            //         'message' => 'Unauthorized to edit this booking'
-            //     ], 403);
-            // }
+            if (!Gate::allows('update', $booking)) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Unauthorized to edit this booking'
+                ], 403);
+            }
 
             // Get comprehensive edit data
             $editData = $this->bookingFlowService->getComprehensiveBookingData($bookingId);
@@ -901,7 +900,6 @@ class BookingFlowController extends Controller
                 'message' => 'Booking not found'
             ], 404);
         } catch (\Exception $e) {
-            throw $e;
             Log::error('Error getting booking for edit: ' . $e->getMessage());
             return response()->json([
                 'status' => 'error',

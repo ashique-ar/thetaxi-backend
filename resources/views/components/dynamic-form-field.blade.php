@@ -100,7 +100,6 @@
                         $activeCondValue = $condKeys[0] ?? '';
                     }
                 @endphp
-                <!-- DEBUG conditional: condField={{ $condField }} activeCondValue={{ json_encode($activeCondValue) }} transferType={{ json_encode($transferType ?? 'NULL') }} conditionKeys={{ json_encode($condKeys) }} -->
                 {{-- This renders both variants; JS toggles visibility based on condition --}}
                 <div class="dynamic-conditional-location"
                      data-condition-field="{{ $condField }}"
@@ -267,7 +266,6 @@
                 $checkedValue = $options[0]['value'] ?? '';
             }
         @endphp
-        <!-- DEBUG radio: submitAs={{ $submitAs }} fieldValue={{ json_encode($fieldValue) }} defaultValue={{ json_encode($defaultValue) }} checkedValue={{ json_encode($checkedValue) }} optionCount={{ count($options) }} options={{ json_encode($options) }} -->
         <div class="{{ $isTransferType ? 'transfer-type-selector text-center' : 'single-search-box radio-field' }}" id="{{ $elementId }}_wrapper">
             @if(!$isTransferType)
                 <div class="d-flex align-items-center gap-2 py-1">

@@ -72,7 +72,6 @@ class BookingLifecycleController extends Controller
             'agreements_signed' => 'nullable|boolean',
             'notes' => 'nullable|string',
             'condition' => 'nullable|array',
-            'allow_repeat_dispatch_for_testing' => 'nullable|boolean',
         ]);
 
         try {
@@ -94,7 +93,6 @@ class BookingLifecycleController extends Controller
                     'handover_time' => $request->input('handover_time'),
                     'handover_location' => $request->input('handover_location'),
                     'booking_item_id' => $request->input('booking_item_id'),
-                    'allow_repeat_dispatch_for_testing' => (bool) $request->boolean('allow_repeat_dispatch_for_testing', false),
                 ], [
                     'dispatched_by' => Auth::id()
                 ])
@@ -132,7 +130,7 @@ class BookingLifecycleController extends Controller
             'booking_id' => 'required|string',
             'booking_item_id' => 'nullable|string',
             'return_condition_notes' => 'nullable|string',
-            'fuel_level' => 'nullable|numeric|min:0|max:10',
+            'fuel_level' => 'nullable|numeric|min:0|max:100',
             'mileage' => 'nullable|integer|min:0',
             'return_notes' => 'nullable|string',
             'actual_return_time' => 'nullable|date',
@@ -245,7 +243,7 @@ class BookingLifecycleController extends Controller
             'booking_id' => 'required|string',
             'booking_item_id' => 'nullable|string',
             'cleanliness_rating' => 'nullable|integer|min:1|max:5',
-            'fuel_level' => 'nullable|numeric|min:0|max:10',
+            'fuel_level' => 'nullable|numeric|min:0|max:100',
             'mileage' => 'nullable|integer|min:0',
             'interior_condition' => 'nullable|array',
             'interior_condition.cleanliness' => 'nullable|in:excellent,good,fair,poor',

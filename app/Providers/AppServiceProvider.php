@@ -14,10 +14,17 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Passport\Passport;
 use Illuminate\Support\Facades\Gate;
+use App\Models\Booking\Booking;
 use App\Models\Corporate\Corporate;
+use App\Models\Customer;
 use App\Models\Driver\Driver;
+use App\Models\Vehicle\Vehicle;
 use App\Observers\DriverObserver;
+use App\Policies\BookingPolicy;
 use App\Policies\CorporatePolicy;
+use App\Policies\CustomerPolicy;
+use App\Policies\DriverPolicy;
+use App\Policies\VehiclePolicy;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -72,7 +79,11 @@ class AppServiceProvider extends ServiceProvider
         Driver::observe(DriverObserver::class);
 
         // Register policies
+        Gate::policy(Booking::class, BookingPolicy::class);
         Gate::policy(Corporate::class, CorporatePolicy::class);
+        Gate::policy(Customer::class, CustomerPolicy::class);
+        Gate::policy(Driver::class, DriverPolicy::class);
+        Gate::policy(Vehicle::class, VehiclePolicy::class);
 
         // Load broadcast channel authorization routes
         require base_path('routes/channels.php');
