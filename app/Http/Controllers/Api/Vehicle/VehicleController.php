@@ -459,17 +459,14 @@ class VehicleController extends Controller
         }
 
         if (array_key_exists('actual_vehicle_images', $data) && is_array($data['actual_vehicle_images'])) {
-            $uploadedAt = now()->toIso8601String();
-            $data['actual_vehicle_images'] = collect($data['actual_vehicle_images'])
-                ->filter(fn ($image) => is_array($image) || is_string($image))
-                ->map(function ($image) use ($uploadedAt) {
-                    $payload = is_string($image) ? ['path' => $image] : $image;
-                    $payload['uploaded_at'] = $payload['uploaded_at'] ?? $uploadedAt;
+            $data['actual_vehicle_images'] = $this->normalizeVehicleImages($data['actual_vehicle_images']);
 
-                    return $payload;
-                })
-                ->values()
-                ->all();
+            $primaryImage = collect($data['actual_vehicle_images'])->firstWhere('is_primary', true)
+                ?? ($data['actual_vehicle_images'][0] ?? null);
+
+            if ($primaryImage) {
+                $data['thumbnail'] = $primaryImage;
+            }
         }
 
         if (!empty($data['owner_payment_method_id']) && !empty($data['owner_id'])) {
@@ -482,6 +479,35 @@ class VehicleController extends Controller
         }
 
         return $data;
+    }
+
+    private function normalizeVehicleImages(array $images): array
+    {
+        $uploadedAt = now()->toIso8601String();
+        $primaryAssigned = false;
+
+        $normalized = collect($images)
+            ->filter(fn ($image) => is_array($image) || is_string($image))
+            ->map(function ($image) use ($uploadedAt, &$primaryAssigned) {
+                $payload = is_string($image) ? ['path' => $image] : $image;
+                $payload['path'] = $payload['path'] ?? $payload['url'] ?? null;
+                $payload['uploaded_at'] = $payload['uploaded_at'] ?? $uploadedAt;
+
+                $isPrimary = filter_var($payload['is_primary'] ?? false, FILTER_VALIDATE_BOOL);
+                $payload['is_primary'] = !$primaryAssigned && $isPrimary;
+                $primaryAssigned = $primaryAssigned || $payload['is_primary'];
+
+                return $payload;
+            })
+            ->filter(fn ($image) => !empty($image['path']) || !empty($image['url']))
+            ->values()
+            ->all();
+
+        if (!$primaryAssigned && count($normalized) > 0) {
+            $normalized[0]['is_primary'] = true;
+        }
+
+        return $normalized;
     }
 
     private function buildAvailabilityPeriods(Carbon $start, Carbon $end, string $granularity): array

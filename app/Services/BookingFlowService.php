@@ -881,8 +881,8 @@ class BookingFlowService
                         'package_id' => $params['package_id'] ?? ($params['service_package_id'] ?? null),
                         'package_type' => $params['package_type'] ?? null,
                         'customer_id' => $customerId,
-                        'currency' => 'LKR',
-                        'base_currency' => 'LKR',
+                        'currency' => config('booking.base_currency', 'LKR'),
+                        'base_currency' => config('booking.base_currency', 'LKR'),
                         'is_preview_calculation' => true,
                     ];
 
@@ -2646,7 +2646,7 @@ class BookingFlowService
                         'dropoff_longitude' => $dropoffLongitude,
                         'dropoff_landmark' => $dropoffLandmark,
                         'is_self_driven' => $itemData['is_self_driven'] ?? false,
-                        'currency' => 'LKR',
+                        'currency' => config('booking.base_currency', 'LKR'),
                         'exchange_rate' => '1.000000',
                         'status' => $booking->status,
                         'item_type' => 'vehicle_group',
@@ -2782,7 +2782,7 @@ class BookingFlowService
                         'dropoff_longitude' => $dropoffLongitude,
                         'dropoff_landmark' => $dropoffLandmark,
                         'is_self_driven' => $params['is_self_driven'] ?? false,
-                        'currency' => 'LKR',
+                        'currency' => config('booking.base_currency', 'LKR'),
                         'exchange_rate' => '1.000000',
                         'status' => $booking->status,
                         'item_type' => 'vehicle_group',
@@ -6381,7 +6381,7 @@ class BookingFlowService
         $data['discount_amount'] = (float) $discountAmount;
         $data['tax_amount'] = (float) $taxAmount;
         $data['total_estimated'] = (float) $totalAmount;
-        $data['currency'] = 'LKR';
+        $data['currency'] = config('booking.base_currency', 'LKR');
 
         // Add pricing overrides and base pricing details
         // $basePricingOverrides = $pricing['base_pricing_overrides'] ?? [];
@@ -6942,7 +6942,7 @@ class BookingFlowService
                     'variable_type' => $latest->variable_type,
                     'display_name' => $latest->variable_name,
                     'category' => 'base',
-                    'unit' => 'LKR',
+                    'unit' => config('booking.base_currency', 'LKR'),
                     'original_value' => $latest->original_value,
                     'custom_value' => $latest->custom_value,
                     'customization_reason' => $latest->customization_reason,

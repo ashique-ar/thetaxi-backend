@@ -1192,7 +1192,7 @@ class CartService
 
                 return [
                     'rate' => (float) $vehicleGroupRate->value,
-                    'currency' => 'LKR',
+                    'currency' => config('booking.base_currency', 'LKR'),
                     'definition_id' => $extraKmDefinition->id,
                     'definition_name' => $extraKmDefinition->name,
                     'service_type_id' => $extraKmDefinition->service_type_id,

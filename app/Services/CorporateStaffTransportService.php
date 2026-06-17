@@ -407,7 +407,7 @@ class CorporateStaffTransportService
                 'pickup_longitude' => $pickupLocation['longitude'] ?? null,
                 'dropoff_latitude' => $dropoffLocation['latitude'] ?? null,
                 'dropoff_longitude' => $dropoffLocation['longitude'] ?? null,
-                'currency' => 'LKR',
+                'currency' => config('booking.base_currency', 'LKR'),
                 'status' => 'confirmed',
                 'metadata' => $metadata['metadata'],
             ];

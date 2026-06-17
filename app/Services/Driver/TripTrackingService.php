@@ -111,6 +111,11 @@ class TripTrackingService
      */
     public function confirmPickupArrival(DriverAssignment $assignment, array $coordinates): void
     {
+        // Idempotent: already in target state means the transition succeeded on a prior attempt
+        if ($assignment->trip_phase === TripPhase::PICKUP_ARRIVED) {
+            return;
+        }
+
         if ($assignment->trip_phase !== TripPhase::ACCEPTED) {
             throw new \InvalidArgumentException('TRIP_PICKUP_NOT_CONFIRMED');
         }
@@ -130,6 +135,11 @@ class TripTrackingService
      */
     public function startTrip(DriverAssignment $assignment): void
     {
+        // Idempotent: already in progress means this transition succeeded on a prior attempt
+        if ($assignment->trip_phase === TripPhase::IN_PROGRESS) {
+            return;
+        }
+
         $stops = $this->ensureAssignmentStops($assignment);
 
         if (
@@ -164,6 +174,32 @@ class TripTrackingService
      */
     public function endTrip(DriverAssignment $assignment, array $finalLocation): array
     {
+        // Idempotent: already completed — return the stored summary rather than re-processing
+        if ($assignment->trip_phase === TripPhase::COMPLETED) {
+            $waitingTime = $this->waitingTimeService->getTotalWaitingTime($assignment);
+            return [
+                'assignment_id'              => $assignment->id,
+                'booking_id'                 => $assignment->booking_id,
+                'booking_item_id'            => $assignment->booking_item_id,
+                'total_distance_km'          => round((float) $assignment->total_distance_km, 2),
+                'total_duration_minutes'     => $assignment->trip_started_at && $assignment->trip_completed_at
+                    ? (int) $assignment->trip_started_at->diffInMinutes($assignment->trip_completed_at)
+                    : 0,
+                'total_waiting_time_seconds' => $waitingTime['total_waiting_time_seconds'],
+                'waiting_period_count'       => $waitingTime['waiting_period_count'],
+                'pickup_coordinates'         => [
+                    'latitude'  => $assignment->pickup_arrival_latitude  ? (float) $assignment->pickup_arrival_latitude  : null,
+                    'longitude' => $assignment->pickup_arrival_longitude ? (float) $assignment->pickup_arrival_longitude : null,
+                ],
+                'dropoff_coordinates'        => [
+                    'latitude'  => (float) ($finalLocation['latitude']  ?? $assignment->final_latitude),
+                    'longitude' => (float) ($finalLocation['longitude'] ?? $assignment->final_longitude),
+                ],
+                'route_point_count'          => $assignment->routePoints()->count(),
+                'hire_completed'             => true,
+            ];
+        }
+
         if ($assignment->trip_phase !== TripPhase::IN_PROGRESS) {
             throw new \InvalidArgumentException('TRIP_NOT_IN_PROGRESS');
         }
@@ -236,6 +272,11 @@ class TripTrackingService
 
         if ($assignment->trip_phase !== TripPhase::IN_PROGRESS) {
             throw new \InvalidArgumentException('TRIP_NOT_IN_PROGRESS');
+        }
+
+        // Idempotent: already arrived at this stop
+        if ($stop->status === 'arrived') {
+            return ['stop_id' => $stop->id, 'status' => $stop->status];
         }
 
         if ($stop->isTerminal()) {

@@ -202,7 +202,7 @@ class VehicleService
             // Fallback pricing if service fails
             return [
                 'base_amount' => 15000,
-                'currency' => 'LKR',
+                'currency' => config('booking.base_currency', 'LKR'),
                 'includes_driver' => $this->includesDriver($params['service_type']),
                 'includes_fuel' => $this->includesFuel($params['service_type']),
                 'total_amount' => 15000,
@@ -260,7 +260,7 @@ class VehicleService
             // Fallback pricing if service fails
             return [
                 'base_amount' => 15000,
-                'currency' => 'LKR',
+                'currency' => config('booking.base_currency', 'LKR'),
                 'includes_driver' => $this->includesDriver($params['service_type']),
                 'includes_fuel' => $this->includesFuel($params['service_type']),
                 'total_amount' => 15000,
