@@ -32,6 +32,21 @@ class CompanyController extends Controller
         );
     }
 
+    public function stats(): JsonResponse
+    {
+        $totalCompanies = Company::count();
+        $activeCompanies = Company::where('is_active', true)->count();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'total_companies' => $totalCompanies,
+                'active_companies' => $activeCompanies,
+                'inactive_companies' => $totalCompanies - $activeCompanies,
+            ],
+        ]);
+    }
+
     public function store(CreateCompanyRequest $request): JsonResponse
     {
         $data = $request->validated();

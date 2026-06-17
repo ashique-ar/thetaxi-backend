@@ -370,7 +370,8 @@ Route::middleware(['auth:api'])->group(function () {
         Route::apiResource('states', StateController::class);
         Route::apiResource('business-settings', BusinessSettingController::class);
         Route::apiResource('currencies', CurrencyController::class);
-        Route::apiResource('companies', CompanyController::class);
+        Route::get('companies/stats', [CompanyController::class, 'stats']);
+        Route::apiResource('companies', CompanyController::class)->whereUuid('company');
 
         // Public CMS routes (no authentication required)
         Route::get('public/cms-contents/published', [CmsContentController::class, 'published'])->name('api.cms-contents.published');
