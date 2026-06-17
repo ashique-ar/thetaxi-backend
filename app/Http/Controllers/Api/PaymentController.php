@@ -6,8 +6,10 @@ use App\Contracts\PaymentGatewayInterface;
 use App\Http\Controllers\Controller;
 use App\Models\Booking\Booking;
 use App\Services\Payment\PaymentGatewayManager;
+use App\Services\Sms\SmsAutomationService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
@@ -17,6 +19,7 @@ class PaymentController extends Controller
 {
     public function __construct(
         private readonly PaymentGatewayManager $gatewayManager,
+        private readonly SmsAutomationService $smsAutomation,
     ) {
         $this->middleware('auth:api');
         $this->middleware('permission:payments.initiate')->only(['initiatePayment']);
@@ -159,30 +162,47 @@ class PaymentController extends Controller
                 ], 400);
             }
 
+            // Idempotency: skip if already processed with this status
+            $idempotencyKey = 'payment.callback.' . $request->input('transaction_id') . '.' . $request->input('status');
+            if (Cache::has($idempotencyKey)) {
+                return response()->json([
+                    'status' => 'success',
+                    'message' => 'Payment callback already processed',
+                    'data' => ['transaction_id' => $request->input('transaction_id'), 'status' => $request->input('status')]
+                ]);
+            }
+
             // Update transaction status
             DB::table('payment_transactions')
-                ->where('transaction_id', $request->transaction_id)
+                ->where('transaction_id', $request->input('transaction_id'))
                 ->update([
-                    'status' => $request->status,
-                    'payment_id' => $request->payment_id,
+                    'status' => $request->input('status'),
+                    'payment_id' => $request->input('payment_id'),
                     'updated_at' => now()
                 ]);
 
-            // Update booking status if payment successful
-            if ($request->status === 'success') {
+            // Update booking status and send SMS if payment successful
+            if ($request->input('status') === 'success') {
                 $booking = Booking::find($transaction->booking_id);
                 if ($booking) {
                     $booking->payment_status = 'paid';
                     $booking->save();
+
+                    $amount   = $transaction->amount ?? 0;
+                    $currency = $transaction->currency ?? 'LKR';
+                    $this->smsAutomation->queuePaymentConfirmation($booking, (float) $amount, $currency);
                 }
             }
+
+            // Mark as processed for 24 hours to prevent duplicate handling
+            Cache::put($idempotencyKey, true, now()->addHours(24));
 
             return response()->json([
                 'status' => 'success',
                 'message' => 'Payment callback processed successfully',
                 'data' => [
-                    'transaction_id' => $request->transaction_id,
-                    'status' => $request->status
+                    'transaction_id' => $request->input('transaction_id'),
+                    'status' => $request->input('status')
                 ]
             ]);
         } catch (\Exception $e) {

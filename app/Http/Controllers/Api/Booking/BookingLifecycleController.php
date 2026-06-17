@@ -104,6 +104,11 @@ class BookingLifecycleController extends Controller
 
             DB::commit();
 
+            $booking = Booking::find($request->input('booking_id'));
+            if ($booking) {
+                $this->smsAutomation->queueTripStart($booking);
+            }
+
             return response()->json([
                 'status' => 'success',
                 'data' => $dispatch,
@@ -369,6 +374,11 @@ class BookingLifecycleController extends Controller
             );
 
             DB::commit();
+
+            $booking = Booking::find($request->input('booking_id'));
+            if ($booking) {
+                $this->smsAutomation->queueTripEnd($booking);
+            }
 
             return response()->json([
                 'status' => 'success',

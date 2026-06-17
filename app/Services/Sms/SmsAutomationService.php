@@ -3,7 +3,6 @@
 namespace App\Services\Sms;
 
 use App\Models\Booking\Booking;
-use App\Models\Driver\DriverAssignment;
 
 class SmsAutomationService
 {
