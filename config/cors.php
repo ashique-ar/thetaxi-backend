@@ -1,6 +1,6 @@
 <?php
 
-$isDevEnvironment = in_array(env('APP_ENV', 'production'), ['local', 'development', 'testing'], true) || true;
+$isDevEnvironment = in_array(env('APP_ENV', 'production'), ['local', 'development', 'testing'], true);
 
 return [
     /*
