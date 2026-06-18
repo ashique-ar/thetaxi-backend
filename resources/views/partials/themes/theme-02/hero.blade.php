@@ -60,9 +60,9 @@
                         <div class="banner-content-wrap absolute inset-0 z-[2] flex items-center">
                             <div class="container">
                                 <div class="banner-content max-w-2xl px-4 md:px-0">
-                                    <span class="t2-hero-badge">
+                                    {{-- <span class="t2-hero-badge">
                                         {{ $settings['banner_badge_text'] ?? 'Premium Transport Service' }}
-                                    </span>
+                                    </span> --}}
                                     <h2 class="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-extrabold text-white mb-5 leading-[1.1]">
                                         {{ $settings['banner_heading'] ?? '' }}
                                     </h2>
