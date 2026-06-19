@@ -45,8 +45,9 @@ class PermissionAssignmentService
 
     public function syncRolePermissions(Role $role, array $permissionIdentifiers): Collection
     {
-        $permissions = $this->registry->ensureCanonicalPermissions(
-            $this->normalizePermissionNames($permissionIdentifiers)
+        $permissions = $this->ensurePermissionsForGuard(
+            $this->normalizePermissionNames($permissionIdentifiers),
+            $role->guard_name
         );
 
         $role->syncPermissions($permissions);
@@ -92,5 +93,18 @@ class PermissionAssignmentService
         app(PermissionRegistrar::class)->forgetCachedPermissions();
 
         return $permissions;
+    }
+
+    private function ensurePermissionsForGuard(array $permissionNames, string $guard): Collection
+    {
+        return collect($permissionNames)
+            ->map(fn ($name) => $this->registry->resolveKey((string) $name))
+            ->filter()
+            ->unique()
+            ->map(fn ($name) => Permission::firstOrCreate([
+                'name' => $name,
+                'guard_name' => $guard,
+            ]))
+            ->values();
     }
 }
