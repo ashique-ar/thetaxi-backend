@@ -35,6 +35,7 @@ class VehicleRevenueLicenseController extends Controller
     public function store(CreateVehicleRevenueLicenseRequest $request): JsonResponse
     {
         $payload = $request->validated();
+        $payload['status'] = $payload['status'] ?? 'active';
         $payload['renewal_reminder_date'] = $this->managedReminderDate($payload['expiry_date'] ?? null);
         $payload['renewal_date'] = null;
 

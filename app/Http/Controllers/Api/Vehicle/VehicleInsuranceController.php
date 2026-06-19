@@ -36,6 +36,7 @@ class VehicleInsuranceController extends Controller
     public function store(CreateVehicleInsuranceRequest $request): JsonResponse
     {
         $payload = $request->validated();
+        $payload['status'] = $payload['status'] ?? 'active';
         $payload['renewal_reminder_date'] = $this->managedReminderDate($payload['end_date'] ?? null);
         $payload['renewal_date'] = null;
 
