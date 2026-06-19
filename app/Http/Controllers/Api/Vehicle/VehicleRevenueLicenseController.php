@@ -17,7 +17,7 @@ class VehicleRevenueLicenseController extends Controller
     public function __construct()
     {
         $this->middleware('permission:vehicles.view')->only(['index', 'show']);
-        $this->middleware('permission:vehicles.create')->only(['store']);
+        $this->middleware('permission:vehicles.create|vehicles.edit')->only(['store', 'renew']);
         $this->middleware('permission:vehicles.edit')->only(['update']);
         $this->middleware('permission:vehicles.delete')->only(['destroy']);
     }
