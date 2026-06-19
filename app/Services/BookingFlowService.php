@@ -90,6 +90,7 @@ class BookingFlowService
         $context = $this->resolveDynamicFieldContext($params);
         $fieldMappings = $context['field_mappings'];
         $usesDropoffTime = $context['uses_dropoff_time'];
+        $tripMode = $context['trip_mode'];
 
         if (empty($params['service_type']) && !empty($context['service_type'])) {
             $params['service_type'] = (string) ($context['service_type']->id ?? '');
@@ -159,6 +160,8 @@ class BookingFlowService
         );
         if ($dropoffLocation !== null) {
             $params['dropoff_location'] = $dropoffLocation;
+        } elseif ($tripMode === 'open_package') {
+            unset($params['dropoff_location']);
         }
 
         if (isset($params['additional_pickup_locations']) && is_string($params['additional_pickup_locations'])) {
@@ -190,6 +193,9 @@ class BookingFlowService
             'uses_dropoff_time' => $context['uses_dropoff_time'],
             'pickup_location_required' => $context['pickup_location_required'],
             'dropoff_location_required' => $context['dropoff_location_required'],
+            'trip_mode' => $context['trip_mode'],
+            'disable_route_preview' => $context['disable_route_preview'],
+            'disable_distance_estimate' => $context['disable_distance_estimate'],
         ];
     }
 
@@ -202,6 +208,9 @@ class BookingFlowService
         $usesDropoffTime = (bool) ($serviceType?->uses_dropoff_time ?? true);
 
         $storedConfig = is_array($serviceType?->form_config) ? $serviceType->form_config : [];
+        $tripMode = $this->resolveTripModeFromServiceConfig($storedConfig);
+        $disableRoutePreview = (bool) ($storedConfig['disable_route_preview'] ?? $storedConfig['route_preview_disabled'] ?? false);
+        $disableDistanceEstimate = (bool) ($storedConfig['disable_distance_estimate'] ?? $storedConfig['distance_estimate_disabled'] ?? false);
         $fieldMappings = [];
         if (isset($storedConfig['field_mappings']) && is_array($storedConfig['field_mappings'])) {
             $fieldMappings = $storedConfig['field_mappings'];
@@ -253,6 +262,17 @@ class BookingFlowService
             $hasConfiguredFields ? false : true
         );
 
+        if ($tripMode === null) {
+            $packageRequired = isset($fields['service_package_id']) && (bool) ($fields['service_package_id']['required'] ?? false);
+            $tripMode = ($pickupRequired && !$dropoffRequired && $packageRequired) ? 'open_package' : 'fixed_route';
+        }
+
+        if ($tripMode === 'open_package') {
+            $dropoffRequired = false;
+            $disableRoutePreview = true;
+            $disableDistanceEstimate = true;
+        }
+
         return [
             'service_type' => $serviceType,
             'uses_dropoff_time' => $usesDropoffTime,
@@ -260,7 +280,25 @@ class BookingFlowService
             'fields' => $fields,
             'pickup_location_required' => $pickupRequired,
             'dropoff_location_required' => $dropoffRequired,
+            'trip_mode' => $tripMode,
+            'disable_route_preview' => $disableRoutePreview,
+            'disable_distance_estimate' => $disableDistanceEstimate,
         ];
+    }
+
+    private function resolveTripModeFromServiceConfig(array $storedConfig): ?string
+    {
+        $mode = $storedConfig['trip_mode']
+            ?? $storedConfig['booking_mode']
+            ?? $storedConfig['service_mode']
+            ?? null;
+
+        if (!is_string($mode)) {
+            return null;
+        }
+
+        $mode = trim($mode);
+        return $mode !== '' ? $mode : null;
     }
 
     private function resolveFieldMappingsForContext(
@@ -1724,6 +1762,7 @@ class BookingFlowService
             // (No normalization: we use $params directly)
             $booking->customer_id = $this->resolveBookingCustomerId($params);
             $this->applyCorporateBookingFields($booking, $params);
+            $this->applyBookingPaymentFields($booking, $params);
             $this->applyRecurringBookingFields($booking, $params);
 
             // pricing snapshot + quick numbers
@@ -2158,6 +2197,7 @@ class BookingFlowService
             $booking->customer_id = $this->resolveBookingCustomerId($params);
             $booking->booking_date = now();
             $this->applyCorporateBookingFields($booking, $params);
+            $this->applyBookingPaymentFields($booking, $params);
             $this->applyRecurringBookingFields($booking, $params);
 
             // Booking-level metadata only
@@ -2242,6 +2282,14 @@ class BookingFlowService
         if (empty($params['vehicle_groups']) || !isset($pricing['groups'])) {
             return;
         }
+
+        $dynamicRequirements = $this->getDynamicCalculationRequirements($params);
+        $baseItemMetadata = array_merge($params['metadata'] ?? [], [
+            'trip_mode' => $params['trip_mode'] ?? $dynamicRequirements['trip_mode'] ?? 'fixed_route',
+            'dropoff_location_required' => $dynamicRequirements['dropoff_location_required'] ?? null,
+            'disable_route_preview' => $dynamicRequirements['disable_route_preview'] ?? false,
+            'disable_distance_estimate' => $dynamicRequirements['disable_distance_estimate'] ?? false,
+        ]);
 
         $vehicleGroups = $params['vehicle_groups'];
         $vehicles = $params['vehicles'] ?? [];
@@ -2357,7 +2405,7 @@ class BookingFlowService
                     'addons' => $groupPricing['addons_pricing']['breakdown'] ?? [],
                     'customizations' => $groupPricing['applied_customizations'] ?? [],
                     'discounts' => [], // Can be implemented later for group-specific discounts
-                    'metadata' => [
+                    'metadata' => array_merge($baseItemMetadata, [
                         'group_info' => $groupPricing['group_info'] ?? [],
                         'vehicle_details' => $availableVehicles[$i] ?? null,
                         'driver_details' => $assignedDriverId ? collect($groupDrivers)->firstWhere('id', $assignedDriverId) : null,
@@ -2367,7 +2415,7 @@ class BookingFlowService
                         'calculation_type' => $groupPricing['distance_details']['calculation_type'] ?? null,
                         'effective_days' => $groupPricing['distance_details']['effective_days'] ?? null,
                         'journey_duration_seconds' => $groupPricing['distance_details']['journey_duration_seconds'] ?? null
-                    ]
+                    ])
                 ]);
 
                 // Create assignments for this booking item if needed
@@ -2390,6 +2438,14 @@ class BookingFlowService
      */
     private function createSingleGroupBookingItem(Booking $booking, array $params, array $pricing): void
     {
+        $dynamicRequirements = $this->getDynamicCalculationRequirements($params);
+        $itemMetadata = array_merge($params['metadata'] ?? [], [
+            'trip_mode' => $params['trip_mode'] ?? $dynamicRequirements['trip_mode'] ?? 'fixed_route',
+            'dropoff_location_required' => $dynamicRequirements['dropoff_location_required'] ?? null,
+            'disable_route_preview' => $dynamicRequirements['disable_route_preview'] ?? false,
+            'disable_distance_estimate' => $dynamicRequirements['disable_distance_estimate'] ?? false,
+        ]);
+
         // Extract location data
         $pickupLocation = $params['pickup_location'] ?? null;
         $dropoffLocation = $params['dropoff_location'] ?? null;
@@ -2453,7 +2509,7 @@ class BookingFlowService
             'addons' => $pricing['addons'] ?? [],
             'customizations' => $params['variable_customizations'] ?? [],
             'discounts' => $params['applied_discounts'] ?? [],
-            'metadata' => array_merge($params['metadata'] ?? [], [
+            'metadata' => array_merge($itemMetadata, [
                 'distance_details' => $pricing['distance_details'] ?? null,
                 'calculation_type' => $pricing['calculation_type'] ?? null,
                 'package_info' => $pricing['package_info'] ?? null,
@@ -2500,6 +2556,7 @@ class BookingFlowService
             $booking->luggage_count = $params['luggage_count'] ?? $booking->luggage_count;
             $booking->special_requirements = $params['special_requirements'] ?? $booking->special_requirements;
             $this->applyCorporateBookingFields($booking, $params);
+            $this->applyBookingPaymentFields($booking, $params);
 
             // Optional user-provided meta
             if (array_key_exists('override_reasons', $params)) {
@@ -6518,8 +6575,8 @@ class BookingFlowService
         $data['created_user_id'] = Auth::id();
 
         // Add payment details
-        $data['payment_method'] = $bookingData['payment_method'] ?? null;
-        $data['payment_status'] = 'pending';
+        $paymentFields = $this->resolveBookingPaymentFields($bookingData);
+        $data = array_merge($data, $paymentFields);
 
         // Add corporate booking fields
         $data['is_corporate_booking'] = $bookingData['is_corporate_booking'] ?? false;
@@ -6981,6 +7038,18 @@ class BookingFlowService
                 'project_code' => $booking->project_code,
                 'selection_mode' => $booking->employee_id ? 'employee' : 'general',
                 'contact' => $this->extractCorporateContactFromWorkflowData($booking),
+            ],
+            'payment_details' => [
+                'payment_responsibility' => $booking->payment_responsibility,
+                'payment_collection_method' => $booking->payment_collection_method,
+                'payment_collection_status' => $booking->payment_collection_status,
+                'payment_method' => $booking->payment_method,
+                'payment_status' => $booking->payment_status,
+                'payment_reference' => $booking->payment_reference,
+                'payment_collected_amount' => $booking->payment_collected_amount !== null ? (float) $booking->payment_collected_amount : null,
+                'payment_collected_at' => $booking->payment_collected_at?->toISOString(),
+                'payment_collected_by_driver_id' => $booking->payment_collected_by_driver_id,
+                'payment_notes' => $booking->payment_notes,
             ],
 
             // Service details (legacy single-trip support)
@@ -8601,6 +8670,18 @@ class BookingFlowService
                 'contact' => $this->extractCorporateContactFromWorkflowData($booking),
                 'is_corporate_booking' => true,
             ] : null,
+            'payment' => [
+                'payment_responsibility' => $booking->payment_responsibility,
+                'payment_collection_method' => $booking->payment_collection_method,
+                'payment_collection_status' => $booking->payment_collection_status,
+                'payment_method' => $booking->payment_method,
+                'payment_status' => $booking->payment_status,
+                'payment_reference' => $booking->payment_reference,
+                'payment_collected_amount' => $booking->payment_collected_amount !== null ? (float) $booking->payment_collected_amount : null,
+                'payment_collected_at' => $booking->payment_collected_at?->toISOString(),
+                'payment_collected_by_driver_id' => $booking->payment_collected_by_driver_id,
+                'payment_notes' => $booking->payment_notes,
+            ],
             'service_details' => $serviceDetails,
             'vehicle_driver' => $vehicleDriver,
 
@@ -10777,6 +10858,103 @@ class BookingFlowService
             : $booking->employee_id;
         $booking->cost_center = $params['cost_center'] ?? $booking->cost_center;
         $booking->project_code = $params['project_code'] ?? $booking->project_code;
+    }
+
+    private function applyBookingPaymentFields(Booking $booking, array $params): void
+    {
+        foreach ($this->resolveBookingPaymentFields($params, $booking) as $field => $value) {
+            $booking->{$field} = $value;
+        }
+    }
+
+    private function resolveBookingPaymentFields(array $params, ?Booking $booking = null): array
+    {
+        $isCorporateBooking = filter_var(
+            $params['is_corporate_booking'] ?? $booking?->is_corporate_booking ?? false,
+            FILTER_VALIDATE_BOOL
+        );
+
+        $hasExplicitPaymentMethod = array_key_exists('payment_collection_method', $params)
+            || array_key_exists('payment_method', $params)
+            || array_key_exists('payment_type', $params);
+        $hasExplicitResponsibility = array_key_exists('payment_responsibility', $params);
+        $isExplicitlyNonCorporate = array_key_exists('is_corporate_booking', $params) && !$isCorporateBooking;
+
+        $rawMethod = $params['payment_collection_method']
+            ?? $params['payment_method']
+            ?? $params['payment_type']
+            ?? ($isExplicitlyNonCorporate && !$hasExplicitPaymentMethod ? null : $booking?->payment_collection_method)
+            ?? null;
+        $method = $this->normalizePaymentCollectionMethod($rawMethod);
+
+        $responsibility = $params['payment_responsibility']
+            ?? ($isExplicitlyNonCorporate && !$hasExplicitResponsibility ? null : $booking?->payment_responsibility)
+            ?? null;
+
+        if (!in_array($responsibility, ['customer', 'corporate', 'company'], true)) {
+            $responsibility = $isCorporateBooking ? 'corporate' : 'customer';
+        }
+
+        if (!$method) {
+            $method = ($isCorporateBooking || $responsibility === 'corporate' || $responsibility === 'company')
+                ? 'monthly_invoice'
+                : 'cash_to_driver';
+        }
+
+        if ($method === 'monthly_invoice' && !$isCorporateBooking && $responsibility !== 'company') {
+            abort(422, 'Monthly invoice payment is only available for corporate or company-billed bookings.');
+        }
+
+        if ($method === 'monthly_invoice' && $responsibility === 'customer') {
+            $responsibility = $isCorporateBooking ? 'corporate' : 'company';
+        }
+
+        $status = $params['payment_collection_status']
+            ?? $booking?->payment_collection_status
+            ?? null;
+
+        if (!in_array($status, ['pending', 'driver_collected', 'online_paid', 'billable', 'invoiced', 'paid', 'failed', 'refunded'], true)) {
+            $status = $method === 'monthly_invoice' ? 'billable' : 'pending';
+        }
+
+        $legacyPaymentStatus = match ($status) {
+            'driver_collected', 'online_paid', 'paid' => 'paid',
+            'failed' => 'failed',
+            'refunded' => 'refunded',
+            default => 'pending',
+        };
+
+        return [
+            'payment_responsibility' => $responsibility,
+            'payment_collection_method' => $method,
+            'payment_collection_status' => $status,
+            'payment_method' => $method,
+            'payment_type' => match ($method) {
+                'cash_to_driver' => 'cash',
+                'monthly_invoice' => 'corporate',
+                'online' => 'online',
+                default => $method,
+            },
+            'payment_status' => $legacyPaymentStatus,
+            'amount_to_pay' => $params['amount_to_pay'] ?? $booking?->amount_to_pay ?? null,
+        ];
+    }
+
+    private function normalizePaymentCollectionMethod(mixed $method): ?string
+    {
+        if (!is_string($method) || trim($method) === '') {
+            return null;
+        }
+
+        return match (strtolower(trim($method))) {
+            'cash', 'cash_to_driver', 'driver_cash', 'pay_to_driver' => 'cash_to_driver',
+            'online', 'webxpay', 'credit_card', 'debit_card', 'card_online', 'stripe', 'paypal' => 'online',
+            'corporate', 'credit', 'monthly_invoice', 'invoice', 'company_billing' => 'monthly_invoice',
+            'bank', 'bank_transfer' => 'bank_transfer',
+            'card' => 'card',
+            'other' => 'other',
+            default => null,
+        };
     }
 
     private function extractCorporateContactPayload(array $params): ?array

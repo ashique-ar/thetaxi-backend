@@ -174,6 +174,13 @@ class Booking extends BaseModel
         'payment_reference',
         'payment_type',
         'amount_to_pay',
+        'payment_responsibility',
+        'payment_collection_method',
+        'payment_collection_status',
+        'payment_collected_amount',
+        'payment_collected_at',
+        'payment_collected_by_driver_id',
+        'payment_notes',
 
         // Corporate booking fields
         'is_corporate_booking',
@@ -297,6 +304,8 @@ class Booking extends BaseModel
         'confirmed_at' => 'datetime',
         'recurrence_end_date' => 'date',
         'recurring_occurrence_date' => 'date',
+        'payment_collected_at' => 'datetime',
+        'payment_collected_amount' => 'decimal:2',
 
         // booleans
         'is_recurring' => 'boolean',

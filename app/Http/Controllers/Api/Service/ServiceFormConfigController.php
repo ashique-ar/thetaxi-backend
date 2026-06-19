@@ -148,6 +148,9 @@ class ServiceFormConfigController extends Controller
                 'allow_multiple_dropoff_locations' => (bool) ($serviceType->allow_multiple_dropoff_locations ?? false),
                 'frontend_category' => $serviceType->frontend_category,
                 'minimum_km' => $serviceType->minimum_km,
+                'trip_mode' => $this->resolveTripMode($serviceType, $storedConfig, $fields),
+                'disable_route_preview' => (bool) ($storedConfig['disable_route_preview'] ?? $storedConfig['route_preview_disabled'] ?? false),
+                'disable_distance_estimate' => (bool) ($storedConfig['disable_distance_estimate'] ?? $storedConfig['distance_estimate_disabled'] ?? false),
             ],
             'fields' => $fields,
             'field_mappings' => $resolvedFieldMappings,
@@ -165,6 +168,31 @@ class ServiceFormConfigController extends Controller
         }
 
         return $config;
+    }
+
+    private function resolveTripMode(ServiceType $serviceType, array $storedConfig, array $fields): string
+    {
+        $mode = $storedConfig['trip_mode']
+            ?? $storedConfig['booking_mode']
+            ?? $storedConfig['service_mode']
+            ?? null;
+
+        if (is_string($mode) && trim($mode) !== '') {
+            return trim($mode);
+        }
+
+        $hasRequiredPackage = isset($fields['service_package_id'])
+            && (bool) ($fields['service_package_id']['required'] ?? false);
+        $hasRequiredPickup = isset($fields['pickup_location'])
+            && (bool) ($fields['pickup_location']['required'] ?? false);
+        $dropoffMissingOrOptional = !isset($fields['dropoff_location'])
+            || !(bool) ($fields['dropoff_location']['required'] ?? false);
+
+        if ($hasRequiredPackage && $hasRequiredPickup && $dropoffMissingOrOptional) {
+            return 'open_package';
+        }
+
+        return 'fixed_route';
     }
 
     /**
@@ -371,6 +399,15 @@ class ServiceFormConfigController extends Controller
         }
 
         $fieldMappings = [];
+        $metaKeys = [
+            'trip_mode',
+            'booking_mode',
+            'service_mode',
+            'disable_route_preview',
+            'route_preview_disabled',
+            'disable_distance_estimate',
+            'distance_estimate_disabled',
+        ];
 
         if (isset($storedConfig['field_mappings']) && is_array($storedConfig['field_mappings'])) {
             $fieldMappings = $storedConfig['field_mappings'];
@@ -384,6 +421,11 @@ class ServiceFormConfigController extends Controller
 
         if (isset($fieldsCandidate['field_mappings'])) {
             unset($fieldsCandidate['field_mappings']);
+        }
+        foreach ($metaKeys as $metaKey) {
+            if (isset($fieldsCandidate[$metaKey])) {
+                unset($fieldsCandidate[$metaKey]);
+            }
         }
 
         // Keep only actual field definitions (defensive guard against metadata keys).
@@ -743,6 +785,16 @@ class ServiceFormConfigController extends Controller
                 $payload['field_mappings'] = $payload['form_config']['field_mappings'];
             }
 
+            $nestedFormConfig = is_array($payload['form_config'] ?? null) ? $payload['form_config'] : [];
+            foreach (['trip_mode', 'booking_mode', 'service_mode', 'disable_route_preview', 'route_preview_disabled', 'disable_distance_estimate', 'distance_estimate_disabled'] as $metaKey) {
+                if (!array_key_exists($metaKey, $payload) && array_key_exists($metaKey, $nestedFormConfig)) {
+                    $payload[$metaKey] = $payload['form_config'][$metaKey];
+                }
+                if (isset($payload['form_config']) && is_array($payload['form_config']) && array_key_exists($metaKey, $payload['form_config'])) {
+                    unset($payload['form_config'][$metaKey]);
+                }
+            }
+
             // Support wrapped structure: { form_config: { fields: {...}, field_mappings: {...} } }
             if (isset($payload['form_config']['fields']) && is_array($payload['form_config']['fields'])) {
                 $payload['form_config'] = $payload['form_config']['fields'];
@@ -759,6 +811,9 @@ class ServiceFormConfigController extends Controller
                 'allow_return_trip' => 'boolean',
                 'allow_multiple_pickup_locations' => 'boolean',
                 'allow_multiple_dropoff_locations' => 'boolean',
+                'trip_mode' => 'nullable|string|in:fixed_route,open_package',
+                'disable_route_preview' => 'boolean',
+                'disable_distance_estimate' => 'boolean',
                 'form_config' => 'nullable|array',
                 'form_config.*.type' => 'sometimes|required|string',
                 'form_config.*.label' => 'sometimes|required|string',
@@ -815,6 +870,16 @@ class ServiceFormConfigController extends Controller
 
             if (!empty($resolvedFieldMappings['dates']) || !empty($resolvedFieldMappings['locations'])) {
                 $formConfig['field_mappings'] = $resolvedFieldMappings;
+            }
+
+            if (!empty($validated['trip_mode'])) {
+                $formConfig['trip_mode'] = $validated['trip_mode'];
+            }
+            if (array_key_exists('disable_route_preview', $validated)) {
+                $formConfig['disable_route_preview'] = (bool) $validated['disable_route_preview'];
+            }
+            if (array_key_exists('disable_distance_estimate', $validated)) {
+                $formConfig['disable_distance_estimate'] = (bool) $validated['disable_distance_estimate'];
             }
              
             $serviceType->update([

@@ -46,6 +46,8 @@ class BookingSearchRequest extends FormRequest
         }
 
         $serviceType = $data['service_type'] ?? null;
+        $isOpenPackageRequest = $this->isOpenPackageServiceConfig($serviceType, $data);
+
         if (in_array($serviceType, ['self_drive', 'with_driver'], true)) {
             if (empty($data['pickup_date']) && !empty($data['date'])) {
                 $data['pickup_date'] = $data['date'];
@@ -77,7 +79,7 @@ class BookingSearchRequest extends FormRequest
             }
 
             // Fallback: if dropoff is still empty, copy from pickup
-            if (empty($data['dropoff']) && !empty($data['pickup'])) {
+            if (!$isOpenPackageRequest && empty($data['dropoff']) && !empty($data['pickup'])) {
                 $data['dropoff'] = $data['pickup'];
                 $data['dropoff_lat'] = $data['dropoff_lat'] ?? ($data['pickup_lat'] ?? null);
                 $data['dropoff_lng'] = $data['dropoff_lng'] ?? ($data['pickup_lng'] ?? null);
@@ -243,7 +245,7 @@ class BookingSearchRequest extends FormRequest
                     break;
 
                 case 'package_select':
-                    $rules[$submitAs] = 'nullable|uuid|exists:service_packages,id';
+                    $rules[$submitAs] = ($required ? 'required' : 'nullable') . '|uuid|exists:service_packages,id';
                     break;
 
                 default:
@@ -256,6 +258,7 @@ class BookingSearchRequest extends FormRequest
         $rules['rental_mode'] = 'nullable|string';
         $rules['package_id'] = 'nullable|uuid|exists:service_packages,id';
         $rules['package_type'] = 'nullable|string';
+        $rules['trip_mode'] = 'nullable|string|in:fixed_route,open_package';
 
         // Allow dropoff fields for self_drive/with_driver even if not in config
         if (in_array($serviceCode, ['self_drive', 'with_driver'])) {
@@ -273,6 +276,42 @@ class BookingSearchRequest extends FormRequest
         }
 
         return $rules;
+    }
+
+    private function isOpenPackageServiceConfig(?string $serviceCode, array $data): bool
+    {
+        if (($data['trip_mode'] ?? null) === 'open_package') {
+            return true;
+        }
+
+        if (!$serviceCode) {
+            return false;
+        }
+
+        try {
+            $serviceType = ServiceType::query()
+                ->where('code', $serviceCode)
+                ->orWhere('id', $serviceCode)
+                ->orWhere('name', $serviceCode)
+                ->first();
+
+            $config = is_array($serviceType?->form_config) ? $serviceType->form_config : [];
+            $mode = $config['trip_mode'] ?? $config['booking_mode'] ?? $config['service_mode'] ?? null;
+            if ($mode === 'open_package') {
+                return true;
+            }
+
+            $fields = isset($config['fields']) && is_array($config['fields']) ? $config['fields'] : $config;
+            unset($fields['field_mappings']);
+
+            $pickupRequired = isset($fields['pickup_location']) && (bool) ($fields['pickup_location']['required'] ?? false);
+            $packageRequired = isset($fields['service_package_id']) && (bool) ($fields['service_package_id']['required'] ?? false);
+            $dropoffOptional = !isset($fields['dropoff_location']) || !(bool) ($fields['dropoff_location']['required'] ?? false);
+
+            return $pickupRequired && $packageRequired && $dropoffOptional;
+        } catch (\Throwable $exception) {
+            return false;
+        }
     }
 
     /**

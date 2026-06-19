@@ -131,6 +131,13 @@ class BookingFlowResource extends JsonResource
             'payment_method' => $this->payment_method,
             'payment_status' => $this->payment_status,
             'payment_reference' => $this->payment_reference,
+            'payment_responsibility' => $this->payment_responsibility,
+            'payment_collection_method' => $this->payment_collection_method,
+            'payment_collection_status' => $this->payment_collection_status,
+            'payment_collected_amount' => $this->payment_collected_amount !== null ? (float) $this->payment_collected_amount : null,
+            'payment_collected_at' => $this->payment_collected_at?->toISOString(),
+            'payment_collected_by_driver_id' => $this->payment_collected_by_driver_id,
+            'payment_notes' => $this->payment_notes,
             
             // Corporate booking fields
             'is_corporate_booking' => $this->is_corporate_booking,

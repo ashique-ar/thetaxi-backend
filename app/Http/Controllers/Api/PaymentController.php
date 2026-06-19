@@ -55,6 +55,13 @@ class PaymentController extends Controller
 
         try {
             $booking = Booking::findOrFail($request->booking_id);
+            $collectionMethod = strtolower((string) ($booking->payment_collection_method ?? $booking->payment_method ?? ''));
+            if ($collectionMethod !== 'online') {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Online payment can only be initiated for bookings with online payment method',
+                ], 422);
+            }
 
             $transactionId = $this->generateTransactionId();
             $recordId = (string) Str::uuid();
@@ -186,11 +193,23 @@ class PaymentController extends Controller
                 $booking = Booking::find($transaction->booking_id);
                 if ($booking) {
                     $booking->payment_status = 'paid';
+                    $booking->payment_collection_method = 'online';
+                    $booking->payment_collection_status = 'online_paid';
+                    $booking->payment_reference = $request->input('payment_id') ?? $request->input('transaction_id');
                     $booking->save();
 
                     $amount   = $transaction->amount ?? 0;
                     $currency = $transaction->currency ?? 'LKR';
                     $this->smsAutomation->queuePaymentConfirmation($booking, (float) $amount, $currency);
+                }
+            } elseif (in_array($request->input('status'), ['failed', 'cancelled'], true)) {
+                $booking = Booking::find($transaction->booking_id);
+                if ($booking) {
+                    $booking->payment_collection_method = 'online';
+                    $booking->payment_collection_status = 'failed';
+                    $booking->payment_status = 'failed';
+                    $booking->payment_reference = $request->input('payment_id') ?? $request->input('transaction_id');
+                    $booking->save();
                 }
             }
 

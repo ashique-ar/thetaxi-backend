@@ -588,6 +588,9 @@ class CorporateBookingService
                 'currency' => $booking->currency,
                 'payment_status' => $booking->payment_status,
                 'payment_method' => $booking->payment_method,
+                'payment_responsibility' => $booking->payment_responsibility,
+                'payment_collection_method' => $booking->payment_collection_method,
+                'payment_collection_status' => $booking->payment_collection_status,
                 'pricing_scope' => data_get($booking->pricing_snapshot, 'pricing_scope'),
             ];
         }
@@ -678,7 +681,7 @@ class CorporateBookingService
 
         $filename = 'exports/corporate_bookings_' . $corporateId . '_' . now()->format('Ymd_His') . '.csv';
 
-        $csv = "booking_number,employee_name,department,division,vehicle_category,from_date,to_date,status,total_cost\n";
+        $csv = "booking_number,employee_name,department,division,vehicle_category,from_date,to_date,status,payment_method,payment_collection_status,total_cost\n";
 
         foreach ($bookings as $booking) {
             $csv .= implode(',', [
@@ -690,6 +693,8 @@ class CorporateBookingService
                 $this->csvEscape($booking->from_date ?? ''),
                 $this->csvEscape($booking->to_date ?? ''),
                 $this->csvEscape($booking->status ?? ''),
+                $this->csvEscape($booking->payment_collection_method ?? $booking->payment_method ?? ''),
+                $this->csvEscape($booking->payment_collection_status ?? $booking->payment_status ?? ''),
                 $this->csvEscape($booking->total_estimated ?? '0'),
             ]) . "\n";
         }

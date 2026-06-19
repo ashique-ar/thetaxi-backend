@@ -84,6 +84,19 @@ trait BookingSubmissionTrait
             'preserve_custom_addon_prices' => 'sometimes|boolean',
             'force_recalculation' => 'sometimes|boolean',
             'applied_discounts' => 'sometimes|array',
+            'payment_collection_method' => [
+                'sometimes',
+                'string',
+                Rule::in(['cash_to_driver', 'online', 'monthly_invoice', 'bank_transfer', 'card', 'other']),
+                function ($attribute, $value, $fail) use ($params) {
+                    $isCorporate = filter_var($params['is_corporate_booking'] ?? false, FILTER_VALIDATE_BOOL);
+                    $responsibility = $params['payment_responsibility'] ?? null;
+                    if ($value === 'monthly_invoice' && !$isCorporate && $responsibility !== 'company') {
+                        $fail('Monthly invoice payment is only available for corporate or company-billed bookings.');
+                    }
+                },
+            ],
+            'payment_responsibility' => ['sometimes', 'string', Rule::in(['customer', 'corporate', 'company'])],
         ];
 
         if ($usesDropoffTime) {
@@ -178,6 +191,19 @@ trait BookingSubmissionTrait
             'preserve_custom_addon_prices' => 'sometimes|boolean',
             'force_recalculation' => 'sometimes|boolean',
             'applied_discounts' => 'sometimes|array',
+            'payment_collection_method' => [
+                'sometimes',
+                'string',
+                Rule::in(['cash_to_driver', 'online', 'monthly_invoice', 'bank_transfer', 'card', 'other']),
+                function ($attribute, $value, $fail) use ($params) {
+                    $isCorporate = filter_var($params['is_corporate_booking'] ?? false, FILTER_VALIDATE_BOOL);
+                    $responsibility = $params['payment_responsibility'] ?? null;
+                    if ($value === 'monthly_invoice' && !$isCorporate && $responsibility !== 'company') {
+                        $fail('Monthly invoice payment is only available for corporate or company-billed bookings.');
+                    }
+                },
+            ],
+            'payment_responsibility' => ['sometimes', 'string', Rule::in(['customer', 'corporate', 'company'])],
         ];
 
         if ($usesDropoffTime) {
@@ -277,6 +303,19 @@ trait BookingSubmissionTrait
                 'preserve_custom_addon_prices' => 'sometimes|boolean',
                 'force_recalculation' => 'sometimes|boolean',
                 'applied_discounts' => 'sometimes|array',
+                'payment_collection_method' => [
+                    'sometimes',
+                    'string',
+                    Rule::in(['cash_to_driver', 'online', 'monthly_invoice', 'bank_transfer', 'card', 'other']),
+                    function ($attribute, $value, $fail) use ($params) {
+                        $isCorporate = filter_var($params['is_corporate_booking'] ?? false, FILTER_VALIDATE_BOOL);
+                        $responsibility = $params['payment_responsibility'] ?? null;
+                        if ($value === 'monthly_invoice' && !$isCorporate && $responsibility !== 'company') {
+                            $fail('Monthly invoice payment is only available for corporate or company-billed bookings.');
+                        }
+                    },
+                ],
+                'payment_responsibility' => ['sometimes', 'string', Rule::in(['customer', 'corporate', 'company'])],
             ];
 
             if (!$usesDropoffTime) {

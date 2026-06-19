@@ -55,6 +55,7 @@ class TripTrackingService
 
         $bookingItem = $assignment->bookingItem;
         $driver = $assignment->driver;
+        $isOpenPackage = $this->isOpenPackageAssignment($assignment);
 
         $pickupLocation = null;
         $distanceToPickup = null;
@@ -88,6 +89,10 @@ class TripTrackingService
             'assignment_id' => $assignment->id,
             'booking_id' => $assignment->booking_id,
             'trip_phase' => $assignment->trip_phase->value,
+            'trip_mode' => $isOpenPackage ? 'open_package' : 'fixed_route',
+            'destination_known' => !$isOpenPackage,
+            'driver_message' => $isOpenPackage ? 'Open chauffeur package - destination decided during trip' : null,
+            'package' => $this->mapPackageForMobile($bookingItem),
             'is_multi_stop' => $this->isMultiStopAssignment($assignment, $stops),
             'pickup_location' => $pickupLocation,
             'pickup_arrival' => $pickupArrival,
@@ -197,6 +202,7 @@ class TripTrackingService
                 ],
                 'route_point_count'          => $assignment->routePoints()->count(),
                 'hire_completed'             => true,
+                'payment'                    => $this->mapBookingPaymentSummary($assignment->booking),
             ];
         }
 
@@ -242,7 +248,11 @@ class TripTrackingService
                 }
             }
 
+            $this->assertPaymentCollectionAllowed($assignment, $finalLocation);
+
             $this->syncBookingLifecycleAfterDriverTripCompletion($assignment, $finalLocation, $now);
+            $packageCharges = $this->syncOpenPackageFinalPricing($assignment, $finalLocation, $totalDistance, $durationMinutes, $waitingTime, $now);
+            $paymentSummary = $this->syncTripEndPaymentCollection($assignment, $finalLocation, $now);
 
             return [
                 'assignment_id' => $assignment->id,
@@ -262,6 +272,8 @@ class TripTrackingService
                 ],
                 'route_point_count' => $assignment->routePoints()->count(),
                 'hire_completed' => true,
+                'package_charges' => $packageCharges,
+                'payment' => $paymentSummary,
             ];
         });
     }
@@ -347,6 +359,10 @@ class TripTrackingService
 
     public function ensureAssignmentStops(DriverAssignment $assignment): Collection
     {
+        if ($this->isOpenPackageAssignment($assignment)) {
+            return collect();
+        }
+
         if ($assignment->stops()->exists()) {
             $stops = $assignment->stops()->get();
             $this->backfillStopIdentifiers($assignment, $stops);
@@ -481,6 +497,15 @@ class TripTrackingService
 
     private function resolveAssignmentAllowedActions(DriverAssignment $assignment, Collection $stops): array
     {
+        if ($this->isOpenPackageAssignment($assignment)) {
+            return match ($assignment->trip_phase) {
+                TripPhase::ACCEPTED => ['arrived'],
+                TripPhase::PICKUP_ARRIVED => ['start'],
+                TripPhase::IN_PROGRESS => ['complete'],
+                default => [],
+            };
+        }
+
         if ($assignment->trip_phase === TripPhase::ACCEPTED) {
             $actions = ['arrived'];
             if ($this->isMultiStopAssignment($assignment, $stops)) {
@@ -578,6 +603,10 @@ class TripTrackingService
 
     private function buildRouteStopsFromBookingItem(BookingItem $bookingItem): array
     {
+        if ($this->isOpenPackageBookingItem($bookingItem)) {
+            return [];
+        }
+
         $metadata = is_array($bookingItem->metadata) ? $bookingItem->metadata : [];
 
         $routeStops = [];
@@ -859,6 +888,292 @@ class TripTrackingService
                 ]
             ),
         ]);
+    }
+
+    private function assertPaymentCollectionAllowed(DriverAssignment $assignment, array $finalLocation): void
+    {
+        $assignment->loadMissing('booking');
+        $booking = $assignment->booking;
+
+        if (!$booking || !$this->bookingRequiresDriverCollection($booking)) {
+            return;
+        }
+
+        if (!array_key_exists('collected_amount', $finalLocation) || $finalLocation['collected_amount'] === null || $finalLocation['collected_amount'] === '') {
+            throw new \InvalidArgumentException('PAYMENT_COLLECTION_REQUIRED');
+        }
+    }
+
+    private function syncTripEndPaymentCollection(DriverAssignment $assignment, array $finalLocation, Carbon $completedAt): ?array
+    {
+        $assignment->loadMissing('booking');
+        $booking = $assignment->booking?->fresh();
+
+        if (!$booking) {
+            return null;
+        }
+
+        if ($this->bookingRequiresDriverCollection($booking)) {
+            $collectedAmount = round((float) $finalLocation['collected_amount'], 2);
+            $fareAmount = $this->resolveBookingFareAmount($booking);
+
+            $booking->update([
+                'payment_collected_amount' => $collectedAmount,
+                'payment_collected_at' => $completedAt,
+                'payment_collected_by_driver_id' => $assignment->driver_id,
+                'payment_notes' => $finalLocation['payment_notes'] ?? $finalLocation['notes'] ?? null,
+                'payment_collection_method' => 'cash_to_driver',
+                'payment_collection_status' => 'driver_collected',
+                'payment_method' => 'cash_to_driver',
+                'payment_type' => 'cash',
+                'amount_to_pay' => $fareAmount,
+                'payment_status' => $collectedAmount >= $fareAmount ? 'paid' : 'pending',
+            ]);
+
+            return $this->mapBookingPaymentSummary($booking->fresh());
+        }
+
+        if ($this->bookingUsesMonthlyInvoice($booking) && $booking->payment_collection_status !== 'invoiced') {
+            $booking->update([
+                'payment_responsibility' => $booking->payment_responsibility ?: 'corporate',
+                'payment_collection_method' => 'monthly_invoice',
+                'payment_collection_status' => 'billable',
+                'payment_method' => 'monthly_invoice',
+                'payment_type' => 'corporate',
+                'payment_status' => 'pending',
+            ]);
+            return $this->mapBookingPaymentSummary($booking->fresh());
+        }
+
+        return $this->mapBookingPaymentSummary($booking);
+    }
+
+    private function bookingRequiresDriverCollection($booking): bool
+    {
+        $method = strtolower((string) ($booking->payment_collection_method ?? $booking->payment_method ?? $booking->payment_type ?? ''));
+        return in_array($method, ['cash_to_driver', 'cash', 'driver_cash', 'pay_to_driver'], true);
+    }
+
+    private function bookingUsesMonthlyInvoice($booking): bool
+    {
+        $method = strtolower((string) ($booking->payment_collection_method ?? $booking->payment_method ?? $booking->payment_type ?? ''));
+        return in_array($method, ['monthly_invoice', 'corporate', 'company_billing', 'credit'], true) || str_contains($method, 'corp');
+    }
+
+    private function resolveBookingFareAmount($booking): float
+    {
+        return round((float) ($booking->total_actual ?? $booking->total_estimated ?? 0), 2);
+    }
+
+    private function mapBookingPaymentSummary($booking): ?array
+    {
+        if (!$booking) {
+            return null;
+        }
+
+        return [
+            'payment_responsibility' => $booking->payment_responsibility,
+            'payment_collection_method' => $booking->payment_collection_method,
+            'payment_collection_status' => $booking->payment_collection_status,
+            'payment_status' => $booking->payment_status,
+            'payment_collected_amount' => $booking->payment_collected_amount !== null ? (float) $booking->payment_collected_amount : null,
+            'payment_collected_at' => $booking->payment_collected_at?->toIso8601String(),
+            'payment_collected_by_driver_id' => $booking->payment_collected_by_driver_id,
+            'payment_notes' => $booking->payment_notes,
+        ];
+    }
+
+    private function isOpenPackageAssignment(DriverAssignment $assignment): bool
+    {
+        $assignment->loadMissing('bookingItem');
+        return $this->isOpenPackageBookingItem($assignment->bookingItem);
+    }
+
+    private function isOpenPackageBookingItem(?BookingItem $bookingItem): bool
+    {
+        $metadata = is_array($bookingItem?->metadata) ? $bookingItem->metadata : [];
+        return ($metadata['trip_mode'] ?? null) === 'open_package';
+    }
+
+    private function mapPackageForMobile(?BookingItem $bookingItem): ?array
+    {
+        if (!$bookingItem) {
+            return null;
+        }
+
+        $metadata = is_array($bookingItem->metadata) ? $bookingItem->metadata : [];
+        $packageId = $metadata['service_package_id'] ?? $metadata['package_id'] ?? null;
+        if (!$packageId) {
+            return null;
+        }
+
+        $package = \App\Models\Service\ServicePackage::find($packageId);
+        if (!$package) {
+            return ['id' => $packageId];
+        }
+
+        return [
+            'id' => $package->id,
+            'name' => $package->name,
+            'code' => $package->code,
+            'description' => $package->description,
+            'included_km_per_day' => $package->max_km_per_day !== null ? (float) $package->max_km_per_day : null,
+            'included_km_per_package' => $package->max_km_per_package !== null ? (float) $package->max_km_per_package : null,
+            'included_hours' => $package->default_duration_hours,
+            'rate_type' => $package->rate_type,
+        ];
+    }
+
+    private function syncOpenPackageFinalPricing(
+        DriverAssignment $assignment,
+        array $finalLocation,
+        float $totalDistance,
+        int $durationMinutes,
+        array $waitingTime,
+        Carbon $completedAt
+    ): ?array {
+        $assignment->loadMissing(['booking', 'bookingItem']);
+        $bookingItem = $assignment->bookingItem;
+        $booking = $assignment->booking;
+
+        if (!$bookingItem || !$booking || !$this->isOpenPackageBookingItem($bookingItem)) {
+            return null;
+        }
+
+        $metadata = is_array($bookingItem->metadata) ? $bookingItem->metadata : [];
+        $packageId = $metadata['service_package_id'] ?? $metadata['package_id'] ?? null;
+        $package = $packageId ? \App\Models\Service\ServicePackage::find($packageId) : null;
+
+        $includedKm = (float) (
+            $metadata['included_km']
+            ?? $metadata['max_km_per_package']
+            ?? $package?->max_km_per_package
+            ?? $package?->max_km_per_day
+            ?? 0
+        );
+        $includedMinutes = (int) (
+            $metadata['included_minutes']
+            ?? (($metadata['included_hours'] ?? $package?->default_duration_hours ?? 0) * 60)
+        );
+
+        $extraKmRate = $this->resolveOpenPackageExtraKmRate($bookingItem, $packageId, $metadata);
+        $extraHourRate = (float) ($metadata['extra_hour_rate'] ?? $metadata['extra_rate_per_hour'] ?? 0);
+        $waitingRatePerMinute = (float) ($metadata['waiting_rate_per_minute'] ?? 0);
+
+        $extraKm = max(0, $totalDistance - $includedKm);
+        $extraMinutes = max(0, $durationMinutes - $includedMinutes);
+        $waitingMinutes = (int) ceil(($waitingTime['total_waiting_time_seconds'] ?? 0) / 60);
+
+        $extraDistanceCharge = round($extraKm * $extraKmRate, 2);
+        $extraDurationCharge = round(($extraMinutes / 60) * $extraHourRate, 2);
+        $waitingCharge = round($waitingMinutes * $waitingRatePerMinute, 2);
+        $baseAmount = (float) ($bookingItem->total_price ?? $bookingItem->unit_price ?? 0);
+        $finalTotal = round($baseAmount + $extraDistanceCharge + $extraDurationCharge + $waitingCharge, 2);
+
+        $finalAddress = $finalLocation['final_address'] ?? $finalLocation['address'] ?? null;
+        $finalDropoff = [
+            'address' => $finalAddress,
+            'latitude' => $finalLocation['latitude'],
+            'longitude' => $finalLocation['longitude'],
+        ];
+
+        $pricingSummary = [
+            'trip_mode' => 'open_package',
+            'package_id' => $packageId,
+            'base_amount' => $baseAmount,
+            'included_km' => $includedKm,
+            'actual_km' => round($totalDistance, 2),
+            'extra_km' => round($extraKm, 2),
+            'extra_km_rate' => $extraKmRate,
+            'extra_distance_charge' => $extraDistanceCharge,
+            'included_minutes' => $includedMinutes,
+            'actual_minutes' => $durationMinutes,
+            'extra_minutes' => $extraMinutes,
+            'extra_hour_rate' => $extraHourRate,
+            'extra_duration_charge' => $extraDurationCharge,
+            'waiting_minutes' => $waitingMinutes,
+            'waiting_rate_per_minute' => $waitingRatePerMinute,
+            'waiting_charge' => $waitingCharge,
+            'total' => $finalTotal,
+            'calculated_at' => $completedAt->toIso8601String(),
+        ];
+
+        $bookingItem->update([
+            'dropoff_location' => $finalDropoff,
+            'dropoff_latitude' => $finalLocation['latitude'],
+            'dropoff_longitude' => $finalLocation['longitude'],
+            'total_price' => $finalTotal,
+            'pricing_breakdown' => array_merge(
+                is_array($bookingItem->pricing_breakdown) ? $bookingItem->pricing_breakdown : [],
+                ['open_package_final' => $pricingSummary]
+            ),
+            'metadata' => array_merge($metadata, [
+                'final_dropoff_location' => $finalDropoff,
+                'open_package_final_pricing' => $pricingSummary,
+            ]),
+        ]);
+
+        $booking->update([
+            'actual_distance' => round($totalDistance, 2),
+            'actual_duration' => $durationMinutes,
+            'total_actual' => $finalTotal,
+            'distance_cost' => $extraDistanceCharge,
+            'duration_metrics' => array_merge(is_array($booking->duration_metrics) ? $booking->duration_metrics : [], [
+                'actual_minutes' => $durationMinutes,
+                'included_minutes' => $includedMinutes,
+                'extra_minutes' => $extraMinutes,
+                'waiting_minutes' => $waitingMinutes,
+            ]),
+            'distance_metrics' => array_merge(is_array($booking->distance_metrics) ? $booking->distance_metrics : [], [
+                'actual_km' => round($totalDistance, 2),
+                'included_km' => $includedKm,
+                'extra_km' => round($extraKm, 2),
+            ]),
+            'pricing_snapshot' => array_merge(is_array($booking->pricing_snapshot) ? $booking->pricing_snapshot : [], [
+                'open_package_final' => $pricingSummary,
+            ]),
+        ]);
+
+        return $pricingSummary;
+    }
+
+    private function resolveOpenPackageExtraKmRate(BookingItem $bookingItem, mixed $packageId, array $metadata): float
+    {
+        $metadataRate = $metadata['extra_km_rate']
+            ?? $metadata['extra_rate_per_km']
+            ?? data_get($metadata, 'distance_details.extra_km_price')
+            ?? data_get($metadata, 'package_info.extra_km_rate')
+            ?? null;
+
+        if ($metadataRate !== null && is_numeric($metadataRate)) {
+            return (float) $metadataRate;
+        }
+
+        if (!$packageId || !$bookingItem->vehicle_group_id) {
+            return 0.0;
+        }
+
+        try {
+            $packageRate = DB::table('service_package_rates')
+                ->where('service_package_id', $packageId)
+                ->where('vehicle_group_id', $bookingItem->vehicle_group_id)
+                ->where('is_active', true)
+                ->whereNull('deleted_at')
+                ->first(['extra_km_rate']);
+
+            if ($packageRate && $packageRate->extra_km_rate !== null) {
+                return (float) $packageRate->extra_km_rate;
+            }
+        } catch (\Throwable $exception) {
+            Log::warning('Open package extra km rate lookup failed', [
+                'booking_item_id' => $bookingItem->id,
+                'package_id' => $packageId,
+                'vehicle_group_id' => $bookingItem->vehicle_group_id,
+                'error' => $exception->getMessage(),
+            ]);
+        }
+
+        return 0.0;
     }
 
     /**

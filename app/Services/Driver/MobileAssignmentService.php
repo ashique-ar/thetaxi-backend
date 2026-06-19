@@ -319,11 +319,15 @@ class MobileAssignmentService
         $bookingItem = $assignment->bookingItem;
         $customerUser = $booking?->customer?->user;
 
-        $paymentType = $this->resolvePaymentType($assignment);
+        $paymentDetails = $this->resolvePaymentDetails($assignment);
         $fareAmount = $this->resolveFareAmount($assignment);
 
         $payload = $assignment->toArray();
-        $payload['payment_type'] = $paymentType;
+        $payload['payment_type'] = $paymentDetails['payment_type'];
+        $payload['payment_collection_method'] = $paymentDetails['payment_collection_method'];
+        $payload['payment_collection_status'] = $paymentDetails['payment_collection_status'];
+        $payload['payment_collection_required'] = $paymentDetails['payment_collection_required'];
+        $payload['payment_instruction'] = $paymentDetails['payment_instruction'];
         $payload['fare_amount'] = $fareAmount;
         $payload['total_amount'] = $fareAmount;
         $payload['currency'] = $bookingItem?->currency ?? $booking?->currency;
@@ -334,6 +338,14 @@ class MobileAssignmentService
         $payload['customer_email'] = $customerUser?->email;
         $payload['pickup_location_label'] = $this->extractLocationLabel($bookingItem?->pickup_location);
         $payload['dropoff_location_label'] = $this->extractLocationLabel($bookingItem?->dropoff_location);
+        $itemMetadata = is_array($bookingItem?->metadata) ? $bookingItem->metadata : [];
+        $isOpenPackage = ($itemMetadata['trip_mode'] ?? null) === 'open_package';
+        $payload['trip_mode'] = $isOpenPackage ? 'open_package' : 'fixed_route';
+        $payload['destination_known'] = !$isOpenPackage;
+        $payload['driver_message'] = $isOpenPackage
+            ? 'Open chauffeur package - destination decided during trip'
+            : null;
+        $payload['package'] = $this->mapPackageForMobile($itemMetadata);
         $stops = $this->tripTrackingService->ensureAssignmentStops($assignment);
         $payload['is_multi_stop'] = $stops->count() > 2;
         $payload['route_stops'] = $this->tripTrackingService->mapStopsForMobile($stops);
@@ -449,24 +461,43 @@ class MobileAssignmentService
 
     private function resolvePaymentType(DriverAssignment $assignment): string
     {
+        return $this->resolvePaymentDetails($assignment)['payment_type'];
+    }
+
+    private function resolvePaymentDetails(DriverAssignment $assignment): array
+    {
         $booking = $assignment->booking;
-        $rawType = strtolower((string) ($booking?->payment_type ?? $booking?->payment_method ?? ''));
+        $method = strtolower((string) ($booking?->payment_collection_method ?? $booking?->payment_method ?? $booking?->payment_type ?? ''));
+        $status = strtolower((string) ($booking?->payment_collection_status ?? $booking?->payment_status ?? 'pending'));
 
-        if (in_array($rawType, ['cash', 'credit', 'corporate'], true)) {
-            return $rawType;
-        }
-
-        if (str_contains($rawType, 'corp')) {
-            return 'corporate';
-        }
-        if (str_contains($rawType, 'credit')) {
-            return 'credit';
-        }
-        if (str_contains($rawType, 'cash')) {
-            return 'cash';
+        if (in_array($method, ['monthly_invoice', 'corporate', 'credit', 'company_billing'], true) || str_contains($method, 'corp')) {
+            return [
+                'payment_type' => 'corporate',
+                'payment_collection_method' => 'monthly_invoice',
+                'payment_collection_status' => $status ?: 'billable',
+                'payment_collection_required' => false,
+                'payment_instruction' => 'Corporate billing - do not collect cash',
+            ];
         }
 
-        return 'cash';
+        if (in_array($method, ['online', 'webxpay', 'credit_card', 'debit_card', 'stripe', 'paypal'], true)) {
+            $paid = in_array($status, ['online_paid', 'paid', 'success'], true) || $booking?->payment_status === 'paid';
+            return [
+                'payment_type' => 'online',
+                'payment_collection_method' => 'online',
+                'payment_collection_status' => $status ?: 'pending',
+                'payment_collection_required' => false,
+                'payment_instruction' => $paid ? 'Paid online' : 'Online payment pending',
+            ];
+        }
+
+        return [
+            'payment_type' => 'cash',
+            'payment_collection_method' => 'cash_to_driver',
+            'payment_collection_status' => $status ?: 'pending',
+            'payment_collection_required' => true,
+            'payment_instruction' => 'Collect payment from customer',
+        ];
     }
 
     private function resolveFareAmount(DriverAssignment $assignment): float
@@ -491,6 +522,30 @@ class MobileAssignmentService
         $booking = $assignment->booking;
         $fallback = (float) ($booking?->total_actual ?? $booking?->total_estimated ?? 0);
         return round($fallback, 2);
+    }
+
+    private function mapPackageForMobile(array $metadata): ?array
+    {
+        $packageId = $metadata['service_package_id'] ?? $metadata['package_id'] ?? null;
+        if (!$packageId) {
+            return null;
+        }
+
+        $package = \App\Models\Service\ServicePackage::find($packageId);
+        if (!$package) {
+            return ['id' => $packageId];
+        }
+
+        return [
+            'id' => $package->id,
+            'name' => $package->name,
+            'code' => $package->code,
+            'description' => $package->description,
+            'included_km_per_day' => $package->max_km_per_day !== null ? (float) $package->max_km_per_day : null,
+            'included_km_per_package' => $package->max_km_per_package !== null ? (float) $package->max_km_per_package : null,
+            'included_hours' => $package->default_duration_hours,
+            'rate_type' => $package->rate_type,
+        ];
     }
 
     private function extractLocationLabel(mixed $location): ?string

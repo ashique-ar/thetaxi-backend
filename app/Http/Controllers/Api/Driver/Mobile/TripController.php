@@ -290,6 +290,7 @@ class TripController extends Controller
             'STOP_TYPE_MISMATCH' => 'Stop type does not match the requested action',
             'STOP_ARRIVAL_REQUIRED' => 'Driver must mark arrived before completing this stop',
             'TRIP_STOPS_INCOMPLETE' => 'All route stops must be completed or skipped before ending the hire',
+            'PAYMENT_COLLECTION_REQUIRED' => 'Collected amount is required before ending this cash payment hire',
             default => $code,
         };
     }

@@ -23,8 +23,12 @@ class EndTripRequest extends FormRequest
         return [
             'latitude' => ['required', 'numeric', 'between:-90,90'],
             'longitude' => ['required', 'numeric', 'between:-180,180'],
+            'address' => ['nullable', 'string', 'max:500'],
+            'final_address' => ['nullable', 'string', 'max:500'],
             'ending_mileage' => ['nullable', 'integer', 'min:0'],
             'notes' => ['nullable', 'string', 'max:1000'],
+            'collected_amount' => ['nullable', 'numeric', 'min:0'],
+            'payment_notes' => ['nullable', 'string', 'max:1000'],
         ];
     }
 
@@ -37,6 +41,8 @@ class EndTripRequest extends FormRequest
             'longitude.between' => 'Longitude must be between -180 and 180',
             'ending_mileage.integer' => 'Ending mileage must be a whole number',
             'ending_mileage.min' => 'Ending mileage cannot be negative',
+            'collected_amount.numeric' => 'Collected amount must be a number',
+            'collected_amount.min' => 'Collected amount cannot be negative',
         ];
     }
 }
