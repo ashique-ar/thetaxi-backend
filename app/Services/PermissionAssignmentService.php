@@ -48,9 +48,9 @@ class PermissionAssignmentService
         $permissions = $this->ensurePermissionsForGuard(
             $this->normalizePermissionNames($permissionIdentifiers),
             $role->guard_name
-        );
+        )->where('guard_name', $role->guard_name)->values();
 
-        $role->syncPermissions($permissions);
+        $role->permissions()->sync($permissions->pluck('id')->all());
         app(PermissionRegistrar::class)->forgetCachedPermissions();
 
         return $permissions;
