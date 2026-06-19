@@ -26,12 +26,34 @@ class StaffController extends Controller
     {
         $q = Staff::with(['user', 'paymentMethods']);
         if ($request->filled('search')) {
-            $q->where(function ($query) use ($request) {
-                $query->whereLikeInsensitive('staff_type', $request->search)
-                    ->orWhereLikeInsensitive('code', $request->search)
-                    ->orWhereLikeInsensitive('nic', $request->search);
+            $search = trim((string) $request->get('search'));
+            $q->where(function ($query) use ($search) {
+                $query->whereLikeInsensitive('id', $search)
+                    ->orWhereLikeInsensitive('user_id', $search)
+                    ->orWhereLikeInsensitive('staff_type', $search)
+                    ->orWhereLikeInsensitive('code', $search)
+                    ->orWhereLikeInsensitive('nic', $search)
+                    ->orWhereLikeInsensitive('license_no', $search)
+                    ->orWhereLikeInsensitive('address', $search)
+                    ->orWhereLikeInsensitive('city', $search)
+                    ->orWhereHas('user', function ($userQuery) use ($search) {
+                        $userQuery->whereLikeInsensitive('id', $search)
+                            ->orWhereLikeInsensitive('first_name', $search)
+                            ->orWhereLikeInsensitive('last_name', $search)
+                            ->orWhereLikeInsensitive('email', $search)
+                            ->orWhereLikeInsensitive('phone', $search);
+                    });
             });
         }
+
+        if ($request->filled('role_id')) {
+            $q->where('staff_type', $request->get('role_id'));
+        }
+
+        if ($request->filled('status')) {
+            $q->whereHas('user', fn ($query) => $query->where('is_active', $request->get('status') === 'active'));
+        }
+
         return StaffResource::collection(
             $q->paginate($request->per_page ?? 15)
         );

@@ -34,16 +34,29 @@ class CustomerController extends Controller
         $q = Customer::with(['user', 'state', 'paymentMethods']);
 
         if ($request->filled('search')) {
-            $search = $request->get('search');
+            $search = trim((string) $request->get('search'));
             $q->where(function ($builder) use ($search) {
                 $builder->whereHas('user', function ($query) use ($search) {
-                    $query->whereLikeInsensitive('first_name', $search)
+                    $query->whereLikeInsensitive('id', $search)
+                        ->orWhereLikeInsensitive('first_name', $search)
                         ->orWhereLikeInsensitive('last_name', $search)
                         ->orWhereLikeInsensitive('email', $search)
                         ->orWhereLikeInsensitive('phone', $search);
-                })->orWhereLikeInsensitive('code', $search)
+                })->orWhereLikeInsensitive('id', $search)
+                    ->orWhereLikeInsensitive('user_id', $search)
+                    ->orWhereLikeInsensitive('code', $search)
                     ->orWhereLikeInsensitive('nic', $search)
-                    ->orWhereLikeInsensitive('passport_number', $search);
+                    ->orWhereLikeInsensitive('passport_number', $search)
+                    ->orWhereLikeInsensitive('license_no', $search)
+                    ->orWhereLikeInsensitive('license_type', $search)
+                    ->orWhereLikeInsensitive('type', $search)
+                    ->orWhereLikeInsensitive('sub_type', $search)
+                    ->orWhereLikeInsensitive('category', $search)
+                    ->orWhereLikeInsensitive('gender', $search)
+                    ->orWhereLikeInsensitive('address', $search)
+                    ->orWhereLikeInsensitive('postal_code', $search)
+                    ->orWhereLikeInsensitive('country', $search)
+                    ->orWhereLikeInsensitive('city', $search);
             });
         }
 
@@ -86,11 +99,17 @@ class CustomerController extends Controller
         $customers = Customer::with('user')
             ->when($search !== '', function ($query) use ($search) {
                 $query->whereHas('user', function ($userQuery) use ($search) {
-                    $userQuery->whereLikeInsensitive('first_name', $search)
+                    $userQuery->whereLikeInsensitive('id', $search)
+                        ->orWhereLikeInsensitive('first_name', $search)
                         ->orWhereLikeInsensitive('last_name', $search)
                         ->orWhereLikeInsensitive('email', $search)
                         ->orWhereLikeInsensitive('phone', $search);
-                })->orWhereLikeInsensitive('code', $search);
+                })->orWhereLikeInsensitive('id', $search)
+                    ->orWhereLikeInsensitive('user_id', $search)
+                    ->orWhereLikeInsensitive('code', $search)
+                    ->orWhereLikeInsensitive('nic', $search)
+                    ->orWhereLikeInsensitive('passport_number', $search)
+                    ->orWhereLikeInsensitive('license_no', $search);
             })
             ->limit($limit)
             ->get();

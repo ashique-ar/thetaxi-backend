@@ -49,13 +49,48 @@ class DriverController extends Controller
                 $query->where('trip_phase', 'completed');
             }]);
         if ($request->filled('search')) {
-            $q->where(function ($query) use ($request) {
-                $query->where('code', 'like', '%' . $request->search . '%')
-                    ->orWhere('nic', 'like', '%' . $request->search . '%');
+            $search = trim((string) $request->get('search'));
+            $q->where(function ($query) use ($search) {
+                $query->whereLikeInsensitive('id', $search)
+                    ->orWhereLikeInsensitive('user_id', $search)
+                    ->orWhereLikeInsensitive('code', $search)
+                    ->orWhereLikeInsensitive('nic', $search)
+                    ->orWhereLikeInsensitive('license_no', $search)
+                    ->orWhereLikeInsensitive('license_type', $search)
+                    ->orWhereLikeInsensitive('address', $search)
+                    ->orWhereLikeInsensitive('city', $search)
+                    ->orWhereLikeInsensitive('postal_code', $search)
+                    ->orWhereLikeInsensitive('remarks', $search)
+                    ->orWhereLikeInsensitive('blood_group', $search)
+                    ->orWhereLikeInsensitive('medical_conditions', $search)
+                    ->orWhereLikeInsensitive('emergency_contact_name', $search)
+                    ->orWhereLikeInsensitive('emergency_contact_phone', $search)
+                    ->orWhereLikeInsensitive('current_device_uuid', $search)
+                    ->orWhereLikeInsensitive('availability_status', $search)
+                    ->orWhereLikeInsensitive('current_latitude', $search)
+                    ->orWhereLikeInsensitive('current_longitude', $search)
+                    ->orWhereHas('user', function ($userQuery) use ($search) {
+                        $userQuery->whereLikeInsensitive('id', $search)
+                            ->orWhereLikeInsensitive('first_name', $search)
+                            ->orWhereLikeInsensitive('last_name', $search)
+                            ->orWhereLikeInsensitive('email', $search)
+                            ->orWhereLikeInsensitive('phone', $search);
+                    })
+                    ->orWhereHas('licenseType', function ($licenseTypeQuery) use ($search) {
+                        $licenseTypeQuery->whereLikeInsensitive('id', $search)
+                            ->orWhereLikeInsensitive('name', $search)
+                            ->orWhereLikeInsensitive('description', $search);
+                    })
+                    ->orWhereHas('defaultVehicle', function ($vehicleQuery) use ($search) {
+                        $vehicleQuery->whereLikeInsensitive('id', $search)
+                            ->orWhereLikeInsensitive('title', $search)
+                            ->orWhereLikeInsensitive('license_plate', $search)
+                            ->orWhereLikeInsensitive('registration_no', $search);
+                    });
             });
         }
-        if ($request->filled('availability_status')) {
-            $q->where('availability_status', $request->availability_status);
+        if ($request->filled('availability_status') || $request->filled('status')) {
+            $q->where('availability_status', $request->get('availability_status', $request->get('status')));
         }
         return DriverResource::collection($q->paginate($request->per_page ?? 15));
     }

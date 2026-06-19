@@ -26,12 +26,24 @@ class UserService
 
         // Apply filters
         if (!empty($filters['search'])) {
-            $search = $filters['search'];
+            $search = trim((string) $filters['search']);
             $query->where(function ($q) use ($search) {
-                $q->where('first_name', 'like', "%{$search}%")
-                  ->orWhere('last_name', 'like', "%{$search}%")
-                  ->orWhere('email', 'like', "%{$search}%")
-                  ->orWhere('phone', 'like', "%{$search}%");
+                $q->whereLikeInsensitive('id', $search)
+                  ->orWhereLikeInsensitive('first_name', $search)
+                  ->orWhereLikeInsensitive('last_name', $search)
+                  ->orWhereLikeInsensitive('email', $search)
+                  ->orWhereLikeInsensitive('phone', $search)
+                  ->orWhereLikeInsensitive('timezone', $search)
+                  ->orWhereLikeInsensitive('language', $search)
+                  ->orWhereHas('roles', function ($roleQuery) use ($search) {
+                      $roleQuery->whereLikeInsensitive('name', $search)
+                          ->orWhereLikeInsensitive('guard_name', $search);
+                  })
+                  ->orWhereHas('contexts', function ($contextQuery) use ($search) {
+                      $contextQuery->whereLikeInsensitive('id', $search)
+                          ->orWhereLikeInsensitive('context_type', $search)
+                          ->orWhereLikeInsensitive('context_id', $search);
+                  });
             });
         }
 
