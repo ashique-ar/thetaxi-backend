@@ -3,7 +3,6 @@
 namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Str;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
@@ -255,13 +254,10 @@ class RouteReferencedPermissionsSeeder extends Seeder
 
         foreach (['api', 'web'] as $guard) {
             foreach ($permissions as $permission) {
-                $createdPermissions[$guard][] = Permission::firstOrCreate(
-                    ['name' => $permission, 'guard_name' => $guard],
-                    [
-                        'display_name' => Str::headline(str_replace(['.', '-', '_'], ' ', $permission)),
-                        'description' => "Allows {$permission}.",
-                    ]
-                );
+                $createdPermissions[$guard][] = Permission::firstOrCreate([
+                    'name' => $permission,
+                    'guard_name' => $guard,
+                ]);
             }
         }
 
