@@ -86,6 +86,8 @@ Assignments and trips:
 - `final_address`
 - `ending_mileage`
 - `trip_end_notes`
+- `collected_amount`
+- `payment_notes`
 - `filter_date`
 - `filter_from`
 - `filter_to`
@@ -174,7 +176,8 @@ Notifications:
 | POST | `/api/driver/assignments/{assignment_id}/stops/{stop_id}/picked-up` | Yes | Complete pickup stop |
 | POST | `/api/driver/assignments/{assignment_id}/stops/{stop_id}/dropped-off` | Yes | Complete dropoff stop |
 | POST | `/api/driver/assignments/{assignment_id}/stops/{stop_id}/skip` | Yes | Skip route stop |
-| POST | `/api/driver/assignments/{assignment_id}/complete` | Yes | Complete hire |
+| POST | `/api/driver/assignments/{assignment_id}/complete` | Yes | Complete hire and calculate final amount |
+| POST | `/api/driver/assignments/{assignment_id}/collect-payment` | Yes | Record driver cash collection when required |
 
 ### Open Package Chauffeur Flow
 
@@ -189,6 +192,7 @@ Use this flow for day/month chauffeur packages where the booking has a pickup po
 | POST | `/api/driver/location` | Yes | Send live GPS route points |
 | POST | `/api/driver/location/bulk` | Yes | Sync offline buffered route points |
 | POST | `/api/driver/assignments/{assignment_id}/complete` | Yes | End package and calculate final charges |
+| POST | `/api/driver/assignments/{assignment_id}/collect-payment` | Yes | Record cash collection when required |
 
 Mobile app branch condition:
 
@@ -1066,9 +1070,13 @@ POST /api/driver/assignments/{{assignment_id}}/complete
   "latitude": 6.9344,
   "longitude": 79.8428,
   "ending_mileage": 125000,
-  "notes": "Completed successfully"
+  "notes": "Completed successfully",
+  "collected_amount": 12500,
+  "payment_notes": "Cash collected by driver"
 }
 ```
+
+For cash-to-driver hires, `collected_amount` is required before ending the hire. Send the amount actually collected from the customer. If the booking is online, corporate, monthly invoice, or already paid, do not send cash collection unless the backend payment fields say the driver must collect.
 
 Complete response:
 
@@ -1122,9 +1130,13 @@ Complete request for open package:
   "longitude": 79.8428,
   "final_address": "Hilton Colombo, Colombo",
   "ending_mileage": 125000,
-  "notes": "Customer ended the day package here"
+  "notes": "Customer ended the day package here",
+  "collected_amount": 28760,
+  "payment_notes": "Cash collected by driver"
 }
 ```
+
+For open package cash-to-driver hires, use `package_charges.final_total` as the amount to collect, then send that value as `collected_amount` when completing the trip.
 
 Open package completion response includes `package_charges`:
 
@@ -1156,6 +1168,13 @@ Open package completion response includes `package_charges`:
       "extra_total": 3760,
       "final_total": 28760,
       "currency": "LKR"
+    },
+    "payment": {
+      "payment_collection_method": "cash_to_driver",
+      "payment_collection_status": "driver_collected",
+      "payment_status": "paid",
+      "payment_collected_amount": 28760,
+      "payment_notes": "Cash collected by driver"
     }
   }
 }
@@ -1291,8 +1310,9 @@ Common trip stop errors:
 5. Start Trip.
 6. Process stops if `is_multi_stop` is true.
 7. Complete Trip.
-8. Check Hires.
-9. Check Earnings.
+8. If `payment.collection_required` is true, collect cash and call Collect Cash Payment.
+9. Check Hires.
+10. Check Earnings.
 
 ### Open Package Hire
 
@@ -1303,7 +1323,8 @@ Common trip stop errors:
 5. Send live location points every 10 seconds while moving.
 6. Sync buffered location points after network recovery.
 7. Complete Trip with final coordinates and optional `final_address`.
-8. Read `package_charges` from the completion response.
+8. Read `package_charges` and `payment` from the completion response.
+9. If `payment.collection_required` is true, collect cash and call Collect Cash Payment.
 
 ### Notifications
 

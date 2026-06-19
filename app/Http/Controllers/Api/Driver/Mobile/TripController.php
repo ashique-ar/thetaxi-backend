@@ -85,6 +85,56 @@ class TripController extends Controller
         return $this->endTripByAssignment($request, $id);
     }
 
+    public function collectPaymentForAssignment(Request $request, string $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'collected_amount' => ['required', 'numeric', 'min:0'],
+            'payment_notes' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        try {
+            $driver = $this->authService->getDriver($request->user());
+
+            if (!$driver) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'User is not registered as a driver',
+                    'error_code' => 'TRIP_NOT_DRIVER'
+                ], 403);
+            }
+
+            $assignment = $this->getCompletedAssignmentByDriverAndId($driver->id, $id);
+
+            if (!$assignment) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Completed assignment not found',
+                    'error_code' => 'TRIP_ASSIGNMENT_NOT_FOUND'
+                ], 404);
+            }
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Payment collection recorded',
+                'data' => $this->tripTrackingService->collectPayment($assignment, $validated),
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => $this->friendlyTripStopError($e->getMessage()),
+                'error_code' => $e->getMessage(),
+                'errors' => []
+            ], 400);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to record payment collection',
+                'error_code' => 'PAYMENT_COLLECTION_FAILED',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
     public function stopArrivedForAssignment(Request $request, string $id, string $stopId): JsonResponse
     {
         $validated = $request->validate([
@@ -290,7 +340,8 @@ class TripController extends Controller
             'STOP_TYPE_MISMATCH' => 'Stop type does not match the requested action',
             'STOP_ARRIVAL_REQUIRED' => 'Driver must mark arrived before completing this stop',
             'TRIP_STOPS_INCOMPLETE' => 'All route stops must be completed or skipped before ending the hire',
-            'PAYMENT_COLLECTION_REQUIRED' => 'Collected amount is required before ending this cash payment hire',
+            'PAYMENT_BOOKING_NOT_FOUND' => 'Booking payment record was not found',
+            'PAYMENT_COLLECTION_NOT_REQUIRED' => 'Driver cash collection is not required for this hire',
             default => $code,
         };
     }
@@ -400,6 +451,14 @@ class TripController extends Controller
                 TripPhase::PICKUP_ARRIVED,
                 TripPhase::IN_PROGRESS,
             ])
+            ->first();
+    }
+
+    private function getCompletedAssignmentByDriverAndId(string $driverId, string $assignmentId): ?DriverAssignment
+    {
+        return DriverAssignment::where('id', $assignmentId)
+            ->where('driver_id', $driverId)
+            ->where('trip_phase', TripPhase::COMPLETED)
             ->first();
     }
 }

@@ -2824,7 +2824,7 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"latitude\": 6.9344,\n  \"longitude\": 79.8428,\n  \"ending_mileage\": {{ending_mileage}},\n  \"notes\": \"{{trip_end_notes}}\"\n}",
+                            "raw": "{\n    \"latitude\": \"{{end_latitude}}\",\n    \"longitude\": \"{{end_longitude}}\",\n    \"ending_mileage\": \"{{ending_mileage}}\",\n    \"notes\": \"{{trip_end_notes}}\"\n}",
                             "options": {
                                 "raw": {
                                     "language": "json"
@@ -2844,7 +2844,7 @@
                                 "complete"
                             ]
                         },
-                        "description": "Canonical endpoint: complete trip for a specific assignment."
+                        "description": "Canonical endpoint: complete trip for a specific assignment. Backend calculates/stores the final hire amount and returns payment instructions. If `payment.collection_required` is true, call collect-payment next."
                     },
                     "response": [
                         {
@@ -2857,7 +2857,7 @@
                                     "value": "application/json"
                                 }
                             ],
-                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Trip completed\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"booking_item_id\": \"item-uuid\",\n        \"total_distance_km\": 18.75,\n        \"total_duration_minutes\": 95,\n        \"total_waiting_time_seconds\": 300,\n        \"waiting_period_count\": 1,\n        \"pickup_coordinates\": {\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841\n        },\n        \"dropoff_coordinates\": {\n            \"latitude\": 6.9344,\n            \"longitude\": 79.8428\n        },\n        \"route_point_count\": 75,\n        \"hire_completed\": true\n    }\n}"
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Trip completed\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"booking_item_id\": \"item-uuid\",\n        \"total_distance_km\": 18.75,\n        \"total_duration_minutes\": 95,\n        \"total_waiting_time_seconds\": 300,\n        \"waiting_period_count\": 1,\n        \"pickup_coordinates\": {\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841\n        },\n        \"dropoff_coordinates\": {\n            \"latitude\": 6.9344,\n            \"longitude\": 79.8428\n        },\n        \"route_point_count\": 75,\n        \"hire_completed\": true,\n        \"payment\": {\n            \"payment_responsibility\": \"customer\",\n            \"payment_collection_method\": \"cash_to_driver\",\n            \"payment_collection_status\": \"pending_collection\",\n            \"payment_status\": \"pending\",\n            \"final_amount\": 28760,\n            \"amount_to_pay\": 28760,\n            \"currency\": \"LKR\",\n            \"collection_required\": true,\n            \"collection_message\": \"Collect cash from customer\",\n            \"amount_to_collect\": 28760,\n            \"payment_collected_amount\": null,\n            \"payment_collected_at\": null,\n            \"payment_collected_by_driver_id\": null,\n            \"payment_notes\": null\n        }\n    }\n}"
                         },
                         {
                             "name": "Stops Incomplete",
@@ -2930,7 +2930,125 @@
                                 }
                             ],
                             "cookie": [],
-                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Trip completed\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"booking_item_id\": \"item-uuid\",\n        \"trip_mode\": \"open_package\",\n        \"total_distance_km\": 96.4,\n        \"total_duration_minutes\": 545,\n        \"total_waiting_time_seconds\": 1800,\n        \"waiting_period_count\": 3,\n        \"pickup_coordinates\": {\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841\n        },\n        \"dropoff_coordinates\": {\n            \"latitude\": 6.9344,\n            \"longitude\": 79.8428\n        },\n        \"route_point_count\": 430,\n        \"hire_completed\": true,\n        \"package_charges\": {\n            \"package_id\": \"package-uuid\",\n            \"package_name\": \"Day Package - 8 Hours / 80 KM\",\n            \"base_amount\": 25000,\n            \"included_km\": 80,\n            \"included_minutes\": 480,\n            \"actual_distance_km\": 96.4,\n            \"actual_duration_minutes\": 545,\n            \"waiting_minutes\": 30,\n            \"extra_km\": 16.4,\n            \"extra_minutes\": 65,\n            \"extra_km_rate\": 150,\n            \"extra_hour_rate\": 1200,\n            \"waiting_minute_rate\": 0,\n            \"extra_distance_charge\": 2460,\n            \"extra_duration_charge\": 1300,\n            \"waiting_charge\": 0,\n            \"extra_total\": 3760,\n            \"final_total\": 28760,\n            \"currency\": \"LKR\"\n        }\n    }\n}"
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Trip completed\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"booking_item_id\": \"item-uuid\",\n        \"trip_mode\": \"open_package\",\n        \"total_distance_km\": 96.4,\n        \"total_duration_minutes\": 545,\n        \"total_waiting_time_seconds\": 1800,\n        \"waiting_period_count\": 3,\n        \"pickup_coordinates\": {\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841\n        },\n        \"dropoff_coordinates\": {\n            \"latitude\": 6.9344,\n            \"longitude\": 79.8428\n        },\n        \"route_point_count\": 430,\n        \"hire_completed\": true,\n        \"package_charges\": {\n            \"package_id\": \"package-uuid\",\n            \"package_name\": \"Day Package - 8 Hours / 80 KM\",\n            \"base_amount\": 25000,\n            \"included_km\": 80,\n            \"included_minutes\": 480,\n            \"actual_distance_km\": 96.4,\n            \"actual_duration_minutes\": 545,\n            \"waiting_minutes\": 30,\n            \"extra_km\": 16.4,\n            \"extra_minutes\": 65,\n            \"extra_km_rate\": 150,\n            \"extra_hour_rate\": 1200,\n            \"waiting_minute_rate\": 0,\n            \"extra_distance_charge\": 2460,\n            \"extra_duration_charge\": 1300,\n            \"waiting_charge\": 0,\n            \"extra_total\": 3760,\n            \"final_total\": 28760,\n            \"currency\": \"LKR\"\n        },\n        \"payment\": {\n            \"payment_responsibility\": \"customer\",\n            \"payment_collection_method\": \"cash_to_driver\",\n            \"payment_collection_status\": \"pending_collection\",\n            \"payment_status\": \"pending\",\n            \"final_amount\": 28760,\n            \"amount_to_pay\": 28760,\n            \"currency\": \"LKR\",\n            \"collection_required\": true,\n            \"collection_message\": \"Collect cash from customer\",\n            \"amount_to_collect\": 28760,\n            \"payment_collected_amount\": null,\n            \"payment_collected_at\": null,\n            \"payment_collected_by_driver_id\": null,\n            \"payment_notes\": null\n        }\n    }\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "Collect Cash Payment",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/assignments/{{assignment_id}}/collect-payment",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "assignments",
+                                "%7B%7Bassignment_id%7D%7D",
+                                "collect-payment"
+                            ],
+                            "query": []
+                        },
+                        "description": "Call only after complete-trip response returns `payment.collection_required = true`. Records cash collected by driver.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"collected_amount\": \"{{collected_amount}}\",\n    \"payment_notes\": \"{{payment_notes}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": [
+                        {
+                            "name": "Success",
+                            "originalRequest": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json",
+                                        "type": "text"
+                                    },
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json",
+                                        "type": "text"
+                                    }
+                                ],
+                                "auth": {
+                                    "type": "bearer",
+                                    "bearer": [
+                                        {
+                                            "key": "token",
+                                            "value": "{{access_token}}",
+                                            "type": "string"
+                                        }
+                                    ]
+                                },
+                                "url": {
+                                    "raw": "{{base_url}}/api/driver/assignments/{{assignment_id}}/collect-payment",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "driver",
+                                        "assignments",
+                                        "%7B%7Bassignment_id%7D%7D",
+                                        "collect-payment"
+                                    ],
+                                    "query": []
+                                },
+                                "description": "Call only after complete-trip response returns `payment.collection_required = true`. Records cash collected by driver.",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n    \"collected_amount\": \"{{collected_amount}}\",\n    \"payment_notes\": \"{{payment_notes}}\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            },
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json",
+                                    "type": "text"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Payment collection recorded\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"payment\": {\n            \"payment_responsibility\": \"customer\",\n            \"payment_collection_method\": \"cash_to_driver\",\n            \"payment_collection_status\": \"driver_collected\",\n            \"payment_status\": \"paid\",\n            \"final_amount\": 28760,\n            \"amount_to_pay\": 28760,\n            \"currency\": \"LKR\",\n            \"collection_required\": false,\n            \"collection_message\": \"Cash collected by driver\",\n            \"amount_to_collect\": null,\n            \"payment_collected_amount\": 28760,\n            \"payment_collected_at\": \"2026-05-21T16:07:00+05:30\",\n            \"payment_collected_by_driver_id\": \"driver-uuid\",\n            \"payment_notes\": \"Cash collected by driver\"\n        }\n    }\n}"
                         }
                     ]
                 }
@@ -3388,7 +3506,7 @@
                             ],
                             "query": []
                         },
-                        "description": "End the package service. Final coordinates are treated as the final destination and backend returns `package_charges`.",
+                        "description": "End the package service. Backend calculates final package usage and returns `package_charges` plus payment instructions. If `payment.collection_required` is true, call collect-payment next.",
                         "body": {
                             "mode": "raw",
                             "raw": "{\n    \"latitude\": \"{{end_latitude}}\",\n    \"longitude\": \"{{end_longitude}}\",\n    \"final_address\": \"{{final_address}}\",\n    \"ending_mileage\": \"{{ending_mileage}}\",\n    \"notes\": \"{{trip_end_notes}}\"\n}",
@@ -3462,7 +3580,125 @@
                                 }
                             ],
                             "cookie": [],
-                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Trip completed\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"booking_item_id\": \"item-uuid\",\n        \"trip_mode\": \"open_package\",\n        \"total_distance_km\": 96.4,\n        \"total_duration_minutes\": 545,\n        \"total_waiting_time_seconds\": 1800,\n        \"waiting_period_count\": 3,\n        \"pickup_coordinates\": {\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841\n        },\n        \"dropoff_coordinates\": {\n            \"latitude\": 6.9344,\n            \"longitude\": 79.8428\n        },\n        \"route_point_count\": 430,\n        \"hire_completed\": true,\n        \"package_charges\": {\n            \"package_id\": \"package-uuid\",\n            \"package_name\": \"Day Package - 8 Hours / 80 KM\",\n            \"base_amount\": 25000,\n            \"included_km\": 80,\n            \"included_minutes\": 480,\n            \"actual_distance_km\": 96.4,\n            \"actual_duration_minutes\": 545,\n            \"waiting_minutes\": 30,\n            \"extra_km\": 16.4,\n            \"extra_minutes\": 65,\n            \"extra_km_rate\": 150,\n            \"extra_hour_rate\": 1200,\n            \"waiting_minute_rate\": 0,\n            \"extra_distance_charge\": 2460,\n            \"extra_duration_charge\": 1300,\n            \"waiting_charge\": 0,\n            \"extra_total\": 3760,\n            \"final_total\": 28760,\n            \"currency\": \"LKR\"\n        }\n    }\n}"
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Trip completed\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"booking_item_id\": \"item-uuid\",\n        \"trip_mode\": \"open_package\",\n        \"total_distance_km\": 96.4,\n        \"total_duration_minutes\": 545,\n        \"total_waiting_time_seconds\": 1800,\n        \"waiting_period_count\": 3,\n        \"pickup_coordinates\": {\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841\n        },\n        \"dropoff_coordinates\": {\n            \"latitude\": 6.9344,\n            \"longitude\": 79.8428\n        },\n        \"route_point_count\": 430,\n        \"hire_completed\": true,\n        \"package_charges\": {\n            \"package_id\": \"package-uuid\",\n            \"package_name\": \"Day Package - 8 Hours / 80 KM\",\n            \"base_amount\": 25000,\n            \"included_km\": 80,\n            \"included_minutes\": 480,\n            \"actual_distance_km\": 96.4,\n            \"actual_duration_minutes\": 545,\n            \"waiting_minutes\": 30,\n            \"extra_km\": 16.4,\n            \"extra_minutes\": 65,\n            \"extra_km_rate\": 150,\n            \"extra_hour_rate\": 1200,\n            \"waiting_minute_rate\": 0,\n            \"extra_distance_charge\": 2460,\n            \"extra_duration_charge\": 1300,\n            \"waiting_charge\": 0,\n            \"extra_total\": 3760,\n            \"final_total\": 28760,\n            \"currency\": \"LKR\"\n        },\n        \"payment\": {\n            \"payment_responsibility\": \"customer\",\n            \"payment_collection_method\": \"cash_to_driver\",\n            \"payment_collection_status\": \"pending_collection\",\n            \"payment_status\": \"pending\",\n            \"final_amount\": 28760,\n            \"amount_to_pay\": 28760,\n            \"currency\": \"LKR\",\n            \"collection_required\": true,\n            \"collection_message\": \"Collect cash from customer\",\n            \"amount_to_collect\": 28760,\n            \"payment_collected_amount\": null,\n            \"payment_collected_at\": null,\n            \"payment_collected_by_driver_id\": null,\n            \"payment_notes\": null\n        }\n    }\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "8. Collect Cash Payment",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/assignments/{{assignment_id}}/collect-payment",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "assignments",
+                                "%7B%7Bassignment_id%7D%7D",
+                                "collect-payment"
+                            ],
+                            "query": []
+                        },
+                        "description": "Call only when the open package completion response returns `payment.collection_required = true`. Use `package_charges.final_total` or `payment.amount_to_collect` as the amount.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"collected_amount\": \"{{collected_amount}}\",\n    \"payment_notes\": \"{{payment_notes}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": [
+                        {
+                            "name": "Success",
+                            "originalRequest": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json",
+                                        "type": "text"
+                                    },
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json",
+                                        "type": "text"
+                                    }
+                                ],
+                                "auth": {
+                                    "type": "bearer",
+                                    "bearer": [
+                                        {
+                                            "key": "token",
+                                            "value": "{{access_token}}",
+                                            "type": "string"
+                                        }
+                                    ]
+                                },
+                                "url": {
+                                    "raw": "{{base_url}}/api/driver/assignments/{{assignment_id}}/collect-payment",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "driver",
+                                        "assignments",
+                                        "%7B%7Bassignment_id%7D%7D",
+                                        "collect-payment"
+                                    ],
+                                    "query": []
+                                },
+                                "description": "Call only when the open package completion response returns `payment.collection_required = true`. Use `package_charges.final_total` or `payment.amount_to_collect` as the amount.",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n    \"collected_amount\": \"{{collected_amount}}\",\n    \"payment_notes\": \"{{payment_notes}}\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            },
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json",
+                                    "type": "text"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Payment collection recorded\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"payment\": {\n            \"payment_responsibility\": \"customer\",\n            \"payment_collection_method\": \"cash_to_driver\",\n            \"payment_collection_status\": \"driver_collected\",\n            \"payment_status\": \"paid\",\n            \"final_amount\": 28760,\n            \"amount_to_pay\": 28760,\n            \"currency\": \"LKR\",\n            \"collection_required\": false,\n            \"collection_message\": \"Cash collected by driver\",\n            \"amount_to_collect\": null,\n            \"payment_collected_amount\": 28760,\n            \"payment_collected_at\": \"2026-05-21T16:07:00+05:30\",\n            \"payment_collected_by_driver_id\": \"driver-uuid\",\n            \"payment_notes\": \"Cash collected by driver\"\n        }\n    }\n}"
                         }
                     ]
                 }

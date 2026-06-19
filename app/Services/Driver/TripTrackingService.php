@@ -248,8 +248,6 @@ class TripTrackingService
                 }
             }
 
-            $this->assertPaymentCollectionAllowed($assignment, $finalLocation);
-
             $this->syncBookingLifecycleAfterDriverTripCompletion($assignment, $finalLocation, $now);
             $packageCharges = $this->syncOpenPackageFinalPricing($assignment, $finalLocation, $totalDistance, $durationMinutes, $waitingTime, $now);
             $paymentSummary = $this->syncTripEndPaymentCollection($assignment, $finalLocation, $now);
@@ -890,20 +888,6 @@ class TripTrackingService
         ]);
     }
 
-    private function assertPaymentCollectionAllowed(DriverAssignment $assignment, array $finalLocation): void
-    {
-        $assignment->loadMissing('booking');
-        $booking = $assignment->booking;
-
-        if (!$booking || !$this->bookingRequiresDriverCollection($booking)) {
-            return;
-        }
-
-        if (!array_key_exists('collected_amount', $finalLocation) || $finalLocation['collected_amount'] === null || $finalLocation['collected_amount'] === '') {
-            throw new \InvalidArgumentException('PAYMENT_COLLECTION_REQUIRED');
-        }
-    }
-
     private function syncTripEndPaymentCollection(DriverAssignment $assignment, array $finalLocation, Carbon $completedAt): ?array
     {
         $assignment->loadMissing('booking');
@@ -914,20 +898,19 @@ class TripTrackingService
         }
 
         if ($this->bookingRequiresDriverCollection($booking)) {
-            $collectedAmount = round((float) $finalLocation['collected_amount'], 2);
             $fareAmount = $this->resolveBookingFareAmount($booking);
 
             $booking->update([
-                'payment_collected_amount' => $collectedAmount,
-                'payment_collected_at' => $completedAt,
-                'payment_collected_by_driver_id' => $assignment->driver_id,
-                'payment_notes' => $finalLocation['payment_notes'] ?? $finalLocation['notes'] ?? null,
                 'payment_collection_method' => 'cash_to_driver',
-                'payment_collection_status' => 'driver_collected',
+                'payment_collection_status' => $booking->payment_collection_status === 'driver_collected'
+                    ? 'driver_collected'
+                    : 'pending_collection',
                 'payment_method' => 'cash_to_driver',
                 'payment_type' => 'cash',
                 'amount_to_pay' => $fareAmount,
-                'payment_status' => $collectedAmount >= $fareAmount ? 'paid' : 'pending',
+                'payment_status' => $booking->payment_collection_status === 'driver_collected'
+                    ? $booking->payment_status
+                    : 'pending',
             ]);
 
             return $this->mapBookingPaymentSummary($booking->fresh());
@@ -935,6 +918,7 @@ class TripTrackingService
 
         if ($this->bookingUsesMonthlyInvoice($booking) && $booking->payment_collection_status !== 'invoiced') {
             $booking->update([
+                'amount_to_pay' => $this->resolveBookingFareAmount($booking),
                 'payment_responsibility' => $booking->payment_responsibility ?: 'corporate',
                 'payment_collection_method' => 'monthly_invoice',
                 'payment_collection_status' => 'billable',
@@ -945,7 +929,60 @@ class TripTrackingService
             return $this->mapBookingPaymentSummary($booking->fresh());
         }
 
+        $fareAmount = $this->resolveBookingFareAmount($booking);
+        $paidStatuses = ['paid', 'online_paid', 'driver_collected'];
+        if (!in_array((string) $booking->payment_collection_status, $paidStatuses, true)
+            && !in_array((string) $booking->payment_status, ['paid', 'refunded'], true)) {
+            $booking->update([
+                'amount_to_pay' => $fareAmount,
+                'payment_collection_method' => $booking->payment_collection_method ?: 'online',
+                'payment_collection_status' => 'payment_pending',
+                'payment_method' => $booking->payment_method ?: 'online',
+                'payment_type' => $booking->payment_type ?: 'online',
+                'payment_status' => 'pending',
+            ]);
+
+            return $this->mapBookingPaymentSummary($booking->fresh());
+        }
+
         return $this->mapBookingPaymentSummary($booking);
+    }
+
+    public function collectPayment(DriverAssignment $assignment, array $paymentData): array
+    {
+        $assignment->loadMissing('booking');
+        $booking = $assignment->booking?->fresh();
+
+        if (!$booking) {
+            throw new \InvalidArgumentException('PAYMENT_BOOKING_NOT_FOUND');
+        }
+
+        if (!$this->bookingRequiresDriverCollection($booking)) {
+            throw new \InvalidArgumentException('PAYMENT_COLLECTION_NOT_REQUIRED');
+        }
+
+        $collectedAmount = round((float) $paymentData['collected_amount'], 2);
+        $fareAmount = $this->resolveBookingFareAmount($booking);
+        $now = Carbon::now();
+
+        $booking->update([
+            'payment_collected_amount' => $collectedAmount,
+            'payment_collected_at' => $now,
+            'payment_collected_by_driver_id' => $assignment->driver_id,
+            'payment_notes' => $paymentData['payment_notes'] ?? null,
+            'payment_collection_method' => 'cash_to_driver',
+            'payment_collection_status' => 'driver_collected',
+            'payment_method' => 'cash_to_driver',
+            'payment_type' => 'cash',
+            'amount_to_pay' => $fareAmount,
+            'payment_status' => $collectedAmount >= $fareAmount ? 'paid' : 'pending',
+        ]);
+
+        return [
+            'assignment_id' => $assignment->id,
+            'booking_id' => $assignment->booking_id,
+            'payment' => $this->mapBookingPaymentSummary($booking->fresh()),
+        ];
     }
 
     private function bookingRequiresDriverCollection($booking): bool
@@ -976,11 +1013,35 @@ class TripTrackingService
             'payment_collection_method' => $booking->payment_collection_method,
             'payment_collection_status' => $booking->payment_collection_status,
             'payment_status' => $booking->payment_status,
+            'final_amount' => $this->resolveBookingFareAmount($booking),
+            'amount_to_pay' => $booking->amount_to_pay !== null ? (float) $booking->amount_to_pay : $this->resolveBookingFareAmount($booking),
+            'currency' => $booking->currency,
+            'collection_required' => $this->bookingRequiresDriverCollection($booking)
+                && $booking->payment_collection_status !== 'driver_collected',
+            'collection_message' => $this->resolvePaymentCollectionMessage($booking),
+            'amount_to_collect' => $this->bookingRequiresDriverCollection($booking)
+                ? $this->resolveBookingFareAmount($booking)
+                : null,
             'payment_collected_amount' => $booking->payment_collected_amount !== null ? (float) $booking->payment_collected_amount : null,
             'payment_collected_at' => $booking->payment_collected_at?->toIso8601String(),
             'payment_collected_by_driver_id' => $booking->payment_collected_by_driver_id,
             'payment_notes' => $booking->payment_notes,
         ];
+    }
+
+    private function resolvePaymentCollectionMessage($booking): string
+    {
+        if ($this->bookingRequiresDriverCollection($booking)) {
+            return $booking->payment_collection_status === 'driver_collected'
+                ? 'Cash collected by driver'
+                : 'Collect cash from customer';
+        }
+
+        if ($this->bookingUsesMonthlyInvoice($booking)) {
+            return 'Do not collect cash. This hire will be added to billing.';
+        }
+
+        return 'Do not collect cash. Payment is handled outside driver cash collection.';
     }
 
     private function isOpenPackageAssignment(DriverAssignment $assignment): bool

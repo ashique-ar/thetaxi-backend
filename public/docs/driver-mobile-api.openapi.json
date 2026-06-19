@@ -2,8 +2,8 @@
     "openapi": "3.0.3",
     "info": {
         "title": "TheTaxi Driver Mobile API",
-        "version": "2.3.0",
-        "description": "Interactive API documentation generated from the Driver Postman collection. Includes all driver mobile requests, examples, and the open package."
+        "version": "2.4.0",
+        "description": "Interactive API documentation generated from the full Driver Postman collection. Complete-trip calculates final amount first. Cash collection is handled by a separate collect-payment endpoint when `payment.collection_required` is true."
     },
     "servers": [
         {
@@ -47,7 +47,7 @@
             "name": "Trip Tracking"
         },
         {
-            "name": "Open Packages"
+            "name": "Open Package Chauffeur Flow"
         },
         {
             "name": "Earnings"
@@ -91,7 +91,7 @@
                 ],
                 "summary": "Version Check",
                 "description": "Public pre-login version check. If `can_continue` is false, the app should block usage and redirect to Play Store/App Store internally. The API does not return a store URL.",
-                "operationId": "post_api_driver_version_check",
+                "operationId": "post_api_driver_version_check_Version_Check",
                 "security": [],
                 "requestBody": {
                     "required": true,
@@ -184,7 +184,7 @@
                 ],
                 "summary": "Version Check (Compatibility Alias)",
                 "description": "Compatibility alias for older integrations. Prefer `/api/driver/version-check` for new driver app builds.",
-                "operationId": "post_api_public_driver_mobile_version_check",
+                "operationId": "post_api_public_driver_mobile_version_check_Version_Check_Compatibility_Alias",
                 "security": [],
                 "requestBody": {
                     "required": true,
@@ -277,7 +277,7 @@
                 ],
                 "summary": "Login",
                 "description": "Authenticate a driver and receive access and refresh tokens.\n\nResponse now includes `current_assignment` (active DriverAssignment with booking/booking_item details, or null) and `trip_phase` (current trip lifecycle phase: accepted, pickup_arrived, in_progress, or null).",
-                "operationId": "post_api_driver_auth_login",
+                "operationId": "post_api_driver_auth_login_Login",
                 "security": [],
                 "requestBody": {
                     "required": true,
@@ -486,7 +486,7 @@
                 ],
                 "summary": "Get Profile",
                 "description": "Retrieve the authenticated driver's profile. Response now includes `assignment_statistics` with total_assignments, active_assignments, and completed_assignments counts.",
-                "operationId": "get_api_driver_auth_profile",
+                "operationId": "get_api_driver_auth_profile_Get_Profile",
                 "security": [
                     {
                         "bearerAuth": []
@@ -610,7 +610,7 @@
                 ],
                 "summary": "Refresh Token",
                 "description": "Refresh the access token using the refresh token.",
-                "operationId": "post_api_driver_auth_refresh",
+                "operationId": "post_api_driver_auth_refresh_Refresh_Token",
                 "security": [
                     {
                         "bearerAuth": []
@@ -731,7 +731,7 @@
                 ],
                 "summary": "Logout",
                 "description": "Logout the authenticated driver by revoking their current token.",
-                "operationId": "post_api_driver_auth_logout",
+                "operationId": "post_api_driver_auth_logout_Logout",
                 "security": [
                     {
                         "bearerAuth": []
@@ -806,7 +806,7 @@
                 ],
                 "summary": "Go Online",
                 "description": "Set the driver's status to online and start a new session.\n\nResponse now includes `pending_assignments` â€” an array of DriverAssignments in active/pending_approval status with booking and booking_item details.",
-                "operationId": "post_api_driver_status_online",
+                "operationId": "post_api_driver_status_online_Go_Online",
                 "security": [
                     {
                         "bearerAuth": []
@@ -968,7 +968,7 @@
                 ],
                 "summary": "Go Offline",
                 "description": "Set the driver's status to offline and close the active session.\n\nIf a trip tracking session is active, the trip remains active and the response includes a `trip_warning` message and `active_trip` details.",
-                "operationId": "post_api_driver_status_offline",
+                "operationId": "post_api_driver_status_offline_Go_Offline",
                 "security": [
                     {
                         "bearerAuth": []
@@ -1071,7 +1071,7 @@
                 ],
                 "summary": "Get Current Status",
                 "description": "Retrieve the driver's current online/offline status and active session information.",
-                "operationId": "get_api_driver_status",
+                "operationId": "get_api_driver_status_Get_Current_Status",
                 "security": [
                     {
                         "bearerAuth": []
@@ -1263,7 +1263,7 @@
                 ],
                 "summary": "Send Heartbeat",
                 "description": "Send a heartbeat signal to indicate the driver is still active. Should be sent every 60 seconds while online.\n\nWhen a trip tracking session is active, the response includes `trip_phase` and `assignment_id`.",
-                "operationId": "post_api_driver_heartbeat",
+                "operationId": "post_api_driver_heartbeat_Send_Heartbeat",
                 "security": [
                     {
                         "bearerAuth": []
@@ -1333,7 +1333,7 @@
                 ],
                 "summary": "Update Location",
                 "description": "Send the driver's current GPS location. Creates a route point for the active session. During an active trip, the route point is also linked to the assignment_id. Should be sent every 10 seconds while moving.",
-                "operationId": "post_api_driver_location",
+                "operationId": "post_api_driver_location_Update_Location",
                 "security": [
                     {
                         "bearerAuth": []
@@ -1515,7 +1515,7 @@
                 ],
                 "summary": "Bulk Upload Buffered Locations",
                 "description": "Upload location points buffered on the device during temporary network issues. Duplicate points are skipped when `recorded_at`, `latitude`, and `longitude` match an already stored point for the active session or another point in the same payload.",
-                "operationId": "post_api_driver_location_bulk",
+                "operationId": "post_api_driver_location_bulk_Bulk_Upload_Buffered_Locations",
                 "security": [
                     {
                         "bearerAuth": []
@@ -1719,7 +1719,7 @@
                 ],
                 "summary": "Get Location History",
                 "description": "Retrieve driver location history using the same endpoint for both live and replay use cases.\n\nDefault behavior:\n- Returns active session route points.\n- If no active session exists, returns the latest session route points.\n\nOptional filters:\n- assignment_id: get trip-specific route points (works after trip end)\n- session_id: get route points for a specific session\n- from/to: recorded_at time window\n- limit: max points (1-10000)\n\nEach route point includes assignment_id so maps can distinguish trip-linked vs general movement.",
-                "operationId": "get_api_driver_location_history",
+                "operationId": "get_api_driver_location_history_Get_Location_History",
                 "security": [
                     {
                         "bearerAuth": []
@@ -1837,7 +1837,7 @@
                 ],
                 "summary": "List Sessions",
                 "description": "Retrieve paginated list of driver's session history.",
-                "operationId": "get_api_driver_sessions",
+                "operationId": "get_api_driver_sessions_List_Sessions",
                 "security": [
                     {
                         "bearerAuth": []
@@ -2015,7 +2015,7 @@
                 ],
                 "summary": "Get Session Details",
                 "description": "Retrieve detailed information about a specific session including route points and statistics.",
-                "operationId": "get_api_driver_sessions_session_id",
+                "operationId": "get_api_driver_sessions_session_id__Get_Session_Details",
                 "security": [
                     {
                         "bearerAuth": []
@@ -2286,7 +2286,7 @@
                 ],
                 "summary": "List Devices",
                 "description": "Retrieve all devices registered for the authenticated driver.",
-                "operationId": "get_api_driver_devices",
+                "operationId": "get_api_driver_devices_List_Devices",
                 "security": [
                     {
                         "bearerAuth": []
@@ -2448,7 +2448,7 @@
                 ],
                 "summary": "Update Device",
                 "description": "Update the current driver device information. `device_uuid` is required so the backend can identify the device record.",
-                "operationId": "put_api_driver_devices",
+                "operationId": "put_api_driver_devices_Update_Device",
                 "security": [
                     {
                         "bearerAuth": []
@@ -2650,7 +2650,7 @@
                 ],
                 "summary": "Get Current Device",
                 "description": "Retrieve information about the current device.",
-                "operationId": "get_api_driver_devices_current",
+                "operationId": "get_api_driver_devices_current_Get_Current_Device",
                 "security": [
                     {
                         "bearerAuth": []
@@ -2827,7 +2827,7 @@
                 ],
                 "summary": "Update Push Token",
                 "description": "Update the push notification token for the current device.",
-                "operationId": "post_api_driver_devices_push_token",
+                "operationId": "post_api_driver_devices_push_token_Update_Push_Token",
                 "security": [
                     {
                         "bearerAuth": []
@@ -3038,7 +3038,7 @@
                 ],
                 "summary": "Deactivate Device",
                 "description": "Deactivate a specific device.",
-                "operationId": "post_api_driver_devices_device_uuid_deactivate",
+                "operationId": "post_api_driver_devices_device_uuid_deactivate_Deactivate_Device",
                 "security": [
                     {
                         "bearerAuth": []
@@ -3119,7 +3119,7 @@
                 ],
                 "summary": "Remove Device",
                 "description": "Remove a device from the driver's account.",
-                "operationId": "delete_api_driver_devices_device_uuid",
+                "operationId": "delete_api_driver_devices_device_uuid__Remove_Device",
                 "security": [
                     {
                         "bearerAuth": []
@@ -3200,7 +3200,7 @@
                 ],
                 "summary": "List Notifications",
                 "description": "List driver notifications. Supports pagination, unread-only filtering, and optional notification type filtering.",
-                "operationId": "get_api_driver_notifications",
+                "operationId": "get_api_driver_notifications_List_Notifications",
                 "security": [
                     {
                         "bearerAuth": []
@@ -3365,7 +3365,7 @@
                 ],
                 "summary": "Get Unread Count",
                 "description": "Get unread notification count for the authenticated driver user.",
-                "operationId": "get_api_driver_notifications_unread_count",
+                "operationId": "get_api_driver_notifications_unread_count_Get_Unread_Count",
                 "security": [
                     {
                         "bearerAuth": []
@@ -3413,7 +3413,7 @@
                 ],
                 "summary": "Get Notification Detail",
                 "description": "Fetch one notification owned by the authenticated driver user.",
-                "operationId": "get_api_driver_notifications_notification_id",
+                "operationId": "get_api_driver_notifications_notification_id__Get_Notification_Detail",
                 "security": [
                     {
                         "bearerAuth": []
@@ -3555,7 +3555,7 @@
                 ],
                 "summary": "Delete Notification",
                 "description": "Delete one notification owned by the authenticated driver user.",
-                "operationId": "delete_api_driver_notifications_notification_id",
+                "operationId": "delete_api_driver_notifications_notification_id__Delete_Notification",
                 "security": [
                     {
                         "bearerAuth": []
@@ -3641,7 +3641,7 @@
                 ],
                 "summary": "Mark Notification Read",
                 "description": "Mark one notification as read.",
-                "operationId": "post_api_driver_notifications_notification_id_mark_read",
+                "operationId": "post_api_driver_notifications_notification_id_mark_read_Mark_Notification_Read",
                 "security": [
                     {
                         "bearerAuth": []
@@ -3757,7 +3757,7 @@
                 ],
                 "summary": "Mark All Notifications Read",
                 "description": "Mark all notifications as read for the authenticated driver user.",
-                "operationId": "post_api_driver_notifications_mark_all_read",
+                "operationId": "post_api_driver_notifications_mark_all_read_Mark_All_Notifications_Read",
                 "security": [
                     {
                         "bearerAuth": []
@@ -3810,7 +3810,7 @@
                 ],
                 "summary": "List Assignments",
                 "description": "List driver assignments with optional status/date/range filters. Multi-stop assignments include `route_stops`; use each stop `id` for stop action endpoints and `display_label`/`booking_stop_id` for UI identification.",
-                "operationId": "get_api_driver_assignments",
+                "operationId": "get_api_driver_assignments_List_Assignments",
                 "security": [
                     {
                         "bearerAuth": []
@@ -4106,7 +4106,7 @@
                 ],
                 "summary": "Get Current Assignment",
                 "description": "Get current active assignment for the authenticated driver. Multi-stop assignments include `route_stops`; use each stop `id` for stop action endpoints and `display_label`/`booking_stop_id` for UI identification.",
-                "operationId": "get_api_driver_assignments_current",
+                "operationId": "get_api_driver_assignments_current_Get_Current_Assignment",
                 "security": [
                     {
                         "bearerAuth": []
@@ -4314,7 +4314,7 @@
                 ],
                 "summary": "Accept Assignment",
                 "description": "Accept a driver assignment. The response can include generated `route_stops` with `id`, `booking_stop_id`, `type_sequence`, and `display_label` for multi-stop hires.",
-                "operationId": "post_api_driver_assignments_assignment_id_accept",
+                "operationId": "post_api_driver_assignments_assignment_id_accept_Accept_Assignment",
                 "security": [
                     {
                         "bearerAuth": []
@@ -4750,7 +4750,7 @@
                 ],
                 "summary": "Decline Assignment",
                 "description": "Decline a driver assignment with a reason.",
-                "operationId": "post_api_driver_assignments_assignment_id_decline",
+                "operationId": "post_api_driver_assignments_assignment_id_decline_Decline_Assignment",
                 "security": [
                     {
                         "bearerAuth": []
@@ -5193,7 +5193,7 @@
                 ],
                 "summary": "List Hires (Completed)",
                 "description": "List completed hire history for the authenticated driver.",
-                "operationId": "get_api_driver_hires",
+                "operationId": "get_api_driver_hires_List_Hires_Completed",
                 "security": [
                     {
                         "bearerAuth": []
@@ -5647,7 +5647,7 @@
                 ],
                 "summary": "Get Trip Status",
                 "description": "Canonical endpoint: get trip status for a specific assignment. Response includes all generated route stops in `stops`, the next actionable stop in `current_stop`, and assignment-level `allowed_actions`. Use each stop `id` for stop action endpoints. Use `booking_stop_id`, `type_sequence`, and `display_label` to identify the exact booking pickup/dropoff in the mobile UI.",
-                "operationId": "get_api_driver_assignments_assignment_id_status",
+                "operationId": "get_api_driver_assignments_assignment_id_status_Get_Trip_Status",
                 "security": [
                     {
                         "bearerAuth": []
@@ -5909,7 +5909,7 @@
                 ],
                 "summary": "Confirm Pickup Arrival",
                 "description": "Canonical endpoint: mark pickup arrival for a specific assignment.",
-                "operationId": "post_api_driver_assignments_assignment_id_arrived",
+                "operationId": "post_api_driver_assignments_assignment_id_arrived_Confirm_Pickup_Arrival",
                 "security": [
                     {
                         "bearerAuth": []
@@ -6432,7 +6432,7 @@
                 ],
                 "summary": "Start Trip",
                 "description": "Canonical endpoint: start trip for a specific assignment.",
-                "operationId": "post_api_driver_assignments_assignment_id_start",
+                "operationId": "post_api_driver_assignments_assignment_id_start_Start_Trip",
                 "security": [
                     {
                         "bearerAuth": []
@@ -6977,7 +6977,7 @@
                 ],
                 "summary": "Mark Route Stop Arrived",
                 "description": "Multi-stop endpoint. Marks the current route stop as arrived. Use `current_stop.id` from trip status as `{{stop_id}}`; `booking_stop_id`, `type_sequence`, and `display_label` identify which pickup/dropoff this is. Previous stops must already be completed or skipped.",
-                "operationId": "post_api_driver_assignments_assignment_id_stops_stop_id_arrived",
+                "operationId": "post_api_driver_assignments_assignment_id_stops_stop_id_arrived_Mark_Route_Stop_Arrived",
                 "security": [
                     {
                         "bearerAuth": []
@@ -7631,7 +7631,7 @@
                 ],
                 "summary": "Complete Pickup Stop",
                 "description": "Multi-stop endpoint. Completes an arrived pickup stop as picked_up. Use only when `current_stop.type` is `pickup` and `current_stop.status` is `arrived`; display `current_stop.display_label` such as `Pickup 2` in mobile.",
-                "operationId": "post_api_driver_assignments_assignment_id_stops_stop_id_picked_up",
+                "operationId": "post_api_driver_assignments_assignment_id_stops_stop_id_picked_up_Complete_Pickup_Stop",
                 "security": [
                     {
                         "bearerAuth": []
@@ -8280,7 +8280,7 @@
                 ],
                 "summary": "Complete Dropoff Stop",
                 "description": "Multi-stop endpoint. Completes an arrived dropoff stop as dropped_off. Use only when `current_stop.type` is `dropoff` and `current_stop.status` is `arrived`; display `current_stop.display_label` such as `Drop-off 1` in mobile.",
-                "operationId": "post_api_driver_assignments_assignment_id_stops_stop_id_dropped_off",
+                "operationId": "post_api_driver_assignments_assignment_id_stops_stop_id_dropped_off_Complete_Dropoff_Stop",
                 "security": [
                     {
                         "bearerAuth": []
@@ -8929,7 +8929,7 @@
                 ],
                 "summary": "Skip Route Stop",
                 "description": "Multi-stop endpoint. Skips the current pickup/dropoff stop. Skipped stops are terminal and allow the driver to move to the next stop. Use `booking_stop_id` and `display_label` in logs/UI to show exactly which booking stop was skipped.",
-                "operationId": "post_api_driver_assignments_assignment_id_stops_stop_id_skip",
+                "operationId": "post_api_driver_assignments_assignment_id_stops_stop_id_skip_Skip_Route_Stop",
                 "security": [
                     {
                         "bearerAuth": []
@@ -9576,8 +9576,8 @@
                     "Trip Tracking"
                 ],
                 "summary": "End Trip",
-                "description": "Canonical endpoint: complete trip for a specific assignment.",
-                "operationId": "post_api_driver_assignments_assignment_id_complete",
+                "description": "Canonical endpoint: complete trip for a specific assignment. Backend calculates/stores the final hire amount and returns payment instructions. If `payment.collection_required` is true, call collect-payment next.",
+                "operationId": "post_api_driver_assignments_assignment_id_complete_End_Trip",
                 "security": [
                     {
                         "bearerAuth": []
@@ -9599,9 +9599,32 @@
                     "content": {
                         "application/json": {
                             "schema": {
-                                "type": "string"
+                                "type": "object",
+                                "properties": {
+                                    "latitude": {
+                                        "type": "string",
+                                        "example": "{{end_latitude}}"
+                                    },
+                                    "longitude": {
+                                        "type": "string",
+                                        "example": "{{end_longitude}}"
+                                    },
+                                    "ending_mileage": {
+                                        "type": "string",
+                                        "example": "{{ending_mileage}}"
+                                    },
+                                    "notes": {
+                                        "type": "string",
+                                        "example": "{{trip_end_notes}}"
+                                    }
+                                }
                             },
-                            "example": "{\n  \"latitude\": 6.9344,\n  \"longitude\": 79.8428,\n  \"ending_mileage\": {{ending_mileage}},\n  \"notes\": \"{{trip_end_notes}}\"\n}"
+                            "example": {
+                                "latitude": "{{end_latitude}}",
+                                "longitude": "{{end_longitude}}",
+                                "ending_mileage": "{{ending_mileage}}",
+                                "notes": "{{trip_end_notes}}"
+                            }
                         }
                     }
                 },
@@ -9770,6 +9793,51 @@
                                                             "example": "LKR"
                                                         }
                                                     }
+                                                },
+                                                "payment": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "payment_responsibility": {
+                                                            "type": "string",
+                                                            "example": "customer"
+                                                        },
+                                                        "payment_collection_method": {
+                                                            "type": "string",
+                                                            "example": "cash_to_driver"
+                                                        },
+                                                        "payment_collection_status": {
+                                                            "type": "string",
+                                                            "example": "pending_collection"
+                                                        },
+                                                        "payment_status": {
+                                                            "type": "string",
+                                                            "example": "pending"
+                                                        },
+                                                        "collection_required": {
+                                                            "type": "boolean",
+                                                            "example": true
+                                                        },
+                                                        "collection_message": {
+                                                            "type": "string",
+                                                            "example": "Collect cash from customer"
+                                                        },
+                                                        "amount_to_collect": {
+                                                            "type": "number",
+                                                            "example": 28760
+                                                        },
+                                                        "payment_collected_amount": {
+                                                            "nullable": true
+                                                        },
+                                                        "payment_collected_at": {
+                                                            "nullable": true
+                                                        },
+                                                        "payment_collected_by_driver_id": {
+                                                            "nullable": true
+                                                        },
+                                                        "payment_notes": {
+                                                            "nullable": true
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
@@ -9817,6 +9885,19 @@
                                             "extra_total": 3760,
                                             "final_total": 28760,
                                             "currency": "LKR"
+                                        },
+                                        "payment": {
+                                            "payment_responsibility": "customer",
+                                            "payment_collection_method": "cash_to_driver",
+                                            "payment_collection_status": "pending_collection",
+                                            "payment_status": "pending",
+                                            "collection_required": true,
+                                            "collection_message": "Collect cash from customer",
+                                            "amount_to_collect": 28760,
+                                            "payment_collected_amount": null,
+                                            "payment_collected_at": null,
+                                            "payment_collected_by_driver_id": null,
+                                            "payment_notes": null
                                         }
                                     }
                                 }
@@ -9860,14 +9941,169 @@
                 }
             }
         },
-        "/api/driver/assignments/current_get_api_driver_assignments_current": {
+        "/api/driver/assignments/{assignment_id}/collect-payment": {
+            "post": {
+                "tags": [
+                    "Trip Tracking"
+                ],
+                "summary": "Collect Cash Payment",
+                "description": "Call only after complete-trip response returns `payment.collection_required = true`. Records cash collected by driver.",
+                "operationId": "post_api_driver_assignments_assignment_id_collect_payment_Collect_Cash_Payment",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "assignment_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "example": "assignment_id-value"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "collected_amount": {
+                                        "type": "string",
+                                        "example": "{{collected_amount}}"
+                                    },
+                                    "payment_notes": {
+                                        "type": "string",
+                                        "example": "{{payment_notes}}"
+                                    }
+                                }
+                            },
+                            "example": {
+                                "collected_amount": "{{collected_amount}}",
+                                "payment_notes": "{{payment_notes}}"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Payment collection recorded"
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "assignment_id": {
+                                                    "type": "string",
+                                                    "example": "assignment-uuid"
+                                                },
+                                                "booking_id": {
+                                                    "type": "string",
+                                                    "example": "booking-uuid"
+                                                },
+                                                "payment": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "payment_responsibility": {
+                                                            "type": "string",
+                                                            "example": "customer"
+                                                        },
+                                                        "payment_collection_method": {
+                                                            "type": "string",
+                                                            "example": "cash_to_driver"
+                                                        },
+                                                        "payment_collection_status": {
+                                                            "type": "string",
+                                                            "example": "driver_collected"
+                                                        },
+                                                        "payment_status": {
+                                                            "type": "string",
+                                                            "example": "paid"
+                                                        },
+                                                        "collection_required": {
+                                                            "type": "boolean",
+                                                            "example": false
+                                                        },
+                                                        "collection_message": {
+                                                            "type": "string",
+                                                            "example": "Cash collected by driver"
+                                                        },
+                                                        "amount_to_collect": {
+                                                            "type": "number",
+                                                            "example": 28760
+                                                        },
+                                                        "payment_collected_amount": {
+                                                            "type": "number",
+                                                            "example": 28760
+                                                        },
+                                                        "payment_collected_at": {
+                                                            "type": "string",
+                                                            "example": "2026-05-21T16:07:00+05:30"
+                                                        },
+                                                        "payment_collected_by_driver_id": {
+                                                            "type": "string",
+                                                            "example": "driver-uuid"
+                                                        },
+                                                        "payment_notes": {
+                                                            "type": "string",
+                                                            "example": "Cash collected by driver"
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "status": "success",
+                                    "message": "Payment collection recorded",
+                                    "data": {
+                                        "assignment_id": "assignment-uuid",
+                                        "booking_id": "booking-uuid",
+                                        "payment": {
+                                            "payment_responsibility": "customer",
+                                            "payment_collection_method": "cash_to_driver",
+                                            "payment_collection_status": "driver_collected",
+                                            "payment_status": "paid",
+                                            "collection_required": false,
+                                            "collection_message": "Cash collected by driver",
+                                            "amount_to_collect": 28760,
+                                            "payment_collected_amount": 28760,
+                                            "payment_collected_at": "2026-05-21T16:07:00+05:30",
+                                            "payment_collected_by_driver_id": "driver-uuid",
+                                            "payment_notes": "Cash collected by driver"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/driver/assignments/current~1-get-current-open-package-assignment": {
             "get": {
                 "tags": [
-                    "Open Packages"
+                    "Open Package Chauffeur Flow"
                 ],
                 "summary": "1. Get Current Open Package Assignment",
                 "description": "Check `data.trip_mode`. If it is `open_package`, use pickup-only navigation before trip start and show package details instead of a fixed destination route.",
-                "operationId": "get_api_driver_assignments_current",
+                "operationId": "get_api_driver_assignments_current_1_Get_Current_Open_Package_Assignment",
                 "security": [
                     {
                         "bearerAuth": []
@@ -10068,14 +10304,14 @@
                 }
             }
         },
-        "/api/driver/assignments/{assignment_id}/status_get_api_driver_assignments_assignment_id_status": {
+        "/api/driver/assignments/{assignment_id}/status~2-get-open-package-trip-status": {
             "get": {
                 "tags": [
-                    "Open Package"
+                    "Open Package Chauffeur Flow"
                 ],
                 "summary": "2. Get Open Package Trip Status",
                 "description": "Poll or refresh trip state. Open package trips return no route stops and expose lifecycle actions from `allowed_actions`.",
-                "operationId": "get_api_driver_assignments_assignment_id_status",
+                "operationId": "get_api_driver_assignments_assignment_id_status_2_Get_Open_Package_Trip_Status",
                 "security": [
                     {
                         "bearerAuth": []
@@ -10296,14 +10532,14 @@
                 }
             }
         },
-        "/api/driver/assignments/{assignment_id}/arrived_post_api_driver_assignments_assignment_id_arrived": {
+        "/api/driver/assignments/{assignment_id}/arrived~3-confirm-pickup-arrival": {
             "post": {
                 "tags": [
-                    "Open Package"
+                    "Open Package Chauffeur Flow"
                 ],
                 "summary": "3. Confirm Pickup Arrival",
                 "description": "Driver reached the pickup point.",
-                "operationId": "post_api_driver_assignments_assignment_id_arrived",
+                "operationId": "post_api_driver_assignments_assignment_id_arrived_3_Confirm_Pickup_Arrival",
                 "security": [
                     {
                         "bearerAuth": []
@@ -10351,14 +10587,14 @@
                 }
             }
         },
-        "/api/driver/assignments/{assignment_id}/start_post_api_driver_assignments_assignment_id_start": {
+        "/api/driver/assignments/{assignment_id}/start~4-start-open-package-trip": {
             "post": {
                 "tags": [
-                    "Open Package"
+                    "Open Package Chauffeur Flow"
                 ],
                 "summary": "4. Start Open Package Trip",
                 "description": "Start tracking billable open-package usage.",
-                "operationId": "post_api_driver_assignments_assignment_id_start",
+                "operationId": "post_api_driver_assignments_assignment_id_start_4_Start_Open_Package_Trip",
                 "security": [
                     {
                         "bearerAuth": []
@@ -10394,14 +10630,14 @@
                 }
             }
         },
-        "/api/driver/location_post_api_driver_location": {
+        "/api/driver/location~5-send-live-location-point": {
             "post": {
                 "tags": [
-                    "Open Package"
+                    "Open Package Chauffeur Flow"
                 ],
                 "summary": "5. Send Live Location Point",
                 "description": "Send every 10 seconds while moving, and continue sending during the open package service so backend can calculate distance/duration/waiting.",
-                "operationId": "post_api_driver_location",
+                "operationId": "post_api_driver_location_5_Send_Live_Location_Point",
                 "security": [
                     {
                         "bearerAuth": []
@@ -10463,14 +10699,14 @@
                 }
             }
         },
-        "/api/driver/location/bulk_post_api_driver_location_bulk": {
+        "/api/driver/location/bulk~6-bulk-sync-offline-route-points": {
             "post": {
                 "tags": [
-                    "Open Package"
+                    "Open Package Chauffeur Flow"
                 ],
                 "summary": "6. Bulk Sync Offline Route Points",
                 "description": "Upload buffered points after network recovery. Keep `recorded_at` as the original device capture time.",
-                "operationId": "post_api_driver_location_bulk",
+                "operationId": "post_api_driver_location_bulk_6_Bulk_Sync_Offline_Route_Points",
                 "security": [
                     {
                         "bearerAuth": []
@@ -10544,14 +10780,14 @@
                 }
             }
         },
-        "/api/driver/assignments/{assignment_id}/complete_post_api_driver_assignments_assignment_id_complete": {
+        "/api/driver/assignments/{assignment_id}/complete~7-complete-open-package-trip": {
             "post": {
                 "tags": [
-                    "Open Package"
+                    "Open Package Chauffeur Flow"
                 ],
                 "summary": "7. Complete Open Package Trip",
-                "description": "End the package service. Final coordinates are treated as the final destination and backend returns `package_charges`.",
-                "operationId": "post_api_driver_assignments_assignment_id_complete",
+                "description": "End the package service. Backend calculates final package usage and returns `package_charges` plus payment instructions. If `payment.collection_required` is true, call collect-payment next.",
+                "operationId": "post_api_driver_assignments_assignment_id_complete_7_Complete_Open_Package_Trip",
                 "security": [
                     {
                         "bearerAuth": []
@@ -10772,6 +11008,51 @@
                                                             "example": "LKR"
                                                         }
                                                     }
+                                                },
+                                                "payment": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "payment_responsibility": {
+                                                            "type": "string",
+                                                            "example": "customer"
+                                                        },
+                                                        "payment_collection_method": {
+                                                            "type": "string",
+                                                            "example": "cash_to_driver"
+                                                        },
+                                                        "payment_collection_status": {
+                                                            "type": "string",
+                                                            "example": "pending_collection"
+                                                        },
+                                                        "payment_status": {
+                                                            "type": "string",
+                                                            "example": "pending"
+                                                        },
+                                                        "collection_required": {
+                                                            "type": "boolean",
+                                                            "example": true
+                                                        },
+                                                        "collection_message": {
+                                                            "type": "string",
+                                                            "example": "Collect cash from customer"
+                                                        },
+                                                        "amount_to_collect": {
+                                                            "type": "number",
+                                                            "example": 28760
+                                                        },
+                                                        "payment_collected_amount": {
+                                                            "nullable": true
+                                                        },
+                                                        "payment_collected_at": {
+                                                            "nullable": true
+                                                        },
+                                                        "payment_collected_by_driver_id": {
+                                                            "nullable": true
+                                                        },
+                                                        "payment_notes": {
+                                                            "nullable": true
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
@@ -10819,6 +11100,174 @@
                                             "extra_total": 3760,
                                             "final_total": 28760,
                                             "currency": "LKR"
+                                        },
+                                        "payment": {
+                                            "payment_responsibility": "customer",
+                                            "payment_collection_method": "cash_to_driver",
+                                            "payment_collection_status": "pending_collection",
+                                            "payment_status": "pending",
+                                            "collection_required": true,
+                                            "collection_message": "Collect cash from customer",
+                                            "amount_to_collect": 28760,
+                                            "payment_collected_amount": null,
+                                            "payment_collected_at": null,
+                                            "payment_collected_by_driver_id": null,
+                                            "payment_notes": null
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/driver/assignments/{assignment_id}/collect-payment~8-collect-cash-payment": {
+            "post": {
+                "tags": [
+                    "Open Package Chauffeur Flow"
+                ],
+                "summary": "8. Collect Cash Payment",
+                "description": "Call only when the open package completion response returns `payment.collection_required = true`. Use `package_charges.final_total` or `payment.amount_to_collect` as the amount.",
+                "operationId": "post_api_driver_assignments_assignment_id_collect_payment_8_Collect_Cash_Payment",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "assignment_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "example": "assignment_id-value"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "collected_amount": {
+                                        "type": "string",
+                                        "example": "{{collected_amount}}"
+                                    },
+                                    "payment_notes": {
+                                        "type": "string",
+                                        "example": "{{payment_notes}}"
+                                    }
+                                }
+                            },
+                            "example": {
+                                "collected_amount": "{{collected_amount}}",
+                                "payment_notes": "{{payment_notes}}"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Payment collection recorded"
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "assignment_id": {
+                                                    "type": "string",
+                                                    "example": "assignment-uuid"
+                                                },
+                                                "booking_id": {
+                                                    "type": "string",
+                                                    "example": "booking-uuid"
+                                                },
+                                                "payment": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "payment_responsibility": {
+                                                            "type": "string",
+                                                            "example": "customer"
+                                                        },
+                                                        "payment_collection_method": {
+                                                            "type": "string",
+                                                            "example": "cash_to_driver"
+                                                        },
+                                                        "payment_collection_status": {
+                                                            "type": "string",
+                                                            "example": "driver_collected"
+                                                        },
+                                                        "payment_status": {
+                                                            "type": "string",
+                                                            "example": "paid"
+                                                        },
+                                                        "collection_required": {
+                                                            "type": "boolean",
+                                                            "example": false
+                                                        },
+                                                        "collection_message": {
+                                                            "type": "string",
+                                                            "example": "Cash collected by driver"
+                                                        },
+                                                        "amount_to_collect": {
+                                                            "type": "number",
+                                                            "example": 28760
+                                                        },
+                                                        "payment_collected_amount": {
+                                                            "type": "number",
+                                                            "example": 28760
+                                                        },
+                                                        "payment_collected_at": {
+                                                            "type": "string",
+                                                            "example": "2026-05-21T16:07:00+05:30"
+                                                        },
+                                                        "payment_collected_by_driver_id": {
+                                                            "type": "string",
+                                                            "example": "driver-uuid"
+                                                        },
+                                                        "payment_notes": {
+                                                            "type": "string",
+                                                            "example": "Cash collected by driver"
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "status": "success",
+                                    "message": "Payment collection recorded",
+                                    "data": {
+                                        "assignment_id": "assignment-uuid",
+                                        "booking_id": "booking-uuid",
+                                        "payment": {
+                                            "payment_responsibility": "customer",
+                                            "payment_collection_method": "cash_to_driver",
+                                            "payment_collection_status": "driver_collected",
+                                            "payment_status": "paid",
+                                            "collection_required": false,
+                                            "collection_message": "Cash collected by driver",
+                                            "amount_to_collect": 28760,
+                                            "payment_collected_amount": 28760,
+                                            "payment_collected_at": "2026-05-21T16:07:00+05:30",
+                                            "payment_collected_by_driver_id": "driver-uuid",
+                                            "payment_notes": "Cash collected by driver"
                                         }
                                     }
                                 }
@@ -10835,7 +11284,7 @@
                 ],
                 "summary": "Get Earnings Summary",
                 "description": "Get earnings summary for today/this week/this month.",
-                "operationId": "get_api_driver_earnings_summary",
+                "operationId": "get_api_driver_earnings_summary_Get_Earnings_Summary",
                 "security": [
                     {
                         "bearerAuth": []
@@ -10959,7 +11408,7 @@
                 ],
                 "summary": "Get Daily Earnings",
                 "description": "Get earnings breakdown for a specific date.",
-                "operationId": "get_api_driver_earnings_daily",
+                "operationId": "get_api_driver_earnings_daily_Get_Daily_Earnings",
                 "security": [
                     {
                         "bearerAuth": []
@@ -11371,7 +11820,7 @@
                 ],
                 "summary": "Get Range Earnings",
                 "description": "Get earnings breakdown for a custom date range.",
-                "operationId": "get_api_driver_earnings_range",
+                "operationId": "get_api_driver_earnings_range_Get_Range_Earnings",
                 "security": [
                     {
                         "bearerAuth": []
