@@ -1070,13 +1070,24 @@ POST /api/driver/assignments/{{assignment_id}}/complete
   "latitude": 6.9344,
   "longitude": 79.8428,
   "ending_mileage": 125000,
-  "notes": "Completed successfully",
+  "notes": "Completed successfully"
+}
+```
+
+The complete endpoint calculates and stores the final amount first. If the response returns `payment.collection_required: true`, show a cash collection step and call:
+
+```http
+POST /api/driver/assignments/{{assignment_id}}/collect-payment
+```
+
+```json
+{
   "collected_amount": 12500,
   "payment_notes": "Cash collected by driver"
 }
 ```
 
-For cash-to-driver hires, `collected_amount` is required before ending the hire. Send the amount actually collected from the customer. If the booking is online, corporate, monthly invoice, or already paid, do not send cash collection unless the backend payment fields say the driver must collect.
+If `payment.collection_required` is false, do not collect cash. Follow `payment.collection_message`.
 
 Complete response:
 
@@ -1101,7 +1112,18 @@ Complete response:
       "longitude": 79.8428
     },
     "route_point_count": 75,
-    "hire_completed": true
+    "hire_completed": true,
+    "payment": {
+      "payment_collection_method": "cash_to_driver",
+      "payment_collection_status": "pending_collection",
+      "payment_status": "pending",
+      "final_amount": 12500,
+      "amount_to_pay": 12500,
+      "currency": "LKR",
+      "collection_required": true,
+      "collection_message": "Collect cash from customer",
+      "amount_to_collect": 12500
+    }
   }
 }
 ```
@@ -1130,13 +1152,11 @@ Complete request for open package:
   "longitude": 79.8428,
   "final_address": "Hilton Colombo, Colombo",
   "ending_mileage": 125000,
-  "notes": "Customer ended the day package here",
-  "collected_amount": 28760,
-  "payment_notes": "Cash collected by driver"
+  "notes": "Customer ended the day package here"
 }
 ```
 
-For open package cash-to-driver hires, use `package_charges.final_total` as the amount to collect, then send that value as `collected_amount` when completing the trip.
+For open package cash-to-driver hires, complete the trip first. Backend calculates `package_charges.final_total`, then returns `payment.collection_required`. If collection is required, call `collect-payment` with `payment.amount_to_collect` or `package_charges.final_total`.
 
 Open package completion response includes `package_charges`:
 
@@ -1171,10 +1191,41 @@ Open package completion response includes `package_charges`:
     },
     "payment": {
       "payment_collection_method": "cash_to_driver",
+      "payment_collection_status": "pending_collection",
+      "payment_status": "pending",
+      "final_amount": 28760,
+      "amount_to_pay": 28760,
+      "currency": "LKR",
+      "collection_required": true,
+      "collection_message": "Collect cash from customer",
+      "amount_to_collect": 28760,
+      "payment_collected_amount": null,
+      "payment_notes": null
+    }
+  }
+}
+```
+
+Cash collection response:
+
+```json
+{
+  "status": "success",
+  "message": "Payment collection recorded",
+  "data": {
+    "assignment_id": "assignment-uuid",
+    "booking_id": "booking-uuid",
+    "payment": {
+      "payment_collection_method": "cash_to_driver",
       "payment_collection_status": "driver_collected",
       "payment_status": "paid",
-      "payment_collected_amount": 28760,
-      "payment_notes": "Cash collected by driver"
+      "final_amount": 28760,
+      "amount_to_pay": 28760,
+      "currency": "LKR",
+      "collection_required": false,
+      "collection_message": "Cash collected by driver",
+      "amount_to_collect": null,
+      "payment_collected_amount": 28760
     }
   }
 }
@@ -1375,6 +1426,11 @@ Recommended workflow for this project:
 - When backend endpoints change, update the repo JSON first, then import/sync the same JSON into the shared workspace.
 
 ## Version History
+
+### v2.4 (2026-06-19)
+- Changed driver payment flow: complete trip first, then collect cash only if `payment.collection_required` is true.
+- Added `POST /api/driver/assignments/{assignment_id}/collect-payment`.
+- Added final payment fields: `final_amount`, `amount_to_pay`, `currency`, `collection_required`, `collection_message`, and `amount_to_collect`.
 
 ### v2.3 (2026-06-19)
 - Added open package chauffeur flow examples for mobile.

@@ -2015,7 +2015,7 @@
                 ],
                 "summary": "Get Session Details",
                 "description": "Retrieve detailed information about a specific session including route points and statistics.",
-                "operationId": "get_api_driver_sessions_session_id__Get_Session_Details",
+                "operationId": "get_api_driver_sessions_session_id_Get_Session_Details",
                 "security": [
                     {
                         "bearerAuth": []
@@ -3119,7 +3119,7 @@
                 ],
                 "summary": "Remove Device",
                 "description": "Remove a device from the driver's account.",
-                "operationId": "delete_api_driver_devices_device_uuid__Remove_Device",
+                "operationId": "delete_api_driver_devices_device_uuid_Remove_Device",
                 "security": [
                     {
                         "bearerAuth": []
@@ -3413,7 +3413,7 @@
                 ],
                 "summary": "Get Notification Detail",
                 "description": "Fetch one notification owned by the authenticated driver user.",
-                "operationId": "get_api_driver_notifications_notification_id__Get_Notification_Detail",
+                "operationId": "get_api_driver_notifications_notification_id_Get_Notification_Detail",
                 "security": [
                     {
                         "bearerAuth": []
@@ -3555,7 +3555,7 @@
                 ],
                 "summary": "Delete Notification",
                 "description": "Delete one notification owned by the authenticated driver user.",
-                "operationId": "delete_api_driver_notifications_notification_id__Delete_Notification",
+                "operationId": "delete_api_driver_notifications_notification_id_Delete_Notification",
                 "security": [
                     {
                         "bearerAuth": []
@@ -9813,6 +9813,18 @@
                                                             "type": "string",
                                                             "example": "pending"
                                                         },
+                                                        "final_amount": {
+                                                            "type": "number",
+                                                            "example": 28760
+                                                        },
+                                                        "amount_to_pay": {
+                                                            "type": "number",
+                                                            "example": 28760
+                                                        },
+                                                        "currency": {
+                                                            "type": "string",
+                                                            "example": "LKR"
+                                                        },
                                                         "collection_required": {
                                                             "type": "boolean",
                                                             "example": true
@@ -9891,6 +9903,9 @@
                                             "payment_collection_method": "cash_to_driver",
                                             "payment_collection_status": "pending_collection",
                                             "payment_status": "pending",
+                                            "final_amount": 28760,
+                                            "amount_to_pay": 28760,
+                                            "currency": "LKR",
                                             "collection_required": true,
                                             "collection_message": "Collect cash from customer",
                                             "amount_to_collect": 28760,
@@ -10035,6 +10050,18 @@
                                                             "type": "string",
                                                             "example": "paid"
                                                         },
+                                                        "final_amount": {
+                                                            "type": "number",
+                                                            "example": 28760
+                                                        },
+                                                        "amount_to_pay": {
+                                                            "type": "number",
+                                                            "example": 28760
+                                                        },
+                                                        "currency": {
+                                                            "type": "string",
+                                                            "example": "LKR"
+                                                        },
                                                         "collection_required": {
                                                             "type": "boolean",
                                                             "example": false
@@ -10044,8 +10071,7 @@
                                                             "example": "Cash collected by driver"
                                                         },
                                                         "amount_to_collect": {
-                                                            "type": "number",
-                                                            "example": 28760
+                                                            "nullable": true
                                                         },
                                                         "payment_collected_amount": {
                                                             "type": "number",
@@ -10080,9 +10106,12 @@
                                             "payment_collection_method": "cash_to_driver",
                                             "payment_collection_status": "driver_collected",
                                             "payment_status": "paid",
+                                            "final_amount": 28760,
+                                            "amount_to_pay": 28760,
+                                            "currency": "LKR",
                                             "collection_required": false,
                                             "collection_message": "Cash collected by driver",
-                                            "amount_to_collect": 28760,
+                                            "amount_to_collect": null,
                                             "payment_collected_amount": 28760,
                                             "payment_collected_at": "2026-05-21T16:07:00+05:30",
                                             "payment_collected_by_driver_id": "driver-uuid",
@@ -11028,6 +11057,18 @@
                                                             "type": "string",
                                                             "example": "pending"
                                                         },
+                                                        "final_amount": {
+                                                            "type": "number",
+                                                            "example": 28760
+                                                        },
+                                                        "amount_to_pay": {
+                                                            "type": "number",
+                                                            "example": 28760
+                                                        },
+                                                        "currency": {
+                                                            "type": "string",
+                                                            "example": "LKR"
+                                                        },
                                                         "collection_required": {
                                                             "type": "boolean",
                                                             "example": true
@@ -11106,6 +11147,9 @@
                                             "payment_collection_method": "cash_to_driver",
                                             "payment_collection_status": "pending_collection",
                                             "payment_status": "pending",
+                                            "final_amount": 28760,
+                                            "amount_to_pay": 28760,
+                                            "currency": "LKR",
                                             "collection_required": true,
                                             "collection_message": "Collect cash from customer",
                                             "amount_to_collect": 28760,
@@ -11216,6 +11260,18 @@
                                                             "type": "string",
                                                             "example": "paid"
                                                         },
+                                                        "final_amount": {
+                                                            "type": "number",
+                                                            "example": 28760
+                                                        },
+                                                        "amount_to_pay": {
+                                                            "type": "number",
+                                                            "example": 28760
+                                                        },
+                                                        "currency": {
+                                                            "type": "string",
+                                                            "example": "LKR"
+                                                        },
                                                         "collection_required": {
                                                             "type": "boolean",
                                                             "example": false
@@ -11225,8 +11281,7 @@
                                                             "example": "Cash collected by driver"
                                                         },
                                                         "amount_to_collect": {
-                                                            "type": "number",
-                                                            "example": 28760
+                                                            "nullable": true
                                                         },
                                                         "payment_collected_amount": {
                                                             "type": "number",
@@ -11261,9 +11316,12 @@
                                             "payment_collection_method": "cash_to_driver",
                                             "payment_collection_status": "driver_collected",
                                             "payment_status": "paid",
+                                            "final_amount": 28760,
+                                            "amount_to_pay": 28760,
+                                            "currency": "LKR",
                                             "collection_required": false,
                                             "collection_message": "Cash collected by driver",
-                                            "amount_to_collect": 28760,
+                                            "amount_to_collect": null,
                                             "payment_collected_amount": 28760,
                                             "payment_collected_at": "2026-05-21T16:07:00+05:30",
                                             "payment_collected_by_driver_id": "driver-uuid",
