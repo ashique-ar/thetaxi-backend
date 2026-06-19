@@ -6,6 +6,8 @@ Interactive browser docs:
 - `/docs/driver-mobile-api.html`
 - OpenAPI spec: `/docs/driver-mobile-api.openapi.json`
 
+The browser docs are generated from the full driver Postman collection, so the mobile developer can read and try all driver mobile requests there.
+
 Files:
 - `Driver-API.postman_collection.json`
 - `Driver-API.postman_environment.json`
