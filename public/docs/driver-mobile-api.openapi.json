@@ -1,0 +1,1089 @@
+{
+    "openapi": "3.0.3",
+    "info": {
+        "title": "TheTaxi Driver Mobile API",
+        "version": "2.3.0",
+        "description": "Interactive API documentation for the driver mobile app. Includes authentication, status, location tracking, assignments, trip lifecycle, and open package chauffeur trip behavior."
+    },
+    "servers": [
+        {
+            "url": "/api/driver",
+            "description": "Current host"
+        },
+        {
+            "url": "http://localhost:8000/api/driver",
+            "description": "Local Laravel"
+        }
+    ],
+    "tags": [
+        {
+            "name": "Auth"
+        },
+        {
+            "name": "Status"
+        },
+        {
+            "name": "Location"
+        },
+        {
+            "name": "Assignments"
+        },
+        {
+            "name": "Trip Tracking"
+        },
+        {
+            "name": "Open Package"
+        }
+    ],
+    "components": {
+        "securitySchemes": {
+            "bearerAuth": {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "JWT"
+            }
+        },
+        "parameters": {
+            "AssignmentId": {
+                "name": "assignment_id",
+                "in": "path",
+                "required": true,
+                "schema": {
+                    "type": "string"
+                },
+                "example": "assignment-uuid"
+            },
+            "StopId": {
+                "name": "stop_id",
+                "in": "path",
+                "required": true,
+                "schema": {
+                    "type": "string"
+                },
+                "example": "stop-uuid"
+            }
+        },
+        "schemas": {
+            "Success": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "example": "success"
+                    },
+                    "message": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "data": {
+                        "nullable": true
+                    }
+                }
+            },
+            "Error": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "example": "error"
+                    },
+                    "message": {
+                        "type": "string"
+                    },
+                    "error_code": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "errors": {
+                        "type": "object"
+                    }
+                }
+            },
+            "DriverLoginRequest": {
+                "type": "object",
+                "required": [
+                    "email",
+                    "password",
+                    "device_fingerprint",
+                    "platform"
+                ],
+                "properties": {
+                    "email": {
+                        "type": "string",
+                        "example": "nimal.driver@casons.lk"
+                    },
+                    "password": {
+                        "type": "string",
+                        "example": "nimal.driverA1"
+                    },
+                    "device_fingerprint": {
+                        "type": "string",
+                        "example": "a3f5b2c1d4e6f7a8b9c0d1e2f3a4b5c6"
+                    },
+                    "device_name": {
+                        "type": "string",
+                        "example": "Test Device"
+                    },
+                    "device_model": {
+                        "type": "string",
+                        "example": "iPhone 14 Pro"
+                    },
+                    "device_manufacturer": {
+                        "type": "string",
+                        "example": "Apple"
+                    },
+                    "platform": {
+                        "type": "string",
+                        "enum": [
+                            "ios",
+                            "android"
+                        ],
+                        "example": "ios"
+                    },
+                    "os_version": {
+                        "type": "string",
+                        "example": "17.0"
+                    },
+                    "app_version": {
+                        "type": "string",
+                        "example": "1.0.0"
+                    },
+                    "app_build": {
+                        "type": "string",
+                        "example": "100"
+                    },
+                    "push_token": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "push_provider": {
+                        "type": "string",
+                        "example": "fcm"
+                    },
+                    "locale": {
+                        "type": "string",
+                        "example": "en_US"
+                    },
+                    "timezone": {
+                        "type": "string",
+                        "example": "Asia/Colombo"
+                    }
+                }
+            },
+            "LocationPoint": {
+                "type": "object",
+                "required": [
+                    "latitude",
+                    "longitude"
+                ],
+                "properties": {
+                    "latitude": {
+                        "type": "number",
+                        "format": "double",
+                        "example": 6.9285
+                    },
+                    "longitude": {
+                        "type": "number",
+                        "format": "double",
+                        "example": 79.8625
+                    },
+                    "altitude": {
+                        "type": "number",
+                        "nullable": true,
+                        "example": 15.5
+                    },
+                    "speed": {
+                        "type": "number",
+                        "nullable": true,
+                        "example": 45.2
+                    },
+                    "heading": {
+                        "type": "number",
+                        "nullable": true,
+                        "example": 180.5
+                    },
+                    "accuracy": {
+                        "type": "number",
+                        "nullable": true,
+                        "example": 10
+                    },
+                    "recorded_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-05-21T08:05:00+05:30"
+                    }
+                }
+            },
+            "Assignment": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "example": "assignment-uuid"
+                    },
+                    "trip_phase": {
+                        "type": "string",
+                        "example": "accepted"
+                    },
+                    "trip_mode": {
+                        "type": "string",
+                        "enum": [
+                            "fixed_route",
+                            "open_package"
+                        ],
+                        "example": "open_package"
+                    },
+                    "destination_known": {
+                        "type": "boolean",
+                        "example": false
+                    },
+                    "driver_message": {
+                        "type": "string",
+                        "nullable": true,
+                        "example": "Open package trip. Navigate to pickup only. Customer destination and route will be tracked after trip start."
+                    },
+                    "pickup_location_label": {
+                        "type": "string",
+                        "example": "Colombo Airport"
+                    },
+                    "dropoff_location_label": {
+                        "type": "string",
+                        "nullable": true,
+                        "example": null
+                    },
+                    "route_stops": {
+                        "type": "array",
+                        "items": {
+                            "type": "object"
+                        }
+                    },
+                    "package": {
+                        "$ref": "#/components/schemas/Package"
+                    }
+                }
+            },
+            "Package": {
+                "type": "object",
+                "nullable": true,
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "example": "package-uuid"
+                    },
+                    "name": {
+                        "type": "string",
+                        "example": "Day Package - 8 Hours / 80 KM"
+                    },
+                    "code": {
+                        "type": "string",
+                        "example": "DAY_8H_80KM"
+                    },
+                    "included_km_per_day": {
+                        "type": "number",
+                        "example": 80
+                    },
+                    "included_km_per_package": {
+                        "type": "number",
+                        "example": 80
+                    },
+                    "included_hours": {
+                        "type": "number",
+                        "example": 8
+                    },
+                    "rate_type": {
+                        "type": "string",
+                        "example": "day"
+                    }
+                }
+            },
+            "PackageCharges": {
+                "type": "object",
+                "properties": {
+                    "base_amount": {
+                        "type": "number",
+                        "example": 25000
+                    },
+                    "included_km": {
+                        "type": "number",
+                        "example": 80
+                    },
+                    "included_minutes": {
+                        "type": "number",
+                        "example": 480
+                    },
+                    "actual_distance_km": {
+                        "type": "number",
+                        "example": 96.4
+                    },
+                    "actual_duration_minutes": {
+                        "type": "number",
+                        "example": 545
+                    },
+                    "waiting_minutes": {
+                        "type": "number",
+                        "example": 30
+                    },
+                    "extra_km": {
+                        "type": "number",
+                        "example": 16.4
+                    },
+                    "extra_minutes": {
+                        "type": "number",
+                        "example": 65
+                    },
+                    "extra_distance_charge": {
+                        "type": "number",
+                        "example": 2460
+                    },
+                    "extra_duration_charge": {
+                        "type": "number",
+                        "example": 1300
+                    },
+                    "waiting_charge": {
+                        "type": "number",
+                        "example": 0
+                    },
+                    "final_total": {
+                        "type": "number",
+                        "example": 28760
+                    },
+                    "currency": {
+                        "type": "string",
+                        "example": "LKR"
+                    }
+                }
+            }
+        }
+    },
+    "paths": {
+        "/version-check": {
+            "post": {
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Check driver app version",
+                "security": [],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "version",
+                                    "platform"
+                                ],
+                                "properties": {
+                                    "version": {
+                                        "type": "string",
+                                        "example": "1.0.0"
+                                    },
+                                    "platform": {
+                                        "type": "string",
+                                        "example": "ios"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Version status"
+                    }
+                }
+            }
+        },
+        "/auth/login": {
+            "post": {
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Login driver",
+                "security": [],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/DriverLoginRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Login success. Copy data.token.access_token into Authorize."
+                    },
+                    "401": {
+                        "description": "Invalid credentials",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/profile": {
+            "get": {
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Get driver profile",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Driver profile"
+                    }
+                }
+            }
+        },
+        "/status/online": {
+            "post": {
+                "tags": [
+                    "Status"
+                ],
+                "summary": "Set driver online",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "latitude",
+                                    "longitude"
+                                ],
+                                "properties": {
+                                    "device_uuid": {
+                                        "type": "string"
+                                    },
+                                    "latitude": {
+                                        "type": "number",
+                                        "example": 6.9271
+                                    },
+                                    "longitude": {
+                                        "type": "number",
+                                        "example": 79.8612
+                                    },
+                                    "metadata": {
+                                        "type": "object"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Driver online"
+                    }
+                }
+            }
+        },
+        "/status/offline": {
+            "post": {
+                "tags": [
+                    "Status"
+                ],
+                "summary": "Set driver offline",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/LocationPoint"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Driver offline"
+                    }
+                }
+            }
+        },
+        "/status": {
+            "get": {
+                "tags": [
+                    "Status"
+                ],
+                "summary": "Get current driver status",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Current status"
+                    }
+                }
+            }
+        },
+        "/heartbeat": {
+            "post": {
+                "tags": [
+                    "Status"
+                ],
+                "summary": "Send heartbeat",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Heartbeat accepted"
+                    }
+                }
+            }
+        },
+        "/location": {
+            "post": {
+                "tags": [
+                    "Location",
+                    "Open Package"
+                ],
+                "summary": "Send live location point",
+                "description": "During open package trips, keep sending this while moving so backend can calculate distance, duration, waiting, and extra charges.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/LocationPoint"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Location saved"
+                    }
+                }
+            }
+        },
+        "/location/bulk": {
+            "post": {
+                "tags": [
+                    "Location",
+                    "Open Package"
+                ],
+                "summary": "Bulk sync offline route points",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "locations": {
+                                        "type": "array",
+                                        "items": {
+                                            "$ref": "#/components/schemas/LocationPoint"
+                                        }
+                                    }
+                                }
+                            },
+                            "example": {
+                                "locations": [
+                                    {
+                                        "latitude": 6.9285,
+                                        "longitude": 79.8625,
+                                        "accuracy": 10,
+                                        "recorded_at": "2026-05-21T08:05:00+05:30"
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Buffered points processed"
+                    }
+                }
+            }
+        },
+        "/location/history": {
+            "get": {
+                "tags": [
+                    "Location"
+                ],
+                "summary": "Get route history",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "assignment_id",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "session_id",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer",
+                            "example": 5000
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Route history"
+                    }
+                }
+            }
+        },
+        "/assignments": {
+            "get": {
+                "tags": [
+                    "Assignments"
+                ],
+                "summary": "List driver assignments",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "status",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "example": "active"
+                        }
+                    },
+                    {
+                        "name": "date",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Assignment list"
+                    }
+                }
+            }
+        },
+        "/assignments/current": {
+            "get": {
+                "tags": [
+                    "Assignments",
+                    "Open Package"
+                ],
+                "summary": "Get current assignment",
+                "description": "Mobile must branch when `data.trip_mode` is `open_package` and `data.destination_known` is false.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Current assignment",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "data": {
+                                            "$ref": "#/components/schemas/Assignment"
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "status": "success",
+                                    "data": {
+                                        "id": "assignment-uuid",
+                                        "trip_phase": "accepted",
+                                        "trip_mode": "open_package",
+                                        "destination_known": false,
+                                        "driver_message": "Open package trip. Navigate to pickup only. Customer destination and route will be tracked after trip start.",
+                                        "pickup_location_label": "Colombo Airport",
+                                        "dropoff_location_label": null,
+                                        "route_stops": [],
+                                        "package": {
+                                            "id": "package-uuid",
+                                            "name": "Day Package - 8 Hours / 80 KM",
+                                            "code": "DAY_8H_80KM",
+                                            "included_km_per_day": 80,
+                                            "included_hours": 8,
+                                            "rate_type": "day"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/assignments/{assignment_id}/accept": {
+            "post": {
+                "tags": [
+                    "Assignments"
+                ],
+                "summary": "Accept assignment",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "$ref": "#/components/parameters/AssignmentId"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Assignment accepted"
+                    }
+                }
+            }
+        },
+        "/assignments/{assignment_id}/decline": {
+            "post": {
+                "tags": [
+                    "Assignments"
+                ],
+                "summary": "Decline assignment",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "$ref": "#/components/parameters/AssignmentId"
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "decline_reason": {
+                                        "type": "string",
+                                        "example": "Unable to take this trip"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Assignment declined"
+                    }
+                }
+            }
+        },
+        "/assignments/{assignment_id}/status": {
+            "get": {
+                "tags": [
+                    "Trip Tracking",
+                    "Open Package"
+                ],
+                "summary": "Get trip status",
+                "description": "For open package trips, `stops` is empty and `allowed_actions` controls arrived/start/complete flow.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "$ref": "#/components/parameters/AssignmentId"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Trip status"
+                    }
+                }
+            }
+        },
+        "/assignments/{assignment_id}/arrived": {
+            "post": {
+                "tags": [
+                    "Trip Tracking",
+                    "Open Package"
+                ],
+                "summary": "Confirm pickup arrival",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "$ref": "#/components/parameters/AssignmentId"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/LocationPoint"
+                            },
+                            "example": {
+                                "latitude": 7.181,
+                                "longitude": 79.8839
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Pickup arrival saved"
+                    }
+                }
+            }
+        },
+        "/assignments/{assignment_id}/start": {
+            "post": {
+                "tags": [
+                    "Trip Tracking",
+                    "Open Package"
+                ],
+                "summary": "Start trip",
+                "description": "For open package trips this starts billable route tracking.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "$ref": "#/components/parameters/AssignmentId"
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object"
+                            },
+                            "example": {}
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Trip started"
+                    }
+                }
+            }
+        },
+        "/assignments/{assignment_id}/complete": {
+            "post": {
+                "tags": [
+                    "Trip Tracking",
+                    "Open Package"
+                ],
+                "summary": "Complete trip",
+                "description": "For open package trips, final coordinates become the final destination and response includes `package_charges`.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "$ref": "#/components/parameters/AssignmentId"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "latitude",
+                                    "longitude"
+                                ],
+                                "properties": {
+                                    "latitude": {
+                                        "type": "number",
+                                        "example": 6.9344
+                                    },
+                                    "longitude": {
+                                        "type": "number",
+                                        "example": 79.8428
+                                    },
+                                    "final_address": {
+                                        "type": "string",
+                                        "example": "Hilton Colombo, Colombo"
+                                    },
+                                    "ending_mileage": {
+                                        "type": "number",
+                                        "example": 125000
+                                    },
+                                    "notes": {
+                                        "type": "string",
+                                        "example": "Customer ended the day package here"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Trip completed",
+                        "content": {
+                            "application/json": {
+                                "example": {
+                                    "status": "success",
+                                    "message": "Trip completed",
+                                    "data": {
+                                        "assignment_id": "assignment-uuid",
+                                        "trip_mode": "open_package",
+                                        "total_distance_km": 96.4,
+                                        "total_duration_minutes": 545,
+                                        "total_waiting_time_seconds": 1800,
+                                        "dropoff_coordinates": {
+                                            "latitude": 6.9344,
+                                            "longitude": 79.8428
+                                        },
+                                        "package_charges": {
+                                            "base_amount": 25000,
+                                            "included_km": 80,
+                                            "included_minutes": 480,
+                                            "actual_distance_km": 96.4,
+                                            "actual_duration_minutes": 545,
+                                            "waiting_minutes": 30,
+                                            "extra_km": 16.4,
+                                            "extra_minutes": 65,
+                                            "extra_distance_charge": 2460,
+                                            "extra_duration_charge": 1300,
+                                            "final_total": 28760,
+                                            "currency": "LKR"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/assignments/{assignment_id}/stops/{stop_id}/arrived": {
+            "post": {
+                "tags": [
+                    "Trip Tracking"
+                ],
+                "summary": "Mark route stop arrived",
+                "description": "Use only for fixed-route or multi-stop trips. Open package trips return no route stops.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "$ref": "#/components/parameters/AssignmentId"
+                    },
+                    {
+                        "$ref": "#/components/parameters/StopId"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Stop arrival saved"
+                    }
+                }
+            }
+        },
+        "/hires": {
+            "get": {
+                "tags": [
+                    "Assignments"
+                ],
+                "summary": "List completed hires",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Completed hires"
+                    }
+                }
+            }
+        },
+        "/earnings/summary": {
+            "get": {
+                "tags": [
+                    "Assignments"
+                ],
+                "summary": "Get earnings summary",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Earnings summary"
+                    }
+                }
+            }
+        }
+    }
+}

@@ -2,9 +2,13 @@
 
 Postman assets for testing the Company driver mobile backend.
 
+Interactive browser docs:
+- `/docs/driver-mobile-api.html`
+- OpenAPI spec: `/docs/driver-mobile-api.openapi.json`
+
 Files:
-- `Company-Driver-API.postman_collection.json`
-- `Company-Driver-API.postman_environment.json`
+- `Driver-API.postman_collection.json`
+- `Driver-API.postman_environment.json`
 
 Base URLs:
 - Driver API: `{{base_url}}/api/driver`
@@ -75,6 +79,9 @@ Assignments and trips:
 - `assignment_status`
 - `stop_id`
 - `booking_stop_id`
+- `open_package_trip_mode`
+- `open_package_id`
+- `final_address`
 - `ending_mileage`
 - `trip_end_notes`
 - `filter_date`
@@ -166,6 +173,28 @@ Notifications:
 | POST | `/api/driver/assignments/{assignment_id}/stops/{stop_id}/dropped-off` | Yes | Complete dropoff stop |
 | POST | `/api/driver/assignments/{assignment_id}/stops/{stop_id}/skip` | Yes | Skip route stop |
 | POST | `/api/driver/assignments/{assignment_id}/complete` | Yes | Complete hire |
+
+### Open Package Chauffeur Flow
+
+Use this flow for day/month chauffeur packages where the booking has a pickup point and selected package, but no fixed final destination at booking time.
+
+| Method | Endpoint | Auth | Purpose |
+|---|---|---:|---|
+| GET | `/api/driver/assignments/current` | Yes | Detect open package assignment |
+| GET | `/api/driver/assignments/{assignment_id}/status` | Yes | Read current trip phase and package usage |
+| POST | `/api/driver/assignments/{assignment_id}/arrived` | Yes | Confirm arrival at pickup |
+| POST | `/api/driver/assignments/{assignment_id}/start` | Yes | Start billable package tracking |
+| POST | `/api/driver/location` | Yes | Send live GPS route points |
+| POST | `/api/driver/location/bulk` | Yes | Sync offline buffered route points |
+| POST | `/api/driver/assignments/{assignment_id}/complete` | Yes | End package and calculate final charges |
+
+Mobile app branch condition:
+
+```text
+data.trip_mode == "open_package" && data.destination_known == false
+```
+
+When this condition is true, the app must not require or draw a fixed destination route. Show pickup navigation before start, show package details, keep GPS tracking active during the service, and complete the trip using the final device coordinates/address.
 
 ## API Details
 
@@ -845,6 +874,9 @@ Assignment response shape:
     "booking_item_id": "item-uuid",
     "status": "active",
     "trip_phase": "accepted",
+    "trip_mode": "fixed_route",
+    "destination_known": true,
+    "driver_message": null,
     "payment_type": "cash",
     "fare_amount": 12500,
     "total_amount": 12500,
@@ -856,11 +888,39 @@ Assignment response shape:
     "customer_email": "customer@example.com",
     "pickup_location_label": "Colombo Airport",
     "dropoff_location_label": "Hilton Colombo",
+    "package": null,
     "is_multi_stop": true,
     "route_stops": [],
     "scheduled_from": "2026-05-21T08:00:00+05:30",
     "scheduled_to": "2026-05-21T10:00:00+05:30",
     "trip_completed_at": null
+  }
+}
+```
+
+Open package assignment response shape:
+
+```json
+{
+  "status": "success",
+  "data": {
+    "id": "assignment-uuid",
+    "trip_phase": "accepted",
+    "trip_mode": "open_package",
+    "destination_known": false,
+    "driver_message": "Open package trip. Navigate to pickup only. Customer destination and route will be tracked after trip start.",
+    "pickup_location_label": "Colombo Airport",
+    "dropoff_location_label": null,
+    "route_stops": [],
+    "package": {
+      "id": "package-uuid",
+      "name": "Day Package - 8 Hours / 80 KM",
+      "code": "DAY_8H_80KM",
+      "included_km_per_day": 80,
+      "included_km_per_package": 80,
+      "included_hours": 8,
+      "rate_type": "day"
+    }
   }
 }
 ```
@@ -1036,6 +1096,69 @@ Complete response:
 }
 ```
 
+### Open Package Trip Behavior
+
+For open package trips, use the same lifecycle endpoints, but the mobile app must treat the trip as pickup-only until the customer ends the service.
+
+Before trip start:
+- Check `trip_mode`.
+- If `trip_mode` is `open_package`, check `destination_known`.
+- If `destination_known` is `false`, hide destination route/directions and navigate only to pickup.
+- Show `package.name`, included KM/hours, and `driver_message`.
+
+During the trip:
+- Continue calling `POST /api/driver/location` while moving.
+- Use `POST /api/driver/location/bulk` for offline buffered points.
+- Do not call stop endpoints for open package trips because `route_stops` is empty.
+- Use `GET /api/driver/assignments/{{assignment_id}}/status` to read `cumulative_distance_km`, `total_waiting_time_seconds`, `route_point_count`, and `allowed_actions`.
+
+Complete request for open package:
+
+```json
+{
+  "latitude": 6.9344,
+  "longitude": 79.8428,
+  "final_address": "Hilton Colombo, Colombo",
+  "ending_mileage": 125000,
+  "notes": "Customer ended the day package here"
+}
+```
+
+Open package completion response includes `package_charges`:
+
+```json
+{
+  "status": "success",
+  "message": "Trip completed",
+  "data": {
+    "trip_mode": "open_package",
+    "total_distance_km": 96.4,
+    "total_duration_minutes": 545,
+    "total_waiting_time_seconds": 1800,
+    "dropoff_coordinates": {
+      "latitude": 6.9344,
+      "longitude": 79.8428
+    },
+    "package_charges": {
+      "base_amount": 25000,
+      "included_km": 80,
+      "included_minutes": 480,
+      "actual_distance_km": 96.4,
+      "actual_duration_minutes": 545,
+      "waiting_minutes": 30,
+      "extra_km": 16.4,
+      "extra_minutes": 65,
+      "extra_distance_charge": 2460,
+      "extra_duration_charge": 1300,
+      "waiting_charge": 0,
+      "extra_total": 3760,
+      "final_total": 28760,
+      "currency": "LKR"
+    }
+  }
+}
+```
+
 ### Multi-Stop Actions
 
 Use `current_stop.id` from trip status as `{{stop_id}}`.
@@ -1169,6 +1292,17 @@ Common trip stop errors:
 8. Check Hires.
 9. Check Earnings.
 
+### Open Package Hire
+
+1. Get Current Assignment.
+2. If `trip_mode` is `open_package` and `destination_known` is `false`, show pickup-only navigation.
+3. Confirm Pickup Arrival.
+4. Start Trip.
+5. Send live location points every 10 seconds while moving.
+6. Sync buffered location points after network recovery.
+7. Complete Trip with final coordinates and optional `final_address`.
+8. Read `package_charges` from the completion response.
+
 ### Notifications
 
 1. List Notifications.
@@ -1196,7 +1330,33 @@ Authentication failures return HTTP `401`.
 Driver-context failures return HTTP `403`.
 Missing records return HTTP `404`.
 
+## Keeping Postman Live
+
+For a browser-based API docs page, share:
+
+```text
+https://your-domain.com/docs/driver-mobile-api.html
+```
+
+The mobile developer can use **Authorize** to paste the driver bearer token and then run requests from the page.
+
+Preferred option: create a Postman team workspace, import `Driver-API.postman_collection.json` and `Driver-API.postman_environment.json`, then invite the mobile developer. Changes sync automatically inside Postman and no zip is needed.
+
+Repository option: keep these files committed under `public-thetaxi/docs/postman`. Share the Git repository or raw file URL with the mobile developer. They can import by URL in Postman and re-import when the file changes.
+
+Hosted URL option: expose these JSON files from a protected internal URL, for example `/docs/postman/driver-api`. The mobile developer can import the URL directly into Postman. Protect it with authentication or IP restrictions if the API examples contain real environment values.
+
+Recommended workflow for this project:
+- Keep the source of truth in `public-thetaxi/docs/postman`.
+- Also maintain a shared Postman workspace for day-to-day mobile testing.
+- When backend endpoints change, update the repo JSON first, then import/sync the same JSON into the shared workspace.
+
 ## Version History
+
+### v2.3 (2026-06-19)
+- Added open package chauffeur flow examples for mobile.
+- Documented `trip_mode`, `destination_known`, package details, pickup-only navigation, live GPS tracking, final address, and `package_charges`.
+- Added live Postman sharing guidance.
 
 ### v2.2 (2026-05-21)
 - Rebuilt README with endpoint index, auth requirements, request examples, response examples, and workflow guidance.

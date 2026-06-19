@@ -1868,6 +1868,78 @@
                                 }
                             ],
                             "body": "{\n    \"status\": \"success\",\n    \"data\": [\n        {\n            \"id\": \"assignment-uuid\",\n            \"driver_id\": \"driver-uuid\",\n            \"booking_id\": \"booking-uuid\",\n            \"booking_item_id\": \"item-uuid\",\n            \"status\": \"active\",\n            \"trip_phase\": \"accepted\",\n            \"payment_type\": \"cash\",\n            \"fare_amount\": 12500,\n            \"total_amount\": 12500,\n            \"currency\": \"LKR\",\n            \"booking_number\": \"BK-2026-0001\",\n            \"service_type_name\": \"Airport Transfer\",\n            \"customer_name\": \"John Customer\",\n            \"customer_phone\": \"+94771111111\",\n            \"customer_email\": \"customer@example.com\",\n            \"pickup_location_label\": \"Colombo Airport\",\n            \"dropoff_location_label\": \"Hilton Colombo\",\n            \"is_multi_stop\": true,\n            \"route_stops\": [\n                {\n                    \"id\": \"stop-uuid-1\",\n                    \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n                    \"type\": \"pickup\",\n                    \"type_sequence\": 1,\n                    \"route_order\": 1,\n                    \"status\": \"picked_up\",\n                    \"label\": \"Pickup 1\",\n                    \"display_label\": \"Pickup 1\",\n                    \"address\": \"Passenger 2 pickup\",\n                    \"latitude\": 6.9271,\n                    \"longitude\": 79.8612,\n                    \"contact\": {\n                        \"employee_id\": null,\n                        \"contact_name\": \"Passenger Two\",\n                        \"contact_phone\": \"+94770000000\",\n                        \"contact_note\": null\n                    },\n                    \"arrived_at\": null,\n                    \"arrived_latitude\": null,\n                    \"arrived_longitude\": null,\n                    \"completed_at\": null,\n                    \"completed_latitude\": null,\n                    \"completed_longitude\": null,\n                    \"completed_action\": \"picked_up\",\n                    \"skip_reason\": null,\n                    \"notes\": null,\n                    \"allowed_actions\": []\n                },\n                {\n                    \"id\": \"stop-uuid-2\",\n                    \"booking_stop_id\": \"booking-item:item-uuid:pickup-client-stop-2\",\n                    \"type\": \"pickup\",\n                    \"type_sequence\": 2,\n                    \"route_order\": 2,\n                    \"status\": \"pending\",\n                    \"label\": \"Pickup 2\",\n                    \"display_label\": \"Pickup 2\",\n                    \"address\": \"Passenger 2 pickup\",\n                    \"latitude\": 6.9271,\n                    \"longitude\": 79.8612,\n                    \"contact\": {\n                        \"employee_id\": null,\n                        \"contact_name\": \"Passenger Two\",\n                        \"contact_phone\": \"+94770000000\",\n                        \"contact_note\": null\n                    },\n                    \"arrived_at\": null,\n                    \"arrived_latitude\": null,\n                    \"arrived_longitude\": null,\n                    \"completed_at\": null,\n                    \"completed_latitude\": null,\n                    \"completed_longitude\": null,\n                    \"completed_action\": null,\n                    \"skip_reason\": null,\n                    \"notes\": null,\n                    \"allowed_actions\": [\n                        \"arrived\",\n                        \"skip\"\n                    ]\n                },\n                {\n                    \"id\": \"stop-uuid-3\",\n                    \"booking_stop_id\": \"booking-item:item-uuid:dropoff-client-stop-1\",\n                    \"type\": \"dropoff\",\n                    \"type_sequence\": 1,\n                    \"route_order\": 3,\n                    \"status\": \"pending\",\n                    \"label\": \"Drop-off 1\",\n                    \"display_label\": \"Drop-off 1\",\n                    \"address\": \"Hotel dropoff\",\n                    \"latitude\": 6.9271,\n                    \"longitude\": 79.8612,\n                    \"contact\": {\n                        \"employee_id\": null,\n                        \"contact_name\": \"Passenger Two\",\n                        \"contact_phone\": \"+94770000000\",\n                        \"contact_note\": null\n                    },\n                    \"arrived_at\": null,\n                    \"arrived_latitude\": null,\n                    \"arrived_longitude\": null,\n                    \"completed_at\": null,\n                    \"completed_latitude\": null,\n                    \"completed_longitude\": null,\n                    \"completed_action\": null,\n                    \"skip_reason\": null,\n                    \"notes\": null,\n                    \"allowed_actions\": [\n                        \"arrived\",\n                        \"skip\"\n                    ]\n                }\n            ],\n            \"scheduled_from\": \"2026-05-21T08:00:00+05:30\",\n            \"scheduled_to\": \"2026-05-21T10:00:00+05:30\",\n            \"trip_completed_at\": null,\n            \"booking\": {\n                \"id\": \"booking-uuid\",\n                \"booking_number\": \"BK-2026-0001\"\n            },\n            \"booking_item\": {\n                \"id\": \"item-uuid\"\n            }\n        }\n    ],\n    \"meta\": {\n        \"current_page\": 1,\n        \"last_page\": 1,\n        \"per_page\": 15,\n        \"total\": 1\n    }\n}"
+                        },
+                        {
+                            "name": "Open Package List Item",
+                            "originalRequest": {
+                                "auth": {
+                                    "type": "bearer",
+                                    "bearer": [
+                                        {
+                                            "key": "token",
+                                            "value": "{{access_token}}",
+                                            "type": "string"
+                                        }
+                                    ]
+                                },
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{base_url}}/api/driver/assignments?page=1&per_page=15&status={{assignment_status}}&date={{filter_date}}&from={{filter_from}}&to={{filter_to}}",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "driver",
+                                        "assignments"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "page",
+                                            "value": "1"
+                                        },
+                                        {
+                                            "key": "per_page",
+                                            "value": "15"
+                                        },
+                                        {
+                                            "key": "status",
+                                            "value": "{{assignment_status}}"
+                                        },
+                                        {
+                                            "key": "date",
+                                            "value": "{{filter_date}}"
+                                        },
+                                        {
+                                            "key": "from",
+                                            "value": "{{filter_from}}"
+                                        },
+                                        {
+                                            "key": "to",
+                                            "value": "{{filter_to}}"
+                                        }
+                                    ]
+                                },
+                                "description": "List driver assignments with optional status/date/range filters. Multi-stop assignments include `route_stops`; use each stop `id` for stop action endpoints and `display_label`/`booking_stop_id` for UI identification."
+                            },
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json",
+                                    "type": "text"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": [\n        {\n            \"id\": \"assignment-uuid\",\n            \"driver_id\": \"driver-uuid\",\n            \"booking_id\": \"booking-uuid\",\n            \"booking_item_id\": \"item-uuid\",\n            \"status\": \"active\",\n            \"trip_phase\": \"accepted\",\n            \"trip_mode\": \"open_package\",\n            \"destination_known\": false,\n            \"driver_message\": \"Open package trip. Navigate to pickup only. Customer destination and route will be tracked after trip start.\",\n            \"payment_type\": \"cash\",\n            \"fare_amount\": 25000,\n            \"total_amount\": 25000,\n            \"currency\": \"LKR\",\n            \"booking_number\": \"BK-2026-0001\",\n            \"service_type_name\": \"Day Chauffeur Package\",\n            \"customer_name\": \"John Customer\",\n            \"customer_phone\": \"+94771111111\",\n            \"pickup_location_label\": \"Colombo Airport\",\n            \"dropoff_location_label\": null,\n            \"is_multi_stop\": false,\n            \"route_stops\": [],\n            \"package\": {\n                \"id\": \"package-uuid\",\n                \"name\": \"Day Package - 8 Hours / 80 KM\",\n                \"code\": \"DAY_8H_80KM\",\n                \"description\": \"Open chauffeur package with included usage.\",\n                \"included_km_per_day\": 80,\n                \"included_km_per_package\": 80,\n                \"included_hours\": 8,\n                \"rate_type\": \"day\"\n            },\n            \"scheduled_from\": \"2026-05-21T08:00:00+05:30\",\n            \"scheduled_to\": \"2026-05-21T16:00:00+05:30\",\n            \"trip_completed_at\": null\n        }\n    ],\n    \"meta\": {\n        \"current_page\": 1,\n        \"last_page\": 1,\n        \"per_page\": 15,\n        \"total\": 1\n    }\n}"
                         }
                     ]
                 },
@@ -1929,6 +2001,53 @@
                                 }
                             ],
                             "body": "{\n    \"status\": \"success\",\n    \"data\": null\n}"
+                        },
+                        {
+                            "name": "Open Package Assignment",
+                            "originalRequest": {
+                                "auth": {
+                                    "type": "bearer",
+                                    "bearer": [
+                                        {
+                                            "key": "token",
+                                            "value": "{{access_token}}",
+                                            "type": "string"
+                                        }
+                                    ]
+                                },
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{base_url}}/api/driver/assignments/current",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "driver",
+                                        "assignments",
+                                        "current"
+                                    ]
+                                },
+                                "description": "Get current active assignment for the authenticated driver. Multi-stop assignments include `route_stops`; use each stop `id` for stop action endpoints and `display_label`/`booking_stop_id` for UI identification."
+                            },
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json",
+                                    "type": "text"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"id\": \"assignment-uuid\",\n        \"driver_id\": \"driver-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"booking_item_id\": \"item-uuid\",\n        \"status\": \"active\",\n        \"trip_phase\": \"accepted\",\n        \"trip_mode\": \"open_package\",\n        \"destination_known\": false,\n        \"driver_message\": \"Open package trip. Navigate to pickup only. Customer destination and route will be tracked after trip start.\",\n        \"payment_type\": \"cash\",\n        \"fare_amount\": 25000,\n        \"total_amount\": 25000,\n        \"currency\": \"LKR\",\n        \"booking_number\": \"BK-2026-0001\",\n        \"service_type_name\": \"Day Chauffeur Package\",\n        \"customer_name\": \"John Customer\",\n        \"customer_phone\": \"+94771111111\",\n        \"pickup_location_label\": \"Colombo Airport\",\n        \"dropoff_location_label\": null,\n        \"is_multi_stop\": false,\n        \"route_stops\": [],\n        \"package\": {\n            \"id\": \"package-uuid\",\n            \"name\": \"Day Package - 8 Hours / 80 KM\",\n            \"code\": \"DAY_8H_80KM\",\n            \"description\": \"Open chauffeur package with included usage.\",\n            \"included_km_per_day\": 80,\n            \"included_km_per_package\": 80,\n            \"included_hours\": 8,\n            \"rate_type\": \"day\"\n        },\n        \"scheduled_from\": \"2026-05-21T08:00:00+05:30\",\n        \"scheduled_to\": \"2026-05-21T16:00:00+05:30\",\n        \"trip_completed_at\": null\n    }\n}"
                         }
                     ]
                 },
@@ -2235,6 +2354,54 @@
                                 }
                             ],
                             "body": "{\n    \"status\": \"error\",\n    \"message\": \"Assignment not found\",\n    \"error_code\": \"TRIP_ASSIGNMENT_NOT_FOUND\",\n    \"errors\": []\n}"
+                        },
+                        {
+                            "name": "Open Package In Progress",
+                            "originalRequest": {
+                                "auth": {
+                                    "type": "bearer",
+                                    "bearer": [
+                                        {
+                                            "key": "token",
+                                            "value": "{{access_token}}",
+                                            "type": "string"
+                                        }
+                                    ]
+                                },
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{base_url}}/api/driver/assignments/{{assignment_id}}/status",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "driver",
+                                        "assignments",
+                                        "{{assignment_id}}",
+                                        "status"
+                                    ]
+                                },
+                                "description": "Canonical endpoint: get trip status for a specific assignment. Response includes all generated route stops in `stops`, the next actionable stop in `current_stop`, and assignment-level `allowed_actions`. Use each stop `id` for stop action endpoints. Use `booking_stop_id`, `type_sequence`, and `display_label` to identify the exact booking pickup/dropoff in the mobile UI."
+                            },
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json",
+                                    "type": "text"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"trip_phase\": \"in_progress\",\n        \"trip_mode\": \"open_package\",\n        \"destination_known\": false,\n        \"driver_message\": \"Open package trip. Continue tracking route until the customer ends the service.\",\n        \"is_multi_stop\": false,\n        \"pickup_location\": {\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841,\n            \"landmark\": \"Colombo Airport\"\n        },\n        \"pickup_arrival\": {\n            \"arrived_at\": \"2026-05-21T08:10:00+05:30\",\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841\n        },\n        \"trip_started_at\": \"2026-05-21T08:15:00+05:30\",\n        \"stops\": [],\n        \"current_stop\": null,\n        \"allowed_actions\": [\n            \"complete\"\n        ],\n        \"estimated_distance_to_pickup_km\": null,\n        \"near_pickup\": false,\n        \"cumulative_distance_km\": 96.4,\n        \"total_waiting_time_seconds\": 1800,\n        \"waiting_period_count\": 3,\n        \"route_point_count\": 430,\n        \"package\": {\n            \"id\": \"package-uuid\",\n            \"name\": \"Day Package - 8 Hours / 80 KM\",\n            \"code\": \"DAY_8H_80KM\",\n            \"included_km_per_day\": 80,\n            \"included_km_per_package\": 80,\n            \"included_hours\": 8,\n            \"rate_type\": \"day\"\n        }\n    }\n}"
                         }
                     ]
                 },
@@ -2703,11 +2870,603 @@
                                 }
                             ],
                             "body": "{\n    \"status\": \"error\",\n    \"message\": \"All route stops must be completed or skipped before ending the hire\",\n    \"error_code\": \"TRIP_STOPS_INCOMPLETE\",\n    \"errors\": []\n}"
+                        },
+                        {
+                            "name": "Open Package Completed",
+                            "originalRequest": {
+                                "auth": {
+                                    "type": "bearer",
+                                    "bearer": [
+                                        {
+                                            "key": "token",
+                                            "value": "{{access_token}}",
+                                            "type": "string"
+                                        }
+                                    ]
+                                },
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json"
+                                    },
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"latitude\": 6.9344,\n  \"longitude\": 79.8428,\n  \"ending_mileage\": {{ending_mileage}},\n  \"notes\": \"{{trip_end_notes}}\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                },
+                                "url": {
+                                    "raw": "{{base_url}}/api/driver/assignments/{{assignment_id}}/complete",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "driver",
+                                        "assignments",
+                                        "{{assignment_id}}",
+                                        "complete"
+                                    ]
+                                },
+                                "description": "Canonical endpoint: complete trip for a specific assignment."
+                            },
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json",
+                                    "type": "text"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Trip completed\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"booking_item_id\": \"item-uuid\",\n        \"trip_mode\": \"open_package\",\n        \"total_distance_km\": 96.4,\n        \"total_duration_minutes\": 545,\n        \"total_waiting_time_seconds\": 1800,\n        \"waiting_period_count\": 3,\n        \"pickup_coordinates\": {\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841\n        },\n        \"dropoff_coordinates\": {\n            \"latitude\": 6.9344,\n            \"longitude\": 79.8428\n        },\n        \"route_point_count\": 430,\n        \"hire_completed\": true,\n        \"package_charges\": {\n            \"package_id\": \"package-uuid\",\n            \"package_name\": \"Day Package - 8 Hours / 80 KM\",\n            \"base_amount\": 25000,\n            \"included_km\": 80,\n            \"included_minutes\": 480,\n            \"actual_distance_km\": 96.4,\n            \"actual_duration_minutes\": 545,\n            \"waiting_minutes\": 30,\n            \"extra_km\": 16.4,\n            \"extra_minutes\": 65,\n            \"extra_km_rate\": 150,\n            \"extra_hour_rate\": 1200,\n            \"waiting_minute_rate\": 0,\n            \"extra_distance_charge\": 2460,\n            \"extra_duration_charge\": 1300,\n            \"waiting_charge\": 0,\n            \"extra_total\": 3760,\n            \"final_total\": 28760,\n            \"currency\": \"LKR\"\n        }\n    }\n}"
                         }
                     ]
                 }
             ],
             "description": "Trip lifecycle tracking endpoints. Manage the full trip flow: check status, confirm pickup arrival, start trip, route stop progress for multi-stop hires, and end trip with summary. Waiting time is automatically detected during in_progress phase. Multi-stop hires return all stops in status responses and must complete or skip every stop before ending the hire."
+        },
+        {
+            "name": "Open Package Chauffeur Flow",
+            "description": "Use these requests for day/month package bookings where only pickup is known at booking time. Mobile must branch on `trip_mode = open_package` and `destination_known = false`, hide fixed dropoff navigation, track GPS during the service, and complete the trip with final coordinates/address.",
+            "item": [
+                {
+                    "name": "1. Get Current Open Package Assignment",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/assignments/current",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "assignments",
+                                "current"
+                            ],
+                            "query": []
+                        },
+                        "description": "Check `data.trip_mode`. If it is `open_package`, use pickup-only navigation before trip start and show package details instead of a fixed destination route."
+                    },
+                    "response": [
+                        {
+                            "name": "Success",
+                            "originalRequest": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json",
+                                        "type": "text"
+                                    },
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json",
+                                        "type": "text"
+                                    }
+                                ],
+                                "auth": {
+                                    "type": "bearer",
+                                    "bearer": [
+                                        {
+                                            "key": "token",
+                                            "value": "{{access_token}}",
+                                            "type": "string"
+                                        }
+                                    ]
+                                },
+                                "url": {
+                                    "raw": "{{base_url}}/api/driver/assignments/current",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "driver",
+                                        "assignments",
+                                        "current"
+                                    ],
+                                    "query": []
+                                },
+                                "description": "Check `data.trip_mode`. If it is `open_package`, use pickup-only navigation before trip start and show package details instead of a fixed destination route."
+                            },
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json",
+                                    "type": "text"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"id\": \"assignment-uuid\",\n        \"driver_id\": \"driver-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"booking_item_id\": \"item-uuid\",\n        \"status\": \"active\",\n        \"trip_phase\": \"accepted\",\n        \"trip_mode\": \"open_package\",\n        \"destination_known\": false,\n        \"driver_message\": \"Open package trip. Navigate to pickup only. Customer destination and route will be tracked after trip start.\",\n        \"payment_type\": \"cash\",\n        \"fare_amount\": 25000,\n        \"total_amount\": 25000,\n        \"currency\": \"LKR\",\n        \"booking_number\": \"BK-2026-0001\",\n        \"service_type_name\": \"Day Chauffeur Package\",\n        \"customer_name\": \"John Customer\",\n        \"customer_phone\": \"+94771111111\",\n        \"pickup_location_label\": \"Colombo Airport\",\n        \"dropoff_location_label\": null,\n        \"is_multi_stop\": false,\n        \"route_stops\": [],\n        \"package\": {\n            \"id\": \"package-uuid\",\n            \"name\": \"Day Package - 8 Hours / 80 KM\",\n            \"code\": \"DAY_8H_80KM\",\n            \"description\": \"Open chauffeur package with included usage.\",\n            \"included_km_per_day\": 80,\n            \"included_km_per_package\": 80,\n            \"included_hours\": 8,\n            \"rate_type\": \"day\"\n        },\n        \"scheduled_from\": \"2026-05-21T08:00:00+05:30\",\n        \"scheduled_to\": \"2026-05-21T16:00:00+05:30\",\n        \"trip_completed_at\": null\n    }\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "2. Get Open Package Trip Status",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/assignments/{{assignment_id}}/status",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "assignments",
+                                "%7B%7Bassignment_id%7D%7D",
+                                "status"
+                            ],
+                            "query": []
+                        },
+                        "description": "Poll or refresh trip state. Open package trips return no route stops and expose lifecycle actions from `allowed_actions`."
+                    },
+                    "response": [
+                        {
+                            "name": "Success",
+                            "originalRequest": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json",
+                                        "type": "text"
+                                    },
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json",
+                                        "type": "text"
+                                    }
+                                ],
+                                "auth": {
+                                    "type": "bearer",
+                                    "bearer": [
+                                        {
+                                            "key": "token",
+                                            "value": "{{access_token}}",
+                                            "type": "string"
+                                        }
+                                    ]
+                                },
+                                "url": {
+                                    "raw": "{{base_url}}/api/driver/assignments/{{assignment_id}}/status",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "driver",
+                                        "assignments",
+                                        "%7B%7Bassignment_id%7D%7D",
+                                        "status"
+                                    ],
+                                    "query": []
+                                },
+                                "description": "Poll or refresh trip state. Open package trips return no route stops and expose lifecycle actions from `allowed_actions`."
+                            },
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json",
+                                    "type": "text"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"trip_phase\": \"in_progress\",\n        \"trip_mode\": \"open_package\",\n        \"destination_known\": false,\n        \"driver_message\": \"Open package trip. Continue tracking route until the customer ends the service.\",\n        \"is_multi_stop\": false,\n        \"pickup_location\": {\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841,\n            \"landmark\": \"Colombo Airport\"\n        },\n        \"pickup_arrival\": {\n            \"arrived_at\": \"2026-05-21T08:10:00+05:30\",\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841\n        },\n        \"trip_started_at\": \"2026-05-21T08:15:00+05:30\",\n        \"stops\": [],\n        \"current_stop\": null,\n        \"allowed_actions\": [\n            \"complete\"\n        ],\n        \"estimated_distance_to_pickup_km\": null,\n        \"near_pickup\": false,\n        \"cumulative_distance_km\": 96.4,\n        \"total_waiting_time_seconds\": 1800,\n        \"waiting_period_count\": 3,\n        \"route_point_count\": 430,\n        \"package\": {\n            \"id\": \"package-uuid\",\n            \"name\": \"Day Package - 8 Hours / 80 KM\",\n            \"code\": \"DAY_8H_80KM\",\n            \"included_km_per_day\": 80,\n            \"included_km_per_package\": 80,\n            \"included_hours\": 8,\n            \"rate_type\": \"day\"\n        }\n    }\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "3. Confirm Pickup Arrival",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/assignments/{{assignment_id}}/arrived",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "assignments",
+                                "%7B%7Bassignment_id%7D%7D",
+                                "arrived"
+                            ],
+                            "query": []
+                        },
+                        "description": "Driver reached the pickup point.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"latitude\": 7.181,\n    \"longitude\": 79.8839\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "4. Start Open Package Trip",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/assignments/{{assignment_id}}/start",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "assignments",
+                                "%7B%7Bassignment_id%7D%7D",
+                                "start"
+                            ],
+                            "query": []
+                        },
+                        "description": "Start tracking billable open-package usage.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "5. Send Live Location Point",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/location",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "location"
+                            ],
+                            "query": []
+                        },
+                        "description": "Send every 10 seconds while moving, and continue sending during the open package service so backend can calculate distance/duration/waiting.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"latitude\": 6.9285,\n    \"longitude\": 79.8625,\n    \"altitude\": 15.5,\n    \"speed\": 45.2,\n    \"heading\": 180.5,\n    \"accuracy\": 10,\n    \"recorded_at\": \"2026-05-21T08:05:00+05:30\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "6. Bulk Sync Offline Route Points",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/location/bulk",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "location",
+                                "bulk"
+                            ],
+                            "query": []
+                        },
+                        "description": "Upload buffered points after network recovery. Keep `recorded_at` as the original device capture time.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"locations\": [\n        {\n            \"latitude\": 6.9285,\n            \"longitude\": 79.8625,\n            \"altitude\": 15.5,\n            \"speed\": 45.2,\n            \"heading\": 180.5,\n            \"accuracy\": 10,\n            \"recorded_at\": \"2026-05-21T08:05:00+05:30\"\n        }\n    ]\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "7. Complete Open Package Trip",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/assignments/{{assignment_id}}/complete",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "assignments",
+                                "%7B%7Bassignment_id%7D%7D",
+                                "complete"
+                            ],
+                            "query": []
+                        },
+                        "description": "End the package service. Final coordinates are treated as the final destination and backend returns `package_charges`.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"latitude\": \"{{end_latitude}}\",\n    \"longitude\": \"{{end_longitude}}\",\n    \"final_address\": \"{{final_address}}\",\n    \"ending_mileage\": \"{{ending_mileage}}\",\n    \"notes\": \"{{trip_end_notes}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": [
+                        {
+                            "name": "Success",
+                            "originalRequest": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json",
+                                        "type": "text"
+                                    },
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json",
+                                        "type": "text"
+                                    }
+                                ],
+                                "auth": {
+                                    "type": "bearer",
+                                    "bearer": [
+                                        {
+                                            "key": "token",
+                                            "value": "{{access_token}}",
+                                            "type": "string"
+                                        }
+                                    ]
+                                },
+                                "url": {
+                                    "raw": "{{base_url}}/api/driver/assignments/{{assignment_id}}/complete",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "driver",
+                                        "assignments",
+                                        "%7B%7Bassignment_id%7D%7D",
+                                        "complete"
+                                    ],
+                                    "query": []
+                                },
+                                "description": "End the package service. Final coordinates are treated as the final destination and backend returns `package_charges`.",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n    \"latitude\": \"{{end_latitude}}\",\n    \"longitude\": \"{{end_longitude}}\",\n    \"final_address\": \"{{final_address}}\",\n    \"ending_mileage\": \"{{ending_mileage}}\",\n    \"notes\": \"{{trip_end_notes}}\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            },
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json",
+                                    "type": "text"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Trip completed\",\n    \"data\": {\n        \"assignment_id\": \"assignment-uuid\",\n        \"booking_id\": \"booking-uuid\",\n        \"booking_item_id\": \"item-uuid\",\n        \"trip_mode\": \"open_package\",\n        \"total_distance_km\": 96.4,\n        \"total_duration_minutes\": 545,\n        \"total_waiting_time_seconds\": 1800,\n        \"waiting_period_count\": 3,\n        \"pickup_coordinates\": {\n            \"latitude\": 7.1808,\n            \"longitude\": 79.8841\n        },\n        \"dropoff_coordinates\": {\n            \"latitude\": 6.9344,\n            \"longitude\": 79.8428\n        },\n        \"route_point_count\": 430,\n        \"hire_completed\": true,\n        \"package_charges\": {\n            \"package_id\": \"package-uuid\",\n            \"package_name\": \"Day Package - 8 Hours / 80 KM\",\n            \"base_amount\": 25000,\n            \"included_km\": 80,\n            \"included_minutes\": 480,\n            \"actual_distance_km\": 96.4,\n            \"actual_duration_minutes\": 545,\n            \"waiting_minutes\": 30,\n            \"extra_km\": 16.4,\n            \"extra_minutes\": 65,\n            \"extra_km_rate\": 150,\n            \"extra_hour_rate\": 1200,\n            \"waiting_minute_rate\": 0,\n            \"extra_distance_charge\": 2460,\n            \"extra_duration_charge\": 1300,\n            \"waiting_charge\": 0,\n            \"extra_total\": 3760,\n            \"final_total\": 28760,\n            \"currency\": \"LKR\"\n        }\n    }\n}"
+                        }
+                    ]
+                }
+            ]
         },
         {
             "name": "Earnings",

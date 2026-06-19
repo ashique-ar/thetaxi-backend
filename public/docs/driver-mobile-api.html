@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>TheTaxi Driver Mobile API Docs</title>
+    <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+    <style>
+        body {
+            margin: 0;
+            background: #f7f8fb;
+        }
+
+        .topbar {
+            display: none;
+        }
+
+        .docs-header {
+            padding: 20px 32px;
+            background: #111827;
+            color: #fff;
+            font-family: Arial, sans-serif;
+        }
+
+        .docs-header h1 {
+            margin: 0 0 6px;
+            font-size: 24px;
+            font-weight: 700;
+        }
+
+        .docs-header p {
+            margin: 0;
+            color: #d1d5db;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <header class="docs-header">
+        <h1>TheTaxi Driver Mobile API</h1>
+        <p>Interactive docs for login, assignments, trip tracking, location sync, and open package chauffeur trips.</p>
+    </header>
+    <div id="swagger-ui"></div>
+
+    <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+    <script>
+        window.ui = SwaggerUIBundle({
+            url: './driver-mobile-api.openapi.json',
+            dom_id: '#swagger-ui',
+            deepLinking: true,
+            persistAuthorization: true,
+            displayRequestDuration: true,
+            tryItOutEnabled: true,
+            defaultModelsExpandDepth: 1,
+            defaultModelExpandDepth: 2
+        });
+    </script>
+</body>
+</html>
