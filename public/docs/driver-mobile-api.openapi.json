@@ -3,7 +3,7 @@
     "info": {
         "title": "TheTaxi Driver Mobile API",
         "version": "2.3.0",
-        "description": "Interactive API documentation generated from the Driver Postman collection. Includes all driver mobile requests, examples, and the open package chauffeur flow."
+        "description": "Interactive API documentation generated from the Driver Postman collection. Includes all driver mobile requests, examples, and the open package."
     },
     "servers": [
         {
@@ -9863,7 +9863,7 @@
         "/api/driver/assignments/current_get_api_driver_assignments_current": {
             "get": {
                 "tags": [
-                    "Open Package Chauffeur Flow"
+                    "Open Packages"
                 ],
                 "summary": "1. Get Current Open Package Assignment",
                 "description": "Check `data.trip_mode`. If it is `open_package`, use pickup-only navigation before trip start and show package details instead of a fixed destination route.",
@@ -10071,7 +10071,7 @@
         "/api/driver/assignments/{assignment_id}/status_get_api_driver_assignments_assignment_id_status": {
             "get": {
                 "tags": [
-                    "Open Package Chauffeur Flow"
+                    "Open Package"
                 ],
                 "summary": "2. Get Open Package Trip Status",
                 "description": "Poll or refresh trip state. Open package trips return no route stops and expose lifecycle actions from `allowed_actions`.",
@@ -10299,7 +10299,7 @@
         "/api/driver/assignments/{assignment_id}/arrived_post_api_driver_assignments_assignment_id_arrived": {
             "post": {
                 "tags": [
-                    "Open Package Chauffeur Flow"
+                    "Open Package"
                 ],
                 "summary": "3. Confirm Pickup Arrival",
                 "description": "Driver reached the pickup point.",
@@ -10354,7 +10354,7 @@
         "/api/driver/assignments/{assignment_id}/start_post_api_driver_assignments_assignment_id_start": {
             "post": {
                 "tags": [
-                    "Open Package Chauffeur Flow"
+                    "Open Package"
                 ],
                 "summary": "4. Start Open Package Trip",
                 "description": "Start tracking billable open-package usage.",
@@ -10397,7 +10397,7 @@
         "/api/driver/location_post_api_driver_location": {
             "post": {
                 "tags": [
-                    "Open Package Chauffeur Flow"
+                    "Open Package"
                 ],
                 "summary": "5. Send Live Location Point",
                 "description": "Send every 10 seconds while moving, and continue sending during the open package service so backend can calculate distance/duration/waiting.",
@@ -10466,7 +10466,7 @@
         "/api/driver/location/bulk_post_api_driver_location_bulk": {
             "post": {
                 "tags": [
-                    "Open Package Chauffeur Flow"
+                    "Open Package"
                 ],
                 "summary": "6. Bulk Sync Offline Route Points",
                 "description": "Upload buffered points after network recovery. Keep `recorded_at` as the original device capture time.",
@@ -10547,7 +10547,7 @@
         "/api/driver/assignments/{assignment_id}/complete_post_api_driver_assignments_assignment_id_complete": {
             "post": {
                 "tags": [
-                    "Open Package Chauffeur Flow"
+                    "Open Package"
                 ],
                 "summary": "7. Complete Open Package Trip",
                 "description": "End the package service. Final coordinates are treated as the final destination and backend returns `package_charges`.",
