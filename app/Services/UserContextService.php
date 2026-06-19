@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Customer;
 use App\Models\Driver\Driver;
+use App\Models\Staff;
 use App\Models\User;
 use App\Models\UserContext;
 use App\Models\Vehicle\VehicleOwner;
@@ -26,6 +27,15 @@ class UserContextService
         'agents.view',
         'reports.view',
         'corporates.view',
+    ];
+
+    private const ROLE_CONTEXT_MAP = [
+        'customer' => ['customer'],
+        'driver' => ['driver'],
+        'staff' => ['staff'],
+        'agent' => ['agent'],
+        'vehicle-owner' => ['vehicle_owner'],
+        'vehicle_owner' => ['vehicle_owner'],
     ];
 
     /**
@@ -312,6 +322,31 @@ class UserContextService
     }
 
     /**
+     * Apply context mappings defined on roles to a user.
+     *
+     * A null context_types value means use the legacy role-name mapping.
+     * An empty context_types array means the role should not create/link contexts.
+     */
+    public function syncContextsForAssignedRoles(User $user, Collection|array $roles, ?string $actorUserId = null): void
+    {
+        $actorUserId ??= $user->id;
+
+        foreach (collect($roles) as $role) {
+            if (!$role instanceof Role || ($role->auto_assign_contexts ?? true) === false) {
+                continue;
+            }
+
+            foreach ($this->getContextTypesForRole($role) as $contextType) {
+                $context = $this->resolveOrCreateContextForRole($user, $contextType, $actorUserId);
+
+                if ($context) {
+                    $this->assignRolesToContext($user, $context, [$role->id]);
+                }
+            }
+        }
+    }
+
+    /**
      * Revoke all roles assigned by a given UserContext.
      */
     public function revokeRolesFromContext(User $user, UserContext $userContext): void
@@ -442,9 +477,67 @@ class UserContextService
                     ], $contextData)
                 );
 
+            case 'staff':
+                return Staff::firstOrCreate(
+                    ['user_id' => $user->id],
+                    array_merge([
+                        'user_id' => $user->id,
+                        'staff_type' => 'staff',
+                        'created_user_id' => $user->id,
+                    ], $contextData)
+                );
+
             default:
                 throw new Exception("Invalid context type: {$contextType}");
         }
+    }
+
+    private function getContextTypesForRole(Role $role): array
+    {
+        $contextTypes = $role->context_types ?? null;
+
+        if (is_string($contextTypes)) {
+            $decoded = json_decode($contextTypes, true);
+            $contextTypes = is_array($decoded) ? $decoded : null;
+        }
+
+        if ($contextTypes === null) {
+            $contextTypes = self::ROLE_CONTEXT_MAP[$role->name] ?? [];
+        }
+
+        return collect($contextTypes)
+            ->filter(fn ($contextType) => is_string($contextType) && $contextType !== '')
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    private function resolveOrCreateContextForRole(User $user, string $contextType, string $actorUserId): ?UserContext
+    {
+        if (in_array($contextType, ['internal', 'agent', 'corporate'], true)) {
+            return null;
+        }
+
+        $context = $user->contexts()
+            ->where('context_type', $contextType)
+            ->where('is_active', true)
+            ->first();
+
+        if ($context) {
+            return $context;
+        }
+
+        $contextModel = $this->createContextModel($user, $contextType, [
+            'created_user_id' => $actorUserId,
+        ]);
+
+        return UserContext::create([
+            'user_id' => $user->id,
+            'context_type' => $contextType,
+            'context_id' => $contextModel->id,
+            'is_active' => true,
+            'created_user_id' => $actorUserId,
+        ]);
     }
 
     /**

@@ -773,6 +773,8 @@ class UserController extends Controller
                 $this->assignPermissionsFromRoleModels($user, $rolesToAssign);
             }
 
+            $this->contextService->syncContextsForAssignedRoles($user, $rolesToAssign, $request->user()?->id);
+
             app(PermissionRegistrar::class)->forgetCachedPermissions();
             
             return response()->json([
@@ -850,6 +852,15 @@ class UserController extends Controller
                     ->where('model_type', User::class)
                     ->where('model_id', $user->id)
                     ->whereIn('role_id', $roleIds)
+                    ->delete();
+
+                DB::table('user_context_roles')
+                    ->whereIn('role_id', $roleIds)
+                    ->whereIn('user_context_id', function ($query) use ($user) {
+                        $query->select('id')
+                            ->from('user_contexts')
+                            ->where('user_id', $user->id);
+                    })
                     ->delete();
 
                 $revokedPermissionIds = $rolesToRevoke

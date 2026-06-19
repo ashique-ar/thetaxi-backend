@@ -19,6 +19,9 @@ class CreateRoleRequest extends FormRequest
             'display_name' => ['nullable', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:1000'],
             'guard_name' => ['nullable', 'string', 'max:255'],
+            'context_types' => ['nullable', 'array'],
+            'context_types.*' => ['string', 'in:customer,vehicle_owner,staff,agent,driver,corporate,internal'],
+            'auto_assign_contexts' => ['sometimes', 'boolean'],
             'permissions' => ['nullable', 'array'],
             'permissions.*' => ['required', 'string'],
         ];

@@ -62,7 +62,9 @@ class RoleController extends Controller
             $permissions = $data['permissions'] ?? null;
             unset($data['permissions']);
 
+            $contextData = $this->extractContextData($data);
             $role = Role::create($data);
+            $this->applyContextData($role, $contextData);
             
             if ($permissions !== null) {
                 $this->assignmentService->syncRolePermissions($role, $permissions);
@@ -114,7 +116,9 @@ class RoleController extends Controller
             $permissions = $data['permissions'] ?? null;
             unset($data['permissions']);
 
+            $contextData = $this->extractContextData($data);
             $role->update($data);
+            $this->applyContextData($role, $contextData);
             
             if ($permissions !== null) {
                 $this->assignmentService->syncRolePermissions($role, $permissions);
@@ -373,5 +377,38 @@ class RoleController extends Controller
         }
 
         return $this->assignmentService->normalizePermissionNames($resolvedNames->all());
+    }
+
+    private function extractContextData(array &$data): array
+    {
+        $contextData = [];
+
+        foreach (['context_types', 'auto_assign_contexts'] as $field) {
+            if (array_key_exists($field, $data)) {
+                $contextData[$field] = $data[$field];
+                unset($data[$field]);
+            }
+        }
+
+        return $contextData;
+    }
+
+    private function applyContextData(Role $role, array $contextData): void
+    {
+        if ($contextData === []) {
+            return;
+        }
+
+        if (array_key_exists('context_types', $contextData)) {
+            $role->context_types = $contextData['context_types'] === null
+                ? null
+                : json_encode(array_values(array_unique($contextData['context_types'])));
+        }
+
+        if (array_key_exists('auto_assign_contexts', $contextData)) {
+            $role->auto_assign_contexts = (bool) $contextData['auto_assign_contexts'];
+        }
+
+        $role->save();
     }
 }
