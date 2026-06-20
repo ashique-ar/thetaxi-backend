@@ -289,7 +289,14 @@ class Driver extends BaseModel
     public function isAvailableForPeriod($from, $to, $excludeBookingId = null): bool
     {
         $conflictingAssignments = $this->assignments()
-            ->where('status', '!=', 'cancelled')
+            ->whereNotIn('status', ['cancelled', 'completed'])
+            ->where(function ($q) {
+                $q->whereNull('trip_phase')
+                    ->orWhereNotIn('trip_phase', ['completed', 'declined']);
+            })
+            ->whereHas('booking', function ($bq) {
+                $bq->whereNotIn('status', ['cancelled', 'completed']);
+            })
             ->when($excludeBookingId, function($q) use ($excludeBookingId) {
                 $q->whereHas('booking', function($bq) use ($excludeBookingId) {
                     $bq->where('id', '!=', $excludeBookingId);
@@ -314,7 +321,14 @@ class Driver extends BaseModel
     public function getAssignmentConflicts($from, $to, $excludeBookingId = null): array
     {
         $conflicts = $this->assignments()
-            ->where('status', '!=', 'cancelled')
+            ->whereNotIn('status', ['cancelled', 'completed'])
+            ->where(function ($q) {
+                $q->whereNull('trip_phase')
+                    ->orWhereNotIn('trip_phase', ['completed', 'declined']);
+            })
+            ->whereHas('booking', function ($bq) {
+                $bq->whereNotIn('status', ['cancelled', 'completed']);
+            })
             ->when($excludeBookingId, function($q) use ($excludeBookingId) {
                 $q->whereHas('booking', function($bq) use ($excludeBookingId) {
                     $bq->where('id', '!=', $excludeBookingId);

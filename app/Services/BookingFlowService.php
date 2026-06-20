@@ -687,7 +687,7 @@ class BookingFlowService
                         ->from('booking_items')
                         ->join('bookings', 'booking_items.booking_id', '=', 'bookings.id')
                         ->whereColumn('booking_items.vehicle_id', 'vehicles.id')
-                        ->where('bookings.status', '!=', 'cancelled')
+                        ->whereNotIn('bookings.status', ['cancelled', 'completed'])
                         ->where('bookings.id', '!=', $excludeBookingId)
                         ->where(function ($q) use ($fromDate, $toDate) {
                             $q->whereBetween('booking_items.from_date', [$fromDate, $toDate])
@@ -705,7 +705,7 @@ class BookingFlowService
                         ->from('booking_items')
                         ->join('bookings', 'booking_items.booking_id', '=', 'bookings.id')
                         ->whereColumn('booking_items.vehicle_id', 'vehicles.id')
-                        ->where('bookings.status', '!=', 'cancelled')
+                        ->whereNotIn('bookings.status', ['cancelled', 'completed'])
                         ->where(function ($q) use ($fromDate, $toDate) {
                             $q->whereBetween('booking_items.from_date', [$fromDate, $toDate])
                                 ->orWhereBetween('booking_items.to_date', [$fromDate, $toDate])
@@ -1000,7 +1000,7 @@ class BookingFlowService
                 $hasLongTermAssignments = $group->vehicles->filter(function ($vehicle) use ($fromDate, $toDate) {
                     return BookingItem::where('booking_items.vehicle_id', $vehicle->id)
                         ->join('bookings', 'booking_items.booking_id', '=', 'bookings.id')
-                        ->where('bookings.status', '!=', 'cancelled')
+                        ->whereNotIn('bookings.status', ['cancelled', 'completed'])
                         ->where(function ($q) use ($fromDate, $toDate) {
                             $q->whereBetween('booking_items.from_date', [$fromDate, $toDate])
                                 ->orWhereBetween('booking_items.to_date', [$fromDate, $toDate])
@@ -1511,7 +1511,7 @@ class BookingFlowService
         // Check for existing bookings through booking_items
         $existingBookings = BookingItem::where('booking_items.vehicle_id', $vehicleId)
             ->join('bookings', 'booking_items.booking_id', '=', 'bookings.id')
-            ->where('bookings.status', '!=', 'cancelled')
+            ->whereNotIn('bookings.status', ['cancelled', 'completed'])
             ->where(function ($q) use ($fromDate, $toDate) {
                 $q->whereBetween('booking_items.from_date', [$fromDate, $toDate])
                     ->orWhereBetween('booking_items.to_date', [$fromDate, $toDate])
@@ -1587,7 +1587,7 @@ class BookingFlowService
         // Check for existing bookings through booking_items
         $existingBookings = BookingItem::where('booking_items.driver_id', $driverId)
             ->join('bookings', 'booking_items.booking_id', '=', 'bookings.id')
-            ->where('bookings.status', '!=', 'cancelled')
+            ->whereNotIn('bookings.status', ['cancelled', 'completed'])
             ->where(function ($q) use ($fromDate, $toDate) {
                 $q->whereBetween('booking_items.from_date', [$fromDate, $toDate])
                     ->orWhereBetween('booking_items.to_date', [$fromDate, $toDate])
@@ -9742,7 +9742,7 @@ class BookingFlowService
         // Query through booking_items which contains the date fields
         $bookingItems = BookingItem::where('booking_items.vehicle_id', $vehicle->id)
             ->join('bookings', 'booking_items.booking_id', '=', 'bookings.id')
-            ->where('bookings.status', '!=', 'cancelled')
+            ->whereNotIn('bookings.status', ['cancelled', 'completed'])
             ->when($excludeBookingId, function ($q) use ($excludeBookingId) {
                 $q->where('bookings.id', '!=', $excludeBookingId);
             })
@@ -9833,7 +9833,7 @@ class BookingFlowService
         // Query driver assignments with correct column names
         $driverAssignments = DriverAssignment::where('driver_id', $driver->id)
             ->join('bookings', 'driver_assignments.booking_id', '=', 'bookings.id')
-            ->where('bookings.status', '!=', 'cancelled')
+            ->whereNotIn('bookings.status', ['cancelled', 'completed'])
             ->when($excludeBookingId, function ($q) use ($excludeBookingId) {
                 $q->where('bookings.id', '!=', $excludeBookingId);
             })
@@ -9846,6 +9846,10 @@ class BookingFlowService
                     });
             })
             ->whereIn('driver_assignments.status', ['active', 'pending_approval'])
+            ->where(function ($q) {
+                $q->whereNull('driver_assignments.trip_phase')
+                    ->orWhereNotIn('driver_assignments.trip_phase', ['completed', 'declined']);
+            })
             ->select('driver_assignments.*', 'bookings.id as booking_id', 'bookings.status', 'bookings.customer_id')
             ->with(['booking.customer'])
             ->get();
