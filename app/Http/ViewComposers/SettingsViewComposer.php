@@ -65,6 +65,7 @@ class SettingsViewComposer
                     'logo_mobile_alt',
                     'logo_footer',
                     'logo_footer_alt',
+                    'cms_content_placeholder_image',
 
                     // Social media
                     'social_facebook',

@@ -857,6 +857,12 @@ class SettingsCategoryService
                     'type' => 'file',
                     'accept' => '.ico,image/*',
                     'description' => 'Website favicon (16x16 or 32x32 pixels)'
+                ],
+                'cms_content_placeholder_image' => [
+                    'label' => 'CMS Placeholder Image',
+                    'type' => 'file',
+                    'accept' => 'image/*',
+                    'description' => 'Fallback image shown for CMS content without a thumbnail or featured image'
                 ]
             ]
         ];

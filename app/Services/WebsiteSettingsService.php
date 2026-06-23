@@ -1005,6 +1005,7 @@ class WebsiteSettingsService
             'logo_mobile_alt_text',
             'favicon',
             'favicon_url',
+            'cms_content_placeholder_image',
             'brand_image_1',
             'brand_image_2',
             'brand_image_3',

@@ -20,7 +20,7 @@
 
         /* Article show improvements */
         .article-hero {
-            background: linear-gradient(180deg, rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.35)), url('{{ $content->thumbnail ? s3_asset($content->thumbnail) : asset('assets/img/innerpages/breadcrumb-bg.jpg') }}') center/cover no-repeat;
+            background: linear-gradient(180deg, rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.35)), url('{{ $content->thumbnail ? s3_asset($content->thumbnail) : s3_asset($settings['cms_content_placeholder_image'] ?? 'assets/img/innerpages/breadcrumb-bg.jpg') }}') center/cover no-repeat;
             padding: 60px 0;
             color: #fff;
         }
@@ -191,14 +191,14 @@
                     </div>
                     <article class="mb-4" data-aos="fade-up">
                         <div class="article-image mb-4">
-                            <img src="{{ $content->thumbnail && s3_asset($content->thumbnail) ? s3_asset($content->thumbnail) : asset('assets/img/default-blog.jpg') }}"
+                            <img src="{{ $content->thumbnail && s3_asset($content->thumbnail) ? s3_asset($content->thumbnail) : s3_asset($settings['cms_content_placeholder_image'] ?? 'assets/img/default-blog.jpg') }}"
                                 alt="{{ $content->title }}">
                         </div>
 
                         @if ($content->excerpt)
                             <p class="lead text-muted">{{ $content->excerpt }}</p>
                         @endif
-
+                        
                         @php
                             $rawBody = $content->body ?? '';
                             // Replace HTML entity non-breaking spaces and unicode NBSP with regular spaces
@@ -207,7 +207,7 @@
                             // Collapse sequences of multiple spaces into a single space (avoid runaway spacing)
                             $body = preg_replace('/[ \t]{2,}/', ' ', $body);
                         @endphp
-                        <div class="content-body" id="articleBody">
+                        <div class="content-body mt-3" id="articleBody">
                             {!! $body !!}
                         </div>
 
@@ -291,7 +291,7 @@
                                     <a href="{{ route('cms.show', [$contentType->slug, $related->slug]) }}"
                                         class="d-block text-decoration-none text-dark mb-2">
                                         <div class="related-item">
-                                            <img src="{{ $related->thumbnail ? s3_asset($related->thumbnail) : asset('assets/img/default-blog.jpg') }}"
+                                            <img src="{{ $related->thumbnail ? s3_asset($related->thumbnail) : s3_asset($settings['cms_content_placeholder_image'] ?? 'assets/img/default-blog.jpg') }}"
                                                 alt="{{ $related->title }}">
                                             <div>
                                                 <div class="small fw-bold">{{ Str::limit($related->title, 60) }}</div>

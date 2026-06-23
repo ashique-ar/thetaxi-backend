@@ -230,6 +230,10 @@ class WebsiteSettingSeeder extends Seeder
                 'value' => '/favicon.ico',
             ],
             [
+                'type' => 'cms_content_placeholder_image',
+                'value' => 'assets/img/default-blog.jpg',
+            ],
+            [
                 'type' => 'portal_title',
                 'value' => 'The Taxi | Portal',
             ],

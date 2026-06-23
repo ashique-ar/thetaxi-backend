@@ -765,7 +765,7 @@
                                     data-aos-delay="{{ ($index % 3) * 100 }}">
                                     <article class="enhanced-blog-card">
                                         <div class="card-image">
-                                            <img src="{{ $content->thumbnail && s3_asset($content->thumbnail) ? s3_asset($content->thumbnail) : 'assets/img/default-blog.jpg' }}"
+                                            <img src="{{ $content->thumbnail && s3_asset($content->thumbnail) ? s3_asset($content->thumbnail) : s3_asset($settings['cms_content_placeholder_image'] ?? 'assets/img/default-blog.jpg') }}"
                                                 alt="{{ $content->title }}" loading="lazy">
                                             <div class="card-overlay"></div>
                                             <div class="category-badge">{{ $contentType->title }}</div>

@@ -39,7 +39,7 @@
                             <div class="blog-img-wrap">
                                 <a href="{{ route('cms.show', [$content->contentType->slug, $content->slug]) }}"
                                     class="blog-img">
-                                    <img src="{{ $content->featured_image ?? ($content->thumbnail ?? 'assets/img/default-blog.jpg') }}"
+                                    <img src="{{ s3_asset($content->featured_image ?? ($content->thumbnail ?? ($settings['cms_content_placeholder_image'] ?? 'assets/img/default-blog.jpg'))) }}"
                                         alt="{{ $content->title }}">
                                 </a>
                                 <a href="{{ route('cms.index', $content->contentType->slug) }}" class="location">

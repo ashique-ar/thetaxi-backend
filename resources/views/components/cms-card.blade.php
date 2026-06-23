@@ -61,7 +61,8 @@
         : 'N/A';
 
     // Generate URLs
-    $imageUrl = $thumbnail && s3_asset($thumbnail) ? s3_asset($thumbnail) : asset('assets/img/default-blog.jpg');
+    $cmsPlaceholderImage = $settings['cms_content_placeholder_image'] ?? 'assets/img/default-blog.jpg';
+    $imageUrl = $thumbnail && s3_asset($thumbnail) ? s3_asset($thumbnail) : s3_asset($cmsPlaceholderImage);
     $detailLink = route('cms.show', ['contentType' => $type, 'content' => $slug]);
     $categoryLink = $category
         ? route('cms.index', ['contentType' => $type]) . '?category=' . urlencode($category)
