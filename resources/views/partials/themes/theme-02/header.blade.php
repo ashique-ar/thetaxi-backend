@@ -1,7 +1,8 @@
 {{-- Theme-02 Header - Tailwind CSS - Glass-morphism transparent header --}}
+@php($isHomePage = Request::routeIs('home'))
 
 <!-- Header Section -->
-<header class="t2-header header-area style-3">
+<header class="t2-header header-area style-3 {{ $isHomePage ? '' : 't2-header--solid' }}">
     <div class="container d-flex flex-nowrap align-items-center justify-content-between">
         <div class="logo-and-menu-area">
             <a href="{{ route('home') }}" class="header-logo">
@@ -114,5 +115,4 @@
         </div>
     </div>
 </header>
-
 

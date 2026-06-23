@@ -15,6 +15,13 @@
     /* padding: 20px 0 !important; */
 }
 
+.t2-header.header-area.t2-header--solid {
+    background: var(--primary-color1) !important;
+    backdrop-filter: blur(20px) saturate(180%) !important;
+    -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.16) !important;
+}
+
 .t2-header.header-area.sticky {
     background: var(--primary-color1) !important;
     backdrop-filter: blur(20px) saturate(180%) !important;
