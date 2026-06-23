@@ -546,9 +546,19 @@ class AvailabilityEnforcementService
             . "Please schedule the vehicle for servicing as soon as possible.\n";
 
         try {
-            Mail::raw($body, function ($message) use ($email, $vehicleDesc, $count) {
-                $message->to($email)
+            $fromAddress = config('mail.from.address');
+            $toRecipients = [$email];
+
+            if (!app()->environment('local', 'testing') && !empty($fromAddress)) {
+                $toRecipients[] = $fromAddress;
+            }
+
+            Mail::raw($body, function ($message) use ($toRecipients, $fromAddress, $vehicleDesc, $count) {
+                $message->to(array_values(array_unique(array_filter($toRecipients))))
                         ->subject("[Maintenance Alert] {$vehicleDesc} — {$count} item(s) due");
+                if (!app()->environment('local', 'testing') && !empty($fromAddress)) {
+                    $message->replyTo($fromAddress);
+                }
             });
         } catch (\Throwable $e) {
             Log::error('Failed to send maintenance team notification', [

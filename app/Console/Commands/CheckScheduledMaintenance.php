@@ -116,9 +116,20 @@ class CheckScheduledMaintenance extends Command
             . "Please schedule the affected vehicles for servicing.\n";
 
         try {
-            Mail::raw($body, function ($message) use ($email, $schedules) {
-                $message->to($email)
+            $fromAddress = config('mail.from.address');
+            $toRecipients = [$email];
+
+            if (!app()->environment('local', 'testing') && !empty($fromAddress)) {
+                $toRecipients[] = $fromAddress;
+            }
+
+            Mail::raw($body, function ($message) use ($toRecipients, $fromAddress, $schedules) {
+                $message->to(array_values(array_unique(array_filter($toRecipients))))
                         ->subject(sprintf('[Maintenance Due] %d vehicle(s) require servicing', $schedules->count()));
+
+                if (!app()->environment('local', 'testing') && !empty($fromAddress)) {
+                    $message->replyTo($fromAddress);
+                }
             });
         } catch (\Throwable $e) {
             Log::error('Failed to send scheduled-maintenance notification', ['error' => $e->getMessage()]);

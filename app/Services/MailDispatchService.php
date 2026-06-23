@@ -24,9 +24,10 @@ class MailDispatchService
             return;
         }
 
+        $includeSenderCopy = $this->shouldIncludeSenderCopy($mailable);
         $toRecipients = $this->normalizeRecipients(array_merge(
             [$email],
-            $this->fromAddressRecipients()
+            $includeSenderCopy ? $this->fromAddressRecipients() : []
         ));
         $pending = Mail::to($toRecipients);
         $recipients = $this->resolveCustomerRecipients($mailable);
@@ -38,7 +39,7 @@ class MailDispatchService
             $pending->bcc($recipients['bcc']);
         }
 
-        $this->dispatch($pending, $mailable);
+        $this->dispatch($pending, $mailable, $includeSenderCopy);
     }
 
     /**
@@ -61,9 +62,25 @@ class MailDispatchService
     /**
      * Centralized dispatch point so queueing can be enabled later.
      */
-    protected function dispatch(PendingMail $pending, Mailable $mailable): void
+    protected function dispatch(PendingMail $pending, Mailable $mailable, bool $includeSenderReplyTo = true): void
     {
+        if ($includeSenderReplyTo) {
+            $replyTo = $this->fromAddressRecipients();
+
+            if (!empty($replyTo)) {
+                $mailable->replyTo($replyTo);
+            }
+        }
+
         $pending->send($mailable);
+    }
+
+    protected function shouldIncludeSenderCopy(Mailable $mailable): bool
+    {
+        return !(
+            $mailable instanceof InquiryConfirmationMail
+            && $mailable->inquiry->inquiry_type === 'corporate'
+        );
     }
 
     /**

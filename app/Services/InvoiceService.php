@@ -9,7 +9,6 @@ use App\Models\Invoice;
 use App\Models\Website\WebsiteSetting;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
@@ -80,8 +79,10 @@ class InvoiceService
             : null;
 
         try {
-            Mail::to($invoice->customer_email)
-                ->send(new InvoiceMail($invoice, $booking, $pdfPath));
+            app(MailDispatchService::class)->sendToCustomer(
+                $invoice->customer_email,
+                new InvoiceMail($invoice, $booking, $pdfPath)
+            );
 
             Log::info('Invoice email sent', [
                 'invoice_id' => $invoice->id,
