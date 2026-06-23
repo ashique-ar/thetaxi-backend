@@ -21,7 +21,9 @@
 @php
     $isInquiry = (bool) ($serviceTypeModel?->is_inquiry ?? false);
     $actionRoute = $isInquiry ? route('booking.enquiry') : route('booking.search');
-    $submitLabel = $isInquiry ? 'Submit Inquiry' : 'Search Vehicles';
+    $submitLabel = $isInquiry
+        ? ($settings['booking_submit_inquiry_label'] ?? 'Submit Inquiry')
+        : ($settings['booking_search_submit_label'] ?? 'Search Vehicles');
 
     // Resolve current values for location fields
     $pickupLoc = $getLocationForService($serviceCode, true);
@@ -261,7 +263,7 @@
                                 stroke="currentColor" stroke-width="2" stroke-linecap="round"
                                 stroke-linejoin="round" />
                         </svg>
-                        Add Return Trip
+                        {{ $settings['booking_return_trip_toggle_label'] ?? 'Add Return Trip' }}
                     </span>
                 </label>
             </div>
@@ -277,23 +279,23 @@
                                   stroke-linecap="round" stroke-linejoin="round" />
                         </svg>
                         <span class="route-text">
-                            <strong>Return:</strong>
-                            <span id="return-dropoff-location">{{ $dropoffLoc['address'] ?? 'Drop-off' }}</span>
+                            <strong>{{ $settings['booking_return_route_label'] ?? 'Return:' }}</strong>
+                            <span id="return-dropoff-location">{{ $dropoffLoc['address'] ?? ($settings['booking_return_dropoff_placeholder'] ?? 'Drop-off') }}</span>
                             &rarr;
-                            <span id="return-pickup-location">{{ $pickupLoc['address'] ?? 'Pickup' }}</span>
+                            <span id="return-pickup-location">{{ $pickupLoc['address'] ?? ($settings['booking_return_pickup_placeholder'] ?? 'Pickup') }}</span>
                         </span>
                     </div>
                 </div>
 
                 <div class="single-search-box date-field">
                     <div class="d-flex align-items-center gap-2 py-1">
-                        <label class="input-label">Return Date</label>
+                        <label class="input-label">{{ $settings['booking_return_date_label'] ?? 'Return Date' }}</label>
                         @include('components.partials.calendar-icon')
                     </div>
                     <input type="text"
                            name="return_date"
                            id="ride_now-return-date"
-                           placeholder="DD/MM/YYYY"
+                           placeholder="{{ $settings['booking_return_date_placeholder'] ?? 'DD/MM/YYYY' }}"
                            class="custom-datepicker @error('return_date') is-invalid @enderror"
                            value="{{ $rideNowReturnDate }}"
                            autocomplete="off">
@@ -304,7 +306,7 @@
 
                 <div class="single-search-box">
                     <div class="d-flex align-items-center gap-2 py-1">
-                        <label class="input-label">Return Time</label>
+                        <label class="input-label">{{ $settings['booking_return_time_label'] ?? 'Return Time' }}</label>
                         @include('components.partials.clock-icon')
                     </div>
                     <div class="custom-select-dropdown">
@@ -323,8 +325,8 @@
                      id="ride_now-return-pricing-info"
                      style="display: {{ $rideNowIsReturnTrip ? 'block' : 'none' }};">
                     <div class="text-success">
-                        <span id="ride_now-return-discount-label">Same Day Return</span>
-                        <span class="fw-bold" id="ride_now-return-discount-value">50% off return</span>
+                        <span id="ride_now-return-discount-label">{{ $settings['booking_return_discount_label'] ?? 'Same Day Return' }}</span>
+                        <span class="fw-bold" id="ride_now-return-discount-value">{{ $settings['booking_return_discount_value'] ?? '50% off return' }}</span>
                     </div>
                 </div>
             </div>
@@ -351,12 +353,12 @@
                  id="{{ $prefix }}_dropoff_wrapper"
                  style="display: none;">
                 <div class="d-flex align-items-center gap-2 py-1">
-                    <label class="input-label">Dropoff Location</label>
+                    <label class="input-label">{{ $settings['booking_dropoff_label'] ?? 'Dropoff Location' }}</label>
                     @include('components.partials.location-icon')
                 </div>
                 <div class="custom-select-dropdown">
                     <input type="text" name="dropoff" id="{{ $prefix }}_dropoff_input"
-                           placeholder="Enter your dropoff location"
+                           placeholder="{{ $settings['booking_dropoff_placeholder'] ?? 'Enter your dropoff location' }}"
                            class="location-search @error('dropoff') is-invalid @enderror"
                            value="{{ $safeOldOr('dropoff', $dropoffLoc['address'] ?? '') }}"
                            disabled>
