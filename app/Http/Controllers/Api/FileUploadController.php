@@ -424,14 +424,16 @@ class FileUploadController extends Controller
      */
     private function validateFileByCategory($file, string $category): void
     {
+        $sizeLimits = config('fileupload.size_limits', []);
+
         $rules = [
-            'general' => ['mimes:jpg,jpeg,png,gif,pdf,doc,docx,xls,xlsx,txt', 'max:10240'],
-            'vehicles' => ['image', 'mimes:jpg,jpeg,png,gif,webp', 'max:5120'],
-            'gallery' => ['image', 'mimes:jpg,jpeg,png,gif,webp', 'max:10240'],
-            'documents' => ['mimes:pdf,doc,docx,xls,xlsx,txt,rtf', 'max:20480'],
-            'avatars' => ['image', 'mimes:jpg,jpeg,png,gif', 'max:2048'],
-            'thumbnails' => ['image', 'mimes:jpg,jpeg,png,gif,webp', 'max:1024'],
-            'thumbnail' => ['image', 'mimes:jpg,jpeg,png,gif,webp', 'max:1024'],
+            'general' => ['mimes:jpg,jpeg,png,gif,pdf,doc,docx,xls,xlsx,txt', 'max:' . ($sizeLimits['general'] ?? 10240)],
+            'vehicles' => ['image', 'mimes:jpg,jpeg,png,gif,webp', 'max:' . ($sizeLimits['vehicles'] ?? 5120)],
+            'gallery' => ['image', 'mimes:jpg,jpeg,png,gif,webp', 'max:' . ($sizeLimits['gallery'] ?? 10240)],
+            'documents' => ['mimes:pdf,doc,docx,xls,xlsx,txt,rtf', 'max:' . ($sizeLimits['documents'] ?? 20480)],
+            'avatars' => ['image', 'mimes:jpg,jpeg,png,gif', 'max:' . ($sizeLimits['avatars'] ?? 2048)],
+            'thumbnails' => ['image', 'mimes:jpg,jpeg,png,gif,webp', 'max:' . ($sizeLimits['thumbnails'] ?? 10240)],
+            'thumbnail' => ['image', 'mimes:jpg,jpeg,png,gif,webp', 'max:' . ($sizeLimits['thumbnail'] ?? ($sizeLimits['thumbnails'] ?? 10240))],
             'branding' => ['image', 'mimes:jpg,jpeg,png,gif,webp,svg,ico', 'max:10240'],
             'logos' => ['image', 'mimes:jpg,jpeg,png,gif,webp,svg,ico', 'max:10240'],
             'logo' => ['image', 'mimes:jpg,jpeg,png,gif,webp,svg,ico', 'max:10240'],

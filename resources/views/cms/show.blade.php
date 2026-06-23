@@ -198,7 +198,7 @@
                         @if ($content->excerpt)
                             <p class="lead text-muted">{{ $content->excerpt }}</p>
                         @endif
-
+                        
                         @php
                             $rawBody = $content->body ?? '';
                             // Replace HTML entity non-breaking spaces and unicode NBSP with regular spaces
@@ -207,7 +207,7 @@
                             // Collapse sequences of multiple spaces into a single space (avoid runaway spacing)
                             $body = preg_replace('/[ \t]{2,}/', ' ', $body);
                         @endphp
-                        <div class="content-body" id="articleBody">
+                        <div class="content-body mt-3" id="articleBody">
                             {!! $body !!}
                         </div>
 

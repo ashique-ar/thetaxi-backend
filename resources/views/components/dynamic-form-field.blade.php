@@ -21,6 +21,8 @@
     $label = $field['label'] ?? ucfirst(str_replace('_', ' ', $fieldName));
     $required = (bool) ($field['required'] ?? false);
     $placeholder = $field['placeholder'] ?? '';
+    $datePlaceholder = $settings['booking_date_placeholder'] ?? 'DD/MM/YYYY';
+    $airportSelectPlaceholder = $settings['booking_airport_select_placeholder'] ?? 'Select Airport';
     $submitAs = $field['submit_as'] ?? $fieldName;
     $locationMode = $field['location_mode'] ?? 'autocomplete';
     $defaultValue = $field['default'] ?? '';
@@ -68,7 +70,7 @@
                             'name' => $submitAs,
                             'airports' => $airportOptions ?? collect(),
                             'selectedValue' => $fieldValue,
-                            'placeholder' => $placeholder ?: 'Select Airport',
+                            'placeholder' => $placeholder ?: $airportSelectPlaceholder,
                             'required' => $required,
                         ])
                     </div>
@@ -127,7 +129,7 @@
                                             'name' => $submitAs,
                                             'airports' => $airportOptions ?? collect(),
                                             'selectedValue' => $isActiveVariant ? $fieldValue : '',
-                                            'placeholder' => 'Select Airport',
+                                            'placeholder' => $airportSelectPlaceholder,
                                             'required' => $required,
                                             'disabled' => !$isActiveVariant,
                                         ])
@@ -196,7 +198,7 @@
                 @include('components.partials.calendar-icon')
             </div>
             <input type="text" name="{{ $submitAs }}" id="{{ $elementId }}"
-                   placeholder="DD/MM/YYYY"
+                   placeholder="{{ $placeholder ?: $datePlaceholder }}"
                    class="custom-datepicker @error($submitAs) is-invalid @enderror"
                    value="{{ $fieldValue ?: date('d/m/Y') }}"
                    {{ $required ? 'required' : '' }}

@@ -174,6 +174,66 @@ class WebsiteSettingSeeder extends Seeder
                 'value' => 'LKR',
             ],
             [
+                'type' => 'booking_submit_inquiry_label',
+                'value' => 'Submit Inquiry',
+            ],
+            [
+                'type' => 'booking_search_submit_label',
+                'value' => 'Search Vehicles',
+            ],
+            [
+                'type' => 'booking_return_trip_toggle_label',
+                'value' => 'Add Return Trip',
+            ],
+            [
+                'type' => 'booking_return_route_label',
+                'value' => 'Return:',
+            ],
+            [
+                'type' => 'booking_return_pickup_placeholder',
+                'value' => 'Pickup',
+            ],
+            [
+                'type' => 'booking_return_dropoff_placeholder',
+                'value' => 'Drop-off',
+            ],
+            [
+                'type' => 'booking_return_date_label',
+                'value' => 'Return Date',
+            ],
+            [
+                'type' => 'booking_return_date_placeholder',
+                'value' => 'DD/MM/YYYY',
+            ],
+            [
+                'type' => 'booking_return_time_label',
+                'value' => 'Return Time',
+            ],
+            [
+                'type' => 'booking_return_discount_label',
+                'value' => 'Same Day Return',
+            ],
+            [
+                'type' => 'booking_return_discount_value',
+                'value' => '50% off return',
+            ],
+            [
+                'type' => 'booking_dropoff_label',
+                'value' => 'Dropoff Location',
+            ],
+            [
+                'type' => 'booking_dropoff_placeholder',
+                'value' => 'Enter your dropoff location',
+            ],
+            [
+                'type' => 'booking_date_placeholder',
+                'value' => 'DD/MM/YYYY',
+            ],
+            [
+                'type' => 'booking_airport_select_placeholder',
+                'value' => 'Select Airport',
+            ],
+            [
                 'type' => 'assignment_enable_qc_stage',
                 'value' => 'false',
             ],

@@ -50,7 +50,8 @@ return [
         'gallery' => 10240,      // 10MB
         'documents' => 20480,    // 20MB
         'avatars' => 2048,       // 2MB
-        'thumbnails' => 1024,    // 1MB
+        'thumbnails' => 10240,   // 10MB
+        'thumbnail' => 10240,    // 10MB
     ],
 
     /*

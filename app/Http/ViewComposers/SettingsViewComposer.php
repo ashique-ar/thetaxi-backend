@@ -454,6 +454,21 @@ class SettingsViewComposer
                     'booking_max_days',
                     'guest_booking_enabled',
                     'booking_base_currency',
+                    'booking_submit_inquiry_label',
+                    'booking_search_submit_label',
+                    'booking_return_trip_toggle_label',
+                    'booking_return_route_label',
+                    'booking_return_pickup_placeholder',
+                    'booking_return_dropoff_placeholder',
+                    'booking_return_date_label',
+                    'booking_return_date_placeholder',
+                    'booking_return_time_label',
+                    'booking_return_discount_label',
+                    'booking_return_discount_value',
+                    'booking_dropoff_label',
+                    'booking_dropoff_placeholder',
+                    'booking_date_placeholder',
+                    'booking_airport_select_placeholder',
                 ];
 
                 $essentialSettings = $this->settingsService->getMultiple($allSettingsKeys);
