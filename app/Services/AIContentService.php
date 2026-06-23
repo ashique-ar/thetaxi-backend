@@ -20,7 +20,7 @@ class AIContentService
 
     public function __construct()
     {
-        $this->apiKey = config('services.openai.api_key') ?: null;
+        $this->apiKey = config('services.openai.api_key') ?? null;
         $this->model = config('services.openai.model', 'gpt-4o');
         $this->organization = config('services.openai.organization');
     }
@@ -60,30 +60,27 @@ class AIContentService
     protected function buildSystemPrompt(string $businessContext, string $targetAudience): string
     {
         return <<<PROMPT
-You are an expert SEO content strategist and copywriter specializing in creating high-ranking, optimized content. Your expertise covers:
+You are an expert SEO content strategist and CMS copywriter for transport, taxi, rent-a-car, airport transfer, wedding car, corporate travel, and tour package businesses. Your job is to turn a page title into publish-ready CMS content that is useful for customers and technically strong for search.
 
-1. **SEO (Search Engine Optimization)**: Keyword optimization, semantic relevance, search intent matching
-2. **AEO (Answer Engine Optimization)**: Structured content for AI assistants, featured snippets, voice search
-3. **SXO (Search Experience Optimization)**: User engagement, readability, conversion-focused content
-4. **GEO (Generative Engine Optimization)**: Content optimized for AI-generated search results and citations
+Your expertise covers:
+1. SEO: keyword optimization, semantic relevance, and search intent matching
+2. AEO: direct answers, featured-snippet structure, and voice-search friendly phrasing
+3. SXO: clear readability, trust signals, and conversion-focused content
+4. GEO: content that AI search experiences can understand, cite, and summarize
 
 Business Context: {$businessContext}
 Target Audience: {$targetAudience}
 
 When generating content, always:
-- Include primary and secondary keywords naturally
-- Structure content for featured snippets (lists, tables, direct answers)
-- Use engaging hooks and clear value propositions
-- Optimize meta descriptions for click-through rates
-- Include semantic keyword variations
-- Create content that answers user questions directly
-- Use headers and structure that search engines prefer
-- Subtly promote the the application and configured branding: mention app features (easy booking, real-time driver tracking, airport transfers), highlight trusted brand voice, and use brand-aligned language
-- Include clear booking CTAs that map to the application's booking flow; provide both web URLs and in-app deep links (e.g., {{ config('app.url') }}/) when relevant
-- Make content shareable and linkable
-- Consider local SEO for Sri Lanka market when relevant
+- Identify one primary keyword from the page title and use it naturally in the meta title, meta description, H1, slug, and opening paragraph
+- Include relevant secondary keywords without stuffing
+- Match the title's search intent and answer what the reader is likely trying to decide
+- Write in active voice with a professional, friendly, trusted transport-service tone
+- Support this application: mention easy booking, reliable transfers, fleet choice, airport transfers, corporate travel, wedding cars, tours, or real-time coordination only when relevant to the title
+- Consider local SEO for Sri Lanka when the title implies a local route, destination, service area, or travel use case
+- Avoid unsupported claims, fake guarantees, keyword stuffing, markdown, and vague filler
 
-Respond ONLY with valid JSON. No markdown code blocks, no explanations outside the JSON.
+Respond ONLY with valid JSON. No markdown code blocks, no comments, and no explanations outside the JSON.
 PROMPT;
     }
 
@@ -94,30 +91,31 @@ PROMPT;
     {
         $wordCount = $options['word_count'] ?? 800;
         $tone = $options['tone'] ?? 'professional yet friendly';
+        $appUrl = config('app.url') ?: '/';
 
         return <<<PROMPT
-Generate comprehensive CMS content for the following:
+Given the webpage title below, generate SEO-optimized CMS content for this application.
 
-**Title**: "{$title}"
-**Content Type**: {$contentType}
-**Word Count**: Approximately {$wordCount} words for the body
-**Tone**: {$tone}
+PAGE TITLE: "{$title}"
+CONTENT TYPE: {$contentType}
+TARGET BODY LENGTH: Approximately {$wordCount} words
+TONE: {$tone}
 
-Return a JSON object with these exact fields:
+Return ONLY a valid JSON object with these exact fields:
 
 {
-    "title": "Optimized title (may slightly improve the original for SEO)",
-    "slug": "url-friendly-slug",
-    "excerpt": "Compelling 150-160 character excerpt for listings and previews",
-    "body": "Full HTML content with proper headings (h2, h3), paragraphs, lists where appropriate. Include FAQ section if relevant. Must be engaging and SEO-optimized. Include an obvious booking CTA that links to the booking_link or an in-app deep link.",
-    "meta_title": "SEO title under 60 characters with primary keyword",
-    "meta_description": "Compelling meta description 150-160 characters with call-to-action",
-    "meta_tags": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5"],
+    "title": "SEO-improved page title",
+    "slug": "keyword-first-url-slug",
+    "excerpt": "Short SEO story paragraph, 120-140 words",
+    "body": "Full HTML CMS body using the generated H1, H2 and H3 structure, story paragraph, helpful sections, and a booking CTA",
+    "meta_title": "Under 60 characters, include primary keyword + brand hint",
+    "meta_description": "150-160 characters exactly, include primary keyword + value proposition + soft CTA",
+    "meta_tags": ["primary keyword", "secondary keyword 1", "secondary keyword 2", "secondary keyword 3", "secondary keyword 4"],
     "suggested_titles": [
         "High-CTR improved title 1",
         "High-CTR improved title 2",
         "High-CTR improved title 3",
-        "Optional localized or question-based title 4"
+        "Localized or question-based title 4"
     ],
     "read_time": "X min read",
     "author": "Editorial Team",
@@ -130,18 +128,28 @@ Return a JSON object with these exact fields:
     "suggested_internal_links": ["Related topic 1", "Related topic 2"],
     "primary_keyword": "main target keyword",
     "secondary_keywords": ["secondary keyword 1", "secondary keyword 2", "secondary keyword 3"],
-    "booking_link": "URL or deep link for booking (e.g., {{ config('app.url') }}/ or app://book)",
-    "booking_cta_html": "Small HTML snippet for a booking CTA (e.g., <a href=\"{{ config('app.url') }}/\" class=\"btn btn-primary\">Book your ride</a>)",
-    "application_links": ["{{ config('app.url') }}/"]
+    "h1": "Rephrased H1 that keeps the primary keyword but does not mirror the title word for word",
+    "h2h4": ["H2: ...", "H3: ...", "H3: ...", "H2: ...", "H3: ..."],
+    "breadcrumb": "Short Label",
+    "story": "Short SEO-optimized story paragraph, 120-140 words",
+    "booking_link": "{$appUrl}/",
+    "booking_cta_html": "Small HTML snippet for a booking CTA",
+    "application_links": ["{$appUrl}/"]
 }
 
 Important:
-- The body should be well-structured HTML with semantic tags
-- Include a compelling introduction that addresses user intent and subtly highlights the application features and branding
-- Add a clear conclusion with a strong booking call-to-action that points to the booking_link (both web URL and in-app deep link if possible)
-- Naturally incorporate keywords without stuffing
-- Make content valuable for both users and search engines
-- Include structured data hints for FAQ if applicable
+- meta_title must be under 60 characters and include the primary keyword plus a subtle brand hint
+- meta_description must be 150-160 characters exactly and include the primary keyword, a value proposition, and a soft CTA
+- title should be an SEO-improved version of the page title
+- h1 must rephrase the page title slightly while keeping the primary keyword
+- h2h4 must contain exactly 5 heading strings logically derived from the title's search intent, using this pattern: H2, H3, H3, H2, H3
+- slug must be lowercase, hyphenated, keyword-first, under 75 characters, and must not include a leading slash.
+- breadcrumb must be 1-3 words max, sentence case
+- story must be 120-140 words, one paragraph, SEO-friendly, active voice, reader-focused, natural primary keyword use, and end with a soft call to action
+- excerpt must reuse the story or a close 120-140 word variant
+- body must be valid HTML, start with <h1>, include the story paragraph immediately after the H1, then include the h2h4 headings with useful supporting paragraphs and an unobtrusive booking CTA
+- Do not use markdown, backticks, bullet-only content, placeholder text, or generic claims
+- Keep booking links aligned with this application URL: {$appUrl}/
 PROMPT;
     }
 
@@ -199,11 +207,14 @@ PROMPT;
             throw new \Exception('Failed to parse AI response as JSON');
         }
 
+        $slug = ltrim((string) ($data['slug'] ?? Str::slug($originalTitle)), '/');
+        $story = $data['story'] ?? '';
+
         // Ensure all required fields exist with defaults
         return [
             'title' => $data['title'] ?? $originalTitle,
-            'slug' => $data['slug'] ?? Str::slug($originalTitle),
-            'excerpt' => $data['excerpt'] ?? '',
+            'slug' => $slug ?: Str::slug($originalTitle),
+            'excerpt' => $data['excerpt'] ?? $story,
             'body' => $data['body'] ?? '',
             'meta_title' => $data['meta_title'] ?? Str::limit($originalTitle, 60),
             'meta_description' => $data['meta_description'] ?? '',
@@ -212,6 +223,10 @@ PROMPT;
             'read_time' => $data['read_time'] ?? '5 min read',
             'author' => $data['author'] ?? 'Editorial Team',
             'custom_fields' => [
+                'h1' => $data['h1'] ?? '',
+                'h2h4' => $data['h2h4'] ?? [],
+                'breadcrumb' => $data['breadcrumb'] ?? '',
+                'story' => $story,
                 'faq_schema' => $data['faq_schema'] ?? [],
                 'seo_score_tips' => $data['seo_score_tips'] ?? [],
                 'suggested_internal_links' => $data['suggested_internal_links'] ?? [],
