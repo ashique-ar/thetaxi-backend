@@ -31,17 +31,70 @@
         }
 
         .article-page {
-            padding: 60px 0;
+            padding: 72px 0 86px;
+            background:
+                linear-gradient(180deg, rgba(248, 250, 252, 0.95) 0%, rgba(255, 255, 255, 1) 42%),
+                #fff;
         }
 
         .cms-article-page {
             padding-top: 110px;
         }
 
+        .cms-article-main {
+            background: #fff;
+            border: 1px solid rgba(15, 23, 42, 0.08);
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
+        }
+
+        .cms-article-title {
+            max-width: 880px;
+            margin: 0 0 12px;
+            color: #111827;
+            font-size: clamp(2rem, 3vw, 3.15rem);
+            line-height: 1.08;
+            font-weight: 800;
+            letter-spacing: 0;
+        }
+
+        .article-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 24px;
+            color: #64748b;
+        }
+
+        .article-meta small {
+            display: inline-flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+            font-size: 0.85rem;
+            line-height: 1.4;
+        }
+
         .article-image img {
             width: 100%;
             height: auto;
-            border-radius: 10px;
+            max-height: 560px;
+            object-fit: cover;
+            border-radius: 14px;
+            box-shadow: 0 16px 40px rgba(15, 23, 42, 0.16);
+        }
+
+        .cms-article-page .lead {
+            margin: 28px 0;
+            padding: 22px 24px;
+            border-left: 4px solid var(--primary-color1, #BF2629);
+            border-radius: 0 12px 12px 0;
+            background: #fff7f7;
+            color: #4b5563 !important;
+            font-size: 1.1rem;
+            line-height: 1.75;
         }
 
         .reading-progress {
@@ -62,16 +115,31 @@
 
         .sidebar-widget {
             background: #fff;
-            padding: 18px;
-            border-radius: 8px;
-            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.06);
+            padding: 20px;
+            border: 1px solid rgba(15, 23, 42, 0.08);
+            border-radius: 14px;
+            box-shadow: 0 12px 32px rgba(15, 23, 42, 0.07);
             margin-bottom: 20px;
+        }
+
+        .sidebar-widget h6 {
+            margin-bottom: 16px !important;
+            color: #111827;
+            font-size: 0.95rem;
+            font-weight: 800;
         }
 
         .related-item {
             display: flex;
             gap: 12px;
-            margin-bottom: 12px;
+            padding: 10px 0;
+            margin-bottom: 0;
+            border-bottom: 1px solid #eef2f7;
+        }
+
+        .related-item:last-child {
+            border-bottom: 0;
+            padding-bottom: 0;
         }
 
         .related-item img {
@@ -85,11 +153,18 @@
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            width: 38px;
-            height: 38px;
-            border-radius: 6px;
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
             margin-right: 8px;
             color: #fff;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .share-btns a:hover {
+            color: #fff;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 18px rgba(15, 23, 42, 0.18);
         }
 
         .share-btns a.facebook {
@@ -118,6 +193,9 @@
 
         /* Preserve CMS-authored whitespace while keeping long content inside the article column. */
         .content-body {
+            color: #374151;
+            font-size: 1.02rem;
+            line-height: 1.86;
             word-wrap: break-word !important;
             overflow-wrap: anywhere !important;
             word-break: break-word !important;
@@ -125,21 +203,90 @@
         }
 
         .content-body p,
-        .content-body li,
-        .content-body div {
+        .content-body li {
             white-space: pre-wrap;
+        }
+
+        .content-body h1,
+        .content-body h2,
+        .content-body h3,
+        .content-body h4,
+        .content-body h5,
+        .content-body h6 {
+            margin: 34px 0 14px;
+            color: #111827;
+            font-weight: 800;
+            line-height: 1.25;
+            letter-spacing: 0;
+        }
+
+        .content-body h1 {
+            font-size: clamp(1.75rem, 2.4vw, 2.45rem);
+        }
+
+        .content-body>h1:first-child {
+            display: none;
+        }
+
+        .content-body h2 {
+            position: relative;
+            padding-top: 8px;
+            font-size: clamp(1.45rem, 2vw, 1.9rem);
+        }
+
+        .content-body h2::before {
+            content: "";
+            display: block;
+            width: 54px;
+            height: 4px;
+            margin-bottom: 14px;
+            border-radius: 999px;
+            background: var(--primary-color1, #BF2629);
+        }
+
+        .content-body h3 {
+            font-size: 1.22rem;
+        }
+
+        .content-body p {
+            margin-bottom: 18px;
+        }
+
+        .content-body ul,
+        .content-body ol {
+            display: grid;
+            gap: 10px;
+            margin: 18px 0 24px;
+            padding-left: 24px;
+        }
+
+        .content-body li::marker {
+            color: var(--primary-color1, #BF2629);
+            font-weight: 800;
+        }
+
+        .content-body a {
+            color: var(--primary-color1, #BF2629);
+            font-weight: 700;
+            text-decoration: underline;
+            text-underline-offset: 3px;
         }
 
         .content-body img {
             max-width: 100% !important;
             height: auto !important;
             display: block;
-            margin: 12px 0;
+            margin: 24px 0;
+            border-radius: 12px;
         }
 
         .cms-booking-section {
-            margin-top: 48px;
-            padding-top: 8px;
+            margin-top: 58px;
+            padding: 28px 28px 10px;
+            border: 1px solid rgba(15, 23, 42, 0.08);
+            border-radius: 18px;
+            background: #fff;
+            box-shadow: 0 22px 60px rgba(15, 23, 42, 0.12);
         }
 
         .cms-booking-header {
@@ -159,15 +306,37 @@
         }
 
         @media (max-width:991px) {
+            .cms-article-main {
+                padding: 22px;
+            }
+
             .article-sidebar {
                 position: static;
                 top: auto;
+                margin-top: 28px;
             }
         }
 
         @media (max-width: 1199px) {
             .cms-article-page {
                 padding-top: 90px;
+            }
+        }
+
+        @media (max-width: 575px) {
+            .article-page {
+                padding-bottom: 58px;
+            }
+
+            .cms-article-main,
+            .cms-booking-section {
+                padding: 18px;
+                border-radius: 14px;
+            }
+
+            .cms-article-page .lead {
+                padding: 18px;
+                font-size: 1rem;
             }
         }
     </style>
@@ -181,9 +350,10 @@
         <div class="container">
             <div class="row">
                 <main class="col-xl-8 col-lg-8">
-                    <h1>{{ $content->title }}</h1>
-                    <div class="article-meta mt-2">
-                        <small>
+                    <article class="cms-article-main mb-4" data-aos="fade-up">
+                        <h1 class="cms-article-title">{{ $content->title }}</h1>
+                        <div class="article-meta mt-2">
+                            <small>
                             <i class="bi bi-calendar3"></i>
                             {{ $content->published_at ? $content->published_at->format('F d, Y') : $content->created_at->format('F d, Y') }}
                             &nbsp; • &nbsp;
@@ -192,9 +362,8 @@
                             @if (isset($content->custom_fields['read_time']))
                                 &nbsp; • &nbsp; {{ $content->custom_fields['read_time'] }}
                             @endif
-                        </small>
-                    </div>
-                    <article class="mb-4" data-aos="fade-up">
+                            </small>
+                        </div>
                         <div class="article-image mb-4">
                             <img src="{{ $content->thumbnail && s3_asset($content->thumbnail) ? s3_asset($content->thumbnail) : s3_asset($settings['cms_content_placeholder_image'] ?? 'assets/img/default-blog.jpg') }}"
                                 alt="{{ $content->title }}">
