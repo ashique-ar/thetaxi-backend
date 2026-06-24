@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Website\WebsiteSetting;
+use App\Models\BusinessSetting;
 use App\Models\Company;
 use Illuminate\Support\Facades\Cache;
 
@@ -13,12 +14,108 @@ class WebsiteSettingsService
     private const DEFAULT_BRAND_NAME = 'Company';
     private const DEFAULT_TAGLINE = 'Your Trusted Transport Partner';
     private const DEFAULT_LOGO = 'assets/img/header-logo.png';
+    private const BUSINESS_OWNED_KEYS = [
+        'site_name',
+        'company_name',
+        'company_email',
+        'company_phone',
+        'company_address',
+        'site_timezone',
+        'default_currency',
+        'portal_title',
+        'portal_logo',
+        'brand_color_primary',
+        'brand_color_primary_light',
+        'brand_color_primary_dark',
+        'brand_color_secondary',
+        'brand_color_secondary_light',
+        'brand_color_secondary_dark',
+        'brand_color_accent',
+        'brand_color_accent_light',
+        'brand_color_accent_dark',
+        'portal_theme',
+        'portal_scheme',
+        'portal_sidebar_appearance',
+        'portal_sidebar_style',
+        'booking_base_currency',
+        'booking_advance_hours',
+        'booking_max_days',
+        'cancellation_allowed',
+        'cancellation_hours',
+        'auto_dispatch_enabled',
+        'include_garage_distance_in_pricing',
+        'feature_corporate_management_enabled',
+        'feature_vehicle_return_management_enabled',
+        'assignment_enable_qc_stage',
+        'assignment_enable_maintenance_stage',
+        'service_fee_enabled',
+        'service_fee_type',
+        'service_fee_amount',
+        'service_fee_min_amount',
+        'service_fee_max_amount',
+        'tax_enabled',
+        'tax_rate',
+        'tax_label',
+        'tax_description',
+        'vat_enabled',
+        'vat_rate',
+        'vat_label',
+        'vat_description',
+        'vat_applies_to_service_fee',
+        'driver_mobile_latest_version',
+        'driver_mobile_mandatory_update',
+        'driver_mobile_update_message',
+        'ssl_force',
+        'security_headers_enabled',
+        'content_security_policy',
+        'rate_limiting_enabled',
+        'rate_limit_per_minute',
+        'maintenance_mode',
+        'maintenance_message',
+        'mail_from_name',
+        'mail_from_address',
+        'booking_confirmation_enabled',
+        'booking_reminder_enabled',
+        'contact_form_notification',
+        'email_footer_text',
+    ];
+    private const CATEGORY_METHODS = [
+        'general' => 'getGeneralSettings',
+        'homepage' => 'getHomepageSettings',
+        'header' => 'getHeaderSettings',
+        'footer' => 'getFooterSettings',
+        'about' => 'getAboutPageSettings',
+        'faq' => 'getFaqPageSettings',
+        'corporate' => 'getCorporateSettings',
+        'pointToPoint' => 'getPointToPointSettings',
+        'point-to-point' => 'getPointToPointSettings',
+        'seo' => 'getSeoSettings',
+        'social_media' => 'getSocialMediaSettings',
+        'social-media' => 'getSocialMediaSettings',
+        'contact' => 'getContactPageSettings',
+        'payment' => 'getPaymentSettings',
+        'booking' => 'getBookingSettings',
+        'driverMobile' => 'getDriverMobileSettings',
+        'driver-mobile' => 'getDriverMobileSettings',
+        'security' => 'getSecuritySettings',
+        'email' => 'getEmailSettings',
+        'sms' => 'getSmsSettings',
+        'appearance' => 'getAppearanceSettings',
+        'branding' => 'getBrandingSettings',
+    ];
 
     /**
      * Get a setting value with caching
      */
     public function get(string $type, $default = null)
     {
+        if (in_array($type, self::BUSINESS_OWNED_KEYS, true)) {
+            $businessSetting = BusinessSetting::query()->where('type', $type)->first();
+            if ($businessSetting) {
+                return $businessSetting->value;
+            }
+        }
+
         $companyId = $this->resolveCurrentCompanyId();
         $cacheKey = self::CACHE_PREFIX . ($companyId ?: 'global') . '_' . $type;
 
@@ -77,6 +174,15 @@ class WebsiteSettingsService
             Cache::putMany($valuesToCache, self::CACHE_DURATION);
         }
 
+        $businessValues = BusinessSetting::query()
+            ->whereIn('type', array_values(array_intersect($types, self::BUSINESS_OWNED_KEYS)))
+            ->pluck('value', 'type')
+            ->all();
+
+        foreach ($businessValues as $type => $value) {
+            $result[$type] = $value;
+        }
+
         return $result;
     }
 
@@ -105,6 +211,7 @@ class WebsiteSettingsService
             'featured_vehicles_description',
             'featured_vehicles_button_text',
             'vehicles_view_all_text',
+            'features_section_title',
 
             // Feature Section - Text, Icons & Vectors
             'feature_1_title',
@@ -340,6 +447,7 @@ class WebsiteSettingsService
             'about_why_travel_title',
             'about_why_travel_description',
             'about_partners_title',
+            'partners_section_title',
 
             // New dynamic content arrays for About page
             'about_services',            // JSON array of service items {title,description,icon}
@@ -419,6 +527,9 @@ class WebsiteSettingsService
             'contact_map_zoom',
             'contact_map_title',
             'contact_map_embed_url',
+            'contact_hero_image',
+            'contact_map_image',
+            'emergency_contact',
 
             // Breadcrumb
             'contact_breadcrumb_image',
@@ -575,6 +686,7 @@ class WebsiteSettingsService
         }
         Cache::forget('global_settings_flattened');
         Cache::forget('global_settings_flattened_global');
+        Cache::forget('active_theme_setting');
         if ($companyId) {
             Cache::forget('global_settings_flattened_' . $companyId);
         }
@@ -585,11 +697,17 @@ class WebsiteSettingsService
      */
     public function clearAllCache(): void
     {
-        $pattern = self::CACHE_PREFIX . '*';
-        $keys = Cache::getRedis()->keys($pattern);
+        Cache::forget('global_settings_flattened');
+        Cache::forget('global_settings_flattened_global');
+        Cache::forget('active_theme_setting');
 
-        if (!empty($keys)) {
-            Cache::getRedis()->del($keys);
+        if (method_exists(Cache::getStore(), 'getRedis')) {
+            $pattern = self::CACHE_PREFIX . '*';
+            $keys = Cache::getRedis()->keys($pattern);
+
+            if (!empty($keys)) {
+                Cache::getRedis()->del($keys);
+            }
         }
     }
 
@@ -1013,10 +1131,13 @@ class WebsiteSettingsService
             'secondary_color',
             'tertiary_color',
             'logo_header',
+            'logo_header_alt',
             'logo_header_alt_text',
             'logo_footer',
+            'logo_footer_alt',
             'logo_footer_alt_text',
             'logo_mobile',
+            'logo_mobile_alt',
             'logo_mobile_alt_text',
             'favicon',
             'favicon_url',
@@ -1035,13 +1156,18 @@ class WebsiteSettingsService
      */
     public function getCategorySettings(string $category): array
     {
-        $method = 'get' . ucfirst($category) . 'Settings';
+        $method = self::CATEGORY_METHODS[$category] ?? null;
 
-        if (method_exists($this, $method)) {
+        if ($method && method_exists($this, $method)) {
             return $this->$method();
         }
 
         throw new \InvalidArgumentException("Invalid settings category: {$category}");
+    }
+
+    public function getCategoryKeys(string $category): array
+    {
+        return array_keys($this->getCategorySettings($category));
     }
 
     /**
@@ -1049,7 +1175,13 @@ class WebsiteSettingsService
      */
     public function updateCategorySettings(string $category, array $settings): void
     {
+        $validSettings = array_flip($this->getCategoryKeys($category));
+
         foreach ($settings as $type => $value) {
+            if (!isset($validSettings[$type])) {
+                continue;
+            }
+
             $this->set($type, $value);
         }
     }
@@ -1227,15 +1359,15 @@ class WebsiteSettingsService
 
     public function resolveCompanyId(): ?string
     {
-        return null;
+        return $this->resolveCurrentCompanyId();
     }
 
     /**
      * Get all settings organized by categories
      */
-    public function getAllCategorizedSettings(): array
+    public function getAllCategorizedSettings(?array $categories = null): array
     {
-        return [
+        $settings = [
             'general' => $this->getGeneralSettings(),
             'homepage' => $this->getHomepageSettings(),
             'header' => $this->getHeaderSettings(),
@@ -1256,5 +1388,11 @@ class WebsiteSettingsService
             'appearance' => $this->getAppearanceSettings(),
             'branding' => $this->getBrandingSettings(),
         ];
+
+        if ($categories === null) {
+            return $settings;
+        }
+
+        return array_intersect_key($settings, array_flip($categories));
     }
 }

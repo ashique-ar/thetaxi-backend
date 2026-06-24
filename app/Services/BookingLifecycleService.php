@@ -625,6 +625,7 @@ class BookingLifecycleService
     {
         return DB::transaction(function () use ($bookingId, $returnData) {
             $booking = Booking::findOrFail($bookingId);
+            $this->assertReturnStageAvailable($booking);
 
             if ($booking->dispatch) {
                 $booking->dispatch->update([
@@ -648,6 +649,7 @@ class BookingLifecycleService
     {
         return DB::transaction(function () use ($bookingId, $returnData) {
             $booking = Booking::with(['dispatch', 'bookingItems'])->findOrFail($bookingId);
+            $this->assertReturnStageAvailable($booking);
             $context = $this->resolveLifecycleContext($booking, $returnData['booking_item_id'] ?? null);
             $dispatch = $booking->dispatch;
             $fromStatus = $booking->getLifecycleStatus();
@@ -775,6 +777,7 @@ class BookingLifecycleService
     {
         return DB::transaction(function () use ($bookingId, $inspectorId, $bookingItemId) {
             $booking = Booking::with(['dispatch', 'bookingItems'])->findOrFail($bookingId);
+            $this->assertQcStageAvailable($booking);
             $context = $this->resolveLifecycleContext($booking, $bookingItemId);
             $vehicleId = $booking->dispatch?->vehicle_id ?: $context['vehicle_id'];
             if (!$vehicleId) {
@@ -809,6 +812,7 @@ class BookingLifecycleService
     {
         return DB::transaction(function () use ($bookingId, $inspectionData, $bookingItemId) {
             $booking = Booking::findOrFail($bookingId);
+            $this->assertQcStageAvailable($booking);
             $this->resolveLifecycleContext($booking, $bookingItemId);
             $qc = $booking->qc;
 
@@ -852,6 +856,7 @@ class BookingLifecycleService
     {
         return DB::transaction(function () use ($bookingId, $repairData, $bookingItemId) {
             $booking = Booking::findOrFail($bookingId);
+            $this->assertQcStageAvailable($booking);
             $this->resolveLifecycleContext($booking, $bookingItemId);
             $qc = $booking->qc;
 
@@ -885,12 +890,79 @@ class BookingLifecycleService
     public function completeBooking(string $bookingId, array $completionData = [], ?string $bookingItemId = null): Booking
     {
         return DB::transaction(function () use ($bookingId, $completionData, $bookingItemId) {
-            $booking = Booking::findOrFail($bookingId);
-            $this->resolveLifecycleContext($booking, $bookingItemId);
+            $booking = Booking::with('dispatch')->findOrFail($bookingId);
+            $context = $this->resolveLifecycleContext($booking, $bookingItemId);
+            $workflowSettings = $this->getLifecycleWorkflowSettings();
+            $fromStatus = $booking->getLifecycleStatus();
+            $actorUserId = Auth::id()
+                ?? $booking->updated_user_id
+                ?? $booking->created_user_id
+                ?? $booking->dispatch?->dispatched_by;
 
-            $booking->transitionToStatus(BookingLifecycleStatus::COMPLETED, Auth::id(), $completionData);
+            if (!$actorUserId) {
+                throw new \Exception('Authenticated user is required to complete the booking');
+            }
 
-            $this->logLifecycleTransition($booking, BookingLifecycleStatus::QC_COMPLETED, BookingLifecycleStatus::COMPLETED, $completionData);
+            $canSkipReturn = !($workflowSettings['enable_return_stage'] ?? false)
+                && in_array($fromStatus, [
+                    BookingLifecycleStatus::ONGOING_ACTIVE,
+                    BookingLifecycleStatus::ONGOING_REPLACEMENT_NEEDED,
+                    BookingLifecycleStatus::ONGOING_BREAKDOWN,
+                ], true);
+            $canSkipQc = !($workflowSettings['enable_qc_stage'] ?? false)
+                && in_array($fromStatus, [
+                    BookingLifecycleStatus::RETURN_COMPLETED,
+                    BookingLifecycleStatus::RETURN_LATE,
+                ], true);
+
+            if ($canSkipReturn && $booking->dispatch) {
+                $booking->dispatch->markReturned((string) $actorUserId, [
+                    'actual_return_time' => now(),
+                    'notes' => 'Trip completed without return management.',
+                    'completed_by_driver' => true,
+                ]);
+            }
+
+            $transitioned = $booking->transitionToStatus(
+                BookingLifecycleStatus::COMPLETED,
+                (string) $actorUserId,
+                $completionData
+            );
+
+            if (!$transitioned && ($canSkipReturn || $canSkipQc)) {
+                $booking->update([
+                    'status' => 'completed',
+                    'completed_at' => now(),
+                    'updated_user_id' => $actorUserId,
+                    'workflow_data' => array_merge(
+                        is_array($booking->workflow_data) ? $booking->workflow_data : [],
+                        $completionData,
+                        [
+                            'return_skipped' => $canSkipReturn,
+                            'qc_skipped' => $canSkipQc || $canSkipReturn,
+                            'completed_via' => $canSkipReturn ? 'direct_trip_completion' : 'return_processing',
+                            'completed_at' => now()->toIso8601String(),
+                        ]
+                    ),
+                ]);
+
+                $vehicleId = $booking->dispatch?->vehicle_id ?: $context['vehicle_id'];
+                if ($vehicleId) {
+                    $this->makeVehicleAvailable($vehicleId);
+                }
+            } elseif (!$transitioned) {
+                throw new \Exception('Booking cannot be completed from its current lifecycle status');
+            }
+
+            $this->logLifecycleTransition(
+                $booking,
+                $fromStatus,
+                BookingLifecycleStatus::COMPLETED,
+                array_merge($completionData, [
+                    'return_skipped' => $canSkipReturn,
+                    'qc_skipped' => $canSkipQc || $canSkipReturn,
+                ])
+            );
 
             // Generate and email invoice on completion
             try {
@@ -965,19 +1037,46 @@ class BookingLifecycleService
 
     private function getLifecycleWorkflowSettings(): array
     {
+        $enableReturn = $this->normalizeSettingBoolean(
+            WebsiteSetting::getValue('feature_vehicle_return_management_enabled', 'false'),
+            false
+        );
         $enableQc = $this->normalizeSettingBoolean(
             WebsiteSetting::getValue('assignment_enable_qc_stage', 'false'),
             false
-        );
+        ) && $enableReturn;
         $enableMaintenance = $this->normalizeSettingBoolean(
             WebsiteSetting::getValue('assignment_enable_maintenance_stage', 'false'),
             false
         );
 
         return [
+            'enable_return_stage' => $enableReturn,
             'enable_qc_stage' => $enableQc,
             'enable_maintenance_stage' => $enableMaintenance,
         ];
+    }
+
+    private function assertReturnStageAvailable(Booking $booking): void
+    {
+        $settings = $this->getLifecycleWorkflowSettings();
+        if (
+            !($settings['enable_return_stage'] ?? false)
+            && $booking->getLifecycleStatus()->getStage() !== 'return'
+        ) {
+            throw new \Exception('Vehicle return management is disabled in booking settings');
+        }
+    }
+
+    private function assertQcStageAvailable(Booking $booking): void
+    {
+        $settings = $this->getLifecycleWorkflowSettings();
+        if (
+            !($settings['enable_qc_stage'] ?? false)
+            && $booking->getLifecycleStatus()->getStage() !== 'qc_repair'
+        ) {
+            throw new \Exception('QC management is disabled in booking settings');
+        }
     }
 
     private function normalizeSettingBoolean(mixed $value, bool $default = false): bool
@@ -1112,9 +1211,40 @@ class BookingLifecycleService
             $approvalReasonLabels = ['Manager approval required'];
         }
 
+        $workflowSettings = $this->getLifecycleWorkflowSettings();
         $currentStatus = $booking->getLifecycleStatus();
         $nextActions = $booking->getNextActions();
-        $workflowSettings = $this->getLifecycleWorkflowSettings();
+        $currentStage = $currentStatus->getStage();
+
+        // Do not strand bookings already inside an optional stage when settings change.
+        if ($currentStage === 'return') {
+            $workflowSettings['enable_return_stage'] = true;
+        } elseif ($currentStage === 'qc_repair') {
+            $workflowSettings['enable_return_stage'] = true;
+            $workflowSettings['enable_qc_stage'] = true;
+        }
+
+        if (
+            $currentStatus === BookingLifecycleStatus::ONGOING_ACTIVE
+            && !($workflowSettings['enable_return_stage'] ?? false)
+        ) {
+            $nextActions = [[
+                'status' => BookingLifecycleStatus::COMPLETED->value,
+                'display_name' => BookingLifecycleStatus::COMPLETED->getDisplayName(),
+                'action' => 'Complete Trip',
+                'color' => BookingLifecycleStatus::COMPLETED->getColor(),
+            ]];
+        } elseif (
+            in_array($currentStatus, [BookingLifecycleStatus::RETURN_COMPLETED, BookingLifecycleStatus::RETURN_LATE], true)
+            && !($workflowSettings['enable_qc_stage'] ?? false)
+        ) {
+            $nextActions = [[
+                'status' => BookingLifecycleStatus::COMPLETED->value,
+                'display_name' => BookingLifecycleStatus::COMPLETED->getDisplayName(),
+                'action' => 'Complete Booking',
+                'color' => BookingLifecycleStatus::COMPLETED->getColor(),
+            ]];
+        }
 
         return [
             'booking' => $booking,
@@ -1128,10 +1258,10 @@ class BookingLifecycleService
                 'label' => $currentStatus->getDisplayName(),
                 'color' => $currentStatus->getColor(),
                 'icon' => $this->getStatusIcon($currentStatus),
-                'primaryAction' => $this->getPrimaryActionText($currentStatus),
+                'primaryAction' => $this->getPrimaryActionText($currentStatus, $workflowSettings),
             ],
             'next_actions' => $nextActions,
-            'stage_progress' => $this->getStageProgress($booking),
+            'stage_progress' => $this->getStageProgress($booking, $workflowSettings),
             'timeline' => $this->getLifecycleTimeline($booking),
             'workflow_settings' => $workflowSettings,
             'approval_context' => [
@@ -1147,7 +1277,7 @@ class BookingLifecycleService
     /**
      * Get stage progress for UI
      */
-    private function getStageProgress(Booking $booking): array
+    private function getStageProgress(Booking $booking, array $workflowSettings): array
     {
         $currentStatus = $booking->getLifecycleStatus();
         $stages = [
@@ -1155,10 +1285,14 @@ class BookingLifecycleService
             'booking' => ['completed' => false, 'current' => false],
             'allocation_dispatch' => ['completed' => false, 'current' => false],
             'ongoing' => ['completed' => false, 'current' => false],
-            'return' => ['completed' => false, 'current' => false],
-            'qc_repair' => ['completed' => false, 'current' => false],
-            'final' => ['completed' => false, 'current' => false],
         ];
+        if ($workflowSettings['enable_return_stage'] ?? false) {
+            $stages['return'] = ['completed' => false, 'current' => false];
+        }
+        if ($workflowSettings['enable_qc_stage'] ?? false) {
+            $stages['qc_repair'] = ['completed' => false, 'current' => false];
+        }
+        $stages['final'] = ['completed' => false, 'current' => false];
 
         $currentStage = $currentStatus->getStage();
         $stageOrder = array_keys($stages);
@@ -1538,8 +1672,27 @@ class BookingLifecycleService
     /**
      * Get primary action text for current status
      */
-    private function getPrimaryActionText(BookingLifecycleStatus $status): string
+    private function getPrimaryActionText(
+        BookingLifecycleStatus $status,
+        ?array $workflowSettings = null
+    ): string
     {
+        $workflowSettings ??= $this->getLifecycleWorkflowSettings();
+
+        if (
+            $status === BookingLifecycleStatus::ONGOING_ACTIVE
+            && !($workflowSettings['enable_return_stage'] ?? false)
+        ) {
+            return 'Complete Trip';
+        }
+
+        if (
+            in_array($status, [BookingLifecycleStatus::RETURN_COMPLETED, BookingLifecycleStatus::RETURN_LATE], true)
+            && !($workflowSettings['enable_qc_stage'] ?? false)
+        ) {
+            return 'Complete Booking';
+        }
+
         return match ($status) {
             BookingLifecycleStatus::INQUIRY => 'Qualify Inquiry',
             BookingLifecycleStatus::INQUIRY_QUALIFIED => 'Convert to Booking',

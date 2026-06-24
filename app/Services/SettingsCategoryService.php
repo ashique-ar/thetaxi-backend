@@ -770,7 +770,7 @@ class SettingsCategoryService
                 'assignment_enable_qc_stage' => [
                     'label' => 'Enable QC Stage in Assignment Flow',
                     'type' => 'toggle',
-                    'description' => 'When enabled, Assignment Management includes the QC/Inspection stage after return.'
+                    'description' => 'When enabled, Assignment Management includes QC/Inspection after return. Requires Vehicle Return Management.'
                 ],
                 'assignment_enable_maintenance_stage' => [
                     'label' => 'Enable Maintenance Stage in Assignment Flow',
@@ -812,7 +812,7 @@ class SettingsCategoryService
                 'feature_vehicle_return_management_enabled' => [
                     'label' => 'Vehicle Return Management',
                     'type' => 'toggle',
-                    'description' => 'Enable hire return, vehicle inspection, post-return availability, and return workflow screens. Disabled by default.'
+                    'description' => 'Enable rental return processing and post-return workflows. Leave disabled for taxi or trip-based businesses that complete directly after service. Disabled by default.'
                 ]
             ]
         ];

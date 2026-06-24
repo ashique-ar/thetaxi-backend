@@ -22,9 +22,31 @@ class WebsiteSettingController extends Controller
     public function __construct(WebsiteSettingsService $settingsService)
     {
         $this->settingsService = $settingsService;
-        $this->middleware('permission:website-settings.view')->only(['index', 'show', 'getByKey']);
+        $this->middleware('permission:website-settings.view')->only([
+            'index',
+            'show',
+            'getByKey',
+            'homepage',
+            'getCategory',
+            'getAllCategorized',
+            'general',
+            'seo',
+            'socialMedia',
+            'payment',
+            'security',
+            'email',
+            'booking',
+            'driverMobile',
+            'appearance',
+        ]);
         $this->middleware('permission:website-settings.create')->only(['store']);
-        $this->middleware('permission:website-settings.edit')->only(['update', 'updateByKey', 'optimizeClear']);
+        $this->middleware('permission:website-settings.edit')->only([
+            'update',
+            'updateByKey',
+            'updateMultiple',
+            'updateCategory',
+            'optimizeClear',
+        ]);
         $this->middleware('permission:website-settings.delete')->only(['destroy']);
     }
 
@@ -49,6 +71,7 @@ class WebsiteSettingController extends Controller
         $data['company_id'] = $this->settingsService->resolveCurrentCompanyId();
         $data['created_user_id'] = $request->user()->id;
         $setting = WebsiteSetting::create($data);
+        $this->settingsService->clearCache($setting->type, $setting->company_id);
 
         return response()->json([
             'status' => 'success',
@@ -165,7 +188,9 @@ class WebsiteSettingController extends Controller
         $types = [];
         $companyId = $this->settingsService->resolveCurrentCompanyId();
 
-        foreach ($request->settings as $settingData) {
+        $settings = $this->normalizeBookingWorkflowSettingList($request->settings);
+
+        foreach ($settings as $settingData) {
             $setting = WebsiteSetting::updateOrCreate(
                 ['type' => $settingData['type'], 'company_id' => $companyId],
                 [
@@ -242,10 +267,24 @@ class WebsiteSettingController extends Controller
         }
 
         try {
+            $settings = $category === 'booking'
+                ? $this->normalizeBookingWorkflowSettings($request->settings)
+                : $request->settings;
+            $validSettings = array_flip($this->settingsService->getCategoryKeys($category));
+            $invalidSettings = array_values(array_diff(array_keys($settings), array_keys($validSettings)));
+
+            if (!empty($invalidSettings)) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Invalid settings for category: ' . $category,
+                    'errors' => ['settings' => $invalidSettings],
+                ], 422);
+            }
+
             $updatedSettings = [];
             $companyId = $this->settingsService->resolveCurrentCompanyId();
 
-            foreach ($request->settings as $type => $value) {
+            foreach ($settings as $type => $value) {
                 $setting = WebsiteSetting::updateOrCreate(
                     ['type' => $type, 'company_id' => $companyId],
                     [
@@ -274,9 +313,37 @@ class WebsiteSettingController extends Controller
     /**
      * Get all categorized settings
      */
-    public function getAllCategorized(): JsonResponse
+    public function getAllCategorized(Request $request): JsonResponse
     {
-        $settings = $this->settingsService->getAllCategorizedSettings();
+        $categories = match ($request->query('area')) {
+            'website' => [
+                'general',
+                'branding',
+                'homepage',
+                'header',
+                'booking',
+                'footer',
+                'about',
+                'faq',
+                'corporate',
+                'pointToPoint',
+                'seo',
+                'social_media',
+                'contact',
+                'payment',
+                'appearance',
+            ],
+            'application' => [
+                'branding',
+                'booking',
+                'driverMobile',
+                'security',
+                'email',
+            ],
+            default => null,
+        };
+
+        $settings = $this->settingsService->getAllCategorizedSettings($categories);
 
         return response()->json([
             'status' => 'success',
@@ -421,8 +488,7 @@ class WebsiteSettingController extends Controller
     {
         try {
             Artisan::call('optimize:clear');
-
-            // $this->settingsService->clearAllCache();
+            $this->settingsService->clearAllCache();
 
             Log::info('Optimize clear triggered by user: ' . $request->user()->id);
 
@@ -438,5 +504,69 @@ class WebsiteSettingController extends Controller
                 'message' => 'Failed to clear caches'
             ], 500);
         }
+    }
+
+    /**
+     * QC is a post-return stage and cannot be enabled without return management.
+     */
+    private function normalizeBookingWorkflowSettings(array $settings): array
+    {
+        if (
+            array_key_exists('feature_vehicle_return_management_enabled', $settings)
+            && !$this->settingIsEnabled($settings['feature_vehicle_return_management_enabled'])
+        ) {
+            $settings['assignment_enable_qc_stage'] = false;
+        }
+
+        return $settings;
+    }
+
+    private function normalizeBookingWorkflowSettingList(array $settings): array
+    {
+        $returnSetting = collect($settings)->firstWhere(
+            'type',
+            'feature_vehicle_return_management_enabled'
+        );
+
+        if (!$returnSetting || $this->settingIsEnabled($returnSetting['value'] ?? null)) {
+            return $settings;
+        }
+
+        $qcFound = false;
+        foreach ($settings as &$setting) {
+            if (($setting['type'] ?? null) === 'assignment_enable_qc_stage') {
+                $setting['value'] = false;
+                $qcFound = true;
+            }
+        }
+        unset($setting);
+
+        if (!$qcFound) {
+            $settings[] = [
+                'type' => 'assignment_enable_qc_stage',
+                'value' => false,
+            ];
+        }
+
+        return $settings;
+    }
+
+    private function settingIsEnabled(mixed $value): bool
+    {
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if (is_numeric($value)) {
+            return (int) $value === 1;
+        }
+
+        return in_array(strtolower(trim((string) $value)), [
+            '1',
+            'true',
+            'yes',
+            'on',
+            'enabled',
+        ], true);
     }
 }

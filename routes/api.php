@@ -368,6 +368,8 @@ Route::middleware(['auth:api'])->group(function () {
 
         Route::apiResource('countries', CountryController::class);
         Route::apiResource('states', StateController::class);
+        Route::get('business-settings/all/categorized', [BusinessSettingController::class, 'getAllCategorized']);
+        Route::put('business-settings/category/{category}', [BusinessSettingController::class, 'updateCategory']);
         Route::apiResource('business-settings', BusinessSettingController::class);
         Route::apiResource('currencies', CurrencyController::class);
         Route::get('companies/stats', [CompanyController::class, 'stats']);
