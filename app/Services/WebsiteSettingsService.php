@@ -687,6 +687,10 @@ class WebsiteSettingsService
         Cache::forget('global_settings_flattened');
         Cache::forget('global_settings_flattened_global');
         Cache::forget('active_theme_setting');
+        if ($type === 'default_currency') {
+            Cache::forget('display_currencies_for_views');
+            Cache::forget('global_currency_data');
+        }
         if ($companyId) {
             Cache::forget('global_settings_flattened_' . $companyId);
         }
@@ -779,6 +783,7 @@ class WebsiteSettingsService
             'company_email',
             'company_address',
             'company_website',
+            'content_generation_url',
             'site_timezone',
             'default_currency'
         ];

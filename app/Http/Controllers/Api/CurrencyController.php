@@ -52,7 +52,7 @@ class CurrencyController extends Controller
         $data['created_user_id'] = $request->user()->id;
         $currency = Currency::create($data);
 
-        Cache::put('ref.currencies.v', ((int) Cache::get('ref.currencies.v', 0)) + 1, 86400);
+        $this->clearCurrencyCaches();
 
         return response()->json([
             'status' => 'success',
@@ -75,7 +75,7 @@ class CurrencyController extends Controller
         $data['updated_user_id'] = $request->user()->id;
         $currency->update($data);
 
-        Cache::put('ref.currencies.v', ((int) Cache::get('ref.currencies.v', 0)) + 1, 86400);
+        $this->clearCurrencyCaches();
 
         return response()->json([
             'status' => 'success',
@@ -88,11 +88,20 @@ class CurrencyController extends Controller
     {
         $currency->delete();
 
-        Cache::put('ref.currencies.v', ((int) Cache::get('ref.currencies.v', 0)) + 1, 86400);
+        $this->clearCurrencyCaches();
 
         return response()->json([
             'status' => 'success',
             'message' => 'Currency deleted'
         ]);
+    }
+
+    private function clearCurrencyCaches(): void
+    {
+        Cache::put('ref.currencies.v', ((int) Cache::get('ref.currencies.v', 0)) + 1, 86400);
+        Cache::forget('available_currencies');
+        Cache::forget('display_currencies');
+        Cache::forget('display_currencies_for_views');
+        Cache::forget('global_currency_data');
     }
 }

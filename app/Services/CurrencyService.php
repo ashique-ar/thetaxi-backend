@@ -95,7 +95,9 @@ class CurrencyService
      */
     public function getDefaultCurrency(): string
     {
-        return config('app.default_currency', 'LKR');
+        $currency = app(WebsiteSettingsService::class)->get('default_currency', config('app.default_currency', 'LKR'));
+
+        return strtoupper(trim((string) ($currency ?: 'LKR')));
     }
 
     /**

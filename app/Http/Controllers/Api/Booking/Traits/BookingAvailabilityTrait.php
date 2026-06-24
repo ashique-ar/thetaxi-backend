@@ -142,6 +142,9 @@ trait BookingAvailabilityTrait
     {
         try {
             $params = $this->bookingFlowService->normalizeDynamicCalculationParams($request->all());
+            if (array_key_exists('include_unavailable', $params)) {
+                $params['include_unavailable'] = filter_var($params['include_unavailable'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+            }
             $requirements = $this->bookingFlowService->getDynamicCalculationRequirements($params);
             $usesDropoffTime = (bool) ($requirements['uses_dropoff_time'] ?? true);
 

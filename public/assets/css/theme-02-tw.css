@@ -22,6 +22,21 @@
     box-shadow: 0 4px 30px rgba(0, 0, 0, 0.16) !important;
 }
 
+.theme-theme-02:has(.t2-header--solid) {
+    padding-top: 88px;
+}
+
+.theme-theme-02:has(.t2-header--solid) .breadcrumb-section,
+.theme-theme-02:has(.t2-header--solid) .article-page,
+.theme-theme-02:has(.t2-header--solid) .search-page,
+.theme-theme-02:has(.t2-header--solid) .cart-page,
+.theme-theme-02:has(.t2-header--solid) .checkout-page,
+.theme-theme-02:has(.t2-header--solid) .vehicle-details-page,
+.theme-theme-02:has(.t2-header--solid) .service-page-wrapper,
+.theme-theme-02:has(.t2-header--solid) .contact-page {
+    scroll-margin-top: 104px;
+}
+
 .t2-header.header-area.sticky {
     background: var(--primary-color1) !important;
     backdrop-filter: blur(20px) saturate(180%) !important;
@@ -102,6 +117,10 @@
     .t2-header .contact-area .content span,
     .t2-header .contact-area .content a {
         color: #e5e7eb !important;
+    }
+
+    .theme-theme-02:has(.t2-header--solid) {
+        padding-top: 78px;
     }
 }
 

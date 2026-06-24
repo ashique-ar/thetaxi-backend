@@ -5,6 +5,7 @@ namespace App\Services;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use App\Services\WebsiteSettingsService;
 
 /**
  * AI Content Generation Service using OpenAI API
@@ -91,7 +92,7 @@ PROMPT;
     {
         $wordCount = $options['word_count'] ?? 800;
         $tone = $options['tone'] ?? 'professional yet friendly';
-        $appUrl = config('app.url') ?: '/';
+        $appUrl = $this->getContentGenerationUrl();
 
         return <<<PROMPT
 Given the webpage title below, generate SEO-optimized CMS content for this application.
@@ -151,6 +152,23 @@ Important:
 - Do not use markdown, backticks, bullet-only content, placeholder text, or generic claims
 - Keep booking links aligned with this application URL: {$appUrl}/
 PROMPT;
+    }
+
+    protected function getContentGenerationUrl(): string
+    {
+        $settings = app(WebsiteSettingsService::class);
+        $url = $settings->get('content_generation_url')
+            ?: $settings->get('company_website')
+            ?: config('app.url')
+            ?: '/';
+
+        $url = trim((string) $url);
+
+        if ($url !== '/' && !preg_match('/^https?:\/\//i', $url)) {
+            $url = 'https://' . $url;
+        }
+
+        return rtrim($url, '/');
     }
 
     /**
