@@ -264,7 +264,7 @@ Route::middleware(['auth:api'])->group(function () {
 
     Route::middleware(['permission:roles.view'])->group(function () {
         Route::apiResource('roles', RoleController::class);
-    Route::get('roles/{role}/permissions', [RoleController::class, 'permissions']);
+        Route::get('roles/{role}/permissions', [RoleController::class, 'permissions']);
         Route::put('roles/{role}/permissions/sync', [RoleController::class, 'syncPermissions'])->middleware('permission:permissions.manage');
         Route::post('roles/{role}/permissions/apply-template', [RoleController::class, 'applyTemplate'])->middleware('permission:permissions.manage');
         Route::post('roles/{role}/permissions', [RoleController::class, 'assignPermissions'])->middleware('permission:permissions.manage');
@@ -368,8 +368,7 @@ Route::middleware(['auth:api'])->group(function () {
 
         Route::apiResource('countries', CountryController::class);
         Route::apiResource('states', StateController::class);
-        Route::get('business-settings/all/categorized', [BusinessSettingController::class, 'getAllCategorized']);
-        Route::put('business-settings/category/{category}', [BusinessSettingController::class, 'updateCategory']);
+
         Route::apiResource('business-settings', BusinessSettingController::class);
         Route::apiResource('currencies', CurrencyController::class);
         Route::get('companies/stats', [CompanyController::class, 'stats']);
@@ -378,7 +377,12 @@ Route::middleware(['auth:api'])->group(function () {
         // Public CMS routes (no authentication required)
         Route::get('public/cms-contents/published', [CmsContentController::class, 'published'])->name('api.cms-contents.published');
         Route::get('public/{contentTypeSlug}/{contentSlug}', [CmsContentController::class, 'getBySlug'])->name('api.cms-contents.public');
+        
+        Route::get('business-settings/all/categorized', [BusinessSettingController::class, 'getAllCategorized']);
+        Route::put('business-settings/category/{category}', [BusinessSettingController::class, 'updateCategory']);
 
+        Route::get('website-settings/all/categorized', [BusinessSettingController::class, 'getAllCategorized']);
+        Route::put('website-settings/category/{category}', [BusinessSettingController::class, 'updateCategory']);
         Route::post('website-settings/update-multiple', [WebsiteSettingController::class, 'updateMultiple']);
         Route::get('website-settings/homepage/settings', [WebsiteSettingController::class, 'homepage']);
         // Trigger server-side cache clear (optimize:clear) - admin only
@@ -1416,10 +1420,10 @@ Route::middleware(['auth:api'])->group(function () {
         // Corporate Profile
         Route::get('profile', function (\Illuminate\Http\Request $request) {
             $corporate = \App\Models\Corporate\Corporate::findOrFail($request->corporate_id);
-            
+
             return response()->json([
                 'status' => 'success',
-                'data'   => [
+                'data' => [
                     'corporate' => [
                         'id' => $corporate->id,
                         'name' => $corporate->name,
@@ -1507,7 +1511,7 @@ Route::middleware(['auth:api'])->group(function () {
 
             return response()->json([
                 'status' => 'success',
-                'data'   => ['vehicle_groups' => $vehicleGroups],
+                'data' => ['vehicle_groups' => $vehicleGroups],
             ]);
         });
     });
@@ -1530,7 +1534,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('{corporate}/service-types', function (\App\Models\Corporate\Corporate $corporate) {
             $assigned = $corporate->allServiceTypes()
                 ->get()
-                ->mapWithKeys(fn ($serviceType) => [
+                ->mapWithKeys(fn($serviceType) => [
                     $serviceType->id => (bool) $serviceType->pivot->is_active,
                 ]);
 
@@ -1555,14 +1559,16 @@ Route::middleware(['auth:api'])->group(function () {
             ]);
 
             $sync = collect($validated['service_type_ids'])
-                ->mapWithKeys(fn ($id) => [(string) $id => [
-                    'id' => (string) \Illuminate\Support\Str::uuid(),
-                    'is_active' => true,
-                    'created_user_id' => $request->user()?->id,
-                    'updated_user_id' => $request->user()?->id,
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ]])
+                ->mapWithKeys(fn($id) => [
+                    (string) $id => [
+                        'id' => (string) \Illuminate\Support\Str::uuid(),
+                        'is_active' => true,
+                        'created_user_id' => $request->user()?->id,
+                        'updated_user_id' => $request->user()?->id,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]
+                ])
                 ->all();
 
             $corporate->allServiceTypes()->sync($sync);
