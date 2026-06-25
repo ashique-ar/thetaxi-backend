@@ -30,7 +30,12 @@ class PermissionMiddleware
 
         $permissions = explode('|', $this->parsePermissionsToString($permission));
 
-        $hasPermission = app(PermissionEvaluator::class)->userHasAny($user, $permissions);
+        $hasPermission = app(PermissionEvaluator::class)->userHasAnyForRequest(
+            $user,
+            $permissions,
+            $request->header('X-Active-Context-Type'),
+            $request->header('X-Active-Context-Id')
+        );
 
         if (! $hasPermission) {
             throw UnauthorizedException::forPermissions($permissions);
