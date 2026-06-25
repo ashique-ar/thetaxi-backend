@@ -57,12 +57,7 @@ class VehiclePricingCommonRateDefinitionController extends Controller
             }
         }
 
-        if ($request->filled('owner_type')) {
-            $query->where('owner_type', $request->owner_type)
-                ->where('owner_id', $request->owner_id);
-        } elseif ($request->boolean('global_only', false)) {
-            $query->whereNull('owner_type')->whereNull('owner_id');
-        }
+        $query->whereNull('owner_type')->whereNull('owner_id');
 
         if ($request->has('is_active')) {
             $query->where('is_active', $request->boolean('is_active'));
@@ -102,7 +97,8 @@ class VehiclePricingCommonRateDefinitionController extends Controller
             DB::beginTransaction();
 
             $data = $request->validated();
-            $data['owner_id'] = ($data['owner_type'] ?? null) ? ($data['owner_id'] ?? null) : null;
+            $data['owner_type'] = null;
+            $data['owner_id'] = null;
             $data['created_user_id'] = $request->user()->id;
             $data['updated_user_id'] = $request->user()->id;
 
@@ -174,7 +170,8 @@ class VehiclePricingCommonRateDefinitionController extends Controller
             $commonRate = VehiclePricingCommonRateDefinition::findOrFail($id);
 
             $data = $request->validated();
-            $data['owner_id'] = ($data['owner_type'] ?? null) ? ($data['owner_id'] ?? null) : null;
+            $data['owner_type'] = null;
+            $data['owner_id'] = null;
             $data['updated_user_id'] = $request->user()->id;
 
             $commonRate->update($data);

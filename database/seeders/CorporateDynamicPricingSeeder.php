@@ -534,8 +534,8 @@ class CorporateDynamicPricingSeeder extends Seeder
                 'formula' => implode(' + ', $terms),
                 'variables' => json_encode($variables),
                 'conditions' => json_encode([]),
-                'owner_type' => 'corporate',
-                'owner_id' => $corporateId,
+                'owner_type' => null,
+                'owner_id' => null,
                 'priority' => 100,
                 'created_by' => $userId,
                 'updated_by' => $userId,
@@ -610,8 +610,8 @@ class CorporateDynamicPricingSeeder extends Seeder
             $sourceId = $payload['id'];
             $payload['id'] = Uuid::uuid5($targetServiceId, "{$table}:{$sourceId}")->toString();
             $payload['service_type_id'] = $targetServiceId;
-            $payload['owner_type'] = 'corporate';
-            $payload['owner_id'] = $corporateId;
+            $payload['owner_type'] = null;
+            $payload['owner_id'] = null;
             if ($table === 'vehicle_pricing_calculation_definitions') {
                 $payload['status'] = 'active';
             }

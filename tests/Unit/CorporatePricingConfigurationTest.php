@@ -104,6 +104,29 @@ it('generates a calculation from available public pricing inputs when none exist
         ->toContain("'insurance_rate', 'driver_allowance' => 'number_of_days'");
 });
 
+it('keeps definitions common and scopes only vehicle prices per corporate', function () {
+    $source = file_get_contents(
+        base_path('database/seeders/CorporateDynamicPricingSeeder.php')
+    );
+    $cloneDefinitions = Str::between(
+        $source,
+        'private function cloneDefinitions(',
+        'private function cloneVehiclePricing('
+    );
+    $cloneVehiclePricing = Str::between(
+        $source,
+        'private function cloneVehiclePricing(',
+        'private function clonePayload('
+    );
+
+    expect($cloneDefinitions)
+        ->toContain("\$payload['owner_type'] = null")
+        ->toContain("\$payload['owner_id'] = null");
+    expect($cloneVehiclePricing)
+        ->toContain("\$payload['owner_type'] = 'corporate'")
+        ->toContain("\$payload['owner_id'] = \$corporateId");
+});
+
 it('clones each source service form and complete package graph', function () {
     $source = file_get_contents(
         base_path('database/seeders/CorporateDynamicPricingSeeder.php')

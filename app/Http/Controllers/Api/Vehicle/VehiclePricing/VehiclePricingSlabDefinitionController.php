@@ -19,8 +19,6 @@ class VehiclePricingSlabDefinitionController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = VehiclePricingSlabDefinition::withInactive()->with(['serviceType']);
-        $ownerType = $request->input('owner_type');
-        $ownerId = $request->input('owner_id');
 
         // Filter by service type if provided
         if ($request->has('service_type_id')) {
@@ -33,11 +31,7 @@ class VehiclePricingSlabDefinitionController extends Controller
             });
         }
 
-        if ($request->filled('owner_type')) {
-            $query->where('owner_type', $ownerType)->where('owner_id', $ownerId);
-        } elseif ($request->boolean('global_only', false)) {
-            $query->whereNull('owner_type')->whereNull('owner_id');
-        }
+        $query->whereNull('owner_type')->whereNull('owner_id');
 
         // Filter by active status if provided
         if ($request->has('is_active')) {
@@ -59,7 +53,8 @@ class VehiclePricingSlabDefinitionController extends Controller
     public function store(CreateVehiclePricingSlabDefinitionRequest $request): JsonResponse
     {
         $data = $request->validated();
-        $data['owner_id'] = ($data['owner_type'] ?? null) ? ($data['owner_id'] ?? null) : null;
+        $data['owner_type'] = null;
+        $data['owner_id'] = null;
         $slabDefinition = VehiclePricingSlabDefinition::create($data + ['created_user_id' => $request->user()->id]);
 
         return response()->json([
@@ -97,7 +92,8 @@ class VehiclePricingSlabDefinitionController extends Controller
     {
         $slabDefinition = VehiclePricingSlabDefinition::find($id);
         $data = $request->validated();
-        $data['owner_id'] = ($data['owner_type'] ?? null) ? ($data['owner_id'] ?? null) : null;
+        $data['owner_type'] = null;
+        $data['owner_id'] = null;
         $slabDefinition->update($data);
         $slabDefinition->load('serviceType');
         return response()->json([
