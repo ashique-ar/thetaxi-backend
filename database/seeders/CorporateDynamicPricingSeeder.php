@@ -415,6 +415,17 @@ class CorporateDynamicPricingSeeder extends Seeder
             $userId
         );
 
+        if ($calculationMap === []) {
+            $calculationMap = $this->createCalculationFromPricingInputs(
+                $source,
+                $target,
+                $corporateId,
+                $slabMap,
+                $commonRateMap,
+                $userId
+            );
+        }
+
         if ($calculationMap === [] || ($slabMap === [] && $commonRateMap === [])) {
             throw new RuntimeException(
                 "Public service {$source->code} does not contain an active calculation definition with usable pricing inputs."
@@ -441,6 +452,124 @@ class CorporateDynamicPricingSeeder extends Seeder
             $userId,
             false
         );
+    }
+
+    private function createCalculationFromPricingInputs(
+        ServiceType $source,
+        ServiceType $target,
+        string $corporateId,
+        array $slabMap,
+        array $commonRateMap,
+        string $userId
+    ): array {
+        if ($slabMap === [] && $commonRateMap === []) {
+            return [];
+        }
+
+        $terms = [];
+        $variables = [];
+
+        if ($slabMap !== []) {
+            $terms[] = $source->pricing_mode === 'day'
+                ? '(slab_rate * number_of_days)'
+                : 'slab_rate';
+            $variables[] = [
+                'name' => 'slab_rate',
+                'type' => 'slab_rate',
+                'description' => 'Base slab rate',
+                'is_required' => true,
+                'category' => 'base',
+            ];
+            if ($source->pricing_mode === 'day') {
+                $variables[] = [
+                    'name' => 'number_of_days',
+                    'type' => 'duration',
+                    'description' => 'Chargeable rental days',
+                    'is_required' => false,
+                    'default_value' => 1,
+                    'category' => 'duration',
+                ];
+            }
+        }
+
+        $commonRates = DB::table('vehicle_pricing_common_rate_definitions')
+            ->whereIn('id', array_values($commonRateMap))
+            ->get(['id', 'code', 'name', 'common_rate_type']);
+
+        foreach ($commonRates as $rate) {
+            $input = $this->calculationInputForRate((string) $rate->code);
+            $terms[] = $input
+                ? "({$input} * {$rate->code})"
+                : (string) $rate->code;
+            if ($input && !collect($variables)->contains('name', $input)) {
+                $variables[] = [
+                    'name' => $input,
+                    'type' => $this->inputVariableType($input),
+                    'description' => Str::headline($input),
+                    'is_required' => false,
+                    'default_value' => 0,
+                    'category' => 'input',
+                ];
+            }
+            $variables[] = [
+                'name' => $rate->code,
+                'type' => 'common_rate',
+                'description' => $rate->name,
+                'is_required' => false,
+                'default_value' => 0,
+                'category' => 'rate',
+                'source_id' => $rate->id,
+                'common_rate_code' => $rate->code,
+            ];
+        }
+
+        $id = Uuid::uuid5($target->id, 'generated_calculation_definition')->toString();
+        DB::table('vehicle_pricing_calculation_definitions')->updateOrInsert(
+            ['id' => $id],
+            [
+                'name' => "{$target->name} Calculation",
+                'description' => "Generated from active public {$source->code} pricing inputs.",
+                'service_type_id' => $target->id,
+                'status' => 'active',
+                'formula' => implode(' + ', $terms),
+                'variables' => json_encode($variables),
+                'conditions' => json_encode([]),
+                'owner_type' => 'corporate',
+                'owner_id' => $corporateId,
+                'priority' => 100,
+                'created_by' => $userId,
+                'updated_by' => $userId,
+                'created_at' => now(),
+                'updated_at' => now(),
+                'deleted_at' => null,
+            ]
+        );
+
+        return ['generated' => $id];
+    }
+
+    private function calculationInputForRate(string $code): ?string
+    {
+        return match ($code) {
+            'vehicle_delivery_rate_per_km' => 'delivery_distance',
+            'vehicle_pickup_rate_per_km' => 'pickup_distance',
+            'extra_km_rate' => 'extra_km',
+            'extra_hour_rate', 'overtime_rate_per_hour', 'waiting_charge_per_hour' => 'extra_hours',
+            'service_rate_per_km' => 'total_distance',
+            'stop_charge' => 'additional_stops',
+            'insurance_rate', 'driver_allowance' => 'number_of_days',
+            default => null,
+        };
+    }
+
+    private function inputVariableType(string $input): string
+    {
+        return match ($input) {
+            'delivery_distance', 'pickup_distance', 'extra_km', 'total_distance' => 'distance',
+            'extra_hours' => 'duration',
+            'number_of_days' => 'duration',
+            default => 'fixed_value',
+        };
     }
 
     private function cloneDefinitions(

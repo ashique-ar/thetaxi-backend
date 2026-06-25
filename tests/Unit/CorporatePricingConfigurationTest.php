@@ -90,6 +90,20 @@ it('recovers inactive public calculation definitions for the corporate copy', fu
         ->toContain("\$payload['status'] = 'active'");
 });
 
+it('generates a calculation from available public pricing inputs when none exists', function () {
+    $source = file_get_contents(
+        base_path('database/seeders/CorporateDynamicPricingSeeder.php')
+    );
+
+    expect($source)
+        ->toContain('private function createCalculationFromPricingInputs(')
+        ->toContain('private function calculationInputForRate(')
+        ->toContain("\$calculationMap = \$this->createCalculationFromPricingInputs(")
+        ->toContain("'vehicle_delivery_rate_per_km' => 'delivery_distance'")
+        ->toContain("'extra_km_rate' => 'extra_km'")
+        ->toContain("'insurance_rate', 'driver_allowance' => 'number_of_days'");
+});
+
 it('clones each source service form and complete package graph', function () {
     $source = file_get_contents(
         base_path('database/seeders/CorporateDynamicPricingSeeder.php')
