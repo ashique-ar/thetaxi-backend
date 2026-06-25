@@ -158,9 +158,7 @@ class CorporateDynamicPricingSeeder extends Seeder
                 ->where(function ($query) {
                     $query->whereNull('owner_type')->orWhere('owner_type', '');
                 })
-                ->where(function ($query) {
-                    $query->whereNull('owner_id')->orWhere('owner_id', '');
-                })
+                ->whereNull('owner_id')
                 ->first();
 
             if ($source) {
@@ -716,9 +714,7 @@ class CorporateDynamicPricingSeeder extends Seeder
             ->where(function ($query) {
                 $query->whereNull('owner_type')->orWhere('owner_type', '');
             })
-            ->where(function ($query) {
-                $query->whereNull('owner_id')->orWhere('owner_id', '');
-            })
+            ->whereNull('owner_id')
             ->whereNull('deleted_at');
 
         $rows = (clone $baseQuery)
