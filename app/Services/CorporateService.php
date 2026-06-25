@@ -450,7 +450,10 @@ class CorporateService
             $employee->save();
 
             // Also toggle the associated UserContext
-            $userContext = $employee->userContext;
+            $userContext = UserContext::withInactive()
+                ->where('context_type', 'corporate')
+                ->where('context_id', $employee->id)
+                ->first();
             if ($userContext) {
                 $userContext->is_active = $employee->is_active;
                 $userContext->save();
@@ -464,6 +467,26 @@ class CorporateService
             );
 
             return $employee;
+        });
+    }
+
+    public function deleteEmployee(CorporateEmployee $employee): void
+    {
+        DB::transaction(function () use ($employee) {
+            $userContext = UserContext::withInactive()
+                ->where('context_type', 'corporate')
+                ->where('context_id', $employee->id)
+                ->first();
+            if ($userContext) {
+                $userContext->delete();
+            }
+
+            $employee->delete();
+
+            $this->logAudit('delete', 'CorporateEmployee', $employee->id, [
+                'user_id' => $employee->user_id,
+                'corporate_id' => $employee->corporate_id,
+            ]);
         });
     }
 

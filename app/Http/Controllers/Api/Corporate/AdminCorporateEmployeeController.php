@@ -22,7 +22,8 @@ class AdminCorporateEmployeeController extends Controller
 
     public function index(Request $request, Corporate $corporate): JsonResponse
     {
-        $query = CorporateEmployee::where('corporate_id', $corporate->id)
+        $query = CorporateEmployee::withInactive()
+            ->where('corporate_id', $corporate->id)
             ->with(['user', 'department', 'division', 'userContext.roles', 'locations']);
 
         if ($request->filled('search')) {
@@ -74,7 +75,8 @@ class AdminCorporateEmployeeController extends Controller
 
     public function show(Corporate $corporate, string $id): JsonResponse
     {
-        $employee = CorporateEmployee::where('corporate_id', $corporate->id)
+        $employee = CorporateEmployee::withInactive()
+            ->where('corporate_id', $corporate->id)
             ->with(['user', 'department', 'division', 'userContext.roles', 'locations'])
             ->findOrFail($id);
 
@@ -109,7 +111,8 @@ class AdminCorporateEmployeeController extends Controller
             'locations.*.is_active' => ['nullable', 'boolean'],
         ]);
 
-        $employee = CorporateEmployee::where('corporate_id', $corporate->id)
+        $employee = CorporateEmployee::withInactive()
+            ->where('corporate_id', $corporate->id)
             ->findOrFail($id);
 
         $employee = $this->corporateService->updateEmployee($employee, $request->only([
@@ -125,7 +128,8 @@ class AdminCorporateEmployeeController extends Controller
 
     public function activate(Corporate $corporate, string $id): JsonResponse
     {
-        $employee = CorporateEmployee::where('corporate_id', $corporate->id)
+        $employee = CorporateEmployee::withInactive()
+            ->where('corporate_id', $corporate->id)
             ->findOrFail($id);
 
         if ($employee->is_active) {
@@ -146,7 +150,8 @@ class AdminCorporateEmployeeController extends Controller
 
     public function deactivate(Corporate $corporate, string $id): JsonResponse
     {
-        $employee = CorporateEmployee::where('corporate_id', $corporate->id)
+        $employee = CorporateEmployee::withInactive()
+            ->where('corporate_id', $corporate->id)
             ->findOrFail($id);
 
         if (!$employee->is_active) {
@@ -180,6 +185,20 @@ class AdminCorporateEmployeeController extends Controller
             'status'  => 'success',
             'message' => 'Role assigned successfully',
             'data'    => ['employee' => $employee->load(['user', 'department', 'division', 'userContext.roles', 'locations'])],
+        ]);
+    }
+
+    public function destroy(Corporate $corporate, string $id): JsonResponse
+    {
+        $employee = CorporateEmployee::withInactive()
+            ->where('corporate_id', $corporate->id)
+            ->findOrFail($id);
+
+        $this->corporateService->deleteEmployee($employee);
+
+        return response()->json([
+            'status'  => 'success',
+            'message' => 'Corporate user deleted successfully',
         ]);
     }
 }

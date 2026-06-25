@@ -1567,6 +1567,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('{corporate}/employees/{id}/activate', [\App\Http\Controllers\Api\Corporate\AdminCorporateEmployeeController::class, 'activate']);
         Route::post('{corporate}/employees/{id}/deactivate', [\App\Http\Controllers\Api\Corporate\AdminCorporateEmployeeController::class, 'deactivate']);
         Route::post('{corporate}/employees/{id}/role', [\App\Http\Controllers\Api\Corporate\AdminCorporateEmployeeController::class, 'assignRole']);
+        Route::delete('{corporate}/employees/{id}', [\App\Http\Controllers\Api\Corporate\AdminCorporateEmployeeController::class, 'destroy']);
 
         Route::post('{corporate}/bookings/for-employee', [\App\Http\Controllers\Api\Corporate\AdminCorporateBookingController::class, 'storeForEmployee']);
 
