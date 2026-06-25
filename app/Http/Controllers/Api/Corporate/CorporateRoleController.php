@@ -27,8 +27,13 @@ class CorporateRoleController extends Controller
         'manage_rate_charts',
         'view_reports',
         'view_audit_log',
+        'corporate.view',
         'bookings.view',
         'bookings.create',
+        'staff-transport.view',
+        'staff-transport.manage',
+        'staff-transport.override',
+        'staff-transport.generate',
     ];
 
     /**
