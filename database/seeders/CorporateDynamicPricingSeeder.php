@@ -377,30 +377,41 @@ class CorporateDynamicPricingSeeder extends Seeder
         $users = [];
 
         foreach ($employees as $roleName => $data) {
-            $user = User::updateOrCreate(
-                ['email' => $data['email']],
-                [
-                    'first_name' => $data['first_name'],
-                    'last_name' => $data['last_name'],
-                    'phone' => '+94770000000',
-                    'password' => Hash::make('password'),
-                    'is_active' => true,
-                    'status' => 'active',
-                ]
-            );
-            $employee = CorporateEmployee::updateOrCreate(
-                ['user_id' => $user->id, 'corporate_id' => $corporateId],
-                [
-                    'department_id' => $departmentId,
-                    'division_id' => $divisionId,
-                    'employee_code' => $data['employee_code'],
-                    'is_active' => true,
-                ]
-            );
-            $context = UserContext::updateOrCreate(
-                ['user_id' => $user->id, 'context_type' => 'corporate', 'context_id' => $employee->id],
-                ['is_active' => true]
-            );
+            $user = User::withTrashed()->firstOrNew(['email' => $data['email']]);
+            $user->fill([
+                'first_name' => $data['first_name'],
+                'last_name' => $data['last_name'],
+                'phone' => '+94770000000',
+                'is_active' => true,
+                'status' => 'active',
+            ]);
+            if (!$user->exists) {
+                $user->password = Hash::make('password');
+            }
+            $user->deleted_at = null;
+            $user->save();
+
+            $employee = CorporateEmployee::withInactive()->withTrashed()->firstOrNew([
+                'user_id' => $user->id,
+                'corporate_id' => $corporateId,
+            ]);
+            $employee->fill([
+                'department_id' => $departmentId,
+                'division_id' => $divisionId,
+                'employee_code' => $data['employee_code'],
+                'is_active' => true,
+            ]);
+            $employee->deleted_at = null;
+            $employee->save();
+
+            $context = UserContext::withTrashed()->firstOrNew([
+                'user_id' => $user->id,
+                'context_type' => 'corporate',
+                'context_id' => $employee->id,
+            ]);
+            $context->is_active = true;
+            $context->deleted_at = null;
+            $context->save();
             $role = Role::firstOrCreate(['name' => $roleName, 'guard_name' => 'api']);
             DB::table('user_context_roles')->updateOrInsert(
                 ['user_context_id' => $context->id, 'role_id' => $role->id],
