@@ -156,9 +156,15 @@ class CorporateDynamicPricingSeeder extends Seeder
             $source = ServiceType::query()
                 ->where('code', $code)
                 ->where(function ($query) {
+                    $query->whereNull('context')
+                        ->orWhere('context', '')
+                        ->orWhere('context', '!=', 'corporate');
+                })
+                ->where(function ($query) {
                     $query->whereNull('owner_type')->orWhere('owner_type', '');
                 })
                 ->whereNull('owner_id')
+                ->whereNull('deleted_at')
                 ->first();
 
             if ($source) {
