@@ -248,9 +248,9 @@ Route::middleware(['auth:api'])->group(function () {
             ->paginate(min(max($perPage, 1), 500));
 
         return \App\Http\Resources\ServiceTypeResource::collection($serviceTypes);
-    })->middleware('permission:bookings.view|bookings.create|create_bookings|view_all_bookings|corporate.view|system.view');
+    });
     Route::get('booking-flow/service-types/{serviceType}/form-config', [ServiceFormConfigController::class, 'getFormConfig'])
-        ->middleware('permission:bookings.view|bookings.create|create_bookings|view_all_bookings|corporate.view|system.view');
+        ->middleware('auth:api');
 
     Route::middleware(['permission:users.view'])->group(function () {
         Route::get('users', [UserController::class, 'index']);
