@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\AuditLog;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingApproval;
+use App\Models\Booking\BookingItem;
 use App\Models\Corporate\Corporate;
 use App\Models\Corporate\CorporateEmployee;
 use App\Models\Customer;
@@ -311,27 +312,17 @@ class CorporateBookingService
      */
     public function getBookingsForCorporate(string $corporateId, array $filters = []): LengthAwarePaginator
     {
-        $query = Booking::where('corporate_account_id', $corporateId);
+        $query = $this->corporateBookingItemQuery($corporateId);
 
-        $this->applyBookingFilters($query, $filters);
+        $this->applyBookingItemFilters($query, $filters);
 
         $paginator = $query
-            ->with([
-                'customer',
-                'corporateAccount',
-                'corporateDepartment',
-                'corporateDivision',
-                'employee.user',
-                'vehicleGroup',
-                'vehicle',
-                'driver',
-                'latestApproval.approver',
-                'createdBy',
-            ])
-            ->orderByDesc('created_at')
+            ->orderByDesc('booking_items.from_date')
+            ->orderByDesc('booking_items.from_time')
+            ->orderByDesc('booking_items.created_at')
             ->paginate((int) ($filters['per_page'] ?? 15));
 
-        return $this->transformBookingPaginator($paginator, $filters);
+        return $this->transformBookingItemPaginator($paginator, $filters);
     }
 
     /**
@@ -339,28 +330,23 @@ class CorporateBookingService
      */
     public function getBookingsForEmployee(string $userId, array $filters = []): LengthAwarePaginator
     {
-        $query = Booking::where('employee_id', $userId)
-            ->where('is_corporate_booking', true);
+        $query = BookingItem::query()
+            ->whereHas('booking', function ($bookingQuery) use ($userId) {
+                $bookingQuery
+                    ->where('employee_id', $userId)
+                    ->where('is_corporate_booking', true);
+            })
+            ->with($this->corporateBookingItemRelations());
 
-        $this->applyBookingFilters($query, $filters);
+        $this->applyBookingItemFilters($query, $filters);
 
         $paginator = $query
-            ->with([
-                'customer',
-                'corporateAccount',
-                'corporateDepartment',
-                'corporateDivision',
-                'employee.user',
-                'vehicleGroup',
-                'vehicle',
-                'driver',
-                'latestApproval.approver',
-                'createdBy',
-            ])
-            ->orderByDesc('created_at')
+            ->orderByDesc('booking_items.from_date')
+            ->orderByDesc('booking_items.from_time')
+            ->orderByDesc('booking_items.created_at')
             ->paginate((int) ($filters['per_page'] ?? 15));
 
-        return $this->transformBookingPaginator($paginator, $filters);
+        return $this->transformBookingItemPaginator($paginator, $filters);
     }
 
     /**
@@ -513,6 +499,153 @@ class CorporateBookingService
         );
 
         return $paginator;
+    }
+
+    private function corporateBookingItemQuery(string $corporateId)
+    {
+        return BookingItem::query()
+            ->whereHas('booking', fn ($bookingQuery) => $bookingQuery->where('corporate_account_id', $corporateId))
+            ->with($this->corporateBookingItemRelations());
+    }
+
+    private function corporateBookingItemRelations(): array
+    {
+        return [
+            'booking.customer',
+            'booking.corporateAccount',
+            'booking.corporateDepartment',
+            'booking.corporateDivision',
+            'booking.employee.user',
+            'booking.latestApproval.approver',
+            'booking.createdBy',
+            'booking.bookingItems:id,booking_id,from_date,from_time,created_at',
+            'serviceType',
+            'vehicleGroup',
+            'vehicle',
+            'driver.user',
+        ];
+    }
+
+    private function transformBookingItemPaginator(LengthAwarePaginator $paginator, array $filters = []): LengthAwarePaginator
+    {
+        $canViewPayments = (bool) ($filters['can_view_payments'] ?? false);
+        $paginator->setCollection(
+            $paginator->getCollection()->map(fn (BookingItem $item) => $this->mapBookingItem($item, $canViewPayments))
+        );
+
+        return $paginator;
+    }
+
+    private function applyBookingItemFilters($query, array $filters): void
+    {
+        $bookingFilters = $filters;
+        unset($bookingFilters['date_from'], $bookingFilters['date_to']);
+
+        $query->whereHas('booking', function ($bookingQuery) use ($bookingFilters) {
+            $this->applyBookingFilters($bookingQuery, $bookingFilters);
+        });
+
+        if (!empty($filters['date_from'])) {
+            $query->whereDate('booking_items.from_date', '>=', $filters['date_from']);
+        }
+
+        if (!empty($filters['date_to'])) {
+            $query->whereDate('booking_items.to_date', '<=', $filters['date_to']);
+        }
+    }
+
+    private function mapBookingItem(BookingItem $item, bool $canViewPayments = false): array
+    {
+        $booking = $item->booking;
+        $employeeUser = $booking?->employee?->user;
+        $approval = $booking?->latestApproval;
+        $bookingItems = $booking?->bookingItems ?? collect();
+        $itemCount = max(1, $bookingItems->count());
+        $itemIndex = $bookingItems->search(fn ($candidate) => (string) $candidate->id === (string) $item->id);
+        $sequence = $itemIndex === false ? 1 : $itemIndex + 1;
+        $itemCode = $itemCount > 1
+            ? sprintf('%s-I%02d', $booking?->booking_number ?? $booking?->id ?? 'Booking', $sequence)
+            : null;
+
+        $payload = [
+            'id' => $item->id,
+            'booking_id' => $booking?->id,
+            'booking_item_id' => $item->id,
+            'booking_number' => $booking?->booking_number,
+            'item_code' => $itemCode,
+            'item_sequence' => $sequence,
+            'item_count' => $itemCount,
+            'is_multi_item' => $itemCount > 1,
+            'is_corporate_booking' => (bool) $booking?->is_corporate_booking,
+            'corporate_account_id' => $booking?->corporate_account_id,
+            'corporate_name' => $booking?->corporateAccount?->name,
+            'employee_id' => $booking?->employee_id,
+            'employee_name' => $employeeUser
+                ? trim($employeeUser->first_name . ' ' . $employeeUser->last_name)
+                : ($booking?->customer?->name ?? null),
+            'employee_email' => $employeeUser?->email,
+            'corporate_department_id' => $booking?->corporate_department_id,
+            'corporate_division_id' => $booking?->corporate_division_id,
+            'department' => $booking?->corporateDepartment?->name,
+            'division' => $booking?->corporateDivision?->name,
+            'created_by_user_id' => $booking?->created_by_user_id,
+            'created_by_name' => $booking?->createdBy?->name,
+            'status' => $item->status ?: $booking?->status,
+            'booking_status' => $booking?->status,
+            'approval_status' => $booking?->approval_status,
+            'requires_approval' => (bool) ($item->requires_approval ?: $booking?->requires_approval),
+            'service_type_id' => $item->service_type_id,
+            'service_type_name' => $item->serviceType?->name,
+            'vehicle_group_id' => $item->vehicle_group_id,
+            'vehicle_group_name' => $item->vehicleGroup?->name,
+            'pickup_location' => $this->locationLabel($item->pickup_location ?? null),
+            'dropoff_location' => $this->locationLabel($item->dropoff_location ?? null),
+            'pickup_date' => $this->dateIso($item->from_date),
+            'dropoff_date' => $this->dateIso($item->to_date),
+            'from_time' => $item->from_time,
+            'to_time' => $item->to_time,
+            'assigned_vehicle' => $item->vehicle ? [
+                'id' => $item->vehicle->id,
+                'name' => $item->vehicle->name ?? $item->vehicle->title,
+                'license_plate' => $item->vehicle->license_plate,
+            ] : null,
+            'assigned_driver' => $item->driver ? [
+                'id' => $item->driver->id,
+                'name' => $item->driver->name ?? trim(($item->driver->user?->first_name ?? '') . ' ' . ($item->driver->user?->last_name ?? '')),
+                'phone' => $item->driver->phone ?? $item->driver->user?->phone,
+            ] : null,
+            'approval' => $approval ? [
+                'id' => $approval->id,
+                'booking_id' => $approval->booking_id,
+                'status' => $approval->status,
+                'approved_by_user_id' => $approval->approved_by_user_id ?? null,
+                'comments' => $approval->comments ?? $approval->notes ?? null,
+                'approved_at' => optional($approval->approved_at)->toISOString(),
+                'approver' => $approval->approver ? [
+                    'id' => $approval->approver->id,
+                    'first_name' => $approval->approver->first_name,
+                    'last_name' => $approval->approver->last_name,
+                ] : null,
+            ] : null,
+            'created_at' => $this->dateIso($item->created_at),
+            'updated_at' => $this->dateIso($item->updated_at),
+        ];
+
+        if ($canViewPayments) {
+            $payload += [
+                'total_cost' => (float) ($item->total_price ?? 0),
+                'currency' => $item->currency ?? $booking?->currency,
+                'payment_status' => $booking?->payment_status,
+                'payment_method' => $booking?->payment_method,
+                'payment_responsibility' => $booking?->payment_responsibility,
+                'payment_collection_method' => $booking?->payment_collection_method,
+                'payment_collection_status' => $booking?->payment_collection_status,
+                'pricing_scope' => data_get($item->pricing_breakdown, 'pricing_scope')
+                    ?? data_get($booking?->pricing_snapshot, 'pricing_scope'),
+            ];
+        }
+
+        return $payload;
     }
 
     private function mapBooking(Booking $booking, bool $canViewPayments = false): array
@@ -668,32 +801,36 @@ class CorporateBookingService
      */
     public function exportBookings(string $corporateId, array $filters = []): string
     {
-        $query = Booking::where('corporate_account_id', $corporateId);
+        $query = $this->corporateBookingItemQuery($corporateId);
 
-        $this->applyBookingFilters($query, $filters);
+        $this->applyBookingItemFilters($query, $filters);
 
-        $bookings = $query
-            ->with(['customer', 'corporateDepartment', 'corporateDivision', 'vehicleGroup'])
-            ->orderByDesc('created_at')
+        $items = $query
+            ->orderByDesc('booking_items.from_date')
+            ->orderByDesc('booking_items.from_time')
+            ->orderByDesc('booking_items.created_at')
             ->get();
 
         $filename = 'exports/corporate_bookings_' . $corporateId . '_' . now()->format('Ymd_His') . '.csv';
 
-        $csv = "booking_number,employee_name,department,division,vehicle_category,from_date,to_date,status,payment_method,payment_collection_status,total_cost\n";
+        $csv = "booking_number,item_code,employee_name,department,division,service_type,vehicle_category,from_date,to_date,status,payment_method,payment_collection_status,total_cost\n";
 
-        foreach ($bookings as $booking) {
+        foreach ($items as $item) {
+            $row = $this->mapBookingItem($item, true);
             $csv .= implode(',', [
-                $this->csvEscape($booking->booking_number ?? ''),
-                $this->csvEscape($booking->customer?->name ?? ''),
-                $this->csvEscape($booking->corporateDepartment?->name ?? ''),
-                $this->csvEscape($booking->corporateDivision?->name ?? ''),
-                $this->csvEscape($booking->vehicleGroup?->name ?? ''),
-                $this->csvEscape($booking->from_date ?? ''),
-                $this->csvEscape($booking->to_date ?? ''),
-                $this->csvEscape($booking->status ?? ''),
-                $this->csvEscape($booking->payment_collection_method ?? $booking->payment_method ?? ''),
-                $this->csvEscape($booking->payment_collection_status ?? $booking->payment_status ?? ''),
-                $this->csvEscape($booking->total_estimated ?? '0'),
+                $this->csvEscape($row['booking_number'] ?? ''),
+                $this->csvEscape($row['item_code'] ?? ''),
+                $this->csvEscape($row['employee_name'] ?? ''),
+                $this->csvEscape($row['department'] ?? ''),
+                $this->csvEscape($row['division'] ?? ''),
+                $this->csvEscape($row['service_type_name'] ?? ''),
+                $this->csvEscape($row['vehicle_group_name'] ?? ''),
+                $this->csvEscape($row['pickup_date'] ?? ''),
+                $this->csvEscape($row['dropoff_date'] ?? ''),
+                $this->csvEscape($row['status'] ?? ''),
+                $this->csvEscape($row['payment_collection_method'] ?? $row['payment_method'] ?? ''),
+                $this->csvEscape($row['payment_collection_status'] ?? $row['payment_status'] ?? ''),
+                $this->csvEscape($row['total_cost'] ?? '0'),
             ]) . "\n";
         }
 
