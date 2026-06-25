@@ -7,6 +7,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\ValidationException;
 
 trait BookingPricingTrait
 {
@@ -14,6 +15,7 @@ trait BookingPricingTrait
     {
         try {
             $params = $this->bookingFlowService->normalizeDynamicCalculationParams($request->all());
+            $params = $this->bookingFlowService->normalizeCorporateEmployeeReferences($params);
             $requirements = $this->bookingFlowService->getDynamicCalculationRequirements($params);
             $usesDropoffTime = (bool) ($requirements['uses_dropoff_time'] ?? true);
             $pickupRequired = (bool) ($requirements['pickup_location_required'] ?? true);
@@ -23,7 +25,15 @@ trait BookingPricingTrait
                 'customer_id' => 'nullable|string',
                 'is_corporate_booking' => 'sometimes|boolean',
                 'corporate_account_id' => 'nullable|uuid|exists:corporates,id',
-                'employee_id' => 'nullable|uuid|exists:users,id',
+                'employee_id' => [
+                    'nullable',
+                    'uuid',
+                    function ($attribute, $value, $fail) {
+                        if (!$this->bookingFlowService->isValidBookingEmployeeId($value)) {
+                            $fail('The selected employee id is invalid.');
+                        }
+                    },
+                ],
                 'corporate_department_id' => 'nullable|uuid|exists:corporate_departments,id',
                 'corporate_division_id' => 'nullable|uuid|exists:corporate_divisions,id',
                 'cost_center' => 'nullable|string|max:255',
@@ -108,6 +118,13 @@ trait BookingPricingTrait
                 'success' => true,
                 'data' => $result
             ]);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Pricing validation failed',
+                'message' => $e->getMessage(),
+                'errors' => $e->errors(),
+            ], 422);
         } catch (\Exception $e) {
             Log::error('Enhanced pricing calculation failed: ' . $e->getMessage());
 

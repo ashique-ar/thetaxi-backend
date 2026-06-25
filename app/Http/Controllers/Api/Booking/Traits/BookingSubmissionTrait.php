@@ -17,6 +17,7 @@ trait BookingSubmissionTrait
     public function submitBookingForApproval(Request $request): JsonResponse
     {
         $params = $this->bookingFlowService->normalizeDynamicCalculationParams($request->all());
+        $params = $this->bookingFlowService->normalizeCorporateEmployeeReferences($params);
         $requirements = $this->bookingFlowService->getDynamicCalculationRequirements($params);
         $usesDropoffTime = (bool) ($requirements['uses_dropoff_time'] ?? true);
         $pickupRequired = (bool) ($requirements['pickup_location_required'] ?? true);
@@ -26,7 +27,7 @@ trait BookingSubmissionTrait
             'customer_id' => 'nullable|string',
             'is_corporate_booking' => 'sometimes|boolean',
             'corporate_account_id' => 'nullable|uuid|exists:corporates,id',
-            'employee_id' => 'nullable|uuid|exists:users,id',
+            'employee_id' => $this->bookingEmployeeIdRules(),
             'corporate_department_id' => 'nullable|uuid|exists:corporate_departments,id',
             'corporate_division_id' => 'nullable|uuid|exists:corporate_divisions,id',
             'cost_center' => 'nullable|string|max:255',
@@ -124,6 +125,7 @@ trait BookingSubmissionTrait
     public function confirmBooking(Request $request): JsonResponse
     {
         $params = $this->bookingFlowService->normalizeDynamicCalculationParams($request->all());
+        $params = $this->bookingFlowService->normalizeCorporateEmployeeReferences($params);
         $requirements = $this->bookingFlowService->getDynamicCalculationRequirements($params);
         $usesDropoffTime = (bool) ($requirements['uses_dropoff_time'] ?? true);
         $pickupRequired = (bool) ($requirements['pickup_location_required'] ?? true);
@@ -133,7 +135,7 @@ trait BookingSubmissionTrait
             'customer_id' => 'nullable|string',
             'is_corporate_booking' => 'sometimes|boolean',
             'corporate_account_id' => 'nullable|uuid|exists:corporates,id',
-            'employee_id' => 'nullable|uuid|exists:users,id',
+            'employee_id' => $this->bookingEmployeeIdRules(),
             'corporate_department_id' => 'nullable|uuid|exists:corporate_departments,id',
             'corporate_division_id' => 'nullable|uuid|exists:corporate_divisions,id',
             'cost_center' => 'nullable|string|max:255',
@@ -231,6 +233,7 @@ trait BookingSubmissionTrait
     {
         try {
             $params = $this->bookingFlowService->normalizeDynamicCalculationParams($request->all());
+            $params = $this->bookingFlowService->normalizeCorporateEmployeeReferences($params);
             $requirements = $this->bookingFlowService->getDynamicCalculationRequirements($params);
             $usesDropoffTime = (bool) ($requirements['uses_dropoff_time'] ?? true);
 
@@ -238,7 +241,7 @@ trait BookingSubmissionTrait
                 'customer_id' => 'nullable|string',
                 'is_corporate_booking' => 'sometimes|boolean',
                 'corporate_account_id' => 'nullable|uuid|exists:corporates,id',
-                'employee_id' => 'nullable|uuid|exists:users,id',
+                'employee_id' => $this->bookingEmployeeIdRules(),
                 'corporate_department_id' => 'nullable|uuid|exists:corporate_departments,id',
                 'corporate_division_id' => 'nullable|uuid|exists:corporate_divisions,id',
                 'cost_center' => 'nullable|string|max:255',
@@ -445,7 +448,8 @@ trait BookingSubmissionTrait
     public function saveBookingDraft(Request $request): JsonResponse
     {
         try {
-            $draft = $this->bookingFlowService->saveBookingDraft($request->all());
+            $params = $this->bookingFlowService->normalizeCorporateEmployeeReferences($request->all());
+            $draft = $this->bookingFlowService->saveBookingDraft($params);
 
             return response()->json([
                 'status' => 'success',
@@ -481,6 +485,19 @@ trait BookingSubmissionTrait
                 'message' => $e->getMessage()
             ], 500);
         }
+    }
+
+    private function bookingEmployeeIdRules(): array
+    {
+        return [
+            'nullable',
+            'uuid',
+            function ($attribute, $value, $fail) {
+                if (!$this->bookingFlowService->isValidBookingEmployeeId($value)) {
+                    $fail('The selected employee id is invalid.');
+                }
+            },
+        ];
     }
 
     public function getBookingsList(Request $request): JsonResponse

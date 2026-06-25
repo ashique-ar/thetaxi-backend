@@ -8,6 +8,7 @@ use App\Models\Booking\BookingAddon;
 use App\Models\Booking\BookingItem;
 use App\Models\Booking\BookingVariableCustomization;
 use App\Models\Corporate\Corporate;
+use App\Models\Corporate\CorporateEmployee;
 use App\Models\Vehicle\VehicleAddon;
 use App\Models\Vehicle\VehicleGroup;
 use App\Models\Vehicle\Vehicle;
@@ -180,6 +181,44 @@ class BookingFlowService
         $params = $this->sanitizeCanonicalLocationParam($params, 'dropoff_location');
 
         return $params;
+    }
+
+    public function normalizeCorporateEmployeeReferences(array $params): array
+    {
+        $employeeId = $params['employee_id'] ?? null;
+
+        if (!is_string($employeeId) || trim($employeeId) === '') {
+            return $params;
+        }
+
+        if (User::whereKey($employeeId)->exists()) {
+            return $params;
+        }
+
+        $employee = CorporateEmployee::query()
+            ->whereKey($employeeId)
+            ->whereHas('user')
+            ->first();
+
+        if ($employee) {
+            $params['corporate_employee_id'] = (string) $employee->id;
+            $params['employee_id'] = (string) $employee->user_id;
+        }
+
+        return $params;
+    }
+
+    public function isValidBookingEmployeeId(?string $employeeId): bool
+    {
+        if (!is_string($employeeId) || trim($employeeId) === '') {
+            return true;
+        }
+
+        return User::whereKey($employeeId)->exists()
+            || CorporateEmployee::query()
+                ->whereKey($employeeId)
+                ->whereHas('user')
+                ->exists();
     }
 
     /**
@@ -10726,6 +10765,8 @@ class BookingFlowService
      */
     public function saveBookingDraft(array $params): Booking
     {
+        $params = $this->normalizeCorporateEmployeeReferences($params);
+
         return DB::transaction(function () use ($params) {
             $bookingId = $params['booking_id'] ?? null;
 
