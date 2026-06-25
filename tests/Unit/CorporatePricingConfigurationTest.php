@@ -26,6 +26,21 @@ it('defines every corporate pricing source explicitly', function () {
     ]);
 });
 
+it('does not compare UUID pricing owner IDs with empty strings', function () {
+    $source = file_get_contents(
+        base_path('database/seeders/CorporateDynamicPricingSeeder.php')
+    );
+    $cloneDefinitions = Str::between(
+        $source,
+        'private function cloneDefinitions(',
+        'private function cloneVehiclePricing('
+    );
+
+    expect($cloneDefinitions)
+        ->toContain("->whereNull('owner_id')")
+        ->not->toContain("orWhere('owner_id', '')");
+});
+
 it('rejects assignments that do not contain three unique groups', function (array $ids) {
     $corporate = \Mockery::mock(Corporate::class);
 
