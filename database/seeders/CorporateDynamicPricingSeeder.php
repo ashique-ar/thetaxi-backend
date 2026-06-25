@@ -153,17 +153,9 @@ class CorporateDynamicPricingSeeder extends Seeder
     private function requiredPublicSource(array $mapping): ServiceType
     {
         foreach ($mapping['sources'] as $code) {
-            $source = ServiceType::query()
+            $source = ServiceType::withTrashed()
                 ->where('code', $code)
-                ->where(function ($query) {
-                    $query->whereNull('context')
-                        ->orWhere('context', '')
-                        ->orWhere('context', '!=', 'corporate');
-                })
-                ->where(function ($query) {
-                    $query->whereNull('owner_type')->orWhere('owner_type', '');
-                })
-                ->whereNull('owner_id')
+                ->where('context', 'public')
                 ->whereNull('deleted_at')
                 ->first();
 
