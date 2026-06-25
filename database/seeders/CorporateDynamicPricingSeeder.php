@@ -25,14 +25,14 @@ class CorporateDynamicPricingSeeder extends Seeder
     private const CORPORATE_NAME = 'Cassons Demo Corporate';
 
     private const SERVICE_MAP = [
-        ['code' => 'corp_on_meter', 'name' => 'Corporate On Meter', 'sources' => ['day_rental']],
-        ['code' => 'corp_ride_now', 'name' => 'Corporate Ride Now', 'sources' => ['ride_now']],
-        ['code' => 'corp_point_to_point', 'name' => 'Corporate Point to Point', 'sources' => ['point_to_point', 'potint_to_point']],
-        ['code' => 'corp_hourly_package', 'name' => 'Corporate Hourly Package', 'sources' => ['ride_now']],
-        ['code' => 'corp_tour', 'name' => 'Corporate Tour', 'sources' => ['ride_now']],
-        ['code' => 'corp_special_night', 'name' => 'Corporate Special Night Transport', 'sources' => ['ride_now']],
-        ['code' => 'corp_airport_transfer', 'name' => 'Corporate Airport Transfer', 'sources' => ['airport_transfers']],
-        ['code' => 'corp_ctc', 'name' => 'Corporate Transport Contract', 'sources' => ['corporate']],
+        ['code' => 'on_meter', 'name' => 'On Meter', 'sources' => ['day_rental'], 'legacy_codes' => ['corp_on_meter']],
+        ['code' => 'ride_now', 'name' => 'Ride Now', 'sources' => ['ride_now'], 'legacy_codes' => ['corp_ride_now', 'corp_manual_dispatch']],
+        ['code' => 'point_to_point', 'name' => 'Point to Point', 'sources' => ['point_to_point', 'potint_to_point'], 'legacy_codes' => ['corp_point_to_point']],
+        ['code' => 'hourly_package', 'name' => 'Hourly Package', 'sources' => ['ride_now'], 'legacy_codes' => ['corp_hourly_package']],
+        ['code' => 'tour', 'name' => 'Tour', 'sources' => ['ride_now'], 'legacy_codes' => ['corp_tour']],
+        ['code' => 'special_night', 'name' => 'Special Night Transport', 'sources' => ['ride_now'], 'legacy_codes' => ['corp_special_night']],
+        ['code' => 'airport_transfer', 'name' => 'Airport Transfer', 'sources' => ['airport_transfers'], 'legacy_codes' => ['corp_airport_transfer']],
+        ['code' => 'transport_contract', 'name' => 'Transport Contract', 'sources' => ['corporate'], 'legacy_codes' => ['corp_ctc']],
     ];
 
     public function run(): void
@@ -160,7 +160,7 @@ class CorporateDynamicPricingSeeder extends Seeder
             ],
             array_merge($attributes, [
                 'name' => $mapping['name'],
-                'description' => 'Corporate pricing cloned from public ' . $source->name . '.',
+                'description' => 'Pricing cloned from public ' . $source->name . '.',
                 'slug' => Str::slug($mapping['code']),
                 'parent_service_type_id' => $source->id,
                 'priority' => $priority,
@@ -218,7 +218,8 @@ class CorporateDynamicPricingSeeder extends Seeder
             $source->id,
             $corporateId,
             $vehicleGroups,
-            $userId
+            $userId,
+            false
         );
     }
 
@@ -272,7 +273,8 @@ class CorporateDynamicPricingSeeder extends Seeder
         string $sourceServiceId,
         string $corporateId,
         Collection $vehicleGroups,
-        string $userId
+        string $userId,
+        bool $requireEveryPrice = true
     ): void {
         foreach ($vehicleGroups as $vehicleGroup) {
             foreach ($definitionMap as $sourceDefinitionId => $targetDefinitionId) {
@@ -284,6 +286,10 @@ class CorporateDynamicPricingSeeder extends Seeder
                     ->first();
 
                 if (!$sourcePrice) {
+                    if (!$requireEveryPrice) {
+                        continue;
+                    }
+
                     throw new RuntimeException(
                         "Missing {$pricingTable} for public service {$sourceServiceId}, vehicle group {$vehicleGroup->name}."
                     );
@@ -325,10 +331,7 @@ class CorporateDynamicPricingSeeder extends Seeder
 
     private function retireOwnedCorporateService(array $mapping, string $corporateId): void
     {
-        $legacyCodes = [$mapping['code']];
-        if ($mapping['code'] === 'corp_ride_now') {
-            $legacyCodes[] = 'corp_manual_dispatch';
-        }
+        $legacyCodes = array_merge([$mapping['code']], $mapping['legacy_codes'] ?? []);
 
         $legacyServices = ServiceType::withTrashed()
             ->whereIn('code', $legacyCodes)

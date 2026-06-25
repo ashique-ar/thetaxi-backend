@@ -15,15 +15,26 @@ it('defines every corporate pricing source explicitly', function () {
     expect(collect($mapping)->mapWithKeys(
         fn (array $service) => [$service['code'] => $service['sources']]
     )->all())->toBe([
-        'corp_on_meter' => ['day_rental'],
-        'corp_ride_now' => ['ride_now'],
-        'corp_point_to_point' => ['point_to_point', 'potint_to_point'],
-        'corp_hourly_package' => ['ride_now'],
-        'corp_tour' => ['ride_now'],
-        'corp_special_night' => ['ride_now'],
-        'corp_airport_transfer' => ['airport_transfers'],
-        'corp_ctc' => ['corporate'],
+        'on_meter' => ['day_rental'],
+        'ride_now' => ['ride_now'],
+        'point_to_point' => ['point_to_point', 'potint_to_point'],
+        'hourly_package' => ['ride_now'],
+        'tour' => ['ride_now'],
+        'special_night' => ['ride_now'],
+        'airport_transfer' => ['airport_transfers'],
+        'transport_contract' => ['corporate'],
     ]);
+});
+
+it('does not expose corporate keywords in corporate service codes or names', function () {
+    $mapping = (new ReflectionClass(CorporateDynamicPricingSeeder::class))
+        ->getReflectionConstant('SERVICE_MAP')
+        ->getValue();
+
+    foreach ($mapping as $service) {
+        expect(strtolower($service['code']))->not->toContain('corp');
+        expect(strtolower($service['name']))->not->toContain('corporate');
+    }
 });
 
 it('does not compare UUID pricing owner IDs with empty strings', function () {
@@ -39,6 +50,18 @@ it('does not compare UUID pricing owner IDs with empty strings', function () {
     expect($cloneDefinitions)
         ->toContain("->whereNull('owner_id')")
         ->not->toContain("orWhere('owner_id', '')");
+});
+
+it('allows sparse public common-rate overrides while keeping slab pricing strict', function () {
+    $source = file_get_contents(
+        base_path('database/seeders/CorporateDynamicPricingSeeder.php')
+    );
+
+    expect($source)
+        ->toMatch('/\'vehicle_group_pricing\',\s*\'slab_definition_id\',[\s\S]*?\$userId\s*\)/')
+        ->toMatch('/\'vehicle_group_common_rate_pricing\',\s*\'common_rate_definition_id\',[\s\S]*?\$userId,\s*false\s*\)/')
+        ->toContain('bool $requireEveryPrice = true')
+        ->toContain('if (!$requireEveryPrice)');
 });
 
 it('rejects assignments that do not contain three unique groups', function (array $ids) {

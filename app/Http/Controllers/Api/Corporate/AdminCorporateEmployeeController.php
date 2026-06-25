@@ -176,7 +176,8 @@ class AdminCorporateEmployeeController extends Controller
             'role' => ['required', 'string'],
         ]);
 
-        $employee = CorporateEmployee::where('corporate_id', $corporate->id)
+        $employee = CorporateEmployee::withInactive()
+            ->where('corporate_id', $corporate->id)
             ->findOrFail($id);
 
         $this->corporateService->assignEmployeeRole($employee, $request->role);
