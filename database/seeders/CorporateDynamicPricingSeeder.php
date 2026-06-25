@@ -179,11 +179,22 @@ class CorporateDynamicPricingSeeder extends Seeder
         ServiceType $source,
         array $mapping,
         int $priority
-    ): ServiceType {
+    ): ServiceType
+    {
         $attributes = collect($source->getAttributes())->except([
-            'id', 'code', 'name', 'slug', 'context', 'owner_type', 'owner_id',
-            'parent_service_type_id', 'description', 'priority',
-            'created_at', 'updated_at', 'deleted_at',
+            'id',
+            'code',
+            'name',
+            'slug',
+            'context',
+            'owner_type',
+            'owner_id',
+            'parent_service_type_id',
+            'description',
+            'priority',
+            'created_at',
+            'updated_at',
+            'deleted_at',
         ])->all();
 
         return ServiceType::withTrashed()->updateOrCreate(
@@ -303,7 +314,7 @@ class CorporateDynamicPricingSeeder extends Seeder
             ->where('service_type_id', $target->id)
             ->when(
                 $activeTargetPackageIds !== [],
-                fn ($query) => $query->whereNotIn('id', $activeTargetPackageIds)
+                fn($query) => $query->whereNotIn('id', $activeTargetPackageIds)
             )
             ->whereNull('deleted_at');
 
@@ -370,7 +381,8 @@ class CorporateDynamicPricingSeeder extends Seeder
         string $table,
         string $targetPackageId,
         array $activeIds
-    ): void {
+    ): void
+    {
         $query = DB::table($table)
             ->where('service_package_id', $targetPackageId)
             ->whereNull('deleted_at');
@@ -392,7 +404,8 @@ class CorporateDynamicPricingSeeder extends Seeder
         string $corporateId,
         Collection $vehicleGroups,
         string $userId
-    ): void {
+    ): void
+    {
         $slabMap = $this->cloneDefinitions(
             'vehicle_pricing_slab_definitions',
             $source->id,
@@ -471,7 +484,8 @@ class CorporateDynamicPricingSeeder extends Seeder
         string $corporateId,
         Collection $vehicleGroups,
         string $userId
-    ): array {
+    ): array
+    {
         if (!Schema::hasTable('service_packages') || !Schema::hasTable('service_package_rates')) {
             return [];
         }
@@ -577,7 +591,8 @@ class CorporateDynamicPricingSeeder extends Seeder
         array $slabMap,
         array $commonRateMap,
         string $userId
-    ): array {
+    ): array
+    {
         if ($slabMap === [] && $commonRateMap === []) {
             return [];
         }
@@ -694,20 +709,23 @@ class CorporateDynamicPricingSeeder extends Seeder
         string $targetServiceId,
         string $corporateId,
         string $userId
-    ): array {
+    ): array
+    {
         $baseQuery = DB::table($table)
             ->where('service_type_id', $sourceServiceId)
             ->where(function ($query) {
                 $query->whereNull('owner_type')->orWhere('owner_type', '');
             })
-            ->whereNull('owner_id')
+            ->where(function ($query) {
+                $query->whereNull('owner_id')->orWhere('owner_id', '');
+            })
             ->whereNull('deleted_at');
 
         $rows = (clone $baseQuery)
             ->when(
                 $table === 'vehicle_pricing_calculation_definitions',
-                fn ($query) => $query->where('status', 'active'),
-                fn ($query) => $query->where('is_active', true)
+                fn($query) => $query->where('status', 'active'),
+                fn($query) => $query->where('is_active', true)
             )
             ->orderBy('id')
             ->get();
@@ -753,7 +771,8 @@ class CorporateDynamicPricingSeeder extends Seeder
         Collection $vehicleGroups,
         string $userId,
         bool $requireEveryPrice = true
-    ): void {
+    ): void
+    {
         foreach ($vehicleGroups as $vehicleGroup) {
             $clonedCount = 0;
 
@@ -839,7 +858,7 @@ class CorporateDynamicPricingSeeder extends Seeder
     {
         $values = array_filter(
             $values,
-            fn ($value, string $column) => Schema::hasColumn($table, $column),
+            fn($value, string $column) => Schema::hasColumn($table, $column),
             ARRAY_FILTER_USE_BOTH
         );
         $existing = DB::table($table)->where($keys)->first();
