@@ -198,8 +198,10 @@ class CorporateDynamicPricingSeeder extends Seeder
             $userId
         );
 
-        if ($slabMap === [] || $commonRateMap === [] || $calculationMap === []) {
-            throw new RuntimeException("Public service {$source->code} does not contain the complete pricing definition graph.");
+        if ($calculationMap === [] || ($slabMap === [] && $commonRateMap === [])) {
+            throw new RuntimeException(
+                "Public service {$source->code} does not contain an active calculation definition with usable pricing inputs."
+            );
         }
 
         $this->cloneVehiclePricing(

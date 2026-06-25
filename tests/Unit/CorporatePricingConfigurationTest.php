@@ -64,6 +64,16 @@ it('allows sparse public common-rate overrides while keeping slab pricing strict
         ->toContain('if (!$requireEveryPrice)');
 });
 
+it('allows calculation graphs that use common rates without active slabs', function () {
+    $source = file_get_contents(
+        base_path('database/seeders/CorporateDynamicPricingSeeder.php')
+    );
+
+    expect($source)
+        ->toContain('if ($calculationMap === [] || ($slabMap === [] && $commonRateMap === []))')
+        ->not->toContain('if ($slabMap === [] || $commonRateMap === [] || $calculationMap === [])');
+});
+
 it('rejects assignments that do not contain three unique groups', function (array $ids) {
     $corporate = \Mockery::mock(Corporate::class);
 
