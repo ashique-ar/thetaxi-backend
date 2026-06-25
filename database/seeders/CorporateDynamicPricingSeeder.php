@@ -65,12 +65,13 @@ class CorporateDynamicPricingSeeder extends Seeder
 
         DB::transaction(function () use ($corporate, $users): void {
             $vehicleGroups = $this->selectVehicleGroups($corporate);
-            $corporate->vehicleGroups()->sync($vehicleGroups->pluck('id')->all());
+            $this->syncCorporateVehicleGroups($corporate->id, $vehicleGroups->pluck('id')->all());
 
             foreach (self::SERVICE_MAP as $priority => $mapping) {
                 $source = $this->requiredPublicSource($mapping);
                 $target = $this->upsertCorporateService($source, $mapping, $priority + 1);
                 $this->retireOwnedCorporateService($mapping, $corporate->id);
+                $this->cloneServiceBehavior($source, $target, $users['Corporate_Master_Admin']->id);
 
                 $this->upsertPivot('corporate_service_types', [
                     'corporate_id' => $corporate->id,
@@ -94,6 +95,15 @@ class CorporateDynamicPricingSeeder extends Seeder
     {
         $assigned = $corporate->vehicleGroups()
             ->where('vehicle_groups.is_active', true)
+            ->whereExists(function ($query) {
+                $query->selectRaw('1')
+                    ->from('vehicle_group_pricing')
+                    ->whereColumn('vehicle_group_pricing.vehicle_group_id', 'vehicle_groups.id')
+                    ->where('vehicle_group_pricing.is_active', true)
+                    ->whereNull('vehicle_group_pricing.deleted_at')
+                    ->whereNull('vehicle_group_pricing.owner_type')
+                    ->whereNull('vehicle_group_pricing.owner_id');
+            })
             ->orderBy('vehicle_groups.name')
             ->limit(3)
             ->get();
@@ -102,6 +112,15 @@ class CorporateDynamicPricingSeeder extends Seeder
             $additional = VehicleGroup::query()
                 ->where('is_active', true)
                 ->whereNotIn('id', $assigned->pluck('id'))
+                ->whereExists(function ($query) {
+                    $query->selectRaw('1')
+                        ->from('vehicle_group_pricing')
+                        ->whereColumn('vehicle_group_pricing.vehicle_group_id', 'vehicle_groups.id')
+                        ->where('vehicle_group_pricing.is_active', true)
+                        ->whereNull('vehicle_group_pricing.deleted_at')
+                        ->whereNull('vehicle_group_pricing.owner_type')
+                        ->whereNull('vehicle_group_pricing.owner_id');
+                })
                 ->orderBy('name')
                 ->limit(3 - $assigned->count())
                 ->get();
@@ -113,6 +132,21 @@ class CorporateDynamicPricingSeeder extends Seeder
         }
 
         return $assigned->values();
+    }
+
+    private function syncCorporateVehicleGroups(string $corporateId, array $vehicleGroupIds): void
+    {
+        DB::table('corporate_vehicle_groups')
+            ->where('corporate_id', $corporateId)
+            ->whereNotIn('vehicle_group_id', $vehicleGroupIds)
+            ->delete();
+
+        foreach ($vehicleGroupIds as $vehicleGroupId) {
+            $this->upsertPivot('corporate_vehicle_groups', [
+                'corporate_id' => $corporateId,
+                'vehicle_group_id' => $vehicleGroupId,
+            ], ['deleted_at' => null]);
+        }
     }
 
     private function requiredPublicSource(array $mapping): ServiceType
@@ -169,6 +203,179 @@ class CorporateDynamicPricingSeeder extends Seeder
         );
     }
 
+    private function cloneServiceBehavior(ServiceType $source, ServiceType $target, string $userId): void
+    {
+        $hasDatabaseFormConfig = $this->cloneServiceFormConfig($source, $target);
+        if (!$hasDatabaseFormConfig && empty($source->form_config)) {
+            throw new RuntimeException(
+                "Public service {$source->code} does not contain a form configuration to clone."
+            );
+        }
+
+        $this->cloneServicePackages($source, $target, $userId);
+    }
+
+    private function cloneServiceFormConfig(ServiceType $source, ServiceType $target): bool
+    {
+        if (!Schema::hasTable('service_form_configs')) {
+            return false;
+        }
+
+        $sourceConfig = DB::table('service_form_configs')
+            ->where('service_code', $source->code)
+            ->where('is_active', true)
+            ->first();
+
+        if (!$sourceConfig) {
+            return false;
+        }
+
+        DB::table('service_form_configs')->updateOrInsert(
+            ['service_code' => $target->code],
+            [
+                'id' => Uuid::uuid5($target->id, 'service_form_config')->toString(),
+                'config' => $sourceConfig->config,
+                'is_active' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]
+        );
+
+        return true;
+    }
+
+    private function cloneServicePackages(ServiceType $source, ServiceType $target, string $userId): void
+    {
+        if (!Schema::hasTable('service_packages')) {
+            return;
+        }
+
+        $sourcePackages = DB::table('service_packages')
+            ->where('service_type_id', $source->id)
+            ->where('is_active', true)
+            ->whereNull('deleted_at')
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
+
+        if ($sourcePackages->isEmpty()) {
+            throw new RuntimeException(
+                "Public service {$source->code} does not contain an active package to clone."
+            );
+        }
+
+        $activeTargetPackageIds = [];
+
+        foreach ($sourcePackages as $sourcePackage) {
+            $targetPackageId = Uuid::uuid5(
+                $target->id,
+                "service_packages:{$sourcePackage->id}"
+            )->toString();
+            $activeTargetPackageIds[] = $targetPackageId;
+
+            $payload = $this->clonePayload('service_packages', (array) $sourcePackage, $userId);
+            $payload['id'] = $targetPackageId;
+            $payload['service_type_id'] = $target->id;
+            $payload['code'] = Str::limit(
+                "{$target->code}_" . Str::slug($sourcePackage->code, '_'),
+                255,
+                ''
+            );
+            DB::table('service_packages')->updateOrInsert(['id' => $targetPackageId], $payload);
+
+            $this->clonePackageRates($sourcePackage->id, $targetPackageId, $userId);
+            $this->clonePackageReturnRules($sourcePackage->id, $targetPackageId, $userId);
+        }
+
+        $stalePackages = DB::table('service_packages')
+            ->where('service_type_id', $target->id)
+            ->when(
+                $activeTargetPackageIds !== [],
+                fn ($query) => $query->whereNotIn('id', $activeTargetPackageIds)
+            )
+            ->whereNull('deleted_at');
+
+        if ($activeTargetPackageIds !== []) {
+            $stalePackages->update(['deleted_at' => now(), 'is_active' => false, 'updated_at' => now()]);
+        }
+    }
+
+    private function clonePackageRates(string $sourcePackageId, string $targetPackageId, string $userId): void
+    {
+        if (!Schema::hasTable('service_package_rates')) {
+            return;
+        }
+
+        $sourceRates = DB::table('service_package_rates')
+            ->where('service_package_id', $sourcePackageId)
+            ->where('is_active', true)
+            ->whereNull('deleted_at')
+            ->get();
+        $activeIds = [];
+
+        foreach ($sourceRates as $sourceRate) {
+            $targetRateId = Uuid::uuid5(
+                $targetPackageId,
+                "service_package_rates:{$sourceRate->vehicle_group_id}"
+            )->toString();
+            $activeIds[] = $targetRateId;
+            $payload = $this->clonePayload('service_package_rates', (array) $sourceRate, $userId);
+            $payload['id'] = $targetRateId;
+            $payload['service_package_id'] = $targetPackageId;
+            DB::table('service_package_rates')->updateOrInsert(['id' => $targetRateId], $payload);
+        }
+
+        $this->deactivateStalePackageChildren('service_package_rates', $targetPackageId, $activeIds);
+    }
+
+    private function clonePackageReturnRules(string $sourcePackageId, string $targetPackageId, string $userId): void
+    {
+        if (!Schema::hasTable('service_package_return_rules')) {
+            return;
+        }
+
+        $sourceRules = DB::table('service_package_return_rules')
+            ->where('service_package_id', $sourcePackageId)
+            ->where('is_active', true)
+            ->whereNull('deleted_at')
+            ->get();
+        $activeIds = [];
+
+        foreach ($sourceRules as $sourceRule) {
+            $targetRuleId = Uuid::uuid5(
+                $targetPackageId,
+                "service_package_return_rules:{$sourceRule->id}"
+            )->toString();
+            $activeIds[] = $targetRuleId;
+            $payload = $this->clonePayload('service_package_return_rules', (array) $sourceRule, $userId);
+            $payload['id'] = $targetRuleId;
+            $payload['service_package_id'] = $targetPackageId;
+            DB::table('service_package_return_rules')->updateOrInsert(['id' => $targetRuleId], $payload);
+        }
+
+        $this->deactivateStalePackageChildren('service_package_return_rules', $targetPackageId, $activeIds);
+    }
+
+    private function deactivateStalePackageChildren(
+        string $table,
+        string $targetPackageId,
+        array $activeIds
+    ): void {
+        $query = DB::table($table)
+            ->where('service_package_id', $targetPackageId)
+            ->whereNull('deleted_at');
+
+        if ($activeIds !== []) {
+            $query->whereNotIn('id', $activeIds);
+        }
+
+        $query->update([
+            'is_active' => false,
+            'deleted_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
     private function clonePricingGraph(
         ServiceType $source,
         ServiceType $target,
@@ -211,7 +418,8 @@ class CorporateDynamicPricingSeeder extends Seeder
             $source->id,
             $corporateId,
             $vehicleGroups,
-            $userId
+            $userId,
+            false
         );
         $this->cloneVehiclePricing(
             'vehicle_group_common_rate_pricing',
@@ -279,6 +487,8 @@ class CorporateDynamicPricingSeeder extends Seeder
         bool $requireEveryPrice = true
     ): void {
         foreach ($vehicleGroups as $vehicleGroup) {
+            $clonedCount = 0;
+
             foreach ($definitionMap as $sourceDefinitionId => $targetDefinitionId) {
                 $sourcePrice = DB::table($pricingTable)
                     ->where($foreignKey, $sourceDefinitionId)
@@ -306,6 +516,13 @@ class CorporateDynamicPricingSeeder extends Seeder
                 $payload['owner_type'] = 'corporate';
                 $payload['owner_id'] = $corporateId;
                 DB::table($pricingTable)->updateOrInsert(['id' => $payload['id']], $payload);
+                $clonedCount++;
+            }
+
+            if ($pricingTable === 'vehicle_group_pricing' && $definitionMap !== [] && $clonedCount === 0) {
+                throw new RuntimeException(
+                    "No active {$pricingTable} exists for public service {$sourceServiceId}, vehicle group {$vehicleGroup->name}."
+                );
             }
         }
     }

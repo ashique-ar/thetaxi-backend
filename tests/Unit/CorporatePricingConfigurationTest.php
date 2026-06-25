@@ -52,16 +52,17 @@ it('does not compare UUID pricing owner IDs with empty strings', function () {
         ->not->toContain("orWhere('owner_id', '')");
 });
 
-it('allows sparse public common-rate overrides while keeping slab pricing strict', function () {
+it('allows sparse public pricing overrides while requiring slab coverage per group', function () {
     $source = file_get_contents(
         base_path('database/seeders/CorporateDynamicPricingSeeder.php')
     );
 
     expect($source)
-        ->toMatch('/\'vehicle_group_pricing\',\s*\'slab_definition_id\',[\s\S]*?\$userId\s*\)/')
+        ->toMatch('/\'vehicle_group_pricing\',\s*\'slab_definition_id\',[\s\S]*?\$userId,\s*false\s*\)/')
         ->toMatch('/\'vehicle_group_common_rate_pricing\',\s*\'common_rate_definition_id\',[\s\S]*?\$userId,\s*false\s*\)/')
         ->toContain('bool $requireEveryPrice = true')
-        ->toContain('if (!$requireEveryPrice)');
+        ->toContain('if (!$requireEveryPrice)')
+        ->toContain("\$pricingTable === 'vehicle_group_pricing' && \$definitionMap !== [] && \$clonedCount === 0");
 });
 
 it('allows calculation graphs that use common rates without active slabs', function () {
@@ -72,6 +73,32 @@ it('allows calculation graphs that use common rates without active slabs', funct
     expect($source)
         ->toContain('if ($calculationMap === [] || ($slabMap === [] && $commonRateMap === []))')
         ->not->toContain('if ($slabMap === [] || $commonRateMap === [] || $calculationMap === [])');
+});
+
+it('clones each source service form and complete package graph', function () {
+    $source = file_get_contents(
+        base_path('database/seeders/CorporateDynamicPricingSeeder.php')
+    );
+
+    expect($source)
+        ->toContain('$this->cloneServiceBehavior($source, $target')
+        ->toContain('private function cloneServiceFormConfig(')
+        ->toContain('private function cloneServicePackages(')
+        ->toContain('private function clonePackageRates(')
+        ->toContain('private function clonePackageReturnRules(')
+        ->toContain('does not contain a form configuration to clone')
+        ->toContain('does not contain an active package to clone')
+        ->toContain('Uuid::uuid5(');
+});
+
+it('uses UUID-aware writes for corporate vehicle-group assignments', function () {
+    $source = file_get_contents(
+        base_path('database/seeders/CorporateDynamicPricingSeeder.php')
+    );
+
+    expect($source)
+        ->toContain("\$this->syncCorporateVehicleGroups(\$corporate->id, \$vehicleGroups->pluck('id')->all())")
+        ->not->toContain("\$corporate->vehicleGroups()->sync(");
 });
 
 it('rejects assignments that do not contain three unique groups', function (array $ids) {
