@@ -70,7 +70,7 @@ class MeterController extends Controller
             }
 
             $session = DB::transaction(function () use ($request, $deviceUuid) {
-                $now = Carbon::now();
+                $now = Carbon::now('UTC');
 
                 // Create meter session (no driver_id for guest sessions)
                 $session = DriverSession::create([
@@ -162,7 +162,7 @@ class MeterController extends Controller
             }
 
             $session = DB::transaction(function () use ($session, $request) {
-                $now = Carbon::now();
+                $now = Carbon::now('UTC');
 
                 // Add final route point if location provided
                 if ($request->has('latitude') && $request->has('longitude')) {
@@ -268,7 +268,7 @@ class MeterController extends Controller
                 'speed' => $request->input('speed'),
                 'heading' => $request->input('heading'),
                 'accuracy' => $request->input('accuracy'),
-                'recorded_at' => Carbon::now(),
+                'recorded_at' => Carbon::now('UTC'),
             ]);
 
             // Calculate current distance

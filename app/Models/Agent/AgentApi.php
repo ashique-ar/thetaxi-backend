@@ -38,6 +38,13 @@ class AgentApi extends BaseModel
         'title',
         'description',
         'api_key',
+        'agent_id',
+        'rate_limit',
+        'access_level',
+        'allowed_ips',
+        'status',
+        'total_requests',
+        'last_used_at',
         'created_user_id',
         'updated_user_id',
     ];
@@ -51,6 +58,9 @@ class AgentApi extends BaseModel
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
         'deleted_at' => 'datetime',
+        'rate_limit' => 'integer',
+        'total_requests' => 'integer',
+        'last_used_at' => 'datetime',
     ];
 
     /**
@@ -75,5 +85,10 @@ class AgentApi extends BaseModel
     public function sessions(): HasMany
     {
         return $this->hasMany(AgentApiSession::class, 'agent_api_id');
+    }
+
+    public function agent(): BelongsTo
+    {
+        return $this->belongsTo(Agent::class);
     }
 }

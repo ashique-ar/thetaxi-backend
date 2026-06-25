@@ -127,7 +127,7 @@ class TripTrackingService
 
         $assignment->update([
             'trip_phase' => TripPhase::PICKUP_ARRIVED,
-            'pickup_arrived_at' => Carbon::now(),
+            'pickup_arrived_at' => Carbon::now('UTC'),
             'pickup_arrival_latitude' => $coordinates['latitude'],
             'pickup_arrival_longitude' => $coordinates['longitude'],
         ]);
@@ -154,10 +154,12 @@ class TripTrackingService
             throw new \InvalidArgumentException('TRIP_PICKUP_NOT_CONFIRMED');
         }
 
+        $now = Carbon::now('UTC');
+
         $assignment->update([
             'trip_phase' => TripPhase::IN_PROGRESS,
-            'trip_started_at' => Carbon::now(),
-            'actual_start' => Carbon::now(),
+            'trip_started_at' => $now,
+            'actual_start' => $now,
         ]);
 
         if ($this->isMultiStopAssignment($assignment, $stops)) {
@@ -216,7 +218,7 @@ class TripTrackingService
         }
 
         return DB::transaction(function () use ($assignment, $finalLocation) {
-            $now = Carbon::now();
+            $now = Carbon::now('UTC');
 
             // Close open waiting records
             $this->waitingTimeService->closeOpenWaitingRecords($assignment);
@@ -303,7 +305,7 @@ class TripTrackingService
 
         $stop->update([
             'status' => 'arrived',
-            'arrived_at' => Carbon::now(),
+            'arrived_at' => Carbon::now('UTC'),
             'arrived_latitude' => $data['latitude'],
             'arrived_longitude' => $data['longitude'],
             'notes' => $data['notes'] ?? $stop->notes,
@@ -344,7 +346,7 @@ class TripTrackingService
 
         $stop->update([
             'status' => 'skipped',
-            'completed_at' => Carbon::now(),
+            'completed_at' => Carbon::now('UTC'),
             'completed_latitude' => $data['latitude'] ?? null,
             'completed_longitude' => $data['longitude'] ?? null,
             'completed_action' => 'skipped',
@@ -428,7 +430,7 @@ class TripTrackingService
 
         $stop->update([
             'status' => $completedStatus,
-            'completed_at' => Carbon::now(),
+            'completed_at' => Carbon::now('UTC'),
             'completed_latitude' => $data['latitude'] ?? null,
             'completed_longitude' => $data['longitude'] ?? null,
             'completed_action' => $completedStatus,
@@ -472,7 +474,7 @@ class TripTrackingService
             return;
         }
 
-        $now = Carbon::now();
+        $now = Carbon::now('UTC');
         $firstStop->update([
             'status' => 'picked_up',
             'arrived_at' => $firstStop->arrived_at ?? $now,
@@ -963,7 +965,7 @@ class TripTrackingService
 
         $collectedAmount = round((float) $paymentData['collected_amount'], 2);
         $fareAmount = $this->resolveBookingFareAmount($booking);
-        $now = Carbon::now();
+        $now = Carbon::now('UTC');
 
         $booking->update([
             'payment_collected_amount' => $collectedAmount,

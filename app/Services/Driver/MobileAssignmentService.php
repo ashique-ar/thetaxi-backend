@@ -165,7 +165,7 @@ class MobileAssignmentService
         }
 
         return DB::transaction(function () use ($driver, $assignment) {
-            $now = Carbon::now();
+            $now = Carbon::now('UTC');
 
             $assignment->update([
                 'status' => 'confirmed',

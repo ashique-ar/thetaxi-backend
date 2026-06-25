@@ -10,7 +10,7 @@ class CreateCmsContentTypeRequest extends FormRequest
     public function rules()
     {
         return [
-            'title' => ['nullable', 'string', 'max:255'],
+            'title' => ['required', 'string', 'max:255'],
             'slug' => ['required', 'string', 'max:255', 'unique:cms_content_types,slug'],
             'description' => ['nullable', 'string'],
             'icon' => ['nullable', 'string', 'max:255'],

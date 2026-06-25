@@ -25,10 +25,30 @@ class CompanyController extends Controller
     {
         $q = Company::with(['region', 'country', 'state']);
         if ($request->filled('search')) {
-            $q->whereLikeInsensitive('name', $request->search);
+            $search = $request->search;
+            $q->where(function ($query) use ($search) {
+                $query->whereLikeInsensitive('name', $search)
+                    ->orWhereLikeInsensitive('email', $search)
+                    ->orWhereLikeInsensitive('phone', $search)
+                    ->orWhereLikeInsensitive('domain', $search);
+            });
         }
+        if ($request->filled('region_id')) {
+            $q->where('region_id', $request->region_id);
+        }
+        if ($request->filled('country_id')) {
+            $q->where('country_id', $request->country_id);
+        }
+        if ($request->filled('state_id')) {
+            $q->where('state_id', $request->state_id);
+        }
+        if ($request->has('is_active') && $request->is_active !== '') {
+            $q->where('is_active', $request->boolean('is_active'));
+        }
+        $q->latest();
+
         return CompanyResource::collection(
-            $q->paginate($request->per_page ?? 15)
+            $q->paginate(min(max((int) $request->integer('per_page', 15), 1), 100))
         );
     }
 

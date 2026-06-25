@@ -9,11 +9,12 @@ class UpdateAgentApiRequest extends FormRequest
 
     public function rules()
     {
-        $id = $this->route('agent_api')->id;
         return [
             'title' => ['sometimes', 'nullable', 'string', 'max:255'],
             'description' => ['sometimes', 'nullable', 'string'],
-            'api_key' => ["sometimes", "required", "string", "max:255", "unique:agent_apis,api_key,{$id}"],
+            'rate_limit' => ['sometimes', 'required', 'integer', 'min:1', 'max:100000'],
+            'access_level' => ['sometimes', 'required', 'in:read,write,admin'],
+            'allowed_ips' => ['sometimes', 'nullable', 'string'],
         ];
     }
 }

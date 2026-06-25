@@ -4,11 +4,13 @@ namespace App\Models\Booking;
 
 use App\Models\BaseModel;
 use App\Models\Website\WebsiteSetting;
+use App\Models\BusinessSetting;
 use App\Models\Service\ServiceType;
 use App\Models\Vehicle\VehicleAssignment;
 use App\Enums\BookingLifecycleStatus;
 use App\Enums\DispatchStatus;
 use App\Enums\QCStatus;
+use Carbon\Carbon;
 
 /**
  * App\Models\Booking\Booking
@@ -816,14 +818,18 @@ class Booking extends BaseModel
         }
 
         $cancellationAllowed = $this->normalizeSettingBoolean(
-            WebsiteSetting::getValue('cancellation_allowed', null),
+            BusinessSetting::getSetting('cancellation_allowed')
+                ?? WebsiteSetting::getValue('cancellation_allowed', null),
             true
         );
         if (!$cancellationAllowed) {
             return false;
         }
 
-        $cancellationHours = (int) (WebsiteSetting::getValue('cancellation_hours', 0) ?? 0);
+        $cancellationHours = (int) (
+            BusinessSetting::getSetting('cancellation_hours')
+            ?? WebsiteSetting::getValue('cancellation_hours', 0)
+        );
         if ($cancellationHours > 0) {
             return now()->addHours($cancellationHours)->lte($startDateTime);
         }
@@ -1058,7 +1064,7 @@ class Booking extends BaseModel
 
             case BookingLifecycleStatus::COMPLETED:
                 $this->status = 'completed';
-                $this->completed_at = now();
+                $this->completed_at = Carbon::now('UTC');
                 $this->updated_user_id = $userId;
                 $this->save();
                 break;

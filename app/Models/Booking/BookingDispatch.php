@@ -8,6 +8,7 @@ use App\Models\Vehicle\Vehicle;
 use App\Models\Driver\Driver;
 use App\Enums\DispatchStatus;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 /**
  * Booking Dispatch Model
@@ -145,7 +146,7 @@ class BookingDispatch extends BaseModel
     {
         $this->update([
             'dispatch_status' => DispatchStatus::DISPATCHED,
-            'dispatched_at' => now(),
+            'dispatched_at' => Carbon::now('UTC'),
             'dispatched_by' => $userId,
             'actual_return_at' => null,
             'returned_by' => null,
@@ -172,12 +173,12 @@ class BookingDispatch extends BaseModel
         $actualReturnAt = $returnData['actual_return_time'] ?? null;
         if (!empty($actualReturnAt)) {
             try {
-                $actualReturnAt = \Illuminate\Support\Carbon::parse($actualReturnAt);
+                $actualReturnAt = Carbon::parse($actualReturnAt)->utc();
             } catch (\Throwable $exception) {
-                $actualReturnAt = now();
+                $actualReturnAt = Carbon::now('UTC');
             }
         } else {
-            $actualReturnAt = now();
+            $actualReturnAt = Carbon::now('UTC');
         }
 
         $this->update([

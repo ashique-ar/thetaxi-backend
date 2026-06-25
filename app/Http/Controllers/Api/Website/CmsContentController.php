@@ -113,9 +113,9 @@ class CmsContentController extends Controller
                 break;
         }
 
-        return CmsContentResource::collection(
-            $q->paginate($request->per_page ?? 15)
-        );
+        $perPage = min(max((int) $request->input('per_page', 15), 1), 100);
+
+        return CmsContentResource::collection($q->paginate($perPage));
     }
 
     public function store(CreateCmsContentRequest $request): JsonResponse
@@ -150,7 +150,7 @@ class CmsContentController extends Controller
         return response()->json([
             'status' => 'success',
             'message' => 'Content updated',
-            'data' => ['content' => new CmsContentResource($cms_content)]
+            'data' => ['content' => new CmsContentResource($cms_content->fresh(['contentType', 'createdBy', 'updatedBy']))]
         ]);
     }
 
@@ -279,9 +279,9 @@ class CmsContentController extends Controller
         $q->orderBy('is_featured', 'desc')
             ->orderBy('published_at', 'desc');
 
-        return CmsContentResource::collection(
-            $q->paginate($request->per_page ?? 15)
-        );
+        $perPage = min(max((int) $request->input('per_page', 15), 1), 100);
+
+        return CmsContentResource::collection($q->paginate($perPage));
     }
 
     /**

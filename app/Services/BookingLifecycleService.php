@@ -8,7 +8,6 @@ use App\Models\Booking\BookingDispatch;
 use App\Models\Booking\BookingQC;
 use App\Models\DriverAssignment;
 use App\Models\Vehicle\Vehicle;
-use App\Models\Website\WebsiteSetting;
 use App\Services\Driver\NotificationTriggerService;
 use App\Services\InvoiceService;
 use App\Models\User;
@@ -38,6 +37,7 @@ class BookingLifecycleService
     protected AvailabilityEnforcementService $availabilityEnforcement;
     protected LoyaltyService $loyaltyService;
     protected AgentCommissionService $agentCommissionService;
+    protected WebsiteSettingsService $websiteSettingsService;
 
     public function __construct(
         AssignmentService $assignmentService,
@@ -47,7 +47,8 @@ class BookingLifecycleService
         InvoiceService $invoiceService,
         AvailabilityEnforcementService $availabilityEnforcement,
         LoyaltyService $loyaltyService,
-        AgentCommissionService $agentCommissionService
+        AgentCommissionService $agentCommissionService,
+        WebsiteSettingsService $websiteSettingsService
     ) {
         $this->assignmentService = $assignmentService;
         $this->bookingFlowService = $bookingFlowService;
@@ -57,6 +58,7 @@ class BookingLifecycleService
         $this->availabilityEnforcement = $availabilityEnforcement;
         $this->loyaltyService = $loyaltyService;
         $this->agentCommissionService = $agentCommissionService;
+        $this->websiteSettingsService = $websiteSettingsService;
     }
 
     /**
@@ -742,14 +744,15 @@ class BookingLifecycleService
                 );
                 if (!$transitioned) {
                     $existingWorkflowData = is_array($booking->workflow_data) ? $booking->workflow_data : [];
+                    $completedAt = Carbon::now('UTC');
                     $booking->update([
                         'status' => 'completed',
-                        'completed_at' => now(),
+                        'completed_at' => $completedAt,
                         'updated_user_id' => $actorUserId,
                         'workflow_data' => array_merge($existingWorkflowData, [
                             'qc_skipped' => true,
                             'completed_via' => !empty($returnData['completed_by_driver']) ? 'driver_mobile' : 'return_processing',
-                            'completed_at' => now()->toIso8601String(),
+                            'completed_at' => $completedAt->toIso8601String(),
                         ]),
                     ]);
                 }
@@ -917,7 +920,7 @@ class BookingLifecycleService
 
             if ($canSkipReturn && $booking->dispatch) {
                 $booking->dispatch->markReturned((string) $actorUserId, [
-                    'actual_return_time' => now(),
+                    'actual_return_time' => Carbon::now('UTC'),
                     'notes' => 'Trip completed without return management.',
                     'completed_by_driver' => true,
                 ]);
@@ -930,9 +933,10 @@ class BookingLifecycleService
             );
 
             if (!$transitioned && ($canSkipReturn || $canSkipQc)) {
+                $completedAt = Carbon::now('UTC');
                 $booking->update([
                     'status' => 'completed',
-                    'completed_at' => now(),
+                    'completed_at' => $completedAt,
                     'updated_user_id' => $actorUserId,
                     'workflow_data' => array_merge(
                         is_array($booking->workflow_data) ? $booking->workflow_data : [],
@@ -941,7 +945,7 @@ class BookingLifecycleService
                             'return_skipped' => $canSkipReturn,
                             'qc_skipped' => $canSkipQc || $canSkipReturn,
                             'completed_via' => $canSkipReturn ? 'direct_trip_completion' : 'return_processing',
-                            'completed_at' => now()->toIso8601String(),
+                            'completed_at' => $completedAt->toIso8601String(),
                         ]
                     ),
                 ]);
@@ -1003,17 +1007,18 @@ class BookingLifecycleService
 
             // Notify corporate employee about booking completion
             if ($booking->is_corporate_booking && $booking->corporate_account_id) {
+                $auditTimestamp = Carbon::now('UTC');
                 \App\Models\AuditLog::create([
                     'user_id'   => auth()->id(),
                     'action'    => 'corporate_booking_completed',
                     'entity'    => 'Booking',
                     'entity_id' => $booking->id,
-                    'timestamp' => now(),
+                    'timestamp' => $auditTimestamp,
                     'details'   => [
                         'corporate_id'   => $booking->corporate_account_id,
                         'employee_id'    => $booking->employee_id,
                         'booking_number' => $booking->booking_number,
-                        'completed_at'   => now()->toISOString(),
+                        'completed_at'   => $auditTimestamp->toIso8601String(),
                     ],
                 ]);
             }
@@ -1038,15 +1043,15 @@ class BookingLifecycleService
     private function getLifecycleWorkflowSettings(): array
     {
         $enableReturn = $this->normalizeSettingBoolean(
-            WebsiteSetting::getValue('feature_vehicle_return_management_enabled', 'false'),
+            $this->websiteSettingsService->get('feature_vehicle_return_management_enabled', 'false'),
             false
         );
         $enableQc = $this->normalizeSettingBoolean(
-            WebsiteSetting::getValue('assignment_enable_qc_stage', 'false'),
+            $this->websiteSettingsService->get('assignment_enable_qc_stage', 'false'),
             false
         ) && $enableReturn;
         $enableMaintenance = $this->normalizeSettingBoolean(
-            WebsiteSetting::getValue('assignment_enable_maintenance_stage', 'false'),
+            $this->websiteSettingsService->get('assignment_enable_maintenance_stage', 'false'),
             false
         );
 
@@ -1321,7 +1326,7 @@ class BookingLifecycleService
         // Booking created
         $timeline[] = [
             'event' => 'Booking Created',
-            'timestamp' => $booking->created_at,
+            'timestamp' => $this->toUtcIsoTimestamp($booking->created_at),
             'user' => $booking->createdBy?->name ?? 'System',
             'status' => 'inquiry',
         ];
@@ -1330,7 +1335,7 @@ class BookingLifecycleService
         if ($booking->confirmed_at) {
             $timeline[] = [
                 'event' => 'Booking Confirmed',
-                'timestamp' => $booking->confirmed_at,
+                'timestamp' => $this->toUtcIsoTimestamp($booking->confirmed_at),
                 'user' => $booking->updatedBy?->name ?? 'System',
                 'status' => 'confirmed',
             ];
@@ -1340,7 +1345,7 @@ class BookingLifecycleService
         if ($booking->dispatch?->dispatched_at) {
             $timeline[] = [
                 'event' => 'Vehicle Dispatched',
-                'timestamp' => $booking->dispatch->dispatched_at,
+                'timestamp' => $this->toUtcIsoTimestamp($booking->dispatch->dispatched_at),
                 'user' => $booking->dispatch->dispatchedBy?->name ?? 'System',
                 'status' => 'dispatched',
             ];
@@ -1350,7 +1355,7 @@ class BookingLifecycleService
         if ($booking->dispatch?->actual_return_at) {
             $timeline[] = [
                 'event' => 'Vehicle Returned',
-                'timestamp' => $booking->dispatch->actual_return_at,
+                'timestamp' => $this->toUtcIsoTimestamp($booking->dispatch->actual_return_at),
                 'user' => $booking->dispatch->returnedBy?->name ?? 'System',
                 'status' => 'returned',
             ];
@@ -1360,7 +1365,7 @@ class BookingLifecycleService
         if ($booking->qc?->inspection_completed_at) {
             $timeline[] = [
                 'event' => 'QC Inspection Completed',
-                'timestamp' => $booking->qc->inspection_completed_at,
+                'timestamp' => $this->toUtcIsoTimestamp($booking->qc->inspection_completed_at),
                 'user' => $booking->qc->inspector?->name ?? 'System',
                 'status' => 'qc_completed',
             ];
@@ -1370,13 +1375,26 @@ class BookingLifecycleService
         if ($booking->completed_at) {
             $timeline[] = [
                 'event' => 'Booking Completed',
-                'timestamp' => $booking->completed_at,
+                'timestamp' => $this->toUtcIsoTimestamp($booking->completed_at),
                 'user' => $booking->updatedBy?->name ?? 'System',
                 'status' => 'completed',
             ];
         }
 
         return array_reverse($timeline); // Most recent first
+    }
+
+    private function toUtcIsoTimestamp($value): ?string
+    {
+        if (!$value) {
+            return null;
+        }
+
+        $timestamp = $value instanceof Carbon
+            ? $value->copy()
+            : Carbon::parse((string) $value);
+
+        return $timestamp->utc()->toIso8601String();
     }
 
     /**

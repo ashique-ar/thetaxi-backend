@@ -370,6 +370,13 @@ class AssignmentController extends Controller
             'truncated' => false,
             'pre_pickup_points' => 0,
             'post_pickup_points' => 0,
+            'distance_summary' => [
+                'km_to_pickup' => null,
+                'trip_km' => null,
+                'tracked_total_km' => null,
+                'recorded_trip_km' => null,
+                'source' => 'not_available',
+            ],
             'points' => [],
             'first_point' => null,
             'latest_point' => null,
@@ -389,12 +396,18 @@ class AssignmentController extends Controller
                 'booking_item_id' => $tripAssignment->booking_item_id,
                 'status' => $tripAssignment->status,
                 'trip_phase' => $tripAssignment->trip_phase?->value ?? (string) $tripAssignment->trip_phase,
-                'assigned_from' => $tripAssignment->assigned_from?->toIso8601String(),
-                'assigned_to' => $tripAssignment->assigned_to?->toIso8601String(),
-                'confirmed_at' => $tripAssignment->confirmed_at?->toIso8601String(),
-                'trip_started_at' => $tripAssignment->trip_started_at?->toIso8601String(),
-                'trip_completed_at' => $tripAssignment->trip_completed_at?->toIso8601String(),
-                'pickup_arrived_at' => $tripAssignment->pickup_arrived_at?->toIso8601String(),
+                'assigned_from' => $this->toUtcIsoTimestamp($tripAssignment->assigned_from),
+                'assigned_to' => $this->toUtcIsoTimestamp($tripAssignment->assigned_to),
+                'confirmed_at' => $this->toUtcIsoTimestamp($tripAssignment->confirmed_at),
+                'trip_started_at' => $this->toUtcIsoTimestamp($tripAssignment->trip_started_at),
+                'trip_completed_at' => $this->toUtcIsoTimestamp($tripAssignment->trip_completed_at),
+                'pickup_arrived_at' => $this->toUtcIsoTimestamp($tripAssignment->pickup_arrived_at),
+                'total_distance_km' => $tripAssignment->total_distance_km !== null
+                    ? (float) $tripAssignment->total_distance_km
+                    : null,
+                'total_waiting_time_seconds' => $tripAssignment->total_waiting_time_seconds !== null
+                    ? (int) $tripAssignment->total_waiting_time_seconds
+                    : null,
                 'pickup_arrival_latitude' => $tripAssignment->pickup_arrival_latitude !== null
                     ? (float) $tripAssignment->pickup_arrival_latitude
                     : null,
@@ -408,10 +421,18 @@ class AssignmentController extends Controller
                     ? (float) $tripAssignment->final_longitude
                     : null,
                 'stops' => $this->mapPersistedAssignmentStops($tripAssignment),
+                'events' => $this->buildAssignmentEventTimeline($tripAssignment),
             ];
 
             $firstPoint = null;
             $latestPoint = null;
+            $distanceSummary = [
+                'km_to_pickup' => null,
+                'trip_km' => $tripAssignment->total_distance_km !== null ? (float) $tripAssignment->total_distance_km : null,
+                'tracked_total_km' => null,
+                'recorded_trip_km' => $tripAssignment->total_distance_km !== null ? (float) $tripAssignment->total_distance_km : null,
+                'source' => $tripAssignment->total_distance_km !== null ? 'driver_assignment' : 'not_available',
+            ];
 
             if ($includeTracking) {
                 $routePointsQuery = RoutePoint::query()
@@ -466,11 +487,26 @@ class AssignmentController extends Controller
                             'speed' => $point->speed !== null ? (float) $point->speed : null,
                             'heading' => $point->heading !== null ? (float) $point->heading : null,
                             'accuracy' => $point->accuracy !== null ? (float) $point->accuracy : null,
-                            'recorded_at' => $point->recorded_at?->toIso8601String(),
-                            'created_at' => $point->created_at?->toIso8601String(),
+                            'recorded_at' => $this->toUtcIsoTimestamp($point->recorded_at),
+                            'created_at' => $this->toUtcIsoTimestamp($point->created_at),
                         ];
                     })
                     ->all();
+
+                $calculatedDistances = $this->calculateTrackingDistanceSummary($points);
+                $distanceSummary = [
+                    'km_to_pickup' => $calculatedDistances['km_to_pickup'],
+                    'trip_km' => $tripAssignment->total_distance_km !== null
+                        ? (float) $tripAssignment->total_distance_km
+                        : $calculatedDistances['trip_km'],
+                    'tracked_total_km' => $calculatedDistances['tracked_total_km'],
+                    'recorded_trip_km' => $tripAssignment->total_distance_km !== null
+                        ? (float) $tripAssignment->total_distance_km
+                        : null,
+                    'source' => $tripAssignment->total_distance_km !== null
+                        ? 'driver_assignment_with_tracking_split'
+                        : 'route_points',
+                ];
 
                 $firstPoint = count($points) > 0 ? $points[0] : null;
                 $latestPoint = count($points) > 0 ? $points[count($points) - 1] : null;
@@ -507,6 +543,7 @@ class AssignmentController extends Controller
                     'truncated' => $totalPoints > count($points),
                     'pre_pickup_points' => $prePickupPoints,
                     'post_pickup_points' => $postPickupPoints,
+                    'distance_summary' => $distanceSummary,
                     'points' => $points,
                     'first_point' => $firstPoint,
                     'latest_point' => $latestPoint,
@@ -518,6 +555,9 @@ class AssignmentController extends Controller
                         'stops' => [],
                     ],
                 ];
+            }
+            else {
+                $routePayload['distance_summary'] = $distanceSummary;
             }
 
             $bookingItem = $tripAssignment->bookingItem ?: $selectedBookingItem;
@@ -548,7 +588,7 @@ class AssignmentController extends Controller
                         'label' => 'Driver Accepted',
                         'latitude' => (float) $firstPoint['latitude'],
                         'longitude' => (float) $firstPoint['longitude'],
-                        'timestamp' => $tripAssignment->confirmed_at->toIso8601String(),
+                        'timestamp' => $this->toUtcIsoTimestamp($tripAssignment->confirmed_at),
                         'source' => 'route_point',
                     ];
                 } elseif ($this->isValidCoordinate($livePayload['latitude'], $livePayload['longitude'])) {
@@ -556,7 +596,7 @@ class AssignmentController extends Controller
                         'label' => 'Driver Accepted',
                         'latitude' => (float) $livePayload['latitude'],
                         'longitude' => (float) $livePayload['longitude'],
-                        'timestamp' => $tripAssignment->confirmed_at->toIso8601String(),
+                        'timestamp' => $this->toUtcIsoTimestamp($tripAssignment->confirmed_at),
                         'source' => 'driver_live_location',
                     ];
                 }
@@ -587,13 +627,13 @@ class AssignmentController extends Controller
                     'label' => 'Pickup Arrived',
                     'latitude' => (float) $tripAssignment->pickup_arrival_latitude,
                     'longitude' => (float) $tripAssignment->pickup_arrival_longitude,
-                    'timestamp' => $tripAssignment->pickup_arrived_at?->toIso8601String(),
+                    'timestamp' => $this->toUtcIsoTimestamp($tripAssignment->pickup_arrived_at),
                     'source' => 'pickup_arrival',
                 ];
             } elseif ($pickupPoint) {
                 $pickupReference = [
                     ...$pickupPoint,
-                    'timestamp' => $tripAssignment->pickup_arrived_at?->toIso8601String(),
+                    'timestamp' => $this->toUtcIsoTimestamp($tripAssignment->pickup_arrived_at),
                     'source' => 'booking_pickup',
                 ];
             }
@@ -604,13 +644,13 @@ class AssignmentController extends Controller
                     'label' => 'Trip End',
                     'latitude' => (float) $tripAssignment->final_latitude,
                     'longitude' => (float) $tripAssignment->final_longitude,
-                    'timestamp' => $tripAssignment->trip_completed_at?->toIso8601String(),
+                    'timestamp' => $this->toUtcIsoTimestamp($tripAssignment->trip_completed_at),
                     'source' => 'trip_completion',
                 ];
             } elseif ($dropoffPoint) {
                 $dropoffReference = [
                     ...$dropoffPoint,
-                    'timestamp' => $tripAssignment->trip_completed_at?->toIso8601String(),
+                    'timestamp' => $this->toUtcIsoTimestamp($tripAssignment->trip_completed_at),
                     'source' => 'booking_dropoff',
                 ];
             }
@@ -685,6 +725,121 @@ class AssignmentController extends Controller
         }
 
         return 'accepted_to_pickup';
+    }
+
+    private function buildAssignmentEventTimeline($assignment): array
+    {
+        if (!$assignment) {
+            return [];
+        }
+
+        $events = [
+            [
+                'key' => 'assigned',
+                'label' => 'Assignment scheduled',
+                'timestamp' => $this->toUtcIsoTimestamp($assignment->assigned_from),
+                'source' => 'driver_assignment.assigned_from',
+            ],
+            [
+                'key' => 'confirmed',
+                'label' => 'Driver accepted',
+                'timestamp' => $this->toUtcIsoTimestamp($assignment->confirmed_at),
+                'source' => 'driver_assignment.confirmed_at',
+            ],
+            [
+                'key' => 'pickup_arrived',
+                'label' => 'Arrived at pickup',
+                'timestamp' => $this->toUtcIsoTimestamp($assignment->pickup_arrived_at),
+                'source' => 'driver_assignment.pickup_arrived_at',
+            ],
+            [
+                'key' => 'trip_started',
+                'label' => 'Trip started',
+                'timestamp' => $this->toUtcIsoTimestamp($assignment->trip_started_at),
+                'source' => 'driver_assignment.trip_started_at',
+            ],
+            [
+                'key' => 'trip_completed',
+                'label' => 'Trip completed',
+                'timestamp' => $this->toUtcIsoTimestamp($assignment->trip_completed_at),
+                'source' => 'driver_assignment.trip_completed_at',
+            ],
+        ];
+
+        return collect($events)
+            ->filter(fn ($event) => !empty($event['timestamp']))
+            ->sortBy(fn ($event) => strtotime((string) $event['timestamp']) ?: 0)
+            ->values()
+            ->all();
+    }
+
+    private function toUtcIsoTimestamp($value): ?string
+    {
+        if (!$value) {
+            return null;
+        }
+
+        $timestamp = $value instanceof Carbon
+            ? $value->copy()
+            : Carbon::parse((string) $value);
+
+        return $timestamp->utc()->toIso8601String();
+    }
+
+    private function calculateTrackingDistanceSummary(array $points): array
+    {
+        $kmToPickup = 0.0;
+        $tripKm = 0.0;
+        $trackedTotalKm = 0.0;
+        $lastPoint = null;
+        $hasPrePickupSegment = false;
+        $hasTripSegment = false;
+
+        foreach ($points as $point) {
+            if (!$this->isValidCoordinate($point['latitude'] ?? null, $point['longitude'] ?? null)) {
+                continue;
+            }
+
+            if ($lastPoint && $this->isValidCoordinate($lastPoint['latitude'] ?? null, $lastPoint['longitude'] ?? null)) {
+                $segmentKm = $this->haversineDistanceKm(
+                    (float) $lastPoint['latitude'],
+                    (float) $lastPoint['longitude'],
+                    (float) $point['latitude'],
+                    (float) $point['longitude']
+                );
+
+                $trackedTotalKm += $segmentKm;
+
+                $phase = $point['tracking_phase'] ?? $lastPoint['tracking_phase'] ?? null;
+                if ($phase === 'pickup_to_dropoff') {
+                    $tripKm += $segmentKm;
+                    $hasTripSegment = true;
+                } elseif ($phase === 'accepted_to_pickup') {
+                    $kmToPickup += $segmentKm;
+                    $hasPrePickupSegment = true;
+                }
+            }
+
+            $lastPoint = $point;
+        }
+
+        return [
+            'km_to_pickup' => $hasPrePickupSegment ? round($kmToPickup, 2) : null,
+            'trip_km' => $hasTripSegment ? round($tripKm, 2) : null,
+            'tracked_total_km' => $trackedTotalKm > 0 ? round($trackedTotalKm, 2) : null,
+        ];
+    }
+
+    private function haversineDistanceKm(float $lat1, float $lon1, float $lat2, float $lon2): float
+    {
+        $earthRadiusKm = 6371.0;
+        $latDelta = deg2rad($lat2 - $lat1);
+        $lonDelta = deg2rad($lon2 - $lon1);
+
+        $a = sin($latDelta / 2) ** 2
+            + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($lonDelta / 2) ** 2;
+
+        return $earthRadiusKm * 2 * atan2(sqrt($a), sqrt(1 - $a));
     }
 
     private function extractStopPointsFromBookingItem($bookingItem): array
@@ -801,8 +956,8 @@ class AssignmentController extends Controller
                     'address' => $stop->address,
                     'latitude' => $stop->latitude !== null ? (float) $stop->latitude : null,
                     'longitude' => $stop->longitude !== null ? (float) $stop->longitude : null,
-                    'arrived_at' => $stop->arrived_at?->toIso8601String(),
-                    'completed_at' => $stop->completed_at?->toIso8601String(),
+                    'arrived_at' => $this->toUtcIsoTimestamp($stop->arrived_at),
+                    'completed_at' => $this->toUtcIsoTimestamp($stop->completed_at),
                     'completed_action' => $stop->completed_action,
                     'skip_reason' => $stop->skip_reason,
                 ];
@@ -921,7 +1076,7 @@ class AssignmentController extends Controller
                         ->first();
                 }
 
-                $swapTime = now();
+                $swapTime = Carbon::now('UTC');
                 $oldVehicleId = $selectedBookingItem?->vehicle_id ?? $booking->vehicle_id;
                 $oldDriverId = $selectedBookingItem?->driver_id ?? $booking->driver_id;
                 $newVehicleId = $request->new_vehicle_id;

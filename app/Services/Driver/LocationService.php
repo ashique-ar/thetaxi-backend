@@ -58,14 +58,17 @@ class LocationService
             ->first();
 
         if ($lastPoint && $lastPoint->recorded_at) {
-            $elapsed = Carbon::parse($lastPoint->recorded_at)->diffInSeconds(Carbon::now());
+            $elapsed = Carbon::parse($lastPoint->recorded_at)->utc()->diffInSeconds(Carbon::now('UTC'));
             if ($elapsed < self::MIN_UPDATE_INTERVAL_SECONDS) {
                 throw new \Exception('LOCATION_RATE_LIMITED');
             }
         }
 
         return DB::transaction(function () use ($driver, $session, $locationData) {
-            $now = Carbon::now();
+            $now = Carbon::now('UTC');
+            $recordedAt = isset($locationData['recorded_at'])
+                ? Carbon::parse($locationData['recorded_at'])->utc()
+                : $now;
 
             // Check for active trip tracking session
             $assignmentId = $this->getActiveAssignmentId($driver);
@@ -80,7 +83,7 @@ class LocationService
                 'speed' => $locationData['speed'] ?? null,
                 'heading' => $locationData['heading'] ?? null,
                 'accuracy' => $locationData['accuracy'] ?? null,
-                'recorded_at' => $locationData['recorded_at'] ?? $now,
+                'recorded_at' => $recordedAt,
             ]);
 
             // Update driver coordinates and last_active_at
@@ -231,7 +234,7 @@ class LocationService
         $activeAssignmentId = $this->getActiveAssignmentId($driver);
         $normalizedLocations = collect($locations)
             ->map(function (array $locationData) use ($activeAssignmentId) {
-                $recordedAt = Carbon::parse($locationData['recorded_at']);
+                $recordedAt = Carbon::parse($locationData['recorded_at'])->utc();
 
                 return [
                     'session_id' => null,
@@ -274,7 +277,7 @@ class LocationService
             ->whereIn('recorded_at', $recordedAtValues)
             ->get(['recorded_at', 'latitude', 'longitude'])
             ->map(fn (RoutePoint $point) => $this->buildLocationDedupeKey(
-                Carbon::parse($point->recorded_at),
+                Carbon::parse($point->recorded_at)->utc(),
                 (float) $point->latitude,
                 (float) $point->longitude
             ))
@@ -295,7 +298,7 @@ class LocationService
             &$duplicateCount,
             &$latestSavedPoint
         ) {
-            $now = Carbon::now();
+            $now = Carbon::now('UTC');
 
             foreach ($normalizedLocations as $locationData) {
                 $dedupeKey = $locationData['dedupe_key'];

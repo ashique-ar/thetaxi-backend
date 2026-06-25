@@ -749,8 +749,16 @@ Route::middleware(['auth:api'])->group(function () {
     */
 
     Route::middleware(['permission:agents.view'])->group(function () {
+        Route::get('agents/dashboard-stats', [AgentController::class, 'dashboardStats']);
+        Route::get('agents/top-performers', [AgentController::class, 'topPerformers']);
         Route::prefix('agents')->group(function () {
-            Route::apiResource('api-management', AgentApiController::class);
+            Route::get('api-management/stats', [AgentApiController::class, 'stats']);
+            Route::post('api-management/{agentApi}/revoke', [AgentApiController::class, 'revoke']);
+            Route::post('api-management/{agentApi}/activate', [AgentApiController::class, 'activate']);
+            Route::get('api-management/{agentApi}/usage', [AgentApiController::class, 'usage']);
+            Route::get('api-management/{agentApi}/logs', [AgentApiController::class, 'logs']);
+            Route::apiResource('api-management', AgentApiController::class)
+                ->parameters(['api-management' => 'agentApi']);
             Route::apiResource('agent-api-sessions', AgentApiSessionController::class);
             Route::apiResource('agent-commissions', AgentCommissionController::class);
             Route::post('agent-commissions/settle', [AgentCommissionController::class, 'settle']);

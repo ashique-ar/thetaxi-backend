@@ -14,6 +14,9 @@ class AgentResource extends JsonResource
             'code'            => $this->code,
             'commission_rate' => $this->commission_rate,
             'branding_config' => $this->branding_config,
+            'user'            => $this->whenLoaded('user'),
+            'bookings_count'  => $this->whenCounted('bookings'),
+            'commissions_sum_amount' => $this->whenAggregated('commissions', 'amount', 'sum'),
             'created_at'      => $this->created_at,
             'updated_at'      => $this->updated_at,
         ];

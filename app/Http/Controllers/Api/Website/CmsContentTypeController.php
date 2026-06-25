@@ -44,7 +44,7 @@ class CmsContentTypeController extends Controller
           ->orderBy('title', 'asc');
           
         return CmsContentTypeResource::collection(
-            $q->paginate($request->per_page ?? 15)
+            $q->paginate(min(max((int) $request->integer('per_page', 15), 1), 100))
         );
     }
 

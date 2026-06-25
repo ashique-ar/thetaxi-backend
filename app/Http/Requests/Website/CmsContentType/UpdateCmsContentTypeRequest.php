@@ -13,7 +13,7 @@ class UpdateCmsContentTypeRequest extends FormRequest
         $id = $this->route('cms_content_type')->id;
 
         return [
-            'title' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'title' => ['sometimes', 'required', 'string', 'max:255'],
             'slug' => ['sometimes', 'required', 'string', 'max:255', "unique:cms_content_types,slug,{$id}"],
             'description' => ['sometimes', 'nullable', 'string'],
             'icon' => ['sometimes', 'nullable', 'string', 'max:255'],
