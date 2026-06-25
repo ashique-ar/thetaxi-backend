@@ -207,6 +207,10 @@ Route::middleware(['auth:api'])->group(function () {
 
     Route::get('service-types/{serviceType}/form-config', [ServiceFormConfigController::class, 'getFormConfig'])
         ->middleware('permission:bookings.view|bookings.create|create_bookings|view_all_bookings|corporate.view|system.view');
+    Route::get('booking-flow/service-types', [ServiceTypeController::class, 'index'])
+        ->middleware('permission:bookings.view|bookings.create|create_bookings|view_all_bookings|corporate.view|system.view');
+    Route::get('booking-flow/service-types/{serviceType}/form-config', [ServiceFormConfigController::class, 'getFormConfig'])
+        ->middleware('permission:bookings.view|bookings.create|create_bookings|view_all_bookings|corporate.view|system.view');
 
     Route::middleware(['permission:users.view'])->group(function () {
         Route::get('users', [UserController::class, 'index']);
@@ -1003,17 +1007,6 @@ Route::middleware(['auth:api'])->group(function () {
                 ->middleware('permission:bookings.create');
             Route::post('corporates/{corporateId}/employees', [BookingFlowController::class, 'createCorporateEmployee'])
                 ->middleware('permission:bookings.create');
-            Route::get('corporates/{corporateId}/service-types', function (string $corporateId) {
-                $corporate = \App\Models\Corporate\Corporate::findOrFail($corporateId);
-                $serviceTypes = $corporate->serviceTypes()
-                    ->where('service_types.is_active', true)
-                    ->orderBy('service_types.priority')
-                    ->orderBy('service_types.name')
-                    ->get();
-
-                return \App\Http\Resources\ServiceTypeResource::collection($serviceTypes);
-            })->middleware('permission:bookings.create');
-
             // Company/System Routes
             Route::get('company/locations', [BookingFlowController::class, 'getCompanyLocations'])
                 ->middleware('permission:bookings.view');
@@ -1318,11 +1311,11 @@ Route::middleware(['auth:api'])->group(function () {
     */
 
     Route::prefix('notifications')->group(function () {
-        Route::get('/', [NotificationController::class, 'getUserNotifications'])->middleware('permission:notifications.view');
-        Route::post('mark-read/{id}', [NotificationController::class, 'markAsRead'])->middleware('permission:notifications.mark-read');
-        Route::post('mark-all-read', [NotificationController::class, 'markAllAsRead'])->middleware('permission:notifications.mark-read');
-        Route::delete('{id}', [NotificationController::class, 'deleteNotification'])->middleware('permission:notifications.delete');
-        Route::get('unread-count', [NotificationController::class, 'getUnreadCount'])->middleware('permission:notifications.view');
+        Route::get('/', [NotificationController::class, 'getUserNotifications']);
+        Route::post('mark-read/{id}', [NotificationController::class, 'markAsRead']);
+        Route::post('mark-all-read', [NotificationController::class, 'markAllAsRead']);
+        Route::delete('{id}', [NotificationController::class, 'deleteNotification']);
+        Route::get('unread-count', [NotificationController::class, 'getUnreadCount']);
         Route::post('send', [NotificationController::class, 'sendNotification'])->middleware('permission:notifications.send');
         Route::post('broadcast', [NotificationController::class, 'broadcastNotification'])->middleware('permission:notifications.broadcast');
         Route::post('schedule', [NotificationController::class, 'scheduleNotification'])->middleware('permission:notifications.schedule');

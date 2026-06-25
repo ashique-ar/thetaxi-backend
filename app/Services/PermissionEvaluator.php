@@ -33,7 +33,10 @@ class PermissionEvaluator
             ->with('roles.permissions');
 
         if ($contextId) {
-            $contextQuery->where('id', $contextId);
+            $contextQuery->where(function ($query) use ($contextId) {
+                $query->where('id', $contextId)
+                    ->orWhere('context_id', $contextId);
+            });
         }
 
         if ($contextType) {

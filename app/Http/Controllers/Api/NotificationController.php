@@ -21,9 +21,6 @@ class NotificationController extends Controller
     {
         $this->mailDispatchService = $mailDispatchService;
         $this->middleware('auth:api');
-        $this->middleware('permission:notifications.view')->only(['getUserNotifications', 'getUnreadCount']);
-        $this->middleware('permission:notifications.mark-read')->only(['markAsRead', 'markAllAsRead']);
-        $this->middleware('permission:notifications.delete')->only(['deleteNotification']);
         $this->middleware('permission:notifications.send')->only(['sendNotification']);
         $this->middleware('permission:notifications.broadcast')->only(['broadcastNotification']);
         $this->middleware('permission:notifications.schedule')->only(['scheduleNotification']);
