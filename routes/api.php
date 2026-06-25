@@ -207,8 +207,48 @@ Route::middleware(['auth:api'])->group(function () {
 
     Route::get('service-types/{serviceType}/form-config', [ServiceFormConfigController::class, 'getFormConfig'])
         ->middleware('permission:bookings.view|bookings.create|create_bookings|view_all_bookings|corporate.view|system.view');
-    Route::get('booking-flow/service-types', [ServiceTypeController::class, 'index'])
-        ->middleware('permission:bookings.view|bookings.create|create_bookings|view_all_bookings|corporate.view|system.view');
+    Route::get('booking-flow/service-types', function (\Illuminate\Http\Request $request) {
+        $context = (string) $request->input('context', 'portal');
+        $ownerType = (string) $request->input('owner_type', '');
+        $ownerId = (string) $request->input('owner_id', '');
+        $fallbackContext = (string) $request->input('fallback_context', '');
+        $perPage = (int) ($request->input('per_page', 100));
+
+        if ($context === 'corporate') {
+            $ownerType = '';
+            $ownerId = '';
+        }
+
+        $query = \App\Models\Service\ServiceType::query()
+            ->where('is_active', true);
+
+        if ($context !== 'all') {
+            $query->forContext($context, $ownerType, $ownerId);
+        }
+
+        if ($request->filled('search')) {
+            $search = (string) $request->input('search');
+            $query->where(function ($builder) use ($search) {
+                $builder->whereLikeInsensitive('name', $search)
+                    ->orWhereLikeInsensitive('code', $search);
+            });
+        }
+
+        if ($fallbackContext !== '' && !(clone $query)->exists()) {
+            $fallbackOwnerType = (string) $request->input('fallback_owner_type', '');
+            $fallbackOwnerId = (string) $request->input('fallback_owner_id', '');
+            $query = \App\Models\Service\ServiceType::query()
+                ->where('is_active', true)
+                ->forContext($fallbackContext, $fallbackOwnerType, $fallbackOwnerId);
+        }
+
+        $serviceTypes = $query
+            ->orderBy('priority')
+            ->orderBy('name')
+            ->paginate(min(max($perPage, 1), 500));
+
+        return \App\Http\Resources\ServiceTypeResource::collection($serviceTypes);
+    })->middleware('permission:bookings.view|bookings.create|create_bookings|view_all_bookings|corporate.view|system.view');
     Route::get('booking-flow/service-types/{serviceType}/form-config', [ServiceFormConfigController::class, 'getFormConfig'])
         ->middleware('permission:bookings.view|bookings.create|create_bookings|view_all_bookings|corporate.view|system.view');
 
