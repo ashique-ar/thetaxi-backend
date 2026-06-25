@@ -186,6 +186,11 @@ class BookingFlowService
     public function normalizeCorporateEmployeeReferences(array $params): array
     {
         $employeeId = $params['employee_id'] ?? null;
+        $corporateEmployeeId = $params['corporate_employee_id'] ?? null;
+
+        if ((!is_string($employeeId) || trim($employeeId) === '') && is_string($corporateEmployeeId) && trim($corporateEmployeeId) !== '') {
+            $employeeId = $corporateEmployeeId;
+        }
 
         if (!is_string($employeeId) || trim($employeeId) === '') {
             return $params;
@@ -1781,6 +1786,7 @@ class BookingFlowService
     public function submitBookingForApproval(array $params): Booking
     {
         $params = $this->sanitizeCorporateRequestPayload($params);
+        $params = $this->normalizeCorporateEmployeeReferences($params);
 
         return DB::transaction(function () use ($params) {
 
@@ -2221,6 +2227,7 @@ class BookingFlowService
     public function confirmBooking(array $params): Booking
     {
         $params = $this->sanitizeCorporateRequestPayload($params);
+        $params = $this->normalizeCorporateEmployeeReferences($params);
 
         return DB::transaction(function () use ($params) {
 

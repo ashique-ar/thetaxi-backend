@@ -34,6 +34,7 @@ trait BookingPricingTrait
                         }
                     },
                 ],
+                'corporate_employee_id' => 'nullable|uuid',
                 'corporate_department_id' => 'nullable|uuid|exists:corporate_departments,id',
                 'corporate_division_id' => 'nullable|uuid|exists:corporate_divisions,id',
                 'cost_center' => 'nullable|string|max:255',
