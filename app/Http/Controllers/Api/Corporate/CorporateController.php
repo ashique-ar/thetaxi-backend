@@ -9,6 +9,7 @@ use App\Models\Corporate\Corporate;
 use App\Services\CorporateService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class CorporateController extends Controller
 {
@@ -123,8 +124,17 @@ class CorporateController extends Controller
     public function assignVehicleGroups(Request $request, Corporate $corporate): JsonResponse
     {
         $request->validate([
-            'vehicle_group_ids'   => ['required', 'array'],
-            'vehicle_group_ids.*' => ['uuid', 'exists:vehicle_groups,id'],
+            'vehicle_group_ids'   => ['required', 'array', 'size:3'],
+            'vehicle_group_ids.*' => [
+                'required',
+                'uuid',
+                'distinct',
+                Rule::exists('vehicle_groups', 'id')
+                    ->where(fn ($query) => $query->where('is_active', true)->whereNull('deleted_at')),
+            ],
+        ], [
+            'vehicle_group_ids.size' => 'Exactly 3 active vehicle groups must be assigned.',
+            'vehicle_group_ids.*.distinct' => 'Each vehicle group may only be selected once.',
         ]);
 
         $this->corporateService->assignVehicleGroups($corporate, $request->vehicle_group_ids);
@@ -138,6 +148,13 @@ class CorporateController extends Controller
 
     public function removeVehicleGroup(Corporate $corporate, string $vehicleGroupId): JsonResponse
     {
+        if ($corporate->vehicleGroups()->count() <= 3) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'A corporate must have exactly 3 assigned vehicle groups. Assign a replacement before removing this group.',
+            ], 422);
+        }
+
         $this->corporateService->removeVehicleGroup($corporate, $vehicleGroupId);
 
         return response()->json([

@@ -998,6 +998,17 @@ class WebsiteSettingsService
     }
 
     /**
+     * Get the non-sensitive feature flags needed to build and guard portal routes.
+     */
+    public function getBusinessFeatureFlags(): array
+    {
+        return $this->getMultiple([
+            'feature_corporate_management_enabled',
+            'feature_vehicle_return_management_enabled',
+        ]);
+    }
+
+    /**
      * Get all appearance settings
      */
     public function getHeaderSettings(): array

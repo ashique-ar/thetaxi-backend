@@ -482,6 +482,17 @@ class WebsiteSettingController extends Controller
     }
 
     /**
+     * Get non-sensitive portal module feature flags (public endpoint).
+     */
+    public function businessFeatureFlags(): JsonResponse
+    {
+        return response()->json([
+            'status' => 'success',
+            'data' => $this->settingsService->getBusinessFeatureFlags(),
+        ]);
+    }
+
+    /**
      * Run php artisan optimize:clear and clear website settings cache
      */
     public function optimizeClear(Request $request): JsonResponse

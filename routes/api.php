@@ -164,6 +164,9 @@ Route::prefix('public')->group(function () {
 
     // Branding settings (public - no auth required)
     Route::get('branding', [\App\Http\Controllers\Api\Website\WebsiteSettingController::class, 'branding']);
+
+    // Non-sensitive module availability flags used before portal route authorization.
+    Route::get('business-feature-flags', [WebsiteSettingController::class, 'businessFeatureFlags']);
 });
 
 Route::match(['get', 'post'], 'sms/webhooks/delivery-report', [SmsManagementController::class, 'deliveryCallback']);
