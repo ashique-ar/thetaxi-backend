@@ -471,8 +471,6 @@ class CorporateBookingService
             } else {
                 $query->where('status', $status);
             }
-        } else {
-            $query->whereIn('status', ['pending', 'pending_approval']);
         }
 
         if (!empty($filters['search'])) {
