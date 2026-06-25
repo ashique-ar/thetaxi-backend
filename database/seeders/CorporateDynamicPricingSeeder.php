@@ -407,6 +407,17 @@ class CorporateDynamicPricingSeeder extends Seeder
             $corporateId,
             $userId
         );
+
+        if ($slabMap === [] && $commonRateMap === []) {
+            $slabMap = $this->createPackageBasedSlabsAndPricing(
+                $source,
+                $target,
+                $corporateId,
+                $vehicleGroups,
+                $userId
+            );
+        }
+
         $calculationMap = $this->cloneDefinitions(
             'vehicle_pricing_calculation_definitions',
             $source->id,
@@ -452,6 +463,111 @@ class CorporateDynamicPricingSeeder extends Seeder
             $userId,
             false
         );
+    }
+
+    private function createPackageBasedSlabsAndPricing(
+        ServiceType $source,
+        ServiceType $target,
+        string $corporateId,
+        Collection $vehicleGroups,
+        string $userId
+    ): array {
+        if (!Schema::hasTable('service_packages') || !Schema::hasTable('service_package_rates')) {
+            return [];
+        }
+
+        $sourcePackages = DB::table('service_packages')
+            ->where('service_type_id', $source->id)
+            ->where('is_active', true)
+            ->whereNull('deleted_at')
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
+        $map = [];
+
+        foreach ($sourcePackages as $package) {
+            $slabId = Uuid::uuid5($target->id, "package_slab:{$package->id}")->toString();
+            $slabType = match ($package->rate_type) {
+                'hourly' => 'hours',
+                'daily' => 'per_day',
+                default => 'flat_rate',
+            };
+
+            DB::table('vehicle_pricing_slab_definitions')->updateOrInsert(
+                ['id' => $slabId],
+                [
+                    'service_type_id' => $target->id,
+                    'name' => $package->name,
+                    'type' => $slabType,
+                    'min_hours' => $package->rate_type === 'hourly'
+                        ? ($package->default_duration_hours ?? 1)
+                        : null,
+                    'max_hours' => $package->rate_type === 'hourly'
+                        ? $package->default_duration_hours
+                        : null,
+                    'min_days' => $package->rate_type === 'daily' ? 1 : null,
+                    'max_days' => null,
+                    'max_km_per_day' => $package->max_km_per_day,
+                    'max_km_per_package' => $package->max_km_per_package,
+                    'sort_order' => $package->sort_order ?? 0,
+                    'is_active' => true,
+                    'owner_type' => null,
+                    'owner_id' => null,
+                    'priority' => 100,
+                    'created_user_id' => $userId,
+                    'updated_user_id' => $userId,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                    'deleted_at' => null,
+                ]
+            );
+            $map[$package->id] = $slabId;
+
+            foreach ($vehicleGroups as $vehicleGroup) {
+                $packageRate = DB::table('service_package_rates')
+                    ->where('service_package_id', $package->id)
+                    ->where('vehicle_group_id', $vehicleGroup->id)
+                    ->where('is_active', true)
+                    ->whereNull('deleted_at')
+                    ->first();
+
+                if (!$packageRate) {
+                    continue;
+                }
+
+                $pricingId = Uuid::uuid5(
+                    $slabId,
+                    "vehicle_group_pricing:{$vehicleGroup->id}"
+                )->toString();
+                DB::table('vehicle_group_pricing')->updateOrInsert(
+                    ['id' => $pricingId],
+                    [
+                        'slab_definition_id' => $slabId,
+                        'vehicle_group_id' => $vehicleGroup->id,
+                        'rate' => $packageRate->base_rate,
+                        'rate_type' => match ($packageRate->rate_type) {
+                            'per_day' => 'per_day',
+                            'per_hour' => 'per_hour',
+                            default => 'flat_rate',
+                        },
+                        'minimum_charge' => $packageRate->base_rate,
+                        'includes_fuel' => false,
+                        'includes_driver' => $source->type === 'with_driver',
+                        'is_active' => true,
+                        'owner_type' => 'corporate',
+                        'owner_id' => $corporateId,
+                        'priority' => 100,
+                        'created_user_id' => $userId,
+                        'updated_user_id' => $userId,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                        'deleted_at' => null,
+                    ]
+                );
+            }
+        }
+
+        return $map;
     }
 
     private function createCalculationFromPricingInputs(
@@ -671,7 +787,7 @@ class CorporateDynamicPricingSeeder extends Seeder
                 $clonedCount++;
             }
 
-            if ($pricingTable === 'vehicle_group_pricing' && $definitionMap !== [] && $clonedCount === 0) {
+            if ($requireEveryPrice && $pricingTable === 'vehicle_group_pricing' && $definitionMap !== [] && $clonedCount === 0) {
                 throw new RuntimeException(
                     "No active {$pricingTable} exists for public service {$sourceServiceId}, vehicle group {$vehicleGroup->name}."
                 );

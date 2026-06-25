@@ -127,6 +127,19 @@ it('keeps definitions common and scopes only vehicle prices per corporate', func
         ->toContain("\$payload['owner_id'] = \$corporateId");
 });
 
+it('builds shared slabs and corporate rates from packages when definitions are missing', function () {
+    $source = file_get_contents(
+        base_path('database/seeders/CorporateDynamicPricingSeeder.php')
+    );
+
+    expect($source)
+        ->toContain('private function createPackageBasedSlabsAndPricing(')
+        ->toContain("\$slabMap = \$this->createPackageBasedSlabsAndPricing(")
+        ->toContain("'owner_type' => null")
+        ->toContain("'owner_type' => 'corporate'")
+        ->toContain("'rate' => \$packageRate->base_rate");
+});
+
 it('clones each source service form and complete package graph', function () {
     $source = file_get_contents(
         base_path('database/seeders/CorporateDynamicPricingSeeder.php')
