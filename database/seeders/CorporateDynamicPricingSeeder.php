@@ -10,6 +10,7 @@ use App\Models\Service\ServiceType;
 use App\Models\User;
 use App\Models\UserContext;
 use App\Models\Vehicle\VehicleGroup;
+use App\Services\DefaultFormConfigService;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -205,43 +206,60 @@ class CorporateDynamicPricingSeeder extends Seeder
 
     private function cloneServiceBehavior(ServiceType $source, ServiceType $target, string $userId): void
     {
-        $hasDatabaseFormConfig = $this->cloneServiceFormConfig($source, $target);
-        if (!$hasDatabaseFormConfig && empty($source->form_config)) {
+        $formConfig = $this->resolveServiceFormConfig($source);
+        if ($formConfig === []) {
             throw new RuntimeException(
                 "Public service {$source->code} does not contain a form configuration to clone."
             );
         }
 
+        $target->form_config = $formConfig;
+        $target->save();
+        $this->persistServiceFormConfig($target, $formConfig);
         $this->cloneServicePackages($source, $target, $userId);
     }
 
-    private function cloneServiceFormConfig(ServiceType $source, ServiceType $target): bool
+    private function resolveServiceFormConfig(ServiceType $source): array
     {
-        if (!Schema::hasTable('service_form_configs')) {
-            return false;
+        if (Schema::hasTable('service_form_configs')) {
+            $sourceConfig = DB::table('service_form_configs')
+                ->where('service_code', $source->code)
+                ->where('is_active', true)
+                ->first();
+
+            if ($sourceConfig) {
+                $decoded = is_string($sourceConfig->config)
+                    ? json_decode($sourceConfig->config, true)
+                    : (array) $sourceConfig->config;
+                if (is_array($decoded) && $decoded !== []) {
+                    return $decoded;
+                }
+            }
         }
 
-        $sourceConfig = DB::table('service_form_configs')
-            ->where('service_code', $source->code)
-            ->where('is_active', true)
-            ->first();
+        if (is_array($source->form_config) && $source->form_config !== []) {
+            return $source->form_config;
+        }
 
-        if (!$sourceConfig) {
-            return false;
+        return DefaultFormConfigService::getDefaults($source->code);
+    }
+
+    private function persistServiceFormConfig(ServiceType $target, array $formConfig): void
+    {
+        if (!Schema::hasTable('service_form_configs')) {
+            return;
         }
 
         DB::table('service_form_configs')->updateOrInsert(
             ['service_code' => $target->code],
             [
                 'id' => Uuid::uuid5($target->id, 'service_form_config')->toString(),
-                'config' => $sourceConfig->config,
+                'config' => json_encode($formConfig),
                 'is_active' => true,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]
         );
-
-        return true;
     }
 
     private function cloneServicePackages(ServiceType $source, ServiceType $target, string $userId): void
@@ -257,12 +275,6 @@ class CorporateDynamicPricingSeeder extends Seeder
             ->orderBy('sort_order')
             ->orderBy('id')
             ->get();
-
-        if ($sourcePackages->isEmpty()) {
-            throw new RuntimeException(
-                "Public service {$source->code} does not contain an active package to clone."
-            );
-        }
 
         $activeTargetPackageIds = [];
 
@@ -295,9 +307,7 @@ class CorporateDynamicPricingSeeder extends Seeder
             )
             ->whereNull('deleted_at');
 
-        if ($activeTargetPackageIds !== []) {
-            $stalePackages->update(['deleted_at' => now(), 'is_active' => false, 'updated_at' => now()]);
-        }
+        $stalePackages->update(['deleted_at' => now(), 'is_active' => false, 'updated_at' => now()]);
     }
 
     private function clonePackageRates(string $sourcePackageId, string $targetPackageId, string $userId): void

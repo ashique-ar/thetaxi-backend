@@ -82,13 +82,29 @@ it('clones each source service form and complete package graph', function () {
 
     expect($source)
         ->toContain('$this->cloneServiceBehavior($source, $target')
-        ->toContain('private function cloneServiceFormConfig(')
+        ->toContain('private function resolveServiceFormConfig(')
+        ->toContain('private function persistServiceFormConfig(')
         ->toContain('private function cloneServicePackages(')
         ->toContain('private function clonePackageRates(')
         ->toContain('private function clonePackageReturnRules(')
         ->toContain('does not contain a form configuration to clone')
-        ->toContain('does not contain an active package to clone')
+        ->toContain('DefaultFormConfigService::getDefaults($source->code)')
         ->toContain('Uuid::uuid5(');
+});
+
+it('keeps package-less public services package-less in the corporate catalog', function () {
+    $source = file_get_contents(
+        base_path('database/seeders/CorporateDynamicPricingSeeder.php')
+    );
+    $clonePackages = Str::between(
+        $source,
+        'private function cloneServicePackages(',
+        'private function clonePackageRates('
+    );
+
+    expect($clonePackages)
+        ->not->toContain('does not contain an active package to clone')
+        ->toContain("\$stalePackages->update(['deleted_at' => now(), 'is_active' => false");
 });
 
 it('uses UUID-aware writes for corporate vehicle-group assignments', function () {
