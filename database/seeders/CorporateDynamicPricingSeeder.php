@@ -450,13 +450,15 @@ class CorporateDynamicPricingSeeder extends Seeder
         string $corporateId,
         string $userId
     ): array {
-        $rows = DB::table($table)
+        $baseQuery = DB::table($table)
             ->where('service_type_id', $sourceServiceId)
             ->where(function ($query) {
                 $query->whereNull('owner_type')->orWhere('owner_type', '');
             })
             ->whereNull('owner_id')
-            ->whereNull('deleted_at')
+            ->whereNull('deleted_at');
+
+        $rows = (clone $baseQuery)
             ->when(
                 $table === 'vehicle_pricing_calculation_definitions',
                 fn ($query) => $query->where('status', 'active'),
@@ -464,6 +466,14 @@ class CorporateDynamicPricingSeeder extends Seeder
             )
             ->orderBy('id')
             ->get();
+
+        if ($table === 'vehicle_pricing_calculation_definitions' && $rows->isEmpty()) {
+            $rows = (clone $baseQuery)
+                ->orderByDesc('updated_at')
+                ->orderBy('id')
+                ->get();
+        }
+
         $map = [];
 
         foreach ($rows as $row) {
@@ -473,6 +483,9 @@ class CorporateDynamicPricingSeeder extends Seeder
             $payload['service_type_id'] = $targetServiceId;
             $payload['owner_type'] = 'corporate';
             $payload['owner_id'] = $corporateId;
+            if ($table === 'vehicle_pricing_calculation_definitions') {
+                $payload['status'] = 'active';
+            }
             if (isset($payload['name'])) {
                 $payload['name'] = Str::limit($payload['name'] . ' - ' . $targetServiceId, 255, '');
             }

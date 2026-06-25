@@ -75,6 +75,21 @@ it('allows calculation graphs that use common rates without active slabs', funct
         ->not->toContain('if ($slabMap === [] || $commonRateMap === [] || $calculationMap === [])');
 });
 
+it('recovers inactive public calculation definitions for the corporate copy', function () {
+    $source = file_get_contents(
+        base_path('database/seeders/CorporateDynamicPricingSeeder.php')
+    );
+    $cloneDefinitions = Str::between(
+        $source,
+        'private function cloneDefinitions(',
+        'private function cloneVehiclePricing('
+    );
+
+    expect($cloneDefinitions)
+        ->toContain("\$table === 'vehicle_pricing_calculation_definitions' && \$rows->isEmpty()")
+        ->toContain("\$payload['status'] = 'active'");
+});
+
 it('clones each source service form and complete package graph', function () {
     $source = file_get_contents(
         base_path('database/seeders/CorporateDynamicPricingSeeder.php')
