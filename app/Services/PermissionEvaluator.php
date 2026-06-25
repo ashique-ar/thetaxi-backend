@@ -37,7 +37,13 @@ class PermissionEvaluator
         }
 
         if ($contextType) {
-            $contextQuery->where('context_type', $contextType);
+            $contextQuery->where(function ($query) use ($contextType) {
+                $query->where('context_type', $contextType);
+
+                if ($contextType === 'corporate') {
+                    $query->orWhere('context_type', 'corporate');
+                }
+            });
         }
 
         /** @var UserContext|null $context */
