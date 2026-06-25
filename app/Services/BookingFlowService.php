@@ -8022,6 +8022,8 @@ class BookingFlowService
             fn($bookingItem) => (string) $bookingItem->id === (string) $item->id
         );
         $itemSequence = $itemSequenceIndex !== false ? ((int) $itemSequenceIndex + 1) : 1;
+        $bookingNumber = $booking?->booking_number ?: (string) $item->booking_id;
+        $itemCode = sprintf('%s-I%02d', $bookingNumber, $itemSequence);
 
         $tripCount = max(
             1,
@@ -8080,6 +8082,8 @@ class BookingFlowService
             'booking_id' => (string) $item->booking_id,
             'booking_number' => $booking?->booking_number,
             'reference_number' => $booking?->confirmation_number ?? $booking?->invoice_number ?? $booking?->booking_number,
+            'item_code' => $itemCode,
+            'code' => $itemCode,
             'status' => $item->status ?? 'pending',
             'booking_status' => $booking?->status,
             'dispatch_status' => $dispatchStatus,

@@ -321,6 +321,7 @@ class MobileAssignmentService
 
         $paymentDetails = $this->resolvePaymentDetails($assignment);
         $fareAmount = $this->resolveFareAmount($assignment);
+        $pricingMetrics = $this->buildPricingMetrics($bookingItem, $assignment);
 
         $payload = $assignment->toArray();
         $payload['payment_type'] = $paymentDetails['payment_type'];
@@ -331,6 +332,12 @@ class MobileAssignmentService
         $payload['fare_amount'] = $fareAmount;
         $payload['total_amount'] = $fareAmount;
         $payload['currency'] = $bookingItem?->currency ?? $booking?->currency;
+        $payload['duration_days'] = $pricingMetrics['duration_days'];
+        $payload['duration_hours'] = $pricingMetrics['duration_hours'];
+        $payload['hire_km'] = $pricingMetrics['hire_km'];
+        $payload['waiting_hours'] = $pricingMetrics['waiting_hours'];
+        $payload['waiting_charge'] = $pricingMetrics['waiting_charge'];
+        $payload['pricing_metrics'] = $pricingMetrics;
         $payload['booking_number'] = $booking?->booking_number;
         $payload['service_type_name'] = $bookingItem?->serviceType?->name ?? $assignment->service_type;
         $payload['customer_name'] = $this->resolveCustomerName($assignment);
@@ -522,6 +529,107 @@ class MobileAssignmentService
         $booking = $assignment->booking;
         $fallback = (float) ($booking?->total_actual ?? $booking?->total_estimated ?? 0);
         return round($fallback, 2);
+    }
+
+    private function buildPricingMetrics($bookingItem, ?DriverAssignment $assignment = null): array
+    {
+        $pricingBreakdown = is_array($bookingItem?->pricing_breakdown) ? $bookingItem->pricing_breakdown : [];
+        $metadata = is_array($bookingItem?->metadata) ? $bookingItem->metadata : [];
+        $distanceDetails = $metadata['distance_details']
+            ?? $pricingBreakdown['distance_details']
+            ?? $pricingBreakdown['base_pricing']['distance_details']
+            ?? null;
+        $distanceDetails = is_array($distanceDetails) ? $distanceDetails : [];
+        $kmCalculations = $pricingBreakdown['km_calculations']
+            ?? $pricingBreakdown['base_pricing']['km_calculations']
+            ?? ($distanceDetails['km_calculations'] ?? null);
+        $kmCalculations = is_array($kmCalculations) ? $kmCalculations : [];
+        $summary = is_array($pricingBreakdown['summary'] ?? null) ? $pricingBreakdown['summary'] : [];
+        $basePricing = is_array($pricingBreakdown['base_pricing'] ?? null) ? $pricingBreakdown['base_pricing'] : [];
+        $variables = $pricingBreakdown['calculation_metadata']['variables_used']
+            ?? $basePricing['calculation_metadata']['variables_used']
+            ?? [];
+        $variables = is_array($variables) ? $variables : [];
+
+        $hireKm = $this->firstNumeric([
+            $distanceDetails['journey_distance'] ?? null,
+            $distanceDetails['actual_journey_distance'] ?? null,
+            $kmCalculations['journey_distance'] ?? null,
+            $kmCalculations['actual_journey_distance'] ?? null,
+            $pricingBreakdown['total_journey_distance_km'] ?? null,
+            $metadata['total_journey_distance_km'] ?? null,
+            $assignment?->total_distance_km,
+        ]);
+
+        $waitingSeconds = $assignment?->total_waiting_time_seconds;
+        $waitingHours = $this->firstNumeric([
+            $variables['waiting_hours'] ?? null,
+            $pricingBreakdown['waiting_hours'] ?? null,
+            $basePricing['waiting_hours'] ?? null,
+            $waitingSeconds !== null ? ((int) $waitingSeconds / 3600) : null,
+        ]);
+
+        $waitingRate = $this->firstNumeric([
+            $variables['waiting_charge_per_hour'] ?? null,
+            $variables['waiting_rate_per_hour'] ?? null,
+            $pricingBreakdown['waiting_charge_per_hour'] ?? null,
+            $basePricing['waiting_charge_per_hour'] ?? null,
+        ]);
+
+        $waitingCharge = $this->firstNumeric([
+            $pricingBreakdown['waiting_charge'] ?? null,
+            $basePricing['waiting_charge'] ?? null,
+            $waitingHours !== null && $waitingRate !== null ? $waitingHours * $waitingRate : null,
+        ]);
+
+        return [
+            'currency' => $bookingItem?->currency,
+            'base_amount' => $this->firstNumeric([
+                $summary['base_total'] ?? null,
+                $basePricing['base_amount'] ?? null,
+                $basePricing['total_amount_without_customizations'] ?? null,
+                $bookingItem?->unit_price,
+            ]),
+            'total_amount' => $this->firstNumeric([
+                $summary['grand_total'] ?? null,
+                $summary['total'] ?? null,
+                $basePricing['total_amount'] ?? null,
+                $bookingItem?->total_price,
+            ]),
+            'duration_days' => $bookingItem?->duration_days !== null ? (int) $bookingItem->duration_days : null,
+            'duration_hours' => $bookingItem?->duration_hours !== null ? (int) $bookingItem->duration_hours : null,
+            'journey_duration_seconds' => $this->firstNumeric([
+                $metadata['journey_duration_seconds'] ?? null,
+                $distanceDetails['journey_duration_seconds'] ?? null,
+                $distanceDetails['duration_seconds'] ?? null,
+            ]),
+            'hire_km' => $hireKm,
+            'included_km' => $this->firstNumeric([
+                $distanceDetails['allowed_km'] ?? null,
+                $kmCalculations['allowed_km'] ?? null,
+                $distanceDetails['included_km'] ?? null,
+            ]),
+            'extra_km' => $this->firstNumeric([
+                $distanceDetails['extra_km'] ?? null,
+                $kmCalculations['extra_km'] ?? null,
+            ]),
+            'waiting_hours' => $waitingHours,
+            'waiting_rate_per_hour' => $waitingRate,
+            'waiting_charge' => $waitingCharge,
+            'pricing_breakdown' => $pricingBreakdown,
+            'distance_details' => $distanceDetails ?: null,
+        ];
+    }
+
+    private function firstNumeric(array $values): ?float
+    {
+        foreach ($values as $value) {
+            if ($value !== null && $value !== '' && is_numeric($value)) {
+                return round((float) $value, 3);
+            }
+        }
+
+        return null;
     }
 
     private function mapPackageForMobile(array $metadata): ?array
