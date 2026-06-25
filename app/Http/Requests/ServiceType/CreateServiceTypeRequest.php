@@ -7,7 +7,15 @@ use Illuminate\Validation\Rule;
 
 class CreateServiceTypeRequest extends FormRequest
 {
-
+    protected function prepareForValidation(): void
+    {
+        if ($this->input('context') === 'corporate') {
+            $this->merge([
+                'owner_type' => '',
+                'owner_id' => '',
+            ]);
+        }
+    }
 
     public function rules()
     {

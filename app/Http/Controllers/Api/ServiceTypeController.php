@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Service\ServiceType;
-use App\Models\Corporate\Corporate;
 use App\Http\Requests\ServiceType\CreateServiceTypeRequest;
 use App\Http\Requests\ServiceType\UpdateServiceTypeRequest;
 use App\Http\Resources\ServiceTypeResource;
@@ -31,31 +30,6 @@ class ServiceTypeController extends Controller
         $hasSearch = $request->filled('search');
         $perPage = (int) ($request->per_page ?? 15);
         $page = (int) ($request->get('page', 1));
-
-        if ($context === 'corporate' && $ownerType === 'corporate' && $ownerId !== '') {
-            $assignedIds = Corporate::findOrFail($ownerId)
-                ->serviceTypes()
-                ->pluck('service_types.id');
-
-            $q = ServiceType::withInactive()
-                ->whereIn('id', $assignedIds)
-                ->where('context', 'corporate')
-                ->where('owner_type', '')
-                ->where('owner_id', '');
-
-            if (!$request->boolean('include_inactive', false)) {
-                $q->where('is_active', true);
-            }
-
-            if ($hasSearch) {
-                $q->where(function ($builder) use ($request) {
-                    $builder->whereLikeInsensitive('name', $request->search)
-                        ->orWhereLikeInsensitive('code', $request->search);
-                });
-            }
-
-            return ServiceTypeResource::collection($q->paginate($perPage));
-        }
 
         $q = $this->buildScopedIndexQuery($request, $context, $ownerType, $ownerId);
 
@@ -191,6 +165,10 @@ class ServiceTypeController extends Controller
         $context = (string) $request->input('context', $serviceType?->context ?? 'portal');
         $ownerType = (string) $request->input('owner_type', $serviceType?->owner_type ?? '');
         $ownerId = (string) $request->input('owner_id', $serviceType?->owner_id ?? '');
+
+        if ($context === 'corporate') {
+            return [$context, '', ''];
+        }
 
         return [$context, $ownerType, $ownerId];
     }

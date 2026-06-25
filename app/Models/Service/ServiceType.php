@@ -193,8 +193,8 @@ class ServiceType extends BaseModel
         return $query->forContext('portal');
     }
 
-    public function scopeCorporateContext($query, string $corporateId)
+    public function scopeCorporateContext($query)
     {
-        return $query->forContext('corporate', 'corporate', $corporateId);
+        return $query->forContext('corporate');
     }
 }

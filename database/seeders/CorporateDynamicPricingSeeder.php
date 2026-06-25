@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Ramsey\Uuid\Uuid;
 use RuntimeException;
 use Spatie\Permission\Models\Role;
 
@@ -66,11 +67,10 @@ class CorporateDynamicPricingSeeder extends Seeder
             $vehicleGroups = $this->selectVehicleGroups($corporate);
             $corporate->vehicleGroups()->sync($vehicleGroups->pluck('id')->all());
 
-            $this->migrateManualDispatch($corporate->id);
-
             foreach (self::SERVICE_MAP as $priority => $mapping) {
                 $source = $this->requiredPublicSource($mapping);
-                $target = $this->upsertCorporateService($source, $mapping, $corporate->id, $priority + 1);
+                $target = $this->upsertCorporateService($source, $mapping, $priority + 1);
+                $this->retireOwnedCorporateService($mapping, $corporate->id);
 
                 $this->upsertPivot('corporate_service_types', [
                     'corporate_id' => $corporate->id,
@@ -143,29 +143,29 @@ class CorporateDynamicPricingSeeder extends Seeder
     private function upsertCorporateService(
         ServiceType $source,
         array $mapping,
-        string $corporateId,
         int $priority
     ): ServiceType {
         $attributes = collect($source->getAttributes())->except([
             'id', 'code', 'name', 'slug', 'context', 'owner_type', 'owner_id',
-            'parent_service_type_id', 'created_at', 'updated_at', 'deleted_at',
+            'parent_service_type_id', 'description', 'priority',
+            'created_at', 'updated_at', 'deleted_at',
         ])->all();
 
         return ServiceType::withTrashed()->updateOrCreate(
             [
                 'code' => $mapping['code'],
                 'context' => 'corporate',
-                'owner_type' => 'corporate',
-                'owner_id' => $corporateId,
+                'owner_type' => '',
+                'owner_id' => '',
             ],
-            $attributes + [
+            array_merge($attributes, [
                 'name' => $mapping['name'],
                 'description' => 'Corporate pricing cloned from public ' . $source->name . '.',
                 'slug' => Str::slug($mapping['code']),
                 'parent_service_type_id' => $source->id,
                 'priority' => $priority,
                 'deleted_at' => null,
-            ]
+            ])
         );
     }
 
@@ -176,8 +176,6 @@ class CorporateDynamicPricingSeeder extends Seeder
         Collection $vehicleGroups,
         string $userId
     ): void {
-        $this->deleteExistingPricing($target->id, $corporateId);
-
         $slabMap = $this->cloneDefinitions(
             'vehicle_pricing_slab_definitions',
             $source->id,
@@ -206,7 +204,6 @@ class CorporateDynamicPricingSeeder extends Seeder
 
         $this->cloneVehiclePricing(
             'vehicle_group_pricing',
-            'vehicle_pricing_slab_definitions',
             'slab_definition_id',
             $slabMap,
             $source->id,
@@ -216,7 +213,6 @@ class CorporateDynamicPricingSeeder extends Seeder
         );
         $this->cloneVehiclePricing(
             'vehicle_group_common_rate_pricing',
-            'vehicle_pricing_common_rate_definitions',
             'common_rate_definition_id',
             $commonRateMap,
             $source->id,
@@ -224,30 +220,6 @@ class CorporateDynamicPricingSeeder extends Seeder
             $vehicleGroups,
             $userId
         );
-    }
-
-    private function deleteExistingPricing(string $serviceTypeId, string $corporateId): void
-    {
-        $definitions = [
-            ['vehicle_pricing_slab_definitions', 'vehicle_group_pricing', 'slab_definition_id'],
-            ['vehicle_pricing_common_rate_definitions', 'vehicle_group_common_rate_pricing', 'common_rate_definition_id'],
-        ];
-
-        foreach ($definitions as [$definitionTable, $pricingTable, $foreignKey]) {
-            $ids = DB::table($definitionTable)
-                ->where('service_type_id', $serviceTypeId)
-                ->where('owner_type', 'corporate')
-                ->where('owner_id', $corporateId)
-                ->pluck('id');
-            DB::table($pricingTable)->whereIn($foreignKey, $ids)->delete();
-            DB::table($definitionTable)->whereIn('id', $ids)->delete();
-        }
-
-        DB::table('vehicle_pricing_calculation_definitions')
-            ->where('service_type_id', $serviceTypeId)
-            ->where('owner_type', 'corporate')
-            ->where('owner_id', $corporateId)
-            ->delete();
     }
 
     private function cloneDefinitions(
@@ -266,13 +238,19 @@ class CorporateDynamicPricingSeeder extends Seeder
                 $query->whereNull('owner_id')->orWhere('owner_id', '');
             })
             ->whereNull('deleted_at')
+            ->when(
+                $table === 'vehicle_pricing_calculation_definitions',
+                fn ($query) => $query->where('status', 'active'),
+                fn ($query) => $query->where('is_active', true)
+            )
+            ->orderBy('id')
             ->get();
         $map = [];
 
         foreach ($rows as $row) {
             $payload = $this->clonePayload($table, (array) $row, $userId);
             $sourceId = $payload['id'];
-            $payload['id'] = (string) Str::uuid();
+            $payload['id'] = Uuid::uuid5($targetServiceId, "{$table}:{$sourceId}")->toString();
             $payload['service_type_id'] = $targetServiceId;
             $payload['owner_type'] = 'corporate';
             $payload['owner_id'] = $corporateId;
@@ -282,7 +260,7 @@ class CorporateDynamicPricingSeeder extends Seeder
             if ($table === 'vehicle_pricing_common_rate_definitions' && isset($payload['code'])) {
                 $payload['code'] = Str::limit($payload['code'] . '_' . Str::substr(str_replace('-', '', $targetServiceId), 0, 8), 100, '');
             }
-            DB::table($table)->insert($payload);
+            DB::table($table)->updateOrInsert(['id' => $payload['id']], $payload);
             $map[$sourceId] = $payload['id'];
         }
 
@@ -291,7 +269,6 @@ class CorporateDynamicPricingSeeder extends Seeder
 
     private function cloneVehiclePricing(
         string $pricingTable,
-        string $definitionTable,
         string $foreignKey,
         array $definitionMap,
         string $sourceServiceId,
@@ -304,6 +281,7 @@ class CorporateDynamicPricingSeeder extends Seeder
                 $sourcePrice = DB::table($pricingTable)
                     ->where($foreignKey, $sourceDefinitionId)
                     ->where('vehicle_group_id', $vehicleGroup->id)
+                    ->where('is_active', true)
                     ->whereNull('deleted_at')
                     ->first();
 
@@ -314,11 +292,14 @@ class CorporateDynamicPricingSeeder extends Seeder
                 }
 
                 $payload = $this->clonePayload($pricingTable, (array) $sourcePrice, $userId);
-                $payload['id'] = (string) Str::uuid();
+                $payload['id'] = Uuid::uuid5(
+                    $targetDefinitionId,
+                    "{$pricingTable}:{$vehicleGroup->id}"
+                )->toString();
                 $payload[$foreignKey] = $targetDefinitionId;
                 $payload['owner_type'] = 'corporate';
                 $payload['owner_id'] = $corporateId;
-                DB::table($pricingTable)->insert($payload);
+                DB::table($pricingTable)->updateOrInsert(['id' => $payload['id']], $payload);
             }
         }
     }
@@ -344,18 +325,26 @@ class CorporateDynamicPricingSeeder extends Seeder
         return $payload;
     }
 
-    private function migrateManualDispatch(string $corporateId): void
+    private function retireOwnedCorporateService(array $mapping, string $corporateId): void
     {
-        ServiceType::query()
-            ->where('code', 'corp_manual_dispatch')
+        $legacyCodes = [$mapping['code']];
+        if ($mapping['code'] === 'corp_ride_now') {
+            $legacyCodes[] = 'corp_manual_dispatch';
+        }
+
+        $legacyServices = ServiceType::withTrashed()
+            ->whereIn('code', $legacyCodes)
             ->where('context', 'corporate')
             ->where('owner_type', 'corporate')
             ->where('owner_id', $corporateId)
-            ->update([
-                'code' => 'corp_ride_now',
-                'name' => 'Corporate Ride Now',
-                'slug' => 'corp-ride-now',
-            ]);
+            ->get();
+
+        foreach ($legacyServices as $legacy) {
+            DB::table('corporate_service_types')
+                ->where('service_type_id', $legacy->id)
+                ->delete();
+            $legacy->delete();
+        }
     }
 
     private function upsertPivot(string $table, array $keys, array $values): void

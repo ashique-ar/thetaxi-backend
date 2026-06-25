@@ -6,7 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Corporate\StoreCorporateRequest;
 use App\Http\Requests\Corporate\UpdateCorporateRequest;
 use App\Models\Corporate\Corporate;
+use App\Models\Service\ServiceType;
 use App\Services\CorporateService;
+use App\Http\Resources\ServiceTypeResource;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -160,6 +162,59 @@ class CorporateController extends Controller
         return response()->json([
             'status'  => 'success',
             'message' => 'Vehicle group removed successfully',
+        ]);
+    }
+
+    public function serviceTypes(Corporate $corporate)
+    {
+        $assigned = $corporate->allServiceTypes()
+            ->get()
+            ->mapWithKeys(fn (ServiceType $serviceType) => [
+                $serviceType->id => (bool) $serviceType->pivot->is_active,
+            ]);
+
+        $serviceTypes = ServiceType::withInactive()
+            ->forContext('corporate')
+            ->orderBy('priority')
+            ->orderBy('name')
+            ->get()
+            ->each(function (ServiceType $serviceType) use ($assigned): void {
+                $serviceType->assigned_to_corporate = $assigned->has($serviceType->id);
+                $serviceType->is_assigned_active = (bool) ($assigned[$serviceType->id] ?? false);
+            });
+
+        return ServiceTypeResource::collection($serviceTypes);
+    }
+
+    public function assignServiceTypes(Request $request, Corporate $corporate): JsonResponse
+    {
+        $validated = $request->validate([
+            'service_type_ids' => ['required', 'array', 'min:1'],
+            'service_type_ids.*' => [
+                'required',
+                'uuid',
+                'distinct',
+                Rule::exists('service_types', 'id')->where(
+                    fn ($query) => $query
+                        ->where('context', 'corporate')
+                        ->where('owner_type', '')
+                        ->where('owner_id', '')
+                        ->where('is_active', true)
+                        ->whereNull('deleted_at')
+                ),
+            ],
+        ]);
+
+        $this->corporateService->assignServiceTypes(
+            $corporate,
+            $validated['service_type_ids'],
+            $request->user()?->id
+        );
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Corporate services updated successfully',
+            'data' => ['service_types' => $corporate->serviceTypes()->get()],
         ]);
     }
 

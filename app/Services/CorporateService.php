@@ -117,6 +117,24 @@ class CorporateService
             ->values()
             ->all();
 
+        if (count($vehicleGroupIds) !== 3) {
+            throw ValidationException::withMessages([
+                'vehicle_group_ids' => 'Exactly 3 unique active vehicle groups must be assigned.',
+            ]);
+        }
+
+        $activeVehicleGroupCount = DB::table('vehicle_groups')
+            ->whereIn('id', $vehicleGroupIds)
+            ->where('is_active', true)
+            ->whereNull('deleted_at')
+            ->count();
+
+        if ($activeVehicleGroupCount !== 3) {
+            throw ValidationException::withMessages([
+                'vehicle_group_ids' => 'All selected vehicle groups must exist and be active.',
+            ]);
+        }
+
         DB::transaction(function () use ($corporate, $vehicleGroupIds) {
             DB::table('corporate_vehicle_groups')
                 ->where('corporate_id', $corporate->id)
@@ -155,6 +173,54 @@ class CorporateService
 
         $this->logAudit('remove_vehicle_group', 'Corporate', $corporate->id, [
             'vehicle_group_id' => $vehicleGroupId,
+        ]);
+    }
+
+    public function assignServiceTypes(Corporate $corporate, array $serviceTypeIds, ?string $userId = null): void
+    {
+        $serviceTypeIds = collect($serviceTypeIds)
+            ->filter(fn ($id) => is_string($id) && trim($id) !== '')
+            ->map(fn ($id) => trim($id))
+            ->unique()
+            ->values();
+
+        if ($serviceTypeIds->isEmpty()) {
+            throw ValidationException::withMessages([
+                'service_type_ids' => 'At least one shared corporate service type must be assigned.',
+            ]);
+        }
+
+        $validIds = DB::table('service_types')
+            ->whereIn('id', $serviceTypeIds)
+            ->where('context', 'corporate')
+            ->where('owner_type', '')
+            ->where('owner_id', '')
+            ->where('is_active', true)
+            ->whereNull('deleted_at')
+            ->pluck('id');
+
+        if ($validIds->count() !== $serviceTypeIds->count()) {
+            throw ValidationException::withMessages([
+                'service_type_ids' => 'Only active shared corporate service types can be assigned.',
+            ]);
+        }
+
+        $timestamp = now();
+        $sync = $validIds->mapWithKeys(fn (string $id) => [
+            $id => [
+                'id' => (string) Str::uuid(),
+                'is_active' => true,
+                'created_user_id' => $userId,
+                'updated_user_id' => $userId,
+                'created_at' => $timestamp,
+                'updated_at' => $timestamp,
+            ],
+        ])->all();
+
+        $corporate->allServiceTypes()->sync($sync);
+
+        $this->logAudit('assign_service_types', 'Corporate', $corporate->id, [
+            'service_type_ids' => $validIds->values()->all(),
         ]);
     }
 

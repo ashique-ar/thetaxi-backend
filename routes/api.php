@@ -1542,53 +1542,10 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('{corporate}/deactivate', [\App\Http\Controllers\Api\Corporate\CorporateController::class, 'deactivate']);
         Route::post('{corporate}/vehicle-groups', [\App\Http\Controllers\Api\Corporate\CorporateController::class, 'assignVehicleGroups']);
         Route::delete('{corporate}/vehicle-groups/{vehicleGroupId}', [\App\Http\Controllers\Api\Corporate\CorporateController::class, 'removeVehicleGroup']);
-        Route::get('{corporate}/service-types', function (\App\Models\Corporate\Corporate $corporate) {
-            $assigned = $corporate->allServiceTypes()
-                ->get()
-                ->mapWithKeys(fn($serviceType) => [
-                    $serviceType->id => (bool) $serviceType->pivot->is_active,
-                ]);
-
-            $serviceTypes = \App\Models\Service\ServiceType::withInactive()
-                ->where('context', 'corporate')
-                ->where('owner_type', '')
-                ->where('owner_id', '')
-                ->orderBy('priority')
-                ->orderBy('name')
-                ->get()
-                ->each(function ($serviceType) use ($assigned) {
-                    $serviceType->assigned_to_corporate = $assigned->has($serviceType->id);
-                    $serviceType->is_assigned_active = (bool) ($assigned[$serviceType->id] ?? false);
-                });
-
-            return \App\Http\Resources\ServiceTypeResource::collection($serviceTypes);
-        })->middleware('permission:corporates.view');
-        Route::post('{corporate}/service-types', function (\Illuminate\Http\Request $request, \App\Models\Corporate\Corporate $corporate) {
-            $validated = $request->validate([
-                'service_type_ids' => ['required', 'array'],
-                'service_type_ids.*' => ['uuid', 'exists:service_types,id'],
-            ]);
-
-            $sync = collect($validated['service_type_ids'])
-                ->mapWithKeys(fn($id) => [
-                    (string) $id => [
-                        'id' => (string) \Illuminate\Support\Str::uuid(),
-                        'is_active' => true,
-                        'created_user_id' => $request->user()?->id,
-                        'updated_user_id' => $request->user()?->id,
-                        'created_at' => now(),
-                        'updated_at' => now(),
-                    ]
-                ])
-                ->all();
-
-            $corporate->allServiceTypes()->sync($sync);
-
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Corporate services updated successfully',
-            ]);
-        })->middleware('permission:corporates.manage');
+        Route::get('{corporate}/service-types', [\App\Http\Controllers\Api\Corporate\CorporateController::class, 'serviceTypes'])
+            ->middleware('permission:corporates.view');
+        Route::post('{corporate}/service-types', [\App\Http\Controllers\Api\Corporate\CorporateController::class, 'assignServiceTypes'])
+            ->middleware('permission:corporates.manage');
         Route::post('{corporate}/initial-admin', [\App\Http\Controllers\Api\Corporate\CorporateController::class, 'createInitialAdmin']);
 
         // Admin sub-resource routes for departments, divisions, employees, bookings
