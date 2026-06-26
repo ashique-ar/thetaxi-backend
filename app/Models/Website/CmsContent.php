@@ -44,6 +44,38 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class CmsContent extends BaseModel
 {
+    /**
+     * Decode HTML that was pasted or saved as entities so rich CMS content renders as markup.
+     */
+    public static function normalizeBodyHtml(?string $body): ?string
+    {
+        if ($body === null || $body === '') {
+            return $body;
+        }
+
+        $decoded = html_entity_decode($body, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+        if ($decoded !== $body && self::containsEncodedHtmlTag($body) && self::containsHtmlTag($decoded)) {
+            return $decoded;
+        }
+
+        return $body;
+    }
+
+    public function getRenderableBodyAttribute(): ?string
+    {
+        return self::normalizeBodyHtml($this->body);
+    }
+
+    private static function containsEncodedHtmlTag(string $value): bool
+    {
+        return (bool) preg_match('/&lt;\/?[a-z][a-z0-9-]*(?:\s.*?)?&gt;/i', $value);
+    }
+
+    private static function containsHtmlTag(string $value): bool
+    {
+        return (bool) preg_match('/<\/?[a-z][a-z0-9-]*(\s[^>]*)?>/i', $value);
+    }
 
 
     /**

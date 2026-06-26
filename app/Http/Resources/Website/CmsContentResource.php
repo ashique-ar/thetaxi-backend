@@ -15,7 +15,7 @@ class CmsContentResource extends JsonResource
             'slug' => $this->slug,
             'author' => $this->author,
             'thumbnail' => $this->thumbnail,
-            'body' => $this->body,
+            'body' => $this->renderable_body,
             'published_at' => $this->published_at,
             'status' => $this->status,
             'excerpt' => $this->excerpt,

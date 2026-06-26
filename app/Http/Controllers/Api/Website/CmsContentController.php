@@ -321,6 +321,10 @@ class CmsContentController extends Controller
         }
 
         // Allow manual read_time override; otherwise calculate from body
+        if (array_key_exists('body', $data)) {
+            $data['body'] = CmsContent::normalizeBodyHtml($data['body']);
+        }
+
         if (!empty($data['read_time'])) {
             $customFields['read_time'] = $data['read_time'];
         } elseif (!empty($data['body'])) {

@@ -374,7 +374,7 @@
                         @endif
                         
                         <div class="content-body mt-3" id="articleBody">
-                            {!! $content->body ?? '' !!}
+                            {!! $content->renderable_body ?? '' !!}
                         </div>
 
                         @if ($content->gallery_images && count($content->gallery_images) > 0)
