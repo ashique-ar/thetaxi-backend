@@ -1251,11 +1251,16 @@ class BookingLifecycleService
             ]];
         }
 
+        $lifecycleContract = $this->getLifecycleContract($booking, $context['booking_item_id']);
+
         return [
             'booking' => $booking,
             'selected_booking_item_id' => $context['booking_item_id'],
             'selected_trip_number' => $context['trip_number'],
             'selected_booking_item' => $context['booking_item'],
+            'lifecycle_contract' => $lifecycleContract,
+            'allowed_actions' => $lifecycleContract['allowed_actions'],
+            'blocking_reasons' => $lifecycleContract['blocking_reasons'],
             'current_status' => [
                 'value' => $currentStatus->value,
                 'stage' => $currentStatus->getStage(),
@@ -1277,6 +1282,179 @@ class BookingLifecycleService
                 'status' => $booking->approval_status,
             ],
         ];
+    }
+
+    /**
+     * Canonical lifecycle contract for API consumers.
+     */
+    public function getLifecycleContract(Booking $booking, ?string $bookingItemId = null): array
+    {
+        $booking->loadMissing([
+            'dispatch',
+            'qc',
+            'bookingItems.serviceType',
+            'bookingItems.vehicle',
+            'bookingItems.driver.user',
+        ]);
+
+        $context = $this->resolveLifecycleContext($booking, $bookingItemId);
+        $currentStatus = $booking->getLifecycleStatus();
+        $workflowSettings = $this->getLifecycleWorkflowSettings();
+
+        if ($currentStatus->getStage() === 'return') {
+            $workflowSettings['enable_return_stage'] = true;
+        } elseif ($currentStatus->getStage() === 'qc_repair') {
+            $workflowSettings['enable_return_stage'] = true;
+            $workflowSettings['enable_qc_stage'] = true;
+        }
+
+        $driverAssignment = $this->latestDriverAssignment(
+            (string) $booking->id,
+            $context['driver_id'] ? (string) $context['driver_id'] : null,
+            $context['booking_item_id'] ? (string) $context['booking_item_id'] : null
+        );
+
+        [$allowedActions, $blockingReasons] = $this->resolveAllowedLifecycleActions(
+            $booking,
+            $context,
+            $currentStatus,
+            $workflowSettings
+        );
+
+        return [
+            'booking_status' => (string) ($booking->status ?? ''),
+            'lifecycle_status' => $currentStatus->value,
+            'dispatch_status' => $this->enumValue($booking->dispatch?->dispatch_status),
+            'qc_status' => $this->enumValue($booking->qc?->qc_status),
+            'driver_trip_phase' => $this->enumValue($driverAssignment?->trip_phase),
+            'approval_status' => $this->resolveApprovalStatus($booking),
+            'payment_collection_status' => $booking->payment_collection_status ?? $booking->payment_status ?? 'pending',
+            'allowed_actions' => $allowedActions,
+            'blocking_reasons' => $blockingReasons,
+        ];
+    }
+
+    private function enumValue(mixed $value): ?string
+    {
+        if ($value instanceof \BackedEnum) {
+            return (string) $value->value;
+        }
+
+        return is_null($value) ? null : (string) $value;
+    }
+
+    private function resolveApprovalStatus(Booking $booking): string
+    {
+        if (!($booking->requires_approval ?? false) && ($booking->status ?? null) !== 'pending_approval') {
+            return 'not_required';
+        }
+
+        return $booking->approval_status ?: (($booking->status ?? null) === 'pending_approval' ? 'pending' : 'required');
+    }
+
+    private function latestDriverAssignment(string $bookingId, ?string $driverId = null, ?string $bookingItemId = null): ?DriverAssignment
+    {
+        return DriverAssignment::where('booking_id', $bookingId)
+            ->when($driverId, fn ($query) => $query->where('driver_id', $driverId))
+            ->when($bookingItemId && Schema::hasColumn('driver_assignments', 'booking_item_id'), fn ($query) => $query->where('booking_item_id', $bookingItemId))
+            ->orderByDesc('updated_at')
+            ->first();
+    }
+
+    private function resolveAllowedLifecycleActions(
+        Booking $booking,
+        array $context,
+        BookingLifecycleStatus $currentStatus,
+        array $workflowSettings
+    ): array {
+        $actions = [];
+        $blockingReasons = [];
+        $hasVehicle = !empty($context['vehicle_id']);
+        $hasDriver = !empty($context['driver_id']);
+        $isSelfDriven = (bool) $context['is_self_driven'];
+
+        if (($booking->status ?? null) === 'pending_approval' || $this->resolveApprovalStatus($booking) === 'pending') {
+            $actions[] = 'approve_booking';
+            $actions[] = 'reject_booking';
+            $blockingReasons[] = 'Approval is required before dispatch';
+        }
+
+        if (in_array($currentStatus, [
+            BookingLifecycleStatus::BOOKING_CONFIRMED,
+            BookingLifecycleStatus::ALLOCATION_PENDING,
+            BookingLifecycleStatus::ALLOCATION_CONFLICTS,
+        ], true)) {
+            $actions[] = 'assign_vehicle';
+            if (!$isSelfDriven) {
+                $actions[] = 'assign_driver';
+            }
+        }
+
+        if (in_array($currentStatus, [
+            BookingLifecycleStatus::ALLOCATION_ASSIGNED,
+            BookingLifecycleStatus::ALLOCATION_APPROVED,
+            BookingLifecycleStatus::DISPATCH_READY,
+        ], true)) {
+            if ($hasVehicle && ($isSelfDriven || $hasDriver)) {
+                $actions[] = 'dispatch_vehicle';
+            } else {
+                if (!$hasVehicle) {
+                    $blockingReasons[] = 'Vehicle required before dispatch';
+                }
+                if (!$isSelfDriven && !$hasDriver) {
+                    $blockingReasons[] = 'Driver required before dispatch';
+                }
+            }
+        }
+
+        if (in_array($currentStatus, [
+            BookingLifecycleStatus::DISPATCH_OUT,
+            BookingLifecycleStatus::ONGOING_ACTIVE,
+            BookingLifecycleStatus::ONGOING_REPLACEMENT_NEEDED,
+            BookingLifecycleStatus::ONGOING_BREAKDOWN,
+        ], true)) {
+            if ($workflowSettings['enable_return_stage'] ?? false) {
+                $actions[] = 'process_return';
+            } else {
+                $actions[] = 'complete_booking';
+            }
+        }
+
+        if (in_array($currentStatus, [
+            BookingLifecycleStatus::RETURN_COMPLETED,
+            BookingLifecycleStatus::RETURN_LATE,
+            BookingLifecycleStatus::QC_PENDING,
+        ], true)) {
+            if ($workflowSettings['enable_qc_stage'] ?? false) {
+                $actions[] = 'start_qc_inspection';
+            } else {
+                $actions[] = 'complete_booking';
+            }
+        }
+
+        if ($currentStatus === BookingLifecycleStatus::QC_IN_PROGRESS) {
+            $actions[] = 'complete_qc_inspection';
+        }
+
+        if (in_array($currentStatus, [
+            BookingLifecycleStatus::QC_ISSUES_FOUND,
+            BookingLifecycleStatus::QC_REPAIR_NEEDED,
+        ], true)) {
+            $actions[] = 'complete_repairs';
+            $blockingReasons[] = 'QC repair must be completed';
+        }
+
+        if ($currentStatus === BookingLifecycleStatus::QC_COMPLETED) {
+            $actions[] = 'complete_booking';
+        }
+
+        if ($currentStatus === BookingLifecycleStatus::COMPLETED) {
+            $blockingReasons[] = 'Booking is already completed';
+        } elseif ($currentStatus === BookingLifecycleStatus::CANCELLED) {
+            $blockingReasons[] = 'Booking is cancelled';
+        }
+
+        return [array_values(array_unique($actions)), array_values(array_unique($blockingReasons))];
     }
 
     /**

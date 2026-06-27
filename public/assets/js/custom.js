@@ -2040,7 +2040,11 @@
 
       var $mouse = { x: 0, y: 0 }; // Cursor position
       var $pos = { x: 0, y: 0 }; // Cursor position
-      var $ratio = 0.15; // delay follow cursor
+      // Theme 02 uses larger, more spacious interactive surfaces, so keep the
+      // follower closer to the native pointer. Theme 01 retains its original
+      // relaxed cursor movement.
+      var $ratio = $("body").hasClass("theme-theme-02") ? 0.32 : 0.15;
+      var $hasMousePosition = false;
       var $active = false;
       var $ball = $("#ball");
 
@@ -2064,6 +2068,14 @@
       function mouseMove(e) {
         $mouse.x = e.clientX;
         $mouse.y = e.clientY;
+
+        // Avoid the follower travelling in from (0, 0) on first movement.
+        if (!$hasMousePosition) {
+          $pos.x = $mouse.x;
+          $pos.y = $mouse.y;
+          gsap.set($ball, { x: $pos.x, y: $pos.y });
+          $hasMousePosition = true;
+        }
       }
 
       gsap.ticker.add(updatePosition);

@@ -37479,15 +37479,15 @@ header.style-3.two .main-menu>ul>li.active>a i {
 /*=====================================
   92. Checkout Page CSS
 ========================================*/
-.checkout-page .checkout-form-wrapper .checkout-form-title {
+/* .checkout-page .checkout-form-wrapper .checkout-form-title {
   margin-bottom: 35px;
-}
+} */
 
-@media (max-width: 991px) {
+/* @media (max-width: 991px) {
   .checkout-page .checkout-form-wrapper .checkout-form-title {
     margin-bottom: 25px;
   }
-}
+} */
 
 .checkout-page .checkout-form-wrapper .checkout-form-title h4 {
   color: var(--title-color);

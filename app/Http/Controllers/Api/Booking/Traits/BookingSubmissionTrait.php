@@ -470,6 +470,33 @@ trait BookingSubmissionTrait
         }
     }
 
+    public function requestBookingQuotation(Request $request): JsonResponse
+    {
+        $request->validate([
+            'customer_id' => 'required|string|exists:customers,id',
+            'booking_items' => 'required|array|min:1',
+        ]);
+
+        try {
+            $params = $this->bookingFlowService->normalizeCorporateEmployeeReferences($request->all());
+            $booking = $this->bookingFlowService->requestBookingQuotation($params);
+
+            return response()->json([
+                'status' => 'success',
+                'data' => new BookingFlowResource($booking),
+                'message' => 'Booking quotation requested successfully'
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Booking quotation request failed: ' . $e->getMessage());
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to request booking quotation',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
     public function loadBookingDraft(string $draftId): JsonResponse
     {
         try {

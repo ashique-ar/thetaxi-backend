@@ -14,7 +14,6 @@
                 <h1>Checkout</h1>
                 <ul class="breadcrumb-list">
                     <li><a href="{{ route('home') }}">Home</a></li>
-                    <li><a href="{{ route('cart') }}">Cart</a></li>
                     <li>Checkout</li>
                 </ul>
             </div>
@@ -397,509 +396,7 @@
                         </div>
 
                         <div class="col-lg-5">
-                            <div class="checkout-form-wrapper">
-                                <div class="checkout-form-title">
-                                    <h4>Order Summary</h4>
-                                </div>
-                                <div class="order-sum-area">
-                                    <div class="cart-menu">
-                                        <div class="cart-body">
-                                            <ul>
-                                                @foreach ($cart as $key => $item)
-                                                    @php
-                                                        // Calculate days from pickup and return dates - day-based calculation
-                                                        $pickupDate = isset($item['pickup_date'])
-                                                            ? \Carbon\Carbon::parse($item['pickup_date'])
-                                                            : null;
-                                                        $returnDate = isset($item['return_date'])
-                                                            ? \Carbon\Carbon::parse($item['return_date'])
-                                                            : null;
-                                                        $calculatedDays =
-                                                            $pickupDate && $returnDate
-                                                                ? max(1, $pickupDate->diffInDays($returnDate) + 1)
-                                                                : 1;
-
-                                                        // Use total_price if available (already calculated for all days in LKR)
-                                                        // Otherwise calculate from per-day price and calculated days
-                                                        $itemTotal = isset($item['total_price'])
-                                                            ? $item['total_price']
-                                                            : ($item['price'] ?? 0) * $calculatedDays;
-
-                                                        // Get discount/adjustment details for this item
-                                                        $hasItemDiscount = $item['has_discount'] ?? false;
-                                                        $itemOriginalAmount = $item['original_amount'] ?? $itemTotal;
-                                                        $itemDiscountAmount = $item['discount_amount'] ?? 0;
-                                                        $itemDiscountPercentage = $item['discount_percentage'] ?? 0;
-                                                    @endphp
-                                                    <li class="single-item">
-                                                        <div class="item-area">
-                                                            <div class="main-item">
-                                                                <div class="item-img">
-                                                                    @if (isset($item['image']) && $item['image'])
-                                                                        <img src="{{ s3_asset($item['image']) }}"
-                                                                            alt="{{ $item['name'] ?? 'Vehicle' }}">
-                                                                    @else
-                                                                        <img src="{{ asset('assets/img/innerpages/cart-img1.png') }}"
-                                                                            alt="{{ $item['name'] ?? 'Vehicle' }}">
-                                                                    @endif
-                                                                </div>
-                                                                <div class="content-and-quantity">
-                                                                    <div class="content">
-                                                                        @php
-                                                                            $serviceType =
-                                                                                $item['service_type'] ?? null;
-                                                                            $isFixedRate = isServiceFixedRate(
-                                                                                $serviceType,
-                                                                            );
-                                                                            $pricingLabel = getServicePricingLabel(
-                                                                                $serviceType,
-                                                                            );
-                                                                            $durationLabel = getServiceDurationLabel(
-                                                                                $serviceType,
-                                                                                $calculatedDays,
-                                                                            );
-                                                                        @endphp
-                                                                        @if ($isFixedRate)
-                                                                            <span>{{ $pricingLabel }}:
-                                                                                {{ $currencySymbol }}
-                                                                                {{ number_format(floor(max(0, $itemTotal)), 0) }}</span>
-                                                                        @else
-                                                                            <span>{{ $currencySymbol }}
-                                                                                {{ number_format(floor(max(0, $item['price'] ?? 0)), 0) }}/day
-                                                                                × {{ $durationLabel }}</span>
-                                                                        @endif
-                                                                        <h6>
-                                                                            <a
-                                                                                href="#">{{ $item['name'] ?? '' }}</a>
-                                                                            <span
-                                                                                class="service-type-badge">{{ $item['service_type_data']['name'] ?? ($item['service_type'] ?? 'Service') }}</span>
-                                                                        </h6>
-                                                                        <p><small>{{ $pickupDate ? $pickupDate->format('M d') : '' }}
-                                                                                -
-                                                                                {{ $returnDate ? $returnDate->format('M d, Y') : '' }}</small>
-                                                                        </p>
-
-                                                                        @php
-                                                                            // Distance details for km information display
-                                                                            $distanceDetails =
-                                                                                $item['distance_details'] ?? [];
-
-                                                                            // If distance_details is empty, try to get from service package info or calculate
-                                                                            if (
-                                                                                empty($distanceDetails) &&
-                                                                                isset($item['service_package_info'])
-                                                                            ) {
-                                                                                $servicePackageInfo =
-                                                                                    $item['service_package_info'];
-                                                                                // Build fallback distance_details from service package
-                                                                                $distanceDetails = [
-                                                                                    'allowed_total_km' => isset(
-                                                                                        $servicePackageInfo[
-                                                                                            'max_km_per_day'
-                                                                                        ],
-                                                                                    )
-                                                                                        ? $servicePackageInfo[
-                                                                                                'max_km_per_day'
-                                                                                            ] * $calculatedDays
-                                                                                        : null,
-                                                                                    'free_km_per_day' =>
-                                                                                        $servicePackageInfo[
-                                                                                            'max_km_per_day'
-                                                                                        ] ?? null,
-                                                                                    'extra_km_price' => null, // Will be fetched from service separately
-                                                                                    'free_km_per_package' =>
-                                                                                        $servicePackageInfo[
-                                                                                            'max_km_per_package'
-                                                                                        ] ?? null,
-                                                                                ];
-                                                                            }
-
-                                                                            $allowedTotalKm =
-                                                                                $distanceDetails['allowed_total_km'] ??
-                                                                                null;
-                                                                            $extraKmPrice =
-                                                                                $distanceDetails['extra_km_price'] ??
-                                                                                null;
-                                                                            $freeKmPerDay =
-                                                                                $distanceDetails['free_km_per_day'] ??
-                                                                                null;
-
-                                                                            // Minimum KM charge info
-                                                                            $minimumKm =
-                                                                                $distanceDetails['minimum_km'] ?? null;
-                                                                            $minimumKmApplied =
-                                                                                $distanceDetails[
-                                                                                    'minimum_km_applied'
-                                                                                ] ?? false;
-                                                                            $actualJourneyDistance =
-                                                                                $distanceDetails[
-                                                                                    'actual_journey_distance'
-                                                                                ] ??
-                                                                                ($distanceDetails['journey_distance'] ??
-                                                                                    null);
-                                                                        @endphp
-
-                                                                        @if ($minimumKmApplied && $minimumKm)
-                                                                            <p><small
-                                                                                    style="color: #92400e; background: #fef3c7; padding: 2px 6px; border-radius: 4px;">
-                                                                                    <i class="bi bi-info-circle"></i>
-                                                                                    <strong>Minimum
-                                                                                        {{ number_format($minimumKm, 0) }}
-                                                                                        km</strong>
-                                                                                    (Actual:
-                                                                                    {{ number_format($actualJourneyDistance, 1) }}
-                                                                                    km)
-                                                                                </small></p>
-                                                                        @endif
-                                                                        
-                                                                        {{-- Display Return Trip KM Breakdown --}}
-                                                                        @php
-                                                                            $outboundKm = $item['outbound_distance_km'] ?? $distanceDetails['outbound_distance_km'] ?? null;
-                                                                            $returnKm = $item['return_distance_km'] ?? $distanceDetails['return_distance_km'] ?? null;
-                                                                            $hasReturnKmData = !empty($item['is_return_trip']) && $outboundKm && $returnKm;
-                                                                        @endphp
-                                                                        @if ($hasReturnKmData)
-                                                                            <p><small style="background: #e3f2fd; padding: 4px 8px; border-radius: 4px; display: inline-block; border-left: 3px solid #2196f3;">
-                                                                                <i class="bi bi-signpost-2-fill" style="color: #1565c0;"></i>
-                                                                                <strong style="color: #1565c0;">Trip Distance:</strong>
-                                                                                <span style="color: #1976d2;">
-                                                                                    <i class="bi bi-arrow-right-circle"></i> {{ number_format($outboundKm, 1) }} km
-                                                                                </span>
-                                                                                <span style="color: #28a745;">
-                                                                                    <i class="bi bi-arrow-left-circle"></i> {{ number_format($returnKm, 1) }} km
-                                                                                </span>
-                                                                                <strong style="color: #1565c0;">
-                                                                                    = {{ number_format($outboundKm + $returnKm, 1) }} km total
-                                                                                </strong>
-                                                                            </small></p>
-                                                                        @endif
-
-                                                                        @if ($allowedTotalKm || $freeKmPerDay)
-                                                                            <p><small style="color: #0066cc;">
-                                                                                    <i class="bi bi-speedometer2"></i>
-                                                                                    @if ($freeKmPerDay && $calculatedDays > 1)
-                                                                                        {{ number_format($freeKmPerDay, 0) }}
-                                                                                        km/day
-                                                                                        ({{ number_format($allowedTotalKm ?? $freeKmPerDay * $calculatedDays, 0) }}
-                                                                                        km total)
-                                                                                    @elseif($allowedTotalKm)
-                                                                                        {{ number_format($allowedTotalKm, 0) }}
-                                                                                        km included
-                                                                                    @else
-                                                                                        {{ number_format($freeKmPerDay, 0) }}
-                                                                                        km included
-                                                                                    @endif
-
-                                                                                    @if ($extraKmPrice)
-                                                                                        <span style="color: #999;"> |
-                                                                                            Extra:
-                                                                                            <small
-                                                                                                class="currency-symbol">{{ $currencySymbol }}</small>
-                                                                                            {{ number_format(floor(max(0, $extraKmPrice)), 0) }}/km</span>
-                                                                                    @endif
-                                                                                </small></p>
-                                                                        @endif
-                                                                        @php
-                                                                            $pickupLoc = is_array(
-                                                                                $item['pickup_location'] ?? null,
-                                                                            )
-                                                                                ? $item['pickup_location']['address'] ??
-                                                                                    ''
-                                                                                : $item['pickup_location'] ?? '';
-                                                                            $dropoffLoc = is_array(
-                                                                                $item['dropoff_location'] ?? null,
-                                                                            )
-                                                                                ? $item['dropoff_location'][
-                                                                                        'address'
-                                                                                    ] ?? ''
-                                                                                : $item['dropoff_location'] ?? '';
-                                                                            if (
-                                                                                ($item['service_type'] ?? '') ===
-                                                                                'airport_transfers'
-                                                                            ) {
-                                                                                $pickupLoc =
-                                                                                    $pickupLoc ?:
-                                                                                    $item['pickup_airport'] ??
-                                                                                        ($item['flight_details'][
-                                                                                            'arrival_airport'
-                                                                                        ] ??
-                                                                                            '');
-                                                                                $dropoffLoc =
-                                                                                    $dropoffLoc ?:
-                                                                                    $item['dropoff_airport'] ??
-                                                                                        ($item['flight_details'][
-                                                                                            'departure_airport'
-                                                                                        ] ??
-                                                                                            '');
-                                                                            }
-                                                                        @endphp
-                                                                        <p><small><i class="bi bi-geo-alt"></i>
-                                                                                {{ $pickupLoc ?: 'N/A' }}</small></p>
-
-                                                                        {{-- Return Trip Info --}}
-                                                                        @if (!empty($item['is_return_trip']) && !empty($item['return_trip_date']))
-                                                                            <div class="return-trip-info mt-2 p-2"
-                                                                                style="background: linear-gradient(135deg, #e8f5e9, #c8e6c9); border-radius: 8px; border-left: 3px solid #28a745;">
-                                                                                <p
-                                                                                    style="margin: 0; font-weight: 600; color: #2e7d32; font-size: 12px;">
-                                                                                    <i class="bi bi-arrow-left-right"></i>
-                                                                                    Return Trip Included
-                                                                                </p>
-                                                                                <p
-                                                                                    style="margin: 4px 0 0 0; font-size: 11px;">
-                                                                                    <i class="bi bi-calendar-check"
-                                                                                        style="color: #28a745;"></i>
-                                                                                    Return:
-                                                                                    {{ \Carbon\Carbon::parse($item['return_trip_date'])->format('M d, Y') }}
-                                                                                    @if (!empty($item['return_trip_time']))
-                                                                                        @ {{ $item['return_trip_time'] }}
-                                                                                    @endif
-                                                                                </p>
-                                                                                <p
-                                                                                    style="margin: 4px 0 0 0; font-size: 11px;">
-                                                                                    <i class="bi bi-geo-alt"
-                                                                                        style="color: #28a745;"></i>
-                                                                                    {{ $dropoffLoc ?: 'Drop-off' }} →
-                                                                                    {{ $pickupLoc ?: 'Pickup' }}
-                                                                                </p>
-                                                                                @if (!empty($item['return_discount_percentage']) && $item['return_discount_percentage'] > 0)
-                                                                                    <span class="badge bg-success mt-1"
-                                                                                        style="font-size: 10px;">
-                                                                                        <i class="bi bi-tag-fill"></i>
-                                                                                        {{ $item['return_discount_percentage'] }}%
-                                                                                        off return trip
-                                                                                    </span>
-                                                                                @endif
-                                                                            </div>
-                                                                        @endif
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                            <div class="item-total">
-                                                                @php
-                                                                    // Return trip pricing variables
-                                                                    $isReturnTrip = $item['is_return_trip'] ?? false;
-                                                                    $oneWayPrice = $item['one_way_price'] ?? null;
-                                                                    $returnPrice = $item['return_price'] ?? null;
-                                                                    $returnDiscountPct =
-                                                                        $item['return_discount_percentage'] ?? 0;
-                                                                @endphp
-
-                                                                {{-- Return Trip Pricing Breakdown --}}
-                                                                @if ($isReturnTrip && $oneWayPrice && $returnPrice)
-                                                                    <div class="return-trip-breakdown mb-2"
-                                                                        style="font-size: 11px; text-align: right;">
-                                                                        <div style="color: #0d6efd;">
-                                                                            <i class="bi bi-arrow-right-circle"></i>
-                                                                            Outbound:
-                                                                            <small
-                                                                                class="currency-symbol">{{ $currencySymbol }}</small>{{ number_format(floor(max(0, $oneWayPrice)), 0) }}
-                                                                        </div>
-                                                                        <div style="color: #198754;">
-                                                                            <i class="bi bi-arrow-left-circle"></i> Return:
-                                                                            <small
-                                                                                class="currency-symbol">{{ $currencySymbol }}</small>{{ number_format(floor(max(0, $returnPrice)), 0) }}
-                                                                            @if ($returnDiscountPct > 0)
-                                                                                <span class="badge bg-success"
-                                                                                    style="font-size: 9px;">{{ $returnDiscountPct }}%
-                                                                                    off</span>
-                                                                            @endif
-                                                                        </div>
-                                                                    </div>
-                                                                @endif
-
-                                                                @if ($hasItemDiscount && $itemOriginalAmount > $itemTotal)
-                                                                    {{-- Show discount badge --}}
-                                                                    <span class="checkout-item-discount-badge">
-                                                                        {{ round($itemDiscountPercentage) }}% OFF
-                                                                    </span>
-                                                                    {{-- Show original price with strikethrough --}}
-                                                                    <div class="checkout-original-price">
-                                                                        <del>{{ $currencySymbol }}{{ number_format(floor(max(0, $itemOriginalAmount)), 0) }}</del>
-                                                                    </div>
-                                                                @endif
-                                                                <div
-                                                                    class="checkout-final-price {{ $hasItemDiscount ? 'discounted' : '' }}">
-                                                                    <small
-                                                                        class="currency-symbol">{{ $currencySymbol }}</small>
-                                                                    {{ number_format(floor(max(0, $itemTotal)), 0) }}
-                                                                </div>
-                                                                @if ($hasItemDiscount && $itemDiscountAmount > 0)
-                                                                    <div class="checkout-savings">
-                                                                        <small>Save
-                                                                            {{ $currencySymbol }}{{ number_format(floor(max(0, $itemDiscountAmount)), 0) }}</small>
-                                                                    </div>
-                                                                @endif
-                                                            </div>
-                                                        </div>
-                                                    </li>
-                                                @endforeach
-                                            </ul>
-                                        </div>
-
-                                        <div class="cart-footer">
-                                            <div class="pricing-area mb-40">
-                                                <ul>
-                                                    <li>
-                                                        <strong>Subtotal</strong>
-                                                        <strong>{{ $currencySymbol }}
-                                                            {{ number_format(floor(max(0, $subtotal)), 0) }}</strong>
-                                                    </li>
-                                                    @php
-                                                        $addonCharges = $totals['addon_charges'] ?? 0;
-                                                        $extraKmCharges = $totals['extra_km_charges'] ?? 0;
-                                                    @endphp
-                                                    @if ($addonCharges > 0)
-                                                        <li>
-                                                            Addon Charges
-                                                            <div class="order-info text-success">
-                                                                <span>{{ $currencySymbol }}
-                                                                    {{ number_format(floor(max(0, $addonCharges)), 0) }}</span>
-                                                            </div>
-                                                        </li>
-                                                    @endif
-                                                    @if ($extraKmCharges > 0)
-                                                        <li>
-                                                            Extra KM Charges
-                                                            <div class="order-info text-info">
-                                                                <span>{{ $currencySymbol }}
-                                                                    {{ number_format(floor(max(0, $extraKmCharges)), 0) }}</span>
-                                                            </div>
-                                                        </li>
-                                                    @endif
-                                                    @if ($serviceFee > 0)
-                                                        <li>
-                                                            Service Fee
-                                                            <div class="order-info">
-                                                                <span>{{ $currencySymbol }}
-                                                                    {{ number_format(floor(max(0, $serviceFee)), 0) }}</span>
-                                                            </div>
-                                                        </li>
-                                                    @endif
-                                                    @if ($tax > 0)
-                                                        <li>
-                                                            {{ $taxLabel }}
-                                                            ({{ $taxPercentageLabel }}%)
-                                                            <div class="order-info">
-                                                                <span>{{ $currencySymbol }}
-                                                                    {{ number_format(floor(max(0, $tax)), 0) }}</span>
-                                                            </div>
-                                                        </li>
-                                                    @endif
-                                                    @if ($vatPercentage > 0 && $vat > 0)
-                                                        <li>
-                                                            {{ $vatLabel }}
-                                                            ({{ $vatPercentageLabel }}%)
-                                                            <div class="order-info">
-                                                                <span>{{ $currencySymbol }}
-                                                                    {{ number_format(floor(max(0, $vat)), 0) }}</span>
-                                                            </div>
-                                                        </li>
-                                                    @endif
-
-                                                    {{-- Promo Code Section --}}
-                                                    <li class="promo-code-checkout-section">
-                                                        <div class="promo-code-checkout-wrapper">
-                                                            <div class="promo-code-header">
-                                                                <i class="bi bi-tag"></i>
-                                                                <span>Promo Code</span>
-                                                            </div>
-                                                            @php
-                                                                $appliedPromoCode = $cartData['coupon_code'] ?? null;
-                                                                $promoDiscount = $cartData['coupon_discount'] ?? 0;
-                                                            @endphp
-                                                            @if ($appliedPromoCode)
-                                                                {{-- Promo code is applied --}}
-                                                                <div class="applied-promo-checkout">
-                                                                    <div class="promo-badge-checkout">
-                                                                        <i
-                                                                            class="bi bi-check-circle-fill text-success"></i>
-                                                                        <span
-                                                                            class="promo-code-value">{{ $appliedPromoCode }}</span>
-                                                                        <button type="button"
-                                                                            class="remove-promo-checkout-btn"
-                                                                            title="Remove promo code">
-                                                                            <i class="bi bi-x-lg"></i>
-                                                                        </button>
-                                                                    </div>
-                                                                </div>
-                                                            @else
-                                                                {{-- No promo code - show input --}}
-                                                                <div class="promo-input-checkout">
-                                                                    <input type="text" id="checkout-promo-input"
-                                                                        placeholder="Enter code" autocomplete="off">
-                                                                    <button type="button" id="apply-promo-checkout-btn"
-                                                                        class="apply-promo-checkout-btn">
-                                                                        <span class="btn-text">Apply</span>
-                                                                        <span class="btn-loading"
-                                                                            style="display: none;"><i
-                                                                                class="bi bi-hourglass-split"></i></span>
-                                                                    </button>
-                                                                </div>
-                                                            @endif
-                                                            <div id="checkout-promo-message"
-                                                                class="promo-message-checkout"></div>
-                                                        </div>
-                                                    </li>
-
-                                                    @php
-                                                        $priceAdjustmentDiscount =
-                                                            $totals['price_adjustment_discount'] ?? 0;
-                                                    @endphp
-                                                    @if ($priceAdjustmentDiscount > 0)
-                                                        <li class="price-adjustment-discount-row">
-                                                            <span class="text-success">
-                                                                <i class="bi bi-percent"></i> Price Adjustment Discount
-                                                            </span>
-                                                            <div class="order-info text-success">
-                                                                <span>-{{ $currencySymbol }}
-                                                                    {{ number_format(floor(max(0, $priceAdjustmentDiscount)), 0) }}</span>
-                                                            </div>
-                                                        </li>
-                                                    @endif
-                                                    @if ($discount > 0)
-                                                        <li class="discount-checkout-row">
-                                                            <strong class="text-success"><i class="bi bi-tag-fill"></i>
-                                                                Discount</strong>
-                                                            <div class="order-info text-success">
-                                                                <span>-{{ $currencySymbol }}
-                                                                    {{ number_format(floor(max(0, $discount)), 0) }}</span>
-                                                            </div>
-                                                        </li>
-                                                    @endif
-                                                    <li class="total-row">
-                                                        <strong>Total</strong>
-                                                        <strong>{{ $currencySymbol }}
-                                                            {{ number_format(floor(max(0, $total)), 0) }}</strong>
-                                                    </li>
-                                                    @if ($paymentType !== 'full')
-                                                        <li class="payment-amount-row">
-                                                            <strong>
-                                                                @if ($paymentType === 'advance')
-                                                                    Amount to Pay
-                                                                    ({{ $advancePercentage }}%)
-                                                                @elseif($paymentType === 'checkin')
-                                                                    Pay on Check-in
-                                                                @elseif($paymentType === 'quotation')
-                                                                    Quotation Request
-                                                                @endif
-                                                            </strong>
-                                                            <strong class="text-primary">
-                                                                @if ($paymentType === 'quotation')
-                                                                    No Payment Required
-                                                                @elseif($paymentType === 'checkin')
-                                                                    {{ $currencySymbol }}
-                                                                    {{ number_format(floor(max(0, $total)), 0) }}
-                                                                @else
-                                                                    {{ $currencySymbol }}
-                                                                    {{ number_format(floor(max(0, $paymentAmount)), 0) }}
-                                                                @endif
-                                                            </strong>
-                                                        </li>
-                                                    @endif
-                                                </ul>
-                                            </div>
-
+                            @include('checkout.partials.cart-summary')
                                             <!-- Payment Type Selection Section -->
                                             <div class="payment-type-selection mb-4">
                                                 <div class="card">
@@ -1062,6 +559,27 @@
         </div>
     </div>
     <!--Checkout Page End-->
+
+    <div class="modal fade checkout-addon-modal" id="checkoutAddonModal" tabindex="-1"
+        aria-labelledby="checkoutAddonModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div>
+                        <h5 class="modal-title" id="checkoutAddonModalLabel">Manage add-ons</h5>
+                        <small class="checkout-addon-modal-vehicle"></small>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="checkout-addon-panel" id="checkoutAddonModalPanel"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="checkout-addon-modal-done" data-bs-dismiss="modal">Done</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @push('styles')
@@ -1125,6 +643,158 @@
             font-weight: 500;
         }
 
+
+        .checkout-remove-item-btn,
+        .checkout-clear-cart-btn {
+            border: 1px solid #dc3545;
+            background: #fff;
+            color: #dc3545;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            padding: 5px 9px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+            transition: all 0.2s ease;
+        }
+
+        .checkout-remove-item-btn {
+            margin-top: 8px;
+        }
+
+        .checkout-remove-item-btn:hover,
+        .checkout-clear-cart-btn:hover {
+            background: #dc3545;
+            color: #fff;
+        }
+
+        .checkout-remove-item-btn:disabled,
+        .checkout-clear-cart-btn:disabled {
+            opacity: 0.65;
+            cursor: not-allowed;
+        }
+
+        .checkout-item-addons {
+            margin: 0 0 12px 75px;
+            padding: 12px;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            background: #f8fafc;
+        }
+
+        .checkout-item-extra-km {
+            margin: 0 0 12px 75px;
+            padding: 12px;
+            border: 1px solid #dbeafe;
+            border-radius: 8px;
+            background: #eff6ff;
+        }
+
+        .checkout-addon-header,
+        .checkout-extra-km-header,
+        .checkout-addon-card,
+        .checkout-addon-actions,
+        .checkout-addon-qty,
+        .checkout-extra-km-actions,
+        .checkout-extra-km-input {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .checkout-addon-header,
+        .checkout-extra-km-header {
+            justify-content: space-between;
+        }
+
+        .checkout-addon-header small,
+        .checkout-extra-km-header small {
+            display: block;
+            color: #64748b;
+            margin-top: 2px;
+        }
+
+        .checkout-toggle-addons,
+        .checkout-toggle-extra-km,
+        .checkout-addon-apply,
+        .checkout-addon-remove,
+        .checkout-extra-km-apply,
+        .checkout-extra-km-remove {
+            border: 1px solid #d1d5db;
+            background: #fff;
+            color: #111827;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 700;
+            padding: 6px 10px;
+        }
+
+        .checkout-addon-apply {
+            border-color: var(--primary-color1);
+            color: var(--primary-color1);
+        }
+
+        .checkout-addon-remove,
+        .checkout-extra-km-remove {
+            border-color: #dc3545;
+            color: #dc3545;
+        }
+
+        .checkout-addon-panel,
+        .checkout-extra-km-panel {
+            margin-top: 12px;
+        }
+
+        .checkout-addon-card {
+            justify-content: space-between;
+            padding: 10px 0;
+            border-top: 1px solid #e5e7eb;
+        }
+
+        .checkout-addon-info {
+            min-width: 0;
+        }
+
+        .checkout-addon-info strong,
+        .checkout-addon-info small {
+            display: block;
+        }
+
+        .checkout-addon-info small {
+            color: #64748b;
+        }
+
+        .checkout-addon-qty input {
+            width: 58px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            padding: 5px 6px;
+            text-align: center;
+        }
+
+        .checkout-addon-loading,
+        .checkout-addon-empty,
+        .checkout-addon-error,
+        .checkout-extra-km-loading,
+        .checkout-extra-km-empty,
+        .checkout-extra-km-error {
+            color: #64748b;
+            font-size: 13px;
+            padding: 8px 0;
+        }
+
+        .checkout-extra-km-input {
+            margin: 10px 0;
+        }
+
+        .checkout-extra-km-input input {
+            width: 90px;
+            border: 1px solid #bfdbfe;
+            border-radius: 6px;
+            padding: 6px 8px;
+        }
         /* Currency Formatting */
         .currency-symbol,
         .currency-code {
@@ -1153,9 +823,12 @@
         }
 
         .checkout-form-title {
-            margin-bottom: 22px;
             padding-bottom: 16px;
             border-bottom: 1px solid #e5e7eb;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
         }
 
         .checkout-form-title h4 {
@@ -1656,6 +1329,9 @@
             border-radius: 8px;
             padding: 20px;
             margin-bottom: 20px;
+            max-width: 100%;
+            min-width: 0;
+            overflow: hidden;
         }
 
         .terms-conditions-section h6 {
@@ -1669,7 +1345,11 @@
         .terms-content {
             max-height: 400px;
             overflow-y: auto;
+            overflow-x: hidden;
             padding-right: 10px;
+            max-width: 100%;
+            min-width: 0;
+            overscroll-behavior: contain;
         }
 
         .term-item {
@@ -1691,6 +1371,38 @@
             font-size: 13px;
             line-height: 1.6;
             color: #555;
+            max-width: 100%;
+            min-width: 0;
+            overflow-wrap: anywhere;
+            word-break: normal;
+        }
+
+        .term-meta {
+            min-width: 0;
+            overflow-wrap: anywhere;
+        }
+
+        .term-body img,
+        .term-body video,
+        .term-body iframe {
+            max-width: 100% !important;
+            height: auto;
+        }
+
+        .term-body table {
+            width: 100% !important;
+            max-width: 100% !important;
+            table-layout: fixed;
+        }
+
+        .term-body pre {
+            max-width: 100%;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+        }
+
+        .term-body * {
+            max-width: 100%;
         }
 
         .term-body p {
@@ -1820,6 +1532,8 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
+            gap: 12px;
+            min-width: 0;
         }
 
         .term-toggle {
@@ -1829,6 +1543,25 @@
             border: none;
             background: transparent;
             padding: 0;
+            flex: 0 0 auto;
+        }
+
+        /* Prevent intrinsic-width content from widening the checkout page. */
+        .checkout-page {
+            max-width: 100%;
+            overflow-x: clip;
+        }
+
+        .checkout-page .row > *,
+        .checkout-form-wrapper,
+        .checkout-form,
+        .checkout-page .order-sum-area,
+        .checkout-page .single-item,
+        .checkout-page .item-area,
+        .checkout-page .main-item,
+        .checkout-page .content {
+            min-width: 0;
+            max-width: 100%;
         }
 
         .term-body {
@@ -1842,6 +1575,8 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/intl-tel-input@17/build/css/intlTelInput.css">
     <!-- Select2 CSS for searchable country dropdown -->
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link rel="stylesheet"
+        href="{{ assetVersion(is_theme('theme-02') ? 'assets/css/checkout-theme-02.css' : 'assets/css/checkout-theme-01.css') }}">
 @endpush
 
 @push('scripts')
@@ -2068,8 +1803,544 @@
             }
             // ==========================================
 
+            function checkoutRedirectHome() {
+                window.location.href = '{{ route('home') }}';
+            }
+
+            function formatCheckoutAmount(value) {
+                const amount = Math.max(0, Math.floor(Number(value) || 0));
+                return '{{ $currencySymbol }} ' + amount.toLocaleString('en-US');
+            }
+
+            function updateCheckoutCartTotals(cart) {
+                if (!cart || !cart.totals) {
+                    return;
+                }
+
+                const totals = cart.totals;
+                const normalFields = [
+                    'subtotal',
+                    'addon_charges',
+                    'extra_km_charges',
+                    'service_fee',
+                    'tax',
+                    'vat',
+                    'total'
+                ];
+                const discountFields = [
+                    'price_adjustment_discount',
+                    'coupon_discount'
+                ];
+
+                normalFields.forEach(function(field) {
+                    const value = Number(totals[field] || 0);
+                    $('[data-summary-field="' + field + '"]').text(formatCheckoutAmount(value));
+                    $('[data-summary-row="' + field + '"]').toggle(value > 0);
+                });
+
+                discountFields.forEach(function(field) {
+                    const value = Number(totals[field] || 0);
+                    $('[data-summary-field="' + field + '"]').text('-' + formatCheckoutAmount(value));
+                    $('[data-summary-row="' + field + '"]').toggle(value > 0);
+                });
+
+                const paymentType = $('input[name="payment_type"]:checked').val() || '{{ $paymentType }}';
+                if (paymentType === 'advance') {
+                    const advanceAmount = Number(totals.total || 0) * (Number('{{ $advancePercentage }}') / 100);
+                    $('[data-summary-field="payment_amount"]').text(formatCheckoutAmount(advanceAmount));
+                } else if (paymentType === 'checkin') {
+                    $('[data-summary-field="payment_amount"]').text(formatCheckoutAmount(totals.total));
+                }
+
+                const itemCount = Number(cart.item_count || Object.keys(cart.items || {}).length);
+                if (cart.is_empty || itemCount === 0) {
+                    checkoutRedirectHome();
+                }
+            }
+
+            function checkoutEscapeHtml(value) {
+                return $('<div>').text(value || '').html();
+            }
+
+            function checkoutAddonAmount(addon) {
+                const amount = Math.max(0, Math.floor(Number(addon.amount || addon.calculated_amount || 0)));
+                return formatCheckoutAmount(amount);
+            }
+
+            function selectedAddonMap(selectedAddons) {
+                const map = {};
+                if (Array.isArray(selectedAddons)) {
+                    selectedAddons.forEach(function(addon) {
+                        map[addon.addon_id] = Number(addon.qty || 0);
+                    });
+                }
+                return map;
+            }
+
+            function updateCheckoutAddonCount(cartKey, selectedCount) {
+                $('.checkout-item-addons[data-cart-key="' + cartKey + '"] .checkout-addon-count').text(selectedCount);
+            }
+
+            function renderSelectedAddonSummary(cartKey, selectedAddons) {
+                const summary = $('.checkout-item-addons[data-cart-key="' + cartKey + '"] .checkout-selected-addons');
+                if (!summary.length) {
+                    return;
+                }
+
+                const selected = Array.isArray(selectedAddons) ? selectedAddons.filter(function(addon) {
+                    return Number(addon.qty || 0) > 0;
+                }) : [];
+
+                updateCheckoutAddonCount(cartKey, selected.length);
+                if (!selected.length) {
+                    summary.html('<div class="checkout-no-addons">No add-ons selected</div>');
+                    return;
+                }
+
+                summary.html(selected.map(function(addon) {
+                    return `
+                        <div class="checkout-selected-addon-row" data-addon-id="${checkoutEscapeHtml(addon.addon_id || addon.id)}">
+                            <div>
+                                <strong>${checkoutEscapeHtml(addon.name || 'Add-on')}</strong>
+                                <small>Qty: ${Number(addon.qty || 1)}</small>
+                            </div>
+                            <span>${checkoutAddonAmount(addon)}</span>
+                        </div>
+                    `;
+                }).join(''));
+            }
+
+            function loadCheckoutAddons(cartKey, serviceType, forceReload) {
+                const panel = $('#checkoutAddonModalPanel');
+                if (!panel.length) {
+                    return;
+                }
+                if (panel.data('loaded') && panel.data('cart-key') === cartKey && !forceReload) {
+                    return;
+                }
+
+                panel.data('cart-key', cartKey).data('service-type', serviceType || '');
+                panel.html('<div class="checkout-addon-loading">Loading add-ons...</div>');
+
+                $.when(
+                    $.ajax({
+                        url: '{{ route('cart.addons.available') }}',
+                        method: 'GET',
+                        data: {
+                            service_type: serviceType || '',
+                            cart_key: cartKey
+                        }
+                    }),
+                    $.ajax({
+                        url: '{{ route('cart.addons.get', ['cartKey' => ':cartKey']) }}'.replace(':cartKey', encodeURIComponent(cartKey)),
+                        method: 'GET'
+                    })
+                ).done(function(availableResponse, selectedResponse) {
+                    const available = availableResponse[0]?.data || [];
+                    const selected = selectedResponse[0]?.data || [];
+                    renderCheckoutAddons(cartKey, available, selected);
+                    renderSelectedAddonSummary(cartKey, selected);
+                    panel.data('loaded', true);
+                }).fail(function() {
+                    panel.html('<div class="checkout-addon-error">Unable to load add-ons.</div>');
+                });
+            }
+
+            function initializeCheckoutAddonAvailability() {
+                $('.checkout-item-addons').each(function() {
+                    const wrapper = $(this);
+                    const serviceType = wrapper.data('service-type') || '';
+                    const selectedCount = Number(wrapper.find('.checkout-addon-count').text() || 0);
+
+                    $.ajax({
+                        url: '{{ route('cart.addons.available') }}',
+                        method: 'GET',
+                        data: {
+                            service_type: serviceType,
+                            cart_key: wrapper.data('cart-key')
+                        },
+                        success: function(response) {
+                            const hasAvailableAddons = response.success && Array.isArray(response.data) && response.data.length > 0;
+                            wrapper.toggle(hasAvailableAddons || selectedCount > 0)
+                                .removeClass('checkout-option-pending');
+                        },
+                        error: function() {
+                            // Preserve already-selected add-ons, but do not offer an
+                            // unavailable manager when eligibility cannot be verified.
+                            wrapper.toggle(selectedCount > 0)
+                                .removeClass('checkout-option-pending');
+                        }
+                    });
+                });
+            }
+
+            function renderCheckoutAddons(cartKey, addons, selectedAddons) {
+                const panel = $('#checkoutAddonModalPanel');
+                const selected = selectedAddonMap(selectedAddons);
+                let selectedCount = 0;
+
+                if (!Array.isArray(addons) || addons.length === 0) {
+                    panel.html('<div class="checkout-addon-empty">No add-ons available for this item.</div>');
+                    renderSelectedAddonSummary(cartKey, selectedAddons);
+                    return;
+                }
+
+                const html = addons.map(function(addon) {
+                    const qty = selected[addon.id] || 0;
+                    if (qty > 0) {
+                        selectedCount++;
+                    }
+                    const maxQty = Number(addon.max_qty || 999);
+                    return `
+                        <div class="checkout-addon-card" data-addon-id="${addon.id}">
+                            <div class="checkout-addon-info">
+                                <strong>${checkoutEscapeHtml(addon.name)}</strong>
+                                <small>${checkoutEscapeHtml(addon.description || 'Add-on')}</small>
+                                <small>${checkoutAddonAmount(addon)}</small>
+                            </div>
+                            <div class="checkout-addon-actions">
+                                <div class="checkout-addon-qty">
+                                    <input type="number" min="0" max="${maxQty}" value="${qty}" data-selected-qty="${qty}"
+                                        data-addon-id="${addon.id}" data-cart-key="${cartKey}">
+                                </div>
+                                <button type="button" class="checkout-addon-apply"
+                                    data-addon-id="${addon.id}" data-cart-key="${cartKey}">
+                                    ${qty > 0 ? 'Update' : 'Add'}
+                                </button>
+                                ${qty > 0 ? `<button type="button" class="checkout-addon-remove"
+                                    data-addon-id="${addon.id}" data-cart-key="${cartKey}">Remove</button>` : ''}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+                panel.html(html + `
+                    <div class="checkout-addon-bulk">
+                        <button type="button" class="checkout-addon-update-all" data-cart-key="${cartKey}">
+                            Apply all add-on quantities
+                        </button>
+                    </div>
+                `);
+                renderSelectedAddonSummary(cartKey, selectedAddons);
+            }
+
+            function mutateCheckoutAddon(url, data, button) {
+                button.prop('disabled', true);
+
+                $.ajax({
+                    url: url,
+                    method: 'POST',
+                    data: Object.assign({
+                        _token: '{{ csrf_token() }}'
+                    }, data),
+                    success: function(response) {
+                        if (!response.success) {
+                            showCheckoutPromoError(response.message || 'Unable to update add-on');
+                            button.prop('disabled', false);
+                            return;
+                        }
+
+                        updateCheckoutCartTotals(response.cart);
+                        const panel = $('#checkoutAddonModalPanel');
+                        loadCheckoutAddons(data.cart_key, panel.data('service-type'), true);
+                    },
+                    error: function(xhr) {
+                        showCheckoutPromoError(xhr.responseJSON?.message || 'Unable to update add-on');
+                        button.prop('disabled', false);
+                    }
+                });
+            }
+
+            $(document).on('click', '.checkout-toggle-addons', function() {
+                const button = $(this);
+                const cartKey = button.data('cart-key');
+                const serviceType = button.data('service-type');
+                $('.checkout-addon-modal-vehicle').text(button.data('vehicle-name') || 'Selected vehicle');
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('checkoutAddonModal')).show();
+                loadCheckoutAddons(cartKey, serviceType, false);
+            });
+
+            $(document).on('click', '.checkout-addon-apply', function() {
+                const button = $(this);
+                const cartKey = button.data('cart-key');
+                const addonId = button.data('addon-id');
+                const input = $('.checkout-addon-qty input[data-cart-key="' + cartKey + '"][data-addon-id="' + addonId + '"]');
+                const qty = Number(input.val() || 0);
+                const selectedQty = Number(input.data('selected-qty') || 0);
+
+                if (qty <= 0) {
+                    mutateCheckoutAddon('{{ route('cart.addon.remove') }}', {
+                        cart_key: cartKey,
+                        addon_id: addonId
+                    }, button);
+                    return;
+                }
+
+                mutateCheckoutAddon(selectedQty > 0 ? '{{ route('cart.addon.update-qty') }}' : '{{ route('cart.addon.add') }}', {
+                    cart_key: cartKey,
+                    addon_id: addonId,
+                    qty: qty
+                }, button);
+            });
+
+            $(document).on('click', '.checkout-addon-remove', function() {
+                const button = $(this);
+                mutateCheckoutAddon('{{ route('cart.addon.remove') }}', {
+                    cart_key: button.data('cart-key'),
+                    addon_id: button.data('addon-id')
+                }, button);
+            });
+
+            $(document).on('click', '.checkout-addon-update-all', function() {
+                const button = $(this);
+                const cartKey = button.data('cart-key');
+                const updates = $('.checkout-addon-qty input[data-cart-key="' + cartKey + '"]').map(function() {
+                    return {
+                        cart_key: cartKey,
+                        addon_id: $(this).data('addon-id'),
+                        qty: Number($(this).val() || 0)
+                    };
+                }).get();
+
+                if (!updates.length) {
+                    return;
+                }
+
+                mutateCheckoutAddon('{{ route('cart.addons.update-all') }}', {
+                    cart_key: cartKey,
+                    updates: updates
+                }, button);
+            });
+
+            function loadCheckoutExtraKm(cartKey, forceReload) {
+                const panel = $('.checkout-extra-km-panel[data-cart-key="' + cartKey + '"]');
+                const wrapper = $('.checkout-item-extra-km[data-cart-key="' + cartKey + '"]');
+                if (!panel.length) {
+                    return;
+                }
+                if (panel.data('loaded') && !forceReload) {
+                    return;
+                }
+
+                panel.html('<div class="checkout-extra-km-loading">Loading extra KM options...</div>');
+
+                $.ajax({
+                    url: '{{ url('/cart/extra-km') }}/' + encodeURIComponent(cartKey),
+                    method: 'GET',
+                    success: function(response) {
+                        if (!response.success || !response.data || !response.data.has_slab || !response.data.rate) {
+                            wrapper.hide().removeClass('checkout-option-pending');
+                            return;
+                        }
+
+                        wrapper.removeClass('checkout-option-pending').show();
+                        renderCheckoutExtraKm(cartKey, response.data);
+                        panel.data('loaded', true);
+                    },
+                    error: function() {
+                        wrapper.hide().removeClass('checkout-option-pending');
+                    }
+                });
+            }
+
+            function renderCheckoutExtraKm(cartKey, data) {
+                const panel = $('.checkout-extra-km-panel[data-cart-key="' + cartKey + '"]');
+                const rate = Number(data.rate?.rate || 0);
+                const currentKm = Number(data.current_extra_km?.km || 0);
+                const total = currentKm * rate;
+
+                panel.data('rate', rate);
+                panel.html(`
+                    <div class="checkout-extra-km-rate">
+                        Rate: <strong>${formatCheckoutAmount(rate)}</strong> per km
+                    </div>
+                    <div class="checkout-extra-km-input">
+                        <label for="checkout-extra-km-${cartKey}">Extra kilometers</label>
+                        <input type="number" id="checkout-extra-km-${cartKey}" class="checkout-extra-km-value"
+                            min="0" max="10000" step="1" value="${currentKm}" data-cart-key="${cartKey}">
+                    </div>
+                    <div class="checkout-extra-km-total">
+                        Total: <strong class="checkout-extra-km-total-value">${formatCheckoutAmount(total)}</strong>
+                    </div>
+                    <div class="checkout-extra-km-actions">
+                        <button type="button" class="checkout-extra-km-apply" data-cart-key="${cartKey}">
+                            Apply
+                        </button>
+                        ${currentKm > 0 ? `<button type="button" class="checkout-extra-km-remove" data-cart-key="${cartKey}">Remove</button>` : ''}
+                    </div>
+                `);
+                $('.checkout-item-extra-km[data-cart-key="' + cartKey + '"] .checkout-extra-km-count').text(currentKm.toLocaleString('en-US'));
+            }
+
+            function mutateCheckoutExtraKm(url, data, button) {
+                button.prop('disabled', true);
+
+                $.ajax({
+                    url: url,
+                    method: 'POST',
+                    data: Object.assign({
+                        _token: '{{ csrf_token() }}'
+                    }, data),
+                    success: function(response) {
+                        if (!response.success) {
+                            showCheckoutPromoError(response.message || 'Unable to update extra KM');
+                            button.prop('disabled', false);
+                            return;
+                        }
+
+                        updateCheckoutCartTotals(response.cart);
+                        loadCheckoutExtraKm(data.cart_key, true);
+                    },
+                    error: function(xhr) {
+                        showCheckoutPromoError(xhr.responseJSON?.message || 'Unable to update extra KM');
+                        button.prop('disabled', false);
+                    }
+                });
+            }
+
+            $(document).on('click', '.checkout-toggle-extra-km', function() {
+                const cartKey = $(this).data('cart-key');
+                const panel = $('.checkout-extra-km-panel[data-cart-key="' + cartKey + '"]');
+                panel.slideToggle(150);
+                loadCheckoutExtraKm(cartKey, false);
+            });
+
+            $(document).on('input', '.checkout-extra-km-value', function() {
+                const input = $(this);
+                const cartKey = input.data('cart-key');
+                const panel = $('.checkout-extra-km-panel[data-cart-key="' + cartKey + '"]');
+                const rate = Number(panel.data('rate') || 0);
+                const km = Number(input.val() || 0);
+                panel.find('.checkout-extra-km-total-value').text(formatCheckoutAmount(km * rate));
+            });
+
+            $(document).on('click', '.checkout-extra-km-apply', function() {
+                const button = $(this);
+                const cartKey = button.data('cart-key');
+                const km = Number($('.checkout-extra-km-value[data-cart-key="' + cartKey + '"]').val() || 0);
+
+                mutateCheckoutExtraKm('{{ route('cart.extra-km.add') }}', {
+                    cart_key: cartKey,
+                    extra_km: km
+                }, button);
+            });
+
+            $(document).on('click', '.checkout-extra-km-remove', function() {
+                const button = $(this);
+                mutateCheckoutExtraKm('{{ route('cart.extra-km.remove') }}', {
+                    cart_key: button.data('cart-key')
+                }, button);
+            });
+
+            function initializeCheckoutOptionalServices() {
+                initializeCheckoutAddonAvailability();
+
+                $('.checkout-item-extra-km').each(function() {
+                    loadCheckoutExtraKm($(this).data('cart-key'), false);
+                });
+            }
+
+            initializeCheckoutOptionalServices();
+
+            function setCheckoutItemExpanded(item, expanded) {
+                item.toggleClass('is-expanded', expanded).toggleClass('is-collapsed', !expanded);
+                item.find('> .checkout-item-toggle')
+                    .attr('aria-expanded', expanded ? 'true' : 'false')
+                    .attr('title', expanded ? 'Hide booking details' : 'Show booking details')
+                    .find('.checkout-item-toggle-label')
+                    .text(expanded ? 'Less' : 'Details');
+            }
+
+            $(document).on('click', '.checkout-item-toggle', function() {
+                const item = $(this).closest('.checkout-cart-item');
+                const willExpand = !item.hasClass('is-expanded');
+
+                if (willExpand) {
+                    $('.checkout-cart-item.is-expanded').not(item).each(function() {
+                        setCheckoutItemExpanded($(this), false);
+                    });
+                }
+
+                setCheckoutItemExpanded(item, willExpand);
+            });
+
+            $(document).on('click', '.checkout-remove-item-btn', function() {
+                if (!confirm('Remove this item from checkout?')) {
+                    return;
+                }
+
+                const btn = $(this);
+                const cartKey = btn.data('cart-key');
+                btn.prop('disabled', true);
+                btn.html('<i class="bi bi-hourglass-split"></i><span>Removing</span>');
+
+                $.ajax({
+                    url: '{{ route('cart.remove') }}',
+                    method: 'POST',
+                    data: {
+                        _token: '{{ csrf_token() }}',
+                        cart_key: cartKey
+                    },
+                    success: function(response) {
+                        if (!response.success) {
+                            showCheckoutPromoError(response.message || 'Error removing item');
+                            btn.prop('disabled', false);
+                            btn.html('<i class="bi bi-trash"></i><span>Remove</span>');
+                            return;
+                        }
+
+                        $('.checkout-cart-item[data-cart-key="' + cartKey + '"]').slideUp(150, function() {
+                            const removedExpandedItem = $(this).hasClass('is-expanded');
+                            $(this).remove();
+                            if (removedExpandedItem && !$('.checkout-cart-item.is-expanded').length) {
+                                setCheckoutItemExpanded($('.checkout-cart-item').first(), true);
+                            }
+                            updateCheckoutCartTotals(response.cart);
+                        });
+                    },
+                    error: function(xhr) {
+                        showCheckoutPromoError(xhr.responseJSON?.message || 'Error removing item');
+                        btn.prop('disabled', false);
+                        btn.html('<i class="bi bi-trash"></i><span>Remove</span>');
+                    }
+                });
+            });
+
+            $(document).on('click', '.checkout-clear-cart-btn', function() {
+                if (!confirm('Clear your entire cart?')) {
+                    return;
+                }
+
+                const btn = $(this);
+                btn.prop('disabled', true);
+                btn.html('<i class="bi bi-hourglass-split"></i><span>Clearing</span>');
+
+                $.ajax({
+                    url: '{{ route('cart.clear') }}',
+                    method: 'POST',
+                    data: {
+                        _token: '{{ csrf_token() }}'
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            checkoutRedirectHome();
+                            return;
+                        }
+
+                        showCheckoutPromoError(response.message || 'Error clearing cart');
+                        btn.prop('disabled', false);
+                        btn.html('<i class="bi bi-trash"></i><span>Clear</span>');
+                    },
+                    error: function(xhr) {
+                        showCheckoutPromoError(xhr.responseJSON?.message || 'Error clearing cart');
+                        btn.prop('disabled', false);
+                        btn.html('<i class="bi bi-trash"></i><span>Clear</span>');
+                    }
+                });
+            });
+
             // Apply promo code button click
-            $('#apply-promo-checkout-btn').on('click', function() {
+            $(document).on('click', '#apply-promo-checkout-btn', function() {
                 const promoCode = $('#checkout-promo-input').val().trim();
                 if (!promoCode) {
                     showCheckoutPromoError('Please enter a promo code');
@@ -2092,10 +2363,9 @@
                     },
                     success: function(response) {
                         if (response.success) {
+                            updateCheckoutCartTotals(response.cart);
+                            renderCheckoutAppliedPromo(response.promo_code || promoCode);
                             showCheckoutPromoSuccess(response.message || 'Promo code applied!');
-                            setTimeout(function() {
-                                location.reload();
-                            }, 1000);
                         } else {
                             showCheckoutPromoError(response.message || 'Invalid promo code');
                             resetCheckoutApplyButton();
@@ -2111,7 +2381,7 @@
             });
 
             // Allow Enter key to apply promo code
-            $('#checkout-promo-input').on('keypress', function(e) {
+            $(document).on('keypress', '#checkout-promo-input', function(e) {
                 if (e.which === 13) {
                     e.preventDefault();
                     $('#apply-promo-checkout-btn').click();
@@ -2132,10 +2402,9 @@
                     },
                     success: function(response) {
                         if (response.success) {
+                            updateCheckoutCartTotals(response.cart);
+                            renderCheckoutPromoInput();
                             showCheckoutPromoSuccess('Promo code removed');
-                            setTimeout(function() {
-                                location.reload();
-                            }, 500);
                         } else {
                             showCheckoutPromoError(response.message ||
                                 'Error removing promo code');
@@ -2154,6 +2423,32 @@
             });
 
             // Helper functions for checkout promo code UI
+            function renderCheckoutAppliedPromo(promoCode) {
+                $('#checkout-promo-body').html(
+                    '<div class="applied-promo-checkout">' +
+                    '<div class="promo-badge-checkout">' +
+                    '<i class="bi bi-check-circle-fill text-success"></i> ' +
+                    '<span class="promo-code-value">' + checkoutEscapeHtml(promoCode) + '</span>' +
+                    '<button type="button" class="remove-promo-checkout-btn" title="Remove promo code">' +
+                    '<i class="bi bi-x-lg"></i>' +
+                    '</button>' +
+                    '</div>' +
+                    '</div>'
+                );
+            }
+
+            function renderCheckoutPromoInput() {
+                $('#checkout-promo-body').html(
+                    '<div class="promo-input-checkout">' +
+                    '<input type="text" id="checkout-promo-input" placeholder="Enter code" autocomplete="off">' +
+                    '<button type="button" id="apply-promo-checkout-btn" class="apply-promo-checkout-btn">' +
+                    '<span class="btn-text">Apply</span>' +
+                    '<span class="btn-loading" style="display: none;"><i class="bi bi-hourglass-split"></i></span>' +
+                    '</button>' +
+                    '</div>'
+                );
+            }
+
             function showCheckoutPromoError(message) {
                 $('#checkout-promo-message').html(
                     '<div class="alert alert-danger py-1 px-2 mb-0"><i class="bi bi-exclamation-circle"></i> ' +

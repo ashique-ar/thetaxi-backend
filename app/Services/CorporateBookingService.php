@@ -393,6 +393,8 @@ class CorporateBookingService
             'bookingItems.vehicleGroup',
             'vehicleAssignments.vehicle',
             'driverAssignments.driver',
+            'dispatch',
+            'qc',
             'approvals.approver',
             'latestApproval.approver',
             'createdBy',
@@ -518,7 +520,9 @@ class CorporateBookingService
             'booking.employee.user',
             'booking.latestApproval.approver',
             'booking.createdBy',
-            'booking.bookingItems:id,booking_id,from_date,from_time,created_at',
+            'booking.bookingItems:id,booking_id,vehicle_id,driver_id,is_self_driven,from_date,from_time,created_at',
+            'booking.dispatch',
+            'booking.qc',
             'serviceType',
             'vehicleGroup',
             'vehicle',
@@ -558,6 +562,9 @@ class CorporateBookingService
     {
         $booking = $item->booking;
         $employeeUser = $booking?->employee?->user;
+        $lifecycleContract = $booking
+            ? app(BookingLifecycleService::class)->getLifecycleContract($booking, (string) $item->id)
+            : null;
         $approval = $booking?->latestApproval;
         $bookingItems = $booking?->bookingItems ?? collect();
         $itemCount = max(1, $bookingItems->count());
@@ -592,6 +599,9 @@ class CorporateBookingService
             'created_by_name' => $booking?->createdBy?->name,
             'status' => $item->status ?: $booking?->status,
             'booking_status' => $booking?->status,
+            'lifecycle_contract' => $lifecycleContract,
+            'allowed_actions' => $lifecycleContract['allowed_actions'] ?? [],
+            'blocking_reasons' => $lifecycleContract['blocking_reasons'] ?? [],
             'approval_status' => $booking?->approval_status,
             'requires_approval' => (bool) ($item->requires_approval ?: $booking?->requires_approval),
             'service_type_id' => $item->service_type_id,
@@ -652,6 +662,7 @@ class CorporateBookingService
     {
         $employeeUser = $booking->employee?->user;
         $approval = $booking->latestApproval;
+        $lifecycleContract = app(BookingLifecycleService::class)->getLifecycleContract($booking);
 
         $payload = [
             'id' => $booking->id,
@@ -671,6 +682,9 @@ class CorporateBookingService
             'created_by_user_id' => $booking->created_by_user_id,
             'created_by_name' => $booking->createdBy?->name,
             'status' => $booking->status,
+            'lifecycle_contract' => $lifecycleContract,
+            'allowed_actions' => $lifecycleContract['allowed_actions'],
+            'blocking_reasons' => $lifecycleContract['blocking_reasons'],
             'approval_status' => $booking->approval_status,
             'requires_approval' => (bool) $booking->requires_approval,
             'is_recurring' => (bool) $booking->is_recurring,

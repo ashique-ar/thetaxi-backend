@@ -4,10 +4,10 @@
 
 @section('content')
     @php
-        $currencySymbol = getCurrencySymbol($context['pricing']['currency'] ?? 'LKR');
         $booking = $paymentData['booking'];
         $context = $paymentData['context'];
         $amountDue = $paymentData['amount_due'];
+        $currencySymbol = getCurrencySymbol($context['pricing']['currency'] ?? 'LKR');
 
         // Fallback for invalid or zero amounts
         if ($amountDue <= 0) {
@@ -833,6 +833,8 @@
             }
         }
     </style>
+    <link rel="stylesheet"
+        href="{{ assetVersion(is_theme('theme-02') ? 'assets/css/checkout-theme-02.css' : 'assets/css/checkout-theme-01.css') }}">
 @endpush
 
 @push('scripts')

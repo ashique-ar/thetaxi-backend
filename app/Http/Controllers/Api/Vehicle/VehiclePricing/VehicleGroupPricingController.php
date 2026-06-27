@@ -452,8 +452,9 @@ class VehicleGroupPricingController extends Controller
             'service_settings.*.service_type_id' => 'required_with:service_settings|uuid|exists:service_types,id',
             'service_settings.*.is_inquiry_only' => 'boolean',
             'service_settings.*.is_hidden' => 'boolean',
-            'owner_type' => 'nullable|string|in:corporate',
-            'owner_id' => 'nullable|uuid|exists:corporates,id|required_with:owner_type',
+            'context' => 'nullable|string|in:public,portal,corporate',
+            'owner_type' => 'nullable|required_if:context,corporate|string|in:corporate',
+            'owner_id' => 'nullable|required_if:context,corporate|uuid|exists:corporates,id|required_with:owner_type',
             'priority' => 'nullable|integer|min:0',
             'change_reason' => 'nullable|string|max:500',
         ]);
@@ -958,6 +959,10 @@ class VehicleGroupPricingController extends Controller
             'common_rate_pricing.*.value' => 'nullable|numeric|min:0',
             'common_rate_pricing.*.is_active' => 'boolean',
             'common_rate_pricing.*.service_type_id' => 'nullable|uuid|exists:service_types,id',
+            'context' => 'nullable|string|in:public,portal,corporate',
+            'owner_type' => 'nullable|required_if:context,corporate|string|in:corporate',
+            'owner_id' => 'nullable|required_if:context,corporate|uuid|exists:corporates,id|required_with:owner_type',
+            'priority' => 'nullable|integer|min:0',
             'change_reason' => 'nullable|string|max:500',
         ]);
 
@@ -979,6 +984,9 @@ class VehicleGroupPricingController extends Controller
 
             $changeReason = $request->input('change_reason', 'Bulk pricing update via unified interface');
             $userId = auth()->id();
+            $ownerType = $request->input('owner_type');
+            $ownerId = $ownerType ? $request->input('owner_id') : null;
+            $priority = (int) $request->input('priority', 0);
 
             // Process slab pricing with history tracking
             if ($request->has('slab_pricing') && is_array($request->slab_pricing)) {
@@ -988,9 +996,14 @@ class VehicleGroupPricingController extends Controller
                     $slabData['includes_fuel'] = $slabData['includes_fuel'] ?? false;
                     $slabData['includes_driver'] = $slabData['includes_driver'] ?? false;
                     $slabData['rate_type'] = $slabData['rate_type'] ?? 'per_day';
+                    $slabData['owner_type'] = $ownerType;
+                    $slabData['owner_id'] = $ownerId;
+                    $slabData['priority'] = $priority;
 
                     $existingPricing = VehicleGroupPricing::forVehicleGroup($slabData['vehicle_group_id'])
                         ->forSlabDefinition($slabData['slab_definition_id'])
+                        ->where('owner_type', $ownerType)
+                        ->where('owner_id', $ownerId)
                         ->first();
 
                     if ($existingPricing) {
@@ -1053,9 +1066,15 @@ class VehicleGroupPricingController extends Controller
                 foreach ($request->common_rate_pricing as $commonRateData) {
                     // Set defaults
                     $commonRateData['is_active'] = $commonRateData['is_active'] ?? true;
+                    $commonRateData['owner_type'] = $ownerType;
+                    $commonRateData['owner_id'] = $ownerId;
+                    $commonRateData['priority'] = $priority;
+                    unset($commonRateData['service_type_id']);
 
                     $existingCommonRate = VehicleGroupCommonRatePricing::forVehicleGroup($commonRateData['vehicle_group_id'])
                         ->forCommonRate($commonRateData['common_rate_definition_id'])
+                        ->where('owner_type', $ownerType)
+                        ->where('owner_id', $ownerId)
                         ->first();
 
                     if ($existingCommonRate) {

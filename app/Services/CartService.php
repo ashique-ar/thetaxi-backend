@@ -820,7 +820,10 @@ class CartService
         $query = \App\Models\Vehicle\VehicleAddon::query();
 
         if ($serviceTypeId) {
-            $query->where('service_type_id', $serviceTypeId)->orWhereNull('service_type_id');
+            $query->where(function ($query) use ($serviceTypeId) {
+                $query->where('service_type_id', $serviceTypeId)
+                    ->orWhereNull('service_type_id');
+            });
         }
 
         // Convert addon amounts to the user's selected currency before returning
@@ -1157,18 +1160,20 @@ class CartService
     public function getExtraKmRateForVehicleGroup(string $vehicleGroupId, ?string $serviceTypeId = null): ?array
     {
         try {
-            // Build query to find the extra_km_rate common rate definition
-            $definitionQuery = \App\Models\Vehicle\VehiclePricing\VehiclePricingCommonRateDefinition::where('code', 'extra_km_rate')
-                ->where('is_active', true);
+            // Match pricing management behavior: prefer a service-specific
+            // definition and fall back to a global (null service type) definition.
+            $definitions = \App\Models\Vehicle\VehiclePricing\VehiclePricingCommonRateDefinition::query()
+                ->where('code', 'extra_km_rate')
+                ->where('is_active', true)
+                ->when($serviceTypeId, function ($query) use ($serviceTypeId) {
+                    $query->where(function ($query) use ($serviceTypeId) {
+                        $query->where('service_type_id', $serviceTypeId)
+                            ->orWhereNull('service_type_id');
+                    })->orderByRaw('CASE WHEN service_type_id = ? THEN 0 ELSE 1 END', [$serviceTypeId]);
+                }, fn ($query) => $query->whereNull('service_type_id'))
+                ->get();
 
-            // If service type is provided, filter by it for more accurate rate
-            if ($serviceTypeId) {
-                $definitionQuery->where('service_type_id', $serviceTypeId);
-            }
-
-            $extraKmDefinition = $definitionQuery->first();
-
-            if (!$extraKmDefinition) {
+            if ($definitions->isEmpty()) {
                 \Illuminate\Support\Facades\Log::warning('Extra KM rate definition not found', [
                     'vehicle_group_id' => $vehicleGroupId,
                     'service_type_id' => $serviceTypeId,
@@ -1176,33 +1181,36 @@ class CartService
                 return null;
             }
 
-            // Get the rate value for this vehicle group
-            $vehicleGroupRate = \App\Models\Vehicle\VehiclePricing\VehicleGroupCommonRatePricing::where('vehicle_group_id', $vehicleGroupId)
-                ->where('common_rate_definition_id', $extraKmDefinition->id)
-                ->where('is_active', true)
-                ->first();
+            foreach ($definitions as $extraKmDefinition) {
+                $vehicleGroupRate = \App\Models\Vehicle\VehiclePricing\VehicleGroupCommonRatePricing::query()
+                    ->where('vehicle_group_id', $vehicleGroupId)
+                    ->where('common_rate_definition_id', $extraKmDefinition->id)
+                    ->where('is_active', true)
+                    ->first();
 
-            if ($vehicleGroupRate && $vehicleGroupRate->value > 0) {
-                \Illuminate\Support\Facades\Log::debug('Extra KM rate found for vehicle group', [
-                    'vehicle_group_id' => $vehicleGroupId,
-                    'service_type_id' => $serviceTypeId,
-                    'rate' => $vehicleGroupRate->value,
-                    'definition_id' => $extraKmDefinition->id,
-                ]);
+                if ($vehicleGroupRate && $vehicleGroupRate->value > 0) {
+                    \Illuminate\Support\Facades\Log::debug('Extra KM rate found for vehicle group', [
+                        'vehicle_group_id' => $vehicleGroupId,
+                        'service_type_id' => $serviceTypeId,
+                        'matched_definition_service_type_id' => $extraKmDefinition->service_type_id,
+                        'rate' => $vehicleGroupRate->value,
+                        'definition_id' => $extraKmDefinition->id,
+                    ]);
 
-                return [
-                    'rate' => (float) $vehicleGroupRate->value,
-                    'currency' => config('booking.base_currency', 'LKR'),
-                    'definition_id' => $extraKmDefinition->id,
-                    'definition_name' => $extraKmDefinition->name,
-                    'service_type_id' => $extraKmDefinition->service_type_id,
-                ];
+                    return [
+                        'rate' => (float) $vehicleGroupRate->value,
+                        'currency' => config('booking.base_currency', 'LKR'),
+                        'definition_id' => $extraKmDefinition->id,
+                        'definition_name' => $extraKmDefinition->name,
+                        'service_type_id' => $extraKmDefinition->service_type_id,
+                    ];
+                }
             }
 
             \Illuminate\Support\Facades\Log::warning('Extra KM rate not configured for vehicle group', [
                 'vehicle_group_id' => $vehicleGroupId,
                 'service_type_id' => $serviceTypeId,
-                'definition_id' => $extraKmDefinition->id,
+                'definition_ids' => $definitions->pluck('id')->all(),
             ]);
 
             return null;

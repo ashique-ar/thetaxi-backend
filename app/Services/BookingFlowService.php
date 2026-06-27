@@ -7574,11 +7574,14 @@ class BookingFlowService
                 },
                 'booking.driverAssignments.driver.user:id,first_name,last_name,email,phone',
                 'booking.dispatch:id,booking_id,dispatch_status',
+                'booking.qc:id,booking_id,qc_status',
                 'booking.bookingItems' => function ($q) {
                     $q->select([
                         'id',
                         'booking_id',
                         'service_type_id',
+                        'vehicle_id',
+                        'driver_id',
                         'pickup_location',
                         'pickup_latitude',
                         'pickup_longitude',
@@ -7589,6 +7592,7 @@ class BookingFlowService
                         'from_time',
                         'to_date',
                         'to_time',
+                        'is_self_driven',
                         'created_at',
                     ])
                         ->orderBy('from_date')
@@ -8052,6 +8056,9 @@ class BookingFlowService
         if ($requiresApproval && empty($approvalTriggerLabels)) {
             $approvalTriggerLabels = ['Manager approval required'];
         }
+        $lifecycleContract = $booking
+            ? app(BookingLifecycleService::class)->getLifecycleContract($booking, (string) $item->id)
+            : null;
 
         $bookingItems = collect($booking?->bookingItems ?? [])
             ->sortBy(function ($bookingItem) {
@@ -8132,6 +8139,9 @@ class BookingFlowService
             'code' => $itemCode,
             'status' => $item->status ?? 'pending',
             'booking_status' => $booking?->status,
+            'lifecycle_contract' => $lifecycleContract,
+            'allowed_actions' => $lifecycleContract['allowed_actions'] ?? [],
+            'blocking_reasons' => $lifecycleContract['blocking_reasons'] ?? [],
             'dispatch_status' => $dispatchStatus,
             'service_type' => $itemServiceType ? [
                 'id' => (string) $itemServiceType->id,
@@ -8690,10 +8700,15 @@ class BookingFlowService
             ];
         })->toArray();
 
+        $lifecycleContract = app(BookingLifecycleService::class)->getLifecycleContract($booking);
+
         return [
             'id' => (string) $booking->id,
             'booking_number' => $booking->booking_number ?? Booking::generateBookingNumber(),
             'status' => (string) ($booking->status ?? 'pending'),
+            'lifecycle_contract' => $lifecycleContract,
+            'allowed_actions' => $lifecycleContract['allowed_actions'],
+            'blocking_reasons' => $lifecycleContract['blocking_reasons'],
             'workflow_step' => (string) ($booking->workflow_step ?? 'pending_approval'),
             'requires_approval' => (bool) ($booking->requires_approval ?? false),
             'is_recurring' => (bool) $booking->is_recurring,
@@ -10834,6 +10849,24 @@ class BookingFlowService
             }
 
             return $booking->load(['customer', 'bookingItems']);
+        });
+    }
+
+    public function requestBookingQuotation(array $params): Booking
+    {
+        return DB::transaction(function () use ($params) {
+            $booking = $this->saveBookingDraft($params);
+            $workflowData = is_array($booking->workflow_data) ? $booking->workflow_data : [];
+
+            $booking->status = 'quotation_requested';
+            $booking->workflow_step = 'quotation_requested';
+            $booking->workflow_data = array_merge($workflowData, [
+                'quotation_requested_at' => now()->toISOString(),
+                'quotation_requested_by' => Auth::id(),
+            ]);
+            $booking->save();
+
+            return $booking->fresh(['customer', 'bookingItems']);
         });
     }
 

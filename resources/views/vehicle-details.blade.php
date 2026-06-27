@@ -1070,7 +1070,7 @@
                         if (response && response.success) {
                             window.dispatchEvent(new CustomEvent('cartUpdated'));
                             if (bookNow) {
-                                window.location.href = '{{ route('cart') }}';
+                                window.location.href = '{{ route('checkout') }}';
                             } else {
                                 showToast('Vehicle added to cart successfully.', 'success');
                             }

@@ -982,6 +982,8 @@ Route::middleware(['auth:api'])->group(function () {
             // Draft Management Routes - Updated to match frontend service
             Route::post('save-draft', [BookingFlowController::class, 'saveBookingDraft'])
                 ->middleware('permission:bookings.create');
+            Route::post('request-quotation', [BookingFlowController::class, 'requestBookingQuotation'])
+                ->middleware('permission:bookings.create');
             Route::get('draft/{draftId}', [BookingFlowController::class, 'loadBookingDraft'])
                 ->middleware('permission:bookings.view');
 

@@ -905,7 +905,7 @@
 
             // Redirect to checkout
             setTimeout(() => {
-                    window.location.href = '{{ route('cart') }}';
+                    window.location.href = '{{ route('checkout') }}';
             }, 500);
         });
 
@@ -1030,7 +1030,7 @@
                 });
 
                 setTimeout(() => {
-                        window.location.href = '{{ route('cart') }}';
+                        window.location.href = '{{ route('checkout') }}';
                 }, 500);
             });
         }
@@ -1165,8 +1165,8 @@
                                     <strong id="cartTotalPrice"><span class="currency-symbol">{{ getCurrencySymbol() }}</span> <span class="amount">0</span></strong>
                                 </div>
                             </div>
-                            <a href="{{ route('cart') }}" class="btn btn-light w-100">
-                                <i class="bi bi-cart-check"></i> View Cart & Checkout
+                            <a href="{{ route('checkout') }}" class="btn btn-light w-100">
+                                <i class="bi bi-cart-check"></i> Review & Checkout
                             </a>
                         </div>
                     </div>
@@ -1272,5 +1272,4 @@
     }
 </script>
 @endpush
-
 

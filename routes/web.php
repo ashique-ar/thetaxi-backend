@@ -141,7 +141,7 @@ Route::get('/faq', function () {
 })->name('faq');
 
 // Cart routes
-Route::get('/cart', [CartController::class, 'index'])->name('cart');
+Route::get('/cart', fn () => redirect()->route('checkout'))->name('cart');
 Route::get('/cart/get', [CartController::class, 'get'])->name('cart.get')->middleware('throttle:60,1'); // 60 requests per minute
 Route::post('/cart/add', [CartController::class, 'add'])->name('cart.add');
 Route::post('/cart/sync', [CartController::class, 'sync'])->name('cart.sync');

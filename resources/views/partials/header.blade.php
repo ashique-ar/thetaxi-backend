@@ -97,7 +97,7 @@
 
                 <!-- Mobile Cart Link -->
                 <div class="mobile-cart-area d-xl-none d-flex align-items-center mt-3">
-                    <a href="{{ route('cart') }}"
+                    <a href="{{ route('checkout') }}"
                         class="cart-icon-link position-relative d-flex align-items-center text-decoration-none">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
                             xmlns="http://www.w3.org/2000/svg">
@@ -161,7 +161,7 @@
 
                 <!-- Cart Icon -->
                 <div class="cart-icon-container d-flex align-items-center me-3">
-                    <a href="{{ route('cart') }}" class="cart-icon-link position-relative">
+                    <a href="{{ route('checkout') }}" class="cart-icon-link position-relative">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
                             xmlns="http://www.w3.org/2000/svg">
                             <path
@@ -297,5 +297,4 @@
     }
 }
 </style>
-
 

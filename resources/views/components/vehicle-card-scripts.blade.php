@@ -364,8 +364,8 @@
             addToCart(item, function(response) {
                 clearTimeout(safetyTimer);
                 if (response && response.success !== false) {
-                    // Redirect to cart page
-                    window.location.href = '{{ route('cart') }}';
+                    // Redirect to checkout page
+                    window.location.href = '{{ route('checkout') }}';
                 } else {
                     // If adding to cart failed, restore button state and show error
                     console.error('Add to cart failed, not redirecting to cart.', response);

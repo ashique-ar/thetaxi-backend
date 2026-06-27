@@ -86,7 +86,7 @@ class CheckoutController extends Controller
         $guestBookingEnabled = $this->normalizeBoolean($bookingSettings['guest_booking_enabled'] ?? null, true);
         $bookingBaseCurrency = $this->resolveBookingBaseCurrency($bookingSettings);
         if (!$guestBookingEnabled && !Auth::check()) {
-            return redirect()->route('cart')
+            return redirect()->route('home')
                 ->with('error', 'Guest booking is currently disabled. Please sign in to continue.');
         }
 
@@ -96,11 +96,11 @@ class CheckoutController extends Controller
             $cart = $cartData['items'] ?? [];
 
             if (empty($cart)) {
-                return redirect()->route('cart')->with('error', 'Your cart is empty.');
+                return redirect()->route('home')->with('error', 'Your cart is empty.');
             }
         } catch (\Exception $e) {
             Log::error('Error loading cart for checkout: ' . $e->getMessage());
-            return redirect()->route('cart')->with('error', 'Error loading your cart.');
+            return redirect()->route('home')->with('error', 'Error loading your cart.');
         }
 
         $paymentSettings = $this->resolvePaymentSettings();
@@ -228,7 +228,7 @@ class CheckoutController extends Controller
         $bookingBaseCurrency = $this->resolveBookingBaseCurrency($bookingSettings);
         $guestBookingEnabled = $this->normalizeBoolean($bookingSettings['guest_booking_enabled'] ?? null, true);
         if (!$guestBookingEnabled && !Auth::check()) {
-            return redirect()->route('cart')
+            return redirect()->route('home')
                 ->with('error', 'Guest booking is currently disabled. Please sign in to continue.');
         }
 
@@ -330,7 +330,7 @@ class CheckoutController extends Controller
         $cart = $cartModel->items ?? [];
 
         if (empty($cart)) {
-            return redirect()->route('cart')->with('error', 'Your cart is empty.');
+            return redirect()->route('home')->with('error', 'Your cart is empty.');
         }
 
         // Ensure cart totals are calculated
@@ -1454,13 +1454,13 @@ class CheckoutController extends Controller
         $amount = session()->get('pending_payment_amount');
 
         if (!$bookingId) {
-            return redirect()->route('cart')->with('error', 'No pending booking found.');
+            return redirect()->route('home')->with('error', 'No pending booking found.');
         }
 
         $booking = Booking::find($bookingId);
 
         if (!$booking) {
-            return redirect()->route('cart')->with('error', 'Booking not found.');
+            return redirect()->route('home')->with('error', 'Booking not found.');
         }
 
         $orderId = $booking->booking_number . '-' . time();

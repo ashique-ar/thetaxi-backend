@@ -19,7 +19,7 @@
 ])
 
 @php
-    $cartPageRoute = $cartRoute ?? route('cart');
+    $cartPageRoute = $cartRoute ?? route('checkout');
     $currencySymbol = getCurrencySymbol();
 @endphp
 
@@ -241,11 +241,11 @@
             </div>
             
             {{-- Helper text --}}
-            <small class="text-white d-block mb-2">Add extras & purchase extra km in cart</small>
+            <small class="text-white d-block mb-2">Review extras and extra km at checkout</small>
             
-            {{-- View Cart & Checkout button (Requirement 1.12) --}}
+            {{-- Checkout button (Requirement 1.12) --}}
             <a href="{{ $cartPageRoute }}" class="btn btn-light w-100">
-                <i class="bi bi-cart-check"></i> View Cart & Checkout
+                <i class="bi bi-cart-check"></i> Review & Checkout
             </a>
         </div>
     </div>

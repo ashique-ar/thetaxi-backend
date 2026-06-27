@@ -6,6 +6,21 @@
  * different look: modern, card-based, rounded, spacious.
  */
 
+/* Magic cursor: anchor GSAP x/y coordinates to the viewport. The base cursor
+   leaves its inset as auto, which inherits Theme 02's body/header offset. */
+body.theme-theme-02 #magic-cursor {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 0 !important;
+    height: 0 !important;
+}
+
+body.theme-theme-02 #ball {
+    top: 0 !important;
+    left: 0 !important;
+}
+
 /* ============================================
    1. HEADER — Glass-morphism transparent bar
    ============================================ */

@@ -700,7 +700,7 @@ class CartController extends Controller
                 ]);
             }
 
-            return redirect()->route('cart')->with('success', 'Vehicle added to cart successfully!');
+            return redirect()->route('checkout')->with('success', 'Vehicle added to cart successfully!');
         } catch (\Illuminate\Validation\ValidationException $e) {
             if ($request->ajax()) {
                 return response()->json([
@@ -764,10 +764,13 @@ class CartController extends Controller
                 // Reload cart from database to ensure fresh data
                 $dbCart = $this->cartService->getOrCreateCart();
 
+                $cartArray = $this->cartService->toArray($dbCart);
+
                 return response()->json([
                     'success' => true,
                     'message' => 'Item removed from cart successfully',
-                    'cart' => $this->cartService->toArray($dbCart)
+                    'cart' => $cartArray,
+                    'is_empty' => $cartArray['is_empty'] ?? false
                 ]);
             }
 
@@ -803,13 +806,18 @@ class CartController extends Controller
         session()->forget(['cart', 'cart_discount', 'applied_coupon']);
 
         if ($request->ajax()) {
+            $dbCart->refresh();
+            $cartArray = $this->cartService->toArray($dbCart);
+
             return response()->json([
                 'success' => true,
-                'message' => 'Cart cleared successfully'
+                'message' => 'Cart cleared successfully',
+                'cart' => $cartArray,
+                'is_empty' => true
             ]);
         }
 
-        return redirect()->route('cart')->with('success', 'Cart cleared successfully.');
+        return redirect()->route('home')->with('success', 'Cart cleared successfully.');
     }
 
     /**
@@ -1004,7 +1012,7 @@ class CartController extends Controller
         $cart = session()->get('cart', []);
 
         if (empty($cart)) {
-            return redirect()->route('cart')->with('error', 'Your cart is empty.');
+            return redirect()->route('home')->with('error', 'Your cart is empty.');
         }
 
         $paymentType = $request->get('type', 'full'); // full, advance, quotation
@@ -1019,17 +1027,55 @@ class CartController extends Controller
     {
         try {
             $serviceType = $request->get('service_type');
-            $serviceTypeId = ServiceType::publicContext()
-                ->where(function ($query) use ($serviceType) {
-                    $query->where('code', $serviceType)
-                        ->orWhere('name', $serviceType);
-                })
-                ->value('id');
+            $cartKey = $request->get('cart_key');
+            $serviceTypeId = null;
+
+            // Prefer the persisted cart item. It contains the exact service type
+            // UUID used by VehicleAddon.service_type_id and avoids label/code drift.
+            if ($cartKey) {
+                $dbCart = $this->cartService->getOrCreateCart();
+                $cartItem = ($dbCart->items ?? [])[$cartKey] ?? null;
+
+                if (!$cartItem) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Cart item not found',
+                    ], 404);
+                }
+
+                $serviceTypeId = $cartItem['service_type_data']['id'] ?? null;
+                $serviceType = $cartItem['service_type'] ?? $serviceType;
+            }
+
+            if (!$serviceTypeId && $serviceType) {
+                $serviceTypeId = ServiceType::publicContext()
+                    ->where(function ($query) use ($serviceType) {
+                        if (Str::isUuid($serviceType)) {
+                            $query->where('id', $serviceType);
+                        }
+
+                        $query->orWhere('code', $serviceType)
+                            ->orWhere('name', $serviceType);
+                    })
+                    ->value('id');
+            }
+
+            // A supplied service type must resolve successfully. Falling back to
+            // an unfiltered query would expose add-ons from unrelated services.
+            if ($serviceType && !$serviceTypeId) {
+                return response()->json([
+                    'success' => true,
+                    'data' => [],
+                ]);
+            }
+
             $addons = $this->cartService->getAvailableAddons($serviceTypeId);
 
             return response()->json([
                 'success' => true,
-                'data' => $addons
+                'data' => $addons,
+                'cart_key' => $cartKey,
+                'service_type_id' => $serviceTypeId,
             ]);
         } catch (\Exception $e) {
             Log::error('Error fetching available addons', [
@@ -1121,7 +1167,8 @@ class CartController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Addon added to cart',
-                'cart' => $cartArray
+                'cart' => $cartArray,
+                'is_empty' => $cartArray['is_empty'] ?? false
             ]);
         } catch (\Exception $e) {
             Log::error('Error adding addon to cart', [
@@ -1166,7 +1213,8 @@ class CartController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Addon removed from cart',
-                'cart' => $cartArray
+                'cart' => $cartArray,
+                'is_empty' => $cartArray['is_empty'] ?? false
             ]);
         } catch (\Exception $e) {
             Log::error('Error removing addon from cart', [
@@ -1213,7 +1261,8 @@ class CartController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Addon quantity updated',
-                'cart' => $cartArray
+                'cart' => $cartArray,
+                'is_empty' => $cartArray['is_empty'] ?? false
             ]);
         } catch (\Exception $e) {
             Log::error('Error updating addon quantity', [
@@ -1282,14 +1331,16 @@ class CartController extends Controller
                     'success' => false,
                     'message' => 'Some updates failed: ' . implode('; ', array_slice($errors, 0, 3)),
                     'errors' => $errors,
-                    'cart' => $cartArray
+                    'cart' => $cartArray,
+                    'is_empty' => $cartArray['is_empty'] ?? false
                 ], 207);
             }
 
             return response()->json([
                 'success' => true,
                 'message' => 'All addons updated successfully',
-                'cart' => $cartArray
+                'cart' => $cartArray,
+                'is_empty' => $cartArray['is_empty'] ?? false
             ]);
         } catch (\Exception $e) {
             Log::error('Error in updateAllAddons', ['error' => $e->getMessage(), 'data' => $request->all()]);
@@ -1329,7 +1380,7 @@ class CartController extends Controller
                 ], 400);
             }
 
-            if ($items[$cartKey]['service_type_data'] && isset($items[$cartKey]['service_type_data']['id'])) {
+            if (!empty($items[$cartKey]['service_type_data']['id'])) {
                 $serviceTypeId = $items[$cartKey]['service_type_data']['id'];
                 $extraKmRate = $this->cartService->getExtraKmRateForVehicleGroup($vehicleGroupId, $serviceTypeId);
                 $currentExtraKm = $this->cartService->getItemExtraKm($dbCart, $cartKey);
@@ -1428,7 +1479,8 @@ class CartController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => $message,
-                'cart' => $cartArray
+                'cart' => $cartArray,
+                'is_empty' => $cartArray['is_empty'] ?? false
             ]);
         } catch (\Exception $e) {
             Log::error('Error adding extra km to cart', [
@@ -1471,7 +1523,8 @@ class CartController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Extra km removed from cart',
-                'cart' => $cartArray
+                'cart' => $cartArray,
+                'is_empty' => $cartArray['is_empty'] ?? false
             ]);
         } catch (\Exception $e) {
             Log::error('Error removing extra km from cart', [
@@ -1534,7 +1587,8 @@ class CartController extends Controller
                 'message' => $result['message'],
                 'discount' => $result['discount'],
                 'promo_code' => $result['promo_code'],
-                'cart' => $cartArray
+                'cart' => $cartArray,
+                'is_empty' => $cartArray['is_empty'] ?? false
             ]);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
@@ -1588,7 +1642,8 @@ class CartController extends Controller
                 'message' => $result['message'],
                 'removed_code' => $result['removed_code'],
                 'removed_discount' => $result['removed_discount'],
-                'cart' => $cartArray
+                'cart' => $cartArray,
+                'is_empty' => $cartArray['is_empty'] ?? false
             ]);
         } catch (\Exception $e) {
             Log::error('Error removing promo code', [
