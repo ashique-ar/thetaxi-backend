@@ -463,9 +463,7 @@ class UserController extends Controller
         ]);
     }
 
-    /**
-     * End the current session and return a fresh session for the selected user.
-     */
+    /** Create a separate session for the selected user, preserving the actor's session. */
     public function impersonate(Request $request, User $user): JsonResponse
     {
         $actor = $request->user();
@@ -492,17 +490,11 @@ class UserController extends Controller
         }
 
         try {
-            $currentToken = $actor->token();
             $token = $this->authService->createTokenWithRefresh(
                 $user,
                 $request,
                 'Impersonated Session'
             );
-
-            if ($currentToken) {
-                $currentToken->revoke();
-                ApiSession::where('token_id', $currentToken->id)->update(['current' => false]);
-            }
 
             return response()->json([
                 'status' => 'success',
