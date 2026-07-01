@@ -383,12 +383,12 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('customers/feedback/stats', [CustomerController::class, 'getFeedbackStats'])->middleware('permission:customers.feedback');
         Route::get('customers/feedback', [CustomerController::class, 'getAllCustomerFeedback'])->middleware('permission:customers.feedback');
         Route::post('customers/feedback', [CustomerController::class, 'submitCustomerFeedback'])->middleware('permission:customers.feedback');
-        Route::get('customers/{customer}/bookings', [CustomerController::class, 'getCustomerBookings'])->middleware('permission:customers.bookings');
-        Route::get('customers/{customer}/loyalty', [CustomerController::class, 'getCustomerLoyalty'])->middleware('permission:customers.loyalty');
-        Route::post('customers/{customer}/loyalty/points', [CustomerController::class, 'addLoyaltyPoints'])->middleware('permission:customers.loyalty');
-        Route::get('customers/{customer}/feedback', [CustomerController::class, 'getCustomerFeedback'])->middleware('permission:customers.feedback');
-        Route::post('customers/{customer}/feedback', [CustomerController::class, 'addCustomerFeedback'])->middleware('permission:customers.feedback');
-        Route::apiResource('customers', CustomerController::class);
+        Route::get('customers/{customer}/bookings', [CustomerController::class, 'getCustomerBookings'])->middleware('permission:customers.bookings')->whereUuid('customer');
+        Route::get('customers/{customer}/loyalty', [CustomerController::class, 'getCustomerLoyalty'])->middleware('permission:customers.loyalty')->whereUuid('customer');
+        Route::post('customers/{customer}/loyalty/points', [CustomerController::class, 'addLoyaltyPoints'])->middleware('permission:customers.loyalty')->whereUuid('customer');
+        Route::get('customers/{customer}/feedback', [CustomerController::class, 'getCustomerFeedback'])->middleware('permission:customers.feedback')->whereUuid('customer');
+        Route::post('customers/{customer}/feedback', [CustomerController::class, 'addCustomerFeedback'])->middleware('permission:customers.feedback')->whereUuid('customer');
+        Route::apiResource('customers', CustomerController::class)->whereUuid('customer');
     });
 
     /*
@@ -1305,8 +1305,8 @@ Route::middleware(['auth:api'])->group(function () {
 
     Route::middleware(['permission:gamification.view'])->group(function () {
         Route::get('badges', [GamificationController::class, 'getAllBadges']);
-        Route::get('badges/{id}', [GamificationController::class, 'getBadgeDetails']);
         Route::get('badges/stats', [GamificationController::class, 'getBadgeStats'])->middleware('permission:gamification.stats');
+        Route::get('badges/{id}', [GamificationController::class, 'getBadgeDetails'])->whereNumber('id');
         Route::get('leaderboard', [GamificationController::class, 'getLeaderboard']);
         Route::get('reputation/stats', [GamificationController::class, 'getReputationStats'])->middleware('permission:gamification.stats');
         Route::post('points/bulk-give', [GamificationController::class, 'bulkGivePoints'])->middleware('permission:gamification.bulk-give-points');

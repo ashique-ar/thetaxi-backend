@@ -6,19 +6,16 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
-        if (Schema::getConnection()->getDriverName() === 'sqlite') {
+        if (Schema::getConnection()->getDriverName() !== 'pgsql' || !Schema::hasTable('vehicle_assignments')) {
             return;
         }
 
-        DB::statement("
+        DB::statement('
             ALTER TABLE vehicle_assignments
             DROP CONSTRAINT IF EXISTS vehicle_assignments_overlap_type_check;
-        ");
+        ');
 
         DB::statement("
             ALTER TABLE vehicle_assignments
@@ -30,19 +27,16 @@ return new class extends Migration
         ");
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
-        if (Schema::getConnection()->getDriverName() === 'sqlite') {
+        if (Schema::getConnection()->getDriverName() !== 'pgsql' || !Schema::hasTable('vehicle_assignments')) {
             return;
         }
 
-        DB::statement("
+        DB::statement('
             ALTER TABLE vehicle_assignments
             DROP CONSTRAINT IF EXISTS vehicle_assignments_overlap_type_check;
-        ");
+        ');
 
         DB::statement("
             ALTER TABLE vehicle_assignments

@@ -4,6 +4,7 @@ namespace App\Http\Requests\Role;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Spatie\Permission\Models\Role;
 
 class UpdateRoleRequest extends FormRequest
 {
@@ -15,14 +16,17 @@ class UpdateRoleRequest extends FormRequest
      */
     public function rules(): array
     {
-        $role = $this->route('role');
+        $role = $this->currentRole();
+        $guardName = $this->input('guard_name', $role?->guard_name ?? config('auth.defaults.guard', 'web'));
         
         return [
             'name' => [
                 'sometimes',
                 'string',
                 'max:255',
-                Rule::unique('roles', 'name')->ignore($role->id)
+                Rule::unique('roles', 'name')
+                    ->where(fn ($query) => $query->where('guard_name', $guardName))
+                    ->ignore($role?->id)
             ],
             'display_name' => ['sometimes', 'string', 'max:255'],
             'description' => ['sometimes', 'string', 'max:1000'],
@@ -70,12 +74,31 @@ class UpdateRoleRequest extends FormRequest
     public function withValidator($validator)
     {
         $validator->after(function ($validator) {
-            $role = $this->route('role');
+            $role = $this->currentRole();
+
+            if (! $role) {
+                return;
+            }
             
             // Prevent renaming system roles
             if ($this->filled('name') && in_array($role->name, ['admin', 'super-admin']) && $this->input('name') !== $role->name) {
                 $validator->errors()->add('name', 'System roles cannot be renamed');
             }
         });
+    }
+
+    private function currentRole(): ?Role
+    {
+        $role = $this->route('role');
+
+        if ($role instanceof Role) {
+            return $role;
+        }
+
+        if ($role) {
+            return Role::find($role);
+        }
+
+        return null;
     }
 }
