@@ -678,7 +678,10 @@ class VehiclePricingCalculationDefinitionController extends Controller
             ]);
 
             // Calculate the price
-            $calculatedPrice = $calculationDefinition->calculatePrice($calculationInputs);
+            $calculationResult = $calculationDefinition->calculatePrice($calculationInputs);
+            $calculatedPrice = is_array($calculationResult)
+                ? (float) ($calculationResult['total_amount'] ?? $calculationResult['total'] ?? $calculationResult['final_amount'] ?? 0)
+                : (float) $calculationResult;
 
             $response = [
                 'success' => true,
@@ -687,6 +690,7 @@ class VehiclePricingCalculationDefinitionController extends Controller
                     'calculation_definition_name' => $calculationDefinition->name,
                     'formula' => $calculationDefinition->formula,
                     'total_price' => $calculatedPrice,
+                    'calculation_result' => $calculationResult,
                     'currency' => config('booking.base_currency', 'LKR'),
                 ]
             ];
