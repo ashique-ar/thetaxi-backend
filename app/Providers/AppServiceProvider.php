@@ -20,6 +20,7 @@ use App\Models\Customer;
 use App\Models\Driver\Driver;
 use App\Models\Vehicle\Vehicle;
 use App\Observers\DriverObserver;
+use App\Observers\BookingPaymentObserver;
 use App\Policies\BookingPolicy;
 use App\Policies\CorporatePolicy;
 use App\Policies\CustomerPolicy;
@@ -77,6 +78,7 @@ class AppServiceProvider extends ServiceProvider
 
         // Register model observers
         Driver::observe(DriverObserver::class);
+        Booking::observe(BookingPaymentObserver::class);
 
         // Register policies
         Gate::policy(Booking::class, BookingPolicy::class);

@@ -9,10 +9,12 @@ use App\Models\Booking\BookingItem;
 use App\Models\Corporate\Corporate;
 use App\Models\Corporate\CorporateEmployee;
 use App\Models\Customer;
+use App\Notifications\BookingLifecycleNotification;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 
 class CorporateBookingService
 {
@@ -67,6 +69,10 @@ class CorporateBookingService
                 'employee_id'   => $employee->user_id,
                 'needs_approval' => $needsApproval,
             ]);
+
+            if ($needsApproval) {
+                $this->notifyApprovalRequested($booking, $employee);
+            }
 
             return $booking->fresh();
         });
@@ -132,6 +138,10 @@ class CorporateBookingService
                 'needs_approval'     => $needsApproval,
                 'coordinator_exempt' => $corporate->exempt_coordinator_from_approval,
             ]);
+
+            if ($needsApproval) {
+                $this->notifyApprovalRequested($booking, $targetEmployee);
+            }
 
             return $booking->fresh();
         });
@@ -306,6 +316,25 @@ class CorporateBookingService
     }
 
     // ─── Booking Queries & Filters ────────────────────────────────────
+
+    private function notifyApprovalRequested(Booking $booking, CorporateEmployee $employee): void
+    {
+        try {
+            $employee->loadMissing('user');
+            $employee->user?->notify(new BookingLifecycleNotification(
+                $booking,
+                'Approval requested',
+                'Your corporate booking request is awaiting approval.',
+                'booking_approval_requested',
+            ));
+        } catch (\Throwable $exception) {
+            Log::warning('Corporate approval request notification could not be queued', [
+                'booking_id' => $booking->id,
+                'employee_id' => $employee->id,
+                'error' => $exception->getMessage(),
+            ]);
+        }
+    }
 
     /**
      * Get paginated bookings for a corporate with optional filters.

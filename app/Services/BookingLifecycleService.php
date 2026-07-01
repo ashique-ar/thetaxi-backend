@@ -9,6 +9,8 @@ use App\Models\Booking\BookingQC;
 use App\Models\DriverAssignment;
 use App\Models\Vehicle\Vehicle;
 use App\Services\Driver\NotificationTriggerService;
+use App\Models\AuditLog;
+use App\Notifications\BookingLifecycleNotification;
 use App\Services\InvoiceService;
 use App\Models\User;
 use App\Enums\BookingLifecycleStatus;
@@ -1186,7 +1188,90 @@ class BookingLifecycleService
             'data' => $data,
         ]);
 
-        // Could also create a dedicated lifecycle log table
+        AuditLog::create([
+            'user_id' => Auth::id(),
+            'action' => 'booking_lifecycle_transitioned',
+            'entity' => 'Booking',
+            'entity_id' => $booking->id,
+            'timestamp' => Carbon::now('UTC'),
+            'details' => [
+                'booking_number' => $booking->booking_number,
+                'booking_item_id' => $data['booking_item_id'] ?? null,
+                'from_status' => $fromStatus?->value,
+                'to_status' => $toStatus->value,
+                'transition_source' => $data['source'] ?? 'booking_lifecycle',
+            ],
+        ]);
+
+        $this->notifyCustomerOfLifecycleTransition($booking, $toStatus);
+    }
+
+    private function notifyCustomerOfLifecycleTransition(
+        Booking $booking,
+        BookingLifecycleStatus $status
+    ): void {
+        $notification = match ($status) {
+            BookingLifecycleStatus::BOOKING_CONFIRMED => [
+                'Booking confirmed',
+                'Your booking is confirmed and scheduled.',
+                'booking_confirmed',
+            ],
+            BookingLifecycleStatus::ALLOCATION_ASSIGNED => [
+                'Vehicle assigned',
+                'A vehicle has been assigned to your booking.',
+                'booking_vehicle_assigned',
+            ],
+            BookingLifecycleStatus::DISPATCH_OUT => [
+                'Booking dispatched',
+                'Your vehicle or driver has been dispatched.',
+                'booking_dispatched',
+            ],
+            BookingLifecycleStatus::ONGOING_ACTIVE => [
+                'Trip started',
+                'Your trip is now in progress.',
+                'booking_trip_started',
+            ],
+            BookingLifecycleStatus::RETURN_SCHEDULED => [
+                'Vehicle return reminder',
+                'The vehicle return stage is ready. Please follow the agreed return arrangements.',
+                'booking_return_scheduled',
+            ],
+            BookingLifecycleStatus::RETURN_COMPLETED,
+            BookingLifecycleStatus::RETURN_LATE => [
+                'Vehicle returned',
+                'The vehicle return has been recorded and final checks are in progress.',
+                'booking_returned',
+            ],
+            BookingLifecycleStatus::COMPLETED => [
+                'Booking completed',
+                'Your booking has been completed.',
+                'booking_completed',
+            ],
+            default => null,
+        };
+
+        if (!$notification) {
+            return;
+        }
+
+        try {
+            $booking->loadMissing('customer.user');
+            $recipient = $booking->customer?->user;
+            if ($recipient) {
+                $recipient->notify(new BookingLifecycleNotification(
+                    $booking,
+                    $notification[0],
+                    $notification[1],
+                    $notification[2],
+                ));
+            }
+        } catch (\Throwable $exception) {
+            Log::warning('Customer lifecycle notification could not be queued', [
+                'booking_id' => $booking->id,
+                'lifecycle_status' => $status->value,
+                'error' => $exception->getMessage(),
+            ]);
+        }
     }
 
     /**
@@ -1252,6 +1337,28 @@ class BookingLifecycleService
         }
 
         $lifecycleContract = $this->getLifecycleContract($booking, $context['booking_item_id']);
+        $lifecycleHistory = AuditLog::query()
+            ->with('user:id,first_name,last_name')
+            ->where('entity', 'Booking')
+            ->where('entity_id', $booking->id)
+            ->where('action', 'booking_lifecycle_transitioned')
+            ->latest('timestamp')
+            ->limit(100)
+            ->get(['id', 'user_id', 'timestamp', 'details'])
+            ->map(static fn (AuditLog $log): array => [
+                'id' => $log->id,
+                'actor_id' => $log->user_id,
+                'actor_name' => $log->user
+                    ? trim((string) $log->user->first_name . ' ' . (string) $log->user->last_name)
+                    : null,
+                'timestamp' => $log->timestamp,
+                'booking_item_id' => data_get($log->details, 'booking_item_id'),
+                'from_status' => data_get($log->details, 'from_status'),
+                'to_status' => data_get($log->details, 'to_status'),
+                'source' => data_get($log->details, 'transition_source'),
+            ])
+            ->values()
+            ->all();
 
         return [
             'booking' => $booking,
@@ -1273,6 +1380,7 @@ class BookingLifecycleService
             'next_actions' => $nextActions,
             'stage_progress' => $this->getStageProgress($booking, $workflowSettings),
             'timeline' => $this->getLifecycleTimeline($booking),
+            'lifecycle_history' => $lifecycleHistory,
             'workflow_settings' => $workflowSettings,
             'approval_context' => [
                 'requires_approval' => $requiresApproval,

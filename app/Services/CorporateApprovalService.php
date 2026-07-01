@@ -6,9 +6,11 @@ use App\Models\AuditLog;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingApproval;
 use App\Notifications\BookingRejectedNotification;
+use App\Notifications\BookingLifecycleNotification;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Log;
 
 class CorporateApprovalService
 {
@@ -59,6 +61,8 @@ class CorporateApprovalService
                 'comments'    => $comments,
                 'approved_at' => now()->toISOString(),
             ]);
+
+            $this->notifyCustomerOfApproval($booking);
 
             return $booking->fresh();
         });
@@ -127,5 +131,23 @@ class CorporateApprovalService
             'timestamp' => now(),
             'details'   => $details,
         ]);
+    }
+
+    private function notifyCustomerOfApproval(Booking $booking): void
+    {
+        try {
+            $booking->loadMissing('customer.user');
+            $booking->customer?->user?->notify(new BookingLifecycleNotification(
+                $booking,
+                'Booking approved',
+                'Your corporate booking request has been approved and is ready for scheduling.',
+                'booking_approved',
+            ));
+        } catch (\Throwable $exception) {
+            Log::warning('Corporate approval customer notification could not be queued', [
+                'booking_id' => $booking->id,
+                'error' => $exception->getMessage(),
+            ]);
+        }
     }
 }

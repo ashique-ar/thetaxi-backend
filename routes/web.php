@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\FileUploadController;
 use App\Http\Controllers\Api\Service\ServicePackageController;
 use App\Http\Controllers\BookingController;
+use App\Http\Controllers\CustomerBookingStatusController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\CurrencyController;
@@ -208,6 +209,10 @@ Route::get('/currency/available', [CurrencyController::class, 'available'])->nam
 Route::match(['get', 'post'], '/booking/search', [BookingController::class, 'search'])->name('booking.search');
 Route::post('/booking/enquiry', [InquiryController::class, 'store'])->name('booking.enquiry');
 Route::post('/booking/request-quotation', [BookingController::class, 'requestQuotation'])->name('booking.request-quotation');
+Route::get('/booking/status', [CustomerBookingStatusController::class, 'show'])->name('booking.status');
+Route::post('/booking/status', [CustomerBookingStatusController::class, 'lookup'])
+    ->middleware('throttle:10,1')
+    ->name('booking.status.lookup');
 
 // Quotation request route (alias for search page modal)
 Route::post('/quotation/request', [BookingController::class, 'requestQuotation'])->name('quotation.request');

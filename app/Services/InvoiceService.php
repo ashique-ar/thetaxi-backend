@@ -7,6 +7,7 @@ use App\Models\Booking\Booking;
 use App\Models\Booking\BookingItem;
 use App\Models\Invoice;
 use App\Models\Website\WebsiteSetting;
+use App\Notifications\BookingLifecycleNotification;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -88,6 +89,10 @@ class InvoiceService
                 'invoice_id' => $invoice->id,
                 'to'         => $invoice->customer_email,
             ]);
+
+            if ($booking) {
+                $this->notifyInvoiceSent($booking, $invoice);
+            }
         } catch (\Throwable $e) {
             Log::error('Invoice email failed', [
                 'invoice_id' => $invoice->id,
@@ -138,6 +143,26 @@ class InvoiceService
     public function markPaid(Invoice $invoice): void
     {
         $invoice->markPaid();
+    }
+
+    private function notifyInvoiceSent(Booking $booking, Invoice $invoice): void
+    {
+        try {
+            $booking->loadMissing('customer.user');
+            $booking->customer?->user?->notify(new BookingLifecycleNotification(
+                $booking,
+                'Invoice sent',
+                'Your invoice is ready and has been sent to your email address.',
+                'booking_invoice_sent',
+                false,
+            ));
+        } catch (\Throwable $exception) {
+            Log::warning('Invoice database notification could not be queued', [
+                'booking_id' => $booking->id,
+                'invoice_id' => $invoice->id,
+                'error' => $exception->getMessage(),
+            ]);
+        }
     }
 
     // ────────────────────────────────────────────────────────────────

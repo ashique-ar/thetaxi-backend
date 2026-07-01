@@ -41,6 +41,7 @@ use Illuminate\Notifications\DatabaseNotification;
 use Ramsey\Uuid\Uuid;
 use App\Services\PricingVariableService;
 use App\Services\AssignmentService;
+use App\Notifications\BookingLifecycleNotification;
 
 
 class BookingFlowService
@@ -3182,6 +3183,13 @@ class BookingFlowService
         $approval->status = 'pending';
         $approval->save();
 
+        $this->notifyBookingCustomer(
+            $booking,
+            'Approval requested',
+            'Your booking is awaiting approval.',
+            'booking_approval_requested'
+        );
+
         return [
             'approval_id' => $approval->id,
             'status' => 'requested',
@@ -6160,11 +6168,46 @@ class BookingFlowService
 
         $booking->save();
 
+        $this->notifyBookingCustomer(
+            $booking,
+            $action === 'approve' ? 'Booking approved' : 'Booking rejected',
+            $action === 'approve'
+                ? 'Your booking request has been approved.'
+                : 'Your booking request was not approved.',
+            $action === 'approve' ? 'booking_approved' : 'booking_rejected'
+        );
+
         return [
             'booking' => $booking,
             'action' => $action,
             'message' => 'Booking ' . $action . 'd successfully'
         ];
+    }
+
+    private function notifyBookingCustomer(
+        Booking $booking,
+        string $title,
+        string $message,
+        string $eventType
+    ): void {
+        try {
+            $booking->loadMissing('customer.user');
+            $recipient = $booking->customer?->user;
+            if ($recipient) {
+                $recipient->notify(new BookingLifecycleNotification(
+                    $booking,
+                    $title,
+                    $message,
+                    $eventType,
+                ));
+            }
+        } catch (\Throwable $exception) {
+            Log::warning('Booking approval notification could not be queued', [
+                'booking_id' => $booking->id,
+                'event_type' => $eventType,
+                'error' => $exception->getMessage(),
+            ]);
+        }
     }
 
     /**
