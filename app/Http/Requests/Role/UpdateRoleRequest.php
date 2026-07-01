@@ -29,12 +29,12 @@ class UpdateRoleRequest extends FormRequest
                     ->ignore($role?->id)
             ],
             'display_name' => ['sometimes', 'string', 'max:255'],
-            'description' => ['sometimes', 'string', 'max:1000'],
-            'guard_name' => ['sometimes', 'string', 'max:255'],
-            'context_types' => ['sometimes', 'nullable', 'array'],
+            'description' => ['nullable', 'string', 'max:1000'],
+            'guard_name' => ['nullable', 'string', 'max:255'],
+            'context_types' => ['nullable', 'nullable', 'array'],
             'context_types.*' => ['string', 'in:customer,vehicle_owner,staff,agent,driver,corporate,internal'],
-            'auto_assign_contexts' => ['sometimes', 'boolean'],
-            'permissions' => ['sometimes', 'array'],
+            'auto_assign_contexts' => ['nullable', 'boolean'],
+            'permissions' => ['nullable', 'array'],
             'permissions.*' => ['required', 'string'],
         ];
     }
