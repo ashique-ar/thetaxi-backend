@@ -445,13 +445,16 @@ class CartController extends Controller
                         'service_type' => $serviceTypeModel->id,
                         'service_type_id' => $serviceTypeModel->id,
                         'service_type_context' => 'public',
-                        'vehicle_groups' => [$vehicleId],
+                        'vehicle_group_id' => $vehicleId,
                         'from_date' => $pickupDate,
                         'from_time' => $fromTime,
                         'to_date' => $returnDate,
                         'to_time' => $toTime,
                         'pickup_location' => $pickupLocationArray,
-                        'dropoff_location' => $returnLocationArray
+                        'dropoff_location' => $returnLocationArray,
+                        'currency' => config('booking.base_currency', 'LKR'),
+                        'base_currency' => config('booking.base_currency', 'LKR'),
+                        'is_preview_calculation' => true,
                     ];
 
                     // Add service package ID to pricing params if provided (BookingFlowService expects 'package_id')
@@ -464,99 +467,81 @@ class CartController extends Controller
                         'pricing_params' => $pricingParams
                     ]);
 
-                    // Get pricing from BookingFlowService
-                    $availabilityData = $this->bookingFlowService->getAvailableVehicleGroups($pricingParams, true);
-
-                    $availabilityData = isset($availabilityData) && isset($availabilityData['data']) ? $availabilityData['data'] : [];
+                    // Price the selected group directly. The search page has already
+                    // resolved availability; cart add only needs to verify this item.
+                    $pricingResult = $this->bookingFlowService->calculatePricing($pricingParams);
 
                     Log::info('Pricing data from BookingFlowService', [
                         'service_package_id' => $servicePackageIdForPricing,
-                        'availability_data_count' => count($availabilityData),
-                        'availability_data' => $availabilityData
+                        'vehicle_group_id' => $vehicleId,
+                        'pricing_result' => $pricingResult,
                     ]);
 
-                    // Find pricing for this specific vehicle group
-                    $pricingFound = false;
-                    foreach ($availabilityData as $vehicleData) {
-                        if ($vehicleData['id'] == $vehicleId) {
-                            // Check if pricing is configured and available
-                            if (!isset($vehicleData['pricing_configured']) || !$vehicleData['pricing_configured']) {
-                                Log::warning('Pricing not configured for vehicle group', [
-                                    'vehicle_id' => $vehicleId,
-                                    'vehicle_data' => $vehicleData
-                                ]);
-                                break;
+                    if (!isset($pricingResult['summary']['total']) || (float) $pricingResult['summary']['total'] <= 0) {
+                        throw new \Exception('Pricing not available for this vehicle group and service type combination');
+                    }
+
+                    $summary = $pricingResult['summary'];
+                    $basePricingData = $pricingResult['base_pricing'] ?? [];
+                    $adjustmentDetails = $basePricingData['adjustment_details'] ?? null;
+
+                    $pricingInfo = [
+                        'base_amount' => (float) $summary['total'],
+                        'currency' => $pricingResult['currency'] ?? 'LKR',
+                        'breakdown' => $basePricingData['breakdown'] ?? [],
+                        'distance_details' => $basePricingData['distance_details'] ?? null,
+                        'duration_info' => $pricingResult['duration'] ?? null,
+                        'adjustment_details' => $adjustmentDetails,
+                        'has_discount' => $adjustmentDetails['has_discount'] ?? false,
+                        'original_amount' => $adjustmentDetails['original_amount'] ?? (float) $summary['total'],
+                        'discount_amount' => $adjustmentDetails['total_discount'] ?? 0,
+                        'discount_percentage' => $adjustmentDetails['discount_percentage'] ?? 0,
+                        'savings_display' => $adjustmentDetails['savings_display'] ?? null,
+                        'subtotal' => $summary['subtotal'] ?? $summary['total'],
+                        'addons_total' => $summary['addons_total'] ?? 0,
+                    ];
+
+                    $oneWayPrice = (float) $pricingInfo['base_amount'];
+                    $totalPrice = $oneWayPrice;
+                    $perDayPrice = $days > 0 ? $totalPrice / $days : 0;
+
+                    if ($isReturnTrip && $returnTripDate && $servicePackageIdForPricing) {
+                        try {
+                            $journeyDistance = isset($pricingInfo['distance_details']['journey_distance'])
+                                ? (float) $pricingInfo['distance_details']['journey_distance']
+                                : null;
+
+                            $returnTripPricing = $this->bookingFlowService->calculateReturnTripPricing([
+                                'package_id' => $servicePackageIdForPricing,
+                                'vehicle_group_id' => $vehicleId,
+                                'outbound_date' => $pickupDate,
+                                'return_date' => $returnTripDate,
+                                'one_way_fare' => $oneWayPrice,
+                                'kilometers' => $journeyDistance,
+                                'journey_distance' => $journeyDistance,
+                            ]);
+
+                            if ($returnTripPricing && isset($returnTripPricing['total_fare'])) {
+                                $totalPrice = (float) $returnTripPricing['total_fare'];
+                                $perDayPrice = $days > 0 ? $totalPrice / $days : 0;
                             }
-
-                            if (isset($vehicleData['pricing_info']['base_amount'])) {
-                                $pricingInfo = $vehicleData['pricing_info'];
-                                $oneWayPrice = (float) $pricingInfo['base_amount']; // This is TOTAL for one-way trip in LKR
-                                $totalPrice = $oneWayPrice;
-
-                                // Default per-day price based on current total (may be updated after return trip calc)
-                                $perDayPrice = $days > 0 ? $totalPrice / $days : 0; // Calculate per-day in LKR
-
-                                // Calculate return trip pricing if this is a return trip
-                                if ($isReturnTrip && $returnTripDate && $servicePackageIdForPricing) {
-                                    try {
-                                        // Extract journey distance for KM-based return rules
-                                        $journeyDistance = null;
-                                        if (isset($pricingInfo['distance_details']['journey_distance'])) {
-                                            $journeyDistance = (float) $pricingInfo['distance_details']['journey_distance'];
-                                        }
-                                        
-                                        $returnTripPricing = $this->bookingFlowService->calculateReturnTripPricing([
-                                            'package_id' => $servicePackageIdForPricing,
-                                            'vehicle_group_id' => $vehicleId,
-                                            'outbound_date' => $pickupDate,
-                                            'return_date' => $returnTripDate,
-                                            'one_way_fare' => $oneWayPrice,
-                                            'kilometers' => $journeyDistance,
-                                            'journey_distance' => $journeyDistance,
-                                        ]);
-
-                                        if ($returnTripPricing && isset($returnTripPricing['total_fare'])) {
-                                            $totalPrice = (float) $returnTripPricing['total_fare'];
-
-                                            // Recompute per-day price using final total price (important for accurate cart subtotal)
-                                            $perDayPrice = $days > 0 ? $totalPrice / $days : 0;
-
-                                            Log::info('Return trip pricing calculated for cart', [
-                                                'one_way_price' => $oneWayPrice,
-                                                'return_fare' => $returnTripPricing['return_fare'],
-                                                'total_price' => $totalPrice,
-                                                'discount_percentage' => $returnTripPricing['discount_percentage'],
-                                            ]);
-                                        }
-                                    } catch (\Exception $e) {
-                                        Log::warning('Failed to calculate return trip pricing for cart', [
-                                            'error' => $e->getMessage(),
-                                        ]);
-                                        // Fall back to 2x one-way price
-                                        $totalPrice = $oneWayPrice * 2;
-                                        $perDayPrice = $days > 0 ? $totalPrice / $days : 0;
-                                    }
-                                }
-
-                                Log::info('Pricing calculated for cart item', [
-                                    'service_package_id' => $servicePackageIdForPricing,
-                                    'total_price' => $totalPrice,
-                                    'per_day_price' => $perDayPrice,
-                                    'days' => $days,
-                                    'is_return_trip' => $isReturnTrip,
-                                    'pricing_info' => $pricingInfo
-                                ]);
-
-                                $pricingFound = true;
-                                break;
-                            }
+                        } catch (\Exception $e) {
+                            Log::warning('Failed to calculate return trip pricing for cart', [
+                                'error' => $e->getMessage(),
+                            ]);
+                            $totalPrice = $oneWayPrice * 2;
+                            $perDayPrice = $days > 0 ? $totalPrice / $days : 0;
                         }
                     }
 
-                    // If pricing not found or is 0, throw error
-                    if (!$pricingFound || $totalPrice <= 0) {
-                        throw new \Exception('Pricing not available for this vehicle group and service type combination');
-                    }
+                    Log::info('Pricing calculated for cart item', [
+                        'service_package_id' => $servicePackageIdForPricing,
+                        'total_price' => $totalPrice,
+                        'per_day_price' => $perDayPrice,
+                        'days' => $days,
+                        'is_return_trip' => $isReturnTrip,
+                        'pricing_info' => $pricingInfo
+                    ]);
                 }
             } catch (\Exception $e) {
                 Log::error('Failed to calculate pricing for cart item', [

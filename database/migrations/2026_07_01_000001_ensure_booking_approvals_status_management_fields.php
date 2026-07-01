@@ -41,12 +41,18 @@ return new class extends Migration
         });
 
         Schema::table($tableName, function (Blueprint $table) use ($tableName) {
-            if (Schema::hasColumn($tableName, 'processed_by') && !$this->indexExists($tableName, 'booking_approvals_processed_by_index')) {
-                $table->index('processed_by');
+            if (Schema::hasColumn($tableName, 'processed_by') && !$this->anyIndexExists($tableName, [
+                'booking_approvals_processed_by_index',
+                'public_booking_approvals_processed_by_index',
+            ])) {
+                $table->index('processed_by', 'booking_approvals_processed_by_index');
             }
 
-            if (Schema::hasColumn($tableName, 'approval_type') && !$this->indexExists($tableName, 'booking_approvals_approval_type_index')) {
-                $table->index('approval_type');
+            if (Schema::hasColumn($tableName, 'approval_type') && !$this->anyIndexExists($tableName, [
+                'booking_approvals_approval_type_index',
+                'public_booking_approvals_approval_type_index',
+            ])) {
+                $table->index('approval_type', 'booking_approvals_approval_type_index');
             }
         });
     }
@@ -60,12 +66,22 @@ return new class extends Migration
         }
 
         Schema::table($tableName, function (Blueprint $table) use ($tableName) {
-            if ($this->indexExists($tableName, 'booking_approvals_processed_by_index')) {
-                $table->dropIndex('booking_approvals_processed_by_index');
+            $processedByIndex = $this->firstExistingIndex($tableName, [
+                'booking_approvals_processed_by_index',
+                'public_booking_approvals_processed_by_index',
+            ]);
+
+            if ($processedByIndex !== null) {
+                $table->dropIndex($processedByIndex);
             }
 
-            if ($this->indexExists($tableName, 'booking_approvals_approval_type_index')) {
-                $table->dropIndex('booking_approvals_approval_type_index');
+            $approvalTypeIndex = $this->firstExistingIndex($tableName, [
+                'booking_approvals_approval_type_index',
+                'public_booking_approvals_approval_type_index',
+            ]);
+
+            if ($approvalTypeIndex !== null) {
+                $table->dropIndex($approvalTypeIndex);
             }
         });
 
@@ -96,5 +112,16 @@ return new class extends Migration
     {
         return collect(Schema::getIndexes($tableName))
             ->contains(fn (array $index): bool => ($index['name'] ?? null) === $indexName);
+    }
+
+    private function anyIndexExists(string $tableName, array $indexNames): bool
+    {
+        return $this->firstExistingIndex($tableName, $indexNames) !== null;
+    }
+
+    private function firstExistingIndex(string $tableName, array $indexNames): ?string
+    {
+        return collect($indexNames)
+            ->first(fn (string $indexName): bool => $this->indexExists($tableName, $indexName));
     }
 };
