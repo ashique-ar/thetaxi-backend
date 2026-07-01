@@ -562,6 +562,7 @@ trait BookingSubmissionTrait
             'item_type' => 'nullable|string|max:100',
             'is_self_driven' => 'nullable|boolean',
             'corporate_id' => 'nullable|uuid',
+            'operations_queue' => 'nullable|string|in:needs_approval,needs_assignment,ready_to_dispatch,payment_pending',
         ]);
 
         try {

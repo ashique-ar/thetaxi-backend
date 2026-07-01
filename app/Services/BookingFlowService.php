@@ -7753,6 +7753,8 @@ class BookingFlowService
             $query->where('booking_items.is_self_driven', $isSelfDriven);
         }
 
+        $this->applyOperationsQueueFilter($query, $filters['operations_queue'] ?? null);
+
         if (!empty($assignmentStatuses)) {
             $query->whereHas('booking', function ($bookingQuery) use ($assignmentStatuses) {
                 $bookingQuery->where(function ($assignmentQuery) use ($assignmentStatuses) {
@@ -7855,6 +7857,62 @@ class BookingFlowService
             'filters_applied' => $filters,
             'summary' => $this->getBookingsSummary($query),
         ];
+    }
+
+    private function applyOperationsQueueFilter($query, ?string $queue): void
+    {
+        if (empty($queue)) {
+            return;
+        }
+
+        match ($queue) {
+            'needs_approval' => $query->whereHas('booking', function ($bookingQuery) {
+                $bookingQuery->where('status', 'pending_approval')
+                    ->orWhere(function ($approvalQuery) {
+                        $approvalQuery->where('requires_approval', true)
+                            ->whereIn('approval_status', ['pending', 'required']);
+                    });
+            }),
+            'needs_assignment' => $query->whereHas('booking', function ($bookingQuery) {
+                $bookingQuery->whereIn('status', ['approved', 'confirmed', 'allocated'])
+                    ->whereDoesntHave('dispatch', function ($dispatchQuery) {
+                        $dispatchQuery->whereIn('dispatch_status', ['dispatched', 'in_progress', 'returned']);
+                    });
+            })->where(function ($assignmentQuery) {
+                $assignmentQuery->whereNull('booking_items.vehicle_id')
+                    ->orWhere(function ($driverQuery) {
+                        $driverQuery->where(function ($selfDrivenQuery) {
+                            $selfDrivenQuery->whereNull('booking_items.is_self_driven')
+                                ->orWhere('booking_items.is_self_driven', false);
+                        })->whereNull('booking_items.driver_id');
+                    });
+            }),
+            'ready_to_dispatch' => $query->whereHas('booking', function ($bookingQuery) {
+                $bookingQuery->whereIn('status', ['approved', 'confirmed', 'allocated'])
+                    ->where(function ($dispatchQuery) {
+                        $dispatchQuery->whereDoesntHave('dispatch')
+                            ->orWhereHas('dispatch', function ($dispatchStatusQuery) {
+                                $dispatchStatusQuery->whereIn('dispatch_status', ['not_dispatched', 'ready_for_dispatch']);
+                            });
+                    });
+            })->whereNotNull('booking_items.vehicle_id')
+                ->where(function ($driverQuery) {
+                    $driverQuery->where('booking_items.is_self_driven', true)
+                        ->orWhereNotNull('booking_items.driver_id');
+                }),
+            'payment_pending' => $query->whereHas('booking', function ($bookingQuery) {
+                $bookingQuery->whereNotIn('status', ['cancelled', 'completed'])
+                    ->where(function ($paymentQuery) {
+                        $paymentQuery->whereIn('payment_collection_status', ['pending', 'payment_pending', 'billable'])
+                            ->orWhere(function ($fallbackPaymentQuery) {
+                                $fallbackPaymentQuery->whereNull('payment_collection_status')
+                                    ->whereNotIn('payment_status', ['paid', 'refunded']);
+                            })
+                            ->orWhere('payment_status', 'pending');
+                    });
+            }),
+            default => null,
+        };
     }
 
     private function normalizeFilterValues($value, array $allowedValues = []): array
@@ -8129,6 +8187,7 @@ class BookingFlowService
         $listFromTime = $firstTrip?->from_time ?? $item->from_time ?? null;
         $listToDate = $lastTrip?->to_date ?? $lastTrip?->from_date ?? $item->to_date ?? null;
         $listToTime = $lastTrip?->to_time ?? $lastTrip?->from_time ?? $item->to_time ?? null;
+        $bookingSource = $this->resolveBookingListSource($booking);
 
         return [
             'id' => (string) $item->id,
@@ -8143,6 +8202,7 @@ class BookingFlowService
             'allowed_actions' => $lifecycleContract['allowed_actions'] ?? [],
             'blocking_reasons' => $lifecycleContract['blocking_reasons'] ?? [],
             'dispatch_status' => $dispatchStatus,
+            'booking_source' => $bookingSource,
             'service_type' => $itemServiceType ? [
                 'id' => (string) $itemServiceType->id,
                 'name' => $itemServiceType->name,
@@ -8226,6 +8286,25 @@ class BookingFlowService
             'is_self_driven' => (bool) ($item->is_self_driven ?? false),
             'has_conflicts' => $hasConflicts,
         ];
+    }
+
+    private function resolveBookingListSource(?Booking $booking): string
+    {
+        if (!$booking) {
+            return 'internal';
+        }
+
+        if ((bool) ($booking->is_corporate_booking ?? false)) {
+            return 'corporate';
+        }
+
+        $source = strtolower(trim((string) ($booking->booking_source ?: $booking->created_from ?: '')));
+
+        return match ($source) {
+            'public', 'website', 'web', 'online', 'customer', 'customer_portal', 'guest' => 'public',
+            'corporate', 'corporate_portal', 'employee_portal' => 'corporate',
+            default => 'internal',
+        };
     }
 
     /**
