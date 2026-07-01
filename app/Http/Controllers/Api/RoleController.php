@@ -7,6 +7,7 @@ use App\Http\Requests\Role\CreateRoleRequest;
 use App\Http\Requests\Role\UpdateRoleRequest;
 use App\Http\Resources\RoleResource;
 use App\Services\PermissionAssignmentService;
+use App\Services\UserContextService;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Illuminate\Http\Request;
@@ -17,10 +18,12 @@ use Illuminate\Validation\ValidationException;
 class RoleController extends Controller
 {
     private PermissionAssignmentService $assignmentService;
+    private UserContextService $contextService;
 
-    public function __construct(PermissionAssignmentService $assignmentService)
+    public function __construct(PermissionAssignmentService $assignmentService, UserContextService $contextService)
     {
         $this->assignmentService = $assignmentService;
+        $this->contextService = $contextService;
         $this->middleware('permission:roles.view')->only(['index', 'show']);
         $this->middleware('permission:roles.create')->only(['store']);
         $this->middleware('permission:roles.edit')->only(['update']);
@@ -119,6 +122,10 @@ class RoleController extends Controller
             $contextData = $this->extractContextData($data);
             $role->update($data);
             $this->applyContextData($role, $contextData);
+
+            if ($contextData !== []) {
+                $this->syncUpdatedRoleContextsForUsers($role, $request->user()?->id);
+            }
             
             if ($permissions !== null) {
                 $this->assignmentService->syncRolePermissions($role, $permissions);
@@ -410,5 +417,16 @@ class RoleController extends Controller
         }
 
         $role->save();
+    }
+
+    private function syncUpdatedRoleContextsForUsers(Role $role, ?string $actorUserId = null): void
+    {
+        $role->refresh();
+
+        $role->users()->chunk(100, function ($users) use ($role, $actorUserId) {
+            foreach ($users as $user) {
+                $this->contextService->syncContextsForAssignedRoles($user, [$role], $actorUserId);
+            }
+        });
     }
 }

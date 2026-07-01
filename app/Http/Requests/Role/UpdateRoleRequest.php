@@ -31,7 +31,7 @@ class UpdateRoleRequest extends FormRequest
             'display_name' => ['sometimes', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:1000'],
             'guard_name' => ['nullable', 'string', 'max:255'],
-            'context_types' => ['nullable', 'nullable', 'array'],
+            'context_types' => ['nullable', 'array'],
             'context_types.*' => ['string', 'in:customer,vehicle_owner,staff,agent,driver,corporate,internal'],
             'auto_assign_contexts' => ['nullable', 'boolean'],
             'permissions' => ['nullable', 'array'],
