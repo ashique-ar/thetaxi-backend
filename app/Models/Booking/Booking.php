@@ -141,6 +141,7 @@ class Booking extends BaseModel
      */
     protected $fillable = [
         'customer_id',
+        'agent_id',
         'invoice_number',
         'log_code',
         'vip_id',

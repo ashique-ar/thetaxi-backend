@@ -38,6 +38,13 @@ class AgentApiSession extends BaseModel
         'agent_id',
         'agent_api_id',
         'last_access',
+        'method',
+        'path',
+        'status_code',
+        'duration_ms',
+        'ip_address',
+        'user_agent',
+        'metadata',
         'created_user_id',
         'updated_user_id',
     ];
@@ -49,6 +56,9 @@ class AgentApiSession extends BaseModel
      */
     protected $casts = [
         'last_access' => 'datetime',
+        'status_code' => 'integer',
+        'duration_ms' => 'integer',
+        'metadata' => 'array',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
         'deleted_at' => 'datetime',

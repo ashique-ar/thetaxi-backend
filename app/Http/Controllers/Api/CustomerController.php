@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
+use App\Models\Document;
 use App\Http\Requests\Customer\CreateCustomerRequest;
 use App\Http\Requests\Customer\UpdateCustomerRequest;
 use App\Http\Resources\CustomerResource;
@@ -13,6 +14,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use App\Services\PaymentMethodSyncService;
 
@@ -727,6 +729,230 @@ class CustomerController extends Controller
     }
 
     /**
+     * Respond to customer feedback.
+     * POST /api/customers/feedback/{feedbackId}/respond
+     */
+    public function respondToFeedback(Request $request, string $feedbackId): JsonResponse
+    {
+        $data = $request->validate([
+            'response' => ['required', 'string', 'min:10', 'max:2000'],
+        ]);
+
+        $responseDate = now()->toISOString();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Feedback response recorded successfully',
+            'data' => [
+                'feedback' => [
+                    'id' => $feedbackId,
+                    'responded' => true,
+                    'response' => $data['response'],
+                    'response_date' => $responseDate,
+                    'responseDate' => $responseDate,
+                    'responded_by' => $request->user()?->id,
+                ],
+            ],
+        ]);
+    }
+
+    public function getDocumentStats(): JsonResponse
+    {
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'totalDocuments' => Document::where('documentable_type', Customer::class)->count(),
+                'pendingVerification' => Document::where('documentable_type', Customer::class)->where('status', 'pending')->count(),
+                'verifiedDocuments' => Document::where('documentable_type', Customer::class)->where('status', 'verified')->count(),
+                'rejectedDocuments' => Document::where('documentable_type', Customer::class)->where('status', 'rejected')->count(),
+            ],
+        ]);
+    }
+
+    public function getDocuments(Request $request): JsonResponse
+    {
+        $request->validate([
+            'search' => ['nullable', 'string', 'max:255'],
+            'type' => ['nullable', 'string', 'max:50'],
+            'status' => ['nullable', 'string', 'in:pending,verified,rejected'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+        ]);
+
+        $query = Document::with('documentable.user')
+            ->where('documentable_type', Customer::class)
+            ->when($request->filled('search'), function ($builder) use ($request) {
+                $search = trim((string) $request->get('search'));
+
+                $builder->where(function ($nested) use ($search) {
+                    $nested->whereLikeInsensitive('document_number', $search)
+                        ->orWhereLikeInsensitive('file_name', $search)
+                        ->orWhereHasMorph('documentable', [Customer::class], function ($customerQuery) use ($search) {
+                            $customerQuery->whereHas('user', function ($userQuery) use ($search) {
+                                $userQuery->whereLikeInsensitive('first_name', $search)
+                                    ->orWhereLikeInsensitive('last_name', $search)
+                                    ->orWhereLikeInsensitive('email', $search)
+                                    ->orWhereLikeInsensitive('phone', $search);
+                            });
+                        });
+                });
+            })
+            ->when($request->filled('type'), fn ($builder) => $builder->where('document_type', $request->get('type')))
+            ->when($request->filled('status'), fn ($builder) => $builder->where('status', $request->get('status')))
+            ->latest();
+
+        $documents = $query->paginate($request->integer('per_page', 15));
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'documents' => $documents->getCollection()
+                    ->map(fn (Document $document) => $this->formatCustomerDocument($document))
+                    ->values(),
+                'data' => $documents->getCollection()
+                    ->map(fn (Document $document) => $this->formatCustomerDocument($document))
+                    ->values(),
+                'current_page' => $documents->currentPage(),
+                'last_page' => $documents->lastPage(),
+                'per_page' => $documents->perPage(),
+                'total' => $documents->total(),
+            ],
+        ]);
+    }
+
+    public function showDocument(Document $document): JsonResponse
+    {
+        $this->abortUnlessCustomerDocument($document);
+        $document->load('documentable.user');
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $this->formatCustomerDocument($document),
+        ]);
+    }
+
+    public function storeDocument(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'customer_id' => ['required', 'uuid', 'exists:customers,id'],
+            'document_type' => ['required', 'string', 'max:50'],
+            'document_number' => ['required', 'string', 'max:255'],
+            'expiry_date' => ['nullable', 'date'],
+            'file' => ['required', 'file', 'max:10240'],
+        ]);
+
+        $file = $request->file('file');
+        $disk = 'public';
+        $path = $file->store('documents/customer/' . $data['customer_id'], $disk);
+
+        $document = Document::create([
+            'documentable_type' => Customer::class,
+            'documentable_id' => $data['customer_id'],
+            'document_type' => $data['document_type'],
+            'document_number' => $data['document_number'],
+            'expiry_date' => $data['expiry_date'] ?? null,
+            'disk' => $disk,
+            'path' => $path,
+            'file_name' => $file->getClientOriginalName(),
+            'file_size' => $file->getSize(),
+            'file_type' => $file->getClientMimeType(),
+            'status' => 'pending',
+        ]);
+
+        $document->load('documentable.user');
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Document uploaded successfully',
+            'data' => $this->formatCustomerDocument($document),
+        ], 201);
+    }
+
+    public function downloadDocument(Document $document): mixed
+    {
+        $this->abortUnlessCustomerDocument($document);
+
+        if (!Storage::disk($document->disk)->exists($document->path)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Document file not found',
+            ], 404);
+        }
+
+        return Storage::disk($document->disk)->download($document->path, $document->file_name);
+    }
+
+    public function verifyDocument(Request $request, Document $document): JsonResponse
+    {
+        $this->abortUnlessCustomerDocument($document);
+
+        $data = $request->validate([
+            'verification_notes' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $document->update([
+            'status' => 'verified',
+            'verification_notes' => $data['verification_notes'] ?? $document->verification_notes,
+            'verified_at' => now(),
+            'verified_by' => $request->user()?->id,
+        ]);
+
+        $document->load('documentable.user');
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Document verified successfully',
+            'data' => $this->formatCustomerDocument($document),
+        ]);
+    }
+
+    public function rejectDocument(Request $request, Document $document): JsonResponse
+    {
+        $this->abortUnlessCustomerDocument($document);
+
+        $data = $request->validate([
+            'verification_notes' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $document->update([
+            'status' => 'rejected',
+            'verification_notes' => $data['verification_notes'] ?? $document->verification_notes,
+            'verified_at' => null,
+            'verified_by' => null,
+        ]);
+
+        $document->load('documentable.user');
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Document rejected',
+            'data' => $this->formatCustomerDocument($document),
+        ]);
+    }
+
+    public function getCustomerDocuments(Customer $customer, Request $request): JsonResponse
+    {
+        $documents = $customer->documents()
+            ->latest()
+            ->paginate($request->integer('per_page', 15));
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'documents' => $documents->getCollection()
+                    ->map(fn (Document $document) => $this->formatCustomerDocument($document))
+                    ->values(),
+                'data' => $documents->getCollection()
+                    ->map(fn (Document $document) => $this->formatCustomerDocument($document))
+                    ->values(),
+                'current_page' => $documents->currentPage(),
+                'last_page' => $documents->lastPage(),
+                'per_page' => $documents->perPage(),
+                'total' => $documents->total(),
+            ],
+        ]);
+    }
+
+    /**
      * Get loyalty tier based on points
      */
     private function getLoyaltyTier(int $points): array
@@ -740,5 +966,42 @@ class CustomerController extends Controller
         } else {
             return ['name' => 'Bronze', 'color' => '#CD7F32'];
         }
+    }
+
+    private function formatCustomerDocument(Document $document): array
+    {
+        $customer = $document->documentable instanceof Customer ? $document->documentable : null;
+
+        return [
+            'id' => $document->id,
+            'customer_id' => $customer?->id,
+            'customer_name' => $customer?->full_name,
+            'customer_email' => $customer?->email,
+            'documentable_type' => $document->documentable_type,
+            'documentable_id' => $document->documentable_id,
+            'customer' => $customer ? [
+                'id' => $customer->id,
+                'name' => $customer->full_name,
+                'email' => $customer->email,
+                'phone' => $customer->phone,
+            ] : null,
+            'document_type' => $document->document_type,
+            'document_number' => $document->document_number,
+            'expiry_date' => $document->expiry_date?->toDateString(),
+            'file_url' => Storage::disk($document->disk)->url($document->path),
+            'file_name' => $document->file_name,
+            'file_size' => $document->file_size,
+            'file_type' => $document->file_type,
+            'status' => $document->status,
+            'verification_notes' => $document->verification_notes,
+            'verified_at' => $document->verified_at?->toISOString(),
+            'created_at' => $document->created_at?->toISOString(),
+            'updated_at' => $document->updated_at?->toISOString(),
+        ];
+    }
+
+    private function abortUnlessCustomerDocument(Document $document): void
+    {
+        abort_unless($document->documentable_type === Customer::class, 404);
     }
 }

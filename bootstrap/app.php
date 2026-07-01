@@ -40,6 +40,9 @@ return Application::configure(basePath: dirname(__DIR__))
             'ensure.driver' => \App\Http\Middleware\EnsureDriverContext::class,
             // Corporate portal middleware
             'ensure.corporate' => \App\Http\Middleware\EnsureCorporateContext::class,
+            'update.api.session' => \App\Http\Middleware\UpdateApiSessionOnRequest::class,
+            'agent.api' => \App\Http\Middleware\AuthenticateAgentApiKey::class,
+            'agent.api.access' => \App\Http\Middleware\EnsureAgentApiAccess::class,
         ]);
 
         $middleware->appendToGroup('web', \App\Http\Middleware\WebsiteSettingsSecurity::class);

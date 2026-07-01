@@ -107,7 +107,7 @@ class FileUploadController extends Controller
                 'user_id' => $user?->id,
                 'category' => $category,
                 'is_image' => $isImage,
-                'storage_type' => config('filesystems.default'),
+                'storage_type' => $this->storageDisk(),
             ];
 
             // Add image dimensions if applicable
@@ -145,7 +145,7 @@ class FileUploadController extends Controller
                     'size' => $fileSize,
                     'category' => $category,
                     'is_image' => $isImage,
-                    'storage_type' => config('filesystems.default'),
+                    'storage_type' => $this->storageDisk(),
                 ]
             ];
 
@@ -172,11 +172,7 @@ class FileUploadController extends Controller
                 'line' => $e->getLine(),
                 'category' => $request->get('category', 'general'),
                 'path' => $request->get('path', ''),
-                'disk' => config('filesystems.default'),
-                's3_bucket' => config('filesystems.disks.s3.bucket'),
-                's3_region' => config('filesystems.disks.s3.region'),
-                's3_url' => config('filesystems.disks.s3.url'),
-                's3_endpoint' => config('filesystems.disks.s3.endpoint'),
+                'disk' => $this->storageDisk(),
                 'user_id' => $request->user()?->id,
             ]);
 
@@ -303,23 +299,10 @@ class FileUploadController extends Controller
                 abort(403, 'Access denied');
             }
 
-            // Get file content based on storage type
-            if (config('filesystems.default') === 's3') {
-                if (!Storage::disk('s3')->exists($decodedPath)) {
-                    abort(404, 'File not found');
-                }
-
-                $fileContent = Storage::disk('s3')->get($decodedPath);
-                $mimeType = Storage::disk('s3')->mimeType($decodedPath);
-            } else {
-                $fullPath = storage_path('app/public/' . $decodedPath);               
-                if (!file_exists($fullPath)) {
-                    abort(404, 'File not found');
-                }
-
-                $fileContent = file_get_contents($fullPath);
-                $mimeType = mime_content_type($fullPath);
-            }
+            $disk = Storage::disk($this->storageDisk());
+            if (!$disk->exists($decodedPath)) abort(404, 'File not found');
+            $fileContent = $disk->get($decodedPath);
+            $mimeType = $disk->mimeType($decodedPath);
 
             return response($fileContent, 200, [
                 'Content-Type' => $mimeType,
@@ -335,22 +318,10 @@ class FileUploadController extends Controller
     public function assets(Request $request, string $path): \Illuminate\Http\Response
     {
         try {
-            if (config('filesystems.default') === 's3') {
-                if (!Storage::disk('s3')->exists($path)) {
-                    abort(404, 'File not found');
-                }
-
-                $fileContent = Storage::disk('s3')->get($path);
-                $mimeType = Storage::disk('s3')->mimeType($path);
-            } else {
-                $fullPath = storage_path('app/public/' . $path);
-                if (!file_exists($fullPath)) {
-                    abort(404, 'File not found');
-                }
-
-                $fileContent = file_get_contents($fullPath);
-                $mimeType = mime_content_type($fullPath);
-            }
+            $disk = Storage::disk($this->storageDisk());
+            if (!$disk->exists($path)) abort(404, 'File not found');
+            $fileContent = $disk->get($path);
+            $mimeType = $disk->mimeType($path);
 
             return response($fileContent, 200, [
                 'Content-Type' => $mimeType,
@@ -521,33 +492,12 @@ class FileUploadController extends Controller
     }
 
     /**
-     * Store file to configured storage (local or S3)
+     * Store file to the configured default filesystem disk.
      */
     private function storeFile(string $path, string $content): void
     {
-        if (config('filesystems.default') === 's3') {
-            // Store to S3
-            $s3Config = config('filesystems.disks.s3');
-            $s3Config['throw'] = true;
-            $stored = Storage::build($s3Config)->put($path, $content);
-
-            if (!$stored) {
-                throw new \RuntimeException("S3 upload failed for {$path}");
-            }
-        } else {
-            // Store locally and ensure directory exists
-            $fullPath = storage_path('app/public/' . $path);
-            $directory = dirname($fullPath);
-
-            if (!File::isDirectory($directory)) {
-                File::makeDirectory($directory, 0755, true, true);
-            }
-
-            file_put_contents($fullPath, $content);
-
-            if (!File::exists($fullPath)) {
-                throw new \RuntimeException("Local upload failed for {$path}");
-            }
+        if (!Storage::disk($this->storageDisk())->put($path, $content)) {
+            throw new \RuntimeException("File upload failed for {$path}");
         }
     }
 
@@ -583,7 +533,7 @@ class FileUploadController extends Controller
             'is_image' => true,
             'is_thumbnail' => true,
             'parent_id' => $parentId,
-            'storage_type' => config('filesystems.default'),
+            'storage_type' => $this->storageDisk(),
         ]);
 
         return [
@@ -600,11 +550,11 @@ class FileUploadController extends Controller
      */
     private function getFileUrl(string $path): string
     {
-        if (config('filesystems.default') === 's3') {
-            return Storage::disk('s3')->url($path);
-        } else {
-            return Storage::disk('public')->url($path);
-        }
+        $disk = Storage::disk($this->storageDisk());
+
+        return method_exists($disk, 'providesTemporaryUrls') && $disk->providesTemporaryUrls()
+            ? $disk->temporaryUrl($path, now()->addMinutes(15))
+            : $disk->url($path);
     }
 
     /**
@@ -612,11 +562,12 @@ class FileUploadController extends Controller
      */
     private function deleteFromStorage(string $path): void
     {
-        if (config('filesystems.default') === 's3') {
-            Storage::disk('s3')->delete($path);
-        } else {
-            Storage::disk('public')->delete($path);
-        }
+        Storage::disk($this->storageDisk())->delete($path);
+    }
+
+    private function storageDisk(): string
+    {
+        return config('filesystems.default');
     }
 
     /**

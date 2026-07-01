@@ -6,6 +6,7 @@ use App\Models\BaseModel;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingItem;
 use App\Models\Company;
+use App\Models\Document;
 use App\Models\Driver\Driver;
 use App\Traits\UUID;
 
@@ -164,6 +165,11 @@ class Vehicle extends BaseModel
     public function ownerPaymentMethod()
     {
         return $this->belongsTo(\App\Models\PaymentMethod::class, 'owner_payment_method_id');
+    }
+
+    public function documents()
+    {
+        return $this->morphMany(Document::class, 'documentable');
     }
 
     /**

@@ -3,6 +3,7 @@
 namespace App\Models\Driver;
 
 use App\Models\BaseModel;
+use App\Models\Document;
 use App\Models\DrivingLicenseType;
 use App\Traits\UUID;
 use App\Models\User;
@@ -208,6 +209,11 @@ class Driver extends BaseModel
     public function paymentMethod(): MorphOne
     {
         return $this->morphOne(\App\Models\PaymentMethod::class, 'payable')->where('is_active', true);
+    }
+
+    public function documents()
+    {
+        return $this->morphMany(Document::class, 'documentable');
     }
 
     /**

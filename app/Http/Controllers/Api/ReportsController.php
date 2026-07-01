@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Booking\Booking;
+use App\Models\Booking\BookingGeneratedReport;
 use App\Models\Customer;
 use App\Models\CustomerLoyaltyPoint;
 use App\Models\Driver\Driver;
@@ -388,6 +389,49 @@ class ReportsController extends Controller
         };
     }
 
+    public function generatedReports(Request $request): JsonResponse
+    {
+        $reports = BookingGeneratedReport::query()
+            ->latest()
+            ->paginate($request->integer('per_page', 25));
+
+        return response()->json([
+            'status' => 'success',
+            'data' => collect($reports->items())
+                ->map(fn (BookingGeneratedReport $report) => $this->generatedReportPayload($report))
+                ->values(),
+            'meta' => [
+                'current_page' => $reports->currentPage(),
+                'last_page' => $reports->lastPage(),
+                'per_page' => $reports->perPage(),
+                'total' => $reports->total(),
+            ],
+        ]);
+    }
+
+    public function downloadGeneratedReport(BookingGeneratedReport $report): Response
+    {
+        $filters = $this->filtersFromGeneratedReport($report);
+
+        return match ($report->report_type) {
+            'financial' => $this->exportFinancialReport($filters, $report->format),
+            'customer' => $this->exportCustomerReport($filters, $report->format),
+            'vehicle_performance' => $this->exportVehicleReport($filters, $report->format),
+            default => $this->exportBookingReport($filters, $report->format),
+        };
+    }
+
+    public function deleteGeneratedReport(BookingGeneratedReport $report): JsonResponse
+    {
+        $report->delete();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Report deleted',
+            'report_id' => $report->id,
+        ]);
+    }
+
     // ═════════════════════════════════════════════════════════════════
     // Private helpers — shared
     // ═════════════════════════════════════════════════════════════════
@@ -426,6 +470,37 @@ class ReportsController extends Controller
                     break;
             }
         }
+    }
+
+    private function generatedReportPayload(BookingGeneratedReport $report): array
+    {
+        return [
+            'id' => $report->id,
+            'name' => $report->name,
+            'type' => $report->report_type,
+            'created_at' => $report->created_at,
+            'status' => $report->status,
+            'download_url' => url("/api/reports/download/{$report->id}"),
+            'size' => $report->size,
+            'row_count' => $report->row_count,
+            'format' => $report->format,
+        ];
+    }
+
+    private function filtersFromGeneratedReport(BookingGeneratedReport $report): array
+    {
+        $saved = $report->filters ?? [];
+        $nestedFilters = $saved['filters'] ?? [];
+
+        return array_filter([
+            'date_from' => $saved['date_from'] ?? null,
+            'date_to' => $saved['date_to'] ?? null,
+            'booking_status' => $nestedFilters['status'][0] ?? $nestedFilters['status'] ?? null,
+            'customer_id' => $nestedFilters['customer_id'] ?? null,
+            'vehicle_id' => $nestedFilters['vehicle_id'] ?? null,
+            'agent_id' => $nestedFilters['agent_id'] ?? null,
+            'service_type_id' => $nestedFilters['service_type_id'] ?? $nestedFilters['service_type'] ?? null,
+        ], fn ($value) => $value !== null && $value !== '' && $value !== []);
     }
 
     private function getStartDate(string $period): Carbon

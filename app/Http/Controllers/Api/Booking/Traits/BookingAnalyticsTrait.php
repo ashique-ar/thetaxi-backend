@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Booking\Traits;
 
+use App\Models\Booking\BookingGeneratedReport;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -150,8 +151,15 @@ trait BookingAnalyticsTrait
 
     public function generateReport(Request $request): JsonResponse
     {
+        $request->merge([
+            'report_type' => $request->input('report_type') ?: $this->reportTypeFromTemplate((string) $request->input('template_id')),
+            'format' => $this->normaliseReportFormat((string) $request->input('format', 'csv')),
+        ]);
+
         $request->validate([
             'report_type' => 'required|string|in:financial,operational,customer,vehicle_performance,driver_performance',
+            'template_id' => 'nullable|string|max:100',
+            'report_name' => 'nullable|string|max:255',
             'format' => 'nullable|string|in:pdf,excel,csv',
             'date_from' => 'required|date',
             'date_to' => 'required|date|after_or_equal:date_from',
@@ -162,10 +170,30 @@ trait BookingAnalyticsTrait
 
         try {
             $report = $this->bookingFlowService->generateReport($request->all());
+            $record = BookingGeneratedReport::create([
+                'name' => $request->input('report_name') ?: ucfirst(str_replace('_', ' ', $request->input('report_type'))) . ' Report',
+                'report_type' => $request->input('report_type'),
+                'template_id' => $request->input('template_id'),
+                'format' => $request->input('format', 'csv'),
+                'status' => 'ready',
+                'filters' => $request->only(['date_from', 'date_to', 'filters', 'custom_fields', 'include_charts', 'include_summary']),
+                'metadata' => $report['metadata'] ?? [],
+                'row_count' => $this->reportRowCount($report['report_data'] ?? []),
+                'size' => $this->estimateReportSize($report['report_data'] ?? []),
+            ]);
 
             return response()->json([
                 'status' => 'success',
-                'data' => $report,
+                'data' => [
+                    'id' => $record->id,
+                    'name' => $record->name,
+                    'type' => $record->report_type,
+                    'created_at' => $record->created_at,
+                    'status' => $record->status,
+                    'download_url' => url("/api/reports/download/{$record->id}"),
+                    'size' => $record->size,
+                    'report_data' => $report['report_data'] ?? [],
+                ],
                 'message' => 'Report generated successfully'
             ]);
         } catch (\Exception $e) {
@@ -176,6 +204,48 @@ trait BookingAnalyticsTrait
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    private function reportTypeFromTemplate(string $templateId): string
+    {
+        return match ($templateId) {
+            'financial_report' => 'financial',
+            'customer_analysis' => 'customer',
+            'vehicle_utilization' => 'vehicle_performance',
+            'driver_performance' => 'driver_performance',
+            default => 'operational',
+        };
+    }
+
+    private function normaliseReportFormat(string $format): string
+    {
+        return $format === 'excel' ? 'csv' : ($format ?: 'csv');
+    }
+
+    private function reportRowCount(array $reportData): int
+    {
+        foreach (['bookings', 'customers', 'vehicles', 'drivers', 'rows'] as $key) {
+            if (isset($reportData[$key]) && is_countable($reportData[$key])) {
+                return count($reportData[$key]);
+            }
+        }
+
+        return count($reportData);
+    }
+
+    private function estimateReportSize(array $reportData): string
+    {
+        $bytes = strlen(json_encode($reportData) ?: '');
+
+        if ($bytes < 1024) {
+            return max($bytes, 1) . ' B';
+        }
+
+        if ($bytes < 1048576) {
+            return round($bytes / 1024, 1) . ' KB';
+        }
+
+        return round($bytes / 1048576, 1) . ' MB';
     }
 
     public function exportBookings(Request $request): JsonResponse

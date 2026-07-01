@@ -17,6 +17,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Carbon;
 
 class VehicleGroupPricingController extends Controller
 {
@@ -1336,6 +1337,97 @@ class VehicleGroupPricingController extends Controller
         }
     }
 
+    public function getPriceAnalytics(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'period' => 'nullable|string|in:week,month,quarter,year',
+            'vehicle_group_id' => 'nullable|uuid|exists:vehicle_groups,id',
+            'service_type_id' => 'nullable|uuid|exists:service_types,id',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation failed',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $period = $request->input('period', 'month');
+        $fromDate = match ($period) {
+            'week' => now()->subWeek(),
+            'quarter' => now()->subQuarter(),
+            'year' => now()->subYear(),
+            default => now()->subMonth(),
+        };
+
+        $query = VehiclePricingHistory::with([
+            'vehicleGroup:id,name',
+            'serviceType:id,name',
+            'changedBy:id,first_name,last_name,email',
+        ])
+            ->where('changed_at', '>=', $fromDate)
+            ->when($request->filled('vehicle_group_id'), fn ($builder) => $builder->where('vehicle_group_id', $request->input('vehicle_group_id')))
+            ->when($request->filled('service_type_id'), fn ($builder) => $builder->where('service_type_id', $request->input('service_type_id')))
+            ->orderBy('changed_at');
+
+        $changes = $query->get();
+        $rateChanges = $changes->map(fn (VehiclePricingHistory $history) => (float) ($history->rate_change ?? 0));
+        $percentageChanges = $changes->map(fn (VehiclePricingHistory $history) => (float) ($history->percentage_change ?? 0));
+
+        $summary = [
+            'total_changes' => $changes->count(),
+            'price_increases' => $changes->where('change_type', 'increase')->count(),
+            'price_decreases' => $changes->where('change_type', 'decrease')->count(),
+            'average_change' => round($rateChanges->avg() ?? 0, 2),
+            'average_change_percentage' => round($percentageChanges->avg() ?? 0, 2),
+            'largest_increase' => round($rateChanges->max() ?? 0, 2),
+            'largest_decrease' => round($rateChanges->min() ?? 0, 2),
+            'total_value_impact' => round($rateChanges->sum(), 2),
+        ];
+
+        $dailyChanges = $changes
+            ->groupBy(fn (VehiclePricingHistory $history) => Carbon::parse($history->changed_at ?? $history->created_at)->toDateString())
+            ->map(fn ($items) => [
+                'total_changes' => $items->count(),
+                'increases' => $items->where('change_type', 'increase')->count(),
+                'decreases' => $items->where('change_type', 'decrease')->count(),
+                'average_change' => round($items->avg(fn (VehiclePricingHistory $history) => (float) ($history->rate_change ?? 0)) ?? 0, 2),
+            ])
+            ->toArray();
+
+        $byVehicleGroup = $changes
+            ->groupBy(fn (VehiclePricingHistory $history) => $history->vehicleGroup?->name ?? 'Unassigned vehicle group')
+            ->map(fn ($items) => $this->pricingAnalyticsBucket($items))
+            ->toArray();
+
+        $byServiceType = $changes
+            ->groupBy(fn (VehiclePricingHistory $history) => $history->serviceType?->name ?? 'Unassigned service type')
+            ->map(fn ($items) => $this->pricingAnalyticsBucket($items))
+            ->toArray();
+
+        $mostActiveUsers = $changes
+            ->groupBy(fn (VehiclePricingHistory $history) => trim((string) ($history->changedBy?->first_name . ' ' . $history->changedBy?->last_name)) ?: ($history->changedBy?->email ?? 'System'))
+            ->map(fn ($items) => $items->count())
+            ->sortDesc()
+            ->take(10)
+            ->toArray();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'summary' => $summary,
+                'trends' => [
+                    'daily_changes' => $dailyChanges,
+                    'weekly_average' => round($changes->count() / max(1, $fromDate->diffInWeeks(now()) ?: 1), 2),
+                ],
+                'by_vehicle_group' => $byVehicleGroup,
+                'by_service_type' => $byServiceType,
+                'most_active_users' => $mostActiveUsers,
+            ],
+        ]);
+    }
+
     private function applyOwnerPriorityOrder($query, ?string $ownerType, ?string $ownerId): void
     {
         if ($ownerType && $ownerId) {
@@ -1359,6 +1451,16 @@ class VehicleGroupPricingController extends Controller
             ->paginate(20);
 
         return response()->json(['status' => 'success', 'data' => $operations]);
+    }
+
+    private function pricingAnalyticsBucket($items): array
+    {
+        return [
+            'total_changes' => $items->count(),
+            'increases' => $items->where('change_type', 'increase')->count(),
+            'decreases' => $items->where('change_type', 'decrease')->count(),
+            'average_change' => round($items->avg(fn (VehiclePricingHistory $history) => (float) ($history->rate_change ?? 0)) ?? 0, 2),
+        ];
     }
 
     public function getBulkOperationStatus(\Illuminate\Http\Request $request, string $operationId): \Illuminate\Http\JsonResponse

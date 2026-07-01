@@ -2,6 +2,7 @@
 namespace App\Models\Vehicle;
 
 use App\Models\BaseModel;
+use App\Models\Document;
 use App\Models\Driver\Driver;
 use App\Traits\UUID;
 
@@ -153,5 +154,10 @@ class VehicleOwner extends BaseModel
     public function paymentMethods()
     {
         return $this->morphMany(\App\Models\PaymentMethod::class, 'payable');
+    }
+
+    public function documents()
+    {
+        return $this->morphMany(Document::class, 'documentable');
     }
 }

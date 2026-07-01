@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use App\Traits\UUID;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * Image Gallery Model
@@ -84,5 +85,12 @@ class ImageGallery extends BaseModel
     public function updatedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'updated_user_id');
+    }
+
+    protected static function booted(): void
+    {
+        static::deleting(function (ImageGallery $image): void {
+            Storage::disk(config('filesystems.default'))->delete(array_filter([$image->path, $image->thumbnail_path]));
+        });
     }
 }

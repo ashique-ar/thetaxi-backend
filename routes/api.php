@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\UserContextController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\Agent\AgentController;
 use App\Http\Controllers\Api\Agent\AgentApiController;
+use App\Http\Controllers\Api\Agent\AgentOperationalController;
 use App\Http\Controllers\Api\Agent\AgentApiSessionController;
 use App\Http\Controllers\Api\Agent\AgentCommissionController;
 use App\Http\Controllers\Api\Booking\BookingChannelController;
@@ -27,6 +28,7 @@ use App\Http\Controllers\Api\Driver\DriverHireSettlementController;
 use App\Http\Controllers\Api\Driver\DriverLogController;
 use App\Http\Controllers\Api\DrivingLicenseController;
 use App\Http\Controllers\Api\DrivingLicenseTypeController;
+use App\Http\Controllers\Api\DocumentController;
 use App\Http\Controllers\Api\ImageGalleryController;
 use App\Http\Controllers\Api\InquiryController;
 use App\Http\Controllers\Api\InquiryFormController;
@@ -149,6 +151,17 @@ Route::prefix('auth')->group(function () {
         });
     });
 });
+
+Route::prefix('agent-api')
+    ->middleware(['agent.api'])
+    ->group(function () {
+        Route::get('me', [AgentOperationalController::class, 'profile'])->middleware('agent.api.access:read');
+        Route::get('usage', [AgentOperationalController::class, 'usage'])->middleware('agent.api.access:read');
+        Route::get('bookings', [AgentOperationalController::class, 'bookings'])->middleware('agent.api.access:read');
+        Route::get('bookings/{booking}', [AgentOperationalController::class, 'showBooking'])->middleware('agent.api.access:read');
+        Route::post('bookings/{booking}/status', [AgentOperationalController::class, 'updateBookingStatus'])->middleware('agent.api.access:write');
+        Route::get('customers', [AgentOperationalController::class, 'customers'])->middleware('agent.api.access:read');
+    });
 
 /*
 |--------------------------------------------------------------------------
@@ -370,6 +383,20 @@ Route::middleware(['auth:api'])->group(function () {
     Route::get('payment-methods', [PaymentMethodController::class, 'index'])->middleware('permission:bookings.view');
     Route::get('payment-methods/{payment_method}', [PaymentMethodController::class, 'show'])->middleware('permission:bookings.view');
 
+    Route::middleware(['permission:system.view|agreements.view|customers.view|drivers.view|staff.view|vehicles.view|vehicle-owners.view'])->group(function () {
+        Route::get('documents/stats', [DocumentController::class, 'stats']);
+        Route::get('documents', [DocumentController::class, 'index']);
+        Route::get('documents/{document}', [DocumentController::class, 'show'])->whereUuid('document');
+        Route::get('documents/{document}/download', [DocumentController::class, 'download'])->whereUuid('document');
+    });
+
+    Route::middleware(['permission:uploads.manage|customers.edit|agreements.view|drivers.edit|staff.edit|vehicles.edit|vehicle-owners.edit'])->group(function () {
+        Route::post('documents', [DocumentController::class, 'store']);
+        Route::post('documents/{document}/verify', [DocumentController::class, 'verify'])->whereUuid('document');
+        Route::post('documents/{document}/reject', [DocumentController::class, 'reject'])->whereUuid('document');
+        Route::delete('documents/{document}', [DocumentController::class, 'destroy'])->whereUuid('document');
+    });
+
     Route::middleware(['permission:customers.view'])->group(function () {
         Route::get('customers/search', [CustomerController::class, 'search']);
         Route::get('customers/check-email', [CustomerController::class, 'checkEmail']);
@@ -383,9 +410,18 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('customers/feedback/stats', [CustomerController::class, 'getFeedbackStats'])->middleware('permission:customers.feedback');
         Route::get('customers/feedback', [CustomerController::class, 'getAllCustomerFeedback'])->middleware('permission:customers.feedback');
         Route::post('customers/feedback', [CustomerController::class, 'submitCustomerFeedback'])->middleware('permission:customers.feedback');
+        Route::post('customers/feedback/{feedbackId}/respond', [CustomerController::class, 'respondToFeedback'])->middleware('permission:customers.feedback');
+        Route::get('customers/documents/stats', [CustomerController::class, 'getDocumentStats']);
+        Route::get('customers/documents', [CustomerController::class, 'getDocuments']);
+        Route::post('customers/documents', [CustomerController::class, 'storeDocument'])->middleware('permission:customers.create');
+        Route::get('customers/documents/{document}', [CustomerController::class, 'showDocument'])->whereUuid('document');
+        Route::get('customers/documents/{document}/download', [CustomerController::class, 'downloadDocument'])->whereUuid('document');
+        Route::post('customers/documents/{document}/verify', [CustomerController::class, 'verifyDocument'])->middleware('permission:customers.edit')->whereUuid('document');
+        Route::post('customers/documents/{document}/reject', [CustomerController::class, 'rejectDocument'])->middleware('permission:customers.edit')->whereUuid('document');
         Route::get('customers/{customer}/bookings', [CustomerController::class, 'getCustomerBookings'])->middleware('permission:customers.bookings')->whereUuid('customer');
         Route::get('customers/{customer}/loyalty', [CustomerController::class, 'getCustomerLoyalty'])->middleware('permission:customers.loyalty')->whereUuid('customer');
         Route::post('customers/{customer}/loyalty/points', [CustomerController::class, 'addLoyaltyPoints'])->middleware('permission:customers.loyalty')->whereUuid('customer');
+        Route::get('customers/{customer}/documents', [CustomerController::class, 'getCustomerDocuments'])->whereUuid('customer');
         Route::get('customers/{customer}/feedback', [CustomerController::class, 'getCustomerFeedback'])->middleware('permission:customers.feedback')->whereUuid('customer');
         Route::post('customers/{customer}/feedback', [CustomerController::class, 'addCustomerFeedback'])->middleware('permission:customers.feedback')->whereUuid('customer');
         Route::apiResource('customers', CustomerController::class)->whereUuid('customer');
@@ -671,6 +707,8 @@ Route::middleware(['auth:api'])->group(function () {
 
             // Quick Pricing Calculator
             Route::prefix('pricing')->group(function () {
+                Route::get('/analytics', [VehicleGroupPricingController::class, 'getPriceAnalytics']);
+
                 // Bulk Operations
                 Route::post('/bulk-update', [VehicleGroupPricingController::class, 'bulkUpdate']);
                 Route::post('/copy-pricing', [VehicleGroupPricingController::class, 'copyPricing']);
@@ -750,6 +788,12 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('/export/{type}', [ReportsController::class, 'exportReport'])
             ->middleware('permission:reports.generate');
         Route::post('/export', [ReportsController::class, 'exportReport'])
+            ->middleware('permission:reports.generate');
+        Route::get('/generated', [ReportsController::class, 'generatedReports'])
+            ->middleware('permission:reports.view');
+        Route::get('/download/{report}', [ReportsController::class, 'downloadGeneratedReport'])
+            ->middleware('permission:reports.view');
+        Route::delete('/{report}', [ReportsController::class, 'deleteGeneratedReport'])
             ->middleware('permission:reports.generate');
         Route::get('/performance-metrics', [ReportsController::class, 'getPerformanceMetrics'])
             ->middleware('permission:reports.view');
@@ -900,6 +944,22 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('agreements/stats', [AgreementController::class, 'stats']);
         Route::get('agreements/reports', [AgreementController::class, 'reports']);
         Route::get('agreement-templates', [AgreementController::class, 'templates']);
+        Route::get('agreement-templates/{template}', [AgreementController::class, 'showTemplate']);
+        Route::post('agreement-templates', [AgreementController::class, 'storeTemplate']);
+        Route::put('agreement-templates/{template}', [AgreementController::class, 'updateTemplate']);
+        Route::delete('agreement-templates/{template}', [AgreementController::class, 'destroyTemplate']);
+        Route::get('agreements/{agreement}/documents', [AgreementController::class, 'documents']);
+        Route::post('agreements/{agreement}/documents', [AgreementController::class, 'uploadDocument']);
+        Route::get('agreements/{agreement}/pdf', [AgreementController::class, 'pdf']);
+        Route::get('agreements/{agreement}/timeline', [AgreementController::class, 'timeline']);
+        Route::post('agreements/{agreement}/duplicate', [AgreementController::class, 'duplicate']);
+        Route::post('agreements/{agreement}/renew', [AgreementController::class, 'renew']);
+        Route::post('agreements/{agreement}/verify-identity', [AgreementController::class, 'verifyIdentity']);
+        Route::post('agreements/{agreement}/sign', [AgreementController::class, 'sign']);
+        Route::post('agreements/{agreement}/email-signed', [AgreementController::class, 'emailSignedAgreement']);
+        Route::post('agreements/bulk-update-status', [AgreementController::class, 'bulkUpdateStatus']);
+        Route::post('agreements/bulk-delete', [AgreementController::class, 'bulkDelete']);
+        Route::post('agreements/bulk-export', [AgreementController::class, 'bulkExport']);
         Route::apiResource('agreements', AgreementController::class);
     });
 

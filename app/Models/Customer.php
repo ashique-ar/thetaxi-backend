@@ -162,6 +162,11 @@ class Customer extends BaseModel
         return $this->morphMany(PaymentMethod::class, 'payable');
     }
 
+    public function documents()
+    {
+        return $this->morphMany(Document::class, 'documentable');
+    }
+
     // Accessor Methods
 
     /**
