@@ -24,7 +24,7 @@ class StaffController extends Controller
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        $q = Staff::with(['user', 'paymentMethods']);
+        $q = Staff::with(['user', 'country', 'state', 'paymentMethods']);
         if ($request->filled('search')) {
             $search = trim((string) $request->get('search'));
             $q->where(function ($query) use ($search) {
@@ -90,8 +90,9 @@ class StaffController extends Controller
 
         if ($paymentMethods !== null) {
             app(PaymentMethodSyncService::class)->syncMany($staff, $paymentMethods, $request->user()->id);
-            $staff->load('paymentMethods');
         }
+
+        $staff->load(['user', 'country', 'state', 'paymentMethods']);
 
         return response()->json([
             'status'=>'success',
@@ -102,6 +103,8 @@ class StaffController extends Controller
 
     public function show(Staff $staff): JsonResponse
     {
+        $staff->load(['user', 'country', 'state', 'paymentMethods']);
+
         return response()->json([
             'status'=>'success',
             'data'=>['staff'=>new StaffResource($staff)]
@@ -120,7 +123,7 @@ class StaffController extends Controller
             app(PaymentMethodSyncService::class)->syncMany($staff, $paymentMethods, $request->user()->id);
         }
 
-        $staff->load('paymentMethods');
+        $staff->load(['user', 'country', 'state', 'paymentMethods']);
 
         return response()->json([
             'status'=>'success',
