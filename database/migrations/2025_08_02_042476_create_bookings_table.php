@@ -64,6 +64,8 @@ return new class extends Migration {
 
             // Payment details
             $table->string('payment_method')->nullable();
+            $table->string('payment_type')->nullable();
+            $table->string('amount_to_pay')->nullable();
             $table->string('payment_status')->default('pending');
             $table->string('payment_reference')->nullable();
 

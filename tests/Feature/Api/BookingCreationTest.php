@@ -3,8 +3,8 @@
 use App\Models\User;
 use Illuminate\Support\Facades\Schema;
 use function Pest\Laravel\actingAs;
-use function Pest\Laravel\post;
-use function Pest\Laravel\get;
+use function Pest\Laravel\postJson;
+use function Pest\Laravel\getJson;
 
 /**
  * Core booking creation and access control tests.
@@ -14,7 +14,7 @@ use function Pest\Laravel\get;
  */
 
 it('rejects booking creation when unauthenticated', function () {
-    $response = post('/api/booking-flow/booking', []);
+    $response = postJson('/api/booking-flow/save-draft', []);
     $response->assertStatus(401);
 });
 
@@ -30,12 +30,12 @@ it('rejects booking creation when required fields are missing', function () {
             'X-Active-Context-Type' => 'company',
             'X-Active-Context-Id'   => '00000000-0000-0000-0000-000000000001',
         ])
-        ->post('/api/booking-flow/booking', [])
+        ->postJson('/api/booking-flow/save-draft', [])
         ->assertStatus(422);
 })->skip(fn () => !Schema::hasTable('users'));
 
 it('returns 401 when listing bookings without authentication', function () {
-    $response = get('/api/booking-flow/bookings');
+    $response = getJson('/api/booking-flow/bookings');
     $response->assertStatus(401);
 });
 
@@ -47,7 +47,7 @@ it('returns 422 when context headers are missing on authenticated booking list r
     $user = User::factory()->create();
 
     actingAs($user, 'api')
-        ->get('/api/booking-flow/bookings')
+        ->getJson('/api/booking-flow/bookings')
         ->assertStatus(422);
 })->skip(fn () => !Schema::hasTable('users'));
 
@@ -63,6 +63,6 @@ it('returns 403 when accessing a booking UUID outside own context', function () 
             'X-Active-Context-Type' => 'company',
             'X-Active-Context-Id'   => '00000000-0000-0000-0000-000000000001',
         ])
-        ->get('/api/booking-flow/00000000-0000-0000-0000-000000000999')
+        ->getJson('/api/booking-flow/bookings/00000000-0000-0000-0000-000000000999')
         ->assertStatus(403);
 })->skip(fn () => !Schema::hasTable('users'));

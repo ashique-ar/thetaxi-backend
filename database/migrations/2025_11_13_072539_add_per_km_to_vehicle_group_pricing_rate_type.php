@@ -12,6 +12,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (DB::getDriverName() === 'sqlite') {
+            return;
+        }
+
         DB::statement("ALTER TABLE vehicle_group_pricing DROP CONSTRAINT IF EXISTS vehicle_group_pricing_rate_type_check");
 
         // Add per_km to the rate_type enum in vehicle_group_pricing table
@@ -24,6 +28,10 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (DB::getDriverName() === 'sqlite') {
+            return;
+        }
+
         // Remove per_km from the rate_type enum (revert to original)
         DB::statement("ALTER TABLE vehicle_group_pricing DROP CONSTRAINT IF EXISTS vehicle_group_pricing_rate_type_check");
         DB::statement("ALTER TABLE vehicle_group_pricing ADD CONSTRAINT vehicle_group_pricing_rate_type_check CHECK (rate_type IN ('per_hour', 'per_day', 'flat_rate'))");

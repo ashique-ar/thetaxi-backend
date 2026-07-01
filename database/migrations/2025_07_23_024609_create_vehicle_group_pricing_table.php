@@ -16,7 +16,7 @@ return new class extends Migration {
             $table->uuid('slab_definition_id');
             $table->uuid('vehicle_group_id')->nullable();
             $table->decimal('rate', 10, 2)->nullable(); // Base rate for this group/slab combination
-            $table->enum('rate_type', ['per_hour', 'per_day', 'flat_rate'])->default('per_day');
+            $table->enum('rate_type', ['per_hour', 'per_day', 'flat_rate', 'per_km'])->default('per_day');
             $table->decimal('minimum_charge', 10, 2)->nullable(); // Minimum charge regardless of duration
             $table->boolean('includes_fuel')->default(false);
             $table->boolean('includes_driver')->default(false);

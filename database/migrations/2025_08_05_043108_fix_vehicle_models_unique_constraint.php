@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -11,6 +12,16 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (DB::getDriverName() === 'sqlite') {
+            DB::statement('DROP INDEX IF EXISTS vehicle_models_make_id_unique');
+
+            Schema::table('vehicle_models', function (Blueprint $table) {
+                $table->unique(['make_id', 'name'], 'vehicle_models_make_name_unique');
+            });
+
+            return;
+        }
+
         Schema::table('vehicle_models', function (Blueprint $table) {
             // Drop the incorrect unique constraint on make_id
             $table->dropUnique(['make_id']);

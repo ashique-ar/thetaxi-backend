@@ -12,6 +12,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (DB::getDriverName() === 'sqlite') {
+            return;
+        }
+
         DB::statement("
             ALTER TABLE vehicle_assignments
             DROP CONSTRAINT IF EXISTS vehicle_assignments_overlap_type_check;
