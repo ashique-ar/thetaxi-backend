@@ -346,13 +346,20 @@
                                                         @endforeach
                                                     </div>
 
-                                                    <div class="terms-accept-all-container mt-3">
-                                                        <div class="form-check">
+                                                    <div class="terms-accept-all-container mt-3" id="termsAcceptancePanel">
+                                                        <div class="form-check terms-accept-check">
                                                             <input class="form-check-input" type="checkbox"
-                                                                id="accept_all_terms">
+                                                                id="accept_all_terms" aria-describedby="termsAcceptHelp">
                                                             <label class="form-check-label" for="accept_all_terms">
-                                                                I agree to the above <strong>Terms & Conditions</strong>
+                                                                <span class="terms-accept-title">I agree to the above
+                                                                    <strong>Terms & Conditions</strong></span>
+                                                                <span class="terms-accept-copy" id="termsAcceptHelp">
+                                                                    Required before placing your booking.
+                                                                </span>
                                                             </label>
+                                                        </div>
+                                                        <div class="terms-accept-error" id="termsAcceptError" role="alert">
+                                                            Please tick this box to continue with your booking.
                                                         </div>
                                                         <div id="termsAcceptedHiddenInputs"></div>
                                                     </div>
@@ -1419,6 +1426,85 @@
             margin-bottom: 5px;
         }
 
+        .terms-accept-all-container {
+            background: #fff;
+            border: 2px solid #d7eadc;
+            border-radius: 8px;
+            padding: 16px;
+            box-shadow: 0 8px 24px rgba(33, 37, 41, 0.06);
+            transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+        }
+
+        .terms-accept-all-container:focus-within {
+            border-color: #1fa64a;
+            box-shadow: 0 0 0 4px rgba(31, 166, 74, 0.14);
+        }
+
+        .terms-accept-all-container.terms-accepted {
+            background: #f7fff9;
+            border-color: #1fa64a;
+        }
+
+        .terms-accept-all-container.terms-missing {
+            background: #fff8f8;
+            border-color: #dc3545;
+            box-shadow: 0 0 0 4px rgba(220, 53, 69, 0.12);
+        }
+
+        .terms-accept-check {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            margin: 0;
+            min-height: 44px;
+        }
+
+        .terms-accept-check .form-check-input {
+            width: 24px;
+            height: 24px;
+            flex: 0 0 24px;
+            margin: 2px 0 0;
+            border: 2px solid #1fa64a;
+            cursor: pointer;
+        }
+
+        .terms-accept-check .form-check-input:checked {
+            background-color: #1fa64a;
+            border-color: #1fa64a;
+        }
+
+        .terms-accept-check .form-check-label {
+            cursor: pointer;
+            margin: 0;
+            color: #1f2933;
+            line-height: 1.35;
+        }
+
+        .terms-accept-title {
+            display: block;
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .terms-accept-copy {
+            display: block;
+            margin-top: 2px;
+            color: #6c757d;
+            font-size: 13px;
+        }
+
+        .terms-accept-error {
+            display: none;
+            margin-top: 10px;
+            color: #b02a37;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .terms-missing .terms-accept-error {
+            display: block;
+        }
+
         @media (max-width: 768px) {
             .payment-option ul {
                 flex-direction: column;
@@ -1436,6 +1522,14 @@
 
             .terms-content {
                 max-height: 250px;
+            }
+
+            .terms-accept-all-container {
+                padding: 14px;
+            }
+
+            .terms-accept-title {
+                font-size: 15px;
             }
         }
 
@@ -1704,6 +1798,18 @@
 
             // Form submission - disable submit button to prevent double submission
             $('#checkout-form').on('submit', function(e) {
+                const $termsPanel = $('#termsAcceptancePanel');
+                const $acceptTerms = $('#accept_all_terms');
+                if ($acceptTerms.length && !$acceptTerms.is(':checked')) {
+                    e.preventDefault();
+                    $termsPanel.addClass('terms-missing').removeClass('terms-accepted');
+                    $acceptTerms.trigger('focus');
+                    $('html, body').animate({
+                        scrollTop: Math.max($termsPanel.offset().top - 110, 0)
+                    }, 250);
+                    return false;
+                }
+
                 // Payment method is now set automatically, server validates
                 $('#checkout-submit-btn').prop('disabled', true).html('<span>Processing...</span>');
             });
@@ -1740,6 +1846,9 @@
             }
 
             $('#accept_all_terms').on('change', function() {
+                $('#termsAcceptancePanel')
+                    .toggleClass('terms-accepted', $(this).is(':checked'))
+                    .removeClass('terms-missing');
                 syncAcceptedTerms();
                 // Collapse or expand visible terms depending on checked state
                 if ($(this).is(':checked')) {
@@ -1798,6 +1907,7 @@
                 const hasPreviouslyAccepted = Object.keys(@json(old('terms_accepted', []))).length > 0;
                 if (hasPreviouslyAccepted) {
                     $('#accept_all_terms').prop('checked', true);
+                    $('#termsAcceptancePanel').addClass('terms-accepted');
                     syncAcceptedTerms();
                 }
             }
