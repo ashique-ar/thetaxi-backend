@@ -4,10 +4,12 @@ use App\Http\Controllers\Api\Booking\BookingFlowController;
 use App\Http\Controllers\Api\Booking\BookingLifecycleController;
 use App\Http\Controllers\Api\AssignmentController;
 use App\Http\Controllers\Api\AgreementController;
+use App\Http\Controllers\Api\AuditLogController;
 use App\Http\Controllers\Api\GooglePlacesController;
 use App\Http\Controllers\Api\MedicalRecordController;
 use App\Http\Controllers\Api\ReportsController;
 use App\Http\Controllers\Api\SystemController;
+use App\Http\Controllers\Api\SystemBackupController;
 use App\Http\Controllers\Api\UtilityController;
 use App\Http\Controllers\Api\UserContextController;
 use Illuminate\Support\Facades\Route;
@@ -451,8 +453,10 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('system/performance', [SystemController::class, 'performance']);
         Route::post('system/clear-cache', [SystemController::class, 'clearCache']);
         Route::post('system/optimize-database', [SystemController::class, 'optimizeDatabase']);
+        Route::apiResource('audit-logs', AuditLogController::class)->only(['index', 'show']);
 
         Route::apiResource('countries', CountryController::class);
+        Route::get('countries/{country}/states', [StateController::class, 'index']);
         Route::apiResource('states', StateController::class);
 
         Route::apiResource('business-settings', BusinessSettingController::class);
@@ -525,6 +529,15 @@ Route::middleware(['auth:api'])->group(function () {
 
         Route::apiResource('driving-license-types', DrivingLicenseTypeController::class);
         Route::apiResource('driving-licenses', DrivingLicenseController::class);
+    });
+
+    Route::middleware(['permission:system.manage'])->group(function () {
+        Route::get('system/backups', [SystemBackupController::class, 'index']);
+        Route::post('system/backups', [SystemBackupController::class, 'store']);
+        Route::get('system/backups/{backup}', [SystemBackupController::class, 'show']);
+        Route::get('system/backups/{backup}/download', [SystemBackupController::class, 'download']);
+        Route::post('system/backups/{backup}/restore', [SystemBackupController::class, 'restore']);
+        Route::delete('system/backups/{backup}', [SystemBackupController::class, 'destroy']);
     });
 
     // CMS content management (protected by controller permissions)

@@ -25,6 +25,10 @@ class StateController extends Controller
     public function index(Request $request): AnonymousResourceCollection
     {
         $q = State::with('country');
+        $countryId = $request->route('country') ?? $request->query('country_id');
+        if ($countryId) {
+            $q->where('country_id', $countryId);
+        }
         if ($request->filled('search')) {
             $q->whereLikeInsensitive('name', $request->search);
         }
