@@ -213,13 +213,21 @@
                                     @endif
 
                                     @php
-                                        // Addon charges (persisted booking addons)
-                                        $addonCharges = (float) ($booking->bookingAddons->sum('amount') ?? 0);
+                                        // Addon charges exclude mileage so extra KM is not double-listed.
+                                        $addonCharges = (float) ($booking->bookingAddons->where('is_milage', false)->sum('amount') ?? 0);
 
-                                        // Extra km charges: try booking addons flagged as mileage, fallback to workflow cart data
+                                        // Extra km charges: prefer persisted mileage/customization data, fallback to workflow cart data.
                                         $extraKmCharges =
                                             (float) ($booking->bookingAddons->where('is_milage', true)->sum('amount') ??
                                                 0);
+                                        if (empty($extraKmCharges)) {
+                                            foreach ($booking->bookingItems ?? [] as $bookingItem) {
+                                                $metadata = is_array($bookingItem->metadata ?? null)
+                                                    ? $bookingItem->metadata
+                                                    : [];
+                                                $extraKmCharges += (float) ($metadata['extra_km_total'] ?? 0);
+                                            }
+                                        }
                                         if (empty($extraKmCharges)) {
                                             $workflow = is_string($booking->workflow_data)
                                                 ? json_decode($booking->workflow_data, true)
@@ -937,4 +945,3 @@
         });
     </script>
 @endpush
-

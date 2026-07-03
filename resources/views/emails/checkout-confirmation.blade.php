@@ -168,8 +168,14 @@
             @endif
 
             @php
-                $addonCharges = (float) ($booking->bookingAddons->sum('amount') ?? 0);
+                $addonCharges = (float) ($booking->bookingAddons->where('is_milage', false)->sum('amount') ?? 0);
                 $extraKmCharges = (float) ($booking->bookingAddons->where('is_milage', true)->sum('amount') ?? 0);
+                if (empty($extraKmCharges)) {
+                    foreach ($booking->bookingItems ?? [] as $bookingItem) {
+                        $metadata = is_array($bookingItem->metadata ?? null) ? $bookingItem->metadata : [];
+                        $extraKmCharges += (float) ($metadata['extra_km_total'] ?? 0);
+                    }
+                }
                 if (empty($extraKmCharges)) {
                     $workflow = is_string($booking->workflow_data)
                         ? json_decode($booking->workflow_data, true)
@@ -539,4 +545,3 @@
     <p style="text-align: center; color: #555; font-size: 15px;">Thank you for choosing
         {{ ($settings['company_name'] ?? $settings['brand_name'] ?? $settings['site_name'] ?? 'Company') }}. We look forward to serving you!</p>
 @endsection
-

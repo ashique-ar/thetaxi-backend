@@ -71,10 +71,47 @@ class CheckoutController extends Controller
     {
         return Booking::with([
             'customer',
+            'customer.user',
+            'bookingAddons.addon',
             'bookingItems.vehicleGroup',
             'bookingItems.serviceType',
+            'bookingItems.booking',
             'acceptedTerms.terms'
         ])->findOrFail($booking->id);
+    }
+
+    /**
+     * Normalize checkout-selected extra kilometers into a stable shape for
+     * booking items, emails, success pages, and downstream booking views.
+     */
+    protected function normalizeCartExtraKm(array $item): ?array
+    {
+        $extraKm = $item['extra_km'] ?? null;
+        if (!is_array($extraKm)) {
+            return null;
+        }
+
+        $kilometers = (float) ($extraKm['km'] ?? ($extraKm['quantity'] ?? 0));
+        $rate = (float) ($extraKm['rate_per_km'] ?? ($extraKm['rate'] ?? ($extraKm['price_per_km'] ?? 0)));
+        $total = (float) ($extraKm['total_cost'] ?? ($extraKm['total'] ?? ($kilometers * $rate)));
+
+        if ($kilometers <= 0 || $total <= 0) {
+            return null;
+        }
+
+        return [
+            'type' => 'extra_km',
+            'code' => 'extra_km',
+            'label' => 'Extra Kilometers',
+            'quantity' => $kilometers,
+            'km' => $kilometers,
+            'rate' => $rate,
+            'rate_per_km' => $rate,
+            'total' => $total,
+            'total_cost' => $total,
+            'currency' => $extraKm['currency'] ?? config('booking.base_currency', 'LKR'),
+            'added_at' => $extraKm['added_at'] ?? null,
+        ];
     }
 
     /**
@@ -541,6 +578,7 @@ class CheckoutController extends Controller
 
             // Create booking items for each cart item
             foreach ($cart as $cartKey => $item) {
+                $extraKmCharge = $this->normalizeCartExtraKm($item);
                 $itemFromDate = isset($item['from_date']) ? Carbon::parse($item['from_date']) : $fromDate;
                 $itemToDate = isset($item['to_date']) ? Carbon::parse($item['to_date']) : $toDate;
                 $itemFromTime = $item['from_time'] ?? $booking->from_time ?? '00:00';
@@ -592,6 +630,37 @@ class CheckoutController extends Controller
 
                 // In booking_items, 'quantity' field stores duration in days for vehicle rentals
                 $durationQuantity = $durationDays;
+                $itemAddons = is_array($item['addons'] ?? null) ? $item['addons'] : [];
+                $itemCustomizations = is_array($item['customizations'] ?? null) ? $item['customizations'] : [];
+                $itemMetadata = [
+                    'cart_key' => $cartKey,
+                    'item_index' => array_search($cartKey, array_keys($cart)),
+                    'service_package_id' => $item['service_package_id'] ?? null,
+                    'service_package_info' => $item['service_package_info'] ?? null,
+                    // Persist distance and duration details for later communication
+                    'distance_details' => $item['distance_details'] ?? null,
+                    'calculation_type' => $item['distance_details']['calculation_type'] ?? null,
+                    'effective_days' => $item['distance_details']['effective_days'] ?? null,
+                    'journey_duration_seconds' => $item['distance_details']['journey_duration_seconds'] ?? null,
+                    'is_return_trip' => $item['is_return_trip'] ?? false,
+                    'return_trip_date' => $item['return_trip_date'] ?? null,
+                    'return_trip_time' => $item['return_trip_time'] ?? null,
+                    'return_trip_pricing' => $item['return_trip_pricing'] ?? null,
+                    'one_way_price' => $item['one_way_price'] ?? null,
+                    'return_price' => $item['return_price'] ?? null,
+                    'return_discount_percentage' => $item['return_discount_percentage'] ?? null,
+                    'return_pickup_location' => $item['return_pickup_location'] ?? ($item['dropoff_location'] ?? null),
+                    'return_dropoff_location' => $item['return_dropoff_location'] ?? ($item['pickup_location'] ?? null),
+                ];
+
+                if ($extraKmCharge) {
+                    $itemCustomizations[] = $extraKmCharge;
+                    $itemMetadata['extra_km'] = $extraKmCharge['km'];
+                    $itemMetadata['extra_km_rate'] = $extraKmCharge['rate_per_km'];
+                    $itemMetadata['extra_km_total'] = $extraKmCharge['total_cost'];
+                    $itemMetadata['extra_km_currency'] = $extraKmCharge['currency'];
+                    $itemMetadata['extra_km_details'] = $extraKmCharge;
+                }
 
                 // Create booking item
                 $bookingItem = BookingItem::create([
@@ -630,29 +699,15 @@ class CheckoutController extends Controller
                         'base_price' => $unitPrice,
                         'quantity' => $durationQuantity,  // Duration days
                         'total' => $totalPrice,
+                        'addon_charges' => array_sum(array_map(
+                            fn ($addon) => is_array($addon) ? (float) ($addon['calculated_amount'] ?? 0) : 0,
+                            $itemAddons
+                        )),
+                        'extra_km_charges' => $extraKmCharge['total_cost'] ?? 0,
                     ],
-                    'addons' => $item['addons'] ?? [],
-                    'customizations' => $item['customizations'] ?? [],
-                    'metadata' => [
-                        'cart_key' => $cartKey,
-                        'item_index' => array_search($cartKey, array_keys($cart)),
-                        'service_package_id' => $item['service_package_id'] ?? null,
-                        'service_package_info' => $item['service_package_info'] ?? null,
-                        // Persist distance and duration details for later communication
-                        'distance_details' => $item['distance_details'] ?? null,
-                        'calculation_type' => $item['distance_details']['calculation_type'] ?? null,
-                        'effective_days' => $item['distance_details']['effective_days'] ?? null,
-                        'journey_duration_seconds' => $item['distance_details']['journey_duration_seconds'] ?? null,
-                        'is_return_trip' => $item['is_return_trip'] ?? false,
-                        'return_trip_date' => $item['return_trip_date'] ?? null,
-                        'return_trip_time' => $item['return_trip_time'] ?? null,
-                        'return_trip_pricing' => $item['return_trip_pricing'] ?? null,
-                        'one_way_price' => $item['one_way_price'] ?? null,
-                        'return_price' => $item['return_price'] ?? null,
-                        'return_discount_percentage' => $item['return_discount_percentage'] ?? null,
-                        'return_pickup_location' => $item['return_pickup_location'] ?? ($item['dropoff_location'] ?? null),
-                        'return_dropoff_location' => $item['return_dropoff_location'] ?? ($item['pickup_location'] ?? null),
-                    ]
+                    'addons' => $itemAddons,
+                    'customizations' => $itemCustomizations,
+                    'metadata' => $itemMetadata
                 ]);
 
                 // Save BookingAddons from this cart item
@@ -1087,8 +1142,10 @@ class CheckoutController extends Controller
         // Fetch booking for display with eager loaded relationships (include terms & customer user)
         $booking = Booking::with([
             'customer.user',
+            'bookingAddons.addon',
             'bookingItems.vehicleGroup',
             'bookingItems.serviceType',
+            'bookingItems.booking',
             'acceptedTerms.terms'
         ])->where('booking_number', $reference)->first();
 
@@ -2147,6 +2204,8 @@ class CheckoutController extends Controller
                         'qty' => $addon->qty,
                         'rate' => $addon->rate,
                         'amount' => $addon->amount,
+                        'is_insurance' => $addon->is_insurance,
+                        'is_milage' => $addon->is_milage,
                         'label' => $addon->label,
                     ]);
                 });
