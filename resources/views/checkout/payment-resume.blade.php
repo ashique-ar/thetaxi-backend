@@ -13,6 +13,13 @@
         if ($amountDue <= 0) {
             $amountDue = $context['pricing']['total_estimated'] ?? 1000; // Use booking total or default
         }
+        $paymentStatus = $booking?->payment_status ?? ($context['payment_status'] ?? 'pending');
+        if ($amountDue > 0 && $paymentStatus === 'not_required') {
+            $paymentStatus = 'pending';
+        }
+        $paymentStatusLabel = $paymentStatus === 'pending'
+            ? 'Payment pending'
+            : ucwords(str_replace('_', ' ', $paymentStatus));
         $supportPhone = $settings['company_phone'] ?? '';
         $supportPhoneTel = preg_replace('/[^0-9+]/', '', $supportPhone);
         $supportWhatsapp = $settings['company_whatsapp'] ?? $supportPhone;
@@ -382,8 +389,8 @@
                                 <tr>
                                     <td>Payment Status</td>
                                     <td>
-                                        <span class="status-badge status-{{ $context['payment_status'] }}">
-                                            {{ ucfirst(str_replace('_', ' ', $context['payment_status'])) }}
+                                        <span class="status-badge status-{{ $paymentStatus }}">
+                                            {{ $paymentStatusLabel }}
                                         </span>
                                     </td>
                                 </tr>

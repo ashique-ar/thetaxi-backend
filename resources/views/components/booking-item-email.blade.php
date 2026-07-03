@@ -380,8 +380,8 @@
                 Vehicle {{ $index + 1 }}: {{ $vehicleGroupName }}
             </h3>
             <span
-                style="display: inline-block; background-color: #fff3cd; color: #856404; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; border: 1px solid #ffc107; margin-bottom: 8px;">
-                <i style="margin-right: 4px;">Service:</i>{{ $serviceTypeName }}
+                style="display: table; margin: 0 0 8px 0; background-color: #fff3cd; color: #856404; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; border: 1px solid #ffc107;">
+                <span style="font-style: italic; margin-right: 4px;">Service:</span> {{ $serviceTypeName }}
             </span>
         </div>
     </div>
