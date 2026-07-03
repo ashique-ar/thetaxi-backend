@@ -78,15 +78,7 @@
         : ucwords(str_replace('_', ' ', (string) ($paymentStatus ?? 'pending')));
 
     $paymentRows = [];
-    if ($isQuotation) {
-        $paymentRows[] = [
-            'class' => 'booking-payment-due-row',
-            'style' => 'background: #f8fafc;',
-            'label' => 'Payment Due Now',
-            'value' => 'No payment required',
-            'strong' => true,
-        ];
-    } else {
+    if (!$isQuotation) {
         if ($paymentType === 'advance') {
             $advanceLabel = 'Amount Paid / Due Now';
             if ($effectiveAdvancePercentage) {
