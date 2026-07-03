@@ -8,6 +8,7 @@ use App\Models\Vehicle\VehiclePricing\VehiclePricingSlabDefinition;
 use App\Models\Vehicle\VehiclePricing\VehicleGroupCommonRatePricing;
 use App\Models\Vehicle\VehiclePricing\VehicleGroupServicePricingSetting;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCommonRateDefinition;
+use App\Models\Vehicle\VehiclePricing\VehiclePricingBulkOperation;
 use App\Models\Vehicle\VehicleGroup;
 use App\Models\Service\ServiceType;
 use App\Models\Corporate\Corporate;
@@ -23,9 +24,9 @@ class VehicleGroupPricingController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('permission:vehicle-group-pricing.view')->only(['index', 'show', 'matrix', 'unifiedPricing']);
+        $this->middleware('permission:vehicle-group-pricing.view')->only(['index', 'show', 'matrix', 'unifiedPricing', 'getBulkOperations', 'getBulkOperationStatus', 'downloadBulkOperationReport']);
         $this->middleware('permission:vehicle-group-pricing.create')->only(['store', 'bulkStore']);
-        $this->middleware('permission:vehicle-group-pricing.edit')->only(['update', 'toggleStatus', 'bulkUpdate', 'copyRates', 'saveVehicleGroupPricing']);
+        $this->middleware('permission:vehicle-group-pricing.edit')->only(['update', 'toggleStatus', 'bulkUpdate', 'copyRates', 'saveVehicleGroupPricing', 'cancelBulkOperation', 'retryBulkOperation']);
         $this->middleware('permission:vehicle-group-pricing.delete')->only(['destroy', 'bulkDelete']);
         $this->middleware('permission:vehicle-group-pricing.manage')->only(['syncCommonRates', 'exportPricing', 'importPricing']);
     }
@@ -975,6 +976,21 @@ class VehicleGroupPricingController extends Controller
             ], 422);
         }
 
+        $operation = VehiclePricingBulkOperation::create([
+            'operation_type' => 'bulk_update',
+            'operation_name' => $request->input('operation_name', 'Pricing matrix bulk update'),
+            'description' => $request->input('change_reason'),
+            'operation_data' => $request->all(),
+            'affected_records' => [],
+            'status' => 'pending',
+            'total_records' => count($request->input('slab_pricing', [])) + count($request->input('common_rate_pricing', [])),
+            'processed_records' => 0,
+            'successful_records' => 0,
+            'failed_records' => 0,
+            'initiated_by' => auth()->id(),
+        ]);
+        $operation->markAsStarted();
+
         DB::beginTransaction();
         try {
             $results = [
@@ -1141,6 +1157,16 @@ class VehicleGroupPricingController extends Controller
 
             DB::commit();
 
+            $processed = $results['slab_pricing']['created'] + $results['slab_pricing']['updated']
+                + $results['common_rate_pricing']['created'] + $results['common_rate_pricing']['updated'];
+            $operation->update([
+                'status' => 'completed',
+                'processed_records' => $processed,
+                'successful_records' => $processed,
+                'affected_records' => collect($results['history_records'])->pluck('id')->filter()->values()->all(),
+                'completed_at' => now(),
+            ]);
+
             // Clear unified pricing caches after bulk save
             $this->clearUnifiedPricingCache();
 
@@ -1153,6 +1179,7 @@ class VehicleGroupPricingController extends Controller
                         'total_common_rate_pricing_processed' => $results['common_rate_pricing']['created'] + $results['common_rate_pricing']['updated'],
                         'history_records_created' => count($results['history_records'])
                     ],
+                    'operation_id' => $operation->id,
                 ],
 
                 'message' => 'Bulk pricing changes saved successfully'
@@ -1160,6 +1187,7 @@ class VehicleGroupPricingController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
+            $operation->markAsFailed([$e->getMessage()]);
 
             Log::error('Bulk pricing save failed', [
                 'error' => $e->getMessage(),
@@ -1444,11 +1472,21 @@ class VehicleGroupPricingController extends Controller
 
     public function getBulkOperations(\Illuminate\Http\Request $request): \Illuminate\Http\JsonResponse
     {
-        // Bulk operations are tracked via the pricing history log
-        $operations = VehiclePricingHistory::query()
-            ->where('change_type', 'bulk_update')
+        $operations = VehiclePricingBulkOperation::query()
+            ->with('initiatedBy:id,name')
+            ->when($request->filled('operation_type'), fn ($query) => $query->where('operation_type', $request->input('operation_type')))
+            ->when($request->filled('status'), fn ($query) => $query->where('status', $request->input('status')))
+            ->when($request->filled('from_date'), fn ($query) => $query->whereDate('created_at', '>=', $request->input('from_date')))
+            ->when($request->filled('to_date'), fn ($query) => $query->whereDate('created_at', '<=', $request->input('to_date')))
+            ->when($request->filled('search'), function ($query) use ($request) {
+                $search = $request->input('search');
+                $query->where(fn ($nested) => $nested->where('operation_name', 'like', "%{$search}%")
+                    ->orWhere('description', 'like', "%{$search}%"));
+            })
             ->orderByDesc('created_at')
-            ->paginate(20);
+            ->paginate($request->integer('per_page', 20));
+
+        $operations->getCollection()->each->append(['progress_percentage', 'success_rate', 'operation_type_label', 'status_label', 'duration']);
 
         return response()->json(['status' => 'success', 'data' => $operations]);
     }
@@ -1465,11 +1503,48 @@ class VehicleGroupPricingController extends Controller
 
     public function getBulkOperationStatus(\Illuminate\Http\Request $request, string $operationId): \Illuminate\Http\JsonResponse
     {
-        $operation = VehiclePricingHistory::where('id', $operationId)
-            ->where('change_type', 'bulk_update')
-            ->firstOrFail();
+        $operation = VehiclePricingBulkOperation::with('initiatedBy:id,name')->findOrFail($operationId);
+        $operation->append(['progress_percentage', 'success_rate', 'operation_type_label', 'status_label', 'duration']);
 
         return response()->json(['status' => 'success', 'data' => $operation]);
+    }
+
+    public function cancelBulkOperation(string $operationId): JsonResponse
+    {
+        $operation = VehiclePricingBulkOperation::findOrFail($operationId);
+        abort_unless($operation->isRunning(), 409, 'Only pending or in-progress operations can be cancelled.');
+        $operation->update(['status' => 'cancelled', 'completed_at' => now()]);
+
+        return response()->json(['status' => 'success', 'message' => 'Bulk operation cancelled', 'data' => $operation->fresh()]);
+    }
+
+    public function retryBulkOperation(string $operationId): JsonResponse
+    {
+        $operation = VehiclePricingBulkOperation::findOrFail($operationId);
+        abort_unless(in_array($operation->status, ['failed', 'cancelled'], true), 409, 'Only failed or cancelled operations can be retried.');
+
+        $retryRequest = Request::create('', 'POST', $operation->operation_data ?? []);
+        return $this->bulkSavePricing($retryRequest);
+    }
+
+    public function downloadBulkOperationReport(string $operationId)
+    {
+        $operation = VehiclePricingBulkOperation::with('initiatedBy:id,name')->findOrFail($operationId);
+        $rows = [
+            ['Operation ID', $operation->id], ['Name', $operation->operation_name],
+            ['Type', $operation->operation_type], ['Status', $operation->status],
+            ['Total records', $operation->total_records], ['Processed records', $operation->processed_records],
+            ['Successful records', $operation->successful_records], ['Failed records', $operation->failed_records],
+            ['Initiated by', $operation->initiatedBy?->name ?? ''], ['Started at', $operation->started_at?->toIso8601String() ?? ''],
+            ['Completed at', $operation->completed_at?->toIso8601String() ?? ''],
+            ['Errors', implode(' | ', $operation->errors ?? [])],
+        ];
+        $csv = collect($rows)->map(fn ($row) => collect($row)->map(fn ($value) => '"' . str_replace('"', '""', (string) $value) . '"')->implode(','))->implode("\n");
+
+        return response($csv, 200, [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="pricing-bulk-operation-' . $operation->id . '.csv"',
+        ]);
     }
 
     public function importPricing(\Illuminate\Http\Request $request): \Illuminate\Http\JsonResponse

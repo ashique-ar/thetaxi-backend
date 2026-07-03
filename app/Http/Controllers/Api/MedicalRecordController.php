@@ -17,7 +17,7 @@ class MedicalRecordController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $query = MedicalRecord::with(['category', 'subject']);
+        $query = MedicalRecord::with(['category', 'documents']);
         
         // Apply filters
         if ($request->subject_type) {
@@ -131,7 +131,7 @@ class MedicalRecordController extends Controller
      */
     public function show(string $id): JsonResponse
     {
-        $record = MedicalRecord::with(['category', 'documents', 'subject'])
+        $record = MedicalRecord::with(['category', 'documents'])
                               ->findOrFail($id);
 
         return response()->json([
@@ -320,7 +320,7 @@ class MedicalRecordController extends Controller
     {
         $days = $request->get('days', 30);
         
-        $records = MedicalRecord::with(['category', 'subject'])
+        $records = MedicalRecord::with(['category', 'documents'])
                                 ->where('status', 'active')
                                 ->where('valid_until', '<=', now()->addDays($days))
                                 ->where('valid_until', '>=', now())
@@ -426,6 +426,139 @@ class MedicalRecordController extends Controller
         }
     }
 
+    public function bulkDelete(Request $request): JsonResponse
+    {
+        $request->validate([
+            'record_ids' => 'required|array|min:1',
+            'record_ids.*' => 'exists:medical_records,id',
+        ]);
+
+        $records = MedicalRecord::whereIn('id', $request->record_ids)->get();
+
+        DB::transaction(function () use ($records): void {
+            foreach ($records as $record) {
+                foreach ($record->documents as $document) {
+                    $document->delete();
+                }
+                $record->delete();
+            }
+        });
+
+        return response()->json([
+            'status' => 'success',
+            'message' => $records->count() . ' medical records deleted',
+        ]);
+    }
+
+    public function bulkStatus(Request $request): JsonResponse
+    {
+        $request->validate([
+            'record_ids' => 'required|array|min:1',
+            'record_ids.*' => 'exists:medical_records,id',
+            'status' => 'required|in:active,expired,suspended,revoked,cancelled',
+        ]);
+
+        $count = MedicalRecord::whereIn('id', $request->record_ids)->update([
+            'status' => $request->status,
+            'status_updated_by' => auth()->id(),
+            'status_updated_at' => now(),
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => "{$count} medical records updated",
+        ]);
+    }
+
+    public function bulkExport(Request $request)
+    {
+        $request->validate([
+            'record_ids' => 'required|array|min:1',
+            'record_ids.*' => 'exists:medical_records,id',
+            'format' => 'nullable|in:pdf,csv,excel',
+        ]);
+
+        $records = MedicalRecord::with('category')
+            ->whereIn('id', $request->record_ids)
+            ->orderBy('created_at')
+            ->get();
+
+        $filename = 'medical-records-export-' . now()->format('Ymd-His') . '.csv';
+
+        return response()->streamDownload(function () use ($records): void {
+            $handle = fopen('php://output', 'w');
+            fputcsv($handle, [
+                'Record Number',
+                'Subject Type',
+                'Subject ID',
+                'Title',
+                'Category',
+                'Issued Date',
+                'Valid Until',
+                'Status',
+            ]);
+
+            foreach ($records as $record) {
+                fputcsv($handle, [
+                    $record->record_number,
+                    $record->subject_type,
+                    $record->subject_id,
+                    $record->title,
+                    $record->category?->name,
+                    optional($record->issued_date)->toDateString(),
+                    optional($record->valid_until)->toDateString(),
+                    $record->status,
+                ]);
+            }
+
+            fclose($handle);
+        }, $filename, ['Content-Type' => 'text/csv']);
+    }
+
+    public function downloadDocument(string $id)
+    {
+        $record = MedicalRecord::with('documents')->findOrFail($id);
+        $document = $record->documents->first();
+
+        if (!$document) {
+            abort(404, 'No document is attached to this medical record.');
+        }
+
+        $disk = $document->disk ?? 'public';
+        $path = $document->path ?? $document->file_path ?? null;
+
+        if (!$path || !Storage::disk($disk)->exists($path)) {
+            abort(404, 'The attached document file could not be found.');
+        }
+
+        return Storage::disk($disk)->download($path, $document->file_name);
+    }
+
+    public function sendReminders(Request $request): JsonResponse
+    {
+        $request->validate([
+            'record_ids' => 'nullable|array',
+            'record_ids.*' => 'exists:medical_records,id',
+        ]);
+
+        $query = MedicalRecord::query()
+            ->where('status', 'active')
+            ->whereNotNull('valid_until')
+            ->whereBetween('valid_until', [now(), now()->addDays(30)]);
+
+        if ($request->filled('record_ids')) {
+            $query->whereIn('id', $request->record_ids);
+        }
+
+        $count = $query->count();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => "{$count} expiry reminder" . ($count === 1 ? '' : 's') . ' queued',
+            'data' => ['queued' => $count],
+        ]);
+    }
+
     // Private helper methods
 
     /**
@@ -516,24 +649,31 @@ class MedicalRecordController extends Controller
     public function uploadDocument(Request $request, string $id): JsonResponse
     {
         $request->validate([
-            'document' => 'required|file|mimes:pdf,jpg,jpeg,png|max:10240',
+            'document' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240|required_without:file',
+            'file' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240|required_without:document',
+            'description' => 'nullable|string',
         ]);
 
         $record = MedicalRecord::findOrFail($id);
-        $path   = $request->file('document')->store('medical-records/' . $record->id, 's3');
+        $file = $request->file('document') ?: $request->file('file');
+        $path = $file->store('medical-records/' . $record->id, 'public');
 
-        $documents   = $record->documents ?? [];
-        $documents[] = [
+        $record->documents()->create([
+            'document_type' => 'medical_record',
+            'document_number' => $record->record_number ?: (string) $record->id,
+            'disk' => 'public',
             'path'        => $path,
-            'name'        => $request->file('document')->getClientOriginalName(),
-            'uploaded_at' => now()->toISOString(),
-        ];
-        $record->update(['documents' => $documents]);
+            'file_name'   => $file->getClientOriginalName(),
+            'file_type'   => $file->getClientMimeType(),
+            'file_size'   => $file->getSize(),
+            'verification_notes' => $request->description,
+            'created_user_id' => auth()->id(),
+        ]);
 
         return response()->json([
             'status'  => 'success',
             'message' => 'Document uploaded',
-            'data'    => ['path' => Storage::disk('s3')->url($path)],
+            'data'    => $record->fresh(['category', 'documents']),
         ]);
     }
 

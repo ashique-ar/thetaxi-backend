@@ -17,6 +17,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
@@ -71,6 +72,85 @@ class UserController extends Controller
             'status' => 'success',
             'data' => $this->userService->getFilterOptions(),
         ]);
+    }
+
+    public function advancedSearch(Request $request): AnonymousResourceCollection
+    {
+        $filters = $request->validate([
+            'search' => ['nullable', 'string', 'max:255'], 'role' => ['nullable', 'string'],
+            'status' => ['nullable', 'in:active,inactive'], 'context' => ['nullable', 'string'],
+            'agent_id' => ['nullable', 'uuid'], 'verified' => ['nullable', 'in:email,phone'],
+            'sort_by' => ['nullable', 'in:first_name,last_name,email,created_at,last_login_at'],
+            'sort_order' => ['nullable', 'in:asc,desc'], 'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+        ]);
+
+        return UserResource::collection($this->userService->getAllUsers($filters));
+    }
+
+    public function export(Request $request)
+    {
+        $filters = $request->only(['search', 'role', 'status', 'context', 'agent_id', 'verified', 'sort_by', 'sort_order']);
+        $users = $this->userService->getAllUsers([...$filters, 'per_page' => 100000])->getCollection();
+        $header = ['id', 'first_name', 'last_name', 'email', 'phone', 'is_active', 'roles', 'created_at'];
+        $lines = [$header];
+        foreach ($users as $user) {
+            $lines[] = [$user->id, $user->first_name, $user->last_name, $user->email, $user->phone, $user->is_active ? 'yes' : 'no', $user->roles->pluck('name')->implode('|'), $user->created_at?->toIso8601String()];
+        }
+        $csv = collect($lines)->map(fn ($row) => collect($row)->map(fn ($value) => '"' . str_replace('"', '""', (string) $value) . '"')->implode(','))->implode("\n");
+
+        return response($csv, 200, ['Content-Type' => 'text/csv', 'Content-Disposition' => 'attachment; filename="users.csv"']);
+    }
+
+    public function import(Request $request): JsonResponse
+    {
+        $data = $request->validate(['file' => ['required', 'file', 'mimes:csv,txt', 'max:5120']]);
+        $handle = fopen($data['file']->getRealPath(), 'r');
+        $headers = array_map(fn ($value) => strtolower(trim($value)), fgetcsv($handle) ?: []);
+        abort_unless(in_array('email', $headers, true) && in_array('first_name', $headers, true), 422, 'CSV must include first_name and email columns.');
+        $created = 0; $skipped = 0; $errors = [];
+        while (($values = fgetcsv($handle)) !== false) {
+            if (count($values) !== count($headers)) { $skipped++; continue; }
+            $row = array_combine($headers, $values);
+            if (User::where('email', strtolower(trim($row['email'] ?? '')))->exists()) { $skipped++; continue; }
+            try {
+                $userData = [
+                    'first_name' => trim($row['first_name']), 'last_name' => trim($row['last_name'] ?? '') ?: null,
+                    'email' => strtolower(trim($row['email'])), 'phone' => trim($row['phone'] ?? '') ?: null,
+                    'password' => Str::random(16) . 'Aa1!', 'is_active' => strtolower(trim($row['is_active'] ?? 'yes')) !== 'no',
+                ];
+                $roles = array_values(array_filter(explode('|', $row['roles'] ?? '')));
+                if ($roles) { $userData['roles'] = $roles; }
+                $this->userService->createUser($userData);
+                $created++;
+            } catch (\Throwable $exception) { $skipped++; $errors[] = ($row['email'] ?? 'row') . ': ' . $exception->getMessage(); }
+        }
+        fclose($handle);
+
+        return response()->json(['status' => 'success', 'data' => ['created' => $created, 'skipped' => $skipped, 'errors' => array_slice($errors, 0, 25)]]);
+    }
+
+    public function bulk(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'user_ids' => ['required', 'array', 'min:1'], 'user_ids.*' => ['uuid', 'exists:users,id'],
+            'action' => ['required', Rule::in(['activate', 'deactivate', 'delete', 'assign_role'])],
+            'role' => ['nullable', 'required_if:action,assign_role', 'string', 'exists:roles,name'],
+        ]);
+        abort_if(in_array(auth()->id(), $data['user_ids'], true) && in_array($data['action'], ['deactivate', 'delete'], true), 422, 'You cannot deactivate or delete your own account.');
+        $users = User::whereIn('id', $data['user_ids'])->get();
+        DB::transaction(function () use ($users, $data) {
+            foreach ($users as $user) {
+                match ($data['action']) {
+                    'activate' => $user->update(['is_active' => true]),
+                    'deactivate' => $user->update(['is_active' => false]),
+                    'delete' => $user->delete(),
+                    'assign_role' => $user->syncRoles([$data['role']]),
+                };
+            }
+        });
+
+        return response()->json(['status' => 'success', 'message' => 'Bulk user action completed', 'data' => ['affected' => $users->count()]]);
     }
 
     /**

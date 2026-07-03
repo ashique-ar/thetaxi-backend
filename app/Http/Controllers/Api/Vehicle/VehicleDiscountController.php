@@ -9,6 +9,7 @@ use App\Http\Resources\Vehicle\VehicleDiscountResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
 /**
@@ -21,10 +22,10 @@ class VehicleDiscountController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('permission:vehicle-discounts.view')->only(['index', 'show', 'getApplicable']);
+        $this->middleware('permission:vehicle-discounts.view')->only(['index', 'show', 'getApplicable', 'calculatePreview', 'getStats', 'history']);
         $this->middleware('permission:vehicle-discounts.create')->only(['store']);
-        $this->middleware('permission:vehicle-discounts.edit')->only(['update', 'toggleStatus']);
-        $this->middleware('permission:vehicle-discounts.delete')->only(['destroy']);
+        $this->middleware('permission:vehicle-discounts.edit')->only(['update', 'toggleStatus', 'bulkToggleStatus']);
+        $this->middleware('permission:vehicle-discounts.delete')->only(['destroy', 'bulkDestroy']);
     }
 
     /**
@@ -143,6 +144,32 @@ class VehicleDiscountController extends Controller
         return response()->json([
             'status' => 'success',
             'data' => new VehicleDiscountResource($vehicleDiscount)
+        ]);
+    }
+
+    public function history(VehicleDiscount $vehicleDiscount): JsonResponse
+    {
+        $activities = $vehicleDiscount->activities()
+            ->with('causer:id,first_name,last_name,email')
+            ->latest()
+            ->limit(50)
+            ->get()
+            ->map(fn ($activity) => [
+                'id' => $activity->id,
+                'event' => $activity->event,
+                'description' => $activity->description,
+                'changes' => $activity->properties,
+                'causer' => $activity->causer ? [
+                    'id' => $activity->causer->id,
+                    'name' => trim($activity->causer->first_name . ' ' . $activity->causer->last_name),
+                    'email' => $activity->causer->email,
+                ] : null,
+                'created_at' => $activity->created_at,
+            ]);
+
+        return response()->json([
+            'status' => 'success',
+            'data' => ['history' => $activities],
         ]);
     }
 
@@ -310,6 +337,24 @@ class VehicleDiscountController extends Controller
                 'updated_count' => $updatedCount,
                 'is_active' => $request->is_active
             ]
+        ]);
+    }
+
+    public function bulkDestroy(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'discount_ids' => ['required', 'array', 'min:1'],
+            'discount_ids.*' => ['string', 'distinct', 'exists:vehicle_discounts,id'],
+        ]);
+
+        $deletedCount = DB::transaction(
+            fn () => VehicleDiscount::whereIn('id', $validated['discount_ids'])->delete()
+        );
+
+        return response()->json([
+            'status' => 'success',
+            'message' => "Successfully deleted {$deletedCount} discounts",
+            'data' => ['deleted_count' => $deletedCount],
         ]);
     }
 }

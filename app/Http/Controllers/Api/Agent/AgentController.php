@@ -20,9 +20,9 @@ class AgentController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('permission:agents.view')->only(['index','show','dashboardStats','topPerformers']);
+        $this->middleware('permission:agents.view')->only(['index','show','dashboardStats','topPerformers','statistics','export']);
         $this->middleware('permission:agents.create')->only(['store']);
-        $this->middleware('permission:agents.edit')->only(['update']);
+        $this->middleware('permission:agents.edit')->only(['update','updateBranding','resetPassword']);
         $this->middleware('permission:agents.delete')->only(['destroy']);
     }
 
@@ -56,6 +56,45 @@ class AgentController extends Controller
             ->get();
 
         return AgentResource::collection($agents);
+    }
+
+    public function statistics(Agent $agent): JsonResponse
+    {
+        $agent->loadCount('bookings')->loadSum('commissions', 'amount');
+        return response()->json(['status' => 'success', 'data' => [
+            'agent_id' => $agent->id, 'total_bookings' => $agent->bookings_count,
+            'total_commissions' => (float) ($agent->commissions_sum_amount ?? 0),
+            'pending_commissions' => (float) $agent->commissions()->where('paid', false)->sum('amount'),
+            'commission_rate' => (float) $agent->commission_rate,
+        ]]);
+    }
+
+    public function export(Request $request)
+    {
+        $agents = Agent::with('user')->withCount('bookings')->withSum('commissions', 'amount')
+            ->when($request->filled('status'), fn ($query) => $query->whereHas('user', fn ($user) => $user->where('is_active', $request->input('status') === 'active')))
+            ->orderBy('code')->get();
+        $rows = [['code', 'name', 'email', 'commission_rate', 'bookings', 'commissions', 'status']];
+        foreach ($agents as $agent) {
+            $rows[] = [$agent->code, trim($agent->user?->first_name . ' ' . $agent->user?->last_name), $agent->user?->email, $agent->commission_rate, $agent->bookings_count, $agent->commissions_sum_amount ?? 0, $agent->user?->is_active ? 'active' : 'inactive'];
+        }
+        $csv = collect($rows)->map(fn ($row) => collect($row)->map(fn ($value) => '"' . str_replace('"', '""', (string) $value) . '"')->implode(','))->implode("\n");
+        return response($csv, 200, ['Content-Type' => 'text/csv', 'Content-Disposition' => 'attachment; filename="agents.csv"']);
+    }
+
+    public function updateBranding(Request $request, Agent $agent): JsonResponse
+    {
+        $data = $request->validate(['branding_config' => ['required', 'array'], 'branding_config.logo_url' => ['nullable', 'url', 'max:2048'], 'branding_config.primary_color' => ['nullable', 'regex:/^#[0-9a-fA-F]{6}$/'], 'branding_config.company_name' => ['nullable', 'string', 'max:255']]);
+        $agent->update(['branding_config' => $data['branding_config'], 'updated_user_id' => $request->user()->id]);
+        return response()->json(['status' => 'success', 'message' => 'Agent branding updated', 'data' => ['branding_config' => $agent->fresh()->branding_config]]);
+    }
+
+    public function resetPassword(Request $request, Agent $agent): JsonResponse
+    {
+        $data = $request->validate(['password' => ['nullable', 'string', 'min:12', 'confirmed']]);
+        $temporaryPassword = $data['password'] ?? (Str::random(16) . 'Aa1!');
+        $agent->user()->update(['password' => Hash::make($temporaryPassword), 'password_changed_at' => now()]);
+        return response()->json(['status' => 'success', 'message' => 'Agent password reset', 'data' => ['temporary_password' => $data['password'] ? null : $temporaryPassword]]);
     }
 
     public function index(Request $request): AnonymousResourceCollection

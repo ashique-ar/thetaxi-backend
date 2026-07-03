@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
+use App\Models\LoyaltyPointTransaction;
+use App\Models\LoyaltyReward;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -16,13 +18,21 @@ class LoyaltyController extends Controller
     public function __construct()
     {
         $this->middleware('auth:api');
-        $this->middleware('permission:loyalty.view')->only([
+        $this->middleware('permission:loyalty.view|customers.loyalty')->only([
             'getCustomerLoyaltyPoints',
             'getCustomerLoyaltyTier',
             'getCustomerLoyaltyHistory',
             'getLoyaltyTiers',
             'getLoyaltyRewards',
-            'getLoyaltyActivity'
+            'getLoyaltyActivity',
+            'getLoyaltyStats',
+            'getRewardRedemptions',
+        ]);
+        $this->middleware('permission:customers.loyalty')->only([
+            'storeReward',
+            'updateReward',
+            'deleteReward',
+            'updateRewardStatus',
         ]);
         $this->middleware('permission:loyalty.redeem')->only(['redeemPoints']);
     }
@@ -166,50 +176,104 @@ class LoyaltyController extends Controller
      */
     public function getLoyaltyRewards(): JsonResponse
     {
-        $rewards = [
-            [
-                'id' => 1,
-                'name' => '5% Discount',
-                'description' => '5% discount on next booking',
-                'points_required' => 100,
-                'type' => 'discount',
-                'value' => 5,
-                'is_active' => true
-            ],
-            [
-                'id' => 2,
-                'name' => '10% Discount',
-                'description' => '10% discount on next booking',
-                'points_required' => 200,
-                'type' => 'discount',
-                'value' => 10,
-                'is_active' => true
-            ],
-            [
-                'id' => 3,
-                'name' => 'Free Upgrade',
-                'description' => 'Free vehicle upgrade',
-                'points_required' => 500,
-                'type' => 'upgrade',
-                'value' => 1,
-                'is_active' => true
-            ],
-            [
-                'id' => 4,
-                'name' => 'Free Booking',
-                'description' => 'One free booking (up to $50)',
-                'points_required' => 1000,
-                'type' => 'free_booking',
-                'value' => 50,
-                'is_active' => true
-            ]
-        ];
+        $rewards = LoyaltyReward::orderBy('points_required')->orderBy('name')->get();
         
         return response()->json([
             'status' => 'success',
+            'data' => $rewards
+        ]);
+    }
+
+    public function storeReward(Request $request): JsonResponse
+    {
+        $data = $this->validateReward($request);
+        $reward = LoyaltyReward::create($data);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Reward created',
+            'data' => $reward,
+        ], 201);
+    }
+
+    public function updateReward(Request $request, LoyaltyReward $reward): JsonResponse
+    {
+        $reward->update($this->validateReward($request, true));
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Reward updated',
+            'data' => $reward->fresh(),
+        ]);
+    }
+
+    public function deleteReward(LoyaltyReward $reward): JsonResponse
+    {
+        $reward->delete();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Reward deleted',
+        ]);
+    }
+
+    public function updateRewardStatus(Request $request, LoyaltyReward $reward): JsonResponse
+    {
+        $data = $request->validate([
+            'is_active' => 'required|boolean',
+        ]);
+
+        $reward->update(['is_active' => $data['is_active']]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => $reward->is_active ? 'Reward activated' : 'Reward deactivated',
+            'data' => $reward->fresh(),
+        ]);
+    }
+
+    public function getRewardRedemptions(LoyaltyReward $reward): JsonResponse
+    {
+        $redemptions = LoyaltyPointTransaction::redeemed()
+            ->with('customer.user')
+            ->where('metadata->reward_id', $reward->id)
+            ->latest()
+            ->limit(25)
+            ->get()
+            ->map(fn (LoyaltyPointTransaction $transaction) => [
+                'id' => $transaction->id,
+                'reward_id' => $reward->id,
+                'reward_name' => $reward->name,
+                'reward_category' => $reward->category,
+                'customer_id' => $transaction->customer_id,
+                'customer_name' => trim(($transaction->customer?->user?->first_name ?? '') . ' ' . ($transaction->customer?->user?->last_name ?? '')) ?: 'Unknown customer',
+                'points_spent' => abs((int) $transaction->points),
+                'redeemed_at' => $transaction->created_at,
+            ]);
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $redemptions,
+        ]);
+    }
+
+    public function getLoyaltyStats(): JsonResponse
+    {
+        $redemptions = LoyaltyPointTransaction::redeemed()->completed();
+        $monthRedemptions = (clone $redemptions)->whereMonth('created_at', now()->month)->whereYear('created_at', now()->year);
+
+        $totalRedeemed = (clone $redemptions)->count();
+        $totalPoints = abs((int) (clone $redemptions)->sum('points'));
+
+        return response()->json([
+            'status' => 'success',
             'data' => [
-                'rewards' => $rewards
-            ]
+                'total_rewards_redeemed' => $totalRedeemed,
+                'redemptions_this_month' => (clone $monthRedemptions)->count(),
+                'total_points_redeemed' => $totalPoints,
+                'points_spent_this_month' => abs((int) (clone $monthRedemptions)->sum('points')),
+                'average_redemption' => $totalRedeemed > 0 ? (int) round($totalPoints / $totalRedeemed) : 0,
+            ],
         ]);
     }
 
@@ -221,6 +285,29 @@ class LoyaltyController extends Controller
     {
         $limit = $request->get('limit', 20);
         $period = $request->get('period', 'all');
+
+        if ($request->get('type') === 'redeemed') {
+            $activity = LoyaltyPointTransaction::redeemed()
+                ->completed()
+                ->with('customer.user')
+                ->latest()
+                ->limit($limit)
+                ->get()
+                ->map(fn (LoyaltyPointTransaction $transaction) => [
+                    'id' => $transaction->id,
+                    'customer_id' => $transaction->customer_id,
+                    'customer_name' => trim(($transaction->customer?->user?->first_name ?? '') . ' ' . ($transaction->customer?->user?->last_name ?? '')) ?: 'Unknown customer',
+                    'reward_name' => data_get($transaction->metadata, 'reward_name', $transaction->redemption_reason ?: 'Loyalty reward'),
+                    'reward_category' => data_get($transaction->metadata, 'reward_category', 'discount'),
+                    'points_spent' => abs((int) $transaction->points),
+                    'redeemed_at' => $transaction->created_at,
+                ]);
+
+            return response()->json([
+                'status' => 'success',
+                'data' => $activity,
+            ]);
+        }
 
         $query = User::select([
             'users.id',
@@ -274,6 +361,23 @@ class LoyaltyController extends Controller
                 'period' => $period,
                 'limit' => $limit
             ]
+        ]);
+    }
+
+    private function validateReward(Request $request, bool $partial = false): array
+    {
+        $required = $partial ? 'sometimes' : 'required';
+
+        return $request->validate([
+            'name' => [$required, 'string', 'max:255'],
+            'description' => ['nullable', 'string'],
+            'points_required' => [$required, 'integer', 'min:1'],
+            'value' => ['nullable', 'numeric', 'min:0'],
+            'category' => ['nullable', 'string', 'max:50'],
+            'stock_quantity' => ['nullable', 'integer', 'min:0'],
+            'is_active' => ['sometimes', 'boolean'],
+            'starts_at' => ['nullable', 'date'],
+            'ends_at' => ['nullable', 'date', 'after_or_equal:starts_at'],
         ]);
     }
 

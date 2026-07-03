@@ -83,6 +83,58 @@ class DriverLogController extends Controller
         ]);
     }
 
+    public function assign(Request $request, DriverLog $driverLog): JsonResponse
+    {
+        $data = $request->validate([
+            'driver_id' => 'required|exists:drivers,id',
+        ]);
+
+        $driverLog->update([
+            'driver_id' => $data['driver_id'],
+            'updated_user_id' => $request->user()?->id,
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Driver assigned to log sheet',
+            'data' => new DriverLogResource($driverLog->fresh(['driver', 'booking', 'createdBy'])),
+        ]);
+    }
+
+    public function verify(Request $request, DriverLog $driverLog): JsonResponse
+    {
+        $data = $request->validate([
+            'status' => 'nullable|in:approved,rejected',
+            'verification_status' => 'nullable|in:approved,rejected',
+            'verification_notes' => 'nullable|string|max:1000',
+        ]);
+
+        $driverLog->update([
+            'status' => $data['status'] ?? $data['verification_status'] ?? 'approved',
+            'updated_user_id' => $request->user()?->id,
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => $driverLog->status === 'approved' ? 'Log sheet verified' : 'Log sheet rejected',
+            'data' => new DriverLogResource($driverLog->fresh(['driver', 'booking', 'createdBy'])),
+        ]);
+    }
+
+    public function cancel(Request $request, DriverLog $driverLog): JsonResponse
+    {
+        $driverLog->update([
+            'status' => 'rejected',
+            'updated_user_id' => $request->user()?->id,
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Log sheet cancelled',
+            'data' => new DriverLogResource($driverLog->fresh(['driver', 'booking', 'createdBy'])),
+        ]);
+    }
+
     public function stats(): JsonResponse
     {
         return response()->json([

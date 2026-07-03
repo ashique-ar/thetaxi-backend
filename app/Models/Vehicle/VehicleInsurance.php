@@ -6,6 +6,7 @@ use App\Models\BaseModel;
 use App\Traits\UUID;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * Vehicle Insurance Model
@@ -100,6 +101,11 @@ class VehicleInsurance extends BaseModel
     public function insuranceType(): BelongsTo
     {
         return $this->belongsTo(VehicleInsuranceType::class, 'insurance_type_id');
+    }
+
+    public function claims(): HasMany
+    {
+        return $this->hasMany(VehicleInsuranceClaim::class, 'vehicle_insurance_id');
     }
 
     /**

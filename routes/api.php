@@ -22,6 +22,7 @@ use App\Http\Controllers\Api\Booking\BookingChannelController;
 use App\Http\Controllers\Api\Booking\BookingStatusController;
 use App\Http\Controllers\Api\BusinessSettingController;
 use App\Http\Controllers\Api\CompanyController;
+use App\Http\Controllers\Api\Company\RegionController;
 use App\Http\Controllers\Api\CountryController;
 use App\Http\Controllers\Api\CurrencyController;
 use App\Http\Controllers\Api\Driver\DriverController;
@@ -58,6 +59,7 @@ use App\Http\Controllers\Api\Vehicle\VehicleGradeController;
 use App\Http\Controllers\Api\Vehicle\VehicleGroupController;
 use App\Http\Controllers\Api\Vehicle\VehicleImageController;
 use App\Http\Controllers\Api\Vehicle\VehicleInsuranceController;
+use App\Http\Controllers\Api\Vehicle\VehicleInsuranceClaimController;
 use App\Http\Controllers\Api\Vehicle\VehicleInsuranceProviderController;
 use App\Http\Controllers\Api\Vehicle\VehicleInsuranceTypeController;
 use App\Http\Controllers\Api\Vehicle\VehicleMaintenanceRecordController;
@@ -270,6 +272,8 @@ Route::middleware(['auth:api'])->group(function () {
     Route::middleware(['permission:users.view'])->group(function () {
         Route::get('users', [UserController::class, 'index']);
         Route::get('users/filter-options', [UserController::class, 'filterOptions']);
+        Route::post('users/search/advanced', [UserController::class, 'advancedSearch']);
+        Route::get('users/export', [UserController::class, 'export'])->middleware('permission:users.manage');
         Route::get('users/{user}', [UserController::class, 'show']);
         Route::get('users/{user}/permissions', [UserController::class, 'permissions'])->middleware('permission:permissions.manage');
         Route::get('users/{user}/roles', [UserController::class, 'roles'])->middleware('permission:users.edit');
@@ -278,6 +282,8 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('users/{user}/contexts', [UserController::class, 'contexts']);
     });
     Route::post('users', [UserController::class, 'store'])->middleware('permission:users.create');
+    Route::post('users/import', [UserController::class, 'import'])->middleware('permission:users.manage');
+    Route::post('users/bulk', [UserController::class, 'bulk'])->middleware('permission:users.manage');
     Route::put('users/{user}', [UserController::class, 'update'])->middleware('permission:users.edit');
     Route::delete('users/{user}', [UserController::class, 'destroy'])->middleware('permission:users.delete');
     Route::post('users/{user}/activate', [UserController::class, 'activate'])->middleware('permission:users.manage');
@@ -458,6 +464,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::apiResource('countries', CountryController::class);
         Route::get('countries/{country}/states', [StateController::class, 'index']);
         Route::apiResource('states', StateController::class);
+        Route::apiResource('regions', RegionController::class);
 
         Route::apiResource('business-settings', BusinessSettingController::class);
         Route::apiResource('currencies', CurrencyController::class);
@@ -587,6 +594,7 @@ Route::middleware(['auth:api'])->group(function () {
             Route::apiResource('vehicle-groups', VehicleGroupController::class);
             Route::apiResource('vehicle-images', VehicleImageController::class);
             Route::post('vehicle-insurances/{vehicleInsurance}/renew', [VehicleInsuranceController::class, 'renew']);
+            Route::apiResource('vehicle-insurances.claims', VehicleInsuranceClaimController::class)->shallow(false);
             Route::apiResource('vehicle-insurances', VehicleInsuranceController::class);
             Route::post('vehicle-revenue-licenses/{vehicleRevenueLicense}/renew', [VehicleRevenueLicenseController::class, 'renew']);
             Route::apiResource('vehicle-revenue-licenses', VehicleRevenueLicenseController::class);
@@ -708,14 +716,16 @@ Route::middleware(['auth:api'])->group(function () {
             Route::prefix('vehicle-discounts')->group(function () {
                 Route::get('/', [VehicleDiscountController::class, 'index']);
                 Route::post('/', [VehicleDiscountController::class, 'store']);
+                Route::delete('/bulk', [VehicleDiscountController::class, 'bulkDestroy']);
+                Route::post('/bulk/toggle-status', [VehicleDiscountController::class, 'bulkToggleStatus']);
+                Route::get('/applicable/search', [VehicleDiscountController::class, 'getApplicable']);
+                Route::post('/calculate-preview', [VehicleDiscountController::class, 'calculatePreview']);
+                Route::get('/stats/overview', [VehicleDiscountController::class, 'getStats']);
                 Route::get('/{vehicleDiscount}', [VehicleDiscountController::class, 'show']);
                 Route::put('/{vehicleDiscount}', [VehicleDiscountController::class, 'update']);
                 Route::delete('/{vehicleDiscount}', [VehicleDiscountController::class, 'destroy']);
                 Route::patch('/{vehicleDiscount}/toggle-status', [VehicleDiscountController::class, 'toggleStatus']);
-                Route::get('/applicable/search', [VehicleDiscountController::class, 'getApplicable']);
-                Route::post('/calculate-preview', [VehicleDiscountController::class, 'calculatePreview']);
-                Route::get('/stats/overview', [VehicleDiscountController::class, 'getStats']);
-                Route::post('/bulk/toggle-status', [VehicleDiscountController::class, 'bulkToggleStatus']);
+                Route::get('/{vehicleDiscount}/history', [VehicleDiscountController::class, 'history']);
             });
 
             // Quick Pricing Calculator
@@ -726,6 +736,9 @@ Route::middleware(['auth:api'])->group(function () {
                 Route::post('/bulk-update', [VehicleGroupPricingController::class, 'bulkUpdate']);
                 Route::post('/copy-pricing', [VehicleGroupPricingController::class, 'copyPricing']);
                 Route::get('/bulk-operations', [VehicleGroupPricingController::class, 'getBulkOperations']);
+                Route::post('/bulk-operations/{id}/cancel', [VehicleGroupPricingController::class, 'cancelBulkOperation']);
+                Route::post('/bulk-operations/{id}/retry', [VehicleGroupPricingController::class, 'retryBulkOperation']);
+                Route::get('/bulk-operations/{id}/report', [VehicleGroupPricingController::class, 'downloadBulkOperationReport']);
                 Route::get('/bulk-operations/{id}', [VehicleGroupPricingController::class, 'getBulkOperationStatus']);
 
                 // Import/Export
@@ -819,20 +832,40 @@ Route::middleware(['auth:api'])->group(function () {
             ->middleware('permission:medical-records.view');
         Route::post('/', [MedicalRecordController::class, 'store'])
             ->middleware('permission:medical-records.create');
+        Route::get('/categories', [MedicalRecordController::class, 'getCategories'])
+            ->middleware('permission:medical-records.view');
+        Route::get('/stats', [MedicalRecordController::class, 'getStats'])
+            ->middleware('permission:medical-records.view');
+        Route::get('/expiring', [MedicalRecordController::class, 'getExpiringRecords'])
+            ->middleware('permission:medical-records.view');
+        Route::post('/bulk-update', [MedicalRecordController::class, 'bulkUpdate'])
+            ->middleware('permission:medical-records.manage');
+        Route::post('/bulk/delete', [MedicalRecordController::class, 'bulkDelete'])
+            ->middleware('permission:medical-records.delete');
+        Route::post('/bulk/export', [MedicalRecordController::class, 'bulkExport'])
+            ->middleware('permission:medical-records.view');
+        Route::post('/bulk/status', [MedicalRecordController::class, 'bulkStatus'])
+            ->middleware('permission:medical-records.manage');
+        Route::post('/send-reminders', [MedicalRecordController::class, 'sendReminders'])
+            ->middleware('permission:medical-records.view');
+        Route::get('/compliance-report', [MedicalRecordController::class, 'getComplianceReport'])
+            ->middleware('permission:medical-records.view');
+        Route::get('/compliance/{subjectType}/{subjectId}', [MedicalRecordController::class, 'getSubjectComplianceReport'])
+            ->middleware('permission:medical-records.view');
+        Route::get('/subject/{subjectType}/{subjectId}', [MedicalRecordController::class, 'getRecordsBySubject'])
+            ->middleware('permission:medical-records.view');
+        Route::get('/{id}/document', [MedicalRecordController::class, 'downloadDocument'])
+            ->middleware('permission:medical-records.view');
+        Route::post('/{id}/upload-document', [MedicalRecordController::class, 'uploadDocument'])
+            ->middleware('permission:medical-records.edit');
+        Route::post('/{id}/upload', [MedicalRecordController::class, 'uploadDocument'])
+            ->middleware('permission:medical-records.edit');
         Route::get('/{id}', [MedicalRecordController::class, 'show'])
             ->middleware('permission:medical-records.view');
         Route::put('/{id}', [MedicalRecordController::class, 'update'])
             ->middleware('permission:medical-records.edit');
         Route::delete('/{id}', [MedicalRecordController::class, 'destroy'])
             ->middleware('permission:medical-records.delete');
-        Route::post('/bulk-update', [MedicalRecordController::class, 'bulkUpdate'])
-            ->middleware('permission:medical-records.manage');
-        Route::get('/compliance-report', [MedicalRecordController::class, 'getComplianceReport'])
-            ->middleware('permission:medical-records.view');
-        Route::post('/{id}/upload-document', [MedicalRecordController::class, 'uploadDocument'])
-            ->middleware('permission:medical-records.edit');
-        Route::get('/categories', [MedicalRecordController::class, 'getCategories'])
-            ->middleware('permission:medical-records.view');
     });
 
     Route::group(['prefix' => 'availability'], function () {
@@ -859,6 +892,7 @@ Route::middleware(['auth:api'])->group(function () {
     Route::middleware(['permission:agents.view'])->group(function () {
         Route::get('agents/dashboard-stats', [AgentController::class, 'dashboardStats']);
         Route::get('agents/top-performers', [AgentController::class, 'topPerformers']);
+        Route::get('agents/export', [AgentController::class, 'export']);
         Route::prefix('agents')->group(function () {
             Route::get('api-management/stats', [AgentApiController::class, 'stats']);
             Route::post('api-management/{agentApi}/revoke', [AgentApiController::class, 'revoke']);
@@ -870,7 +904,10 @@ Route::middleware(['auth:api'])->group(function () {
             Route::apiResource('agent-api-sessions', AgentApiSessionController::class);
             Route::apiResource('agent-commissions', AgentCommissionController::class);
             Route::post('agent-commissions/settle', [AgentCommissionController::class, 'settle']);
-            Route::get('agents/{agentId}/commission-statement', [AgentCommissionController::class, 'statement']);
+            Route::get('{agentId}/commission-statement', [AgentCommissionController::class, 'statement']);
+            Route::get('{agent}/statistics', [AgentController::class, 'statistics']);
+            Route::put('{agent}/branding', [AgentController::class, 'updateBranding']);
+            Route::post('{agent}/reset-password', [AgentController::class, 'resetPassword']);
         });
         Route::apiResource('agents', AgentController::class);
     });
@@ -897,6 +934,9 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('logsheets/dashboard', [DriverLogController::class, 'stats']);
         Route::get('logsheets', [DriverLogController::class, 'index']);
         Route::post('logsheets', [DriverLogController::class, 'store']);
+        Route::post('logsheets/{driverLog}/assign', [DriverLogController::class, 'assign']);
+        Route::post('logsheets/{driverLog}/verify', [DriverLogController::class, 'verify']);
+        Route::post('logsheets/{driverLog}/cancel', [DriverLogController::class, 'cancel']);
         Route::get('logsheets/{driverLog}', [DriverLogController::class, 'show']);
         Route::put('logsheets/{driverLog}', [DriverLogController::class, 'update']);
         Route::delete('logsheets/{driverLog}', [DriverLogController::class, 'destroy']);
@@ -956,6 +996,8 @@ Route::middleware(['auth:api'])->group(function () {
     Route::middleware(['permission:agreements.view'])->group(function () {
         Route::get('agreements/stats', [AgreementController::class, 'stats']);
         Route::get('agreements/reports', [AgreementController::class, 'reports']);
+        Route::get('agreements/reports/export', [AgreementController::class, 'exportReport']);
+        Route::post('agreements/preview', [AgreementController::class, 'preview']);
         Route::get('agreement-templates', [AgreementController::class, 'templates']);
         Route::get('agreement-templates/{template}', [AgreementController::class, 'showTemplate']);
         Route::post('agreement-templates', [AgreementController::class, 'storeTemplate']);
@@ -1391,16 +1433,22 @@ Route::middleware(['auth:api'])->group(function () {
     |--------------------------------------------------------------------------
     */
 
-    Route::prefix('customers/{customer}/loyalty')->middleware(['permission:loyalty.view'])->group(function () {
+    Route::prefix('customers/{customer}/loyalty')->middleware(['permission:loyalty.view|customers.loyalty'])->group(function () {
         Route::get('points', [LoyaltyController::class, 'getCustomerLoyaltyPoints']);
         Route::get('tier', [LoyaltyController::class, 'getCustomerLoyaltyTier']);
         Route::get('history', [LoyaltyController::class, 'getCustomerLoyaltyHistory']);
         Route::post('redeem', [LoyaltyController::class, 'redeemPoints'])->middleware('permission:loyalty.redeem');
     });
 
-    Route::middleware(['permission:loyalty.view'])->group(function () {
+    Route::middleware(['permission:loyalty.view|customers.loyalty'])->group(function () {
         Route::get('customers/loyalty/tiers', [LoyaltyController::class, 'getLoyaltyTiers']);
+        Route::get('customers/loyalty/stats', [LoyaltyController::class, 'getLoyaltyStats']);
         Route::get('customers/loyalty/rewards', [LoyaltyController::class, 'getLoyaltyRewards']);
+        Route::post('customers/loyalty/rewards', [LoyaltyController::class, 'storeReward'])->middleware('permission:customers.loyalty');
+        Route::put('customers/loyalty/rewards/{reward}', [LoyaltyController::class, 'updateReward'])->middleware('permission:customers.loyalty');
+        Route::delete('customers/loyalty/rewards/{reward}', [LoyaltyController::class, 'deleteReward'])->middleware('permission:customers.loyalty');
+        Route::post('customers/loyalty/rewards/{reward}/status', [LoyaltyController::class, 'updateRewardStatus'])->middleware('permission:customers.loyalty');
+        Route::get('customers/loyalty/rewards/{reward}/redemptions', [LoyaltyController::class, 'getRewardRedemptions']);
         Route::get('customers/loyalty/activity', [LoyaltyController::class, 'getLoyaltyActivity']);
     });
 
