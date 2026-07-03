@@ -426,7 +426,7 @@
 
                                 <!-- Payment CTA -->
                                 <div class="btn-container" style="margin: 30px 0;">
-                                    <button type="submit" class="btn">
+                                    <button type="submit" class="btn submit-btn">
                                         Pay {{ $currencySymbol }} {{ number_format(floor(max(0, $amountDue)), 0) }}
                                     </button>
                                     <p style="text-align: center; color: #717171; font-size: 13px; margin: 10px 0;">
@@ -513,7 +513,7 @@
         .intro-text {
             font-size: 15px;
             color: #555555;
-            line-height: 0.5;
+            line-height: 1.7;
             margin-bottom: 0;
         }
 
