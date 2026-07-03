@@ -113,6 +113,13 @@
         @endif
     </div>
 
+    <!-- Payment Summary Section -->
+    <div class="section">
+        <h2 class="section-title">
+            <span class="icon">💳</span> Quotation Summary
+        </h2>
+        <x-booking-payment-summary :booking="$booking" :currencySymbol="$currencySymbol" :showMethod="false" />
+    </div>
     @if ($booking->special_requirements)
         <div class="section">
             <h2 class="section-title">

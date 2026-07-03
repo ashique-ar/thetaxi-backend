@@ -114,7 +114,7 @@
                                         ));
                                         $baseItemTotal = (float) ($item['total_price'] ?? 0);
                                         $itemGrandTotal = $baseItemTotal + (float) $addonsTotal + (float) $extraKmTotal;
-                                        $baseTotalKm = $item['base_total_km'] ?? null;
+                                        $baseTotalKm = $item['display_base_total_km'] ?? ($item['base_total_km'] ?? null);
                                         $totalKmWithExtra = $item['total_km_with_extra'] ?? (
                                             $baseTotalKm !== null ? (float) $baseTotalKm + (float) $extraKilometers : null
                                         );
@@ -235,7 +235,7 @@
                                                 </div>
                                             </div>
                                         @endif
-                                        @if ($baseTotalKm !== null)
+                                        @if ($extraKilometers > 0 && $baseTotalKm !== null)
                                             <div class="total-km-section"
                                                 style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #eee;">
                                                 <div style="display: flex; justify-content: space-between; align-items: center; padding: 5px 0;">
@@ -315,11 +315,25 @@
                             </h2>
                             <table class="info-table">
                                 <tr>
-                                    <td>Base Amount</td>
+                                    <td>Subtotal</td>
                                     <td>{{ $currencySymbol }}
                                         {{ number_format(floor(max(0, $context['pricing']['base_amount'])), 0) }}
                                     </td>
                                 </tr>
+                                @if (($context['pricing']['addon_charges'] ?? 0) > 0)
+                                    <tr>
+                                        <td>Add-on Charges</td>
+                                        <td>{{ $currencySymbol }}
+                                            {{ number_format(floor(max(0, $context['pricing']['addon_charges'])), 0) }}</td>
+                                    </tr>
+                                @endif
+                                @if (($context['pricing']['extra_km_charges'] ?? 0) > 0)
+                                    <tr>
+                                        <td>Extra KM Charges</td>
+                                        <td>{{ $currencySymbol }}
+                                            {{ number_format(floor(max(0, $context['pricing']['extra_km_charges'])), 0) }}</td>
+                                    </tr>
+                                @endif
                                 @if ($context['pricing']['service_fee'] > 0)
                                     <tr>
                                         <td>Service Fee</td>
@@ -348,9 +362,9 @@
                                             {{ number_format(floor(max(0, $context['pricing']['discount_amount'])), 0) }}</td>
                                     </tr>
                                 @endif
-                                <tr class="price-total">
+                                <tr class="price-total" style="border-top: 2px solid #BF2629; border-bottom: 2px solid #BF2629;">
                                     <td>Total Booking Amount</td>
-                                    <td>{{ $currencySymbol }}
+                                    <td style="font-size: 22px; font-weight: 900;">{{ $currencySymbol }}
                                         {{ number_format(floor(max(0, $context['pricing']['total_estimated'])), 0) }}</td>
                                 </tr>
                                 @if ($context['pricing']['amount_paid'] > 0)
@@ -361,9 +375,9 @@
                                         </td>
                                     </tr>
                                 @endif
-                                <tr style="background: #fef3c7;">
+                                <tr style="background: #fef3c7; border-top: 1px solid #f59e0b;">
                                     <td><strong>Amount Due Today</strong></td>
-                                    <td><strong>{{ $currencySymbol }} {{ number_format(floor(max(0, $amountDue)), 0) }}</strong></td>
+                                    <td><strong style="font-size: 18px;">{{ $currencySymbol }} {{ number_format(floor(max(0, $amountDue)), 0) }}</strong></td>
                                 </tr>
                                 <tr>
                                     <td>Payment Status</td>

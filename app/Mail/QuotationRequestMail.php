@@ -43,6 +43,7 @@ class QuotationRequestMail extends Mailable
         try {
             $this->booking = \App\Models\Booking\Booking::with([
                 'customer.user',
+                'bookingAddons.addon',
                 'bookingItems.vehicleGroup',
                 'bookingItems.serviceType',
             ])->find($this->booking->id);

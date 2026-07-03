@@ -258,6 +258,16 @@
     $returnKm =
         $distanceDetails['return_distance_km'] ?? ($item->return_distance_km ?? ($item['return_distance_km'] ?? null));
     $hasReturnKmData = $isReturnTrip && $outboundKm && $returnKm;
+    $isDayPackage = $servicePricingMode === 'day';
+
+    $includedTotalKmForExtra = null;
+    if ($freeKmPerDay && $durationDays > 1) {
+        $includedTotalKmForExtra = (float) ($allowedTotalKm ?: ($freeKmPerDay * max(1, (int) $durationDays)));
+    } elseif ($freeKmPerPackage) {
+        $includedTotalKmForExtra = (float) $freeKmPerPackage;
+    } elseif ($allowedTotalKm) {
+        $includedTotalKmForExtra = (float) $allowedTotalKm;
+    }
 
     if (empty($extraKilometers)) {
         $extraKilometers = $distanceDetails['extra_km'] ?? 0;
@@ -287,9 +297,11 @@
         $baseTotalKm = (float) $actualJourneyDistance;
     }
 
-    $totalKmWithExtra = $baseTotalKm !== null ? $baseTotalKm + (float) $extraKilometers : null;
+    $displayBaseTotalKm = $includedTotalKmForExtra ?? $baseTotalKm;
+    $totalKmWithExtra = $extraKilometers > 0 && $displayBaseTotalKm !== null
+        ? $displayBaseTotalKm + (float) $extraKilometers
+        : null;
 
-    $isDayPackage = $servicePricingMode === 'day';
     $showReturnLocations = !$isDayPackage && $isReturnTrip;
 
     if ($showReturnLocations && empty($returnPickup)) {
@@ -560,13 +572,13 @@
             </tr>
         @endif
 
-        @if ($baseTotalKm !== null)
+        @if ($extraKilometers > 0 && $displayBaseTotalKm !== null)
             <tr>
                 <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333;">
                     Total KM
                 </td>
                 <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
-                    <strong>{{ number_format($baseTotalKm, 1) }} km</strong>
+                    <strong>{{ number_format($displayBaseTotalKm, 1) }} km</strong>
                     @if ($extraKilometers > 0 && $totalKmWithExtra !== null)
                         <small style="color: #777;"> + {{ number_format((float) $extraKilometers, 0) }} km extra =
                             {{ number_format($totalKmWithExtra, 1) }} km</small>

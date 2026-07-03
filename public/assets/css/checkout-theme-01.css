@@ -159,7 +159,10 @@ body.theme-default .cart-footer .pricing-area > ul { margin: 0; padding: 0; }
 body.theme-default .cart-footer .pricing-area > ul > li { min-height: 40px; padding: 9px 0 !important; border-bottom: 1px solid #e5e7eb !important; color: #555; font-size: 13px; }
 body.theme-default .cart-footer .pricing-area > ul > li:last-child { border-bottom: 0 !important; }
 body.theme-default .cart-footer .pricing-area > ul > li .checkout-summary-amount { color: #202020; white-space: nowrap; }
-body.theme-default .cart-footer .pricing-area > ul > li.total-row { margin-top: 8px !important; padding-top: 16px !important; border-top: 1px solid #202020 !important; font-size: 17px !important; }
+body.theme-default .cart-footer .pricing-area > ul > li.total-row { margin-top: 10px !important; padding: 16px 0 12px !important; border-top: 2px solid #202020 !important; border-bottom: 1px solid #d6d6d6 !important; font-size: 18px !important; align-items: flex-start !important; }
+body.theme-default .cart-footer .pricing-area > ul > li.total-row > div { display: flex; flex-direction: column; gap: 3px; }
+body.theme-default .cart-footer .pricing-area > ul > li.total-row small { color: #666; font-size: 11px; font-weight: 500; line-height: 1.35; }
+body.theme-default .cart-footer .pricing-area > ul > li.total-row [data-summary-field="total"] { font-size: 22px; font-weight: 800; line-height: 1.1; text-align: right; }
 body.theme-default .cart-footer .pricing-area > ul > li.payment-amount-row { margin: 10px 0 0 !important; padding: 12px !important; border: 1px solid #e5e7eb !important; border-radius: 5px !important; background: #f7f7f7 !important; }
 body.theme-default .promo-code-checkout-section { display: block !important; margin: 8px 0 !important; padding: 14px 0 !important; border-top: 1px solid #eceef1 !important; border-bottom: 1px solid #eceef1 !important; }
 body.theme-default .promo-code-checkout-wrapper { width: 100%; padding: 0 !important; border: 0 !important; background: transparent !important; }

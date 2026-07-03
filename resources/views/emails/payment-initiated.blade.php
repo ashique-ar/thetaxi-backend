@@ -83,28 +83,10 @@
     <!-- Payment Details Section -->
     <div class="section">
         <h2 class="section-title">
-            <span class="icon">💳</span> Payment Details
+            <span class="icon">💳</span> Payment Summary
         </h2>
-        <table class="info-table">
-            <tr class="price-total">
-                <td>Amount to Pay</td>
-                <td>{{ $currencySymbol }} {{ number_format(floor(max(0, $amount)), 0) }}</td>
-            </tr>
-            <tr>
-                <td>Payment Type</td>
-                <td>{{ ucfirst($booking->payment_type ?? 'full') }}</td>
-            </tr>
-            <tr>
-                <td>Payment Method</td>
-                <td>Online Payment</td>
-            </tr>
-            <tr>
-                <td>Status</td>
-                <td><span class="status-badge status-pending">⏳ Pending Completion</span></td>
-            </tr>
-        </table>
+        <x-booking-payment-summary :booking="$booking" :currencySymbol="$currencySymbol" :amountDue="$amount" />
     </div>
-
     @php
         $paymentType = $booking->payment_type ?? null;
         $serviceParams = collect();

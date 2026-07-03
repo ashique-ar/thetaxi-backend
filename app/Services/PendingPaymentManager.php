@@ -269,6 +269,28 @@ class PendingPaymentManager
             $addonsCount = $booking->addons?->count() ?? 0;
         }
 
+        $addonCharges = (float) ($booking->addons
+            ?->reject(fn ($addon) => (bool) ($addon->is_milage ?? false))
+            ->sum('amount') ?? 0);
+        $extraKmCharges = (float) ($booking->addons
+            ?->filter(fn ($addon) => (bool) ($addon->is_milage ?? false))
+            ->sum('amount') ?? 0);
+        if ($extraKmCharges <= 0 && $booking->bookingItems) {
+            foreach ($booking->bookingItems as $item) {
+                $metadata = is_array($item->metadata ?? null) ? $item->metadata : [];
+                $extraKmCharges += (float) ($metadata['extra_km_total'] ?? 0);
+
+                if (empty($metadata['extra_km_total'])) {
+                    $customizations = is_array($item->customizations ?? null) ? $item->customizations : [];
+                    foreach ($customizations as $customization) {
+                        if (($customization['type'] ?? null) === 'extra_km') {
+                            $extraKmCharges += (float) ($customization['total_cost'] ?? ($customization['total'] ?? 0));
+                        }
+                    }
+                }
+            }
+        }
+
         return [
             'booking_id' => $booking->id,
             'booking_number' => $booking->booking_number,
@@ -307,6 +329,8 @@ class PendingPaymentManager
                 'service_fee' => $booking->service_fee ?? 0,
                 'tax_amount' => $booking->tax_amount ?? 0,
                 'vat_amount' => $booking->vat_amount ?? 0,
+                'addon_charges' => $addonCharges,
+                'extra_km_charges' => $extraKmCharges,
                 'discount_amount' => $booking->discount_amount ?? 0,
                 'total_estimated' => $booking->total_estimated ?? $booking->amount_to_pay ?? $booking->quotation_amount ?? $booking->base_amount ?? 0,
                 'amount_paid' => $booking->amount_paid ?? 0,
@@ -373,6 +397,19 @@ class PendingPaymentManager
                 $distanceDetails = is_array($metadata['distance_details'] ?? null) ? $metadata['distance_details'] : [];
                 $outboundKm = $distanceDetails['outbound_distance_km'] ?? null;
                 $returnKm = $distanceDetails['return_distance_km'] ?? null;
+                $durationDays = max(1, (int) ($item->duration_days ?? 1));
+                $freeKmPerDay = $distanceDetails['free_km_per_day'] ?? null;
+                $freeKmPerPackage = $distanceDetails['free_km_per_package'] ?? null;
+                $allowedTotalKm = $distanceDetails['allowed_total_km'] ?? null;
+                $includedTotalKmForExtra = null;
+                if ($freeKmPerDay && $durationDays > 1) {
+                    $includedTotalKmForExtra = (float) ($allowedTotalKm ?: ($freeKmPerDay * $durationDays));
+                } elseif ($freeKmPerPackage) {
+                    $includedTotalKmForExtra = (float) $freeKmPerPackage;
+                } elseif ($allowedTotalKm) {
+                    $includedTotalKmForExtra = (float) $allowedTotalKm;
+                }
+
                 $baseTotalKm = null;
                 if ($outboundKm && $returnKm) {
                     $baseTotalKm = (float) $outboundKm + (float) $returnKm;
@@ -383,6 +420,7 @@ class PendingPaymentManager
                 } elseif (isset($distanceDetails['journey_distance'])) {
                     $baseTotalKm = (float) $distanceDetails['journey_distance'];
                 }
+                $displayBaseTotalKm = $includedTotalKmForExtra ?? $baseTotalKm;
 
                 return [
                     'vehicle_group' => $item->vehicle_group_name ?? ($item->vehicleGroup?->name ?? 'N/A'),
@@ -402,7 +440,10 @@ class PendingPaymentManager
                     'extra_km_rate' => $extraKmRate,
                     'extra_km_total' => $extraKmTotal,
                     'base_total_km' => $baseTotalKm,
-                    'total_km_with_extra' => $baseTotalKm !== null ? $baseTotalKm + (float) $extraKilometers : null,
+                    'display_base_total_km' => $displayBaseTotalKm,
+                    'total_km_with_extra' => $extraKilometers > 0 && $displayBaseTotalKm !== null
+                        ? $displayBaseTotalKm + (float) $extraKilometers
+                        : null,
                 ];
             })->toArray(),
             'addons_count' => $addonsCount,

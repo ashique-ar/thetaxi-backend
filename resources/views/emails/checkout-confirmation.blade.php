@@ -137,113 +137,11 @@
         <h2 class="section-title">
             <span class="icon">💳</span> Payment Summary
         </h2>
-        <table class="info-table">
-            <tr>
-                <td>Subtotal</td>
-                <td>{{ $currencySymbol }} {{ number_format(floor(max(0, $booking->base_amount)), 0) }}</td>
-            </tr>
-            @if ($booking->service_fee > 0)
-                <tr>
-                    <td>Service Fee</td>
-                    <td>{{ $currencySymbol }} {{ number_format(floor(max(0, $booking->service_fee)), 0) }}</td>
-                </tr>
-            @endif
-            @if ($booking->tax_amount > 0)
-                <tr>
-                    <td>{{ config('booking.tax.label', 'NBT') }} ({{ $taxRateDisplay }}%)</td>
-                    <td>{{ $currencySymbol }} {{ number_format(floor(max(0, $booking->tax_amount)), 0) }}</td>
-                </tr>
-            @endif
-            @if (($booking->vat_amount ?? 0) > 0)
-                <tr>
-                    <td>{{ config('booking.vat.label', 'VAT') }} ({{ $vatRateDisplay }}%)</td>
-                    <td>{{ $currencySymbol }} {{ number_format(floor(max(0, $booking->vat_amount)), 0) }}</td>
-                </tr>
-            @endif
-            @if ($booking->discount_amount > 0)
-                <tr style="color: #16a34a;">
-                    <td>Discount</td>
-                    <td>-{{ $currencySymbol }} {{ number_format(floor(max(0, $booking->discount_amount)), 0) }}</td>
-                </tr>
-            @endif
-
-            <tr class="price-total">
-                <td>Total Amount</td>
-                <td>{{ $currencySymbol }} {{ number_format(floor(max(0, $booking->total_estimated)), 0) }}</td>
-            </tr>
-            @if ($booking->payment_type === 'advance')
-                @php
-                    $actualAmountPaid = $booking->amount_to_pay ?? 0;
-                    $actualPercentagePaid = $booking->total_estimated > 0
-                        ? round(($actualAmountPaid / $booking->total_estimated) * 100, 2)
-                        : 0;
-                @endphp
-                <tr style="background: #eff6ff;">
-                    <td><strong>Amount Paid ({{ $actualPercentagePaid }}%)</strong></td>
-                    <td><strong>{{ $currencySymbol }} {{ number_format(floor(max(0, $actualAmountPaid)), 0) }}</strong></td>
-                </tr>
-                @if($actualPercentagePaid < 100)
-                    <tr style="background: #eff6ff;">
-                        <td>Balance Due at Pickup</td>
-                        <td>{{ $currencySymbol }}
-                            {{ number_format(floor(max(0, $booking->total_estimated - $actualAmountPaid)), 0) }}
-                        </td>
-                    </tr>
-                @endif
-            @elseif($booking->payment_type === 'checkin')
-                <tr style="background: #fff7ed;">
-                    <td><strong>Amount Due at Check-in</strong></td>
-                    <td><strong>{{ $currencySymbol }} {{ number_format(floor(max(0, $booking->total_estimated)), 0) }}</strong></td>
-                </tr>
-            @elseif($booking->payment_status === 'paid')
-                <tr style="background: #f0fdf4;">
-                    <td><strong>Amount Paid</strong></td>
-                    <td><strong>{{ $currencySymbol }}
-                            {{ number_format(floor(max(0, $booking->amount_to_pay ?? $booking->total_estimated)), 0) }}</strong>
-                    </td>
-                </tr>
-            @endif
-            <tr>
-                <td>Payment Method</td>
-                <td>
-                    @switch($booking->payment_method)
-                        @case('webxpay')
-                        @case('online')
-                            Online Payment
-                        @break
-
-                        @case('bank_transfer')
-                            Bank Transfer
-                        @break
-
-                        @case('online_banking')
-                            Online Banking
-                        @break
-
-                        @default
-                            {{ ucfirst(str_replace('_', ' ', $booking->payment_method ?? 'N/A')) }}
-                        @break
-                    @endswitch
-                </td>
-            </tr>
-            <tr>
-                <td>Payment Status</td>
-                <td>
-                    @if ($booking->payment_status === 'paid')
-                        <span class="status-badge status-paid">✓ Paid</span>
-                    @elseif($booking->payment_status === 'pending')
-                        <span class="status-badge status-pending">⏳ Pending</span>
-                    @else
-                        <span class="status-badge status-processing">{{ ucfirst($booking->payment_status) }}</span>
-                    @endif
-                </td>
-            </tr>
-        </table>
+        <x-booking-payment-summary :booking="$booking" :currencySymbol="$currencySymbol" :advancePercentage="$advancePercentage" />
     </div>
 
     @php
         $paymentType = $booking->payment_type ?? null;
-        // Collect service identifiers from booking items (supports code or serviceType id)
         $serviceParams = collect();
         foreach ($booking->bookingItems as $bi) {
             $serviceParams->push($bi->service_type ?? ($bi->serviceType?->id ?? null));
@@ -261,7 +159,6 @@
                 );
             }
         } else {
-            // Fallback to generic terms filtered by payment type
             $applicableTerms = \App\Models\TermsAndCondition::getForCheckout(null, $paymentType);
         }
         $applicableTerms = $applicableTerms->unique('id')->values();

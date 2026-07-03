@@ -582,7 +582,7 @@
 
                                     @if (($cartTotals['addon_charges'] ?? 0) > 0)
                                         <li>
-                                            Addon Charges
+                                            Add-on Charges
                                             <div class="order-info">
                                                 <p>Additional Services</p>
                                                 <span class="addon-charges-amount">
@@ -690,8 +690,11 @@
                                         </li>
                                     @endif
                                     <li>
-                                        <strong>Total</strong>
-                                        <strong class="cart-total">
+                                        <div>
+                                            <strong>Total Amount</strong>
+                                            <small class="d-block text-muted">Includes selected add-ons and extra KM</small>
+                                        </div>
+                                        <strong class="cart-total" style="font-size: 22px; font-weight: 800;">
                                             <small class="currency-symbol">{{ $currencySymbol }}</small>
                                             {{ number_format(floor(max(0, $cartTotals['total'] ?? 0)), 0) }}
                                         </strong>

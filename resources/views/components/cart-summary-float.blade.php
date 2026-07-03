@@ -185,9 +185,9 @@
                     </span>
                 </div>
                 
-                {{-- Addon Charges row - hidden when zero (Requirement 1.6) --}}
+                {{-- Add-on Charges row - hidden when zero (Requirement 1.6) --}}
                 <div class="cart-addon-charges mb-1" style="display: none;">
-                    <span>Addon Charges:</span>
+                    <span>Add-on Charges:</span>
                     <span id="cartAddonCharges">
                         <span class="currency-symbol">{{ $currencySymbol }}</span> 
                         <span class="amount">0</span>
@@ -230,9 +230,9 @@
                     </span>
                 </div>
                 
-                {{-- Total row - always visible (Requirement 1.11) --}}
+                {{-- Total Amount row - always visible (Requirement 1.11) --}}
                 <div class="cart-total mb-2 mt-2" style="border-top: 1px solid rgba(255,255,255,0.2); padding-top: 8px;">
-                    <span><strong>Total:</strong></span>
+                    <span><strong>Total Amount:</strong></span>
                     <strong id="cartTotalPrice">
                         <span class="currency-symbol">{{ $currencySymbol }}</span> 
                         <span class="amount">0</span>
