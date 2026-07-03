@@ -563,10 +563,10 @@
                 <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
                     {{ number_format($extraKilometers) }} km
                     @if ($extraKmPrice > 0)
-                        @ {{ $currencySymbol }}{{ number_format(floor(max(0, $extraKmPrice)), 0) }}/km
+                        @ {{ $currencySymbol }} {{ number_format(floor(max(0, $extraKmPrice)), 0) }}/km
                     @endif
                     @if ($extraKmTotal > 0)
-                        <span style="float: right; color: #BF2629;">{{ $currencySymbol }}{{ number_format(floor(max(0, $extraKmTotal)), 0) }}</span>
+                        <span style="float: right; color: #BF2629;">{{ $currencySymbol }} {{ number_format(floor(max(0, $extraKmTotal)), 0) }}</span>
                     @endif
                 </td>
             </tr>
@@ -590,7 +590,7 @@
         @if ($extraKmPrice)
             <tr>
                 <td>Extra KM Rate</td>
-                <td><strong>{{ $currencySymbol }}{{ number_format(floor(max(0, $extraKmPrice)), 0) }}</strong> per km</td>
+                <td><strong>{{ $currencySymbol }} {{ number_format(floor(max(0, $extraKmPrice)), 0) }}</strong> per km</td>
             </tr>
         @endif
 
@@ -607,13 +607,13 @@
                                 <strong>{{ $addon['name'] }}</strong>
                                 <small style="color: #777; margin-left: 4px;">
                                     (Qty: {{ $addon['qty'] }}@if ($addon['rate'] > 0)
-                                        x {{ $currencySymbol }}{{ number_format(floor(max(0, $addon['rate'])), 0) }}
+                                        x {{ $currencySymbol }} {{ number_format(floor(max(0, $addon['rate'])), 0) }}
                                     @elseif ($addon['total'] > 0 && $addon['qty'] > 0)
-                                        - Avg: {{ $currencySymbol }}{{ number_format(floor(max(0, $addon['total'] / $addon['qty'])), 0) }}
+                                        - Avg: {{ $currencySymbol }} {{ number_format(floor(max(0, $addon['total'] / $addon['qty'])), 0) }}
                                     @endif)
                                 </small>
                             </div>
-                            <span style="color: #BF2629; font-weight: 600;">{{ $currencySymbol }}{{ number_format(floor(max(0, $addon['total'])), 0) }}</span>
+                            <span style="color: #BF2629; font-weight: 600;">{{ $currencySymbol }} {{ number_format(floor(max(0, $addon['total'])), 0) }}</span>
                         </div>
                     @endforeach
                 </td>

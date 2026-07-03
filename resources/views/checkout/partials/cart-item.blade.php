@@ -304,12 +304,12 @@
                                                                             <i class="bi bi-arrow-right-circle"></i>
                                                                             Outbound:
                                                                             <small
-                                                                                class="currency-symbol">{{ $currencySymbol }}</small>{{ number_format(floor(max(0, $oneWayPrice)), 0) }}
+                                                                                class="currency-symbol">{{ $currencySymbol }}</small> {{ number_format(floor(max(0, $oneWayPrice)), 0) }}
                                                                         </div>
                                                                         <div style="color: #198754;">
                                                                             <i class="bi bi-arrow-left-circle"></i> Return:
                                                                             <small
-                                                                                class="currency-symbol">{{ $currencySymbol }}</small>{{ number_format(floor(max(0, $returnPrice)), 0) }}
+                                                                                class="currency-symbol">{{ $currencySymbol }}</small> {{ number_format(floor(max(0, $returnPrice)), 0) }}
                                                                             @if ($returnDiscountPct > 0)
                                                                                 <span class="badge bg-success"
                                                                                     style="font-size: 9px;">{{ $returnDiscountPct }}%
@@ -326,7 +326,7 @@
                                                                     </span>
                                                                     {{-- Show original price with strikethrough --}}
                                                                     <div class="checkout-original-price">
-                                                                        <del>{{ $currencySymbol }}{{ number_format(floor(max(0, $itemOriginalAmount)), 0) }}</del>
+                                                                        <del>{{ $currencySymbol }} {{ number_format(floor(max(0, $itemOriginalAmount)), 0) }}</del>
                                                                     </div>
                                                                 @endif
                                                                 <div
@@ -338,7 +338,7 @@
                                                                 @if ($hasItemDiscount && $itemDiscountAmount > 0)
                                                                     <div class="checkout-savings">
                                                                         <small>Save
-                                                                            {{ $currencySymbol }}{{ number_format(floor(max(0, $itemDiscountAmount)), 0) }}</small>
+                                                                            {{ $currencySymbol }} {{ number_format(floor(max(0, $itemDiscountAmount)), 0) }}</small>
                                                                     </div>
                                                                 @endif
                                                                 <button type="button" class="checkout-remove-item-btn"

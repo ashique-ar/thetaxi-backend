@@ -43,8 +43,36 @@ body.theme-theme-02 .checkout-page .form-inner input:focus,
 body.theme-theme-02 .checkout-page .form-inner select:focus,
 body.theme-theme-02 .checkout-page .form-inner textarea:focus { border-color: var(--primary-color1) !important; background: #fff !important; outline: none; }
 
-body.theme-theme-02 .checkout-page .col-lg-5 > .checkout-form-wrapper { position: sticky; top: 96px; }
+body.theme-theme-02 .checkout-page .col-lg-5 > .checkout-form-wrapper {
+    position: sticky;
+    top: 96px;
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 112px);
+}
+body.theme-theme-02 .checkout-page .col-lg-5 > .checkout-form-wrapper > .checkout-form-title { flex: 0 0 auto; }
 body.theme-theme-02 .checkout-page .order-sum-area { position: static !important; padding: 16px 18px 18px !important; }
+body.theme-theme-02 .checkout-page .col-lg-5 > .checkout-form-wrapper > .order-sum-area {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden !important;
+}
+body.theme-theme-02 .checkout-page .order-sum-area .cart-menu {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    width: 100%;
+}
+body.theme-theme-02 .checkout-page .order-sum-area .cart-body {
+    flex: 1 1 auto;
+    min-height: 140px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 4px;
+}
+body.theme-theme-02 .checkout-page .order-sum-area .cart-footer { flex: 0 0 auto; }
 body.theme-theme-02 .checkout-page .single-item { display: block !important; width: 100% !important; margin: 0 0 10px !important; padding: 13px !important; border: 1px solid #e5e5e5 !important; border-radius: 12px !important; background: #fafafa !important; box-shadow: none !important; }
 body.theme-theme-02 .checkout-page .single-item + .single-item { padding-top: 13px !important; }
 body.theme-theme-02 .checkout-page .single-item:last-child { margin-bottom: 0 !important; padding-bottom: 13px !important; border-bottom: 1px solid #e5e5e5 !important; }
@@ -217,7 +245,10 @@ body.theme-theme-02 .checkout-success .section { padding-block: 14px; border-bot
 body.theme-theme-02 .checkout-success .reference-box { border: 0 !important; border-radius: 12px; background: #f5f5f5 !important; color: #202020 !important; }
 
 @media (max-width: 991.98px) {
-    body.theme-theme-02 .checkout-page .col-lg-5 > .checkout-form-wrapper { position: static; }
+    body.theme-theme-02 .checkout-page .col-lg-5 > .checkout-form-wrapper { position: static; display: block; max-height: none; }
+    body.theme-theme-02 .checkout-page .col-lg-5 > .checkout-form-wrapper > .order-sum-area { display: block; overflow: visible !important; }
+    body.theme-theme-02 .checkout-page .order-sum-area .cart-menu { display: block; }
+    body.theme-theme-02 .checkout-page .order-sum-area .cart-body { min-height: 0; max-height: none; overflow: visible; padding-right: 0; }
     body.theme-theme-02 .checkout-page .row.g-lg-4 { --bs-gutter-y: 24px; }
 }
 

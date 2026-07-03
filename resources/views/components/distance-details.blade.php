@@ -56,7 +56,7 @@
         <div style="display: flex; justify-content: space-between; margin-bottom: {{ $compact ? '3px' : '5px' }};">
             <small style="color: #6b7280; font-size: {{ $compact ? '10px' : '12px' }};">Extra KM Rate:</small>
             <strong
-                style="font-size: {{ $compact ? '10px' : '12px' }}; color: #dc2626;">{{ $currencySymbol }}{{ number_format(floor(max(0, $extraKmPrice)), 0) }}/km</strong>
+                style="font-size: {{ $compact ? '10px' : '12px' }}; color: #dc2626;">{{ $currencySymbol }} {{ number_format(floor(max(0, $extraKmPrice)), 0) }}/km</strong>
         </div>
     @endif
 

@@ -200,15 +200,15 @@
                                                             <small style="color: #777; margin-left: 4px;">
                                                                 (Qty: {{ $addon['qty'] }}@if ($addon['rate'] > 0)
                                                                     ×
-                                                                    {{ $currencySymbol }}{{ number_format(floor(max(0, $addon['rate'])), 0) }}
+                                                                    {{ $currencySymbol }} {{ number_format(floor(max(0, $addon['rate'])), 0) }}
                                                                 @elseif($addon['total'] > 0 && $addon['qty'] > 0)
                                                                     - Avg:
-                                                                    {{ $currencySymbol }}{{ number_format(floor(max(0, $addon['total'] / $addon['qty'])), 0) }}
+                                                                    {{ $currencySymbol }} {{ number_format(floor(max(0, $addon['total'] / $addon['qty'])), 0) }}
                                                                 @endif)
                                                             </small>
                                                         </span>
                                                         <span
-                                                            style="color: #BF2629; font-weight: 600;">{{ $currencySymbol }}{{ number_format(floor(max(0, $addon['total'])), 0) }}</span>
+                                                            style="color: #BF2629; font-weight: 600;">{{ $currencySymbol }} {{ number_format(floor(max(0, $addon['total'])), 0) }}</span>
                                                     </div>
                                                 @endforeach
                                             </div>
@@ -225,12 +225,12 @@
                                                         <strong>{{ number_format($extraKilometers) }} km</strong>
                                                         @if ($extraKmRate > 0)
                                                             <small style="color: #777;"> @
-                                                                {{ $currencySymbol }}{{ number_format(floor(max(0, $extraKmRate)), 0) }}/km</small>
+                                                                {{ $currencySymbol }} {{ number_format(floor(max(0, $extraKmRate)), 0) }}/km</small>
                                                         @endif
                                                     </span>
                                                     @if ($extraKmTotal > 0)
                                                         <span
-                                                            style="color: #BF2629; font-weight: 600;">{{ $currencySymbol }}{{ number_format(floor(max(0, $extraKmTotal)), 0) }}</span>
+                                                            style="color: #BF2629; font-weight: 600;">{{ $currencySymbol }} {{ number_format(floor(max(0, $extraKmTotal)), 0) }}</span>
                                                     @endif
                                                 </div>
                                             </div>
