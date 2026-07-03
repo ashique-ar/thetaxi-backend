@@ -719,7 +719,7 @@
             margin: 10px 0;
         }
 
-        .btn {
+        .submit-btn {
             display: inline-block;
             padding: 14px 32px;
             background: linear-gradient(135deg, #15803d 0%, #166534 100%);
@@ -734,7 +734,7 @@
             cursor: pointer;
         }
 
-        .btn:hover {
+        .submit-btn:hover {
             background: linear-gradient(135deg, #166534 0%, #14532d 100%);
         }
 
