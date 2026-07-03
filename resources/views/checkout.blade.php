@@ -871,10 +871,8 @@
         }
 
         .checkout-sidebar-stack {
-            position: sticky;
-            top: 110px;
-            display: flex;
-            flex-direction: column;
+            position: static;
+            display: block;
         }
 
         .checkout-sidebar-stack .order-sum-area {

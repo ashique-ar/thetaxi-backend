@@ -70,44 +70,37 @@ body.theme-default .checkout-page .form-inner textarea:focus {
 }
 
 body.theme-default .checkout-page .col-lg-5 > .checkout-sidebar-stack {
-    position: sticky;
-    top: 96px;
-    display: flex;
-    flex-direction: column;
-    max-height: calc(100vh - 112px);
-    overflow-y: auto;
-    overflow-x: hidden;
-    padding-right: 3px;
+    position: static;
+    display: block;
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
 }
 body.theme-default .checkout-page .checkout-sidebar-stack > .checkout-form-wrapper {
     position: static;
-    display: flex;
-    flex-direction: column;
+    display: block;
     max-height: none;
-    min-height: 0;
+    min-height: auto;
 }
 body.theme-default .checkout-page .checkout-sidebar-stack > .checkout-form-wrapper > .checkout-form-title { flex: 0 0 auto; }
 body.theme-default .checkout-page .order-sum-area { position: static !important; padding: 16px 18px 18px !important; background: #f5f6f7 !important; }
 body.theme-default .checkout-page .checkout-sidebar-stack > .checkout-form-wrapper > .order-sum-area {
-    display: flex;
-    flex: 1 1 auto;
-    min-height: 0;
+    display: block;
+    min-height: auto;
     overflow: visible !important;
 }
 body.theme-default .checkout-page .order-sum-area .cart-menu {
-    display: flex;
-    flex: 1 1 auto;
-    flex-direction: column;
-    min-height: 0;
+    display: block;
+    min-height: auto;
     width: 100%;
 }
 body.theme-default .checkout-page .order-sum-area .cart-body {
-    flex: 0 0 auto;
+    display: block;
     min-height: auto;
     overflow: visible;
     padding-right: 0;
 }
-body.theme-default .checkout-page .order-sum-area .cart-footer { flex: 0 0 auto; }
+body.theme-default .checkout-page .order-sum-area .cart-footer { display: block; }
 body.theme-default .checkout-page .cart-body > ul { margin: 0; padding: 0; }
 body.theme-default .checkout-page .single-item { display: block !important; width: 100% !important; margin: 0 0 10px !important; padding: 12px !important; border: 1px solid #d9dde2 !important; border-top: 3px solid var(--primary-color1) !important; border-radius: 5px !important; background: #fff !important; box-shadow: 0 2px 6px rgba(0, 0, 0, .035) !important; }
 body.theme-default .checkout-page .checkout-cart-item { position: relative; transition: border-color .2s ease, background-color .2s ease, box-shadow .2s ease; }
