@@ -76,10 +76,9 @@ body.theme-theme-02 .checkout-page .order-sum-area .cart-menu {
     width: 100%;
 }
 body.theme-theme-02 .checkout-page .order-sum-area .cart-body {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow-y: visible;
-    overflow-x: hidden;
+    flex: 0 0 auto;
+    min-height: auto;
+    overflow: visible;
     padding-right: 0;
 }
 body.theme-theme-02 .checkout-page .order-sum-area .cart-footer { flex: 0 0 auto; }
