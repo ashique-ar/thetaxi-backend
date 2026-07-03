@@ -357,8 +357,8 @@ class PendingPaymentManager
                     foreach ($customizations as $customization) {
                         if (isset($customization['type']) && in_array($customization['type'], ['extra_km', 'extra_kilometers', 'additional_km'])) {
                             $extraKilometers = $customization['quantity'] ?? $customization['km'] ?? $customization['value'] ?? 0;
-                            $extraKmRate = $customization['rate'] ?? $customization['price_per_km'] ?? 0;
-                            $extraKmTotal = $customization['total'] ?? ($extraKilometers * $extraKmRate);
+                            $extraKmRate = $customization['rate_per_km'] ?? $customization['rate'] ?? $customization['price_per_km'] ?? 0;
+                            $extraKmTotal = $customization['total_cost'] ?? $customization['total'] ?? ($extraKilometers * $extraKmRate);
                             break;
                         }
                     }
@@ -368,6 +368,20 @@ class PendingPaymentManager
                     $extraKilometers = $metadata['extra_km'] ?? $metadata['extra_kilometers'] ?? $metadata['additional_km'] ?? 0;
                     $extraKmRate = $metadata['extra_km_rate'] ?? $metadata['km_rate'] ?? 0;
                     $extraKmTotal = $metadata['extra_km_total'] ?? ($extraKilometers * $extraKmRate);
+                }
+
+                $distanceDetails = is_array($metadata['distance_details'] ?? null) ? $metadata['distance_details'] : [];
+                $outboundKm = $distanceDetails['outbound_distance_km'] ?? null;
+                $returnKm = $distanceDetails['return_distance_km'] ?? null;
+                $baseTotalKm = null;
+                if ($outboundKm && $returnKm) {
+                    $baseTotalKm = (float) $outboundKm + (float) $returnKm;
+                } elseif (isset($distanceDetails['total_distance'])) {
+                    $baseTotalKm = (float) $distanceDetails['total_distance'];
+                } elseif (isset($distanceDetails['actual_journey_distance'])) {
+                    $baseTotalKm = (float) $distanceDetails['actual_journey_distance'];
+                } elseif (isset($distanceDetails['journey_distance'])) {
+                    $baseTotalKm = (float) $distanceDetails['journey_distance'];
                 }
 
                 return [
@@ -387,6 +401,8 @@ class PendingPaymentManager
                     'extra_kilometers' => $extraKilometers,
                     'extra_km_rate' => $extraKmRate,
                     'extra_km_total' => $extraKmTotal,
+                    'base_total_km' => $baseTotalKm,
+                    'total_km_with_extra' => $baseTotalKm !== null ? $baseTotalKm + (float) $extraKilometers : null,
                 ];
             })->toArray(),
             'addons_count' => $addonsCount,

@@ -32,8 +32,6 @@
         </div>
     </div>
     <!-- End Breadcrumb section -->
-
-
     <!-- Email-style Payment Resume Page -->
     <div class="checkout-success pt-100 mb-100">
         <div class="container">
@@ -110,6 +108,16 @@
                                         $extraKilometers = $item['extra_kilometers'] ?? ($item['extra_km'] ?? 0);
                                         $extraKmRate = $item['extra_km_rate'] ?? ($item['km_rate'] ?? 0);
                                         $extraKmTotal = $item['extra_km_total'] ?? $extraKilometers * $extraKmRate;
+                                        $addonsTotal = array_sum(array_map(
+                                            fn ($addon) => (float) ($addon['total'] ?? 0),
+                                            $addonsList,
+                                        ));
+                                        $baseItemTotal = (float) ($item['total_price'] ?? 0);
+                                        $itemGrandTotal = $baseItemTotal + (float) $addonsTotal + (float) $extraKmTotal;
+                                        $baseTotalKm = $item['base_total_km'] ?? null;
+                                        $totalKmWithExtra = $item['total_km_with_extra'] ?? (
+                                            $baseTotalKm !== null ? (float) $baseTotalKm + (float) $extraKilometers : null
+                                        );
                                     @endphp
                                     <div class="booking-item-email">
                                         <div
@@ -227,38 +235,38 @@
                                                 </div>
                                             </div>
                                         @endif
+                                        @if ($baseTotalKm !== null)
+                                            <div class="total-km-section"
+                                                style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #eee;">
+                                                <div style="display: flex; justify-content: space-between; align-items: center; padding: 5px 0;">
+                                                    <span><strong>Total KM</strong></span>
+                                                    <span>
+                                                        {{ number_format((float) $baseTotalKm, 1) }} km
+                                                        @if ($extraKilometers > 0 && $totalKmWithExtra !== null)
+                                                            <small style="color: #777;">+ {{ number_format((float) $extraKilometers, 0) }} km extra =
+                                                                {{ number_format((float) $totalKmWithExtra, 1) }} km</small>
+                                                        @endif
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        @endif
+                                        <div class="item-total-section"
+                                            style="margin-top: 12px; padding-top: 12px; border-top: 2px solid #e5e7eb;">
+                                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 5px 0;">
+                                                <span><strong>Base Trip Total</strong></span>
+                                                <span>{{ $currencySymbol }} {{ number_format(floor(max(0, $baseItemTotal)), 0) }}</span>
+                                            </div>
+                                            @if ($addonsTotal > 0 || $extraKmTotal > 0)
+                                                <div style="display: flex; justify-content: space-between; align-items: center; padding: 5px 0; font-weight: 700;">
+                                                    <span>Item Total</span>
+                                                    <span>{{ $currencySymbol }} {{ number_format(floor(max(0, $itemGrandTotal)), 0) }}</span>
+                                                </div>
+                                            @endif
+                                        </div>
                                     </div>
                                 @endforeach
                             @endif
 
-                            @php
-                                // Show addon/extra km totals if available in pricing context
-                                $pricing = $context['pricing'] ?? [];
-                                $contextAddonCharges = (float) ($pricing['addon_charges'] ?? 0);
-                                $contextExtraKmCharges = (float) ($pricing['extra_km_charges'] ?? 0);
-                            @endphp
-
-                            @if ($contextAddonCharges > 0 || $contextExtraKmCharges > 0)
-                                <div class="section" style="margin-top:12px;">
-                                    <h2 class="section-title"><span class="icon">➕</span> Additional Charges</h2>
-                                    <table class="info-table">
-                                        @if ($contextAddonCharges > 0)
-                                            <tr>
-                                                <td>Addon Charges</td>
-                                                <td>{{ $currencySymbol }} {{ number_format(floor(max(0, $contextAddonCharges)), 0) }}
-                                                </td>
-                                            </tr>
-                                        @endif
-                                        @if ($contextExtraKmCharges > 0)
-                                            <tr>
-                                                <td>Extra KM Charges</td>
-                                                <td>{{ $currencySymbol }} {{ number_format(floor(max(0, $contextExtraKmCharges)), 0) }}
-                                                </td>
-                                            </tr>
-                                        @endif
-                                    </table>
-                                </div>
-                            @endif
                         </div>
 
                         <!-- Customer Information Section -->
@@ -881,4 +889,3 @@
         });
     </script>
 @endpush
-

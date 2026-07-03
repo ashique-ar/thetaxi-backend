@@ -96,8 +96,8 @@
             ) {
                 $extraKilometers =
                     $customization['quantity'] ?? ($customization['km'] ?? ($customization['value'] ?? 0));
-                $extraKmRate = $customization['rate'] ?? ($customization['price_per_km'] ?? 0);
-                $extraKmTotal = $customization['total'] ?? $extraKilometers * $extraKmRate;
+                $extraKmRate = $customization['rate_per_km'] ?? ($customization['rate'] ?? ($customization['price_per_km'] ?? 0));
+                $extraKmTotal = $customization['total_cost'] ?? ($customization['total'] ?? $extraKilometers * $extraKmRate);
                 break;
             }
         }
@@ -265,6 +265,29 @@
     if (empty($extraKmTotal) && $extraKilometers > 0 && $extraKmPrice) {
         $extraKmTotal = $extraKilometers * $extraKmPrice;
     }
+    if (empty($extraKmRate) && $extraKmPrice) {
+        $extraKmRate = $extraKmPrice;
+    }
+
+    $addonsTotal = array_sum(array_map(
+        fn ($addon) => (float) ($addon['total'] ?? 0),
+        $addonsList
+    ));
+    $baseItemTotal = (float) $totalPrice;
+    $itemGrandTotal = $baseItemTotal + (float) $addonsTotal + (float) $extraKmTotal;
+
+    $baseTotalKm = null;
+    if ($hasReturnKmData) {
+        $baseTotalKm = (float) $outboundKm + (float) $returnKm;
+    } elseif ($totalDistance) {
+        $baseTotalKm = (float) $totalDistance;
+    } elseif ($displayDistance) {
+        $baseTotalKm = (float) $displayDistance;
+    } elseif ($actualJourneyDistance) {
+        $baseTotalKm = (float) $actualJourneyDistance;
+    }
+
+    $totalKmWithExtra = $baseTotalKm !== null ? $baseTotalKm + (float) $extraKilometers : null;
 
     $isDayPackage = $servicePricingMode === 'day';
     $showReturnLocations = !$isDayPackage && $isReturnTrip;
@@ -537,6 +560,21 @@
             </tr>
         @endif
 
+        @if ($baseTotalKm !== null)
+            <tr>
+                <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333;">
+                    Total KM
+                </td>
+                <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
+                    <strong>{{ number_format($baseTotalKm, 1) }} km</strong>
+                    @if ($extraKilometers > 0 && $totalKmWithExtra !== null)
+                        <small style="color: #777;"> + {{ number_format((float) $extraKilometers, 0) }} km extra =
+                            {{ number_format($totalKmWithExtra, 1) }} km</small>
+                    @endif
+                </td>
+            </tr>
+        @endif
+
         @if ($extraKmPrice)
             <tr>
                 <td>Extra KM Rate</td>
@@ -572,72 +610,28 @@
 
         <tr>
             <td style="padding: 4px 0; font-weight: 600; color: #333; width: 30%;">
-                {{ $totalLabel }}
+                {{ $totalLabel === 'Item Total' ? 'Base Trip Total' : $totalLabel }}
             </td>
             <td style="padding: 4px 0; color: #555; font-weight: 600;">
-                {{ $currencySymbol }} {{ number_format(floor(max(0, $totalPrice)), 0) }}
+                {{ $currencySymbol }} {{ number_format(floor(max(0, $baseItemTotal)), 0) }}
                 @if ($isReturnTrip && !empty($returnDiscountPct) && $returnDiscountPct > 0)
                     <small class="text-success" style="margin-left: 8px;">({{ $returnDiscountPct }}% return discount applied)</small>
                 @endif
             </td>
         </tr>
+        @if ($addonsTotal > 0 || $extraKmTotal > 0)
+            <tr>
+                <td style="padding: 6px 0; font-weight: 700; color: #111827; width: 30%; border-top: 2px solid #e5e7eb;">
+                    Item Total
+                </td>
+                <td style="padding: 6px 0; color: #111827; font-weight: 700; border-top: 2px solid #e5e7eb;">
+                    {{ $currencySymbol }} {{ number_format(floor(max(0, $itemGrandTotal)), 0) }}
+                    <small style="display:block; color:#777; font-weight:400; margin-top:2px;">
+                        Includes add-ons and extra kilometers
+                    </small>
+                </td>
+            </tr>
+        @endif
     </table>
 
-    @php
-        $workflow = is_string($item->booking->workflow_data ?? null)
-            ? json_decode($item->booking->workflow_data, true)
-            : $item->booking->workflow_data ?? [];
-        $cartIndex = $item->metadata['item_index'] ?? null;
-        $bookingExtra = null;
-        if (!is_null($cartIndex) && isset($workflow['cart_items'][$cartIndex])) {
-            $bookingExtra = $workflow['cart_items'][$cartIndex]['extra_km'] ?? null;
-        }
-        if (empty($bookingExtra) && !empty($item->addons) && is_array($item->addons)) {
-            foreach ($item->addons as $ad) {
-                if (
-                    (isset($ad['is_milage']) && $ad['is_milage']) ||
-                    (isset($ad['code']) && $ad['code'] === 'extra_km')
-                ) {
-                    $bookingExtra = $ad;
-                    break;
-                }
-            }
-        }
-    @endphp
-
-    @if ((!empty($item->addons) && is_array($item->addons)) || !empty($bookingExtra))
-        <div style="margin-top:12px;">
-            @if (!empty($item->addons) && is_array($item->addons))
-                <h4 style="margin:8px 0 6px 0; font-size:14px;">Selected Addons</h4>
-                <table class="info-table" style="width:100%; border-collapse:collapse;">
-                    @foreach ($item->addons as $addonKey => $addon)
-                        @php
-                            $addonName =
-                                $addon['name'] ?? ($addon['label'] ?? (is_string($addonKey) ? $addonKey : 'Addon'));
-                            $addonQty = $addon['qty'] ?? ($addon['quantity'] ?? 1);
-                            $addonRate = $addon['amount'] ?? ($addon['rate'] ?? 0);
-                            $addonTotal = $addon['calculated_amount'] ?? ($addon['total'] ?? $addonRate * $addonQty);
-                        @endphp
-                        <tr>
-                            <td style="padding:6px 0; border-bottom:1px solid #eef0f2;">{{ $addonName }}
-                                @if ($addonQty > 1)
-                                    <small style="color:#777;">x{{ $addonQty }}</small>
-                                @endif
-                            </td>
-                            <td style="padding:6px 0; border-bottom:1px solid #eef0f2; text-align:right;">
-                                {{ $currencySymbol }} {{ number_format(floor(max(0, $addonTotal)), 0) }}</td>
-                        </tr>
-                    @endforeach
-                </table>
-            @endif
-
-            @if (!empty($bookingExtra))
-                <h4 style="margin:8px 0 6px 0; font-size:14px;">Extra KM</h4>
-                <div style="color:#555;">
-                    {{ $bookingExtra['km'] ?? ($bookingExtra['quantity'] ?? 0) }} km - {{ $currencySymbol }}
-                    {{ number_format(floor(max(0, $bookingExtra['total_cost'] ?? ($bookingExtra['calculated_amount'] ?? 0))), 0) }}
-                </div>
-            @endif
-        </div>
-    @endif
 </div>

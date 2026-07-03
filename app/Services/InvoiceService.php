@@ -41,7 +41,7 @@ class InvoiceService
             'bookingItems.serviceType',
             'bookingItems.vehicle.group',
             'bookingItems.driver.user',
-            'bookingAddons',
+            'bookingAddons.addon',
             'bookingCommonRatePricings',
         ]);
 
@@ -121,7 +121,7 @@ class InvoiceService
             'bookingItems.serviceType',
             'bookingItems.vehicle.group',
             'bookingItems.driver.user',
-            'bookingAddons',
+            'bookingAddons.addon',
         ])->findOrFail($invoice->booking_id);
 
         $this->generateAndStorePdf($invoice, $booking);
@@ -266,15 +266,24 @@ class InvoiceService
                     'type'        => 'distance',
                 ];
             }
+
+            $extraKmLine = $this->extractExtraKmLineItem($item);
+            if ($extraKmLine) {
+                $items[] = $extraKmLine;
+            }
         }
 
         // --- Addons ---
         foreach ($booking->bookingAddons ?? [] as $addon) {
+            if ((bool) ($addon->is_milage ?? false)) {
+                continue;
+            }
+
             $items[] = [
-                'description' => $addon->addon_name ?? $addon->name ?? 'Add-on',
-                'note'        => $addon->billing_type ? ucfirst(str_replace('_', ' ', $addon->billing_type)) : null,
-                'quantity'    => (int) ($addon->quantity ?? 1),
-                'unit_price'  => (float) ($addon->unit_price ?? $addon->amount ?? 0),
+                'description' => $addon->label ?? $addon->addon?->name ?? 'Add-on',
+                'note'        => null,
+                'quantity'    => (int) ($addon->qty ?? 1),
+                'unit_price'  => (float) ($addon->rate ?? $addon->amount ?? 0),
                 'amount'      => (float) ($addon->total_price ?? $addon->amount ?? 0),
                 'type'        => 'addon',
             ];
@@ -294,6 +303,50 @@ class InvoiceService
         }
 
         return $items;
+    }
+
+    private function extractExtraKmLineItem(BookingItem $item): ?array
+    {
+        $kilometers = 0;
+        $rate = 0;
+        $amount = 0;
+
+        $customizations = is_array($item->customizations ?? null) ? $item->customizations : [];
+        foreach ($customizations as $customization) {
+            if (!is_array($customization)) {
+                continue;
+            }
+
+            $type = $customization['type'] ?? $customization['code'] ?? null;
+            if (!in_array($type, ['extra_km', 'extra_kilometers', 'additional_km'], true)) {
+                continue;
+            }
+
+            $kilometers = (float) ($customization['quantity'] ?? ($customization['km'] ?? ($customization['value'] ?? 0)));
+            $rate = (float) ($customization['rate_per_km'] ?? ($customization['rate'] ?? ($customization['price_per_km'] ?? 0)));
+            $amount = (float) ($customization['total_cost'] ?? ($customization['total'] ?? ($kilometers * $rate)));
+            break;
+        }
+
+        $metadata = is_array($item->metadata ?? null) ? $item->metadata : [];
+        if ($kilometers <= 0 && !empty($metadata)) {
+            $kilometers = (float) ($metadata['extra_km'] ?? ($metadata['extra_kilometers'] ?? ($metadata['additional_km'] ?? 0)));
+            $rate = (float) ($metadata['extra_km_rate'] ?? ($metadata['km_rate'] ?? 0));
+            $amount = (float) ($metadata['extra_km_total'] ?? ($kilometers * $rate));
+        }
+
+        if ($kilometers <= 0 || $amount <= 0) {
+            return null;
+        }
+
+        return [
+            'description' => 'Extra Kilometers',
+            'note'        => number_format($kilometers, 0) . ' km',
+            'quantity'    => $kilometers,
+            'unit_price'  => $rate,
+            'amount'      => $amount,
+            'type'        => 'extra_km',
+        ];
     }
 
     private function describeDuration(BookingItem $item): ?string
