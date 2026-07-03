@@ -76,6 +76,83 @@
     $paymentStatusLabel = $isQuotation
         ? 'Quotation requested'
         : ucwords(str_replace('_', ' ', (string) ($paymentStatus ?? 'pending')));
+
+    $paymentRows = [];
+    if ($isQuotation) {
+        $paymentRows[] = [
+            'class' => 'booking-payment-due-row',
+            'style' => 'background: #f8fafc;',
+            'label' => 'Payment Due Now',
+            'value' => 'No payment required',
+            'strong' => true,
+        ];
+    } else {
+        if ($paymentType === 'advance') {
+            $advanceLabel = 'Amount Paid / Due Now';
+            if ($effectiveAdvancePercentage) {
+                $advanceLabel .= ' (' . $effectiveAdvancePercentage . '%)';
+            }
+            $paidNow = floor(max(0, $amountDueNow ?? $amountToPay));
+            $balanceDue = floor(max(0, $totalEstimated - ($amountDueNow ?? $amountToPay)));
+            $paymentRows[] = [
+                'class' => 'booking-payment-due-row',
+                'style' => 'background: #eff6ff;',
+                'label' => $advanceLabel,
+                'value' => $currencySymbol . ' ' . number_format($paidNow, 0),
+                'strong' => true,
+            ];
+            $paymentRows[] = [
+                'class' => '',
+                'style' => 'background: #eff6ff;',
+                'label' => 'Balance Due at Pickup',
+                'value' => $currencySymbol . ' ' . number_format($balanceDue, 0),
+                'strong' => false,
+            ];
+        }
+
+        if ($paymentType === 'checkin') {
+            $paymentRows[] = [
+                'class' => 'booking-payment-due-row',
+                'style' => 'background: #fff7ed;',
+                'label' => 'Amount Due at Check-in',
+                'value' => $currencySymbol . ' ' . number_format(floor(max(0, $totalEstimated)), 0),
+                'strong' => true,
+            ];
+        }
+
+        if ($paymentType !== 'advance' && $paymentType !== 'checkin' && $amountDueNow !== null) {
+            $paymentRows[] = [
+                'class' => 'booking-payment-due-row',
+                'style' => 'background: #fef3c7;',
+                'label' => 'Amount Due Now',
+                'value' => $currencySymbol . ' ' . number_format(floor(max(0, $amountDueNow)), 0),
+                'strong' => true,
+            ];
+        }
+
+        if ($paymentType !== 'advance' && $paymentType !== 'checkin' && $amountDueNow === null && $paymentStatus === 'paid') {
+            $paymentRows[] = [
+                'class' => 'booking-payment-due-row',
+                'style' => 'background: #f0fdf4;',
+                'label' => 'Amount Paid',
+                'value' => $currencySymbol . ' ' . number_format(floor(max(0, $amountToPay)), 0),
+                'strong' => true,
+            ];
+        }
+    }
+
+    $paymentStatusBadgeClass = 'status-processing';
+    $paymentStatusBadgeText = $paymentStatusLabel;
+    if ($paymentStatus === 'paid') {
+        $paymentStatusBadgeClass = 'status-paid';
+        $paymentStatusBadgeText = 'Paid';
+    } elseif ($isQuotation) {
+        $paymentStatusBadgeClass = 'status-processing';
+        $paymentStatusBadgeText = 'Quotation requested';
+    } elseif ($paymentStatus === 'pending') {
+        $paymentStatusBadgeClass = 'status-pending';
+        $paymentStatusBadgeText = 'Pending';
+    }
 @endphp
 
 <table class="info-table booking-payment-summary" style="width: 100%; border-collapse: collapse; table-layout: fixed;">
@@ -126,36 +203,24 @@
         </td>
     </tr>
 
-    @if ($isQuotation)
-        <tr class="booking-payment-due-row" style="background: #f8fafc;">
-            <td><strong>Payment Due Now</strong></td>
-            <td><strong>No payment required</strong></td>
+    @foreach ($paymentRows as $paymentRow)
+        <tr class="{{ $paymentRow['class'] }}" style="{{ $paymentRow['style'] }}">
+            <td>
+                @if ($paymentRow['strong'])
+                    <strong>{{ $paymentRow['label'] }}</strong>
+                @else
+                    {{ $paymentRow['label'] }}
+                @endif
+            </td>
+            <td>
+                @if ($paymentRow['strong'])
+                    <strong>{{ $paymentRow['value'] }}</strong>
+                @else
+                    {{ $paymentRow['value'] }}
+                @endif
+            </td>
         </tr>
-    @elseif ($paymentType === 'advance')
-        <tr class="booking-payment-due-row" style="background: #eff6ff;">
-            <td><strong>Amount Paid / Due Now@if ($effectiveAdvancePercentage) ({{ $effectiveAdvancePercentage }}%)@endif</strong></td>
-            <td><strong>{{ $currencySymbol }} {{ number_format(floor(max(0, $amountDueNow ?? $amountToPay)), 0) }}</strong></td>
-        </tr>
-        <tr style="background: #eff6ff;">
-            <td>Balance Due at Pickup</td>
-            <td>{{ $currencySymbol }} {{ number_format(floor(max(0, $totalEstimated - ($amountDueNow ?? $amountToPay))), 0) }}</td>
-        </tr>
-    @elseif ($paymentType === 'checkin')
-        <tr class="booking-payment-due-row" style="background: #fff7ed;">
-            <td><strong>Amount Due at Check-in</strong></td>
-            <td><strong>{{ $currencySymbol }} {{ number_format(floor(max(0, $totalEstimated)), 0) }}</strong></td>
-        </tr>
-    @elseif ($amountDueNow !== null)
-        <tr class="booking-payment-due-row" style="background: #fef3c7;">
-            <td><strong>Amount Due Now</strong></td>
-            <td><strong>{{ $currencySymbol }} {{ number_format(floor(max(0, $amountDueNow)), 0) }}</strong></td>
-        </tr>
-    @elseif ($paymentStatus === 'paid')
-        <tr class="booking-payment-due-row" style="background: #f0fdf4;">
-            <td><strong>Amount Paid</strong></td>
-            <td><strong>{{ $currencySymbol }} {{ number_format(floor(max(0, $amountToPay)), 0) }}</strong></td>
-        </tr>
-    @endif
+    @endforeach
 
     @if ($showMethod)
         <tr>
@@ -167,15 +232,7 @@
         <tr>
             <td>Payment Status</td>
             <td>
-                @if ($paymentStatus === 'paid')
-                    <span class="status-badge status-paid">Paid</span>
-                @elseif ($isQuotation)
-                    <span class="status-badge status-processing">Quotation requested</span>
-                @elseif ($paymentStatus === 'pending')
-                    <span class="status-badge status-pending">Pending</span>
-                @else
-                    <span class="status-badge status-processing">{{ $paymentStatusLabel }}</span>
-                @endif
+                <span class="status-badge {{ $paymentStatusBadgeClass }}">{{ $paymentStatusBadgeText }}</span>
             </td>
         </tr>
     @endif
