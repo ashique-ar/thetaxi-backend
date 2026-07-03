@@ -403,7 +403,8 @@
                         </div>
 
                         <div class="col-lg-5">
-                            @include('checkout.partials.cart-summary')
+                            <div class="checkout-sidebar-stack">
+                                @include('checkout.partials.cart-summary')
                                             <!-- Payment Type Selection Section -->
                                             <div class="payment-type-selection mb-4">
                                                 <div class="card">
@@ -555,6 +556,7 @@
                                                     </svg>
                                                 </span>
                                             </button>
+                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -868,9 +870,19 @@
             outline: none;
         }
 
-        .checkout-page .order-sum-area {
+        .checkout-sidebar-stack {
             position: sticky;
             top: 110px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .checkout-sidebar-stack .order-sum-area {
+            position: static;
+            top: auto;
+        }
+
+        .checkout-page .order-sum-area {
             padding: 24px;
         }
 
@@ -1030,6 +1042,11 @@
         }
 
         @media (max-width: 991px) {
+            .checkout-sidebar-stack {
+                position: static;
+                display: block;
+            }
+
             .checkout-page .order-sum-area {
                 position: static;
             }
