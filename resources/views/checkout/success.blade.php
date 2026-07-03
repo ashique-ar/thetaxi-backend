@@ -465,15 +465,15 @@
 
         /* Section */
         .section {
-            margin-bottom: 30px;
+            margin-bottom: 18px;
         }
 
         .section-title {
             font-size: 17px;
             font-weight: 600;
             color: #BF2629;
-            margin-bottom: 16px;
-            padding-bottom: 10px;
+            margin-bottom: 10px;
+            padding-bottom: 8px;
             border-bottom: 2px solid #BF2629;
             display: flex;
             align-items: center;
@@ -498,7 +498,7 @@
         }
 
         .info-table td {
-            padding: 2px 0;
+            padding: 3px 0;
             font-size: 14px;
             vertical-align: top;
         }
@@ -507,7 +507,7 @@
             font-weight: 600;
             color: #717171;
             width: 40%;
-            padding-right: 15px;
+            padding-right: 12px;
         }
 
         .info-table td:last-child {
@@ -515,8 +515,8 @@
         }
 
         .booking-payment-summary .booking-payment-total-row td {
-            padding-top: 16px;
-            padding-bottom: 16px;
+            padding-top: 12px;
+            padding-bottom: 12px;
         }
 
         .booking-payment-summary .booking-payment-total-row td:last-child {
@@ -526,8 +526,8 @@
         }
 
         .booking-payment-summary .booking-payment-due-row td {
-            padding-top: 12px;
-            padding-bottom: 12px;
+            padding-top: 9px;
+            padding-bottom: 9px;
         }
 
         /* Highlight Box */
@@ -535,8 +535,8 @@
             background-color: #f8f9fa;
             border-left: 4px solid #BF2629;
             border-radius: 0 8px 8px 0;
-            padding: 20px 24px;
-            margin: 20px 0;
+            padding: 14px 18px;
+            margin: 14px 0;
         }
 
         .highlight-box.success {

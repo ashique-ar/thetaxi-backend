@@ -355,8 +355,8 @@
 @endphp
 
 <div
-    style="background-color: #f8f9fa; border: 1px solid #eef0f2; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
-    <div style="display: flex; align-items: flex-start; gap: 15px;">
+    style="background-color: #f8f9fa; border: 1px solid #e6e9ed; border-left: 4px solid #BF2629; border-radius: 8px; padding: 12px 14px; margin-bottom: 12px;">
+    <div style="display: flex; align-items: flex-start; gap: 12px;">
         @php
             if ($defaultImage) {
                 if (preg_match('/^https?:\/\//', $defaultImage)) {
@@ -372,7 +372,7 @@
         @if ($imageUrl)
             <div style="flex-shrink: 0;">
                 <img src="{{ $imageUrl }}" alt="{{ $vehicleGroupName }}"
-                    style="width: 120px; height: 80px; object-fit: cover; border-radius: 6px; border: 1px solid #ddd;">
+                    style="width: 108px; height: 72px; object-fit: cover; border-radius: 6px; border: 1px solid #ddd;">
             </div>
         @endif
         <div style="flex: 1;">
@@ -386,7 +386,7 @@
         </div>
     </div>
 
-    <table class="info-table" style="width: 100%; border-collapse: collapse; margin-top: 15px;">
+    <table class="info-table" style="width: 100%; border-collapse: collapse; margin-top: 10px;">
         <tr>
             <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; width: 30%;">
                 Pickup Location
@@ -602,7 +602,7 @@
                 </td>
                 <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
                     @foreach ($addonsList as $addon)
-                        <div style="margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center;">
+                        <div style="margin-bottom: 3px; display: flex; justify-content: space-between; align-items: center;">
                             <div>
                                 <strong>{{ $addon['name'] }}</strong>
                                 <small style="color: #777; margin-left: 4px;">

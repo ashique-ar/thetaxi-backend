@@ -78,7 +78,7 @@
         : ucwords(str_replace('_', ' ', (string) ($paymentStatus ?? 'pending')));
 @endphp
 
-<table class="info-table booking-payment-summary" style="width: 100%; border-collapse: collapse;">
+<table class="info-table booking-payment-summary" style="width: 100%; border-collapse: collapse; table-layout: fixed;">
     <tr>
         <td>Subtotal</td>
         <td>{{ $currencySymbol }} {{ number_format(floor(max(0, (float) ($booking->base_amount ?? 0))), 0) }}</td>
@@ -119,9 +119,9 @@
             <td>-{{ $currencySymbol }} {{ number_format(floor(max(0, (float) $booking->discount_amount)), 0) }}</td>
         </tr>
     @endif
-    <tr class="price-total booking-payment-total-row" style="background-color: #fff4f4; border-top: 2px solid #BF2629; border-bottom: 2px solid #BF2629;">
-        <td style="font-size: 17px; font-weight: 800; padding: 16px 0;">{{ $totalLabel }}</td>
-        <td style="font-size: 22px; font-weight: 900; color: #BF2629; padding: 16px 0; text-align: right;">
+    <tr class="price-total booking-payment-total-row" style="background-color: #fff7f7; border-top: 2px solid #BF2629; border-bottom: 2px solid #BF2629;">
+        <td style="font-size: 16px; font-weight: 800; padding: 12px 0;">{{ $totalLabel }}</td>
+        <td style="font-size: 22px; font-weight: 900; color: #BF2629; padding: 12px 0; text-align: right;">
             {{ $currencySymbol }} {{ number_format(floor(max(0, $totalEstimated)), 0) }}
         </td>
     </tr>

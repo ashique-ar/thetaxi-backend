@@ -551,8 +551,8 @@
             font-size: 17px;
             font-weight: 600;
             color: #BF2629;
-            margin-bottom: 16px;
-            padding-bottom: 10px;
+            margin-bottom: 10px;
+            padding-bottom: 8px;
             border-bottom: 2px solid #BF2629;
             display: flex;
             align-items: center;
@@ -566,8 +566,8 @@
         .booking-item-email {
             background: #f8f9fa;
             border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 15px;
+            padding: 14px 16px;
+            margin-bottom: 12px;
             border-left: 4px solid #BF2629;
         }
 
@@ -607,7 +607,7 @@
 
         .pickup-info,
         .dropoff-info {
-            margin-bottom: 10px;
+            margin-bottom: 6px;
         }
 
         .location-label {
@@ -654,7 +654,7 @@
         }
 
         .info-table td {
-            padding: 0;
+            padding: 3px 0;
             font-size: 14px;
             vertical-align: top;
         }
@@ -663,7 +663,7 @@
             font-weight: 600;
             color: #717171;
             width: 40%;
-            padding-right: 15px;
+            padding-right: 12px;
         }
 
         .info-table td:last-child {
@@ -675,8 +675,8 @@
             background-color: #f8f9fa;
             border-left: 4px solid #BF2629;
             border-radius: 0 8px 8px 0;
-            padding: 20px 24px;
-            margin: 20px 0;
+            padding: 14px 18px;
+            margin: 14px 0;
         }
 
         .highlight-box.warning {
