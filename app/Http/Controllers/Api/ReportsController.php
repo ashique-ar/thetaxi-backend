@@ -7,6 +7,7 @@ use App\Models\Booking\Booking;
 use App\Models\Booking\BookingGeneratedReport;
 use App\Models\Customer;
 use App\Models\CustomerLoyaltyPoint;
+use App\Models\Country;
 use App\Models\Driver\Driver;
 use App\Models\Vehicle\Vehicle;
 use App\Models\Agent\Agent;
@@ -683,13 +684,17 @@ class ReportsController extends Controller
 
     private function getCustomerDemographics(): array
     {
-        $byCountry = Customer::join('users', 'customers.user_id', '=', 'users.id')
-            ->selectRaw('users.country, COUNT(*) as count')
-            ->whereNotNull('users.country')
-            ->groupBy('users.country')
-            ->orderByDesc('count')
+        $byCountry = Country::query()
+            ->select('id', 'name')
+            ->whereHas('customers')
+            ->withCount('customers')
+            ->orderByDesc('customers_count')
             ->limit(10)
             ->get()
+            ->map(fn (Country $country) => [
+                'country' => $country->name,
+                'count' => $country->customers_count,
+            ])
             ->toArray();
 
         $corporate = Customer::where('type', 'corporate')->count();
