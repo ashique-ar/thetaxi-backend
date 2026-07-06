@@ -8,6 +8,7 @@ use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class AuditLogController extends Controller
@@ -19,7 +20,28 @@ class AuditLogController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $query = AuditLog::query()->with('user');
+        $auditLogs = DB::table('audit_logs')->selectRaw("
+            id::text as id,
+            user_id::text as user_id,
+            action,
+            entity,
+            entity_id::text as entity_id,
+            timestamp,
+            details::text as details,
+            created_at
+        ");
+        $activityLogs = DB::table(config('activitylog.table_name', 'activity_log'))->selectRaw("
+            id::text as id,
+            causer_id::text as user_id,
+            COALESCE(event, description) as action,
+            subject_type as entity,
+            subject_id::text as entity_id,
+            created_at as timestamp,
+            properties::text as details,
+            created_at
+        ");
+        $allLogs = $auditLogs->unionAll($activityLogs);
+        $query = DB::query()->fromSub($allLogs, 'all_audit_logs');
 
         if ($request->filled('user_id')) {
             $query->where('user_id', $request->user_id);
@@ -28,13 +50,16 @@ class AuditLogController extends Controller
         if ($request->filled('search')) {
             $search = trim((string) $request->search);
             $query->where(function ($builder) use ($search) {
-                $builder->whereLikeInsensitive('action', $search)
-                    ->orWhereLikeInsensitive('entity', $search)
-                    ->orWhereHas('user', function ($userQuery) use ($search) {
-                        $userQuery->whereLikeInsensitive('first_name', $search)
-                            ->orWhereLikeInsensitive('last_name', $search)
-                            ->orWhereLikeInsensitive('email', $search);
-                    });
+                $matchingUserIds = User::query()
+                    ->whereLikeInsensitive('first_name', $search)
+                    ->orWhereLikeInsensitive('last_name', $search)
+                    ->orWhereLikeInsensitive('email', $search)
+                    ->pluck('id')
+                    ->map(fn ($id) => (string) $id);
+
+                $builder->whereRaw('LOWER(action) LIKE ?', ['%'.Str::lower($search).'%'])
+                    ->orWhereRaw('LOWER(entity) LIKE ?', ['%'.Str::lower($search).'%'])
+                    ->orWhereIn('user_id', $matchingUserIds);
 
                 if (Str::isUuid($search)) {
                     $builder->orWhere('entity_id', $search);
@@ -48,7 +73,7 @@ class AuditLogController extends Controller
 
         $entity = $request->query('entity', $request->query('model'));
         if ($entity) {
-            $query->whereLikeInsensitive('entity', $entity);
+            $query->where('entity', $entity);
         }
 
         if ($request->filled('date_from')) {
@@ -65,7 +90,15 @@ class AuditLogController extends Controller
             ->orderByDesc('id')
             ->paginate($perPage);
 
-        $entityOptions = AuditLog::query()
+        $optionsQuery = DB::query()->fromSub(
+            DB::table('audit_logs')->selectRaw('entity, user_id::text as user_id')
+                ->unionAll(
+                    DB::table(config('activitylog.table_name', 'activity_log'))
+                        ->selectRaw('subject_type as entity, causer_id::text as user_id')
+                ),
+            'audit_options'
+        );
+        $entityOptions = (clone $optionsQuery)
             ->whereNotNull('entity')
             ->distinct()
             ->orderBy('entity')
@@ -75,8 +108,12 @@ class AuditLogController extends Controller
                 'name' => Str::headline(class_basename($entity)),
             ])
             ->values();
+        $auditedUserIds = (clone $optionsQuery)
+            ->whereNotNull('user_id')
+            ->distinct()
+            ->pluck('user_id');
         $userOptions = User::query()
-            ->whereIn('id', AuditLog::query()->whereNotNull('user_id')->select('user_id'))
+            ->whereIn('id', $auditedUserIds)
             ->orderBy('first_name')
             ->orderBy('last_name')
             ->get(['id', 'first_name', 'last_name', 'email'])
@@ -88,7 +125,7 @@ class AuditLogController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'data' => $logs->getCollection()->map(fn (AuditLog $log) => $this->serializeLog($log))->values(),
+            'data' => $this->serializeUnifiedLogs($logs->getCollection()),
             'meta' => [
                 'current_page' => $logs->currentPage(),
                 'from' => $logs->firstItem(),
@@ -102,6 +139,35 @@ class AuditLogController extends Controller
                 'users' => $userOptions,
             ],
         ]);
+    }
+
+    private function serializeUnifiedLogs($logs)
+    {
+        $users = User::query()
+            ->whereIn('id', $logs->pluck('user_id')->filter()->unique())
+            ->get(['id', 'first_name', 'last_name', 'email'])
+            ->keyBy(fn (User $user) => (string) $user->id);
+
+        return $logs->map(function ($log) use ($users) {
+            $user = $log->user_id ? $users->get((string) $log->user_id) : null;
+
+            return [
+                'id' => $log->id,
+                'user_id' => $log->user_id,
+                'action' => $log->action,
+                'entity' => class_basename($log->entity),
+                'entity_id' => $log->entity_id,
+                'timestamp' => Carbon::parse($log->timestamp)->toISOString(),
+                'details' => $log->details ? json_decode($log->details, true) : null,
+                'created_at' => Carbon::parse($log->created_at)->toISOString(),
+                'user' => $user ? [
+                    'id' => $user->id,
+                    'first_name' => $user->first_name,
+                    'last_name' => $user->last_name,
+                    'email' => $user->email,
+                ] : null,
+            ];
+        })->values();
     }
 
     public function show(AuditLog $auditLog): JsonResponse
