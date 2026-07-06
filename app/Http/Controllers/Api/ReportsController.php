@@ -587,12 +587,11 @@ class ReportsController extends Controller
             ->selectRaw('COUNT(DISTINCT bookings.id) as bookings')
             ->groupBy('service_types.id', 'service_types.name')
             ->orderByDesc('bookings')
-            ->get()
-            ->toArray();
+            ->get();
 
-        $total = collect($rows)->sum('bookings');
+        $total = $rows->sum('bookings');
 
-        return array_map(function ($row) use ($total) {
+        return $rows->map(function ($row) use ($total) {
             $bookings = (int) $row->bookings;
 
             return [
@@ -600,7 +599,7 @@ class ReportsController extends Controller
                 'bookings' => $bookings,
                 'percentage' => $total > 0 ? round(($bookings / $total) * 100, 2) : 0,
             ];
-        }, $rows);
+        })->values()->all();
     }
 
     // ─────────────────────────────────────────────────────────────────
