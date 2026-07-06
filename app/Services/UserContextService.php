@@ -69,6 +69,8 @@ class UserContextService
             $existingContext = $existingContextQuery->first();
 
             if ($existingContext) {
+                $this->restoreOrCreateContextModel($user, $existingContext, $contextData);
+
                 $rolesToAssign = !empty($contextData['roles'])
                     ? $contextData['roles']
                     : $this->getDefaultRolesForContext($contextType);
@@ -492,6 +494,70 @@ class UserContextService
         }
     }
 
+    private function restoreOrCreateContextModel(
+        User $user,
+        UserContext $userContext,
+        array $contextData = []
+    ): void {
+        $modelClass = match ($userContext->context_type) {
+            'customer' => Customer::class,
+            'vehicle_owner' => VehicleOwner::class,
+            'driver' => Driver::class,
+            'staff' => Staff::class,
+            default => null,
+        };
+
+        if (!$modelClass) {
+            return;
+        }
+
+        $contextModel = $modelClass::withTrashed()->find($userContext->context_id)
+            ?? $modelClass::withTrashed()->where('user_id', $user->id)->first();
+
+        if (!$contextModel) {
+            $contextModel = $this->createContextModel($user, $userContext->context_type, $contextData);
+        } else {
+            if (method_exists($contextModel, 'trashed') && $contextModel->trashed()) {
+                $contextModel->restore();
+            }
+
+            $profileData = collect($contextData)
+                ->except(['roles', 'context_id', 'selected_context_id'])
+                ->all();
+            if ($profileData) {
+                $contextModel->fill($profileData)->save();
+            }
+        }
+
+        if ((string) $userContext->context_id !== (string) $contextModel->id) {
+            $userContext->update(['context_id' => $contextModel->id]);
+        }
+    }
+
+    private function contextProfileState(UserContext $userContext): array
+    {
+        $modelClass = match ($userContext->context_type) {
+            'customer' => Customer::class,
+            'vehicle_owner' => VehicleOwner::class,
+            'driver' => Driver::class,
+            'staff' => Staff::class,
+            default => null,
+        };
+
+        if (!$modelClass) {
+            return ['missing' => false, 'deleted' => false];
+        }
+
+        $contextModel = $modelClass::withTrashed()->find($userContext->context_id);
+
+        return [
+            'missing' => !$contextModel,
+            'deleted' => $contextModel && method_exists($contextModel, 'trashed')
+                ? $contextModel->trashed()
+                : false,
+        ];
+    }
+
     private function getContextTypesForRole(Role $role): array
     {
         $contextTypes = $role->context_types ?? null;
@@ -664,6 +730,8 @@ class UserContextService
             default => null,
         };
 
+        $profileState = $this->contextProfileState($userContext);
+
         return [
             'id' => (string) $userContext->id,
             'context_type' => $userContext->context_type,
@@ -680,6 +748,9 @@ class UserContextService
             'metadata' => [
                 'user_context_id' => (string) $userContext->id,
                 'role_count' => count($roles),
+                'profile_missing' => $profileState['missing'],
+                'profile_deleted' => $profileState['deleted'],
+                'profile_needs_restore' => $profileState['deleted'],
             ],
         ];
     }
