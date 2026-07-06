@@ -21,6 +21,7 @@ use App\Services\PaymentMethodSyncService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
 
@@ -109,7 +110,11 @@ class DriverController extends Controller
                     ->where('is_active', true)
                     ->first();
 
-                if ($existingContext) {
+                $existingDriver = $existingContext
+                    ? Driver::withTrashed()->find($existingContext->context_id)
+                    : null;
+
+                if ($existingDriver && !$existingDriver->trashed()) {
                     return response()->json([
                         'status' => 'error',
                         'message' => 'This user is already registered as a driver.',
@@ -142,6 +147,29 @@ class DriverController extends Controller
                     'availability_status' => $data['availability_status'] ?? null,
                     'is_active' => $data['is_active'] ?? true,
                 ];
+
+                if ($existingDriver?->trashed()) {
+                    $existingDriver->restore();
+                    $existingDriver->update($contextData);
+                    if (array_key_exists('payment_method', $data)) {
+                        app(PaymentMethodSyncService::class)->syncOne(
+                            $existingDriver,
+                            $data['payment_method'],
+                            request()->user()->id
+                        );
+                    }
+                    $existingDriver->load(['user', 'licenseType', 'paymentMethod']);
+
+                    return response()->json([
+                        'status' => 'success',
+                        'message' => 'Driver profile restored successfully',
+                        'data' => ['driver' => new DriverResource($existingDriver)]
+                    ], 201);
+                }
+
+                if ($existingContext) {
+                    $existingContext->update(['is_active' => false]);
+                }
 
                 $context = $this->contextService->switchContext($existingUser, 'driver', $contextData);
                 $driver = Driver::find($context->getAttribute('context_id'));
@@ -273,7 +301,19 @@ class DriverController extends Controller
 
     public function destroy(Driver $driver): JsonResponse
     {
-        $driver->delete();
+        DB::transaction(function () use ($driver) {
+            \App\Models\UserContext::where('user_id', $driver->user_id)
+                ->where('context_type', 'driver')
+                ->where('context_id', $driver->id)
+                ->where('is_active', true)
+                ->update([
+                    'is_active' => false,
+                    'updated_user_id' => request()->user()?->id,
+                ]);
+
+            $driver->delete();
+        });
+
         return response()->json([
             'status' => 'success',
             'message' => 'Driver deleted'
