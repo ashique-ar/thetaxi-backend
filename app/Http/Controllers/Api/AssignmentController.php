@@ -167,11 +167,17 @@ class AssignmentController extends Controller
                 $dropoffLongitude
             );
             $pricingMetrics = $this->buildPricingMetrics($selectedBookingItem, $tripAssignment);
+            $customerUser = $booking->customer?->user;
 
             $result = [
                 'booking' => [
                     'id' => $booking->id,
+                    'booking_number' => $booking->booking_number,
+                    'reference_number' => $booking->confirmation_number ?? $booking->invoice_number ?? $booking->booking_number,
+                    'booking_source' => $booking->booking_source ?? $booking->created_from,
                     'customer_name' => $customerName,
+                    'customer_email' => $booking->customer?->email ?? $customerUser?->email,
+                    'customer_phone' => $booking->customer?->phone ?? $booking->customer?->mobile ?? $customerUser?->phone,
                     'service_type_id' => $selectedBookingItem?->service_type_id ?? $selectedServiceType?->id,
                     'service_type' => $selectedServiceType ? [
                         'id' => $selectedServiceType->id,
@@ -190,15 +196,23 @@ class AssignmentController extends Controller
                     'dropoff_latitude' => $dropoffLatitude,
                     'dropoff_longitude' => $dropoffLongitude,
                     'status' => $booking->status,
+                    'approval_status' => $booking->approval_status,
+                    'payment_status' => $booking->payment_status,
+                    'payment_method' => $booking->payment_method,
+                    'payment_collection_method' => $booking->payment_collection_method,
                     'booking_item_id' => $selectedBookingItem?->id,
                     'trip_number' => $selectedBookingItem?->trip_number,
+                    'trip_count' => $booking->bookingItems->count(),
                     'duration_days' => $pricingMetrics['duration_days'],
                     'duration_hours' => $pricingMetrics['duration_hours'],
                     'hire_km' => $pricingMetrics['hire_km'],
                     'waiting_hours' => $pricingMetrics['waiting_hours'],
                     'waiting_charge' => $pricingMetrics['waiting_charge'],
                     'total_price' => $pricingMetrics['total_amount'],
+                    'booking_total_amount' => (float) ($booking->total_actual ?? $booking->total_estimated ?? 0),
                     'currency' => $pricingMetrics['currency'],
+                    'created_at' => $booking->created_at?->toIso8601String(),
+                    'updated_at' => $booking->updated_at?->toIso8601String(),
                 ],
                 'selected_booking_item_id' => $selectedBookingItem?->id,
                 'selected_trip_number' => $selectedBookingItem?->trip_number,

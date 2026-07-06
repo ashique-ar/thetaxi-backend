@@ -117,7 +117,6 @@ class RolesAndPermissionsSeeder extends Seeder
             'agreement-templates',
             'agreement-signing',
             'medical-records',
-            'hire-management',
             'return-inspection',
             'vehicle-availability',
             'gallery',
