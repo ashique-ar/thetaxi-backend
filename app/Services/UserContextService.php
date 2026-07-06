@@ -83,6 +83,36 @@ class UserContextService
                 return $existingContext;
             }
 
+            $inactiveContextQuery = $user->contexts()
+                ->where('context_type', $contextType)
+                ->where('is_active', false);
+
+            if ($selectedContextId) {
+                $inactiveContextQuery->where('id', $selectedContextId);
+            }
+
+            $inactiveContext = $inactiveContextQuery->latest('updated_at')->first();
+
+            if ($inactiveContext) {
+                $this->restoreOrCreateContextModel($user, $inactiveContext, $contextData);
+                $inactiveContext->update(['is_active' => true]);
+
+                $preservedRoleIds = $inactiveContext->roles()->pluck('roles.id')->all();
+                $rolesToAssign = array_values(array_unique(array_merge(
+                    $preservedRoleIds,
+                    !empty($contextData['roles'])
+                        ? $contextData['roles']
+                        : $this->getDefaultRolesForContext($contextType)
+                )));
+
+                if ($rolesToAssign) {
+                    $this->assignRolesToContext($user, $inactiveContext, $rolesToAssign);
+                }
+
+                DB::commit();
+                return $inactiveContext;
+            }
+
             $contextModel = $this->createContextModel($user, $contextType, $contextData);
 
             $userContext = UserContext::create([
@@ -127,40 +157,48 @@ class UserContextService
             ->where('is_active', true)
             ->pluck('context_type')
             ->toArray();
+        $inactiveContextTypes = $user->contexts()
+            ->where('is_active', false)
+            ->pluck('context_type')
+            ->toArray();
 
-        if ($user->hasRole(['customer', 'staff', 'admin']) && !in_array('customer', $activeContextTypes, true)) {
+        if (($user->hasRole(['customer', 'staff', 'admin']) || in_array('customer', $inactiveContextTypes, true)) && !in_array('customer', $activeContextTypes, true)) {
             $contexts[] = [
                 'value' => 'customer',
                 'label' => 'Customer',
                 'active' => true,
                 'is_currently_active' => false,
+                'is_reactivation' => in_array('customer', $inactiveContextTypes, true),
             ];
         }
 
-        if ($user->hasRole(['admin']) && !in_array('vehicle_owner', $activeContextTypes, true)) {
+        if (($user->hasRole(['admin']) || in_array('vehicle_owner', $inactiveContextTypes, true)) && !in_array('vehicle_owner', $activeContextTypes, true)) {
             $contexts[] = [
                 'value' => 'vehicle_owner',
                 'label' => 'Vehicle Owner',
                 'active' => true,
                 'is_currently_active' => false,
+                'is_reactivation' => in_array('vehicle_owner', $inactiveContextTypes, true),
             ];
         }
 
-        if ($user->hasRole(['driver', 'admin']) && !in_array('driver', $activeContextTypes, true)) {
+        if (($user->hasRole(['driver', 'admin']) || in_array('driver', $inactiveContextTypes, true)) && !in_array('driver', $activeContextTypes, true)) {
             $contexts[] = [
                 'value' => 'driver',
                 'label' => 'Driver',
                 'active' => true,
                 'is_currently_active' => false,
+                'is_reactivation' => in_array('driver', $inactiveContextTypes, true),
             ];
         }
 
-        if ($user->hasRole(['staff', 'admin']) && !in_array('staff', $activeContextTypes, true)) {
+        if (($user->hasRole(['staff', 'admin']) || in_array('staff', $inactiveContextTypes, true)) && !in_array('staff', $activeContextTypes, true)) {
             $contexts[] = [
                 'value' => 'staff',
                 'label' => 'Staff',
                 'active' => true,
                 'is_currently_active' => false,
+                'is_reactivation' => in_array('staff', $inactiveContextTypes, true),
             ];
         }
 
@@ -407,10 +445,9 @@ class UserContextService
 
         try {
             foreach ($contexts as $context) {
-                $this->revokeRolesFromContext($user, $context);
-
                 $context->is_active = false;
                 $context->save();
+                $this->suspendGlobalRolesForContext($user, $context);
             }
 
             DB::commit();
@@ -418,6 +455,29 @@ class UserContextService
         } catch (\Exception $e) {
             DB::rollBack();
             throw $e;
+        }
+    }
+
+    private function suspendGlobalRolesForContext(User $user, UserContext $userContext): void
+    {
+        $roleIds = $userContext->roles()->pluck('roles.id');
+
+        foreach ($roleIds as $roleId) {
+            $role = Role::find($roleId);
+            if (!$role) {
+                continue;
+            }
+
+            $usedByAnotherActiveContext = DB::table('user_context_roles as ucr')
+                ->join('user_contexts as uc', 'ucr.user_context_id', '=', 'uc.id')
+                ->where('uc.user_id', $user->id)
+                ->where('uc.is_active', true)
+                ->where('ucr.role_id', $roleId)
+                ->exists();
+
+            if (!$usedByAnotherActiveContext && $user->hasRole($role->name)) {
+                $user->removeRole($role->name);
+            }
         }
     }
 

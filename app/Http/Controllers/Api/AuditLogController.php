@@ -4,8 +4,11 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 
 class AuditLogController extends Controller
 {
@@ -22,6 +25,23 @@ class AuditLogController extends Controller
             $query->where('user_id', $request->user_id);
         }
 
+        if ($request->filled('search')) {
+            $search = trim((string) $request->search);
+            $query->where(function ($builder) use ($search) {
+                $builder->whereLikeInsensitive('action', $search)
+                    ->orWhereLikeInsensitive('entity', $search)
+                    ->orWhereHas('user', function ($userQuery) use ($search) {
+                        $userQuery->whereLikeInsensitive('first_name', $search)
+                            ->orWhereLikeInsensitive('last_name', $search)
+                            ->orWhereLikeInsensitive('email', $search);
+                    });
+
+                if (Str::isUuid($search)) {
+                    $builder->orWhere('entity_id', $search);
+                }
+            });
+        }
+
         if ($request->filled('action')) {
             $query->where('action', $request->action);
         }
@@ -32,16 +52,39 @@ class AuditLogController extends Controller
         }
 
         if ($request->filled('date_from')) {
-            $query->where('timestamp', '>=', $request->date_from);
+            $query->where('timestamp', '>=', Carbon::parse($request->date_from)->startOfDay());
         }
 
         if ($request->filled('date_to')) {
-            $query->where('timestamp', '<=', $request->date_to);
+            $query->where('timestamp', '<=', Carbon::parse($request->date_to)->endOfDay());
         }
 
+        $perPage = min(max((int) $request->get('per_page', 5), 5), 200);
         $logs = $query
             ->orderByDesc('timestamp')
-            ->paginate((int) $request->get('per_page', 25));
+            ->orderByDesc('id')
+            ->paginate($perPage);
+
+        $entityOptions = AuditLog::query()
+            ->whereNotNull('entity')
+            ->distinct()
+            ->orderBy('entity')
+            ->pluck('entity')
+            ->map(fn (string $entity) => [
+                'id' => $entity,
+                'name' => Str::headline(class_basename($entity)),
+            ])
+            ->values();
+        $userOptions = User::query()
+            ->whereIn('id', AuditLog::query()->whereNotNull('user_id')->select('user_id'))
+            ->orderBy('first_name')
+            ->orderBy('last_name')
+            ->get(['id', 'first_name', 'last_name', 'email'])
+            ->map(fn (User $user) => [
+                'id' => $user->id,
+                'name' => trim($user->first_name.' '.$user->last_name) ?: $user->email,
+                'description' => $user->email,
+            ]);
 
         return response()->json([
             'status' => 'success',
@@ -53,6 +96,10 @@ class AuditLogController extends Controller
                 'per_page' => $logs->perPage(),
                 'to' => $logs->lastItem(),
                 'total' => $logs->total(),
+            ],
+            'filter_options' => [
+                'entities' => $entityOptions,
+                'users' => $userOptions,
             ],
         ]);
     }
