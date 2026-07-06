@@ -516,12 +516,12 @@ class ReportsController extends Controller
     private function getDateFormat(string $groupBy): string
     {
         return match ($groupBy) {
-            'hour'    => "DATE_FORMAT(created_at, '%Y-%m-%d %H:00')",
-            'week'    => "DATE_FORMAT(created_at, '%x-W%v')",
+            'hour'    => "TO_CHAR(created_at, 'YYYY-MM-DD HH24:00')",
+            'week'    => "TO_CHAR(created_at, 'IYYY-\"W\"IW')",
             'month',
-            'monthly' => "DATE_FORMAT(created_at, '%Y-%m')",
+            'monthly' => "TO_CHAR(created_at, 'YYYY-MM')",
             'year',
-            'yearly'  => "YEAR(created_at)",
+            'yearly'  => "TO_CHAR(created_at, 'YYYY')",
             default   => "DATE(created_at)",
         };
     }
@@ -560,7 +560,7 @@ class ReportsController extends Controller
         $avg = (clone $query)
             ->whereNotNull('from_date')
             ->whereNotNull('to_date')
-            ->selectRaw('AVG(TIMESTAMPDIFF(HOUR, from_date, to_date)) as avg_hours')
+            ->selectRaw('AVG(EXTRACT(EPOCH FROM (to_date - from_date)) / 3600) as avg_hours')
             ->value('avg_hours');
 
         return round((float) $avg, 2);
@@ -569,7 +569,7 @@ class ReportsController extends Controller
     private function getPeakHours($query): array
     {
         return (clone $query)
-            ->selectRaw('HOUR(created_at) as hour, COUNT(*) as bookings')
+            ->selectRaw('EXTRACT(HOUR FROM created_at) as hour, COUNT(*) as bookings')
             ->groupBy('hour')
             ->orderByDesc('bookings')
             ->limit(5)
@@ -636,7 +636,7 @@ class ReportsController extends Controller
     private function getMonthlyGrowth($query): array
     {
         $rows = (clone $query)
-            ->selectRaw("DATE_FORMAT(created_at, '%Y-%m') as month, SUM(COALESCE(total_actual,0)) as revenue")
+            ->selectRaw("TO_CHAR(created_at, 'YYYY-MM') as month, SUM(COALESCE(total_actual,0)) as revenue")
             ->groupBy('month')
             ->orderBy('month')
             ->get();
@@ -871,7 +871,7 @@ class ReportsController extends Controller
     private function exportFinancialReport(array $filters, string $format): Response
     {
         $query = Booking::where('status', 'completed')
-            ->selectRaw("DATE_FORMAT(created_at, '%Y-%m') as period,
+            ->selectRaw("TO_CHAR(created_at, 'YYYY-MM') as period,
                 COUNT(*) as bookings,
                 SUM(COALESCE(total_actual,0)) as revenue,
                 SUM(COALESCE(commission_amount,0)) as commission,
