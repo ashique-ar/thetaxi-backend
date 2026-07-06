@@ -138,8 +138,8 @@ class ReportsController extends Controller
                 SUM(COALESCE(total_actual, 0)) as total_revenue,
                 COUNT(*) as total_bookings,
                 AVG(COALESCE(total_actual, 0)) as average_booking_value,
-                SUM(COALESCE(commission_amount, 0)) as commissions_paid,
-                SUM(COALESCE(total_actual, 0) - COALESCE(commission_amount, 0)) as net_revenue")
+                0::numeric as commissions_paid,
+                SUM(COALESCE(total_actual, 0)) as net_revenue")
             ->groupBy('period')
             ->orderBy('period')
             ->get();
@@ -162,7 +162,7 @@ class ReportsController extends Controller
         $this->applyFilters($query, $filters);
 
         $totalRevenue    = (clone $query)->sum('total_actual');
-        $totalCommission = (clone $query)->sum('commission_amount');
+        $totalCommission = 0.0;
 
         $analytics = [
             'total_revenue'           => (float) $totalRevenue,
@@ -262,7 +262,7 @@ class ReportsController extends Controller
         $this->applyFilters($query, $filters);
 
         $revenue = (float) (clone $query)->sum('total_actual');
-        $commission = (float) (clone $query)->sum('commission_amount');
+        $commission = 0.0;
 
         return response()->json([
             'status' => 'success',
@@ -279,7 +279,7 @@ class ReportsController extends Controller
     {
         $filters = $this->parseFilters($request);
         $query = Booking::with(['customer.user', 'bookingItems.vehicle'])
-            ->select('id', 'booking_number', 'customer_id', 'agent_id', 'from_date', 'to_date', 'total_actual', 'commission_amount', 'status', 'created_at');
+            ->select('id', 'booking_number', 'customer_id', 'agent_id', 'total_actual', 'status', 'created_at');
 
         $this->applyFilters($query, $filters);
 
@@ -290,11 +290,11 @@ class ReportsController extends Controller
             'vehicle_info' => $booking->bookingItems->pluck('vehicle.title')->filter()->first()
                 ?? $booking->bookingItems->pluck('vehicle.license_plate')->filter()->first()
                 ?? '',
-            'start_date' => $booking->from_date,
-            'end_date' => $booking->to_date,
+            'start_date' => $booking->bookingItems->min('from_date'),
+            'end_date' => $booking->bookingItems->max('to_date'),
             'total_amount' => (float) $booking->total_actual,
             'status' => $booking->status,
-            'commission' => (float) $booking->commission_amount,
+            'commission' => 0.0,
             'agent_name' => '',
         ]);
 
@@ -340,8 +340,8 @@ class ReportsController extends Controller
     public function getVehicleReports(Request $request): JsonResponse
     {
         $rows = Vehicle::with('group')
-            ->withCount('bookings')
-            ->withSum(['bookings as completed_revenue' => fn ($q) => $q->where('status', 'completed')], 'total_actual')
+            ->withCount('bookingItems')
+            ->withSum(['bookingItems as completed_revenue' => fn ($q) => $q->where('status', 'completed')], 'total_price')
             ->orderBy('title')
             ->limit(500)
             ->get()
@@ -352,10 +352,10 @@ class ReportsController extends Controller
                 'make' => '',
                 'model' => '',
                 'category' => $vehicle->group?->name ?? '',
-                'total_bookings' => (int) $vehicle->bookings_count,
+                'total_bookings' => (int) $vehicle->booking_items_count,
                 'total_revenue' => (float) $vehicle->completed_revenue,
                 'revenue' => (float) $vehicle->completed_revenue,
-                'utilization_rate' => (int) $vehicle->bookings_count > 0 ? 100 : 0,
+                'utilization_rate' => (int) $vehicle->booking_items_count > 0 ? 100 : 0,
                 'maintenance_cost' => 0,
                 'profit' => (float) $vehicle->completed_revenue,
                 'status' => $vehicle->status ?? $vehicle->availability_status,
@@ -559,9 +559,10 @@ class ReportsController extends Controller
     private function getAverageBookingDuration($query): float
     {
         $avg = (clone $query)
-            ->whereNotNull('from_date')
-            ->whereNotNull('to_date')
-            ->selectRaw('AVG(EXTRACT(EPOCH FROM (to_date - from_date)) / 3600) as avg_hours')
+            ->join('booking_items', 'bookings.id', '=', 'booking_items.booking_id')
+            ->whereNotNull('booking_items.from_date')
+            ->whereNotNull('booking_items.to_date')
+            ->selectRaw('AVG(EXTRACT(EPOCH FROM (booking_items.to_date - booking_items.from_date)) / 3600) as avg_hours')
             ->value('avg_hours');
 
         return round((float) $avg, 2);
@@ -626,7 +627,7 @@ class ReportsController extends Controller
             ->join('users', 'agents.user_id', '=', 'users.id')
             ->selectRaw("CONCAT(users.first_name, ' ', users.last_name) as agent_name, agents.id as agent_id")
             ->selectRaw('SUM(COALESCE(bookings.total_actual,0)) as revenue, COUNT(*) as bookings,
-                SUM(COALESCE(bookings.commission_amount,0)) as commission')
+                0::numeric as commission')
             ->groupBy('agents.id', 'users.first_name', 'users.last_name')
             ->orderByDesc('revenue')
             ->get()
@@ -878,8 +879,8 @@ class ReportsController extends Controller
             ->selectRaw("TO_CHAR(created_at, 'YYYY-MM') as period,
                 COUNT(*) as bookings,
                 SUM(COALESCE(total_actual,0)) as revenue,
-                SUM(COALESCE(commission_amount,0)) as commission,
-                SUM(COALESCE(total_actual,0) - COALESCE(commission_amount,0)) as net_revenue");
+                0::numeric as commission,
+                SUM(COALESCE(total_actual,0)) as net_revenue");
 
         $this->applyFilters($query, $filters);
         $rows = $query->groupBy('period')->orderBy('period')->get();
