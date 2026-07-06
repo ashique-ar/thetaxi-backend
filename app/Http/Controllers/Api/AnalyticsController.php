@@ -421,11 +421,11 @@ class AnalyticsController extends Controller
             case 'day':
                 return 'DATE(created_at)';
             case 'week':
-                return 'YEARWEEK(created_at)';
+                return "TO_CHAR(created_at, 'IYYY-\"W\"IW')";
             case 'month':
-                return 'YEAR(created_at), MONTH(created_at)';
+                return "TO_CHAR(created_at, 'YYYY-MM')";
             case 'year':
-                return 'YEAR(created_at)';
+                return "TO_CHAR(created_at, 'YYYY')";
             default:
                 return 'DATE(created_at)';
         }

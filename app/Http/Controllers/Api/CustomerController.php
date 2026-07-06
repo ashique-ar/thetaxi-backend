@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Booking\Booking;
 use App\Models\Customer;
 use App\Models\Document;
 use App\Http\Requests\Customer\CreateCustomerRequest;
@@ -476,7 +477,7 @@ class CustomerController extends Controller
         $customersWithLicense = Customer::whereNotNull('license_no')
             ->where('license_no', '!=', '')
             ->count();
-        $totalBookings = DB::table('bookings')->count();
+        $totalBookings = Booking::count();
 
         $analytics = [
             // Dashboard-compatible keys used by the portal customer dashboard.
@@ -498,7 +499,7 @@ class CustomerController extends Controller
             'activeCustomers' => $activeCustomers,
             'inactiveCustomers' => $inactiveCustomers,
             'customersWithLicense' => $customersWithLicense,
-            'averageLifetimeValue' => (float) (DB::table('bookings')
+            'averageLifetimeValue' => (float) (Booking::query()
                 ->selectRaw('AVG(COALESCE(total_actual, total_estimated, 0)) as average_lifetime_value')
                 ->value('average_lifetime_value') ?? 0),
             'customer_growth' => Customer::selectRaw('DATE(created_at) as date, COUNT(*) as count')
