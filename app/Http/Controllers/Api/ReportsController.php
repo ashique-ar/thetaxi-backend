@@ -669,7 +669,7 @@ class ReportsController extends Controller
         }
 
         $byMonth = (clone $query)
-            ->selectRaw("DATE_FORMAT(created_at, '%Y-%m') as month, COUNT(*) as new_customers")
+            ->selectRaw("TO_CHAR(created_at, 'YYYY-MM') as month, COUNT(*) as new_customers")
             ->groupBy('month')
             ->orderBy('month')
             ->get()
@@ -754,12 +754,14 @@ class ReportsController extends Controller
         $totalActive    = Vehicle::where('is_active', true)->count();
 
         // Utilisation: vehicles with at least 1 completed booking in the period
-        $usedVehicleIds = Booking::where('status', 'completed')
-            ->when(!empty($filters['date_from']), fn ($q) => $q->where('created_at', '>=', $filters['date_from']))
-            ->when(!empty($filters['date_to']),   fn ($q) => $q->where('created_at', '<=', $filters['date_to']))
-            ->whereNotNull('vehicle_id')
+        $usedVehicleIds = DB::table('booking_items')
+            ->join('bookings', 'booking_items.booking_id', '=', 'bookings.id')
+            ->where('bookings.status', 'completed')
+            ->when(!empty($filters['date_from']), fn ($q) => $q->where('bookings.created_at', '>=', $filters['date_from']))
+            ->when(!empty($filters['date_to']),   fn ($q) => $q->where('bookings.created_at', '<=', $filters['date_to']))
+            ->whereNotNull('booking_items.vehicle_id')
             ->distinct()
-            ->pluck('vehicle_id');
+            ->pluck('booking_items.vehicle_id');
 
         $utilisationRate = $totalActive > 0
             ? round(($usedVehicleIds->count() / $totalActive) * 100, 2)
@@ -776,7 +778,8 @@ class ReportsController extends Controller
     private function getPerformanceByCategory(array $filters): array
     {
         return DB::table('bookings')
-            ->join('vehicles', 'bookings.vehicle_id', '=', 'vehicles.id')
+            ->join('booking_items', 'bookings.id', '=', 'booking_items.booking_id')
+            ->join('vehicles', 'booking_items.vehicle_id', '=', 'vehicles.id')
             ->join('vehicle_groups', 'vehicles.vehicle_group_id', '=', 'vehicle_groups.id')
             ->select('vehicle_groups.name as category')
             ->selectRaw('COUNT(DISTINCT bookings.id) as bookings,
