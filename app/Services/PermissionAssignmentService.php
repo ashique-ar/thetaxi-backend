@@ -66,9 +66,12 @@ class PermissionAssignmentService
 
         app(PermissionRegistrar::class)->forgetCachedPermissions();
 
-        return $role->permissions()
+        return Permission::query()
+            ->join('role_has_permissions', 'permissions.id', '=', 'role_has_permissions.permission_id')
+            ->where('role_has_permissions.role_id', $role->id)
             ->where('permissions.guard_name', $role->guard_name)
             ->orderBy('permissions.name')
+            ->select('permissions.*')
             ->get();
     }
 

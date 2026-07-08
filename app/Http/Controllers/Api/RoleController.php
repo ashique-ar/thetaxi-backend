@@ -301,7 +301,14 @@ class RoleController extends Controller
             'permissions.*' => ['string'],
         ]);
 
-        $permissions = $this->syncRolePermissionsAndCleanup($role, $request->permissions);
+        $requestedPermissionNames = collect($this->assignmentService->normalizePermissionNames($request->permissions))
+            ->map(fn ($permission) => (string) $permission)
+            ->unique()
+            ->values();
+
+        $permissions = $this->syncRolePermissionsAndCleanup($role, $requestedPermissionNames->all())
+            ->filter(fn ($permission) => $requestedPermissionNames->contains((string) $permission->name))
+            ->values();
 
         return response()->json([
             'status' => 'success',
