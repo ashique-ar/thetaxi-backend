@@ -315,6 +315,22 @@ class RoleController extends Controller
             ->unique()
             ->values();
 
+        $existingPermissionNames = Permission::query()
+            ->where('guard_name', $role->guard_name)
+            ->whereIn('name', $requestedPermissionNames->all())
+            ->pluck('name')
+            ->map(fn ($permission) => (string) $permission)
+            ->unique()
+            ->values();
+
+        $invalidPermissionNames = $requestedPermissionNames->diff($existingPermissionNames)->values();
+
+        if ($invalidPermissionNames->isNotEmpty()) {
+            throw ValidationException::withMessages([
+                'permissions' => 'One or more selected permissions are invalid for this role.',
+            ]);
+        }
+
         $permissions = $this->syncRolePermissionsAndCleanup($role, $requestedPermissionNames->all())
             ->filter(fn ($permission) => $requestedPermissionNames->contains((string) $permission->name))
             ->values();

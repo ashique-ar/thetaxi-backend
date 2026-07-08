@@ -30,9 +30,9 @@ class PermissionAssignmentService
         $ids = $identifiers->filter(fn ($value) => ctype_digit($value))->values();
         $names = $identifiers->reject(fn ($value) => ctype_digit($value))->map(fn ($name) => $this->registry->resolveKey($name))->values();
 
-        $resolvedById = Permission::query()
-            ->when($ids->isNotEmpty(), fn ($query) => $query->whereIn('id', $ids))
-            ->pluck('name');
+        $resolvedById = $ids->isNotEmpty()
+            ? Permission::query()->whereIn('id', $ids)->pluck('name')
+            : collect();
 
         return $names
             ->concat($resolvedById)
@@ -45,10 +45,8 @@ class PermissionAssignmentService
 
     public function syncRolePermissions(Role $role, array $permissionIdentifiers): Collection
     {
-        $permissions = $this->ensurePermissionsForGuard(
-            $this->normalizePermissionNames($permissionIdentifiers),
-            $role->guard_name
-        )->where('guard_name', $role->guard_name)->values();
+        $permissionNames = $this->normalizePermissionNames($permissionIdentifiers);
+        $permissions = $this->permissionsForGuard($permissionNames, $role->guard_name);
 
         DB::transaction(function () use ($role, $permissions) {
             DB::table('role_has_permissions')
@@ -124,6 +122,26 @@ class PermissionAssignmentService
                 'name' => $name,
                 'guard_name' => $guard,
             ]))
+            ->values();
+    }
+
+    private function permissionsForGuard(array $permissionNames, string $guard): Collection
+    {
+        $names = collect($permissionNames)
+            ->map(fn ($name) => $this->registry->resolveKey((string) $name))
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($names->isEmpty()) {
+            return collect();
+        }
+
+        return Permission::query()
+            ->where('guard_name', $guard)
+            ->whereIn('name', $names->all())
+            ->get()
+            ->sortBy(fn (Permission $permission) => $names->search($permission->name))
             ->values();
     }
 }
