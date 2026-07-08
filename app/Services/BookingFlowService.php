@@ -7681,9 +7681,8 @@ class BookingFlowService
                     })
                     ->orWhereHas('vehicle', function ($vehicleQuery) use ($search) {
                         $vehicleQuery->where('title', 'like', "%{$search}%")
-                            ->orWhere('name', 'like', "%{$search}%")
                             ->orWhere('license_plate', 'like', "%{$search}%")
-                            ->orWhere('registration_number', 'like', "%{$search}%");
+                            ->orWhere('registration_no', 'like', "%{$search}%");
                     })
                     ->orWhereHas('driver.user', function ($driverUserQuery) use ($search) {
                         $driverUserQuery->where('first_name', 'like', "%{$search}%")

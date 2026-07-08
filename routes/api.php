@@ -959,12 +959,15 @@ Route::middleware(['auth:api'])->group(function () {
 
         // Default vehicle management for drivers
         Route::get('drivers/{driver}/default-vehicle', [\App\Http\Controllers\Api\Admin\BookingAssignmentController::class, 'getDriverDefaultVehicle']);
-        Route::put('drivers/{driver}/default-vehicle', [\App\Http\Controllers\Api\Admin\BookingAssignmentController::class, 'updateDriverDefaultVehicle']);
+        Route::put('drivers/{driver}/default-vehicle', [\App\Http\Controllers\Api\Admin\BookingAssignmentController::class, 'updateDriverDefaultVehicle'])
+            ->middleware('permission:drivers.edit');
 
         // Driver device management endpoints
         Route::get('drivers/{driver}/devices', [DriverController::class, 'devices']);
-        Route::post('drivers/{driver}/devices/{deviceUuid}/deactivate', [DriverController::class, 'deactivateDevice']);
-        Route::delete('drivers/{driver}/devices/{deviceUuid}', [DriverController::class, 'removeDevice']);
+        Route::post('drivers/{driver}/devices/{deviceUuid}/deactivate', [DriverController::class, 'deactivateDevice'])
+            ->middleware('permission:drivers.edit');
+        Route::delete('drivers/{driver}/devices/{deviceUuid}', [DriverController::class, 'removeDevice'])
+            ->middleware('permission:drivers.delete');
     });
 
     /*

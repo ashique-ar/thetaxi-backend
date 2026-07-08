@@ -39,8 +39,9 @@ class DriverController extends Controller
         $this->notificationService = $notificationService;
         $this->middleware('permission:drivers.view')->only(['index', 'show', 'status', 'activity', 'sessions', 'sessionRoute', 'movementMap', 'locations', 'analytics', 'devices']);
         $this->middleware('permission:drivers.create')->only(['store']);
-        $this->middleware('permission:drivers.edit')->only(['update', 'deactivateDevice', 'removeDevice', 'testNotification']);
+        $this->middleware('permission:drivers.edit')->only(['update', 'deactivateDevice', 'testNotification']);
         $this->middleware('permission:drivers.delete')->only(['destroy']);
+        $this->middleware('permission:drivers.delete')->only(['removeDevice']);
     }
 
     public function index(Request $request): AnonymousResourceCollection

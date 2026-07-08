@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\User;
 use App\Models\UserContext;
+use Illuminate\Support\Str;
 
 class PermissionEvaluator
 {
@@ -32,7 +33,7 @@ class PermissionEvaluator
             ->where('is_active', true)
             ->with('roles.permissions');
 
-        if ($contextId) {
+        if ($contextId && Str::isUuid($contextId)) {
             $contextQuery->where(function ($query) use ($contextId) {
                 $query->where('id', $contextId)
                     ->orWhere('context_id', $contextId);
