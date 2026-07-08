@@ -80,7 +80,7 @@ class CorporateRoleController extends Controller
         $request->validate([
             'name'          => ['required', 'string', 'max:255'],
             'description'   => ['nullable', 'string', 'max:1000'],
-            'permissions'   => ['required', 'array', 'min:1'],
+            'permissions'   => ['present', 'array'],
             'permissions.*' => ['string', 'in:' . implode(',', self::CORPORATE_PERMISSIONS)],
         ]);
 
@@ -118,7 +118,7 @@ class CorporateRoleController extends Controller
         $request->validate([
             'name'          => ['sometimes', 'string', 'max:255'],
             'description'   => ['nullable', 'string', 'max:1000'],
-            'permissions'   => ['required', 'array', 'min:1'],
+            'permissions'   => ['present', 'array'],
             'permissions.*' => ['string', 'in:' . implode(',', self::CORPORATE_PERMISSIONS)],
         ]);
 

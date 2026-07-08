@@ -15,6 +15,14 @@ use Illuminate\Validation\Rule;
 
 class InquiryFormController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('permission:inquiry-forms.view')->only(['index', 'show']);
+        $this->middleware('permission:inquiry-forms.create')->only(['store']);
+        $this->middleware('permission:inquiry-forms.edit')->only(['update']);
+        $this->middleware('permission:inquiry-forms.delete')->only(['destroy']);
+    }
+
     public function index(Request $request): AnonymousResourceCollection
     {
         $query = InquiryForm::withInactive();

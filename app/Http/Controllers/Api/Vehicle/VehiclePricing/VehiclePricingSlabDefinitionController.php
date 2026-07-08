@@ -13,6 +13,14 @@ use Illuminate\Support\Facades\DB;
 
 class VehiclePricingSlabDefinitionController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('permission:vehicle-pricing-slabs.view')->only(['index', 'show', 'findForHours']);
+        $this->middleware('permission:vehicle-pricing-slabs.create')->only(['store']);
+        $this->middleware('permission:vehicle-pricing-slabs.edit')->only(['update', 'toggleStatus']);
+        $this->middleware('permission:vehicle-pricing-slabs.delete')->only(['destroy']);
+    }
+
     /**
      * Display a listing of the slab definitions.
      */

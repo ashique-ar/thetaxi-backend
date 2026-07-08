@@ -17,6 +17,14 @@ use Symfony\Component\HttpFoundation\Response;
 
 class AgreementController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('permission:agreements.view')->only(['index', 'show', 'stats', 'reports', 'exportReport', 'templates', 'showTemplate', 'documents', 'pdf', 'timeline']);
+        $this->middleware('permission:agreements.create')->only(['store', 'storeTemplate', 'preview', 'duplicate', 'renew', 'uploadDocument']);
+        $this->middleware('permission:agreements.edit')->only(['update', 'updateTemplate', 'verifyIdentity', 'sign', 'emailSignedAgreement', 'bulkUpdateStatus']);
+        $this->middleware('permission:agreements.delete')->only(['destroy', 'destroyTemplate', 'bulkDelete']);
+    }
+
     public function index(Request $request): JsonResponse
     {
         $query = Agreement::query()->latest();

@@ -17,6 +17,10 @@ class DriverHireSettlementController extends Controller
 {
     public function __construct(private DriverHireSettlementService $settlementService)
     {
+        $this->middleware('permission:driver-hire-settlements.view')->only(['index', 'show', 'dashboard']);
+        $this->middleware('permission:driver-hire-settlements.create')->only(['store', 'addExpense', 'addIou']);
+        $this->middleware('permission:driver-hire-settlements.edit')->only(['update', 'updateExpense', 'submit', 'opsReview', 'finalizeAccounts', 'markPaid', 'markRecovered']);
+        $this->middleware('permission:driver-hire-settlements.delete')->only(['destroy']);
     }
 
     public function index(Request $request)

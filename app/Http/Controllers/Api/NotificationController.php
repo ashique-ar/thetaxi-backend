@@ -27,6 +27,7 @@ class NotificationController extends Controller
         $this->middleware('permission:notifications.email')->only(['sendEmailNotification']);
         $this->middleware('permission:notifications.templates')->only(['getEmailTemplates']);
         $this->middleware('permission:notifications.create-template')->only(['createEmailTemplate']);
+        $this->middleware('permission:notifications.delete')->only(['deleteNotification']);
     }
 
     /**

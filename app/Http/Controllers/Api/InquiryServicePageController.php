@@ -13,6 +13,14 @@ use Illuminate\Validation\Rule;
 
 class InquiryServicePageController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('permission:inquiry-service-pages.view')->only(['index', 'show']);
+        $this->middleware('permission:inquiry-service-pages.create')->only(['store']);
+        $this->middleware('permission:inquiry-service-pages.edit')->only(['update']);
+        $this->middleware('permission:inquiry-service-pages.delete')->only(['destroy']);
+    }
+
     public function index(Request $request): AnonymousResourceCollection
     {
         $query = InquiryServicePage::withInactive()->with(['form', 'serviceType']);

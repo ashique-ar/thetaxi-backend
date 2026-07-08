@@ -19,6 +19,14 @@ use Illuminate\Database\Eloquent\Builder;
 
 class VehiclePricingCalculationDefinitionController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('permission:vehicle-pricing-calculations.view')->only(['index', 'show', 'getServiceTypes', 'getAvailableVariables', 'testCalculation', 'testDefinitionCalculation', 'calculatePrice', 'getSlabRates']);
+        $this->middleware('permission:vehicle-pricing-calculations.create')->only(['store']);
+        $this->middleware('permission:vehicle-pricing-calculations.edit')->only(['update', 'bulkUpdateStatus']);
+        $this->middleware('permission:vehicle-pricing-calculations.delete')->only(['destroy']);
+    }
+
     /**
      * Display a listing of calculation definitions with pagination and filtering.
      */

@@ -11,6 +11,14 @@ use Illuminate\Support\Facades\Validator;
 
 class AirportController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('permission:airports.view')->only(['index', 'show', 'getActive']);
+        $this->middleware('permission:airports.create')->only(['store']);
+        $this->middleware('permission:airports.edit')->only(['update']);
+        $this->middleware('permission:airports.delete')->only(['destroy']);
+    }
+
     /**
      * Display a listing of airports
      */

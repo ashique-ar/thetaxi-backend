@@ -28,6 +28,14 @@ class DocumentController extends Controller
         'vehicle_owner' => VehicleOwner::class,
     ];
 
+    public function __construct()
+    {
+        $this->middleware('permission:documents.view|system.view|agreements.view|customers.view|drivers.view|staff.view|vehicles.view|vehicle-owners.view')->only(['index', 'show', 'download', 'stats']);
+        $this->middleware('permission:documents.create|uploads.manage|customers.edit|drivers.edit|staff.edit|vehicles.edit|vehicle-owners.edit')->only(['store']);
+        $this->middleware('permission:documents.edit|uploads.manage|customers.edit|drivers.edit|staff.edit|vehicles.edit|vehicle-owners.edit')->only(['verify', 'reject']);
+        $this->middleware('permission:documents.delete|uploads.manage')->only(['destroy']);
+    }
+
     public function index(Request $request): JsonResponse
     {
         $data = $request->validate([

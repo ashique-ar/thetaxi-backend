@@ -7,6 +7,14 @@ use Illuminate\Http\Request;
 
 class BookingFormTabController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('permission:booking-form-tabs.view')->only(['index', 'show']);
+        $this->middleware('permission:booking-form-tabs.create')->only(['store']);
+        $this->middleware('permission:booking-form-tabs.edit')->only(['update']);
+        $this->middleware('permission:booking-form-tabs.delete')->only(['destroy']);
+    }
+
     /**
      * Display a listing of the resource.
      */

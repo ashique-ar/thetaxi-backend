@@ -16,6 +16,14 @@ use Carbon\Carbon;
 
 class PriceAdjustmentController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('permission:price-adjustments.view')->only(['index', 'show', 'getServiceTypes', 'getVehicleGroups', 'getApplicableAdjustments', 'applyAdjustments', 'getUsageStatistics']);
+        $this->middleware('permission:price-adjustments.create')->only(['store']);
+        $this->middleware('permission:price-adjustments.edit')->only(['update', 'bulkUpdateStatus', 'toggleStatus']);
+        $this->middleware('permission:price-adjustments.delete')->only(['destroy']);
+    }
+
     private function normalizeAdjustmentPayload(Request $request): array
     {
         $payload = $request->all();

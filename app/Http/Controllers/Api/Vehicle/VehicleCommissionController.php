@@ -10,6 +10,14 @@ use Illuminate\Http\Request;
 
 class VehicleCommissionController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('permission:vehicle-commissions.view')->only(['index']);
+        $this->middleware('permission:vehicle-commissions.create')->only(['store']);
+        $this->middleware('permission:vehicle-commissions.edit')->only(['update']);
+        $this->middleware('permission:vehicle-commissions.delete')->only(['destroy']);
+    }
+
     public function index(Vehicle $vehicle): JsonResponse
     {
         return response()->json([

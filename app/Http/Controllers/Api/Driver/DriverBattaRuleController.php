@@ -10,6 +10,14 @@ use Illuminate\Http\Request;
 
 class DriverBattaRuleController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('permission:driver-batta-rules.view')->only(['index', 'show']);
+        $this->middleware('permission:driver-batta-rules.create')->only(['store']);
+        $this->middleware('permission:driver-batta-rules.edit')->only(['update']);
+        $this->middleware('permission:driver-batta-rules.delete')->only(['destroy']);
+    }
+
     public function index(Request $request)
     {
         $query = DriverBattaRule::with('vehicleGroup')

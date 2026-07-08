@@ -10,6 +10,14 @@ use Illuminate\Support\Facades\Validator;
 
 class TermsController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('permission:terms.view')->only(['index', 'show']);
+        $this->middleware('permission:terms.create')->only(['store']);
+        $this->middleware('permission:terms.edit')->only(['update']);
+        $this->middleware('permission:terms.delete')->only(['destroy']);
+    }
+
     public function index(Request $request)
     {
         $serviceType = $request->query('service_type');

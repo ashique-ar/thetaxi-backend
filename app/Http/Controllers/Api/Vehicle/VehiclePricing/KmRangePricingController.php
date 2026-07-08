@@ -16,6 +16,14 @@ use Carbon\Carbon;
 
 class KmRangePricingController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('permission:km-range-pricing.view')->only(['index', 'show', 'getServiceTypes', 'getVehicleGroups', 'getApplicableRules', 'calculatePricing']);
+        $this->middleware('permission:km-range-pricing.create')->only(['store']);
+        $this->middleware('permission:km-range-pricing.edit')->only(['update', 'bulkUpdateStatus', 'toggleStatus']);
+        $this->middleware('permission:km-range-pricing.delete')->only(['destroy']);
+    }
+
     /**
      * Display a listing of KM-range pricing rules
      */

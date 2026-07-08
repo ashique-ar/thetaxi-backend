@@ -26,6 +26,7 @@ class ReportsController extends Controller
     {
         $this->middleware('auth:api');
         $this->middleware('permission:reports.view');
+        $this->middleware('permission:reports.generate')->only(['exportReport', 'deleteGeneratedReport']);
     }
 
     // ─────────────────────────────────────────────────────────────────

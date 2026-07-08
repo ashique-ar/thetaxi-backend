@@ -13,6 +13,14 @@ use Illuminate\Http\Request;
 
 class InquiryServicePageSectionController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('permission:inquiry-service-pages.view')->only(['index', 'show']);
+        $this->middleware('permission:inquiry-service-pages.create')->only(['store']);
+        $this->middleware('permission:inquiry-service-pages.edit')->only(['update', 'reorder']);
+        $this->middleware('permission:inquiry-service-pages.delete')->only(['destroy']);
+    }
+
     public function index(InquiryServicePage $inquiry_service_page)
     {
         $sections = $inquiry_service_page->sections()->orderBy('sort_order')->get();
