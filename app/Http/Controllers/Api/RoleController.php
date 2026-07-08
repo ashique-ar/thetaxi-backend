@@ -330,7 +330,7 @@ class RoleController extends Controller
                 ])->values(),
             ],
         ])->withHeaders([
-            'X-Role-Permissions-Sync' => 'exact-v2',
+            'X-Role-Permissions-Sync' => 'exact-v3',
             'X-Role-Permissions-Raw-Count' => is_array($rawPermissions) ? (string) count($rawPermissions) : 'not-array',
             'X-Role-Permissions-Requested-Count' => (string) $requestedPermissionNames->count(),
             'X-Role-Permissions-Returned-Count' => (string) $permissions->count(),
