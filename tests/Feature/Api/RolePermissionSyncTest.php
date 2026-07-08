@@ -4,6 +4,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Auth\Middleware\Authenticate;
 use Illuminate\Support\Facades\Schema;
 use App\Http\Middleware\PermissionMiddleware;
+use App\Services\PermissionAssignmentService;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
@@ -102,3 +103,12 @@ it('rejects permissions that do not exist for the role guard', function () {
         'permissions' => ['addons.view'],
     ])->assertStatus(422);
 });
+
+it('does not write role permissions for an unresolved role model', function () {
+    Permission::create(['name' => 'addons.view', 'guard_name' => 'web']);
+
+    app(PermissionAssignmentService::class)->syncRolePermissions(
+        new Role(['name' => 'unresolved', 'guard_name' => 'web']),
+        ['addons.view'],
+    );
+})->throws(\InvalidArgumentException::class, 'Cannot sync permissions for an unsaved role.');

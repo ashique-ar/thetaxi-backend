@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\User;
+use InvalidArgumentException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Permission;
@@ -45,6 +46,10 @@ class PermissionAssignmentService
 
     public function syncRolePermissions(Role $role, array $permissionIdentifiers): Collection
     {
+        if (! $role->exists || $role->getKey() === null) {
+            throw new InvalidArgumentException('Cannot sync permissions for an unsaved role.');
+        }
+
         $permissionNames = $this->normalizePermissionNames($permissionIdentifiers);
         $permissions = $this->permissionsForGuard($permissionNames, $role->guard_name);
 

@@ -296,6 +296,8 @@ class RoleController extends Controller
 
     public function syncPermissions(Request $request, Role $role): JsonResponse
     {
+        abort_if(! $role->exists || $role->getKey() === null, 404, 'Role not found.');
+
         $jsonPayload = json_decode($request->getContent() ?: '{}', true);
         $rawPermissions = is_array($jsonPayload) && array_key_exists('permissions', $jsonPayload)
             ? $jsonPayload['permissions']
