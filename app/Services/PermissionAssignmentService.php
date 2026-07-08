@@ -50,10 +50,26 @@ class PermissionAssignmentService
             $role->guard_name
         )->where('guard_name', $role->guard_name)->values();
 
-        $role->permissions()->sync($permissions->pluck('id')->all());
+        DB::transaction(function () use ($role, $permissions) {
+            DB::table('role_has_permissions')
+                ->where('role_id', $role->id)
+                ->delete();
+
+            $permissions
+                ->pluck('id')
+                ->unique()
+                ->each(fn ($permissionId) => DB::table('role_has_permissions')->insert([
+                    'permission_id' => $permissionId,
+                    'role_id' => $role->id,
+                ]));
+        });
+
         app(PermissionRegistrar::class)->forgetCachedPermissions();
 
-        return $permissions;
+        return $role->permissions()
+            ->where('permissions.guard_name', $role->guard_name)
+            ->orderBy('permissions.name')
+            ->get();
     }
 
     public function applyTemplate(Role $role, string $templateKey, string $mode = 'merge'): Collection
