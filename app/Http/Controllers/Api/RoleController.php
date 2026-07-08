@@ -296,6 +296,15 @@ class RoleController extends Controller
 
     public function syncPermissions(Request $request, Role $role): JsonResponse
     {
+        $jsonPayload = json_decode($request->getContent() ?: '{}', true);
+        $rawPermissions = is_array($jsonPayload) && array_key_exists('permissions', $jsonPayload)
+            ? $jsonPayload['permissions']
+            : $request->input('permissions');
+
+        $request->merge([
+            'permissions' => $rawPermissions,
+        ]);
+
         $request->validate([
             'permissions' => ['present', 'array'],
             'permissions.*' => ['string'],
@@ -322,6 +331,7 @@ class RoleController extends Controller
             ],
         ])->withHeaders([
             'X-Role-Permissions-Sync' => 'exact-v2',
+            'X-Role-Permissions-Raw-Count' => is_array($rawPermissions) ? (string) count($rawPermissions) : 'not-array',
             'X-Role-Permissions-Requested-Count' => (string) $requestedPermissionNames->count(),
             'X-Role-Permissions-Returned-Count' => (string) $permissions->count(),
         ]);
