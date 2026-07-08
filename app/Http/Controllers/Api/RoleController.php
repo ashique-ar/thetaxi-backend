@@ -310,7 +310,7 @@ class RoleController extends Controller
             'permissions.*' => ['string'],
         ]);
 
-        $requestedPermissionNames = collect($this->assignmentService->normalizePermissionNames($request->permissions))
+        $requestedPermissionNames = collect($this->assignmentService->normalizePermissionNames($rawPermissions))
             ->map(fn ($permission) => (string) $permission)
             ->unique()
             ->values();
