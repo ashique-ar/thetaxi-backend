@@ -320,6 +320,10 @@ class RoleController extends Controller
                     'guard_name' => $permission->guard_name,
                 ])->values(),
             ],
+        ])->withHeaders([
+            'X-Role-Permissions-Sync' => 'exact-v2',
+            'X-Role-Permissions-Requested-Count' => (string) $requestedPermissionNames->count(),
+            'X-Role-Permissions-Returned-Count' => (string) $permissions->count(),
         ]);
     }
 
