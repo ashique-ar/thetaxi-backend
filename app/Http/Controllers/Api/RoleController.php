@@ -425,6 +425,8 @@ class RoleController extends Controller
             $this->removeRoleDerivedDirectPermissions($role, $removedPermissionNames);
         }
 
+        $this->removeOrphanedRoleCopiedDirectPermissions($role);
+
         return $permissions;
     }
 
@@ -473,6 +475,50 @@ class RoleController extends Controller
                 $permissionId = (int) $row->permission_id;
 
                 if (in_array($permissionId, $permissionIdsStillGrantedByOtherRoles->get($modelId, []), true)) {
+                    return;
+                }
+
+                DB::table('model_has_permissions')
+                    ->where('model_type', User::class)
+                    ->where('model_id', $modelId)
+                    ->where('permission_id', $permissionId)
+                    ->delete();
+            });
+
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+    }
+
+    private function removeOrphanedRoleCopiedDirectPermissions(Role $role): void
+    {
+        $roleUserIds = DB::table('model_has_roles')
+            ->where('role_id', $role->id)
+            ->where('model_type', User::class)
+            ->pluck('model_id')
+            ->map(fn ($id) => (int) $id)
+            ->values();
+
+        if ($roleUserIds->isEmpty()) {
+            return;
+        }
+
+        $roleGrantedPermissionIdsByUser = DB::table('model_has_roles')
+            ->join('role_has_permissions', 'model_has_roles.role_id', '=', 'role_has_permissions.role_id')
+            ->where('model_has_roles.model_type', User::class)
+            ->whereIn('model_has_roles.model_id', $roleUserIds->all())
+            ->select('model_has_roles.model_id', 'role_has_permissions.permission_id')
+            ->get()
+            ->groupBy(fn ($row) => (int) $row->model_id)
+            ->map(fn ($rows) => $rows->pluck('permission_id')->map(fn ($id) => (int) $id)->all());
+
+        DB::table('model_has_permissions')
+            ->where('model_type', User::class)
+            ->whereIn('model_id', $roleUserIds->all())
+            ->get(['model_id', 'permission_id'])
+            ->each(function ($row) use ($roleGrantedPermissionIdsByUser) {
+                $modelId = (int) $row->model_id;
+                $permissionId = (int) $row->permission_id;
+
+                if (in_array($permissionId, $roleGrantedPermissionIdsByUser->get($modelId, []), true)) {
                     return;
                 }
 

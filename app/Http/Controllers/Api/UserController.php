@@ -814,7 +814,6 @@ class UserController extends Controller
             'roles.*' => ['required', 'string', 'exists:roles,name'],
             'apply_to_guards' => ['sometimes', 'array'],
             'apply_to_guards.*' => ['string', Rule::in(['web', 'api'])],
-            'auto_assign_permissions' => ['sometimes', 'boolean'],
         ]);
 
         try {
@@ -840,11 +839,6 @@ class UserController extends Controller
                 ]);
             }
 
-            // Auto-assign permissions from roles if requested
-            if ($request->boolean('auto_assign_permissions', true)) {
-                $this->assignPermissionsFromRoleModels($user, $rolesToAssign);
-            }
-
             $this->contextService->syncContextsForAssignedRoles($user, $rolesToAssign, $request->user()?->id);
 
             app(PermissionRegistrar::class)->forgetCachedPermissions();
@@ -859,32 +853,6 @@ class UserController extends Controller
                 'message' => 'Failed to assign roles',
                 'error' => $e->getMessage()
             ], 500);
-        }
-    }
-
-    /**
-     * Auto-assign permissions from roles
-     *
-     * @param User $user
-     * @param array $roleNames
-     * @param array $guards
-     * @return void
-     */
-    private function assignPermissionsFromRoleModels(User $user, $roles): void
-    {
-        $permissionIds = collect($roles)
-            ->flatMap(fn ($role) => $role->permissions)
-            ->pluck('id')
-            ->filter()
-            ->unique()
-            ->values();
-
-        foreach ($permissionIds as $permissionId) {
-            DB::table('model_has_permissions')->updateOrInsert([
-                'permission_id' => $permissionId,
-                'model_type' => User::class,
-                'model_id' => $user->id,
-            ]);
         }
     }
 
