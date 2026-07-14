@@ -74,11 +74,28 @@ class AuthController extends Controller
                 ]
             ]);
         } catch (ValidationException $e) {
+            $errors = $e->errors();
+            $user = \App\Models\User::where('email', strtolower((string) $request->input('email')))->first();
+
+            if (array_key_exists('account', $errors) && $user?->isLocked()) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Account locked after 5 failed login attempts. Try again when the lock expires or contact an administrator.',
+                    'error_code' => 'AUTH_ACCOUNT_LOCKED',
+                    'code' => 'account_locked',
+                    'data' => [
+                        'locked_until' => $user->locked_until->toIso8601String(),
+                        'retry_after' => max(0, now()->diffInSeconds($user->locked_until, false)),
+                    ],
+                    'errors' => $errors,
+                ], 423);
+            }
+
             return response()->json([
                 'status' => 'error',
-                'message' => 'Invalid credentials',
+                'message' => collect($errors)->flatten()->first() ?? 'Invalid credentials',
                 'error_code' => 'AUTH_INVALID_CREDENTIALS',
-                'errors' => $e->errors()
+                'errors' => $errors
             ], 401);
         } catch (\Exception $e) {
             return response()->json([

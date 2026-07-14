@@ -241,6 +241,8 @@ class UserService
             if (isset($userData['password'])) {
                 $userData['password'] = Hash::make($userData['password']);
                 $userData['password_changed_at'] = now();
+                $userData['login_attempts'] = 0;
+                $userData['locked_until'] = null;
             }
 
             $user->update($userData);
@@ -344,6 +346,8 @@ class UserService
             'password' => Hash::make($newPassword),
             'password_changed_at' => now(),
             'remember_token' => Str::random(60),
+            'login_attempts' => 0,
+            'locked_until' => null,
         ]);
 
         // Revoke all tokens to force re-login

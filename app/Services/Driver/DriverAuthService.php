@@ -61,6 +61,11 @@ class DriverAuthService
             ]);
         }
 
+        // A timed lock starts a fresh attempt window after it expires.
+        if ($user->locked_until && !$user->isLocked()) {
+            $user->unlockAccount();
+        }
+
         // Check if account is active
         if (!$user->isActive()) {
             throw ValidationException::withMessages([
@@ -82,6 +87,10 @@ class DriverAuthService
             // Lock account after 5 failed attempts
             if ($user->login_attempts >= 5) {
                 $user->lockAccount();
+
+                throw ValidationException::withMessages([
+                    'account' => ['Account is locked due to multiple failed attempts']
+                ]);
             }
 
             throw ValidationException::withMessages([

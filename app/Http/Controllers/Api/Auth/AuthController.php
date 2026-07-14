@@ -121,6 +121,7 @@ class AuthController extends Controller
         try {
             $credentials = $request->only('email', 'password');
             $result = $this->authService->authenticateWithRefresh($credentials, $request);
+            $request->clearRateLimit();
 
             return response()->json([
                 'status' => 'success',
@@ -131,10 +132,31 @@ class AuthController extends Controller
                 ]
             ], 200);
         } catch (ValidationException $e) {
+            $errors = $e->errors();
+
+            if (array_key_exists('account', $errors)) {
+                $user = \App\Models\User::where('email', $request->input('email'))->first();
+
+                if ($user?->isLocked()) {
+                    $retryAfter = max(0, now()->diffInSeconds($user->locked_until, false));
+
+                    return response()->json([
+                        'status' => 'error',
+                        'code' => 'account_locked',
+                        'message' => 'Account locked after 5 failed login attempts. Try again when the lock expires or contact an administrator.',
+                        'data' => [
+                            'locked_until' => $user->locked_until->toIso8601String(),
+                            'retry_after' => $retryAfter,
+                        ],
+                        'errors' => $errors,
+                    ], 423);
+                }
+            }
+
             return response()->json([
                 'status' => 'error',
-                'message' => 'Validation failed',
-                'errors' => $e->errors()
+                'message' => collect($errors)->flatten()->first() ?? 'Login failed',
+                'errors' => $errors
             ], 422);
         } catch (\Exception $e) {
             return response()->json([
@@ -448,6 +470,32 @@ class AuthController extends Controller
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Return the remaining timed lock without revealing whether an account exists.
+     */
+    public function lockoutStatus(Request $request): JsonResponse
+    {
+        $validated = $request->validate(['email' => ['required', 'email']]);
+        $user = \App\Models\User::where('email', strtolower($validated['email']))->first();
+
+        if ($user?->locked_until && !$user->isLocked()) {
+            $user->unlockAccount();
+        }
+
+        $remainingTime = $user?->isLocked()
+            ? max(0, now()->diffInSeconds($user->locked_until, false))
+            : 0;
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'isLocked' => $remainingTime > 0,
+                'remainingTime' => $remainingTime,
+                'locked_until' => $remainingTime > 0 ? $user->locked_until->toIso8601String() : null,
+            ],
+        ]);
     }
 
     private function buildUserResponse(User $user, Request $request): array

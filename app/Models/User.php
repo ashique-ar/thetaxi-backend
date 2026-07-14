@@ -246,7 +246,10 @@ class User extends Authenticatable
      */
     public function resetLoginAttempts()
     {
-        $this->update(['login_attempts' => 0]);
+        $this->update([
+            'login_attempts' => 0,
+            'locked_until' => null,
+        ]);
     }
 
     /**
@@ -258,6 +261,17 @@ class User extends Authenticatable
     public function lockAccount($minutes = 30)
     {
         $this->update(['locked_until' => now()->addMinutes($minutes)]);
+    }
+
+    /**
+     * Clear both the timed lock and the failed-attempt counter.
+     */
+    public function unlockAccount(): void
+    {
+        $this->update([
+            'login_attempts' => 0,
+            'locked_until' => null,
+        ]);
     }
 
     /**

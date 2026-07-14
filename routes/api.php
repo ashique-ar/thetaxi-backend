@@ -120,6 +120,7 @@ Route::prefix('auth')->group(function () {
     Route::post('register', [AuthController::class, 'register'])->middleware('throttle:10,1');
     // Route::post('login', [AuthController::class, 'login']);
     Route::post('login', [AuthController::class, 'loginWithRefresh'])->middleware('throttle:10,1');
+    Route::get('lockout-status', [AuthController::class, 'lockoutStatus'])->middleware('throttle:30,1');
     Route::post('refresh', [AuthController::class, 'refreshToken'])->middleware('throttle:30,1');
     Route::post('forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:5,1');
     Route::post('reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:10,1');
@@ -288,6 +289,7 @@ Route::middleware(['auth:api'])->group(function () {
     Route::delete('users/{user}', [UserController::class, 'destroy'])->middleware('permission:users.delete');
     Route::post('users/{user}/activate', [UserController::class, 'activate'])->middleware('permission:users.manage');
     Route::post('users/{user}/deactivate', [UserController::class, 'deactivate'])->middleware('permission:users.manage');
+    Route::post('users/{user}/unlock', [UserController::class, 'unlock'])->middleware('permission:users.manage');
     Route::post('users/{user}/impersonate', [UserController::class, 'impersonate'])->middleware('permission:users.manage');
     Route::post('users/{user}/reset-password', [UserController::class, 'resetPassword'])->middleware('permission:users.manage');
     Route::post('users/{user}/permissions', [UserController::class, 'assignPermissions'])->middleware('permission:permissions.manage');

@@ -88,6 +88,23 @@ class UserController extends Controller
         return UserResource::collection($this->userService->getAllUsers($filters));
     }
 
+    /**
+     * Manually clear a user's timed login lock and failed-attempt counter.
+     */
+    public function unlock(User $user): JsonResponse
+    {
+        $user->unlockAccount();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'User account unlocked successfully',
+            'data' => [
+                'login_attempts' => 0,
+                'locked_until' => null,
+            ],
+        ]);
+    }
+
     public function export(Request $request)
     {
         $filters = $request->only(['search', 'role', 'status', 'context', 'agent_id', 'verified', 'sort_by', 'sort_order']);

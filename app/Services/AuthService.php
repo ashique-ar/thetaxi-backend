@@ -68,6 +68,11 @@ class AuthService
             ]);
         }
 
+        // A timed lock starts a fresh attempt window after it expires.
+        if ($user->locked_until && !$user->isLocked()) {
+            $user->unlockAccount();
+        }
+
         // Check if account is locked
         if ($user->isLocked()) {
             throw ValidationException::withMessages([
@@ -89,6 +94,10 @@ class AuthService
             // Lock account after 5 failed attempts
             if ($user->login_attempts >= 5) {
                 $user->lockAccount();
+
+                throw ValidationException::withMessages([
+                    'account' => 'Account is locked due to multiple failed attempts'
+                ]);
             }
             
             throw ValidationException::withMessages([
@@ -410,6 +419,8 @@ class AuthService
                 'password' => Hash::make($password),
                 'password_changed_at' => now(),
                 'remember_token' => Str::random(60),
+                'login_attempts' => 0,
+                'locked_until' => null,
             ])->save();
 
             // Revoke all tokens
