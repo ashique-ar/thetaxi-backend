@@ -179,20 +179,11 @@ Notifications:
 | POST | `/api/driver/assignments/{assignment_id}/complete` | Yes | Complete hire and calculate final amount |
 | POST | `/api/driver/assignments/{assignment_id}/collect-payment` | Yes | Record driver cash collection when required |
 
-### Open Package Chauffeur Flow
+### Open Package Behavior
 
-Use this flow for day/month chauffeur packages where the booking has a pickup point and selected package, but no fixed final destination at booking time.
+Open-package chauffeur hires use the same Trip Tracking and Location endpoints listed above. There is no separate open-package endpoint set.
 
-| Method | Endpoint | Auth | Purpose |
-|---|---|---:|---|
-| GET | `/api/driver/assignments/current` | Yes | Detect open package assignment |
-| GET | `/api/driver/assignments/{assignment_id}/status` | Yes | Read current trip phase and package usage |
-| POST | `/api/driver/assignments/{assignment_id}/arrived` | Yes | Confirm arrival at pickup |
-| POST | `/api/driver/assignments/{assignment_id}/start` | Yes | Start billable package tracking |
-| POST | `/api/driver/location` | Yes | Send live GPS route points |
-| POST | `/api/driver/location/bulk` | Yes | Sync offline buffered route points |
-| POST | `/api/driver/assignments/{assignment_id}/complete` | Yes | End package and calculate final charges |
-| POST | `/api/driver/assignments/{assignment_id}/collect-payment` | Yes | Record cash collection when required |
+Use `GET /api/driver/assignments/current`, then branch the mobile UI from the assignment response:
 
 Mobile app branch condition:
 

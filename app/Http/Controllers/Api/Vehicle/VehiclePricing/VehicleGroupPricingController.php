@@ -179,6 +179,13 @@ class VehicleGroupPricingController extends Controller
             // Get paginated vehicle groups with optimized query
             $vehicleGroupQuery = VehicleGroup::query()
                 ->with(['grade:id,name', 'make:id,name', 'model:id,name'])
+                ->when($context === 'corporate' && $ownerType === 'corporate' && $ownerId !== '', function ($q) use ($ownerId) {
+                    $q->whereIn('id', function ($subQuery) use ($ownerId) {
+                        $subQuery->select('vehicle_group_id')
+                            ->from('corporate_vehicle_groups')
+                            ->where('corporate_id', $ownerId);
+                    });
+                })
                 ->when($vehicleGroupId, fn($q) => $q->where('id', $vehicleGroupId))
                 ->when(!$includeInactive, fn($q) => $q->where('is_active', true))
                 ->when($search, function ($q) use ($search) {

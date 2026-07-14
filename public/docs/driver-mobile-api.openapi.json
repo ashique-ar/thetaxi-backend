@@ -44,10 +44,8 @@
             "name": "Booking Assignments"
         },
         {
-            "name": "Trip Tracking"
-        },
-        {
-            "name": "Open Package Chauffeur Flow"
+            "name": "Trip Tracking",
+            "description": "Canonical trip lifecycle shared by fixed-route, multi-stop, and open-package chauffeur hires. Branch on trip_mode, destination_known, and is_multi_stop while keeping the same endpoints."
         },
         {
             "name": "Earnings"
@@ -708,7 +706,7 @@
                                         },
                                         "errors": {
                                             "type": "array",
-                                            "items": {}
+                                            "items": []
                                         }
                                     }
                                 },
@@ -783,7 +781,7 @@
                                         },
                                         "errors": {
                                             "type": "array",
-                                            "items": {}
+                                            "items": []
                                         }
                                     }
                                 },
@@ -1240,7 +1238,7 @@
                                         },
                                         "errors": {
                                             "type": "array",
-                                            "items": {}
+                                            "items": []
                                         }
                                     }
                                 },
@@ -1275,9 +1273,9 @@
                         "application/json": {
                             "schema": {
                                 "type": "object",
-                                "properties": {}
+                                "properties": []
                             },
-                            "example": {}
+                            "example": []
                         }
                     }
                 },
@@ -1458,7 +1456,7 @@
                                         },
                                         "errors": {
                                             "type": "array",
-                                            "items": {}
+                                            "items": []
                                         }
                                     }
                                 },
@@ -1492,7 +1490,7 @@
                                         },
                                         "errors": {
                                             "type": "array",
-                                            "items": {}
+                                            "items": []
                                         }
                                     }
                                 },
@@ -2263,7 +2261,7 @@
                                         },
                                         "errors": {
                                             "type": "array",
-                                            "items": {}
+                                            "items": []
                                         }
                                     }
                                 },
@@ -2805,7 +2803,7 @@
                                         },
                                         "errors": {
                                             "type": "array",
-                                            "items": {}
+                                            "items": []
                                         }
                                     }
                                 },
@@ -3016,7 +3014,7 @@
                                         },
                                         "errors": {
                                             "type": "array",
-                                            "items": {}
+                                            "items": []
                                         }
                                     }
                                 },
@@ -3097,7 +3095,7 @@
                                         },
                                         "errors": {
                                             "type": "array",
-                                            "items": {}
+                                            "items": []
                                         }
                                     }
                                 },
@@ -3178,7 +3176,7 @@
                                         },
                                         "errors": {
                                             "type": "array",
-                                            "items": {}
+                                            "items": []
                                         }
                                     }
                                 },
@@ -3534,7 +3532,7 @@
                                         },
                                         "errors": {
                                             "type": "array",
-                                            "items": {}
+                                            "items": []
                                         }
                                     }
                                 },
@@ -3618,7 +3616,7 @@
                                         },
                                         "errors": {
                                             "type": "array",
-                                            "items": {}
+                                            "items": []
                                         }
                                     }
                                 },
@@ -3970,7 +3968,7 @@
                                                     },
                                                     "route_stops": {
                                                         "type": "array",
-                                                        "items": {}
+                                                        "items": []
                                                     },
                                                     "package": {
                                                         "type": "object",
@@ -4208,7 +4206,7 @@
                                                 },
                                                 "route_stops": {
                                                     "type": "array",
-                                                    "items": {}
+                                                    "items": []
                                                 },
                                                 "package": {
                                                     "type": "object",
@@ -4337,9 +4335,9 @@
                         "application/json": {
                             "schema": {
                                 "type": "object",
-                                "properties": {}
+                                "properties": []
                             },
-                            "example": {}
+                            "example": []
                         }
                     }
                 },
@@ -4532,7 +4530,7 @@
                                                             },
                                                             "allowed_actions": {
                                                                 "type": "array",
-                                                                "items": {}
+                                                                "items": []
                                                             }
                                                         }
                                                     }
@@ -4727,7 +4725,7 @@
                                         },
                                         "errors": {
                                             "type": "array",
-                                            "items": {}
+                                            "items": []
                                         }
                                     }
                                 },
@@ -4975,7 +4973,7 @@
                                                             },
                                                             "allowed_actions": {
                                                                 "type": "array",
-                                                                "items": {}
+                                                                "items": []
                                                             }
                                                         }
                                                     }
@@ -5170,7 +5168,7 @@
                                         },
                                         "errors": {
                                             "type": "array",
-                                            "items": {}
+                                            "items": []
                                         }
                                     }
                                 },
@@ -5433,7 +5431,7 @@
                                                                 },
                                                                 "allowed_actions": {
                                                                     "type": "array",
-                                                                    "items": {}
+                                                                    "items": []
                                                                 }
                                                             }
                                                         }
@@ -5646,7 +5644,7 @@
                     "Trip Tracking"
                 ],
                 "summary": "Get Trip Status",
-                "description": "Canonical endpoint: get trip status for a specific assignment. Response includes all generated route stops in `stops`, the next actionable stop in `current_stop`, and assignment-level `allowed_actions`. Use each stop `id` for stop action endpoints. Use `booking_stop_id`, `type_sequence`, and `display_label` to identify the exact booking pickup/dropoff in the mobile UI.",
+                "description": "Canonical endpoint: get trip status for a specific assignment. Response includes all generated route stops in `stops`, the next actionable stop in `current_stop`, and assignment-level `allowed_actions`. Use each stop `id` for stop action endpoints. Use `booking_stop_id`, `type_sequence`, and `display_label` to identify the exact booking pickup/dropoff in the mobile UI. This endpoint is shared by fixed-route, multi-stop, and open-package chauffeur hires; mobile behavior is selected from trip_mode, destination_known, and is_multi_stop in the assignment/status response.",
                 "operationId": "get_api_driver_assignments_assignment_id_status_Get_Trip_Status",
                 "security": [
                     {
@@ -5747,7 +5745,7 @@
                                                 },
                                                 "stops": {
                                                     "type": "array",
-                                                    "items": {}
+                                                    "items": []
                                                 },
                                                 "current_stop": {
                                                     "nullable": true
@@ -5886,7 +5884,7 @@
                                         },
                                         "errors": {
                                             "type": "array",
-                                            "items": {}
+                                            "items": []
                                         }
                                     }
                                 },
@@ -5908,7 +5906,7 @@
                     "Trip Tracking"
                 ],
                 "summary": "Confirm Pickup Arrival",
-                "description": "Canonical endpoint: mark pickup arrival for a specific assignment.",
+                "description": "Canonical endpoint: mark pickup arrival for a specific assignment. This endpoint is shared by fixed-route, multi-stop, and open-package chauffeur hires; mobile behavior is selected from trip_mode, destination_known, and is_multi_stop in the assignment/status response.",
                 "operationId": "post_api_driver_assignments_assignment_id_arrived_Confirm_Pickup_Arrival",
                 "security": [
                     {
@@ -6121,7 +6119,7 @@
                                                             },
                                                             "allowed_actions": {
                                                                 "type": "array",
-                                                                "items": {}
+                                                                "items": []
                                                             }
                                                         }
                                                     }
@@ -6431,7 +6429,7 @@
                     "Trip Tracking"
                 ],
                 "summary": "Start Trip",
-                "description": "Canonical endpoint: start trip for a specific assignment.",
+                "description": "Canonical endpoint: start trip for a specific assignment. This endpoint is shared by fixed-route, multi-stop, and open-package chauffeur hires; mobile behavior is selected from trip_mode, destination_known, and is_multi_stop in the assignment/status response.",
                 "operationId": "post_api_driver_assignments_assignment_id_start_Start_Trip",
                 "security": [
                     {
@@ -6455,9 +6453,9 @@
                         "application/json": {
                             "schema": {
                                 "type": "object",
-                                "properties": {}
+                                "properties": []
                             },
-                            "example": {}
+                            "example": []
                         }
                     }
                 },
@@ -6632,7 +6630,7 @@
                                                             },
                                                             "allowed_actions": {
                                                                 "type": "array",
-                                                                "items": {}
+                                                                "items": []
                                                             }
                                                         }
                                                     }
@@ -6954,7 +6952,7 @@
                                         },
                                         "errors": {
                                             "type": "array",
-                                            "items": {}
+                                            "items": []
                                         }
                                     }
                                 },
@@ -7185,7 +7183,7 @@
                                                             },
                                                             "allowed_actions": {
                                                                 "type": "array",
-                                                                "items": {}
+                                                                "items": []
                                                             }
                                                         }
                                                     }
@@ -7839,7 +7837,7 @@
                                                             },
                                                             "allowed_actions": {
                                                                 "type": "array",
-                                                                "items": {}
+                                                                "items": []
                                                             }
                                                         }
                                                     }
@@ -8073,7 +8071,7 @@
                                                         },
                                                         "allowed_actions": {
                                                             "type": "array",
-                                                            "items": {}
+                                                            "items": []
                                                         }
                                                     }
                                                 }
@@ -8488,7 +8486,7 @@
                                                             },
                                                             "allowed_actions": {
                                                                 "type": "array",
-                                                                "items": {}
+                                                                "items": []
                                                             }
                                                         }
                                                     }
@@ -8722,7 +8720,7 @@
                                                         },
                                                         "allowed_actions": {
                                                             "type": "array",
-                                                            "items": {}
+                                                            "items": []
                                                         }
                                                     }
                                                 }
@@ -9137,7 +9135,7 @@
                                                             },
                                                             "allowed_actions": {
                                                                 "type": "array",
-                                                                "items": {}
+                                                                "items": []
                                                             }
                                                         }
                                                     }
@@ -9370,7 +9368,7 @@
                                                         },
                                                         "allowed_actions": {
                                                             "type": "array",
-                                                            "items": {}
+                                                            "items": []
                                                         }
                                                     }
                                                 }
@@ -9576,7 +9574,7 @@
                     "Trip Tracking"
                 ],
                 "summary": "End Trip",
-                "description": "Canonical endpoint: complete trip for a specific assignment. Backend calculates/stores the final hire amount and returns payment instructions. If `payment.collection_required` is true, call collect-payment next.",
+                "description": "Canonical endpoint: complete trip for a specific assignment. Backend calculates/stores the final hire amount and returns payment instructions. If `payment.collection_required` is true, call collect-payment next. This endpoint is shared by fixed-route, multi-stop, and open-package chauffeur hires; mobile behavior is selected from trip_mode, destination_known, and is_multi_stop in the assignment/status response.",
                 "operationId": "post_api_driver_assignments_assignment_id_complete_End_Trip",
                 "security": [
                     {
@@ -9940,7 +9938,7 @@
                                         },
                                         "errors": {
                                             "type": "array",
-                                            "items": {}
+                                            "items": []
                                         }
                                     }
                                 },
@@ -9962,1218 +9960,8 @@
                     "Trip Tracking"
                 ],
                 "summary": "Collect Cash Payment",
-                "description": "Call only after complete-trip response returns `payment.collection_required = true`. Records cash collected by driver.",
+                "description": "Call only after complete-trip response returns `payment.collection_required = true`. Records cash collected by driver. This endpoint is shared by fixed-route, multi-stop, and open-package chauffeur hires; mobile behavior is selected from trip_mode, destination_known, and is_multi_stop in the assignment/status response.",
                 "operationId": "post_api_driver_assignments_assignment_id_collect_payment_Collect_Cash_Payment",
-                "security": [
-                    {
-                        "bearerAuth": []
-                    }
-                ],
-                "parameters": [
-                    {
-                        "name": "assignment_id",
-                        "in": "path",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        },
-                        "example": "assignment_id-value"
-                    }
-                ],
-                "requestBody": {
-                    "required": true,
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object",
-                                "properties": {
-                                    "collected_amount": {
-                                        "type": "string",
-                                        "example": "{{collected_amount}}"
-                                    },
-                                    "payment_notes": {
-                                        "type": "string",
-                                        "example": "{{payment_notes}}"
-                                    }
-                                }
-                            },
-                            "example": {
-                                "collected_amount": "{{collected_amount}}",
-                                "payment_notes": "{{payment_notes}}"
-                            }
-                        }
-                    }
-                },
-                "responses": {
-                    "200": {
-                        "description": "Success",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "status": {
-                                            "type": "string",
-                                            "example": "success"
-                                        },
-                                        "message": {
-                                            "type": "string",
-                                            "example": "Payment collection recorded"
-                                        },
-                                        "data": {
-                                            "type": "object",
-                                            "properties": {
-                                                "assignment_id": {
-                                                    "type": "string",
-                                                    "example": "assignment-uuid"
-                                                },
-                                                "booking_id": {
-                                                    "type": "string",
-                                                    "example": "booking-uuid"
-                                                },
-                                                "payment": {
-                                                    "type": "object",
-                                                    "properties": {
-                                                        "payment_responsibility": {
-                                                            "type": "string",
-                                                            "example": "customer"
-                                                        },
-                                                        "payment_collection_method": {
-                                                            "type": "string",
-                                                            "example": "cash_to_driver"
-                                                        },
-                                                        "payment_collection_status": {
-                                                            "type": "string",
-                                                            "example": "driver_collected"
-                                                        },
-                                                        "payment_status": {
-                                                            "type": "string",
-                                                            "example": "paid"
-                                                        },
-                                                        "final_amount": {
-                                                            "type": "number",
-                                                            "example": 28760
-                                                        },
-                                                        "amount_to_pay": {
-                                                            "type": "number",
-                                                            "example": 28760
-                                                        },
-                                                        "currency": {
-                                                            "type": "string",
-                                                            "example": "LKR"
-                                                        },
-                                                        "collection_required": {
-                                                            "type": "boolean",
-                                                            "example": false
-                                                        },
-                                                        "collection_message": {
-                                                            "type": "string",
-                                                            "example": "Cash collected by driver"
-                                                        },
-                                                        "amount_to_collect": {
-                                                            "nullable": true
-                                                        },
-                                                        "payment_collected_amount": {
-                                                            "type": "number",
-                                                            "example": 28760
-                                                        },
-                                                        "payment_collected_at": {
-                                                            "type": "string",
-                                                            "example": "2026-05-21T16:07:00+05:30"
-                                                        },
-                                                        "payment_collected_by_driver_id": {
-                                                            "type": "string",
-                                                            "example": "driver-uuid"
-                                                        },
-                                                        "payment_notes": {
-                                                            "type": "string",
-                                                            "example": "Cash collected by driver"
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                },
-                                "example": {
-                                    "status": "success",
-                                    "message": "Payment collection recorded",
-                                    "data": {
-                                        "assignment_id": "assignment-uuid",
-                                        "booking_id": "booking-uuid",
-                                        "payment": {
-                                            "payment_responsibility": "customer",
-                                            "payment_collection_method": "cash_to_driver",
-                                            "payment_collection_status": "driver_collected",
-                                            "payment_status": "paid",
-                                            "final_amount": 28760,
-                                            "amount_to_pay": 28760,
-                                            "currency": "LKR",
-                                            "collection_required": false,
-                                            "collection_message": "Cash collected by driver",
-                                            "amount_to_collect": null,
-                                            "payment_collected_amount": 28760,
-                                            "payment_collected_at": "2026-05-21T16:07:00+05:30",
-                                            "payment_collected_by_driver_id": "driver-uuid",
-                                            "payment_notes": "Cash collected by driver"
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/driver/assignments/current~1-get-current-open-package-assignment": {
-            "get": {
-                "tags": [
-                    "Open Package Chauffeur Flow"
-                ],
-                "summary": "1. Get Current Open Package Assignment",
-                "description": "Check `data.trip_mode`. If it is `open_package`, use pickup-only navigation before trip start and show package details instead of a fixed destination route.",
-                "operationId": "get_api_driver_assignments_current_1_Get_Current_Open_Package_Assignment",
-                "security": [
-                    {
-                        "bearerAuth": []
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Success",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "status": {
-                                            "type": "string",
-                                            "example": "success"
-                                        },
-                                        "data": {
-                                            "type": "object",
-                                            "properties": {
-                                                "id": {
-                                                    "type": "string",
-                                                    "example": "assignment-uuid"
-                                                },
-                                                "driver_id": {
-                                                    "type": "string",
-                                                    "example": "driver-uuid"
-                                                },
-                                                "booking_id": {
-                                                    "type": "string",
-                                                    "example": "booking-uuid"
-                                                },
-                                                "booking_item_id": {
-                                                    "type": "string",
-                                                    "example": "item-uuid"
-                                                },
-                                                "status": {
-                                                    "type": "string",
-                                                    "example": "active"
-                                                },
-                                                "trip_phase": {
-                                                    "type": "string",
-                                                    "example": "accepted"
-                                                },
-                                                "trip_mode": {
-                                                    "type": "string",
-                                                    "example": "open_package"
-                                                },
-                                                "destination_known": {
-                                                    "type": "boolean",
-                                                    "example": false
-                                                },
-                                                "driver_message": {
-                                                    "type": "string",
-                                                    "example": "Open package trip. Navigate to pickup only. Customer destination and route will be tracked after trip start."
-                                                },
-                                                "payment_type": {
-                                                    "type": "string",
-                                                    "example": "cash"
-                                                },
-                                                "fare_amount": {
-                                                    "type": "number",
-                                                    "example": 25000
-                                                },
-                                                "total_amount": {
-                                                    "type": "number",
-                                                    "example": 25000
-                                                },
-                                                "currency": {
-                                                    "type": "string",
-                                                    "example": "LKR"
-                                                },
-                                                "booking_number": {
-                                                    "type": "string",
-                                                    "example": "BK-2026-0001"
-                                                },
-                                                "service_type_name": {
-                                                    "type": "string",
-                                                    "example": "Day Chauffeur Package"
-                                                },
-                                                "customer_name": {
-                                                    "type": "string",
-                                                    "example": "John Customer"
-                                                },
-                                                "customer_phone": {
-                                                    "type": "string",
-                                                    "example": "+94771111111"
-                                                },
-                                                "pickup_location_label": {
-                                                    "type": "string",
-                                                    "example": "Colombo Airport"
-                                                },
-                                                "dropoff_location_label": {
-                                                    "nullable": true
-                                                },
-                                                "is_multi_stop": {
-                                                    "type": "boolean",
-                                                    "example": false
-                                                },
-                                                "route_stops": {
-                                                    "type": "array",
-                                                    "items": {}
-                                                },
-                                                "package": {
-                                                    "type": "object",
-                                                    "properties": {
-                                                        "id": {
-                                                            "type": "string",
-                                                            "example": "package-uuid"
-                                                        },
-                                                        "name": {
-                                                            "type": "string",
-                                                            "example": "Day Package - 8 Hours / 80 KM"
-                                                        },
-                                                        "code": {
-                                                            "type": "string",
-                                                            "example": "DAY_8H_80KM"
-                                                        },
-                                                        "description": {
-                                                            "type": "string",
-                                                            "example": "Open chauffeur package with included usage."
-                                                        },
-                                                        "included_km_per_day": {
-                                                            "type": "number",
-                                                            "example": 80
-                                                        },
-                                                        "included_km_per_package": {
-                                                            "type": "number",
-                                                            "example": 80
-                                                        },
-                                                        "included_hours": {
-                                                            "type": "number",
-                                                            "example": 8
-                                                        },
-                                                        "rate_type": {
-                                                            "type": "string",
-                                                            "example": "day"
-                                                        }
-                                                    }
-                                                },
-                                                "scheduled_from": {
-                                                    "type": "string",
-                                                    "example": "2026-05-21T08:00:00+05:30"
-                                                },
-                                                "scheduled_to": {
-                                                    "type": "string",
-                                                    "example": "2026-05-21T16:00:00+05:30"
-                                                },
-                                                "trip_completed_at": {
-                                                    "nullable": true
-                                                }
-                                            }
-                                        }
-                                    }
-                                },
-                                "example": {
-                                    "status": "success",
-                                    "data": {
-                                        "id": "assignment-uuid",
-                                        "driver_id": "driver-uuid",
-                                        "booking_id": "booking-uuid",
-                                        "booking_item_id": "item-uuid",
-                                        "status": "active",
-                                        "trip_phase": "accepted",
-                                        "trip_mode": "open_package",
-                                        "destination_known": false,
-                                        "driver_message": "Open package trip. Navigate to pickup only. Customer destination and route will be tracked after trip start.",
-                                        "payment_type": "cash",
-                                        "fare_amount": 25000,
-                                        "total_amount": 25000,
-                                        "currency": "LKR",
-                                        "booking_number": "BK-2026-0001",
-                                        "service_type_name": "Day Chauffeur Package",
-                                        "customer_name": "John Customer",
-                                        "customer_phone": "+94771111111",
-                                        "pickup_location_label": "Colombo Airport",
-                                        "dropoff_location_label": null,
-                                        "is_multi_stop": false,
-                                        "route_stops": [],
-                                        "package": {
-                                            "id": "package-uuid",
-                                            "name": "Day Package - 8 Hours / 80 KM",
-                                            "code": "DAY_8H_80KM",
-                                            "description": "Open chauffeur package with included usage.",
-                                            "included_km_per_day": 80,
-                                            "included_km_per_package": 80,
-                                            "included_hours": 8,
-                                            "rate_type": "day"
-                                        },
-                                        "scheduled_from": "2026-05-21T08:00:00+05:30",
-                                        "scheduled_to": "2026-05-21T16:00:00+05:30",
-                                        "trip_completed_at": null
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/driver/assignments/{assignment_id}/status~2-get-open-package-trip-status": {
-            "get": {
-                "tags": [
-                    "Open Package Chauffeur Flow"
-                ],
-                "summary": "2. Get Open Package Trip Status",
-                "description": "Poll or refresh trip state. Open package trips return no route stops and expose lifecycle actions from `allowed_actions`.",
-                "operationId": "get_api_driver_assignments_assignment_id_status_2_Get_Open_Package_Trip_Status",
-                "security": [
-                    {
-                        "bearerAuth": []
-                    }
-                ],
-                "parameters": [
-                    {
-                        "name": "assignment_id",
-                        "in": "path",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        },
-                        "example": "assignment_id-value"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Success",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "status": {
-                                            "type": "string",
-                                            "example": "success"
-                                        },
-                                        "data": {
-                                            "type": "object",
-                                            "properties": {
-                                                "assignment_id": {
-                                                    "type": "string",
-                                                    "example": "assignment-uuid"
-                                                },
-                                                "booking_id": {
-                                                    "type": "string",
-                                                    "example": "booking-uuid"
-                                                },
-                                                "trip_phase": {
-                                                    "type": "string",
-                                                    "example": "in_progress"
-                                                },
-                                                "trip_mode": {
-                                                    "type": "string",
-                                                    "example": "open_package"
-                                                },
-                                                "destination_known": {
-                                                    "type": "boolean",
-                                                    "example": false
-                                                },
-                                                "driver_message": {
-                                                    "type": "string",
-                                                    "example": "Open package trip. Continue tracking route until the customer ends the service."
-                                                },
-                                                "is_multi_stop": {
-                                                    "type": "boolean",
-                                                    "example": false
-                                                },
-                                                "pickup_location": {
-                                                    "type": "object",
-                                                    "properties": {
-                                                        "latitude": {
-                                                            "type": "number",
-                                                            "example": 7.1808
-                                                        },
-                                                        "longitude": {
-                                                            "type": "number",
-                                                            "example": 79.8841
-                                                        },
-                                                        "landmark": {
-                                                            "type": "string",
-                                                            "example": "Colombo Airport"
-                                                        }
-                                                    }
-                                                },
-                                                "pickup_arrival": {
-                                                    "type": "object",
-                                                    "properties": {
-                                                        "arrived_at": {
-                                                            "type": "string",
-                                                            "example": "2026-05-21T08:10:00+05:30"
-                                                        },
-                                                        "latitude": {
-                                                            "type": "number",
-                                                            "example": 7.1808
-                                                        },
-                                                        "longitude": {
-                                                            "type": "number",
-                                                            "example": 79.8841
-                                                        }
-                                                    }
-                                                },
-                                                "trip_started_at": {
-                                                    "type": "string",
-                                                    "example": "2026-05-21T08:15:00+05:30"
-                                                },
-                                                "stops": {
-                                                    "type": "array",
-                                                    "items": {}
-                                                },
-                                                "current_stop": {
-                                                    "nullable": true
-                                                },
-                                                "allowed_actions": {
-                                                    "type": "array",
-                                                    "items": {
-                                                        "type": "string",
-                                                        "example": "complete"
-                                                    }
-                                                },
-                                                "estimated_distance_to_pickup_km": {
-                                                    "nullable": true
-                                                },
-                                                "near_pickup": {
-                                                    "type": "boolean",
-                                                    "example": false
-                                                },
-                                                "cumulative_distance_km": {
-                                                    "type": "number",
-                                                    "example": 96.4
-                                                },
-                                                "total_waiting_time_seconds": {
-                                                    "type": "number",
-                                                    "example": 1800
-                                                },
-                                                "waiting_period_count": {
-                                                    "type": "number",
-                                                    "example": 3
-                                                },
-                                                "route_point_count": {
-                                                    "type": "number",
-                                                    "example": 430
-                                                },
-                                                "package": {
-                                                    "type": "object",
-                                                    "properties": {
-                                                        "id": {
-                                                            "type": "string",
-                                                            "example": "package-uuid"
-                                                        },
-                                                        "name": {
-                                                            "type": "string",
-                                                            "example": "Day Package - 8 Hours / 80 KM"
-                                                        },
-                                                        "code": {
-                                                            "type": "string",
-                                                            "example": "DAY_8H_80KM"
-                                                        },
-                                                        "included_km_per_day": {
-                                                            "type": "number",
-                                                            "example": 80
-                                                        },
-                                                        "included_km_per_package": {
-                                                            "type": "number",
-                                                            "example": 80
-                                                        },
-                                                        "included_hours": {
-                                                            "type": "number",
-                                                            "example": 8
-                                                        },
-                                                        "rate_type": {
-                                                            "type": "string",
-                                                            "example": "day"
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                },
-                                "example": {
-                                    "status": "success",
-                                    "data": {
-                                        "assignment_id": "assignment-uuid",
-                                        "booking_id": "booking-uuid",
-                                        "trip_phase": "in_progress",
-                                        "trip_mode": "open_package",
-                                        "destination_known": false,
-                                        "driver_message": "Open package trip. Continue tracking route until the customer ends the service.",
-                                        "is_multi_stop": false,
-                                        "pickup_location": {
-                                            "latitude": 7.1808,
-                                            "longitude": 79.8841,
-                                            "landmark": "Colombo Airport"
-                                        },
-                                        "pickup_arrival": {
-                                            "arrived_at": "2026-05-21T08:10:00+05:30",
-                                            "latitude": 7.1808,
-                                            "longitude": 79.8841
-                                        },
-                                        "trip_started_at": "2026-05-21T08:15:00+05:30",
-                                        "stops": [],
-                                        "current_stop": null,
-                                        "allowed_actions": [
-                                            "complete"
-                                        ],
-                                        "estimated_distance_to_pickup_km": null,
-                                        "near_pickup": false,
-                                        "cumulative_distance_km": 96.4,
-                                        "total_waiting_time_seconds": 1800,
-                                        "waiting_period_count": 3,
-                                        "route_point_count": 430,
-                                        "package": {
-                                            "id": "package-uuid",
-                                            "name": "Day Package - 8 Hours / 80 KM",
-                                            "code": "DAY_8H_80KM",
-                                            "included_km_per_day": 80,
-                                            "included_km_per_package": 80,
-                                            "included_hours": 8,
-                                            "rate_type": "day"
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/driver/assignments/{assignment_id}/arrived~3-confirm-pickup-arrival": {
-            "post": {
-                "tags": [
-                    "Open Package Chauffeur Flow"
-                ],
-                "summary": "3. Confirm Pickup Arrival",
-                "description": "Driver reached the pickup point.",
-                "operationId": "post_api_driver_assignments_assignment_id_arrived_3_Confirm_Pickup_Arrival",
-                "security": [
-                    {
-                        "bearerAuth": []
-                    }
-                ],
-                "parameters": [
-                    {
-                        "name": "assignment_id",
-                        "in": "path",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        },
-                        "example": "assignment_id-value"
-                    }
-                ],
-                "requestBody": {
-                    "required": true,
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object",
-                                "properties": {
-                                    "latitude": {
-                                        "type": "number",
-                                        "example": 7.181
-                                    },
-                                    "longitude": {
-                                        "type": "number",
-                                        "example": 79.8839
-                                    }
-                                }
-                            },
-                            "example": {
-                                "latitude": 7.181,
-                                "longitude": 79.8839
-                            }
-                        }
-                    }
-                },
-                "responses": {
-                    "200": {
-                        "description": "Success"
-                    }
-                }
-            }
-        },
-        "/api/driver/assignments/{assignment_id}/start~4-start-open-package-trip": {
-            "post": {
-                "tags": [
-                    "Open Package Chauffeur Flow"
-                ],
-                "summary": "4. Start Open Package Trip",
-                "description": "Start tracking billable open-package usage.",
-                "operationId": "post_api_driver_assignments_assignment_id_start_4_Start_Open_Package_Trip",
-                "security": [
-                    {
-                        "bearerAuth": []
-                    }
-                ],
-                "parameters": [
-                    {
-                        "name": "assignment_id",
-                        "in": "path",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        },
-                        "example": "assignment_id-value"
-                    }
-                ],
-                "requestBody": {
-                    "required": true,
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object",
-                                "properties": {}
-                            },
-                            "example": {}
-                        }
-                    }
-                },
-                "responses": {
-                    "200": {
-                        "description": "Success"
-                    }
-                }
-            }
-        },
-        "/api/driver/location~5-send-live-location-point": {
-            "post": {
-                "tags": [
-                    "Open Package Chauffeur Flow"
-                ],
-                "summary": "5. Send Live Location Point",
-                "description": "Send every 10 seconds while moving, and continue sending during the open package service so backend can calculate distance/duration/waiting.",
-                "operationId": "post_api_driver_location_5_Send_Live_Location_Point",
-                "security": [
-                    {
-                        "bearerAuth": []
-                    }
-                ],
-                "requestBody": {
-                    "required": true,
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object",
-                                "properties": {
-                                    "latitude": {
-                                        "type": "number",
-                                        "example": 6.9285
-                                    },
-                                    "longitude": {
-                                        "type": "number",
-                                        "example": 79.8625
-                                    },
-                                    "altitude": {
-                                        "type": "number",
-                                        "example": 15.5
-                                    },
-                                    "speed": {
-                                        "type": "number",
-                                        "example": 45.2
-                                    },
-                                    "heading": {
-                                        "type": "number",
-                                        "example": 180.5
-                                    },
-                                    "accuracy": {
-                                        "type": "number",
-                                        "example": 10
-                                    },
-                                    "recorded_at": {
-                                        "type": "string",
-                                        "example": "2026-05-21T08:05:00+05:30"
-                                    }
-                                }
-                            },
-                            "example": {
-                                "latitude": 6.9285,
-                                "longitude": 79.8625,
-                                "altitude": 15.5,
-                                "speed": 45.2,
-                                "heading": 180.5,
-                                "accuracy": 10,
-                                "recorded_at": "2026-05-21T08:05:00+05:30"
-                            }
-                        }
-                    }
-                },
-                "responses": {
-                    "200": {
-                        "description": "Success"
-                    }
-                }
-            }
-        },
-        "/api/driver/location/bulk~6-bulk-sync-offline-route-points": {
-            "post": {
-                "tags": [
-                    "Open Package Chauffeur Flow"
-                ],
-                "summary": "6. Bulk Sync Offline Route Points",
-                "description": "Upload buffered points after network recovery. Keep `recorded_at` as the original device capture time.",
-                "operationId": "post_api_driver_location_bulk_6_Bulk_Sync_Offline_Route_Points",
-                "security": [
-                    {
-                        "bearerAuth": []
-                    }
-                ],
-                "requestBody": {
-                    "required": true,
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object",
-                                "properties": {
-                                    "locations": {
-                                        "type": "array",
-                                        "items": {
-                                            "type": "object",
-                                            "properties": {
-                                                "latitude": {
-                                                    "type": "number",
-                                                    "example": 6.9285
-                                                },
-                                                "longitude": {
-                                                    "type": "number",
-                                                    "example": 79.8625
-                                                },
-                                                "altitude": {
-                                                    "type": "number",
-                                                    "example": 15.5
-                                                },
-                                                "speed": {
-                                                    "type": "number",
-                                                    "example": 45.2
-                                                },
-                                                "heading": {
-                                                    "type": "number",
-                                                    "example": 180.5
-                                                },
-                                                "accuracy": {
-                                                    "type": "number",
-                                                    "example": 10
-                                                },
-                                                "recorded_at": {
-                                                    "type": "string",
-                                                    "example": "2026-05-21T08:05:00+05:30"
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            },
-                            "example": {
-                                "locations": [
-                                    {
-                                        "latitude": 6.9285,
-                                        "longitude": 79.8625,
-                                        "altitude": 15.5,
-                                        "speed": 45.2,
-                                        "heading": 180.5,
-                                        "accuracy": 10,
-                                        "recorded_at": "2026-05-21T08:05:00+05:30"
-                                    }
-                                ]
-                            }
-                        }
-                    }
-                },
-                "responses": {
-                    "200": {
-                        "description": "Success"
-                    }
-                }
-            }
-        },
-        "/api/driver/assignments/{assignment_id}/complete~7-complete-open-package-trip": {
-            "post": {
-                "tags": [
-                    "Open Package Chauffeur Flow"
-                ],
-                "summary": "7. Complete Open Package Trip",
-                "description": "End the package service. Backend calculates final package usage and returns `package_charges` plus payment instructions. If `payment.collection_required` is true, call collect-payment next.",
-                "operationId": "post_api_driver_assignments_assignment_id_complete_7_Complete_Open_Package_Trip",
-                "security": [
-                    {
-                        "bearerAuth": []
-                    }
-                ],
-                "parameters": [
-                    {
-                        "name": "assignment_id",
-                        "in": "path",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        },
-                        "example": "assignment_id-value"
-                    }
-                ],
-                "requestBody": {
-                    "required": true,
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object",
-                                "properties": {
-                                    "latitude": {
-                                        "type": "string",
-                                        "example": "{{end_latitude}}"
-                                    },
-                                    "longitude": {
-                                        "type": "string",
-                                        "example": "{{end_longitude}}"
-                                    },
-                                    "final_address": {
-                                        "type": "string",
-                                        "example": "{{final_address}}"
-                                    },
-                                    "ending_mileage": {
-                                        "type": "string",
-                                        "example": "{{ending_mileage}}"
-                                    },
-                                    "notes": {
-                                        "type": "string",
-                                        "example": "{{trip_end_notes}}"
-                                    }
-                                }
-                            },
-                            "example": {
-                                "latitude": "{{end_latitude}}",
-                                "longitude": "{{end_longitude}}",
-                                "final_address": "{{final_address}}",
-                                "ending_mileage": "{{ending_mileage}}",
-                                "notes": "{{trip_end_notes}}"
-                            }
-                        }
-                    }
-                },
-                "responses": {
-                    "200": {
-                        "description": "Success",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "status": {
-                                            "type": "string",
-                                            "example": "success"
-                                        },
-                                        "message": {
-                                            "type": "string",
-                                            "example": "Trip completed"
-                                        },
-                                        "data": {
-                                            "type": "object",
-                                            "properties": {
-                                                "assignment_id": {
-                                                    "type": "string",
-                                                    "example": "assignment-uuid"
-                                                },
-                                                "booking_id": {
-                                                    "type": "string",
-                                                    "example": "booking-uuid"
-                                                },
-                                                "booking_item_id": {
-                                                    "type": "string",
-                                                    "example": "item-uuid"
-                                                },
-                                                "trip_mode": {
-                                                    "type": "string",
-                                                    "example": "open_package"
-                                                },
-                                                "total_distance_km": {
-                                                    "type": "number",
-                                                    "example": 96.4
-                                                },
-                                                "total_duration_minutes": {
-                                                    "type": "number",
-                                                    "example": 545
-                                                },
-                                                "total_waiting_time_seconds": {
-                                                    "type": "number",
-                                                    "example": 1800
-                                                },
-                                                "waiting_period_count": {
-                                                    "type": "number",
-                                                    "example": 3
-                                                },
-                                                "pickup_coordinates": {
-                                                    "type": "object",
-                                                    "properties": {
-                                                        "latitude": {
-                                                            "type": "number",
-                                                            "example": 7.1808
-                                                        },
-                                                        "longitude": {
-                                                            "type": "number",
-                                                            "example": 79.8841
-                                                        }
-                                                    }
-                                                },
-                                                "dropoff_coordinates": {
-                                                    "type": "object",
-                                                    "properties": {
-                                                        "latitude": {
-                                                            "type": "number",
-                                                            "example": 6.9344
-                                                        },
-                                                        "longitude": {
-                                                            "type": "number",
-                                                            "example": 79.8428
-                                                        }
-                                                    }
-                                                },
-                                                "route_point_count": {
-                                                    "type": "number",
-                                                    "example": 430
-                                                },
-                                                "hire_completed": {
-                                                    "type": "boolean",
-                                                    "example": true
-                                                },
-                                                "package_charges": {
-                                                    "type": "object",
-                                                    "properties": {
-                                                        "package_id": {
-                                                            "type": "string",
-                                                            "example": "package-uuid"
-                                                        },
-                                                        "package_name": {
-                                                            "type": "string",
-                                                            "example": "Day Package - 8 Hours / 80 KM"
-                                                        },
-                                                        "base_amount": {
-                                                            "type": "number",
-                                                            "example": 25000
-                                                        },
-                                                        "included_km": {
-                                                            "type": "number",
-                                                            "example": 80
-                                                        },
-                                                        "included_minutes": {
-                                                            "type": "number",
-                                                            "example": 480
-                                                        },
-                                                        "actual_distance_km": {
-                                                            "type": "number",
-                                                            "example": 96.4
-                                                        },
-                                                        "actual_duration_minutes": {
-                                                            "type": "number",
-                                                            "example": 545
-                                                        },
-                                                        "waiting_minutes": {
-                                                            "type": "number",
-                                                            "example": 30
-                                                        },
-                                                        "extra_km": {
-                                                            "type": "number",
-                                                            "example": 16.4
-                                                        },
-                                                        "extra_minutes": {
-                                                            "type": "number",
-                                                            "example": 65
-                                                        },
-                                                        "extra_km_rate": {
-                                                            "type": "number",
-                                                            "example": 150
-                                                        },
-                                                        "extra_hour_rate": {
-                                                            "type": "number",
-                                                            "example": 1200
-                                                        },
-                                                        "waiting_minute_rate": {
-                                                            "type": "number",
-                                                            "example": 0
-                                                        },
-                                                        "extra_distance_charge": {
-                                                            "type": "number",
-                                                            "example": 2460
-                                                        },
-                                                        "extra_duration_charge": {
-                                                            "type": "number",
-                                                            "example": 1300
-                                                        },
-                                                        "waiting_charge": {
-                                                            "type": "number",
-                                                            "example": 0
-                                                        },
-                                                        "extra_total": {
-                                                            "type": "number",
-                                                            "example": 3760
-                                                        },
-                                                        "final_total": {
-                                                            "type": "number",
-                                                            "example": 28760
-                                                        },
-                                                        "currency": {
-                                                            "type": "string",
-                                                            "example": "LKR"
-                                                        }
-                                                    }
-                                                },
-                                                "payment": {
-                                                    "type": "object",
-                                                    "properties": {
-                                                        "payment_responsibility": {
-                                                            "type": "string",
-                                                            "example": "customer"
-                                                        },
-                                                        "payment_collection_method": {
-                                                            "type": "string",
-                                                            "example": "cash_to_driver"
-                                                        },
-                                                        "payment_collection_status": {
-                                                            "type": "string",
-                                                            "example": "pending_collection"
-                                                        },
-                                                        "payment_status": {
-                                                            "type": "string",
-                                                            "example": "pending"
-                                                        },
-                                                        "final_amount": {
-                                                            "type": "number",
-                                                            "example": 28760
-                                                        },
-                                                        "amount_to_pay": {
-                                                            "type": "number",
-                                                            "example": 28760
-                                                        },
-                                                        "currency": {
-                                                            "type": "string",
-                                                            "example": "LKR"
-                                                        },
-                                                        "collection_required": {
-                                                            "type": "boolean",
-                                                            "example": true
-                                                        },
-                                                        "collection_message": {
-                                                            "type": "string",
-                                                            "example": "Collect cash from customer"
-                                                        },
-                                                        "amount_to_collect": {
-                                                            "type": "number",
-                                                            "example": 28760
-                                                        },
-                                                        "payment_collected_amount": {
-                                                            "nullable": true
-                                                        },
-                                                        "payment_collected_at": {
-                                                            "nullable": true
-                                                        },
-                                                        "payment_collected_by_driver_id": {
-                                                            "nullable": true
-                                                        },
-                                                        "payment_notes": {
-                                                            "nullable": true
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                },
-                                "example": {
-                                    "status": "success",
-                                    "message": "Trip completed",
-                                    "data": {
-                                        "assignment_id": "assignment-uuid",
-                                        "booking_id": "booking-uuid",
-                                        "booking_item_id": "item-uuid",
-                                        "trip_mode": "open_package",
-                                        "total_distance_km": 96.4,
-                                        "total_duration_minutes": 545,
-                                        "total_waiting_time_seconds": 1800,
-                                        "waiting_period_count": 3,
-                                        "pickup_coordinates": {
-                                            "latitude": 7.1808,
-                                            "longitude": 79.8841
-                                        },
-                                        "dropoff_coordinates": {
-                                            "latitude": 6.9344,
-                                            "longitude": 79.8428
-                                        },
-                                        "route_point_count": 430,
-                                        "hire_completed": true,
-                                        "package_charges": {
-                                            "package_id": "package-uuid",
-                                            "package_name": "Day Package - 8 Hours / 80 KM",
-                                            "base_amount": 25000,
-                                            "included_km": 80,
-                                            "included_minutes": 480,
-                                            "actual_distance_km": 96.4,
-                                            "actual_duration_minutes": 545,
-                                            "waiting_minutes": 30,
-                                            "extra_km": 16.4,
-                                            "extra_minutes": 65,
-                                            "extra_km_rate": 150,
-                                            "extra_hour_rate": 1200,
-                                            "waiting_minute_rate": 0,
-                                            "extra_distance_charge": 2460,
-                                            "extra_duration_charge": 1300,
-                                            "waiting_charge": 0,
-                                            "extra_total": 3760,
-                                            "final_total": 28760,
-                                            "currency": "LKR"
-                                        },
-                                        "payment": {
-                                            "payment_responsibility": "customer",
-                                            "payment_collection_method": "cash_to_driver",
-                                            "payment_collection_status": "pending_collection",
-                                            "payment_status": "pending",
-                                            "final_amount": 28760,
-                                            "amount_to_pay": 28760,
-                                            "currency": "LKR",
-                                            "collection_required": true,
-                                            "collection_message": "Collect cash from customer",
-                                            "amount_to_collect": 28760,
-                                            "payment_collected_amount": null,
-                                            "payment_collected_at": null,
-                                            "payment_collected_by_driver_id": null,
-                                            "payment_notes": null
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/driver/assignments/{assignment_id}/collect-payment~8-collect-cash-payment": {
-            "post": {
-                "tags": [
-                    "Open Package Chauffeur Flow"
-                ],
-                "summary": "8. Collect Cash Payment",
-                "description": "Call only when the open package completion response returns `payment.collection_required = true`. Use `package_charges.final_total` or `payment.amount_to_collect` as the amount.",
-                "operationId": "post_api_driver_assignments_assignment_id_collect_payment_8_Collect_Cash_Payment",
                 "security": [
                     {
                         "bearerAuth": []
@@ -11685,7 +10473,7 @@
                                                                         },
                                                                         "allowed_actions": {
                                                                             "type": "array",
-                                                                            "items": {}
+                                                                            "items": []
                                                                         }
                                                                     }
                                                                 }
@@ -12110,7 +10898,7 @@
                                                                         },
                                                                         "allowed_actions": {
                                                                             "type": "array",
-                                                                            "items": {}
+                                                                            "items": []
                                                                         }
                                                                     }
                                                                 }

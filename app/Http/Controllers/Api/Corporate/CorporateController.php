@@ -131,7 +131,7 @@ class CorporateController extends Controller
     public function assignVehicleGroups(Request $request, Corporate $corporate): JsonResponse
     {
         $request->validate([
-            'vehicle_group_ids'   => ['required', 'array', 'size:3'],
+            'vehicle_group_ids'   => ['required', 'array', 'min:1'],
             'vehicle_group_ids.*' => [
                 'required',
                 'uuid',
@@ -140,7 +140,7 @@ class CorporateController extends Controller
                     ->where(fn ($query) => $query->where('is_active', true)->whereNull('deleted_at')),
             ],
         ], [
-            'vehicle_group_ids.size' => 'Exactly 3 active vehicle groups must be assigned.',
+            'vehicle_group_ids.min' => 'At least one active vehicle group must be assigned.',
             'vehicle_group_ids.*.distinct' => 'Each vehicle group may only be selected once.',
         ]);
 
@@ -155,10 +155,10 @@ class CorporateController extends Controller
 
     public function removeVehicleGroup(Corporate $corporate, string $vehicleGroupId): JsonResponse
     {
-        if ($corporate->vehicleGroups()->count() <= 3) {
+        if ($corporate->vehicleGroups()->count() <= 1) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'A corporate must have exactly 3 assigned vehicle groups. Assign a replacement before removing this group.',
+                'message' => 'A corporate must have at least one assigned vehicle group.',
             ], 422);
         }
 
