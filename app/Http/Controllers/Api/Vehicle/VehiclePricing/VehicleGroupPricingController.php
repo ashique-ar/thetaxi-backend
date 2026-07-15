@@ -264,7 +264,19 @@ class VehicleGroupPricingController extends Controller
                     });
                 }, fn ($q) => $q->whereNull('owner_type')->whereNull('owner_id'))
                 ->when(!$includeInactive, fn($q) => $q->where('is_active', true))
-                ->select(['id', 'service_type_id', 'name', 'is_active', 'owner_type', 'owner_id', 'priority'])
+                ->select([
+                    'id',
+                    'service_type_id',
+                    'name',
+                    'description',
+                    'common_rate_type',
+                    'is_mandatory',
+                    'is_active',
+                    'sort_order',
+                    'owner_type',
+                    'owner_id',
+                    'priority',
+                ])
                 ->tap(fn ($q) => $this->applyOwnerPriorityOrder($q, $ownerType, $ownerId))
                 ->orderByDesc('priority')
                 ->get()
