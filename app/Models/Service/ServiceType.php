@@ -164,6 +164,11 @@ class ServiceType extends BaseModel
         return $this->hasMany(\App\Models\Analytics\DemandForecast::class);
     }
 
+    public function corporateDistancePolicies()
+    {
+        return $this->hasMany(\App\Models\Corporate\CorporateServiceDistancePolicy::class);
+    }
+
     /**
      * Scope a query to only include active service types.
      *

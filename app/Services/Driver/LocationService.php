@@ -238,7 +238,9 @@ class LocationService
 
                 return [
                     'session_id' => null,
-                    'assignment_id' => $locationData['assignment_id'] ?? $activeAssignmentId,
+                    // Never trust a buffered client assignment ID. Scope every point
+                    // to the authenticated driver's currently active assignment.
+                    'assignment_id' => $activeAssignmentId,
                     'latitude' => (float) $locationData['latitude'],
                     'longitude' => (float) $locationData['longitude'],
                     'altitude' => array_key_exists('altitude', $locationData) ? $locationData['altitude'] : null,

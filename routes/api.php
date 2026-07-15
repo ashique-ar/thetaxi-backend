@@ -1666,6 +1666,9 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('bookings', [\App\Http\Controllers\Api\Corporate\CorporateBookingController::class, 'store']);
         Route::post('bookings/for-employee', [\App\Http\Controllers\Api\Corporate\CorporateBookingController::class, 'storeForEmployee']);
         Route::post('bookings/{id}/recurring/cancel', [\App\Http\Controllers\Api\Corporate\CorporateBookingController::class, 'cancelRecurring']);
+        Route::get('bookings/{id}/live-progress', [\App\Http\Controllers\Api\Corporate\CorporateBookingController::class, 'liveProgress']);
+        Route::post('bookings/{id}/contractual-distance-override', [\App\Http\Controllers\Api\Corporate\CorporateBookingController::class, 'overrideContractualDistance'])
+            ->middleware('permission:approve_bookings');
         Route::get('bookings/{id}', [\App\Http\Controllers\Api\Corporate\CorporateBookingController::class, 'show']);
 
         // Approval Management
@@ -1713,6 +1716,12 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('{corporate}/service-types', [\App\Http\Controllers\Api\Corporate\CorporateController::class, 'assignServiceTypes'])
             ->middleware('permission:corporates.manage');
         Route::post('{corporate}/initial-admin', [\App\Http\Controllers\Api\Corporate\CorporateController::class, 'createInitialAdmin']);
+
+        Route::get('{corporate}/distance-pricing-policy', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'show']);
+        Route::put('{corporate}/distance-pricing-policy', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'update']);
+        Route::get('{corporate}/distance-pricing-policy/services', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'services']);
+        Route::post('{corporate}/distance-pricing-policy/preview', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'preview']);
+        Route::put('{corporate}/distance-pricing-policy/services/{serviceType}', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'updateService']);
 
         // Admin sub-resource routes for departments, divisions, employees, bookings
         Route::get('{corporate}/departments', [\App\Http\Controllers\Api\Corporate\AdminCorporateDepartmentController::class, 'index']);

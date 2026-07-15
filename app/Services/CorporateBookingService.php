@@ -20,6 +20,8 @@ class CorporateBookingService
 {
     public function __construct(
         protected BookingFlowService $bookingFlowService,
+        protected ContractualDistanceSnapshotProjector $distanceSnapshotProjector,
+        protected CorporateSubmittedResponseProjector $submittedResponseProjector,
     ) {}
 
     // ─── Booking Creation ─────────────────────────────────────────────
@@ -407,7 +409,11 @@ class CorporateBookingService
         return $this->transformBookingPaginator($paginator, $filters);
     }
 
-    public function getCorporateBookingDetails(Booking $booking, bool $canViewPayments = false): array
+    public function getCorporateBookingDetails(
+        Booking $booking,
+        bool $canViewPayments = false,
+        string $bookingScope = 'employee',
+    ): array
     {
         $booking->loadMissing([
             'customer',
@@ -430,16 +436,26 @@ class CorporateBookingService
         ]);
 
         $payload = $this->mapBooking($booking, $canViewPayments);
-        $payload['trips'] = $booking->bookingItems->map(fn ($item) => [
-            'id' => $item->id,
-            'service_type' => $item->serviceType?->name,
-            'vehicle_group' => $item->vehicleGroup?->name,
-            'pickup_location' => $this->locationLabel($item->pickup_location ?? null),
-            'dropoff_location' => $this->locationLabel($item->dropoff_location ?? null),
-            'from_date' => $this->dateIso($item->from_date),
-            'to_date' => $this->dateIso($item->to_date),
-            'form_responses' => $item->metadata ?? [],
-        ])->values();
+        $payload['trips'] = $booking->bookingItems->map(function ($item) use ($canViewPayments) {
+            $trip = [
+                'id' => $item->id,
+                'service_type' => $item->serviceType?->name,
+                'vehicle_group' => $item->vehicleGroup?->name,
+                'pickup_location' => $this->locationLabel($item->pickup_location ?? null),
+                'dropoff_location' => $this->locationLabel($item->dropoff_location ?? null),
+                'from_date' => $this->dateIso($item->from_date),
+                'to_date' => $this->dateIso($item->to_date),
+                'submitted_responses' => $this->submittedResponseProjector->project($item),
+            ];
+
+            if ($canViewPayments) {
+                $trip['contractual_distance_breakdown'] = $this->distanceSnapshotProjector->project(
+                    is_array($item->pricing_breakdown) ? $item->pricing_breakdown : []
+                );
+            }
+
+            return $trip;
+        })->values();
         $payload['approvals'] = $booking->approvals->map(fn (BookingApproval $approval) => [
             'id' => $approval->id,
             'status' => $approval->status,
@@ -467,7 +483,19 @@ class CorporateBookingService
         ];
         $payload['visibility'] = [
             'can_view_payments' => $canViewPayments,
+            'booking_scope' => $bookingScope,
+            'corporate_id' => $booking->corporate_account_id,
+            'department_id' => $booking->corporate_department_id,
+            'division_id' => $booking->corporate_division_id,
+            'points' => ['booked_pickup', 'booked_stops', 'booked_dropoff'],
+            'raw_tracking' => false,
         ];
+
+        if ($canViewPayments) {
+            $payload['contractual_distance_breakdown'] = $this->distanceSnapshotProjector->project(
+                is_array($booking->pricing_snapshot) ? $booking->pricing_snapshot : []
+            );
+        }
 
         return $payload;
     }

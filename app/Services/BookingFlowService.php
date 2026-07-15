@@ -42,6 +42,7 @@ use Ramsey\Uuid\Uuid;
 use App\Services\PricingVariableService;
 use App\Services\AssignmentService;
 use App\Notifications\BookingLifecycleNotification;
+use Illuminate\Validation\ValidationException;
 
 
 class BookingFlowService
@@ -3872,6 +3873,9 @@ class BookingFlowService
 
             ]);
             // Transform result to standard pricing structure
+            if (isset($calculationInputs['distance_policy'])) {
+                $params['contractual_distance_calculation'] = $calculationInputs;
+            }
             $transformed = $this->transformCalculationResult($calculationResult, $params, $mode, $servicePackageInfo);
             $transformed['pricing_scope'] = [
                 'source' => $calculationDefinition->owner_type === 'corporate' ? 'corporate' : 'global',
@@ -3883,6 +3887,10 @@ class BookingFlowService
 
             return $transformed;
 
+        } catch (\DomainException $e) {
+            throw ValidationException::withMessages([
+                'distance_policy' => $e->getMessage(),
+            ]);
         } catch (\Exception $e) {
             Log::error("Dynamic pricing calculation failed: " . $e->getMessage(), [
                 'params' => $params,
@@ -3992,6 +4000,9 @@ class BookingFlowService
                 'dropoff_is_airport' => $dropoffIsAirport,
             ]);
 
+            $corporatePolicyServiceTypeId = isset($serviceType) && $serviceType instanceof ServiceType
+                ? (string) $serviceType->id
+                : (is_string($serviceTypeId) && Str::isUuid($serviceTypeId) ? $serviceTypeId : null);
             $serviceType = $params['service_type'] ?? null;
 
             $distanceCalculations = $this->calculateCompanyDistances(
@@ -4002,6 +4013,8 @@ class BookingFlowService
                 $additionalPickupLocations,
                 $additionalDropoffLocations,
                 $orderedAdditionalStops,
+                $params['corporate_account_id'] ?? null,
+                $corporatePolicyServiceTypeId,
             );
 
             // Apply minimum KM rule: if journey distance is below minimum, use minimum for pricing
@@ -4131,6 +4144,17 @@ class BookingFlowService
             ?? $resolvedServicePackageInfo
             ?? $this->resolveServicePackageInfoFromParams($params);
         $adjustmentDetails = $calculationResult['adjustment_details'] ?? [];
+        $contractual = $params['contractual_distance_calculation'] ?? null;
+        $movementCharge = (float) ($contractual['contractual_movement_charge'] ?? 0);
+        if ($movementCharge > 0) {
+            $totalAmount += $movementCharge;
+            $totalAmountWithoutCustomizations += $movementCharge;
+            $breakdown[] = [
+                'component' => 'Contractual movement charge',
+                'amount' => $movementCharge,
+                'calculation' => 'Defined origin/pickup and drop-off/defined return legs',
+            ];
+        }
 
         // Build distance_details from km_calculations, selected service package, and slab info.
         // For day packages the selected service package is the canonical source of allowed KM.
@@ -4144,6 +4168,17 @@ class BookingFlowService
             !empty($params['corporate_account_id']) ? 'corporate' : null,
             $params['corporate_account_id'] ?? null
         );
+        if (is_array($contractual)) {
+            $distanceDetails += [
+                'origin_to_pickup_distance' => $contractual['origin_to_pickup_distance'],
+                'pickup_distance' => $contractual['pickup_distance'],
+                'journey_distance' => $contractual['journey_distance'],
+                'dropoff_to_return_distance' => $contractual['dropoff_to_return_distance'],
+                'delivery_distance' => $contractual['delivery_distance'],
+                'total_billable_distance' => $contractual['total_billable_distance'],
+                'total_distance' => $contractual['total_distance'],
+            ];
+        }
 
         Log::debug('TransformCalculationResult - Distance Details Built', [
             'km_calculations' => $kmCalculations,
@@ -4159,6 +4194,8 @@ class BookingFlowService
             ] : null,
             'distance_details' => $distanceDetails,
             'adjustment_details' => $adjustmentDetails,
+            'distance_policy' => $contractual['distance_policy'] ?? null,
+            'contractual_movement_charge' => $movementCharge ?: null,
             'service_type_id' => $params['service_type_id'] ?? null,
             'vehicle_group_id' => $params['vehicle_group_id'] ?? null,
         ]);
@@ -4171,6 +4208,8 @@ class BookingFlowService
             'breakdown' => $this->formatPricingBreakdown($breakdown),
             'distance_details' => $distanceDetails,
             'adjustment_details' => $adjustmentDetails,
+            'distance_policy' => $contractual['distance_policy'] ?? null,
+            'contractual_movement_charge' => $movementCharge ?: null,
             'calculation_metadata' => [
                 'definition_used' => $calculationResult['definition_id'] ?? null,
                 'variables_used' => $calculationResult['variables_used'] ?? [],
@@ -5389,13 +5428,40 @@ class BookingFlowService
         ?string $specificVehicleId = null,
         array $additionalPickupLocations = [],
         array $additionalDropoffLocations = [],
-        array $orderedAdditionalStops = []
+        array $orderedAdditionalStops = [],
+        ?string $corporateId = null,
+        ?string $corporateServiceTypeId = null,
     ): array {
         $pickupLocation = $this->normalizeLocationInput($pickupLocation);
         $dropoffLocation = $this->normalizeLocationInput($dropoffLocation);
         $additionalPickupLocations = $this->normalizeLocationList($additionalPickupLocations);
         $additionalDropoffLocations = $this->normalizeLocationList($additionalDropoffLocations);
         $orderedAdditionalStops = $this->normalizeOrderedLocationList($orderedAdditionalStops);
+
+        $routePoints = $this->buildJourneyRoutePoints(
+            $pickupLocation,
+            $dropoffLocation,
+            $additionalPickupLocations,
+            $additionalDropoffLocations,
+            $orderedAdditionalStops
+        );
+
+        if ($corporateId && $corporateServiceTypeId) {
+            $contractualDistances = app(CorporateContractualDistanceCalculator::class)->calculate(
+                $corporateId,
+                $corporateServiceTypeId,
+                $routePoints,
+            );
+            if ($contractualDistances !== null) {
+                return $contractualDistances + [
+                    'additional_stops_count' => max(0, count($routePoints) - 2),
+                    'service_type_used' => $serviceType,
+                    'company_used' => null,
+                    'company_location' => null,
+                    'company_id' => null,
+                ];
+            }
+        }
 
         // Check if this is a preview calculation
         // For preview mode, always use default company to ensure consistent pricing
@@ -5436,14 +5502,6 @@ class BookingFlowService
         $includeGarageDistance = filter_var(
             $bookingSettings['include_garage_distance_in_pricing'] ?? true,
             FILTER_VALIDATE_BOOLEAN
-        );
-
-        $routePoints = $this->buildJourneyRoutePoints(
-            $pickupLocation,
-            $dropoffLocation,
-            $additionalPickupLocations,
-            $additionalDropoffLocations,
-            $orderedAdditionalStops
         );
 
         $cacheKey = md5(json_encode([

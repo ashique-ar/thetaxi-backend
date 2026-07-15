@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\Driver\Mobile\AppSettingsController;
 use App\Http\Controllers\Api\Public\MeterController;
 
 /*
@@ -14,6 +15,10 @@ use App\Http\Controllers\Api\Public\MeterController;
 | header for tracking purposes.
 |
 */
+
+// Backward-compatible driver-app version endpoint documented for supported clients.
+// Keep this outside device.uuid: it has the same public contract as /api/driver/version-check.
+Route::post('driver-mobile/version-check', [AppSettingsController::class, 'versionCheck']);
 
 // All public routes require device.uuid middleware
 Route::middleware(['device.uuid'])->group(function () {

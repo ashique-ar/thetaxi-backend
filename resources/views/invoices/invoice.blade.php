@@ -62,6 +62,11 @@
         .notes { background: #fffbeb; border-left: 4px solid #f59e0b; padding: 16px; margin-bottom: 24px; border-radius: 0 8px 8px 0; }
         .notes h3 { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #d97706; margin-bottom: 8px; }
         .notes p { font-size: 12px; color: #444; line-height: 1.6; }
+        .distance-breakdown { margin-bottom: 24px; padding: 16px; background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 8px; }
+        .distance-breakdown h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #1a56db; margin-bottom: 8px; }
+        .distance-breakdown table { width: 100%; border-collapse: collapse; }
+        .distance-breakdown td { padding: 4px 0; font-size: 12px; }
+        .distance-breakdown td:last-child { text-align: right; font-weight: 600; }
 
         /* Footer */
         .footer { border-top: 1px solid #e5e7eb; padding-top: 16px; text-align: center; color: #9ca3af; font-size: 11px; line-height: 1.8; }
@@ -193,6 +198,8 @@
             </tr>
         </table>
     </div>
+
+    {{-- Contractual distance breakdown intentionally hidden from presentation. --}}
 
     {{-- PAYMENT INFO --}}
     @if($invoice->payment_terms)

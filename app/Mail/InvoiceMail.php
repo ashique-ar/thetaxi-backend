@@ -19,6 +19,7 @@ class InvoiceMail extends Mailable
         public readonly Invoice $invoice,
         public readonly Booking $booking,
         public readonly ?string $pdfPath = null,
+        public readonly array $contractualDistanceBreakdowns = [],
     ) {}
 
     public function envelope(): Envelope
@@ -35,6 +36,7 @@ class InvoiceMail extends Mailable
             with: [
                 'invoice' => $this->invoice,
                 'booking' => $this->booking,
+                'contractualDistanceBreakdowns' => $this->contractualDistanceBreakdowns,
             ],
         );
     }

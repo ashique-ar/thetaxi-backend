@@ -156,6 +156,8 @@ class MobileAssignmentService
      */
     public function acceptAssignment(Driver $driver, DriverAssignment $assignment): DriverAssignment
     {
+        $this->assertAssignmentOwnership($driver, $assignment);
+
         if ($assignment->status === 'confirmed') {
             throw new \InvalidArgumentException('ASSIGNMENT_ALREADY_CONFIRMED');
         }
@@ -203,6 +205,8 @@ class MobileAssignmentService
      */
     public function declineAssignment(Driver $driver, DriverAssignment $assignment, string $reason): DriverAssignment
     {
+        $this->assertAssignmentOwnership($driver, $assignment);
+
         if (!in_array($assignment->status, ['active', 'pending_approval'])) {
             throw new \InvalidArgumentException('ASSIGNMENT_INVALID_STATE');
         }
@@ -219,6 +223,13 @@ class MobileAssignmentService
         $this->broadcastStatusChange($updated, 'declined', $driver);
 
         return $updated;
+    }
+
+    private function assertAssignmentOwnership(Driver $driver, DriverAssignment $assignment): void
+    {
+        if ((string) $assignment->driver_id !== (string) $driver->id) {
+            throw new \InvalidArgumentException('ASSIGNMENT_NOT_FOUND');
+        }
     }
 
     /**
@@ -323,7 +334,24 @@ class MobileAssignmentService
         $fareAmount = $this->resolveFareAmount($assignment);
         $pricingMetrics = $this->buildPricingMetrics($bookingItem, $assignment);
 
-        $payload = $assignment->toArray();
+        // Driver responses are an explicit projection. Never serialize loaded booking,
+        // pricing, tracking, approval, or internal assignment relations implicitly.
+        $payload = [
+            'id' => $assignment->id,
+            'driver_id' => $assignment->driver_id,
+            'booking_id' => $assignment->booking_id,
+            'booking_item_id' => $assignment->booking_item_id,
+            'parent_assignment_id' => $assignment->parent_assignment_id,
+            'status' => $assignment->status,
+            'trip_phase' => $assignment->trip_phase?->value,
+            'assignment_type' => $assignment->assignment_type,
+            'assignment_notes' => $assignment->assignment_notes,
+            'special_requirements' => $assignment->special_requirements,
+            'pickup_arrived_at' => $assignment->pickup_arrived_at?->toIso8601String(),
+            'trip_started_at' => $assignment->trip_started_at?->toIso8601String(),
+            'created_at' => $assignment->created_at?->toIso8601String(),
+            'updated_at' => $assignment->updated_at?->toIso8601String(),
+        ];
         $payload['payment_type'] = $paymentDetails['payment_type'];
         $payload['payment_collection_method'] = $paymentDetails['payment_collection_method'];
         $payload['payment_collection_status'] = $paymentDetails['payment_collection_status'];
@@ -337,7 +365,7 @@ class MobileAssignmentService
         $payload['hire_km'] = $pricingMetrics['hire_km'];
         $payload['waiting_hours'] = $pricingMetrics['waiting_hours'];
         $payload['waiting_charge'] = $pricingMetrics['waiting_charge'];
-        $payload['pricing_metrics'] = $pricingMetrics;
+        $payload['pricing_metrics'] = $this->driverPricingMetrics($pricingMetrics);
         $payload['booking_number'] = $booking?->booking_number;
         $payload['service_type_name'] = $bookingItem?->serviceType?->name ?? $assignment->service_type;
         $payload['customer_name'] = $this->resolveCustomerName($assignment);
@@ -356,6 +384,7 @@ class MobileAssignmentService
         $stops = $this->tripTrackingService->ensureAssignmentStops($assignment);
         $payload['is_multi_stop'] = $stops->count() > 2;
         $payload['route_stops'] = $this->tripTrackingService->mapStopsForMobile($stops);
+        $payload['allowed_actions'] = $this->tripTrackingService->getAssignmentAllowedActions($assignment, $stops);
         $payload['scheduled_from'] = $assignment->assigned_from?->toIso8601String();
         $payload['scheduled_to'] = $assignment->assigned_to?->toIso8601String();
         $payload['trip_completed_at'] = $assignment->trip_completed_at?->toIso8601String();
@@ -619,6 +648,25 @@ class MobileAssignmentService
             'pricing_breakdown' => $pricingBreakdown,
             'distance_details' => $distanceDetails ?: null,
         ];
+    }
+
+    /**
+     * Allowlist only execution-relevant usage metrics. Internal pricing graphs,
+     * contractual route legs, rates, margins, and formula inputs stay server-side.
+     */
+    private function driverPricingMetrics(array $metrics): array
+    {
+        return collect($metrics)->only([
+            'currency',
+            'duration_days',
+            'duration_hours',
+            'journey_duration_seconds',
+            'hire_km',
+            'included_km',
+            'extra_km',
+            'waiting_hours',
+            'waiting_charge',
+        ])->all();
     }
 
     private function firstNumeric(array $values): ?float

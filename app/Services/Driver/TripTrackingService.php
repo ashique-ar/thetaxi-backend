@@ -99,7 +99,7 @@ class TripTrackingService
             'trip_started_at' => $assignment->trip_started_at?->toIso8601String(),
             'stops' => $this->mapStopsForMobile($stops),
             'current_stop' => $this->mapStopForMobile($this->resolveCurrentStop($stops)),
-            'allowed_actions' => $this->resolveAssignmentAllowedActions($assignment, $stops),
+            'allowed_actions' => $this->getAssignmentAllowedActions($assignment, $stops),
             'estimated_distance_to_pickup_km' => $distanceToPickup,
             'near_pickup' => $nearPickup,
             'cumulative_distance_km' => $this->calculateTripDistance($assignment),
@@ -495,8 +495,14 @@ class TripTrackingService
         return $stops->count() > 2;
     }
 
-    private function resolveAssignmentAllowedActions(DriverAssignment $assignment, Collection $stops): array
+    public function getAssignmentAllowedActions(DriverAssignment $assignment, ?Collection $stops = null): array
     {
+        $stops ??= $this->ensureAssignmentStops($assignment);
+
+        if (in_array($assignment->trip_phase, [TripPhase::ACTIVE, TripPhase::CONFIRMED], true)) {
+            return ['accept', 'decline'];
+        }
+
         if ($this->isOpenPackageAssignment($assignment)) {
             return match ($assignment->trip_phase) {
                 TripPhase::ACCEPTED => ['arrived'],
@@ -519,7 +525,7 @@ class TripTrackingService
         }
 
         if ($assignment->trip_phase === TripPhase::IN_PROGRESS) {
-            return $this->allStopsTerminal($stops) ? ['complete'] : ['stop_action'];
+            return $stops->isEmpty() || $this->allStopsTerminal($stops) ? ['complete'] : ['stop_action'];
         }
 
         return [];
@@ -1103,6 +1109,24 @@ class TripTrackingService
             return null;
         }
 
+        if ($this->hasContractualDistanceSnapshot($booking, $bookingItem)) {
+            $booking->update([
+                'actual_distance' => round($totalDistance, 2),
+                'actual_duration' => $durationMinutes,
+                'distance_metrics' => array_merge(
+                    is_array($booking->distance_metrics) ? $booking->distance_metrics : [],
+                    [
+                        'actual_km' => round($totalDistance, 2),
+                        'source' => 'driver_route_points',
+                        'pricing_effect' => 'none_contractual_snapshot',
+                        'recorded_at' => $completedAt->toIso8601String(),
+                    ],
+                ),
+            ]);
+
+            return null;
+        }
+
         $metadata = is_array($bookingItem->metadata) ? $bookingItem->metadata : [];
         $packageId = $metadata['service_package_id'] ?? $metadata['package_id'] ?? null;
         $package = $packageId ? \App\Models\Service\ServicePackage::find($packageId) : null;
@@ -1198,6 +1222,14 @@ class TripTrackingService
         ]);
 
         return $pricingSummary;
+    }
+
+    private function hasContractualDistanceSnapshot($booking, BookingItem $bookingItem): bool
+    {
+        return data_get($booking->pricing_snapshot, 'distance_policy.coordinate_source') === 'corporate_distance_policy'
+            || data_get($booking->pricing_snapshot, 'base_pricing.distance_policy.coordinate_source') === 'corporate_distance_policy'
+            || data_get($bookingItem->pricing_breakdown, 'distance_policy.coordinate_source') === 'corporate_distance_policy'
+            || data_get($bookingItem->pricing_breakdown, 'base_pricing.distance_policy.coordinate_source') === 'corporate_distance_policy';
     }
 
     private function resolveOpenPackageExtraKmRate(BookingItem $bookingItem, mixed $packageId, array $metadata): float

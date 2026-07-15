@@ -55,6 +55,8 @@
     </tr>
 </table>
 
+{{-- Contractual distance breakdown intentionally hidden from presentation. --}}
+
 @if($invoice->payment_terms)
 <div style="background:#f0f9ff; border-left:4px solid #1a56db; padding:16px; margin-bottom:24px; border-radius:0 8px 8px 0;">
     <p style="font-weight:700; color:#1d4ed8; margin-bottom:8px; font-size:12px; text-transform:uppercase; letter-spacing:1px;">Payment Information</p>

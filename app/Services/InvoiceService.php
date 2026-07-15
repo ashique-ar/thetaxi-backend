@@ -16,6 +16,10 @@ use Carbon\Carbon;
 
 class InvoiceService
 {
+    public function __construct(
+        private readonly ContractualDistanceSnapshotProjector $distanceSnapshotProjector,
+    ) {}
+
     // ────────────────────────────────────────────────────────────────
     // Public API
     // ────────────────────────────────────────────────────────────────
@@ -82,7 +86,7 @@ class InvoiceService
         try {
             app(MailDispatchService::class)->sendToCustomer(
                 $invoice->customer_email,
-                new InvoiceMail($invoice, $booking, $pdfPath)
+                new InvoiceMail($invoice, $booking, $pdfPath, $this->contractualDistanceBreakdowns($booking))
             );
 
             Log::info('Invoice email sent', [
@@ -438,6 +442,34 @@ class InvoiceService
             'toDate'         => $firstItem?->to_date?->format('d M Y H:i'),
             'vehicle'        => $vehicle ? ($vehicle->group?->name ?? $vehicle->title) . ' (' . $vehicle->license_plate . ')' : null,
             'driver'         => $driver ? trim(($driver->user?->first_name ?? '') . ' ' . ($driver->user?->last_name ?? '')) : null,
+            'contractualDistanceBreakdowns' => $this->contractualDistanceBreakdowns($booking),
         ];
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    private function contractualDistanceBreakdowns(Booking $booking): array
+    {
+        $breakdowns = [];
+
+        foreach ($booking->bookingItems ?? [] as $item) {
+            $breakdown = $this->distanceSnapshotProjector->project(
+                is_array($item->pricing_breakdown) ? $item->pricing_breakdown : []
+            );
+            if ($breakdown) {
+                $breakdown['service_type'] = $item->serviceType?->name;
+                $breakdowns[] = $breakdown;
+            }
+        }
+
+        if (empty($breakdowns)) {
+            $breakdown = $this->distanceSnapshotProjector->project(
+                is_array($booking->pricing_snapshot) ? $booking->pricing_snapshot : []
+            );
+            if ($breakdown) {
+                $breakdowns[] = $breakdown;
+            }
+        }
+
+        return $breakdowns;
     }
 }

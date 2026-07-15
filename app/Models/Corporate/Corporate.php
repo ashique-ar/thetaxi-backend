@@ -76,6 +76,16 @@ class Corporate extends BaseModel
         return $this->hasMany(CorporateTransportProgram::class, 'corporate_id');
     }
 
+    public function distancePricingPolicies()
+    {
+        return $this->hasMany(CorporateDistancePricingPolicy::class, 'corporate_id');
+    }
+
+    public function serviceDistancePolicies()
+    {
+        return $this->hasMany(CorporateServiceDistancePolicy::class, 'corporate_id');
+    }
+
     // Scopes
 
     public function scopeActive($query)

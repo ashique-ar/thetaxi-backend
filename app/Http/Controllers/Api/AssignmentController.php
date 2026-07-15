@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Services\AssignmentService;
 use App\Services\BookingFlowService;
+use App\Services\ContractualDistanceSnapshotProjector;
 use App\Models\Booking\Booking;
 use App\Models\Driver\RoutePoint;
 use App\Models\Vehicle\VehicleAddon;
@@ -23,7 +24,8 @@ class AssignmentController extends Controller
 
     public function __construct(
         AssignmentService $assignmentService,
-        BookingFlowService $bookingFlowService
+        BookingFlowService $bookingFlowService,
+        private readonly ContractualDistanceSnapshotProjector $distanceSnapshotProjector,
     ) {
         $this->assignmentService = $assignmentService;
         $this->bookingFlowService = $bookingFlowService;
@@ -52,6 +54,7 @@ class AssignmentController extends Controller
                 'bookingItems.vehicleGroup',
                 'bookingItems.vehicle.vehicleGroup',
                 'bookingItems.driver.user',
+                'dispatch',
             ])->findOrFail($bookingId);
 
             $requestedBookingItemId = $request->query('booking_item_id');
@@ -164,9 +167,15 @@ class AssignmentController extends Controller
                 $pickupLatitude,
                 $pickupLongitude,
                 $dropoffLatitude,
-                $dropoffLongitude
+                $dropoffLongitude,
+                $booking->dispatch
             );
             $pricingMetrics = $this->buildPricingMetrics($selectedBookingItem, $tripAssignment);
+            $contractualDistanceSnapshot = $this->distanceSnapshotProjector->projectForInternal(
+                is_array($selectedBookingItem?->pricing_breakdown)
+                    ? $selectedBookingItem->pricing_breakdown
+                    : (is_array($booking->pricing_snapshot) ? $booking->pricing_snapshot : [])
+            );
             $customerUser = $booking->customer?->user;
 
             $result = [
@@ -217,6 +226,7 @@ class AssignmentController extends Controller
                 'selected_booking_item_id' => $selectedBookingItem?->id,
                 'selected_trip_number' => $selectedBookingItem?->trip_number,
                 'pricing_metrics' => $pricingMetrics,
+                'contractual_distance_snapshot' => $contractualDistanceSnapshot,
                 'approval_context' => [
                     'requires_approval' => (bool) (($booking->requires_approval ?? false) || (($booking->status ?? null) === 'pending_approval')),
                     'triggers' => $approvalTriggers,
@@ -464,7 +474,8 @@ class AssignmentController extends Controller
         $pickupLatitude = null,
         $pickupLongitude = null,
         $dropoffLatitude = null,
-        $dropoffLongitude = null
+        $dropoffLongitude = null,
+        $bookingDispatch = null
     ): array
     {
         $livePayload = [
@@ -488,6 +499,24 @@ class AssignmentController extends Controller
         ];
 
         $assignmentPayload = null;
+        $operationalRecords = [
+            'dispatch' => $bookingDispatch ? [
+                'status' => $bookingDispatch->dispatch_status instanceof \BackedEnum
+                    ? $bookingDispatch->dispatch_status->value
+                    : (string) $bookingDispatch->dispatch_status,
+                'dispatched_at' => $this->toUtcIsoTimestamp($bookingDispatch->dispatched_at),
+                'actual_return_at' => $this->toUtcIsoTimestamp($bookingDispatch->actual_return_at),
+                'source' => 'booking_dispatch',
+            ] : null,
+            'assignment' => null,
+            'route' => [
+                'source' => 'driver_route_points',
+                'pricing_effect' => 'none',
+                'total_points' => 0,
+                'first_recorded_at' => null,
+                'latest_recorded_at' => null,
+            ],
+        ];
         $routePayload = [
             'total_points' => 0,
             'returned_points' => 0,
@@ -523,6 +552,8 @@ class AssignmentController extends Controller
                 'assigned_from' => $this->toUtcIsoTimestamp($tripAssignment->assigned_from),
                 'assigned_to' => $this->toUtcIsoTimestamp($tripAssignment->assigned_to),
                 'confirmed_at' => $this->toUtcIsoTimestamp($tripAssignment->confirmed_at),
+                'actual_start' => $this->toUtcIsoTimestamp($tripAssignment->actual_start),
+                'actual_end' => $this->toUtcIsoTimestamp($tripAssignment->actual_end),
                 'trip_started_at' => $this->toUtcIsoTimestamp($tripAssignment->trip_started_at),
                 'trip_completed_at' => $this->toUtcIsoTimestamp($tripAssignment->trip_completed_at),
                 'pickup_arrived_at' => $this->toUtcIsoTimestamp($tripAssignment->pickup_arrived_at),
@@ -546,6 +577,17 @@ class AssignmentController extends Controller
                     : null,
                 'stops' => $this->mapPersistedAssignmentStops($tripAssignment),
                 'events' => $this->buildAssignmentEventTimeline($tripAssignment),
+            ];
+            $operationalRecords['assignment'] = [
+                'accepted_at' => $this->toUtcIsoTimestamp($tripAssignment->confirmed_at),
+                'arrived_at_pickup_at' => $this->toUtcIsoTimestamp($tripAssignment->pickup_arrived_at),
+                'trip_started_at' => $this->toUtcIsoTimestamp($tripAssignment->trip_started_at ?? $tripAssignment->actual_start),
+                'trip_completed_at' => $this->toUtcIsoTimestamp($tripAssignment->trip_completed_at ?? $tripAssignment->actual_end),
+                'pickup_arrival_latitude' => $tripAssignment->pickup_arrival_latitude !== null ? (float) $tripAssignment->pickup_arrival_latitude : null,
+                'pickup_arrival_longitude' => $tripAssignment->pickup_arrival_longitude !== null ? (float) $tripAssignment->pickup_arrival_longitude : null,
+                'final_latitude' => $tripAssignment->final_latitude !== null ? (float) $tripAssignment->final_latitude : null,
+                'final_longitude' => $tripAssignment->final_longitude !== null ? (float) $tripAssignment->final_longitude : null,
+                'source' => 'driver_assignment',
             ];
 
             $firstPoint = null;
@@ -634,6 +676,13 @@ class AssignmentController extends Controller
 
                 $firstPoint = count($points) > 0 ? $points[0] : null;
                 $latestPoint = count($points) > 0 ? $points[count($points) - 1] : null;
+                $operationalRecords['route'] = [
+                    'source' => 'driver_route_points',
+                    'pricing_effect' => 'none',
+                    'total_points' => $totalPoints,
+                    'first_recorded_at' => $firstPoint['recorded_at'] ?? null,
+                    'latest_recorded_at' => $latestPoint['recorded_at'] ?? null,
+                ];
 
                 $pickupArrivedAtTs = $tripAssignment->pickup_arrived_at?->timestamp;
                 $phase = $tripAssignment->trip_phase?->value ?? (string) $tripAssignment->trip_phase;
@@ -829,6 +878,7 @@ class AssignmentController extends Controller
             'live' => $livePayload,
             'assignment' => $assignmentPayload,
             'route' => $routePayload,
+            'operational_records' => $operationalRecords,
         ];
     }
 
@@ -879,14 +929,14 @@ class AssignmentController extends Controller
             [
                 'key' => 'trip_started',
                 'label' => 'Trip started',
-                'timestamp' => $this->toUtcIsoTimestamp($assignment->trip_started_at),
-                'source' => 'driver_assignment.trip_started_at',
+                'timestamp' => $this->toUtcIsoTimestamp($assignment->trip_started_at ?? $assignment->actual_start),
+                'source' => $assignment->trip_started_at ? 'driver_assignment.trip_started_at' : 'driver_assignment.actual_start',
             ],
             [
                 'key' => 'trip_completed',
                 'label' => 'Trip completed',
-                'timestamp' => $this->toUtcIsoTimestamp($assignment->trip_completed_at),
-                'source' => 'driver_assignment.trip_completed_at',
+                'timestamp' => $this->toUtcIsoTimestamp($assignment->trip_completed_at ?? $assignment->actual_end),
+                'source' => $assignment->trip_completed_at ? 'driver_assignment.trip_completed_at' : 'driver_assignment.actual_end',
             ],
         ];
 

@@ -6,9 +6,15 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Corporate\StoreCorporateBookingRequest;
 use App\Models\Booking\Booking;
 use App\Models\Corporate\CorporateEmployee;
+use App\Models\Corporate\CorporateDepartment;
+use App\Models\Corporate\CorporateDivision;
+use App\Models\AuditLog;
+use App\Models\DriverAssignment;
 use App\Services\CorporateBookingService;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class CorporateBookingController extends Controller
 {
@@ -27,6 +33,7 @@ class CorporateBookingController extends Controller
     public function index(Request $request): JsonResponse
     {
         $filters = $request->only(['status', 'department_id', 'division_id', 'date_from', 'date_to', 'search', 'page', 'per_page']);
+        $this->validateCorporateFilters($request, $filters);
         $filters['can_view_payments'] = $this->canViewPayments($request);
 
         $bookings = $this->bookingService->getBookingsForCorporate(
@@ -67,7 +74,7 @@ class CorporateBookingController extends Controller
         return response()->json([
             'status'  => 'success',
             'message' => 'Booking created successfully',
-            'data'    => $this->bookingService->getCorporateBookingDetails($booking, $this->canViewPayments($request)),
+            'data'    => $this->bookingService->getCorporateBookingDetails($booking, $this->canViewPayments($request), $this->bookingScope($request)),
         ], 201);
     }
 
@@ -92,7 +99,7 @@ class CorporateBookingController extends Controller
         return response()->json([
             'status'  => 'success',
             'message' => 'Booking created for employee successfully',
-            'data'    => $this->bookingService->getCorporateBookingDetails($booking, $this->canViewPayments($request)),
+            'data'    => $this->bookingService->getCorporateBookingDetails($booking, $this->canViewPayments($request), $this->bookingScope($request)),
         ], 201);
     }
 
@@ -115,8 +122,159 @@ class CorporateBookingController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'data'   => $this->bookingService->getCorporateBookingDetails($booking, $this->canViewPayments($request)),
+            'data'   => $this->bookingService->getCorporateBookingDetails($booking, $this->canViewPayments($request), $this->bookingScope($request)),
         ]);
+    }
+
+    public function liveProgress(Request $request, string $id): JsonResponse
+    {
+        $booking = $this->authorizedBooking($request, $id);
+        $assignment = DriverAssignment::query()
+            ->where('booking_id', $booking->id)
+            ->with('driver:id,current_latitude,current_longitude,last_active_at')
+            ->orderByDesc('confirmed_at')
+            ->orderByDesc('created_at')
+            ->first();
+
+        if (! $assignment) {
+            return response()->json(['status' => 'success', 'data' => [
+                'booking_id' => $booking->id,
+                'available' => false,
+                'reason' => 'not_assigned',
+                'raw_tracking' => false,
+            ]]);
+        }
+
+        $windowStart = Carbon::parse($assignment->confirmed_at ?? $assignment->assigned_from ?? $assignment->created_at)->subHours(2);
+        $windowEnd = Carbon::parse(
+            $assignment->trip_completed_at
+                ?? $assignment->assigned_to
+                ?? Carbon::parse($assignment->confirmed_at ?? $assignment->created_at)->addHours(48)
+        )->addHours(2);
+        $withinWindow = now()->between($windowStart, $windowEnd);
+        $positionFresh = $assignment->driver?->last_active_at
+            && $assignment->driver->current_latitude !== null
+            && $assignment->driver->current_longitude !== null
+            && $assignment->driver->last_active_at->gte(now()->subMinutes(5));
+
+        return response()->json(['status' => 'success', 'data' => [
+            'booking_id' => $booking->id,
+            'available' => $withinWindow,
+            'trip_phase' => $assignment->trip_phase?->value ?? (string) $assignment->trip_phase,
+            'status' => $assignment->status,
+            'position' => $withinWindow && $positionFresh ? [
+                'latitude' => (float) $assignment->driver->current_latitude,
+                'longitude' => (float) $assignment->driver->current_longitude,
+                'updated_at' => $assignment->driver->last_active_at->toIso8601String(),
+            ] : null,
+            'position_status' => ! $withinWindow ? 'outside_lifecycle_window' : ($positionFresh ? 'current' : 'unavailable_or_stale'),
+            'expires_at' => $windowEnd->toIso8601String(),
+            'raw_tracking' => false,
+        ]]);
+    }
+
+    public function overrideContractualDistance(Request $request, string $id): JsonResponse
+    {
+        if (! $this->canViewPayments($request)) {
+            return response()->json(['status' => 'error', 'message' => 'Pricing permission is required.'], 403);
+        }
+
+        $validated = $request->validate([
+            'booking_item_id' => ['nullable', 'uuid'],
+            'reason' => ['required', 'string', 'min:10', 'max:1000'],
+            'origin_to_pickup_distance' => ['required', 'numeric', 'min:0'],
+            'journey_distance' => ['required', 'numeric', 'min:0'],
+            'dropoff_to_return_distance' => ['required', 'numeric', 'min:0'],
+            'total_billable_distance' => ['required', 'numeric', 'min:0'],
+            'movement_charge' => ['nullable', 'numeric', 'min:0'],
+            'total_amount' => ['nullable', 'numeric', 'min:0'],
+        ]);
+        $expectedTotal = (float) $validated['origin_to_pickup_distance']
+            + (float) $validated['journey_distance']
+            + (float) $validated['dropoff_to_return_distance'];
+        if (abs($expectedTotal - (float) $validated['total_billable_distance']) > 0.01) {
+            return response()->json(['status' => 'error', 'message' => 'Total billable distance must equal the three contractual legs.'], 422);
+        }
+
+        $booking = $this->authorizedBooking($request, $id);
+        if (! in_array((string) $booking->status, ['pending_approval', 'approved', 'confirmed', 'allocated'], true)) {
+            return response()->json(['status' => 'error', 'message' => 'Contractual pricing can no longer be overridden at this lifecycle stage.'], 422);
+        }
+        $item = $validated['booking_item_id']
+            ? $booking->bookingItems()->whereKey($validated['booking_item_id'])->firstOrFail()
+            : $booking->bookingItems()->orderBy('created_at')->first();
+        $before = $item?->pricing_breakdown ?: $booking->pricing_snapshot;
+        if (! is_array($before) || data_get($before, 'base_pricing.distance_policy.coordinate_source', data_get($before, 'distance_policy.coordinate_source')) !== 'corporate_distance_policy') {
+            return response()->json(['status' => 'error', 'message' => 'No contractual distance snapshot is available for review.'], 422);
+        }
+
+        $after = $this->applyContractualDistanceOverrideToSnapshot($before, $validated, (string) $request->user()->id);
+        DB::transaction(function () use ($booking, $item, $before, $after, $validated, $request) {
+            if ($item) {
+                $item->pricing_breakdown = $after;
+                if (isset($validated['total_amount'])) {
+                    $item->total_price = $validated['total_amount'];
+                }
+                $item->save();
+            }
+            $booking->pricing_snapshot = $after;
+            if (isset($validated['total_amount'])) {
+                $booking->total_estimated = $validated['total_amount'];
+            }
+            $booking->save();
+            AuditLog::create([
+                'user_id' => $request->user()->id,
+                'action' => 'corporate_contractual_distance_overridden',
+                'entity' => 'Booking',
+                'entity_id' => $booking->id,
+                'timestamp' => now(),
+                'details' => [
+                    'corporate_id' => $booking->corporate_account_id,
+                    'booking_item_id' => $item?->id,
+                    'reason' => $validated['reason'],
+                    'before' => data_get($before, 'base_pricing.distance_details', data_get($before, 'distance_details')),
+                    'after' => data_get($after, 'base_pricing.distance_details', data_get($after, 'distance_details')),
+                ],
+            ]);
+        });
+
+        return response()->json(['status' => 'success', 'message' => 'Contractual pricing decision recorded.', 'data' => [
+            'contractual_distance_breakdown' => app(\App\Services\ContractualDistanceSnapshotProjector::class)->project($after),
+        ]]);
+    }
+
+    private function applyContractualDistanceOverrideToSnapshot(array $snapshot, array $values, string $actorId): array
+    {
+        $prefix = isset($snapshot['base_pricing']) ? 'base_pricing.' : '';
+        $before = data_get($snapshot, $prefix.'distance_details', []);
+        $distances = [
+            'origin_to_pickup_distance' => (float) $values['origin_to_pickup_distance'],
+            'journey_distance' => (float) $values['journey_distance'],
+            'dropoff_to_return_distance' => (float) $values['dropoff_to_return_distance'],
+            'total_billable_distance' => (float) $values['total_billable_distance'],
+        ];
+        data_set($snapshot, $prefix.'distance_details', array_replace(is_array($before) ? $before : [], $distances));
+        data_set($snapshot, $prefix.'contractual_movement_charge', isset($values['movement_charge']) ? (float) $values['movement_charge'] : null);
+        $history = data_get($snapshot, $prefix.'manual_override_history', []);
+        $history[] = [
+            'actor_id' => $actorId,
+            'reason' => $values['reason'],
+            'overridden_at' => now()->toIso8601String(),
+            'before' => $before,
+            'after' => $distances,
+        ];
+        data_set($snapshot, $prefix.'manual_override_history', $history);
+        return $snapshot;
+    }
+
+    private function authorizedBooking(Request $request, string $id): Booking
+    {
+        $booking = Booking::where('corporate_account_id', $request->corporate_id)->findOrFail($id);
+        $employee = $request->attributes->get('corporate_employee');
+        if (! $request->user()->can('view_all_bookings') && $booking->employee_id !== $employee?->user_id) {
+            abort(403, 'You do not have permission to view this booking.');
+        }
+        return $booking;
     }
 
     public function cancelRecurring(Request $request, string $id): JsonResponse
@@ -216,5 +374,25 @@ class CorporateBookingController extends Controller
 
         return $user->can('view_payments')
             || ($user->can('create_bookings_for_others') && (bool) $corporate?->coordinator_can_view_payments);
+    }
+
+    private function bookingScope(Request $request): string
+    {
+        return $request->user()->can('view_all_bookings') ? 'company' : 'employee';
+    }
+
+    private function validateCorporateFilters(Request $request, array $filters): void
+    {
+        if (!empty($filters['department_id'])) {
+            CorporateDepartment::where('corporate_id', $request->corporate_id)
+                ->findOrFail($filters['department_id']);
+        }
+
+        if (!empty($filters['division_id'])) {
+            CorporateDivision::whereHas(
+                'department',
+                fn ($query) => $query->where('corporate_id', $request->corporate_id)
+            )->findOrFail($filters['division_id']);
+        }
     }
 }

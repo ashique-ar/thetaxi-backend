@@ -498,6 +498,7 @@
             </tr>
         @endif
 
+        {{-- Distance breakdown intentionally hidden from presentation.
         @if ($pickupDistance || $deliveryDistance)
             <tr>
                 <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333;">Pickup /
@@ -515,6 +516,7 @@
                 </td>
             </tr>
         @endif
+        --}}
 
         @if ($freeKmPerDay && $durationDays > 1)
             <tr>
