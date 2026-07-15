@@ -671,6 +671,7 @@ Route::middleware(['auth:api'])->group(function () {
                 Route::get('/', [VehiclePricingCalculationDefinitionController::class, 'index']);
                 Route::post('/', [VehiclePricingCalculationDefinitionController::class, 'store']);
                 Route::get('/service-types', [VehiclePricingCalculationDefinitionController::class, 'getServiceTypes']);
+                Route::get('/vehicle-groups', [VehiclePricingCalculationDefinitionController::class, 'getVehicleGroups']);
                 Route::get('/service-types/{serviceTypeId}/available-variables', [VehiclePricingCalculationDefinitionController::class, 'getAvailableVariables']);
                 Route::post('/test-calculation', [VehiclePricingCalculationDefinitionController::class, 'testCalculation']);
                 Route::post('/test-definition', [VehiclePricingCalculationDefinitionController::class, 'testDefinitionCalculation']);

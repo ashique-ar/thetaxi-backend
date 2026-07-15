@@ -10,6 +10,7 @@ use App\Models\Vehicle\VehiclePricing\VehiclePricingSlabDefinition;
 use App\Models\Vehicle\VehiclePricing\VehicleGroupPricing;
 use App\Models\Vehicle\VehiclePricing\VehicleGroupCommonRatePricing;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCommonRateDefinition;
+use App\Models\Vehicle\VehicleGroup;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
@@ -21,7 +22,7 @@ class VehiclePricingCalculationDefinitionController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('permission:vehicle-pricing-calculations.view')->only(['index', 'show', 'getServiceTypes', 'getAvailableVariables', 'testCalculation', 'testDefinitionCalculation', 'calculatePrice', 'getSlabRates']);
+        $this->middleware('permission:vehicle-pricing-calculations.view')->only(['index', 'show', 'getServiceTypes', 'getVehicleGroups', 'getAvailableVariables', 'testCalculation', 'testDefinitionCalculation', 'calculatePrice', 'getSlabRates']);
         $this->middleware('permission:vehicle-pricing-calculations.create')->only(['store']);
         $this->middleware('permission:vehicle-pricing-calculations.edit')->only(['update', 'bulkUpdateStatus']);
         $this->middleware('permission:vehicle-pricing-calculations.delete')->only(['destroy']);
@@ -309,13 +310,13 @@ class VehiclePricingCalculationDefinitionController extends Controller
                 if ($slabData) {
                     $testInputs['slab_rate'] = $slabData['rate'];
                     $testInputs['rate_type'] = $slabData['rate_type'];
-                    
-                    // Also populate common rates if available
-                    $commonRates = $this->getCommonRates($testInputs['vehicle_group_id'], $testInputs['service_type_id']);
-                    $testInputs = array_merge($testInputs, $commonRates);
                 }
-            }
 
+                // Common-rate-only services must also be testable when no slab matches.
+                $commonRates = $this->getCommonRates($testInputs['vehicle_group_id'], $testInputs['service_type_id']);
+                $testInputs = array_merge($testInputs, $commonRates);
+            }
+    
             $result = $tempDefinition->calculatePrice($testInputs);
 
             return response()->json([
@@ -464,6 +465,29 @@ class VehiclePricingCalculationDefinitionController extends Controller
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Get vehicle groups available to the formula tester.
+     */
+    public function getVehicleGroups(Request $request): JsonResponse
+    {
+        $context = (string) $request->input('context', 'public');
+        $ownerId = (string) $request->input('owner_id', '');
+
+        $vehicleGroups = VehicleGroup::query()
+            ->when($context === 'corporate' && $ownerId !== '', function ($query) use ($ownerId) {
+                $query->whereIn('id', function ($subQuery) use ($ownerId) {
+                    $subQuery->select('vehicle_group_id')
+                        ->from('corporate_vehicle_groups')
+                        ->where('corporate_id', $ownerId);
+                });
+            })
+            ->select(['id', 'name', 'description'])
+            ->orderBy('name')
+            ->get();
+
+        return response()->json(['data' => $vehicleGroups]);
     }
 
     /**
