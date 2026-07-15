@@ -39,6 +39,7 @@ class VehiclePricingCalculationDefinitionController extends Controller
             'service_type_id' => 'uuid|exists:service_types,id',
             'owner_type' => 'nullable|string|in:corporate',
             'owner_id' => 'nullable|uuid|exists:corporates,id|required_with:owner_type',
+            'context' => 'nullable|string|in:public,portal,corporate',
             'status' => 'in:active,inactive,draft',
             'sort_by' => 'in:name,created_at,updated_at,status,priority',
             'sort_direction' => 'in:asc,desc',
@@ -58,7 +59,14 @@ class VehiclePricingCalculationDefinitionController extends Controller
             $search = $request->search;
             $query->where(function (Builder $q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('description', 'like', "%{$search}%");
+                  ->orWhere('description', 'like', "%{$search}%")
+                  ->orWhere('formula', 'like', "%{$search}%");
+            });
+        }
+
+        if ($request->filled('context')) {
+            $query->whereHas('serviceType', function ($serviceQuery) use ($request) {
+                $serviceQuery->where('context', $request->input('context'));
             });
         }
 
