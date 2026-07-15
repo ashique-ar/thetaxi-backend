@@ -57,6 +57,15 @@ class VehiclePricingCommonRateDefinitionController extends Controller
             }
         }
 
+        if ($request->filled('context')) {
+            $query->where(function ($contextQuery) use ($request) {
+                $contextQuery->whereNull('service_type_id')
+                    ->orWhereHas('serviceType', function ($serviceQuery) use ($request) {
+                        $serviceQuery->where('context', $request->input('context'));
+                    });
+            });
+        }
+
         $query->whereNull('owner_type')->whereNull('owner_id');
 
         if ($request->has('is_active')) {
