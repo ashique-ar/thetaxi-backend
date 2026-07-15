@@ -77,7 +77,7 @@ class VehiclePricingSlabDefinitionController extends Controller
      */
     public function show(string $id): JsonResponse
     {
-        $slabDefinition = VehiclePricingSlabDefinition::with('serviceType')->find($id);
+        $slabDefinition = VehiclePricingSlabDefinition::withInactive()->with('serviceType')->find($id);
 
         if (!$slabDefinition) {
             return response()->json([
@@ -98,7 +98,7 @@ class VehiclePricingSlabDefinitionController extends Controller
      */
     public function update(UpdateVehiclePricingSlabDefinitionRequest $request, string $id): JsonResponse
     {
-        $slabDefinition = VehiclePricingSlabDefinition::find($id);
+        $slabDefinition = VehiclePricingSlabDefinition::withInactive()->findOrFail($id);
         $data = $request->validated();
         $data['owner_type'] = null;
         $data['owner_id'] = null;
@@ -116,7 +116,7 @@ class VehiclePricingSlabDefinitionController extends Controller
      */
     public function destroy(string $id): JsonResponse
     {
-        $slabDefinition = VehiclePricingSlabDefinition::find($id);
+        $slabDefinition = VehiclePricingSlabDefinition::withInactive()->find($id);
 
         if (!$slabDefinition) {
             return response()->json([
@@ -290,13 +290,14 @@ class VehiclePricingSlabDefinitionController extends Controller
 
     public function toggleStatus(Request $request, string $id): JsonResponse
     {
-        $definition = VehiclePricingSlabDefinition::findOrFail($id);
+        $definition = VehiclePricingSlabDefinition::withInactive()->findOrFail($id);
         $definition->update(['is_active' => !$definition->is_active]);
+        $definition->load('serviceType');
 
         return response()->json([
             'status'  => 'success',
             'message' => 'Slab definition status updated',
-            'data'    => $definition->fresh(),
+            'data'    => $definition,
         ]);
     }
 
