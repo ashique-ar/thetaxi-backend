@@ -663,6 +663,11 @@ class VehiclePricingCalculationDefinition extends Model
                     return $override;
                 }
                 $rateKey = str_starts_with($varName, 'common_rate_') ? substr($varName, 12) : $varName;
+                // Test/runtime callers may preload trusted Pricing Management
+                // values. Prefer that resolved value instead of querying again.
+                if (array_key_exists($rateKey, $inputs) && is_numeric($inputs[$rateKey])) {
+                    return (float) $inputs[$rateKey];
+                }
                 return $this->getCommonRateValue($rateKey, $inputs);
 
             case 'duration':

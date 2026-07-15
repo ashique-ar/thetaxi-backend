@@ -298,6 +298,16 @@ class VehiclePricingCalculationDefinitionController extends Controller
             $tempDefinition->variables = $request->variables ?? [];
 
             $testInputs = $request->test_inputs;
+            $tempDefinition->service_type_id = $testInputs['service_type_id'] ?? null;
+
+            // Pricing-derived values are never tester inputs. They must always
+            // come from the selected vehicle group's Pricing Management records.
+            unset($testInputs['slab_rate'], $testInputs['rate_type']);
+            foreach ($tempDefinition->variables as $variable) {
+                if (($variable['type'] ?? null) === 'common_rate' && isset($variable['name'])) {
+                    unset($testInputs[$variable['name']]);
+                }
+            }
             
             // If we have vehicle group and service type, try to get actual slab rate and rate type
             if (isset($testInputs['vehicle_group_id']) && isset($testInputs['service_type_id'])) {
@@ -315,6 +325,21 @@ class VehiclePricingCalculationDefinitionController extends Controller
                 // Common-rate-only services must also be testable when no slab matches.
                 $commonRates = $this->getCommonRates($testInputs['vehicle_group_id'], $testInputs['service_type_id']);
                 $testInputs = array_merge($testInputs, $commonRates);
+
+                $missingRates = collect($tempDefinition->variables)
+                    ->filter(fn ($variable) => ($variable['type'] ?? null) === 'common_rate')
+                    ->pluck('name')
+                    ->filter(function ($name) use ($commonRates) {
+                        $rateKey = str_starts_with($name, 'common_rate_') ? substr($name, 12) : $name;
+                        return !array_key_exists($rateKey, $commonRates);
+                    })
+                    ->values();
+
+                if ($missingRates->isNotEmpty()) {
+                    throw new \InvalidArgumentException(
+                        'No active Pricing Management value was found for: ' . $missingRates->implode(', ')
+                    );
+                }
             }
     
             $result = $tempDefinition->calculatePrice($testInputs);
@@ -386,9 +411,13 @@ class VehiclePricingCalculationDefinitionController extends Controller
             
             // Get vehicle group specific common rate pricing
             $vehicleGroupCommonRates = VehicleGroupCommonRatePricing::where('vehicle_group_id', $vehicleGroupId)
+                ->where('is_active', true)
                 ->whereHas('commonRateDefinition', function ($query) use ($serviceTypeId) {
-                    $query->where('service_type_id', $serviceTypeId)
-                          ->orWhereNull('service_type_id'); // Global rates
+                    $query->where('is_active', true)
+                          ->where(function ($serviceQuery) use ($serviceTypeId) {
+                              $serviceQuery->where('service_type_id', $serviceTypeId)
+                                  ->orWhereNull('service_type_id');
+                          });
                 })
                 ->with('commonRateDefinition')
                 ->get();
