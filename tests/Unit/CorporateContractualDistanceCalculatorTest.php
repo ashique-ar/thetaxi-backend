@@ -134,6 +134,116 @@ it('allows a legitimate zero-length leg when booked and defined coordinates are 
         ->and($result['total_billable_distance'])->toBe(14.0);
 });
 
+it('uses the defined origin as the return location when no separate return is configured', function () {
+    $policy = contractualCalculatorPolicy();
+    $resolver = Mockery::mock(CorporateDistancePolicyResolver::class);
+    $resolver->shouldReceive('resolve')->once()->andReturn([
+        'enabled' => true, 'source' => 'company_default', 'policy' => $policy, 'override' => null, 'error' => null,
+    ]);
+    $maps = Mockery::mock(GoogleMapsService::class);
+    $maps->shouldReceive('distanceAndDuration')->once()->with(
+        Mockery::on(fn (array $point) => $point['address'] === 'Defined origin'),
+        Mockery::on(fn (array $point) => $point['address'] === 'Pickup'),
+    )->andReturn(['distance_km' => 4, 'duration_seconds' => 240]);
+    $maps->shouldReceive('distanceAndDuration')->once()->andReturn(['distance_km' => 2, 'duration_seconds' => 120]);
+    $maps->shouldReceive('distanceAndDuration')->once()->with(
+        Mockery::on(fn (array $point) => $point['address'] === 'Drop-off'),
+        Mockery::on(fn (array $point) => $point['address'] === 'Defined origin'),
+    )->andReturn(['distance_km' => 5, 'duration_seconds' => 300]);
+
+    $result = (new CorporateContractualDistanceCalculator($resolver, $maps))
+        ->calculate('company-a', 'service-a', passengerJourneyPoints());
+
+    expect($result['distance_policy']['defined_return']['address'])->toBe('Defined origin')
+        ->and($result['dropoff_to_return_distance'])->toBe(5.0)
+        ->and($result['total_billable_distance'])->toBe(11.0);
+});
+
+it('uses a separately configured return only for the final contractual leg', function () {
+    $policy = contractualCalculatorPolicy([
+        'return_address' => 'Contract return depot',
+        'return_latitude' => 6.8,
+        'return_longitude' => 79.9,
+    ]);
+    $resolver = Mockery::mock(CorporateDistancePolicyResolver::class);
+    $resolver->shouldReceive('resolve')->once()->andReturn([
+        'enabled' => true, 'source' => 'company_default', 'policy' => $policy, 'override' => null, 'error' => null,
+    ]);
+    $maps = Mockery::mock(GoogleMapsService::class);
+    $maps->shouldReceive('distanceAndDuration')->once()->with(
+        Mockery::on(fn (array $point) => $point['address'] === 'Defined origin'),
+        Mockery::on(fn (array $point) => $point['address'] === 'Pickup'),
+    )->andReturn(['distance_km' => 4, 'duration_seconds' => 240]);
+    $maps->shouldReceive('distanceAndDuration')->once()->andReturn(['distance_km' => 2, 'duration_seconds' => 120]);
+    $maps->shouldReceive('distanceAndDuration')->once()->with(
+        Mockery::on(fn (array $point) => $point['address'] === 'Drop-off'),
+        Mockery::on(fn (array $point) => $point['address'] === 'Contract return depot'),
+    )->andReturn(['distance_km' => 7, 'duration_seconds' => 420]);
+
+    $result = (new CorporateContractualDistanceCalculator($resolver, $maps))
+        ->calculate('company-a', 'service-a', passengerJourneyPoints());
+
+    expect($result['distance_policy']['defined_origin']['address'])->toBe('Defined origin')
+        ->and($result['distance_policy']['defined_return']['address'])->toBe('Contract return depot')
+        ->and($result['origin_to_pickup_distance'])->toBe(4.0)
+        ->and($result['journey_distance'])->toBe(2.0)
+        ->and($result['dropoff_to_return_distance'])->toBe(7.0);
+});
+
+it('retains short passenger journeys and sums every ordered booked stop segment', function () {
+    $policy = contractualCalculatorPolicy();
+    $resolver = Mockery::mock(CorporateDistancePolicyResolver::class);
+    $resolver->shouldReceive('resolve')->once()->andReturn([
+        'enabled' => true, 'source' => 'company_default', 'policy' => $policy, 'override' => null, 'error' => null,
+    ]);
+    $maps = Mockery::mock(GoogleMapsService::class);
+    $maps->shouldReceive('distanceAndDuration')->times(4)->andReturnValues([
+        ['distance_km' => 6, 'duration_seconds' => 360],
+        ['distance_km' => 0.4, 'duration_seconds' => 60],
+        ['distance_km' => 0.6, 'duration_seconds' => 90],
+        ['distance_km' => 7, 'duration_seconds' => 420],
+    ]);
+    $points = [
+        ['address' => 'Pickup', 'latitude' => 7.0, 'longitude' => 80.0],
+        ['address' => 'Booked stop', 'latitude' => 7.01, 'longitude' => 80.01],
+        ['address' => 'Drop-off', 'latitude' => 7.02, 'longitude' => 80.02],
+    ];
+
+    $result = (new CorporateContractualDistanceCalculator($resolver, $maps))
+        ->calculate('company-a', 'service-a', $points);
+
+    expect($result['journey_distance'])->toBe(1.0)
+        ->and($result['total_billable_distance'])->toBe(14.0);
+});
+
+it('routes an explicit round trip through every booked point before the contractual return leg', function () {
+    $policy = contractualCalculatorPolicy();
+    $resolver = Mockery::mock(CorporateDistancePolicyResolver::class);
+    $resolver->shouldReceive('resolve')->once()->andReturn([
+        'enabled' => true, 'source' => 'company_default', 'policy' => $policy, 'override' => null, 'error' => null,
+    ]);
+    $maps = Mockery::mock(GoogleMapsService::class);
+    $maps->shouldReceive('distanceAndDuration')->times(4)->andReturnValues([
+        ['distance_km' => 3, 'duration_seconds' => 180],
+        ['distance_km' => 8, 'duration_seconds' => 480],
+        ['distance_km' => 8, 'duration_seconds' => 480],
+        ['distance_km' => 3, 'duration_seconds' => 180],
+    ]);
+    $points = [
+        ['address' => 'Pickup', 'latitude' => 7.0, 'longitude' => 80.0],
+        ['address' => 'Destination', 'latitude' => 7.1, 'longitude' => 80.1],
+        ['address' => 'Booked round-trip drop-off', 'latitude' => 7.001, 'longitude' => 80.001],
+    ];
+
+    $result = (new CorporateContractualDistanceCalculator($resolver, $maps))
+        ->calculate('company-a', 'service-a', $points);
+
+    expect($result['journey_distance'])->toBe(16.0)
+        ->and($result['origin_to_pickup_distance'])->toBe(3.0)
+        ->and($result['dropoff_to_return_distance'])->toBe(3.0)
+        ->and($result['total_billable_distance'])->toBe(22.0);
+});
+
 it('contains no driver, assignment, tracking, or operational position dependency', function () {
     $source = file_get_contents(app_path('Services/CorporateContractualDistanceCalculator.php'));
 

@@ -1717,11 +1717,13 @@ Route::middleware(['auth:api'])->group(function () {
             ->middleware('permission:corporates.manage');
         Route::post('{corporate}/initial-admin', [\App\Http\Controllers\Api\Corporate\CorporateController::class, 'createInitialAdmin']);
 
-        Route::get('{corporate}/distance-pricing-policy', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'show']);
-        Route::put('{corporate}/distance-pricing-policy', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'update']);
-        Route::get('{corporate}/distance-pricing-policy/services', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'services']);
-        Route::post('{corporate}/distance-pricing-policy/preview', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'preview']);
-        Route::put('{corporate}/distance-pricing-policy/services/{serviceType}', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'updateService']);
+        Route::middleware('ensure.internal')->group(function () {
+            Route::get('{corporate}/distance-pricing-policy', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'show']);
+            Route::put('{corporate}/distance-pricing-policy', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'update']);
+            Route::get('{corporate}/distance-pricing-policy/services', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'services']);
+            Route::post('{corporate}/distance-pricing-policy/preview', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'preview']);
+            Route::put('{corporate}/distance-pricing-policy/services/{serviceType}', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'updateService']);
+        });
 
         // Admin sub-resource routes for departments, divisions, employees, bookings
         Route::get('{corporate}/departments', [\App\Http\Controllers\Api\Corporate\AdminCorporateDepartmentController::class, 'index']);

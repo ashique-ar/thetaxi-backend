@@ -238,6 +238,7 @@ class CheckoutController extends Controller
 
         $advancePaymentEnabled = $paymentSettings['advance_payment_enabled'];
         $advancePercentage = $paymentSettings['advance_payment_percentage'];
+        $advanceMinAmount = $paymentSettings['advance_payment_min_amount'];
 
         // Load countries for dynamic dropdown
         $countries = \App\Models\Country::orderBy('name')->get(['id', 'name', 'code', 'callcode']);
@@ -251,6 +252,7 @@ class CheckoutController extends Controller
             'paymentMethods',
             'advancePaymentEnabled',
             'advancePercentage',
+            'advanceMinAmount',
             'offlinePaymentEnabled',
             'countries'
         ));

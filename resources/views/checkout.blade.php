@@ -47,6 +47,7 @@
         $total = $totals['total'] ?? 0;
 
         $advancePercentage = $advancePercentage ?? 50;
+        $advanceMinAmount = max(0, (float) ($advanceMinAmount ?? 0));
         $advancePaymentEnabled = $advancePaymentEnabled ?? true;
 
         // Fetch settings from database
@@ -83,7 +84,7 @@
 
         // Payment amount based on type
         $paymentAmount = match ($paymentType) {
-            'advance' => $total * ($advancePercentage / 100),
+            'advance' => min($total, max($total * ($advancePercentage / 100), $advanceMinAmount)),
             'quotation' => 0,
             default => $total,
         };
@@ -452,7 +453,7 @@
                                                                                 </p>
                                                                                 <small class="text-muted">Now:
                                                                                     {{ $currencySymbol }}
-                                                                                    {{ number_format(floor(max(0, $total * ($advancePercentage / 100))), 0) }}</small>
+                                                                                    <span data-advance-payment-amount>{{ number_format(floor(max(0, min($total, max($total * ($advancePercentage / 100), $advanceMinAmount)))), 0) }}</span></small>
                                                                             </div>
                                                                         </label>
                                                                     </div>
@@ -1707,9 +1708,16 @@
 
             // Get PHP variables from blade
             const currencySymbol = '{{ $currencySymbol }}';
-            const total = {{ $total }};
+            let checkoutTotal = {{ $total }};
             const advancePercentage = {{ $advancePercentage }};
+            const advanceMinAmount = {{ $advanceMinAmount }};
             const paymentTermsGroups = $('.payment-terms-group');
+
+            function calculateAdvanceAmount(amount) {
+                const normalizedTotal = Math.max(0, Number(amount) || 0);
+                const percentageAmount = normalizedTotal * (advancePercentage / 100);
+                return Math.min(normalizedTotal, Math.max(percentageAmount, advanceMinAmount));
+            }
 
             // Initialize Select2 for country dropdown
             $('#country-select').select2({
@@ -1758,8 +1766,8 @@
                 const submitBtn = $('#checkout-submit-btn span');
 
                 // Calculate payment amounts
-                const advanceAmount = total * (advancePercentage / 100);
-                const fullAmount = total;
+                const advanceAmount = calculateAdvanceAmount(checkoutTotal);
+                const fullAmount = checkoutTotal;
 
                 // Update the alert content based on payment type
                 switch (paymentType) {
@@ -1943,6 +1951,7 @@
                 }
 
                 const totals = cart.totals;
+                checkoutTotal = Math.max(0, Number(totals.total) || 0);
                 const normalFields = [
                     'subtotal',
                     'addon_charges',
@@ -1971,8 +1980,9 @@
 
                 const paymentType = $('input[name="payment_type"]:checked').val() || '{{ $paymentType }}';
                 if (paymentType === 'advance') {
-                    const advanceAmount = Number(totals.total || 0) * (Number('{{ $advancePercentage }}') / 100);
+                    const advanceAmount = calculateAdvanceAmount(totals.total);
                     $('[data-summary-field="payment_amount"]').text(formatCheckoutAmount(advanceAmount));
+                    $('[data-advance-payment-amount]').text(Math.floor(advanceAmount).toFixed(0));
                 } else if (paymentType === 'checkin') {
                     $('[data-summary-field="payment_amount"]').text(formatCheckoutAmount(totals.total));
                 }
