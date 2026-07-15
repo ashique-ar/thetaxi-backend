@@ -141,7 +141,7 @@ class VehiclePricingCommonRateDefinitionController extends Controller
     public function show(string $id): JsonResponse
     {
         try {
-            $commonRate = VehiclePricingCommonRateDefinition::with(['serviceType', 'createdBy', 'updatedBy'])
+            $commonRate = VehiclePricingCommonRateDefinition::withInactive()->with(['serviceType', 'createdBy', 'updatedBy'])
                 ->findOrFail($id);
 
             return response()->json([
@@ -167,7 +167,7 @@ class VehiclePricingCommonRateDefinitionController extends Controller
         try {
             DB::beginTransaction();
 
-            $commonRate = VehiclePricingCommonRateDefinition::findOrFail($id);
+            $commonRate = VehiclePricingCommonRateDefinition::withInactive()->findOrFail($id);
 
             $data = $request->validated();
             $data['owner_type'] = null;
@@ -207,7 +207,7 @@ class VehiclePricingCommonRateDefinitionController extends Controller
     public function destroy(string $id): JsonResponse
     {
         try {
-            $commonRate = VehiclePricingCommonRateDefinition::findOrFail($id);
+            $commonRate = VehiclePricingCommonRateDefinition::withInactive()->findOrFail($id);
 
             // Check if the rate is being used in vehicle group pricing
             if ($commonRate->vehicleGroupAddonPricing()->exists()) {
@@ -243,7 +243,7 @@ class VehiclePricingCommonRateDefinitionController extends Controller
     public function toggleStatus(Request $request, string $id): JsonResponse
     {
         try {
-            $commonRate = VehiclePricingCommonRateDefinition::findOrFail($id);
+            $commonRate = VehiclePricingCommonRateDefinition::withInactive()->findOrFail($id);
 
             $commonRate->update([
                 'is_active' => !$commonRate->is_active,
