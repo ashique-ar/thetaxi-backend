@@ -17,6 +17,52 @@
     line-height: 1.2 !important;
 }
 
+/* Keep every standard booking field in one bordered, horizontal row. */
+.filter-wrapper .single-search-box:not(.radio-field):not(.checkbox-field),
+.t2-filter-wrapper .single-search-box:not(.radio-field):not(.checkbox-field) {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    gap: 12px !important;
+}
+
+/* Inline visibility is controlled by the booking-form JavaScript. */
+.filter-wrapper .single-search-box[style*="display: none"],
+.t2-filter-wrapper .single-search-box[style*="display: none"] {
+    display: none !important;
+}
+
+.filter-wrapper .single-search-box > .d-flex,
+.t2-filter-wrapper .single-search-box > .d-flex {
+    flex: 0 0 auto !important;
+    min-width: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+}
+
+.filter-wrapper .single-search-box > .d-flex .input-label,
+.t2-filter-wrapper .single-search-box > .d-flex .input-label {
+    margin-bottom: 0 !important;
+    white-space: nowrap !important;
+}
+
+.filter-wrapper .single-search-box > .custom-select-dropdown,
+.filter-wrapper .single-search-box > input,
+.filter-wrapper .single-search-box > textarea,
+.t2-filter-wrapper .single-search-box > .custom-select-dropdown,
+.t2-filter-wrapper .single-search-box > input,
+.t2-filter-wrapper .single-search-box > textarea {
+    flex: 1 1 auto !important;
+    width: auto !important;
+    min-width: 0 !important;
+}
+
+.filter-wrapper .single-search-box > .text-danger,
+.t2-filter-wrapper .single-search-box > .text-danger {
+    flex: 0 0 100% !important;
+}
+
 /* ==================== GLOBAL FORM STYLES ==================== */
 .primary-btn1 {
     padding: 12px 20px !important;
