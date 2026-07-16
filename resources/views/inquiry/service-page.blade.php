@@ -164,22 +164,22 @@ $type = $section['type'] ?? '';
     }
 
     .inquiry-form-card {
-        background: #fff;
+        /* background: #fff;
         border-radius: 16px;
-        padding: 32px;
+        padding: 32px; */
         box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
-        margin-top: 0;
+        /* margin-top: 0; */
     }
 
     .inquiry-form-card-wrap {
-        width: min(100%, 760px);
+        /* width: min(100%, 760px);
         margin-left: auto;
-        margin-bottom: -227.5px;
+        margin-bottom: -227.5px; */
         transform: translateY(-227.5px);
     }
 
     .inquiry-form-copy {
-        width: min(100%, 680px);
+        /* width: min(100%, 680px); */
         margin-top: 48px;
     }
 
@@ -187,9 +187,12 @@ $type = $section['type'] ?? '';
         grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     }
 
+    .inquiry-form-card .inquiry-field-wrap {
+        min-width: 0;
+    }
+
     .inquiry-form-card .single-search-box {
         align-content: center;
-        flex-wrap: wrap;
     }
 
     .inquiry-form-card .single-search-box > input,
@@ -203,9 +206,14 @@ $type = $section['type'] ?? '';
     }
 
     .inquiry-form-card .inquiry-help-text,
-    .inquiry-form-card .single-search-box > .text-danger {
-        flex: 0 0 100%;
-        padding-left: 28px;
+    .inquiry-form-card .inquiry-field-wrap > .text-danger {
+        padding: 0 12px;
+    }
+
+    .inquiry-form-card .inquiry-full-width .single-search-box textarea {
+        border: 0;
+        padding: 8px 0;
+        box-shadow: none;
     }
 
     .inquiry-form-intro {
@@ -361,8 +369,8 @@ $type = $section['type'] ?? '';
         }
 
         .inquiry-form-card .inquiry-help-text,
-        .inquiry-form-card .single-search-box > .text-danger {
-            padding-left: 0;
+        .inquiry-form-card .inquiry-field-wrap > .text-danger {
+            padding: 0 6px;
         }
     }
 
