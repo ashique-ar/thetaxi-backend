@@ -33,6 +33,8 @@ class VehiclePricingSlabDefinition extends BaseModel
         'min_days',
         'max_days',
         'type',
+        'min_minutes',
+        'max_minutes',
         'min_hours',
         'max_hours',
         'max_km_per_day',
@@ -49,6 +51,8 @@ class VehiclePricingSlabDefinition extends BaseModel
      * @var array<string, string>
      */
     protected $casts = [
+        'min_minutes' => 'integer',
+        'max_minutes' => 'integer',
         'min_hours' => 'integer',
         'max_hours' => 'integer',
         'min_days' => 'integer',

@@ -93,7 +93,10 @@ class VehiclePricingCalculationDefinitionController extends Controller
         $definitions = $query->paginate($perPage);
 
         return response()->json([
-            'data' => $definitions->items(),
+            'data' => collect($definitions->items())->map(fn ($definition) => array_merge(
+                $definition->toArray(),
+                ['calculation_example' => $definition->getCalculationExample()]
+            ))->values(),
             'pagination' => [
                 'current_page' => $definitions->currentPage(),
                 'last_page' => $definitions->lastPage(),
@@ -165,7 +168,9 @@ class VehiclePricingCalculationDefinitionController extends Controller
 
             return response()->json([
                 'message' => 'Calculation definition created successfully',
-                'data' => $definition
+                'data' => array_merge($definition->toArray(), [
+                    'calculation_example' => $definition->getCalculationExample(),
+                ])
             ], 201);
         } catch (\Exception $e) {
             return response()->json([
@@ -185,7 +190,9 @@ class VehiclePricingCalculationDefinitionController extends Controller
                 ->findOrFail($id);
 
             return response()->json([
-                'data' => $definition
+                'data' => array_merge($definition->toArray(), [
+                    'calculation_example' => $definition->getCalculationExample(),
+                ])
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -256,7 +263,9 @@ class VehiclePricingCalculationDefinitionController extends Controller
 
             return response()->json([
                 'message' => 'Calculation definition updated successfully',
-                'data' => $definition
+                'data' => array_merge($definition->toArray(), [
+                    'calculation_example' => $definition->getCalculationExample(),
+                ])
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -298,6 +307,11 @@ class VehiclePricingCalculationDefinitionController extends Controller
             'test_inputs.vehicle_group_id' => 'nullable|uuid',
             'test_inputs.service_type_id' => 'nullable|uuid',
             'test_inputs.duration_hours' => 'nullable|numeric|min:0',
+            'test_inputs.duration_minutes' => 'nullable|numeric|min:0',
+            'test_inputs.extra_minutes' => 'nullable|numeric|min:0',
+            'test_inputs.waiting_minutes' => 'nullable|numeric|min:0',
+            'test_inputs.recovery_minutes' => 'nullable|numeric|min:0',
+            'test_inputs.overtime_minutes' => 'nullable|numeric|min:0',
             'test_inputs.slab_rate' => 'nullable|numeric|min:0',
             'test_inputs.rate_type' => 'nullable|in:per_hour,per_day,flat_rate',
         ]);
@@ -593,7 +607,8 @@ class VehiclePricingCalculationDefinitionController extends Controller
         $validator = Validator::make($request->all(), [
             'definition_id' => 'required|uuid|exists:vehicle_pricing_calculation_definitions,id',
             'vehicle_group_id' => 'required|uuid',
-            'duration_hours' => 'required|numeric|min:0.1',
+            'duration_hours' => 'nullable|required_without:duration_minutes|numeric|min:0.0001',
+            'duration_minutes' => 'nullable|required_without:duration_hours|numeric|min:1',
             'distance_km' => 'nullable|numeric|min:0',
             'additional_inputs' => 'nullable|array',
         ]);
@@ -609,10 +624,17 @@ class VehiclePricingCalculationDefinitionController extends Controller
             $definition = VehiclePricingCalculationDefinition::findOrFail($request->definition_id);
             
             // Prepare inputs for calculation
+            $durationHours = $request->filled('duration_hours')
+                ? (float) $request->duration_hours
+                : (float) $request->duration_minutes / 60;
+
             $inputs = array_merge([
                 'vehicle_group_id' => $request->vehicle_group_id,
-                'duration_hours' => $request->duration_hours,
-                'hours' => $request->duration_hours, // Alias for backward compatibility
+                'duration_hours' => $durationHours,
+                'duration_minutes' => $request->filled('duration_minutes')
+                    ? (float) $request->duration_minutes
+                    : $durationHours * 60,
+                'hours' => $durationHours, // Alias for backward compatibility
                 'distance_km' => $request->distance_km ?? 0,
                 'distance' => $request->distance_km ?? 0, // Alias for backward compatibility
             ], $request->additional_inputs ?? []);
@@ -953,12 +975,14 @@ class VehiclePricingCalculationDefinitionController extends Controller
             $coreVariables = [
                 ['name' => 'slab_rate', 'type' => 'slab_rate', 'description' => 'Base rate from slab definition based on duration/package', 'is_required' => true, 'category' => 'base'],
                 ['name' => 'duration_hours', 'type' => 'duration', 'description' => 'Service duration in hours', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
+                ['name' => 'duration_minutes', 'type' => 'duration', 'description' => 'Service duration in minutes', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
                 ['name' => 'duration_days', 'type' => 'duration', 'description' => 'Service duration in days', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
                 ['name' => 'total_distance', 'type' => 'distance', 'description' => 'Total service distance in KM', 'is_required' => false, 'default_value' => 0, 'category' => 'distance'],
                 ['name' => 'delivery_distance', 'type' => 'distance', 'description' => 'Vehicle delivery distance in KM', 'is_required' => false, 'default_value' => 0, 'category' => 'distance'],
                 ['name' => 'pickup_distance', 'type' => 'distance', 'description' => 'Vehicle pickup distance in KM (return distance)', 'is_required' => false, 'default_value' => 0, 'category' => 'distance'],
                 ['name' => 'extra_km', 'type' => 'distance', 'description' => 'Extra KM beyond package/daily limit', 'is_required' => false, 'default_value' => 0, 'category' => 'distance'],
-                ['name' => 'extra_hours', 'type' => 'duration', 'description' => 'Extra hours beyond package limit', 'is_required' => false, 'default_value' => 0, 'category' => 'duration']
+                ['name' => 'extra_hours', 'type' => 'duration', 'description' => 'Extra hours beyond package limit', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
+                ['name' => 'extra_minutes', 'type' => 'duration', 'description' => 'Extra minutes beyond package limit', 'is_required' => false, 'default_value' => 0, 'category' => 'duration']
             ];
 
             // Special variables (context-dependent)
@@ -966,9 +990,12 @@ class VehiclePricingCalculationDefinitionController extends Controller
                 ['name' => 'discount_percentage', 'type' => 'fixed_value', 'description' => 'Discount percentage (0.1 = 10%)', 'is_required' => false, 'default_value' => 0, 'category' => 'adjustment'],
                 ['name' => 'additional_stops', 'type' => 'fixed_value', 'description' => 'Number of additional stops', 'is_required' => false, 'default_value' => 0, 'category' => 'service'],
                 ['name' => 'waiting_hours', 'type' => 'duration', 'description' => 'Additional waiting time in hours', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
+                ['name' => 'waiting_minutes', 'type' => 'duration', 'description' => 'Additional waiting time in minutes', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
                 ['name' => 'recovery_hours', 'type' => 'duration', 'description' => 'Hours spent on recovery operation', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
+                ['name' => 'recovery_minutes', 'type' => 'duration', 'description' => 'Minutes spent on recovery operation', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
                 ['name' => 'stops', 'type' => 'fixed_value', 'description' => 'Number of stops in transfer', 'is_required' => false, 'default_value' => 0, 'category' => 'service'],
-                ['name' => 'overtime_hours', 'type' => 'duration', 'description' => 'Overtime hours beyond contract', 'is_required' => false, 'default_value' => 0, 'category' => 'duration']
+                ['name' => 'overtime_hours', 'type' => 'duration', 'description' => 'Overtime hours beyond contract', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
+                ['name' => 'overtime_minutes', 'type' => 'duration', 'description' => 'Overtime minutes beyond contract', 'is_required' => false, 'default_value' => 0, 'category' => 'duration']
             ];
 
             // Get common rate variables for this service type
@@ -1021,10 +1048,13 @@ class VehiclePricingCalculationDefinitionController extends Controller
             'service_rate_per_km' => 'service',
             'stop_charge' => 'service',
             'waiting_charge_per_hour' => 'service',
+            'waiting_charge_per_minute' => 'service',
             'decoration_charge' => 'special',
             'emergency_base_rate' => 'special',
             'hourly_rate' => 'service',
             'overtime_rate_per_hour' => 'overage',
+            'overtime_rate_per_minute' => 'overage',
+            'extra_minute_rate' => 'overage',
         ];
 
         return $categories[$code] ?? 'rate';

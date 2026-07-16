@@ -143,6 +143,11 @@ class BookingLifecycleController extends Controller
             'mileage' => 'nullable|integer|min:0',
             'return_notes' => 'nullable|string',
             'actual_return_time' => 'nullable|date',
+            'actual_start_time' => 'nullable|date',
+            'actual_distance' => 'nullable|numeric|min:0',
+            'distance_km' => 'nullable|numeric|min:0',
+            'waiting_minutes' => 'nullable|integer|min:0',
+            'activity_source' => 'nullable|string|in:customer_mobile,driver_mobile,system_return,system_completion',
             'damages' => 'nullable|array',
             'damages.*.type' => 'required_with:damages|string',
             'damages.*.description' => 'required_with:damages|string',
@@ -164,6 +169,11 @@ class BookingLifecycleController extends Controller
                     'mileage',
                     'return_notes',
                     'actual_return_time',
+                    'actual_start_time',
+                    'actual_distance',
+                    'distance_km',
+                    'waiting_minutes',
+                    'activity_source',
                     'damages',
                     'charges'
                 ]), [
@@ -207,6 +217,12 @@ class BookingLifecycleController extends Controller
         $request->validate([
             'booking_id' => 'required|string',
             'booking_item_id' => 'nullable|string',
+            'actual_start_time' => 'nullable|date',
+            'actual_return_time' => 'nullable|date',
+            'actual_distance' => 'nullable|numeric|min:0',
+            'distance_km' => 'nullable|numeric|min:0',
+            'waiting_minutes' => 'nullable|integer|min:0',
+            'activity_source' => 'nullable|string|in:customer_mobile,driver_mobile,system_return,system_completion',
             'inspector_id' => 'nullable|exists:users,id',
         ]);
 
@@ -323,9 +339,14 @@ class BookingLifecycleController extends Controller
 
             $qc = $this->lifecycleService->completeRepairs(
                 $request->booking_id,
-                [
-                    'completed_by' => Auth::id()
-                ],
+                array_merge($request->only([
+                    'actual_start_time',
+                    'actual_return_time',
+                    'actual_distance',
+                    'distance_km',
+                    'waiting_minutes',
+                    'activity_source',
+                ]), ['completed_by' => Auth::id()]),
                 $request->input('booking_item_id')
             );
 

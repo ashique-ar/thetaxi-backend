@@ -859,7 +859,6 @@ class TripTrackingService
                     'condition' => null,
                     'damages' => [],
                     'charges' => [],
-                    'late_fee' => 0,
                     'completed_by_driver' => true,
                     'skip_qc' => true,
                 ]);
@@ -873,7 +872,31 @@ class TripTrackingService
             ]);
         }
 
-        // Fallback path when dispatch is missing: still complete booking and release vehicle.
+        // Dispatch-less assignments still use the canonical completion service so
+        // final mobile metrics are priced and invoiced before the legacy fallback.
+        try {
+            $this->bookingLifecycleService->completeBooking(
+                (string) $booking->id,
+                [
+                    'activity_source' => 'driver_mobile',
+                    'actual_start_time' => $assignment->trip_started_at?->toIso8601String(),
+                    'actual_return_time' => $completedAt->toIso8601String(),
+                    'actual_distance' => (float) ($assignment->total_distance_km ?? 0),
+                    'waiting_minutes' => (int) ceil(((int) $assignment->total_waiting_time_seconds) / 60),
+                    'completed_by_driver' => true,
+                ],
+                $assignment->booking_item_id
+            );
+            return;
+        } catch (\Throwable $exception) {
+            Log::warning('Driver trip completion fallback: canonical completion failed', [
+                'assignment_id' => $assignment->id,
+                'booking_id' => $booking->id,
+                'error' => $exception->getMessage(),
+            ]);
+        }
+
+        // Last-resort legacy path keeps the vehicle from remaining locked.
         $vehicleId = $assignment->bookingItem?->vehicle_id ?? $booking->vehicle_id;
         if ($vehicleId) {
             Vehicle::where('id', $vehicleId)->update([

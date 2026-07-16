@@ -479,6 +479,7 @@ class VehiclePricingCommonRateDefinitionController extends Controller
             'rate_id' => 'required|string|exists:pricing_common_rates,id',
             'base_amount' => 'required|numeric|min:0',
             'hours' => 'integer|min:1',
+            'minutes' => 'integer|min:1',
             'days' => 'integer|min:1',
             'kilometers' => 'numeric|min:0'
         ]);
@@ -490,7 +491,8 @@ class VehiclePricingCommonRateDefinitionController extends Controller
                 $request->base_amount,
                 $request->hours ?? 1,
                 $request->days ?? 1,
-                $request->kilometers ?? 0
+                $request->kilometers ?? 0,
+                $request->minutes ?? 1
             );
 
             return response()->json([
@@ -501,6 +503,7 @@ class VehiclePricingCommonRateDefinitionController extends Controller
                     'calculation_details' => [
                         'base_amount' => $request->base_amount,
                         'hours' => $request->hours ?? 1,
+                        'minutes' => $request->minutes ?? 1,
                         'days' => $request->days ?? 1,
                         'kilometers' => $request->kilometers ?? 0,
                         'rate_type' => $rate->common_rate_type,
@@ -509,6 +512,7 @@ class VehiclePricingCommonRateDefinitionController extends Controller
                             $rate->value,
                             $request->base_amount,
                             $request->hours ?? 1,
+                            $request->minutes ?? 1,
                             $request->days ?? 1,
                             $request->kilometers ?? 0
                         )
@@ -533,6 +537,7 @@ class VehiclePricingCommonRateDefinitionController extends Controller
         float $rateValue,
         float $baseAmount,
         int $hours,
+        int $minutes,
         int $days,
         float $kilometers
     ): string {
@@ -541,6 +546,7 @@ class VehiclePricingCommonRateDefinitionController extends Controller
         return match ($rateType) {
             'percentage' => "(LKR {$formatted($baseAmount)} × {$formatted($rateValue)}%) = LKR {$formatted(($baseAmount * $rateValue) / 100)}",
             'per_hour' => "(LKR {$formatted($rateValue)} × {$hours} hours) = LKR {$formatted($rateValue * $hours)}",
+            'per_minute' => "(LKR {$formatted($rateValue)} × {$minutes} minutes) = LKR {$formatted($rateValue * $minutes)}",
             'per_day' => "(LKR {$formatted($rateValue)} × {$days} days) = LKR {$formatted($rateValue * $days)}",
             'per_km' => "(LKR {$formatted($rateValue)} × {$formatted($kilometers)} km) = LKR {$formatted($rateValue * $kilometers)}",
             'fixed_amount' => "Fixed amount = LKR {$formatted($rateValue)}",

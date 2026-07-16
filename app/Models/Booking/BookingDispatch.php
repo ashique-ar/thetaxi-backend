@@ -218,6 +218,29 @@ class BookingDispatch extends BaseModel
         return round($hoursLate * $hourlyRate, 2);
     }
 
+    public function calculateLateReturnFeeAt(Carbon|string|null $returnedAt = null): float
+    {
+        if (!$this->expected_return_at) {
+            return 0.0;
+        }
+
+        $actualReturnAt = $returnedAt ? Carbon::parse($returnedAt) : Carbon::now('UTC');
+        if ($actualReturnAt->lessThanOrEqualTo($this->expected_return_at)) {
+            return 0.0;
+        }
+
+        $hourlyRate = (float) (\App\Models\Website\WebsiteSetting::getValue('late_return_fee_per_hour', 10) ?? 10);
+        $minuteRateSetting = \App\Models\Website\WebsiteSetting::getValue('late_return_fee_per_minute', null);
+        $minuteRate = $minuteRateSetting !== null ? (float) $minuteRateSetting : $hourlyRate / 60;
+        $graceMinutes = (int) (\App\Models\Website\WebsiteSetting::getValue(
+            'late_return_grace_minutes',
+            ((int) (\App\Models\Website\WebsiteSetting::getValue('late_return_grace_hours', 0) ?? 0)) * 60
+        ) ?? 0);
+        $lateMinutes = max(0, (int) ceil($this->expected_return_at->diffInSeconds($actualReturnAt) / 60) - $graceMinutes);
+
+        return round($lateMinutes * $minuteRate, 2);
+    }
+
     /**
      * Get dispatch summary for reports
      */

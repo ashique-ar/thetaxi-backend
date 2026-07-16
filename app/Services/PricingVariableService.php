@@ -317,15 +317,18 @@ class PricingVariableService
             'driver_allowance' => 'Daily allowance for driver',
             'extra_km_rate' => 'Rate per extra kilometer',
             'extra_hour_rate' => 'Rate per extra hour',
+            'extra_minute_rate' => 'Rate per extra minute',
             'vehicle_delivery_rate_per_km' => 'Delivery charge per kilometer',
             'vehicle_pickup_rate_per_km' => 'Pickup charge per kilometer',
             'service_rate_per_km' => 'Service charge per kilometer',
             'stop_charge' => 'Charge per additional stop',
             'waiting_charge_per_hour' => 'Waiting charge per hour',
+            'waiting_charge_per_minute' => 'Waiting charge per minute',
             'decoration_charge' => 'Vehicle decoration charge',
             'emergency_base_rate' => 'Emergency service base rate',
             'hourly_rate' => 'Hourly service rate',
             'overtime_rate_per_hour' => 'Overtime rate per hour',
+            'overtime_rate_per_minute' => 'Overtime rate per minute',
         ];
 
         return $descriptions[$varName] ?? ucfirst(str_replace('_', ' ', $varName));
@@ -341,15 +344,18 @@ class PricingVariableService
             'driver_allowance' => 'base',
             'extra_km_rate' => 'overage',
             'extra_hour_rate' => 'overage',
+            'extra_minute_rate' => 'overage',
             'vehicle_delivery_rate_per_km' => 'logistics',
             'vehicle_pickup_rate_per_km' => 'logistics',
             'service_rate_per_km' => 'service',
             'stop_charge' => 'service',
             'waiting_charge_per_hour' => 'service',
+            'waiting_charge_per_minute' => 'service',
             'decoration_charge' => 'special',
             'emergency_base_rate' => 'special',
             'hourly_rate' => 'service',
             'overtime_rate_per_hour' => 'overage',
+            'overtime_rate_per_minute' => 'overage',
         ];
 
         return $categories[$varName] ?? 'other';
@@ -363,12 +369,17 @@ class PricingVariableService
         // System calculated variables that shouldn't be customized
         $nonCustomizable = [
             'duration_hours',
+            'duration_minutes',
             'duration_days',
             'total_distance',
             'delivery_distance',
             'pickup_distance',
             'extra_km',
             'extra_hours',
+            'extra_minutes',
+            'waiting_minutes',
+            'recovery_minutes',
+            'overtime_minutes',
             'number_of_days'
         ];
 
@@ -387,15 +398,18 @@ class PricingVariableService
             'driver_allowance'             => "{$currency}/day",
             'extra_km_rate'                => "{$currency}/km",
             'extra_hour_rate'              => "{$currency}/hour",
+            'extra_minute_rate'            => "{$currency}/minute",
             'vehicle_delivery_rate_per_km' => "{$currency}/km",
             'vehicle_pickup_rate_per_km'   => "{$currency}/km",
             'service_rate_per_km'          => "{$currency}/km",
             'stop_charge'                  => "{$currency}/stop",
             'waiting_charge_per_hour'      => "{$currency}/hour",
+            'waiting_charge_per_minute'    => "{$currency}/minute",
             'decoration_charge'            => $currency,
             'emergency_base_rate'          => $currency,
             'hourly_rate'                  => "{$currency}/hour",
             'overtime_rate_per_hour'       => "{$currency}/hour",
+            'overtime_rate_per_minute'     => "{$currency}/minute",
         ];
 
         return $units[$varName] ?? $currency;

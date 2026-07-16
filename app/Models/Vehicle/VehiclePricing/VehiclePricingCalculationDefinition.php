@@ -90,6 +90,8 @@ class VehiclePricingCalculationDefinition extends Model
     public function calculatePrice(array $inputs, $appliedCustomizations = [], $servicePackageInfo = null, $districtInfo = null): array
     {
         try {
+            $inputs = $this->normalizeDurationUnits($inputs);
+
             $metadata = [
                 'definition_id' => $this->id,
                 'definition_name' => $this->name,
@@ -183,6 +185,31 @@ class VehiclePricingCalculationDefinition extends Model
             ]);
             throw $e;
         }
+    }
+
+    /**
+     * Make hour and minute duration variables interchangeable in formulas.
+     * Explicit values are preserved; only a missing counterpart is derived.
+     */
+    private function normalizeDurationUnits(array $inputs): array
+    {
+        foreach (['duration', 'extra', 'waiting', 'recovery', 'overtime'] as $prefix) {
+            $hoursKey = "{$prefix}_hours";
+            $minutesKey = "{$prefix}_minutes";
+
+            if (array_key_exists($minutesKey, $inputs) && !array_key_exists($hoursKey, $inputs)) {
+                $inputs[$hoursKey] = (float) $inputs[$minutesKey] / 60;
+            } elseif (array_key_exists($hoursKey, $inputs) && !array_key_exists($minutesKey, $inputs)) {
+                $inputs[$minutesKey] = (float) $inputs[$hoursKey] * 60;
+            }
+        }
+
+        if (array_key_exists('hours', $inputs) && !array_key_exists('duration_hours', $inputs)) {
+            $inputs['duration_hours'] = (float) $inputs['hours'];
+            $inputs['duration_minutes'] ??= (float) $inputs['hours'] * 60;
+        }
+
+        return $inputs;
     }
 
     /**
@@ -291,9 +318,12 @@ class VehiclePricingCalculationDefinition extends Model
         $otherCharges = [
             'decoration_charge' => 'Vehicle decoration',
             'waiting_charge_per_hour' => 'Waiting charges',
+            'waiting_charge_per_minute' => 'Waiting charges',
             'stop_charge' => 'Stop charges',
             'emergency_base_rate' => 'Emergency base fee',
             'overtime_rate_per_hour' => 'Overtime charges',
+            'overtime_rate_per_minute' => 'Overtime charges',
+            'extra_minute_rate' => 'Extra time charges',
         ];
 
         foreach ($otherCharges as $varName => $description) {
@@ -301,7 +331,19 @@ class VehiclePricingCalculationDefinition extends Model
                 $amount = $resolvedVariables[$varName];
 
                 // Handle per-unit charges
-                if (str_contains($varName, '_per_hour') && isset($resolvedVariables['waiting_hours'])) {
+                if (str_contains($varName, '_per_minute') && isset($resolvedVariables['waiting_minutes'])) {
+                    $minutes = $resolvedVariables['waiting_minutes'];
+                    $amount = $minutes * $resolvedVariables[$varName];
+                    $calculation = "{$minutes} minutes × LKR {$resolvedVariables[$varName]}";
+                } elseif (str_contains($varName, '_per_minute') && isset($resolvedVariables['overtime_minutes'])) {
+                    $minutes = $resolvedVariables['overtime_minutes'];
+                    $amount = $minutes * $resolvedVariables[$varName];
+                    $calculation = "{$minutes} minutes × LKR {$resolvedVariables[$varName]}";
+                } elseif ($varName === 'extra_minute_rate' && isset($resolvedVariables['extra_minutes'])) {
+                    $minutes = $resolvedVariables['extra_minutes'];
+                    $amount = $minutes * $resolvedVariables[$varName];
+                    $calculation = "{$minutes} minutes × LKR {$resolvedVariables[$varName]}";
+                } elseif (str_contains($varName, '_per_hour') && isset($resolvedVariables['waiting_hours'])) {
                     $hours = $resolvedVariables['waiting_hours'];
                     $amount = $hours * $resolvedVariables[$varName];
                     $calculation = "{$hours} hours × LKR {$resolvedVariables[$varName]}";
@@ -396,6 +438,7 @@ class VehiclePricingCalculationDefinition extends Model
     {
         $vehicleGroupId = $inputs['vehicle_group_id'] ?? null;
         $durationHours = $inputs['duration_hours'] ?? $inputs['hours'] ?? 0;
+        $durationMinutes = $inputs['duration_minutes'] ?? ($durationHours * 60);
         $durationDays = $inputs['duration_days'] ?? $inputs['days'] ?? 0;
 
         if (!$vehicleGroupId) {
@@ -407,8 +450,22 @@ class VehiclePricingCalculationDefinition extends Model
             $durationHours = $durationDays * 24;
         }
 
-        $slabDefinition = VehiclePricingSlabDefinition::where('service_type_id', $this->service_type_id)
+        $minuteSlabDefinition = VehiclePricingSlabDefinition::where('service_type_id', $this->service_type_id)
             ->where('is_active', true)
+            ->where('type', 'minutes')
+            ->where('min_minutes', '<=', $durationMinutes)
+            ->where(function ($query) use ($durationMinutes) {
+                $query->whereNull('max_minutes')->orWhere('max_minutes', '>=', $durationMinutes);
+            })
+            ->orderByDesc('priority')
+            ->orderByDesc('min_minutes')
+            ->first();
+
+        $slabDefinition = $minuteSlabDefinition ?: VehiclePricingSlabDefinition::where('service_type_id', $this->service_type_id)
+            ->where('is_active', true)
+            ->where(function ($query) {
+                $query->whereNull('type')->orWhere('type', '!=', 'minutes');
+            })
             ->where(function ($query) use ($durationHours, $durationDays) {
                 $query->when($durationDays > 0, function ($q) use ($durationDays) {
                     return $q->where('min_days', '<=', $durationDays)
@@ -424,6 +481,7 @@ class VehiclePricingCalculationDefinition extends Model
                         });
                 });
             })
+            ->orderByDesc('priority')
             ->orderByDesc('min_days')
             ->orderByDesc('min_hours')
             ->first();
@@ -435,6 +493,7 @@ class VehiclePricingCalculationDefinition extends Model
         return [
             'slab_definition' => $slabDefinition,
             'duration_hours' => $durationHours,
+            'duration_minutes' => $durationMinutes,
             'duration_days' => $durationDays,
             'max_km_per_day' => $slabDefinition->max_km_per_day,
             'max_km_per_package' => $slabDefinition->max_km_per_package,
@@ -1376,6 +1435,57 @@ class VehiclePricingCalculationDefinition extends Model
         }
 
         return $description;
+    }
+
+    /**
+     * Build a deterministic, configuration-driven example without requiring a
+     * booking. This is returned with every definition so users can see the
+     * formula with representative values even before opening the tester.
+     */
+    public function getCalculationExample(): array
+    {
+        $inputs = [];
+        foreach ($this->variables ?? [] as $variable) {
+            $name = (string) ($variable['name'] ?? '');
+            if ($name === '') {
+                continue;
+            }
+
+            $configured = $variable['default_value'] ?? null;
+            $inputs[$name] = is_numeric($configured) && (float) $configured !== 0.0
+                ? (float) $configured
+                : $this->exampleValueForVariable($name);
+        }
+
+        $substituted = $this->formula;
+        foreach ($inputs as $name => $value) {
+            $substituted = str_replace('{' . $name . '}', (string) $value, $substituted);
+            $substituted = preg_replace(
+                '/\b' . preg_quote($name, '/') . '\b/',
+                (string) $value,
+                $substituted
+            ) ?? $substituted;
+        }
+
+        return [
+            'inputs' => $inputs,
+            'substituted_formula' => $substituted,
+            'result' => $this->evaluateFormulaWithVariables($this->formula, $inputs),
+        ];
+    }
+
+    private function exampleValueForVariable(string $name): float
+    {
+        return match (true) {
+            str_contains($name, 'percentage') => 0.1,
+            str_contains($name, 'minutes') => 90.0,
+            str_contains($name, 'hours') => 2.0,
+            str_contains($name, 'days') => 1.0,
+            str_contains($name, 'distance'), str_contains($name, '_km') => 10.0,
+            str_contains($name, 'stops') => 2.0,
+            str_contains($name, 'rate'), str_contains($name, 'charge'), str_contains($name, 'allowance') => 100.0,
+            default => 1.0,
+        };
     }
 
     /**

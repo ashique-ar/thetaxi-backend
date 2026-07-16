@@ -3822,25 +3822,18 @@ class BookingFlowService
                     $query->whereNull('owner_type')->whereNull('owner_id');
                 });
 
-            $calculationDefinition = $calculationDefinitionQuery
+            $calculationDefinitions = $calculationDefinitionQuery
                 ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $ownerType, $ownerId))
                 ->orderBy('priority', 'desc')
                 ->orderBy('created_at', 'desc')
-                ->first();
+                ->get();
 
-            if (!$calculationDefinition) {
+            if ($calculationDefinitions->isEmpty()) {
                 Log::warning("No active calculation definition found for service type", [
                     'service_type_id' => $serviceTypeId
                 ]);
                 return $this->calculateFallbackPricing($params);
             }
-
-            Log::debug('calculateDynamicPricing: Found calculation definition', [
-                'definition_id' => $calculationDefinition->id,
-                'definition_name' => $calculationDefinition->name,
-                'formula' => $calculationDefinition->formula,
-                'conditions' => $calculationDefinition->conditions,
-            ]);
 
             // Prepare calculation inputs
             $calculationInputs = $this->prepareCalculationInputs($params);
@@ -3861,8 +3854,40 @@ class BookingFlowService
             $districtInfo = null;
             // $districtInfo = $this->resolveDistrictPricing($params, $serviceTypeId, $params['package_id'] ?? null, $params['vehicle_group_id'] ?? null);
 
-            // Execute the calculation
-            $calculationResult = $calculationDefinition->calculatePrice($calculationInputs, $appliedCustomizations, $servicePackageInfo, $districtInfo);
+            // Evaluate definitions by owner/priority until one matches its
+            // configured conditions. A high-priority scenario that does not
+            // match must not suppress the next valid calculation definition.
+            $calculationDefinition = null;
+            $calculationResult = null;
+            foreach ($calculationDefinitions as $candidate) {
+                $candidateResult = $candidate->calculatePrice(
+                    $calculationInputs,
+                    $appliedCustomizations,
+                    $servicePackageInfo,
+                    $districtInfo
+                );
+                if (($candidateResult['conditions_met'] ?? false) === true) {
+                    $calculationDefinition = $candidate;
+                    $calculationResult = $candidateResult;
+                    break;
+                }
+            }
+
+            if (!$calculationDefinition || !$calculationResult) {
+                Log::warning('No calculation definition matched the pricing scenario', [
+                    'service_type_id' => $serviceTypeId,
+                    'candidate_ids' => $calculationDefinitions->pluck('id')->all(),
+                    'inputs' => $calculationInputs,
+                ]);
+                return $this->calculateFallbackPricing($params);
+            }
+
+            Log::debug('calculateDynamicPricing: Matched calculation definition', [
+                'definition_id' => $calculationDefinition->id,
+                'definition_name' => $calculationDefinition->name,
+                'formula' => $calculationDefinition->formula,
+                'conditions' => $calculationDefinition->conditions,
+            ]);
 
             Log::info("Dynamic pricing calculation executed", [
                 'params' => $params,
@@ -3908,12 +3933,33 @@ class BookingFlowService
      */
     private function prepareCalculationInputs(array $params): array
     {
+        $durationHours = (float) ($params['duration_hours'] ?? 24);
+        $durationMinutes = (float) ($params['duration_minutes'] ?? ($durationHours * 60));
+        $durationDays = array_key_exists('duration_days', $params)
+            ? (float) $params['duration_days']
+            : ($durationHours >= 24 ? (float) ceil($durationHours / 24) : 0.0);
+
         $inputs = [
             'vehicle_group_id' => $params['vehicle_group_id'],
-            'duration_hours' => $params['duration_hours'] ?? 24,
-            'duration_days' => $params['duration_days'] ?? 1,
-            'number_of_days' => $params['duration_days'] ?? 1,
+            'duration_hours' => $durationHours,
+            'duration_minutes' => $durationMinutes,
+            'duration_days' => $durationDays,
+            'number_of_days' => max(1, (int) ceil($durationMinutes / 1440)),
         ];
+
+        // Runtime/final-pricing flows provide measured values directly instead
+        // of asking Google Maps to estimate the original route again.
+        foreach ([
+            'journey_distance', 'total_distance', 'actual_distance',
+            'delivery_distance', 'pickup_distance', 'extra_km',
+            'extra_hours', 'extra_minutes', 'waiting_hours', 'waiting_minutes',
+            'recovery_hours', 'recovery_minutes', 'overtime_hours', 'overtime_minutes',
+            'additional_stops', 'stops', 'manual_additional_charge', 'late_return_fee',
+        ] as $runtimeInput) {
+            if (array_key_exists($runtimeInput, $params) && is_numeric($params[$runtimeInput])) {
+                $inputs[$runtimeInput] = (float) $params[$runtimeInput];
+            }
+        }
 
         // Preserve the booking/search date window for downstream pricing rules
         // such as price adjustment validity checks.

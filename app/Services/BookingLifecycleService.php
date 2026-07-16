@@ -670,8 +670,23 @@ class BookingLifecycleService
                 throw new \Exception('Authenticated user is required to process return');
             }
 
+            if (!array_key_exists('late_fee', $returnData)) {
+                $returnData['late_fee'] = $dispatch->calculateLateReturnFeeAt(
+                    $returnData['actual_return_time'] ?? Carbon::now('UTC')
+                );
+            }
+
             // Mark as returned
             $dispatch->markReturned((string) $actorUserId, $returnData);
+
+            $finalPricing = $this->synchronizeFinalPricing(
+                $booking,
+                $context,
+                $dispatch->fresh(),
+                $returnData,
+                !empty($returnData['completed_by_driver']) ? 'driver_mobile_return' : 'system_return'
+            );
+            $returnData['final_pricing'] = $finalPricing;
 
             // Post-trip maintenance trigger check (non-blocking)
             $vehicleId = $dispatch->vehicle_id ?: $context['vehicle_id'];
@@ -765,6 +780,24 @@ class BookingLifecycleService
                     BookingLifecycleStatus::COMPLETED,
                     array_merge($returnData, ['qc_skipped' => true])
                 );
+
+                // Driver-mobile and direct-return completion paths do not pass
+                // through completeBooking(), so invoice only after final pricing
+                // has been synchronized above.
+                try {
+                    $this->invoiceService->generateAndSend($booking->fresh([
+                        'customer.user',
+                        'bookingItems.serviceType',
+                        'bookingItems.vehicle.group',
+                        'bookingItems.driver.user',
+                        'bookingAddons',
+                    ]));
+                } catch (\Throwable $e) {
+                    Log::error('Invoice generation failed after direct return completion', [
+                        'booking_id' => $booking->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
             }
 
             return $dispatch;
@@ -928,6 +961,14 @@ class BookingLifecycleService
                 ]);
             }
 
+            $completionData['final_pricing'] = $this->synchronizeFinalPricing(
+                $booking,
+                $context,
+                $booking->dispatch?->fresh(),
+                $completionData,
+                'booking_completion'
+            );
+
             $transitioned = $booking->transitionToStatus(
                 BookingLifecycleStatus::COMPLETED,
                 (string) $actorUserId,
@@ -1032,6 +1073,235 @@ class BookingLifecycleService
     // ========================
     // HELPER METHODS
     // ========================
+
+    /**
+     * Re-run the configured pricing graph with measured operational data before
+     * an invoice can be generated. Driver mobile telemetry wins for chauffeur
+     * trips; self-drive uses dispatch/return mileage and timestamps; system
+     * actions use the supplied return/completion values with persisted fallback.
+     */
+    private function synchronizeFinalPricing(
+        Booking $booking,
+        array $context,
+        ?BookingDispatch $dispatch,
+        array $activityData,
+        string $trigger
+    ): array {
+        /** @var BookingItem|null $bookingItem */
+        $bookingItem = $context['booking_item'] ?? null;
+        if (!$bookingItem || !$bookingItem->service_type_id || !$bookingItem->vehicle_group_id) {
+            return ['status' => 'preserved', 'reason' => 'booking_item_pricing_context_missing', 'trigger' => $trigger];
+        }
+
+        $isSelfDriven = (bool) ($context['is_self_driven'] ?? $bookingItem->is_self_driven);
+        $assignment = null;
+        if (!$isSelfDriven) {
+            $assignment = DriverAssignment::query()
+                ->where('booking_id', $booking->id)
+                ->when($bookingItem->id, fn ($query) => $query->where('booking_item_id', $bookingItem->id))
+                ->orderByDesc('trip_completed_at')
+                ->orderByDesc('updated_at')
+                ->first();
+        }
+
+        $hasDriverTelemetry = $assignment && (
+            $assignment->trip_started_at
+            || $assignment->trip_completed_at
+            || $assignment->total_distance_km !== null
+            || $assignment->total_waiting_time_seconds > 0
+        );
+
+        $declaredActivitySource = $activityData['activity_source'] ?? null;
+        $source = $hasDriverTelemetry
+            ? 'driver_mobile_activity'
+            : ($declaredActivitySource === 'customer_mobile'
+                ? 'customer_mobile_activity'
+                : ($isSelfDriven ? 'self_drive_return' : ($trigger === 'system_return' ? 'system_return' : 'system_completion')));
+
+        $startedAt = $hasDriverTelemetry
+            ? ($assignment->trip_started_at ?: $assignment->actual_start)
+            : (($activityData['actual_start_time'] ?? null) ?: $dispatch?->dispatched_at ?: $booking->trip_started_at);
+        $completedAt = $hasDriverTelemetry
+            ? ($assignment->trip_completed_at ?: $assignment->actual_end)
+            : (($activityData['actual_return_time'] ?? null) ?: $dispatch?->actual_return_at ?: $booking->completed_at ?: Carbon::now('UTC'));
+
+        $startedAt = $startedAt ? Carbon::parse($startedAt) : null;
+        $completedAt = $completedAt ? Carbon::parse($completedAt) : Carbon::now('UTC');
+        $durationMinutes = $startedAt
+            ? max(0, (int) ceil($startedAt->diffInSeconds($completedAt) / 60))
+            : (int) ($booking->actual_duration
+                ?? data_get($booking->duration_metrics, 'actual_minutes')
+                ?? (($bookingItem->duration_hours ?? 0) * 60));
+
+        $distanceKm = null;
+        if ($hasDriverTelemetry && $assignment->total_distance_km !== null) {
+            $distanceKm = (float) $assignment->total_distance_km;
+        } elseif (is_numeric($activityData['actual_distance'] ?? null)) {
+            $distanceKm = (float) $activityData['actual_distance'];
+        } elseif (is_numeric($activityData['distance_km'] ?? null)) {
+            $distanceKm = (float) $activityData['distance_km'];
+        } elseif ($dispatch?->mileage_in !== null && $dispatch?->mileage_out !== null) {
+            $distanceKm = max(0, (float) $dispatch->mileage_in - (float) $dispatch->mileage_out);
+        } elseif ($booking->actual_distance !== null) {
+            $distanceKm = (float) $booking->actual_distance;
+        }
+
+        $contractualDistance = data_get($booking->pricing_snapshot, 'distance_policy.coordinate_source') === 'corporate_distance_policy'
+            || data_get($booking->pricing_snapshot, 'base_pricing.distance_policy.coordinate_source') === 'corporate_distance_policy'
+            || data_get($bookingItem->pricing_breakdown, 'distance_policy.coordinate_source') === 'corporate_distance_policy'
+            || data_get($bookingItem->pricing_breakdown, 'base_pricing.distance_policy.coordinate_source') === 'corporate_distance_policy';
+
+        if ($contractualDistance) {
+            $distanceKm = (float) (
+                data_get($bookingItem->metadata, 'distance_details.total_billable_distance')
+                ?? data_get($bookingItem->metadata, 'distance_details.total_distance')
+                ?? data_get($bookingItem->pricing_breakdown, 'base_pricing.distance_details.total_billable_distance')
+                ?? data_get($bookingItem->pricing_breakdown, 'base_pricing.distance_details.total_distance')
+                ?? $distanceKm
+                ?? 0
+            );
+        }
+
+        $waitingMinutes = $hasDriverTelemetry
+            ? (int) ceil(((int) $assignment->total_waiting_time_seconds) / 60)
+            : (int) ($activityData['waiting_minutes'] ?? data_get($booking->duration_metrics, 'waiting_minutes', 0));
+        $metadata = is_array($bookingItem->metadata) ? $bookingItem->metadata : [];
+        $includedMinutes = (int) (
+            $metadata['included_minutes']
+            ?? (($metadata['included_hours'] ?? data_get($metadata, 'package_info.default_duration_hours') ?? 0) * 60)
+        );
+        $extraMinutes = max(0, $durationMinutes - $includedMinutes);
+
+        $params = [
+            'service_type_id' => $bookingItem->service_type_id,
+            'vehicle_group_id' => $bookingItem->vehicle_group_id,
+            'vehicle_id' => $bookingItem->vehicle_id ?: $context['vehicle_id'],
+            'corporate_account_id' => $booking->corporate_account_id,
+            'package_id' => $metadata['service_package_id'] ?? $metadata['package_id'] ?? null,
+            'duration_hours' => $durationMinutes / 60,
+            'duration_minutes' => $durationMinutes,
+            'duration_days' => $durationMinutes >= 1440 ? (int) ceil($durationMinutes / 1440) : 0,
+            'journey_distance' => (float) ($distanceKm ?? 0),
+            'total_distance' => (float) ($distanceKm ?? 0),
+            'actual_distance' => (float) ($distanceKm ?? 0),
+            'extra_minutes' => $extraMinutes,
+            'extra_hours' => $extraMinutes / 60,
+            'overtime_minutes' => $extraMinutes,
+            'overtime_hours' => $extraMinutes / 60,
+            'waiting_minutes' => $waitingMinutes,
+            'waiting_hours' => $waitingMinutes / 60,
+            'mode' => 'final_calculation',
+        ];
+
+        $result = $this->bookingFlowService->calculateDynamicPricing($params);
+        $definitionId = data_get($result, 'pricing_scope.calculation_definition_id')
+            ?? data_get($result, 'calculation_metadata.definition_used');
+        $calculatedBase = (float) ($result['total_amount'] ?? 0);
+
+        $audit = [
+            'status' => $definitionId && $calculatedBase >= 0 ? 'calculated' : 'preserved',
+            'trigger' => $trigger,
+            'source' => $source,
+            'calculation_definition_id' => $definitionId,
+            'calculated_at' => Carbon::now('UTC')->toIso8601String(),
+            'contractual_distance_preserved' => $contractualDistance,
+            'inputs' => [
+                'duration_minutes' => $durationMinutes,
+                'distance_km' => round((float) ($distanceKm ?? 0), 2),
+                'waiting_minutes' => $waitingMinutes,
+                'extra_minutes' => $extraMinutes,
+            ],
+        ];
+
+        if (!$definitionId) {
+            $audit['reason'] = 'no_active_calculation_definition';
+            $bookingItem->update([
+                'metadata' => array_merge($metadata, ['final_pricing_audit' => $audit]),
+            ]);
+            return $audit;
+        }
+
+        $manualCharges = $this->sumOperationalCharges($dispatch?->additional_charges ?? ($activityData['charges'] ?? []));
+        $lateFee = (float) ($dispatch?->late_return_fee ?? $activityData['late_fee'] ?? 0);
+        $finalBase = round($calculatedBase + $manualCharges + $lateFee, 2);
+        $audit += [
+            'calculated_base' => $calculatedBase,
+            'manual_charges' => $manualCharges,
+            'late_return_fee' => $lateFee,
+            'final_base' => $finalBase,
+            'calculation_example' => $this->buildFinalCalculationExample($result, $manualCharges, $lateFee, $finalBase),
+        ];
+
+        $bookingItem->update([
+            'unit_price' => $finalBase,
+            'total_price' => $finalBase * max(1, (int) $bookingItem->quantity),
+            'pricing_breakdown' => array_merge(
+                is_array($bookingItem->pricing_breakdown) ? $bookingItem->pricing_breakdown : [],
+                ['final_pricing' => array_merge($result, ['audit' => $audit])]
+            ),
+            'metadata' => array_merge($metadata, ['final_pricing_audit' => $audit]),
+        ]);
+
+        $booking->load('bookingItems');
+        $booking->update([
+            'actual_distance' => round((float) ($distanceKm ?? 0), 2),
+            'actual_duration' => $durationMinutes,
+            'base_amount' => round((float) $booking->bookingItems->sum('total_price'), 2),
+            'total_actual' => round($booking->calculateTotal(), 2),
+            'duration_metrics' => array_merge(is_array($booking->duration_metrics) ? $booking->duration_metrics : [], [
+                'source' => $source,
+                'actual_minutes' => $durationMinutes,
+                'waiting_minutes' => $waitingMinutes,
+                'extra_minutes' => $extraMinutes,
+            ]),
+            'distance_metrics' => array_merge(is_array($booking->distance_metrics) ? $booking->distance_metrics : [], [
+                'source' => $source,
+                'actual_km' => round((float) ($distanceKm ?? 0), 2),
+                'pricing_effect' => $contractualDistance ? 'contractual_distance_preserved' : 'final_recalculation',
+            ]),
+            'pricing_snapshot' => array_merge(is_array($booking->pricing_snapshot) ? $booking->pricing_snapshot : [], [
+                'final_pricing' => $audit,
+            ]),
+        ]);
+
+        return $audit;
+    }
+
+    private function sumOperationalCharges(mixed $charges): float
+    {
+        if (is_numeric($charges)) {
+            return round((float) $charges, 2);
+        }
+        if (!is_array($charges)) {
+            return 0.0;
+        }
+
+        return round((float) collect($charges)->sum(function ($charge) {
+            return is_numeric($charge)
+                ? (float) $charge
+                : (float) ($charge['amount'] ?? $charge['total'] ?? $charge['value'] ?? 0);
+        }), 2);
+    }
+
+    private function buildFinalCalculationExample(array $result, float $manualCharges, float $lateFee, float $finalBase): array
+    {
+        $lines = collect($result['breakdown'] ?? [])->map(function ($line) {
+            return [
+                'label' => $line['name'] ?? $line['description'] ?? $line['component'] ?? 'Charge',
+                'calculation' => $line['calculation'] ?? null,
+                'amount' => (float) ($line['amount'] ?? 0),
+            ];
+        })->values()->all();
+
+        if ($manualCharges > 0) {
+            $lines[] = ['label' => 'Operational charges', 'calculation' => 'Approved return/completion charges', 'amount' => $manualCharges];
+        }
+        if ($lateFee > 0) {
+            $lines[] = ['label' => 'Late return fee', 'calculation' => 'Configured late-return rule', 'amount' => $lateFee];
+        }
+
+        return ['lines' => $lines, 'total' => $finalBase];
+    }
 
     /**
      * Make vehicle available after QC completion

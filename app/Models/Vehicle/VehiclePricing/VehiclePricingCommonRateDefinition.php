@@ -123,5 +123,24 @@ class VehiclePricingCommonRateDefinition extends BaseModel
     public function scopeGlobal($query)
     {
         return $query->whereNull('service_type_id');
-    }    
+    }
+
+    public function calculateAmount(
+        float $baseAmount,
+        int $hours = 1,
+        int $days = 1,
+        float $kilometers = 0,
+        int $minutes = 1
+    ): float {
+        $rate = (float) $this->value;
+
+        return match ($this->common_rate_type) {
+            'percentage' => ($baseAmount * $rate) / 100,
+            'per_hour' => $rate * $hours,
+            'per_minute' => $rate * $minutes,
+            'per_day' => $rate * $days,
+            'per_km' => $rate * $kilometers,
+            default => $rate,
+        };
+    }
 }

@@ -253,12 +253,14 @@ class ComprehensivePricingSeeder extends Seeder
             'core_system' => [
                 ['name' => 'slab_rate', 'type' => 'slab_rate', 'description' => 'Base rate from slab definition based on duration/package', 'is_required' => true, 'category' => 'base'],
                 ['name' => 'duration_hours', 'type' => 'duration', 'description' => 'Service duration in hours', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
+                ['name' => 'duration_minutes', 'type' => 'duration', 'description' => 'Service duration in minutes', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
                 ['name' => 'duration_days', 'type' => 'duration', 'description' => 'Service duration in days', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
                 ['name' => 'total_distance', 'type' => 'distance', 'description' => 'Total service distance in KM', 'is_required' => false, 'default_value' => 0, 'category' => 'distance'],
                 ['name' => 'delivery_distance', 'type' => 'distance', 'description' => 'Vehicle delivery distance in KM', 'is_required' => false, 'default_value' => 0, 'category' => 'distance'],
                 ['name' => 'pickup_distance', 'type' => 'distance', 'description' => 'Vehicle pickup distance in KM (return distance)', 'is_required' => false, 'default_value' => 0, 'category' => 'distance'],
                 ['name' => 'extra_km', 'type' => 'distance', 'description' => 'Extra KM beyond package/daily limit', 'is_required' => false, 'default_value' => 0, 'category' => 'distance'],
                 ['name' => 'extra_hours', 'type' => 'duration', 'description' => 'Extra hours beyond package limit', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
+                ['name' => 'extra_minutes', 'type' => 'duration', 'description' => 'Extra minutes beyond package limit', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
                 ['name' => 'number_of_days', 'type' => 'duration', 'description' => 'Number of days for the booking', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
             ],
             // Special calculation variables
@@ -266,9 +268,12 @@ class ComprehensivePricingSeeder extends Seeder
                 ['name' => 'discount_percentage', 'type' => 'fixed_value', 'description' => 'Discount percentage (0.1 = 10%)', 'is_required' => false, 'default_value' => 0, 'category' => 'adjustment'],
                 ['name' => 'additional_stops', 'type' => 'fixed_value', 'description' => 'Number of additional stops', 'is_required' => false, 'default_value' => 0, 'category' => 'service'],
                 ['name' => 'waiting_hours', 'type' => 'duration', 'description' => 'Additional waiting time in hours', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
+                ['name' => 'waiting_minutes', 'type' => 'duration', 'description' => 'Additional waiting time in minutes', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
                 ['name' => 'recovery_hours', 'type' => 'duration', 'description' => 'Hours spent on recovery operation', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
+                ['name' => 'recovery_minutes', 'type' => 'duration', 'description' => 'Minutes spent on recovery operation', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
                 ['name' => 'stops', 'type' => 'fixed_value', 'description' => 'Number of stops in transfer', 'is_required' => false, 'default_value' => 0, 'category' => 'service'],
                 ['name' => 'overtime_hours', 'type' => 'duration', 'description' => 'Overtime hours beyond contract', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
+                ['name' => 'overtime_minutes', 'type' => 'duration', 'description' => 'Overtime minutes beyond contract', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
             ]
         ];
     }
@@ -351,8 +356,8 @@ class ComprehensivePricingSeeder extends Seeder
      */
     private function getAvailableVariableNames(string $serviceCode): array
     {
-        $coreVariables = ['slab_rate', 'duration_hours', 'duration_days', 'total_distance', 'delivery_distance', 'pickup_distance', 'extra_km', 'extra_hours', 'number_of_days'];
-        $specialVariables = ['discount_percentage', 'additional_stops', 'waiting_hours', 'recovery_hours', 'stops', 'overtime_hours'];
+        $coreVariables = ['slab_rate', 'duration_hours', 'duration_minutes', 'duration_days', 'total_distance', 'delivery_distance', 'pickup_distance', 'extra_km', 'extra_hours', 'extra_minutes', 'number_of_days'];
+        $specialVariables = ['discount_percentage', 'additional_stops', 'waiting_hours', 'waiting_minutes', 'recovery_hours', 'recovery_minutes', 'stops', 'overtime_hours', 'overtime_minutes'];
         
         // Get available common rate variables from database
         $serviceType = ServiceType::where('code', $serviceCode)->first();
