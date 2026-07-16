@@ -32,6 +32,7 @@ class PricingResolvedVariableAuditTest extends TestCase
             $table->uuid('owner_id')->nullable();
             $table->integer('priority')->default(0);
             $table->timestamps();
+            $table->softDeletes();
         });
     }
 

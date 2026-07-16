@@ -171,6 +171,18 @@ class BookingDispatch extends BaseModel
      */
     public function markReturned(string $userId, array $returnData = []): void
     {
+        $returnMileage = $returnData['mileage'] ?? null;
+        if (
+            $returnMileage !== null
+            && is_numeric($returnMileage)
+            && $this->mileage_out !== null
+            && (float) $returnMileage < (float) $this->mileage_out
+        ) {
+            throw new \DomainException(
+                'Return mileage cannot be lower than the dispatch mileage.'
+            );
+        }
+
         $actualReturnAt = $returnData['actual_return_time'] ?? null;
         if (!empty($actualReturnAt)) {
             try {
@@ -204,19 +216,7 @@ class BookingDispatch extends BaseModel
      */
     public function calculateLateReturnFee(): float
     {
-        if (!$this->isOverdue() || $this->isReturned()) {
-            return 0;
-        }
-
-        $hourlyRate   = (float) (\App\Models\Website\WebsiteSetting::getValue('late_return_fee_per_hour', 10) ?? 10);
-        $gracePeriod  = (int)   (\App\Models\Website\WebsiteSetting::getValue('late_return_grace_hours', 0) ?? 0);
-
-        $hoursLate = max(0, $this->expected_return_at->diffInHours(now()) - $gracePeriod);
-        if ($hoursLate <= 0) {
-            return 0;
-        }
-
-        return round($hoursLate * $hourlyRate, 2);
+        return $this->isReturned() ? 0.0 : $this->calculateLateReturnFeeAt(Carbon::now('UTC'));
     }
 
     public function bookingItem(): BelongsTo
@@ -238,10 +238,10 @@ class BookingDispatch extends BaseModel
         $hourlyRate = (float) (\App\Models\Website\WebsiteSetting::getValue('late_return_fee_per_hour', 10) ?? 10);
         $minuteRateSetting = \App\Models\Website\WebsiteSetting::getValue('late_return_fee_per_minute', null);
         $minuteRate = $minuteRateSetting !== null ? (float) $minuteRateSetting : $hourlyRate / 60;
-        $graceMinutes = (int) (\App\Models\Website\WebsiteSetting::getValue(
-            'late_return_grace_minutes',
-            ((int) (\App\Models\Website\WebsiteSetting::getValue('late_return_grace_hours', 0) ?? 0)) * 60
-        ) ?? 0);
+        $graceMinuteSetting = \App\Models\Website\WebsiteSetting::getValue('late_return_grace_minutes', null);
+        $graceMinutes = is_numeric($graceMinuteSetting)
+            ? max(0, (int) $graceMinuteSetting)
+            : max(0, (int) (\App\Models\Website\WebsiteSetting::getValue('late_return_grace_hours', 0) ?? 0)) * 60;
         $lateMinutes = max(0, (int) ceil($this->expected_return_at->diffInSeconds($actualReturnAt) / 60) - $graceMinutes);
 
         return round($lateMinutes * $minuteRate, 2);

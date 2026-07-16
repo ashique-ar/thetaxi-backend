@@ -26,6 +26,9 @@ class VehiclePricingCalculationDefinition extends Model
 {
     use HasFactory, HasGlobalPricingDefinitionScope, SoftDeletes;
 
+    /** @var array<string, array<string, mixed>> */
+    private array $resolvedRateSources = [];
+
     protected $keyType = 'string';
     public $incrementing = false;
 
@@ -91,7 +94,9 @@ class VehiclePricingCalculationDefinition extends Model
     public function calculatePrice(array $inputs, $appliedCustomizations = [], $servicePackageInfo = null, $districtInfo = null): array
     {
         try {
+            $this->resolvedRateSources = [];
             $inputs = $this->normalizeDurationUnits($inputs);
+            $this->assertValidDateWindow($inputs);
 
             $metadata = [
                 'definition_id' => $this->id,
@@ -156,7 +161,8 @@ class VehiclePricingCalculationDefinition extends Model
                 $inputs,
                 $servicePackageInfo,
                 $districtInfo,
-                $kmCalculations
+                $kmCalculations,
+                $resolvedVariables
             );
 
             $finalAmount = $adjustmentResults['final_amount'];
@@ -165,7 +171,8 @@ class VehiclePricingCalculationDefinition extends Model
                 $inputs,
                 $servicePackageInfo,
                 $districtInfo,
-                $kmCalculations
+                $kmCalculations,
+                $resolvedVariablesWithoutCustomizations
             )['final_amount'];
 
             // A row-level minimum floors the completed formula. Applying it to
@@ -204,6 +211,13 @@ class VehiclePricingCalculationDefinition extends Model
             $built['definition_id'] = $this->id;
             $built['variables_used'] = $metadata['variables_used'];
             $built['resolved_variables'] = $resolvedVariables;
+            $built['rate_sources'] = array_values($this->resolvedRateSources);
+            $built['formula_evaluation'] = [
+                'formula' => $this->formula,
+                'substituted_formula' => $this->substituteFormulaVariables($this->formula, $resolvedVariables),
+                'result_before_adjustments' => $totalAmount,
+                'result_without_customizations_before_adjustments' => $totalAmountWithoutCustomizations,
+            ];
             $built['conditions_evaluated'] = $metadata['conditions_evaluated'];
             $built['pricing_adjustments'] = $adjustmentResults['adjustments'];
             $built['service_package_info'] = $servicePackageInfo;
@@ -370,33 +384,30 @@ class VehiclePricingCalculationDefinition extends Model
             'extra_minute_rate' => 'Extra time charges',
         ];
 
+        $quantityVariables = [
+            'waiting_charge_per_hour' => ['waiting_hours', 'hours'],
+            'waiting_charge_per_minute' => ['waiting_minutes', 'minutes'],
+            'overtime_rate_per_hour' => ['overtime_hours', 'hours'],
+            'overtime_rate_per_minute' => ['overtime_minutes', 'minutes'],
+            'extra_minute_rate' => ['extra_minutes', 'minutes'],
+        ];
+
         foreach ($otherCharges as $varName => $description) {
             if (isset($resolvedVariables[$varName]) && $resolvedVariables[$varName] > 0) {
                 $amount = $resolvedVariables[$varName];
 
-                // Handle per-unit charges
-                if (str_contains($varName, '_per_minute') && isset($resolvedVariables['waiting_minutes'])) {
-                    $minutes = $resolvedVariables['waiting_minutes'];
-                    $amount = $minutes * $resolvedVariables[$varName];
-                    $calculation = "{$minutes} minutes × LKR {$resolvedVariables[$varName]}";
-                } elseif (str_contains($varName, '_per_minute') && isset($resolvedVariables['overtime_minutes'])) {
-                    $minutes = $resolvedVariables['overtime_minutes'];
-                    $amount = $minutes * $resolvedVariables[$varName];
-                    $calculation = "{$minutes} minutes × LKR {$resolvedVariables[$varName]}";
-                } elseif ($varName === 'extra_minute_rate' && isset($resolvedVariables['extra_minutes'])) {
-                    $minutes = $resolvedVariables['extra_minutes'];
-                    $amount = $minutes * $resolvedVariables[$varName];
-                    $calculation = "{$minutes} minutes × LKR {$resolvedVariables[$varName]}";
-                } elseif (str_contains($varName, '_per_hour') && isset($resolvedVariables['waiting_hours'])) {
-                    $hours = $resolvedVariables['waiting_hours'];
-                    $amount = $hours * $resolvedVariables[$varName];
-                    $calculation = "{$hours} hours × LKR {$resolvedVariables[$varName]}";
-                } elseif (str_contains($varName, '_per_hour') && isset($resolvedVariables['overtime_hours'])) {
-                    $hours = $resolvedVariables['overtime_hours'];
-                    $amount = $hours * $resolvedVariables[$varName];
-                    $calculation = "{$hours} hours × LKR {$resolvedVariables[$varName]}";
-                } elseif ($varName === 'stop_charge' && isset($resolvedVariables['stops'])) {
-                    $stops = $resolvedVariables['stops'] ?? $resolvedVariables['additional_stops'] ?? 0;
+                // Tie every rate to its own canonical quantity. Waiting values
+                // must never leak into overtime examples just because both
+                // rate names share the same unit suffix.
+                if (isset($quantityVariables[$varName])) {
+                    [$quantityVariable, $unit] = $quantityVariables[$varName];
+                    $quantity = (float) ($resolvedVariables[$quantityVariable] ?? 0);
+                    $amount = $quantity * $resolvedVariables[$varName];
+                    $calculation = "{$quantity} {$unit} × LKR {$resolvedVariables[$varName]}";
+                } elseif ($varName === 'stop_charge') {
+                    $stops = (float) ($resolvedVariables['stops']
+                        ?? $resolvedVariables['additional_stops']
+                        ?? 0);
                     $amount = $stops * $resolvedVariables[$varName];
                     $calculation = "{$stops} stops × LKR {$resolvedVariables[$varName]}";
                 } else {
@@ -458,6 +469,7 @@ class VehiclePricingCalculationDefinition extends Model
             'adjustment_details' => [
                 'original_amount' => $adjustmentResults['original_amount'] ?? $totalAmount,
                 'final_amount' => $adjustmentResults['final_amount'] ?? $totalAmount,
+                'total_adjustment' => $adjustmentResults['total_adjustment'] ?? 0,
                 'total_discount' => $adjustmentResults['total_discount'] ?? 0,
                 'total_increase' => $adjustmentResults['total_increase'] ?? 0,
                 'has_discount' => $adjustmentResults['has_discount'] ?? false,
@@ -542,16 +554,41 @@ class VehiclePricingCalculationDefinition extends Model
      */
     private function calculateKmOverages(array $inputs, ?array $slabInfo, ?array $servicePackageInfo = null): array
     {
+        $distanceSupplied = (array_key_exists('journey_distance', $inputs) && is_numeric($inputs['journey_distance']))
+            || (array_key_exists('total_distance', $inputs) && is_numeric($inputs['total_distance']));
+        $journeyDistance = $distanceSupplied
+            ? (float) ($inputs['journey_distance'] ?? $inputs['total_distance'])
+            : null;
         $result = [
-            'journey_distance' => $inputs['journey_distance'] ?? $inputs['total_distance'] ?? 0,
-            'allowed_km' => 0,
-            'extra_km' => 0,
+            'journey_distance' => $journeyDistance,
+            'distance_supplied' => $distanceSupplied,
+            'allowance_supplied' => false,
+            'allowed_km' => null,
+            'extra_km' => null,
             'daily_overage' => 0,
             'package_overage' => 0,
             'calculation_type' => 'none',
             'calendar_days' => 0,
             'effective_days' => 0
         ];
+
+        if (
+            array_key_exists('package_included_km', $inputs)
+            && is_numeric($inputs['package_included_km'])
+            && (float) $inputs['package_included_km'] >= 0
+        ) {
+            $result['allowance_supplied'] = true;
+            $result['allowed_km'] = (float) $inputs['package_included_km'];
+            $result['extra_km'] = $journeyDistance !== null
+                ? max(0, $journeyDistance - $result['allowed_km'])
+                : null;
+            $result['package_overage'] = $result['extra_km'];
+            $result['calculation_type'] = 'package';
+            $result['calendar_days'] = $this->calculateCalendarDays($inputs);
+            $result['effective_days'] = max(1, $result['calendar_days']);
+
+            return $result;
+        }
 
         Log::debug('Calculating KM overages - Initial', [
             'journey_distance' => $result['journey_distance'],
@@ -560,6 +597,43 @@ class VehiclePricingCalculationDefinition extends Model
             'service_package_info' => $servicePackageInfo,
             'inputs' => $inputs
         ]);
+
+        // Package allowances belong to the selected service package, not to a
+        // duration slab. Resolve them before the slab guard so fixed/common
+        // rate packages still enforce their included kilometres.
+        if ($servicePackageInfo) {
+            $calendarDays = $this->calculateCalendarDays($inputs);
+            $result['calendar_days'] = $calendarDays;
+            $result['effective_days'] = max(1, $calendarDays);
+
+            $maxKmPerDay = $servicePackageInfo['max_km_per_day'] ?? null;
+            $maxKmPerPackage = $servicePackageInfo['max_km_per_package'] ?? null;
+
+            if (is_numeric($maxKmPerDay) && (float) $maxKmPerDay >= 0) {
+                $result['allowance_supplied'] = true;
+                $result['calculation_type'] = 'daily';
+                $result['allowed_km'] = (float) $maxKmPerDay * $result['effective_days'];
+                $result['extra_km'] = $journeyDistance !== null
+                    ? max(0, $journeyDistance - $result['allowed_km'])
+                    : null;
+                $result['package_overage'] = $result['extra_km'];
+
+                return $result;
+            }
+
+            if (is_numeric($maxKmPerPackage) && (float) $maxKmPerPackage >= 0) {
+                $result['allowance_supplied'] = true;
+                $result['calculation_type'] = 'package';
+                $result['allowed_km'] = (float) $maxKmPerPackage;
+                $result['extra_km'] = $journeyDistance !== null
+                    ? max(0, $journeyDistance - $result['allowed_km'])
+                    : null;
+                $result['package_overage'] = $result['extra_km'];
+
+                return $result;
+            }
+        }
+
         if (!$slabInfo) {
             return $result;
         }
@@ -570,7 +644,7 @@ class VehiclePricingCalculationDefinition extends Model
             'service_package_info' => $servicePackageInfo,
             'inputs' => $inputs
         ]);
-        $actualKm = (float) $result['journey_distance'];
+        $actualKm = $journeyDistance;
 
         // Enhanced daily calculation for calendar days
         $calendarDays = $this->calculateCalendarDays($inputs);
@@ -578,33 +652,40 @@ class VehiclePricingCalculationDefinition extends Model
         $result['effective_days'] = max(1, $calendarDays); // Minimum 1 day
 
 
-        if ($servicePackageInfo && $servicePackageInfo['max_km_per_day']) {
-            $result['calculation_type'] = 'daily';
-            $result['allowed_km'] = $servicePackageInfo['max_km_per_day'] * $result['effective_days'];
-            $result['extra_km'] = max(0, $actualKm - $result['allowed_km']);
-            $result['package_overage'] = $result['extra_km'];
-        } elseif ($servicePackageInfo && $servicePackageInfo['max_km_per_package']) {
-            $result['calculation_type'] = 'package';
-            $result['allowed_km'] = $servicePackageInfo['max_km_per_package'];
-            $result['extra_km'] = max(0, $actualKm - $result['allowed_km']);
-            $result['package_overage'] = $result['extra_km'];
-        } elseif ($slabInfo['max_km_per_package'] && in_array($slabInfo['type'], ['flat_rate', 'package'])) {
+        $slabPackageAllowance = $slabInfo['max_km_per_package'] ?? null;
+        $slabDailyAllowance = $slabInfo['max_km_per_day'] ?? null;
+        if (
+            is_numeric($slabPackageAllowance)
+            && (float) $slabPackageAllowance >= 0
+            && in_array($slabInfo['type'] ?? null, ['flat_rate', 'package'], true)
+        ) {
+            $result['allowance_supplied'] = true;
             // Package-based limit (e.g., wedding packages, airport transfers)
             $result['calculation_type'] = 'package';
-            $result['allowed_km'] = $slabInfo['max_km_per_package'];
-            $result['extra_km'] = max(0, $actualKm - $result['allowed_km']);
+            $result['allowed_km'] = (float) $slabPackageAllowance;
+            $result['extra_km'] = $actualKm !== null
+                ? max(0, $actualKm - $result['allowed_km'])
+                : null;
             $result['package_overage'] = $result['extra_km'];
-        } elseif ($slabInfo['max_km_per_day'] && $result['effective_days'] > 0) {
+        } elseif (
+            is_numeric($slabDailyAllowance)
+            && (float) $slabDailyAllowance >= 0
+            && $result['effective_days'] > 0
+        ) {
+            $result['allowance_supplied'] = true;
             // Daily-based limit (e.g., rental services, point to point, ride now)
             // For multi-day bookings: total allowance = max km × number of calendar days
             $result['calculation_type'] = 'daily';
-            $result['allowed_km'] = $slabInfo['max_km_per_day'] * $result['effective_days'];
-            $result['extra_km'] = max(0, $actualKm - $result['allowed_km']);
+            $result['allowed_km'] = (float) $slabDailyAllowance * $result['effective_days'];
+            $result['extra_km'] = $actualKm !== null
+                ? max(0, $actualKm - $result['allowed_km'])
+                : null;
             $result['daily_overage'] = $result['extra_km'];
         } else {
             // No limits (e.g., KM-based services like point-to-point transfers)
             $result['calculation_type'] = 'unlimited';
-            $result['allowed_km'] = $actualKm; // All KM is billable
+            $result['allowed_km'] = null;
+            $result['extra_km'] = null;
         }
         Log::debug('KM overages calculated', $result);
         return $result;
@@ -632,6 +713,11 @@ class VehiclePricingCalculationDefinition extends Model
             // Fallback to duration_days if dates not available
             return $inputs['duration_days'] ?? $inputs['days'] ?? 1;
         }
+
+        // Do not let Carbon's absolute diff turn a reversed booking window
+        // into a valid positive day count. This also protects direct callers
+        // of this helper, not only the public calculatePrice() entry point.
+        $this->assertValidDateWindow($inputs);
 
         try {
             // Parse dates and times with proper timezone handling
@@ -675,6 +761,25 @@ class VehiclePricingCalculationDefinition extends Model
         }
     }
 
+    private function assertValidDateWindow(array $inputs): void
+    {
+        $fromDate = $inputs['from_date'] ?? $inputs['start_date'] ?? null;
+        $toDate = $inputs['to_date'] ?? $inputs['end_date'] ?? null;
+        if (!$fromDate || !$toDate) {
+            return;
+        }
+
+        $fromTime = $inputs['from_time'] ?? '00:00';
+        $toTime = $inputs['to_time'] ?? '23:59';
+        $start = Carbon::parse("{$fromDate} {$fromTime}");
+        $end = Carbon::parse("{$toDate} {$toTime}");
+        if ($end->lessThan($start)) {
+            throw new \InvalidArgumentException(
+                'Pricing end date and time must be on or after the start date and time.'
+            );
+        }
+    }
+
     /**
      * Resolve all variables for calculation strictly as per definition with Service Package support.
      */
@@ -692,17 +797,36 @@ class VehiclePricingCalculationDefinition extends Model
             // Definition-driven variables only
 
             if ($varName === 'extra_km') {
-                $value = $kmCalculations['extra_km'] ?? 0;
+                $value = array_key_exists('extra_km', $kmCalculations)
+                    ? $kmCalculations['extra_km']
+                    : null;
+                if ($value === null && !$isRequired) {
+                    $value = $defaultValue;
+                }
             } elseif ($varName === 'allowed_km') {
-                $value = $kmCalculations['allowed_km'] ?? 0;
+                $value = array_key_exists('allowed_km', $kmCalculations)
+                    ? $kmCalculations['allowed_km']
+                    : null;
+                if ($value === null && !$isRequired) {
+                    $value = $defaultValue;
+                }
             } elseif ($varName === 'journey_distance') {
                 // journey_distance comes from kmCalculations first, then inputs
-                $value = $kmCalculations['journey_distance'] ?? ($inputs['journey_distance'] ?? $defaultValue);
+                $value = $kmCalculations['journey_distance'] ?? ($inputs['journey_distance'] ?? null);
+                if ($value === null && !$isRequired) {
+                    $value = $defaultValue;
+                }
             } elseif ($varName === 'total_distance') {
                 // total_distance should come from inputs (includes pickup+journey+delivery), NOT kmCalculations
-                $value = $inputs['total_distance'] ?? ($kmCalculations['total_distance'] ?? $defaultValue);
+                $value = $inputs['total_distance'] ?? ($kmCalculations['total_distance'] ?? null);
+                if ($value === null && !$isRequired) {
+                    $value = $defaultValue;
+                }
             } else {
-                $value = $this->resolveVariable($varName, $varType, $inputs, $defaultValue, $slabInfo, $appliedCustomizations, $servicePackageInfo, $districtInfo);
+                $runtimeDefault = $isRequired && in_array($varType, ['duration', 'distance'], true)
+                    ? null
+                    : $defaultValue;
+                $value = $this->resolveVariable($varName, $varType, $inputs, $runtimeDefault, $slabInfo, $appliedCustomizations, $servicePackageInfo, $districtInfo);
             }
 
             $requiresResolvedRate = in_array($varType, ['slab_rate', 'common_rate'], true);
@@ -837,6 +961,21 @@ class VehiclePricingCalculationDefinition extends Model
         }
     }
 
+    private function substituteFormulaVariables(string $formula, array $variables): string
+    {
+        return preg_replace_callback(
+            '/\{([A-Za-z_][A-Za-z0-9_]*)\}|(?<![A-Za-z0-9_])([A-Za-z_][A-Za-z0-9_]*)(?![A-Za-z0-9_])/',
+            static function (array $match) use ($variables): string {
+                $name = ($match[1] ?? '') !== '' ? $match[1] : ($match[2] ?? '');
+
+                return array_key_exists($name, $variables) && is_numeric($variables[$name])
+                    ? (string) ((float) $variables[$name])
+                    : $match[0];
+            },
+            $formula
+        ) ?? $formula;
+    }
+
 
     private function getSlabRateValue(array $inputs, ?array $slabInfo = null, ?array $appliedCustomizations = null, ?array $servicePackageInfo = null, ?array $districtInfo = null): ?float
     {
@@ -855,6 +994,14 @@ class VehiclePricingCalculationDefinition extends Model
 
             if (!$vehicleGroupId) {
                 Log::warning("No vehicle group ID provided for slab rate calculation");
+                if ($customSlabBase !== null) {
+                    $this->resolvedRateSources['slab_rate'] = [
+                        'variable' => 'slab_rate',
+                        'source_type' => 'approved_customization',
+                        'configured_value' => $customSlabBase,
+                        'resolved_value' => $customSlabBase,
+                    ];
+                }
                 return $customSlabBase;
             }
 
@@ -869,6 +1016,12 @@ class VehiclePricingCalculationDefinition extends Model
             } else {
                 if (!$durationHours && $customSlabBase !== null) {
                     // Explicit override without duration
+                    $this->resolvedRateSources['slab_rate'] = [
+                        'variable' => 'slab_rate',
+                        'source_type' => 'approved_customization',
+                        'configured_value' => $customSlabBase,
+                        'resolved_value' => $customSlabBase,
+                    ];
                     return $customSlabBase;
                 }
 
@@ -923,6 +1076,13 @@ class VehiclePricingCalculationDefinition extends Model
             if (!$vehicleGroupPricing) {
                 // If no pricing row but we *do* have a custom base rate, treat it as a flat amount
                 if ($customSlabBase !== null) {
+                    $this->resolvedRateSources['slab_rate'] = [
+                        'variable' => 'slab_rate',
+                        'source_type' => 'approved_customization',
+                        'slab_definition_id' => $slabDefinition?->id,
+                        'configured_value' => $customSlabBase,
+                        'resolved_value' => $customSlabBase,
+                    ];
                     return $customSlabBase;
                 }
                 return null;
@@ -944,6 +1104,22 @@ class VehiclePricingCalculationDefinition extends Model
                 $districtAdjustment = 1 + ($districtInfo['percentage_change'] / 100);
                 $baseRate = $baseRate * $districtAdjustment;
             }
+
+            $this->resolvedRateSources['slab_rate'] = [
+                'variable' => 'slab_rate',
+                'source_type' => 'vehicle_group_slab_pricing',
+                'pricing_id' => (string) $vehicleGroupPricing->id,
+                'slab_definition_id' => (string) $slabDefinition->id,
+                'vehicle_group_id' => (string) $vehicleGroupPricing->vehicle_group_id,
+                'owner_type' => $vehicleGroupPricing->owner_type,
+                'owner_id' => $vehicleGroupPricing->owner_id,
+                'rate_type' => $vehicleGroupPricing->rate_type,
+                'configured_value' => (float) $vehicleGroupPricing->rate,
+                'customized_value' => $customSlabBase,
+                'package_multiplier' => $servicePackageInfo['price_multiplier'] ?? null,
+                'district_percentage_change' => $districtInfo['percentage_change'] ?? null,
+                'resolved_value' => $baseRate,
+            ];
 
             return $baseRate;
         } catch (\Exception $e) {
@@ -999,14 +1175,17 @@ class VehiclePricingCalculationDefinition extends Model
             $ownerId = $inputs['owner_id'] ?? null;
 
             // Get vehicle group specific common rate pricing first
-            $commonRatePricing = VehicleGroupCommonRatePricing::whereHas('commonRateDefinition', function ($query) use ($rateKey, $ownerType, $ownerId) {
+            $commonRatePricing = VehicleGroupCommonRatePricing::with('commonRateDefinition')
+                ->whereHas('commonRateDefinition', function ($query) use ($rateKey) {
                 $query->where(function ($q) use ($rateKey) {
                     $q->where('code', $rateKey)
                         ->orWhere('name', $rateKey);
                 })
-                    ->where('service_type_id', $this->service_type_id)
+                    ->where(function ($serviceQuery) {
+                        $serviceQuery->where('service_type_id', $this->service_type_id)
+                            ->orWhereNull('service_type_id');
+                    })
                     ->where('is_active', true);
-                $this->applyOwnerScope($query, $ownerType, $ownerId);
             })
                 ->where('vehicle_group_id', $vehicleGroupId)
                 ->where('is_active', true)
@@ -1015,12 +1194,57 @@ class VehiclePricingCalculationDefinition extends Model
                 }, fn ($query) => $query->whereNull('owner_type')->whereNull('owner_id'))
                 ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $ownerType, $ownerId))
                 ->orderBy('priority', 'desc')
+                ->get()
+                ->sort(function ($left, $right) use ($ownerType, $ownerId) {
+                    $rank = function ($pricing) use ($ownerType, $ownerId): array {
+                        $definition = $pricing->commonRateDefinition;
+                        $ownerExact = $ownerType && $ownerId
+                            && $pricing->owner_type === $ownerType
+                            && (string) $pricing->owner_id === (string) $ownerId;
+
+                        return [
+                            (string) $definition?->service_type_id === (string) $this->service_type_id ? 0 : 1,
+                            $ownerExact ? 0 : 1,
+                            -((int) $pricing->priority),
+                            -((int) ($definition?->priority ?? 0)),
+                            (string) $pricing->id,
+                        ];
+                    };
+
+                    return $rank($left) <=> $rank($right);
+                })
                 ->first();
 
             if ($commonRatePricing && isset($commonRatePricing->value)) {
-                return (float) $commonRatePricing->value;
+                $value = (float) $commonRatePricing->value;
+                $this->resolvedRateSources[$rateKey] = [
+                    'variable' => $rateKey,
+                    'source_type' => 'vehicle_group_common_rate_pricing',
+                    'pricing_id' => (string) $commonRatePricing->id,
+                    'common_rate_definition_id' => (string) $commonRatePricing->common_rate_definition_id,
+                    'common_rate_code' => $commonRatePricing->commonRateDefinition?->code,
+                    'vehicle_group_id' => (string) $commonRatePricing->vehicle_group_id,
+                    'owner_type' => $commonRatePricing->owner_type,
+                    'owner_id' => $commonRatePricing->owner_id,
+                    'configured_value' => $value,
+                    'resolved_value' => $value,
+                ];
+                return $value;
             } elseif ($commonRatePricing && isset($commonRatePricing->rate)) {
-                return (float) $commonRatePricing->rate;
+                $value = (float) $commonRatePricing->rate;
+                $this->resolvedRateSources[$rateKey] = [
+                    'variable' => $rateKey,
+                    'source_type' => 'vehicle_group_common_rate_pricing',
+                    'pricing_id' => (string) $commonRatePricing->id,
+                    'common_rate_definition_id' => (string) $commonRatePricing->common_rate_definition_id,
+                    'common_rate_code' => $commonRatePricing->commonRateDefinition?->code,
+                    'vehicle_group_id' => (string) $commonRatePricing->vehicle_group_id,
+                    'owner_type' => $commonRatePricing->owner_type,
+                    'owner_id' => $commonRatePricing->owner_id,
+                    'configured_value' => $value,
+                    'resolved_value' => $value,
+                ];
+                return $value;
             }
 
             return null;
@@ -1162,10 +1386,13 @@ class VehiclePricingCalculationDefinition extends Model
         array $inputs,
         ?array $servicePackageInfo,
         ?array $districtInfo,
-        array $kmCalculations
+        array $kmCalculations,
+        array $resolvedVariables = []
     ): array {
         $adjustments = [];
         $currentAmount = $baseAmount;
+        $totalDiscount = 0.0;
+        $totalIncrease = 0.0;
 
         $vehicleGroupId = $inputs['vehicle_group_id'] ?? null;
         $totalDistance = $kmCalculations['journey_distance'] ?? 0;
@@ -1180,11 +1407,63 @@ class VehiclePricingCalculationDefinition extends Model
             'return_date',
         ]) ?? $pricingStartDate;
 
+        $applyComponent = function (string $component, float $amount) use (
+            $vehicleGroupId,
+            $pricingStartDate,
+            $pricingEndDate,
+            $inputs
+        ): array {
+            return PriceAdjustment::applyAdjustments(
+                $amount,
+                $this->service_type_id,
+                $vehicleGroupId,
+                $component,
+                $pricingStartDate,
+                $pricingEndDate,
+                $inputs['owner_type'] ?? null,
+                $inputs['owner_id'] ?? null
+            );
+        };
+
+        $appendComponentResult = function (array $componentResult, string $component) use (
+            &$adjustments,
+            &$totalDiscount,
+            &$totalIncrease
+        ): void {
+            foreach ($componentResult['adjustments_applied'] ?? [] as $adjustment) {
+                $adjustments[] = [
+                    'type' => 'price_adjustment',
+                    'price_adjustment_id' => $adjustment['adjustment_info']['id'] ?? null,
+                    'applies_to' => $component,
+                    'name' => $adjustment['adjustment_info']['name'] ?? 'Price Adjustment',
+                    'description' => $adjustment['adjustment_info']['description'] ?? null,
+                    'amount' => $adjustment['adjustment_amount'] ?? 0,
+                    'calculation' => $adjustment['calculation_details'] ?? null,
+                    'is_cumulative' => $adjustment['adjustment_info']['is_cumulative'] ?? false,
+                    'is_discount' => $adjustment['is_discount'] ?? false,
+                    'discount_amount' => $adjustment['discount_amount'] ?? 0,
+                    'adjustment_type' => $adjustment['adjustment_info']['adjustment_type'] ?? null,
+                    'original_amount' => $adjustment['original_amount'] ?? null,
+                    'final_amount' => $adjustment['final_amount'] ?? null,
+                ];
+            }
+
+            $totalDiscount += (float) ($componentResult['total_discount'] ?? 0);
+            $totalIncrease += (float) ($componentResult['total_increase'] ?? 0);
+        };
+
+        // A base-price rule adjusts the formula result before range and
+        // booking-total rules. This keeps all three configured applies_to
+        // values operational instead of silently ignoring two of them.
+        $baseAdjustmentResult = $applyComponent('base_price', $currentAmount);
+        $appendComponentResult($baseAdjustmentResult, 'base_price');
+        $currentAmount = (float) ($baseAdjustmentResult['final_amount'] ?? $currentAmount);
+
         $totalKmAdjustment = 0;
         if ($vehicleGroupId && $totalDistance > 0) {
             $kmRangeResult = KmRangePricingRule::calculateBestPricing(
                 $totalDistance,
-                $baseAmount,
+                $currentAmount,
                 $this->service_type_id,
                 $vehicleGroupId,
                 null,
@@ -1226,39 +1505,17 @@ class VehiclePricingCalculationDefinition extends Model
             }
         }
 
-        $priceAdjustmentResult = PriceAdjustment::applyAdjustments(
-            $currentAmount,
-            $this->service_type_id,
-            $vehicleGroupId,
-            'total_price',
-            $pricingStartDate,
-            $pricingEndDate,
-            $inputs['owner_type'] ?? null,
-            $inputs['owner_id'] ?? null
-        );
-
-        if (!empty($priceAdjustmentResult['adjustments_applied'])) {
-            foreach ($priceAdjustmentResult['adjustments_applied'] as $adjustment) {
-                $adjustments[] = [
-                    'type' => 'price_adjustment',
-                    'name' => $adjustment['adjustment_info']['name'] ?? 'Price Adjustment',
-                    'description' => $adjustment['adjustment_info']['description'] ?? null,
-                    'amount' => $adjustment['adjustment_amount'] ?? 0,
-                    'calculation' => $adjustment['calculation_details'] ?? null,
-                    'is_cumulative' => $adjustment['adjustment_info']['is_cumulative'] ?? false,
-                    'is_discount' => $adjustment['is_discount'] ?? false,
-                    'discount_amount' => $adjustment['discount_amount'] ?? 0,
-                    'adjustment_type' => $adjustment['adjustment_info']['adjustment_type'] ?? null,
-                ];
-            }
-            $currentAmount = $priceAdjustmentResult['final_amount'];
+        $kmChargeAmount = $this->calculateResolvedKmChargeComponent($resolvedVariables);
+        if ($kmChargeAmount > 0) {
+            $kmAdjustmentResult = $applyComponent('km_charges', $kmChargeAmount);
+            $appendComponentResult($kmAdjustmentResult, 'km_charges');
+            $currentAmount += (float) ($kmAdjustmentResult['final_amount'] ?? $kmChargeAmount)
+                - $kmChargeAmount;
         }
 
-        // Calculate totals for frontend display
-        $totalDiscount = $priceAdjustmentResult['total_discount'] ?? 0;
-        $totalIncrease = $priceAdjustmentResult['total_increase'] ?? 0;
-        $hasDiscount = $priceAdjustmentResult['has_discount'] ?? false;
-        $hasIncrease = $priceAdjustmentResult['has_increase'] ?? false;
+        $totalAdjustmentResult = $applyComponent('total_price', $currentAmount);
+        $appendComponentResult($totalAdjustmentResult, 'total_price');
+        $currentAmount = (float) ($totalAdjustmentResult['final_amount'] ?? $currentAmount);
 
         // Merge KM range totals into the final display totals
         $kmDiscount = $totalKmAdjustment < 0 ? abs($totalKmAdjustment) : 0;
@@ -1266,8 +1523,8 @@ class VehiclePricingCalculationDefinition extends Model
 
         $totalDiscount += $kmDiscount;
         $totalIncrease += $kmIncrease;
-        $hasDiscount = $hasDiscount || $kmDiscount > 0;
-        $hasIncrease = $hasIncrease || $kmIncrease > 0;
+        $hasDiscount = $totalDiscount > 0;
+        $hasIncrease = $totalIncrease > 0;
 
         return [
             'final_amount' => $currentAmount,
@@ -1283,6 +1540,44 @@ class VehiclePricingCalculationDefinition extends Model
                 ? round(($totalDiscount / $baseAmount) * 100, 1)
                 : 0,
         ];
+    }
+
+    private function calculateResolvedKmChargeComponent(array $resolvedVariables): float
+    {
+        $pairs = [
+            ['extra_km', 'extra_km_rate'],
+            ['total_distance', 'service_rate_per_km'],
+            ['journey_distance', 'journey_rate_per_km'],
+            ['actual_distance', 'distance_rate'],
+            ['distance_km', 'rate_per_km'],
+            ['delivery_distance', 'vehicle_delivery_rate_per_km'],
+            ['pickup_distance', 'vehicle_pickup_rate_per_km'],
+        ];
+        $amount = 0.0;
+
+        foreach ($pairs as [$quantityName, $rateName]) {
+            if (
+                !$this->formulaReferencesVariable($quantityName)
+                || !$this->formulaReferencesVariable($rateName)
+                || !is_numeric($resolvedVariables[$quantityName] ?? null)
+                || !is_numeric($resolvedVariables[$rateName] ?? null)
+            ) {
+                continue;
+            }
+
+            $amount += max(0, (float) $resolvedVariables[$quantityName])
+                * max(0, (float) $resolvedVariables[$rateName]);
+        }
+
+        return round($amount, 2);
+    }
+
+    private function formulaReferencesVariable(string $variableName): bool
+    {
+        return (bool) preg_match(
+            '/(?<![A-Za-z0-9_])' . preg_quote($variableName, '/') . '(?![A-Za-z0-9_])/',
+            (string) $this->formula
+        );
     }
 
     private function resolvePricingAdjustmentDate(array $inputs, array $keys): ?Carbon

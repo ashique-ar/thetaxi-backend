@@ -190,7 +190,9 @@ class TripTrackingService
                 'assignment_id'              => $assignment->id,
                 'booking_id'                 => $assignment->booking_id,
                 'booking_item_id'            => $assignment->booking_item_id,
-                'total_distance_km'          => round((float) $assignment->total_distance_km, 2),
+                'total_distance_km'          => $assignment->total_distance_km !== null
+                    ? round((float) $assignment->total_distance_km, 2)
+                    : null,
                 'total_duration_minutes'     => $assignment->trip_started_at && $assignment->trip_completed_at
                     ? (int) $assignment->trip_started_at->diffInMinutes($assignment->trip_completed_at)
                     : 0,
@@ -269,7 +271,7 @@ class TripTrackingService
                 'assignment_id' => $assignment->id,
                 'booking_id' => $assignment->booking_id,
                 'booking_item_id' => $assignment->booking_item_id,
-                'total_distance_km' => round($totalDistance, 2),
+                'total_distance_km' => $totalDistance !== null ? round($totalDistance, 2) : null,
                 'total_duration_minutes' => $durationMinutes,
                 'total_waiting_time_seconds' => $waitingTime['total_waiting_time_seconds'],
                 'waiting_period_count' => $waitingTime['waiting_period_count'],
@@ -892,7 +894,9 @@ class TripTrackingService
                     'activity_source' => 'driver_mobile',
                     'actual_start_time' => $assignment->trip_started_at?->toIso8601String(),
                     'actual_return_time' => $completedAt->toIso8601String(),
-                    'actual_distance' => (float) ($assignment->total_distance_km ?? 0),
+                    'actual_distance' => $assignment->total_distance_km !== null
+                        ? (float) $assignment->total_distance_km
+                        : null,
                     'waiting_minutes' => (int) ceil(((int) $assignment->total_waiting_time_seconds) / 60),
                     'completed_by_driver' => true,
                 ],
@@ -967,6 +971,14 @@ class TripTrackingService
 
         if (!$booking) {
             return null;
+        }
+
+        $booking->loadMissing('bookingItems');
+        if ($booking->bookingItems->count() > 1 && (string) $booking->status !== 'completed') {
+            return array_merge($this->mapBookingPaymentSummary($booking), [
+                'collection_deferred' => true,
+                'deferred_reason' => 'remaining_booking_items_active',
+            ]);
         }
 
         if ($this->bookingRequiresDriverCollection($booking)) {
@@ -1165,7 +1177,7 @@ class TripTrackingService
     private function recordOpenPackageTripCompletionMetrics(
         DriverAssignment $assignment,
         array $finalLocation,
-        float $totalDistance,
+        ?float $totalDistance,
         int $durationMinutes,
         array $waitingTime,
         Carbon $completedAt
@@ -1223,24 +1235,58 @@ class TripTrackingService
             $bookingItem->update(['metadata' => $metadata]);
         }
 
-        $booking->update([
-            'actual_distance' => round($totalDistance, 2),
-            'actual_duration' => $durationMinutes,
-            'duration_metrics' => array_merge(is_array($booking->duration_metrics) ? $booking->duration_metrics : [], [
-                'source' => 'driver_mobile_activity',
-                'actual_minutes' => $durationMinutes,
-                'waiting_minutes' => $waitingMinutes,
+        $durationMetrics = is_array($booking->duration_metrics) ? $booking->duration_metrics : [];
+        $durationItems = is_array($durationMetrics['items'] ?? null) ? $durationMetrics['items'] : [];
+        $durationItems[(string) $bookingItem->id] = [
+            'source' => 'driver_mobile_activity',
+            'actual_minutes' => $durationMinutes,
+            'waiting_minutes' => $waitingMinutes,
+            'recorded_at' => $completedAt->toIso8601String(),
+        ];
+
+        $distanceMetrics = is_array($booking->distance_metrics) ? $booking->distance_metrics : [];
+        $distanceItems = is_array($distanceMetrics['items'] ?? null) ? $distanceMetrics['items'] : [];
+        $distanceItems[(string) $bookingItem->id] = [
+            'source' => 'driver_route_points',
+            'actual_km' => $totalDistance !== null ? round($totalDistance, 2) : null,
+            'telemetry_complete' => $totalDistance !== null,
+            'pricing_effect' => $contractualDistance
+                ? 'none_contractual_snapshot'
+                : 'pending_canonical_final_pricing',
+            'recorded_at' => $completedAt->toIso8601String(),
+        ];
+        $measuredDistances = collect($distanceItems)
+            ->pluck('actual_km')
+            ->filter(fn ($distance) => is_numeric($distance));
+
+        $bookingUpdates = [
+            'actual_duration' => (int) collect($durationItems)->sum(
+                fn ($metrics) => (int) ($metrics['actual_minutes'] ?? 0)
+            ),
+            'duration_metrics' => array_merge($durationMetrics, [
+                'source' => count($durationItems) > 1 ? 'multiple_item_sources' : 'driver_mobile_activity',
+                'actual_minutes' => (int) collect($durationItems)->sum(
+                    fn ($metrics) => (int) ($metrics['actual_minutes'] ?? 0)
+                ),
+                'waiting_minutes' => (int) collect($durationItems)->sum(
+                    fn ($metrics) => (int) ($metrics['waiting_minutes'] ?? 0)
+                ),
+                'items' => $durationItems,
                 'recorded_at' => $completedAt->toIso8601String(),
             ]),
-            'distance_metrics' => array_merge(is_array($booking->distance_metrics) ? $booking->distance_metrics : [], [
-                'source' => 'driver_route_points',
-                'actual_km' => round($totalDistance, 2),
-                'pricing_effect' => $contractualDistance
-                    ? 'none_contractual_snapshot'
-                    : 'pending_canonical_final_pricing',
+            'distance_metrics' => array_merge($distanceMetrics, [
+                'source' => count($distanceItems) > 1 ? 'multiple_item_sources' : 'driver_route_points',
+                'actual_km' => $measuredDistances->isNotEmpty()
+                    ? round((float) $measuredDistances->sum(), 2)
+                    : null,
+                'items' => $distanceItems,
                 'recorded_at' => $completedAt->toIso8601String(),
             ]),
-        ]);
+        ];
+        if ($measuredDistances->isNotEmpty()) {
+            $bookingUpdates['actual_distance'] = round((float) $measuredDistances->sum(), 2);
+        }
+        $booking->update($bookingUpdates);
     }
 
     private function hasContractualDistanceSnapshot($booking, BookingItem $bookingItem): bool
@@ -1288,14 +1334,14 @@ class TripTrackingService
     /**
      * Calculate total trip distance from consecutive route points.
      */
-    public function calculateTripDistance(DriverAssignment $assignment): float
+    public function calculateTripDistance(DriverAssignment $assignment): ?float
     {
         $points = $assignment->routePoints()
             ->orderBy('recorded_at', 'asc')
             ->get(['latitude', 'longitude']);
 
         if ($points->count() < 2) {
-            return 0.0;
+            return null;
         }
 
         $totalDistance = 0.0;

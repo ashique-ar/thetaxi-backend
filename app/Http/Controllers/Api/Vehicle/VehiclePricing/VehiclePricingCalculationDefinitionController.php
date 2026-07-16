@@ -18,6 +18,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Validation\Rule;
 
@@ -172,10 +173,11 @@ class VehiclePricingCalculationDefinitionController extends Controller
         }
 
         $status = (string) $request->get('status', 'draft');
+        $candidateId = (string) Str::uuid();
         $activationHealth = null;
         if ($status === 'active') {
             $activationHealth = $this->configurationHealth->prospectiveDefinitionHealth([
-                'id' => 'candidate',
+                'id' => $candidateId,
                 'name' => $request->name,
                 'description' => $request->description,
                 'service_type_id' => $request->service_type_id,
@@ -192,6 +194,7 @@ class VehiclePricingCalculationDefinitionController extends Controller
 
         try {
             $definition = new VehiclePricingCalculationDefinition();
+            $definition->id = $candidateId;
             $definition->name = $request->name;
             $definition->description = $request->description;
             $definition->service_type_id = $request->service_type_id;
@@ -270,10 +273,25 @@ class VehiclePricingCalculationDefinitionController extends Controller
     public function definitionHealth(string $id): JsonResponse
     {
         $definition = VehiclePricingCalculationDefinition::findOrFail($id);
+        $serviceHealth = $this->configurationHealth->definitionReadiness($definition);
+        $definitionHealth = $serviceHealth['definitions'][$definition->id] ?? null;
 
         return response()->json([
             'success' => true,
-            'data' => $this->configurationHealth->definitionReadiness($definition),
+            'data' => array_merge($definitionHealth ?? [
+                'healthy' => false,
+                'ready_for_activation' => false,
+                'definition_id' => $definition->id,
+                'service_type_id' => $definition->service_type_id,
+                'checklist' => [],
+                'dependencies' => [],
+                'scenario_context' => [],
+                'issues' => $serviceHealth['focus_issues'] ?? [],
+                'summary' => ['errors' => 1, 'warnings' => 0, 'passed_checks' => 0, 'skipped_checks' => 0],
+            ], [
+                'ready_for_activation' => $serviceHealth['ready_for_activation'],
+                'service_health' => $serviceHealth,
+            ]),
             'message' => 'Calculation-definition readiness retrieved successfully',
         ]);
     }
@@ -454,44 +472,14 @@ class VehiclePricingCalculationDefinitionController extends Controller
                 ? $request->input('owner_id')
                 : null;
             $tempDefinition->service_type_id = $testInputs['service_type_id'] ?? null;
-
-            // Pricing-derived values are never tester inputs. They must always
-            // come from the selected vehicle group's Pricing Management records.
-            unset($testInputs['slab_rate'], $testInputs['rate_type']);
-            foreach ($tempDefinition->variables as $variable) {
-                if (($variable['type'] ?? null) === 'common_rate' && isset($variable['name'])) {
-                    unset($testInputs[$variable['name']]);
-                }
-            }
-            
-            // Resolve common-rate variables from the same scoped Pricing
-            // Management rows used by production. Slab rates are deliberately
-            // left to the model's canonical minute/hour/day slab resolver.
-            if (isset($testInputs['vehicle_group_id']) && isset($testInputs['service_type_id'])) {
-                // Common-rate-only services must also be testable when no slab matches.
-                $commonRates = $this->getCommonRates(
-                    $testInputs['vehicle_group_id'],
-                    $testInputs['service_type_id'],
-                    $testInputs['owner_type'],
-                    $testInputs['owner_id']
-                );
-                $testInputs = array_merge($testInputs, $commonRates);
-
-                $missingRates = collect($tempDefinition->variables)
-                    ->filter(fn ($variable) => ($variable['type'] ?? null) === 'common_rate')
-                    ->pluck('name')
-                    ->filter(function ($name) use ($commonRates) {
-                        $rateKey = str_starts_with($name, 'common_rate_') ? substr($name, 12) : $name;
-                        return !array_key_exists($rateKey, $commonRates);
-                    })
-                    ->values();
-
-                if ($missingRates->isNotEmpty()) {
-                    throw new \InvalidArgumentException(
-                        'No active Pricing Management value was found for: ' . $missingRates->implode(', ')
-                    );
-                }
-            }
+            $testInputs = $this->prepareTrustedCalculationInputs(
+                [$tempDefinition],
+                $testInputs,
+                $testInputs['service_type_id'] ?? null,
+                $testInputs['vehicle_group_id'] ?? null,
+                $testInputs['owner_type'],
+                $testInputs['owner_id']
+            );
     
             $orchestration = app(PricingDefinitionOrchestrator::class)->resolve(
                 [$tempDefinition],
@@ -510,7 +498,7 @@ class VehiclePricingCalculationDefinitionController extends Controller
                 'result' => $result,
                 'formula' => $request->formula,
                 'inputs' => $testInputs,
-                'breakdown' => $this->getCalculationBreakdown($tempDefinition, $testInputs)
+                'breakdown' => $this->getCalculationBreakdown($tempDefinition, $result)
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -548,7 +536,24 @@ class VehiclePricingCalculationDefinitionController extends Controller
                 ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $ownerType, $ownerId))
                 ->orderByDesc('priority')
                 ->with('commonRateDefinition')
-                ->get();
+                ->get()
+                ->sort(function ($left, $right) use ($serviceTypeId, $ownerType, $ownerId) {
+                    $rank = static function ($pricing) use ($serviceTypeId, $ownerType, $ownerId): array {
+                        $ownerExact = $ownerType && $ownerId
+                            && $pricing->owner_type === $ownerType
+                            && (string) $pricing->owner_id === (string) $ownerId;
+
+                        return [
+                            (string) $pricing->commonRateDefinition?->service_type_id === (string) $serviceTypeId ? 0 : 1,
+                            $ownerExact ? 0 : 1,
+                            -((int) $pricing->priority),
+                            -((int) ($pricing->commonRateDefinition?->priority ?? 0)),
+                            (string) $pricing->id,
+                        ];
+                    };
+
+                    return $rank($left) <=> $rank($right);
+                });
 
             foreach ($vehicleGroupCommonRates as $commonRate) {
                 // Use a clean variable name based on the rate definition code
@@ -567,13 +572,16 @@ class VehiclePricingCalculationDefinitionController extends Controller
     /**
      * Get calculation breakdown for debugging.
      */
-    private function getCalculationBreakdown(VehiclePricingCalculationDefinition $definition, array $inputs): array
+    private function getCalculationBreakdown(VehiclePricingCalculationDefinition $definition, array $result): array
     {
         $breakdown = [];
+        $resolvedVariables = is_array($result['resolved_variables'] ?? null)
+            ? $result['resolved_variables']
+            : [];
         
         foreach ($definition->variables ?? [] as $variable) {
             $varName = $variable['name'];
-            $value = $inputs[$varName] ?? $variable['default_value'] ?? 0;
+            $value = $resolvedVariables[$varName] ?? null;
             
             $breakdown[$varName] = [
                 'value' => $value,
@@ -606,6 +614,57 @@ class VehiclePricingCalculationDefinitionController extends Controller
         if (!array_key_exists('duration_days', $inputs) && isset($inputs['duration_minutes'])) {
             $minutes = (float) $inputs['duration_minutes'];
             $inputs['duration_days'] = $minutes >= 1440 ? (int) ceil($minutes / 1440) : 0;
+        }
+
+        return $inputs;
+    }
+
+    /**
+     * Remove caller-supplied rates and reload them from Pricing Management so
+     * every tester/preview endpoint uses the same trusted inputs as runtime.
+     *
+     * @param iterable<VehiclePricingCalculationDefinition> $definitions
+     */
+    private function prepareTrustedCalculationInputs(
+        iterable $definitions,
+        array $inputs,
+        ?string $serviceTypeId,
+        ?string $vehicleGroupId,
+        ?string $ownerType,
+        ?string $ownerId
+    ): array {
+        $inputs = $this->normalizeDurationInputs($inputs);
+        $inputs['owner_type'] = $ownerType;
+        $inputs['owner_id'] = $ownerType && $ownerId ? $ownerId : null;
+        if ($serviceTypeId) {
+            $inputs['service_type_id'] = $serviceTypeId;
+        }
+        if ($vehicleGroupId) {
+            $inputs['vehicle_group_id'] = $vehicleGroupId;
+        }
+
+        unset($inputs['slab_rate'], $inputs['rate_type']);
+        $commonRateNames = collect($definitions)
+            ->flatMap(fn ($definition) => collect($definition->variables ?? [])
+                ->filter(fn ($variable) => ($variable['type'] ?? null) === 'common_rate')
+                ->pluck('name'))
+            ->filter()
+            ->unique()
+            ->values();
+        foreach ($commonRateNames as $name) {
+            unset($inputs[$name]);
+            if (str_starts_with((string) $name, 'common_rate_')) {
+                unset($inputs[substr((string) $name, 12)]);
+            }
+        }
+
+        if ($serviceTypeId && $vehicleGroupId && $commonRateNames->isNotEmpty()) {
+            $inputs = array_merge($inputs, $this->getCommonRates(
+                $vehicleGroupId,
+                $serviceTypeId,
+                $ownerType,
+                $ownerId
+            ));
         }
 
         return $inputs;
@@ -801,18 +860,27 @@ class VehiclePricingCalculationDefinitionController extends Controller
                 ? (float) $request->duration_minutes
                 : $durationHours * 60;
 
-            $inputs = $this->normalizeDurationInputs(array_merge([
+            $inputs = array_merge([
                 'duration_hours' => $durationHours,
                 'duration_minutes' => $durationMinutes,
                 'hours' => $durationHours, // Alias for backward compatibility
-                'distance_km' => $request->distance_km ?? 0,
-                'distance' => $request->distance_km ?? 0, // Alias for backward compatibility
-            ], $request->additional_inputs ?? []));
-            $inputs['vehicle_group_id'] = $request->vehicle_group_id;
-            $inputs['owner_type'] = $request->input('owner_type');
-            $inputs['owner_id'] = $request->filled('owner_type')
-                ? $request->input('owner_id')
-                : null;
+            ], $request->additional_inputs ?? []);
+            if ($request->filled('distance_km')) {
+                $inputs += [
+                    'distance_km' => (float) $request->distance_km,
+                    'distance' => (float) $request->distance_km,
+                    'journey_distance' => (float) $request->distance_km,
+                    'total_distance' => (float) $request->distance_km,
+                ];
+            }
+            $inputs = $this->prepareTrustedCalculationInputs(
+                [$definition],
+                $inputs,
+                (string) $definition->service_type_id,
+                (string) $request->vehicle_group_id,
+                $request->input('owner_type'),
+                $request->filled('owner_type') ? $request->input('owner_id') : null
+            );
 
             $orchestration = app(PricingDefinitionOrchestrator::class)->resolve([$definition], $inputs);
             $calculationResult = $orchestration['result'];
@@ -994,12 +1062,14 @@ class VehiclePricingCalculationDefinitionController extends Controller
             }
 
             // Merge inputs with essential calculation parameters
-            $calculationInputs = $this->normalizeDurationInputs(array_merge($request->inputs, [
-                'vehicle_group_id' => $request->vehicle_group_id,
-                'service_type_id' => $request->service_type_id,
-                'owner_type' => $ownerType,
-                'owner_id' => $ownerId,
-            ]));
+            $calculationInputs = $this->prepareTrustedCalculationInputs(
+                $calculationDefinitions,
+                $request->inputs,
+                (string) $request->service_type_id,
+                (string) $request->vehicle_group_id,
+                $ownerType,
+                $ownerId
+            );
 
             $orchestration = app(PricingDefinitionOrchestrator::class)->resolve(
                 $calculationDefinitions,
@@ -1135,8 +1205,7 @@ class VehiclePricingCalculationDefinitionController extends Controller
         try {
             $definition = VehiclePricingCalculationDefinition::find($request->calculation_definition_id);
 
-            // Use provided test inputs or generate sample inputs
-            $testInputs = $request->test_inputs ?? $definition->generateSampleInputs();
+            $testInputs = $request->input('test_inputs');
 
             // Validate the formula first
             $isValid = $definition->validateFormula();
@@ -1149,14 +1218,26 @@ class VehiclePricingCalculationDefinitionController extends Controller
                     'formula' => $definition->formula,
                     'is_valid' => $isValid,
                     'test_inputs' => $testInputs,
+                    'configuration_example' => $definition->getCalculationExample(),
                 ]
             ];
 
-            if ($isValid) {
+            if ($isValid && $testInputs !== null) {
                 try {
+                    $testInputs = $this->prepareTrustedCalculationInputs(
+                        [$definition],
+                        $testInputs,
+                        (string) $definition->service_type_id,
+                        isset($testInputs['vehicle_group_id'])
+                            ? (string) $testInputs['vehicle_group_id']
+                            : null,
+                        null,
+                        null
+                    );
+                    $response['data']['test_inputs'] = $testInputs;
                     $orchestration = app(PricingDefinitionOrchestrator::class)->resolve(
                         [$definition],
-                        $this->normalizeDurationInputs($testInputs)
+                        $testInputs
                     );
                     $calculationResult = $orchestration['result'];
                     if (!$orchestration['matched'] || !$calculationResult) {
@@ -1178,11 +1259,16 @@ class VehiclePricingCalculationDefinitionController extends Controller
                         'error' => $e->getMessage(),
                     ];
                 }
+            } elseif ($isValid) {
+                $response['data']['test_result'] = [
+                    'status' => 'example_only',
+                    'message' => 'Provide test_inputs to run this definition against Pricing Management values.',
+                ];
             }
 
             return response()->json($response);
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Test formula error: ' . $e->getMessage());
             
             return response()->json([
@@ -1239,13 +1325,22 @@ class VehiclePricingCalculationDefinitionController extends Controller
                 ['name' => 'day_of_week', 'type' => 'number', 'description' => 'Booking start weekday number where Sunday is 0', 'is_required' => false, 'default_value' => 0, 'category' => 'context'],
                 ['name' => 'from_date', 'type' => 'fixed_value', 'description' => 'Booking start date for condition matching only', 'is_required' => false, 'default_value' => null, 'category' => 'context', 'condition_only' => true, 'formula_allowed' => false],
                 ['name' => 'from_time', 'type' => 'fixed_value', 'description' => 'Booking start time for condition matching only', 'is_required' => false, 'default_value' => null, 'category' => 'context', 'condition_only' => true, 'formula_allowed' => false],
-                ['name' => 'customer_type', 'type' => 'fixed_value', 'description' => 'Customer segment for condition matching only', 'is_required' => false, 'default_value' => null, 'category' => 'context', 'condition_only' => true, 'formula_allowed' => false]
+                ['name' => 'customer_type', 'type' => 'fixed_value', 'description' => 'Customer segment for condition matching only', 'is_required' => false, 'default_value' => null, 'category' => 'context', 'condition_only' => true, 'formula_allowed' => false],
+                ['name' => 'booking_type', 'type' => 'fixed_value', 'description' => 'Booking mode (self_drive or with_driver) for condition matching only', 'is_required' => false, 'default_value' => null, 'category' => 'context', 'condition_only' => true, 'formula_allowed' => false],
+                ['name' => 'is_self_driven', 'type' => 'number', 'description' => 'Self-drive flag supplied as 1 for self-drive and 0 for chauffeur bookings', 'is_required' => false, 'default_value' => 0, 'category' => 'context']
             ];
 
             // Get common rate variables for this service type
-            $commonRates = VehiclePricingCommonRateDefinition::where('service_type_id', $serviceTypeId)
+            $commonRates = VehiclePricingCommonRateDefinition::where(function ($query) use ($serviceTypeId) {
+                    $query->where('service_type_id', $serviceTypeId)
+                        ->orWhereNull('service_type_id');
+                })
                 ->where('is_active', true)
-                ->get();
+                ->orderByDesc('priority')
+                ->get()
+                ->sortByDesc(fn ($rate) => (string) $rate->service_type_id === (string) $serviceTypeId)
+                ->unique('code')
+                ->values();
 
                 Log::info('Common Rates Found: ', ['count' => $commonRates->count()]);
                 Log::info('Common Rates Details: ', $commonRates->toArray());

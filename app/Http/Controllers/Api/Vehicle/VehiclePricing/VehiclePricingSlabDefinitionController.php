@@ -438,7 +438,7 @@ class VehiclePricingSlabDefinitionController extends Controller
             'resolution' => [
                 'duration_minutes' => $minutes,
                 'matched_type' => $slab?->type ?: ($slab ? 'hours' : null),
-                'precedence' => VehiclePricingSlabConfigurationService::DURATION_PRECEDENCE,
+                'precedence' => VehiclePricingSlabConfigurationService::RESOLUTION_PRECEDENCE,
             ],
         ]);
     }

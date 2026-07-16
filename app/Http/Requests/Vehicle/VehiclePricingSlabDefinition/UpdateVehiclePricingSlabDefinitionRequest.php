@@ -41,8 +41,8 @@ class UpdateVehiclePricingSlabDefinitionRequest extends FormRequest
         return [
             'min_minutes' => $type === 'minutes' ? $this->input('min_minutes') : null,
             'max_minutes' => $type === 'minutes' ? $this->input('max_minutes') : null,
-            'min_hours' => $type === 'hours' ? $this->input('min_hours') : null,
-            'max_hours' => $type === 'hours' ? $this->input('max_hours') : null,
+            'min_hours' => in_array($type, ['hours', 'flat_rate', 'per_km'], true) ? $this->input('min_hours') : null,
+            'max_hours' => in_array($type, ['hours', 'flat_rate', 'per_km'], true) ? $this->input('max_hours') : null,
             'min_days' => in_array($type, ['days', 'per_day'], true) ? $this->input('min_days') : null,
             'max_days' => in_array($type, ['days', 'per_day'], true) ? $this->input('max_days') : null,
         ];

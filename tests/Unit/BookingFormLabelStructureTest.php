@@ -24,12 +24,12 @@ it('keeps booking field labels outside bordered controls in both public themes',
             ->not->toMatch('/class="single-search-box[^\"]*">\s*<(?:label|span)\b[^>]*class="[^"]*input-label/i');
     }
 
-    expect($formTemplate)
-        ->toContain('<div class="booking-field">' . PHP_EOL . '                    <label class="input-label">')
+    expect(Str::squish($formTemplate))
+        ->toContain('<div class="booking-field"> <label class="input-label">')
         ->toContain('<div class="booking-field custom-location-box');
 
-    expect($predefinedLocationTemplate)
-        ->toContain('<div class="booking-field">' . PHP_EOL . '    <label class="input-label">')
+    expect(Str::squish($predefinedLocationTemplate))
+        ->toContain('<div class="booking-field"> <label class="input-label">')
         ->toContain('<div class="booking-field custom-location-box"');
 
     expect(Str::squish($sharedStyles))

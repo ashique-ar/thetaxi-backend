@@ -87,6 +87,43 @@ class VehiclePricingSlabDefinitionRequestTest extends TestCase
         }
     }
 
+    #[DataProvider('legacyPricingTypes')]
+    public function test_legacy_pricing_types_preserve_optional_hour_package_boundaries(string $type): void
+    {
+        foreach ($this->requests() as $request) {
+            $this->prepare($request, [
+                'type' => $type,
+                'min_minutes' => 15,
+                'max_minutes' => 30,
+                'min_hours' => 6,
+                'max_hours' => 8,
+                'min_days' => 1,
+                'max_days' => 2,
+            ]);
+
+            $this->assertSame(6, $request->input('min_hours'));
+            $this->assertSame(8, $request->input('max_hours'));
+            $this->assertNull($request->input('min_minutes'));
+            $this->assertNull($request->input('max_minutes'));
+            $this->assertNull($request->input('min_days'));
+            $this->assertNull($request->input('max_days'));
+        }
+    }
+
+    #[DataProvider('legacyPricingTypes')]
+    public function test_legacy_pricing_types_allow_one_range_less_fallback(string $type): void
+    {
+        foreach ($this->requests() as $request) {
+            $validator = $this->validatorFor($request, [
+                'type' => $type,
+                'min_hours' => null,
+                'max_hours' => null,
+            ]);
+
+            $this->assertFalse($validator->fails(), json_encode($validator->errors()->toArray()));
+        }
+    }
+
     public static function durationUnits(): array
     {
         return [
@@ -94,6 +131,14 @@ class VehiclePricingSlabDefinitionRequestTest extends TestCase
             'hours' => ['hours', 'min_hours', 'max_hours'],
             'days' => ['days', 'min_days', 'max_days'],
             'per day' => ['per_day', 'min_days', 'max_days'],
+        ];
+    }
+
+    public static function legacyPricingTypes(): array
+    {
+        return [
+            'flat rate' => ['flat_rate'],
+            'per km' => ['per_km'],
         ];
     }
 

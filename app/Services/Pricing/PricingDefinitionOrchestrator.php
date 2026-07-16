@@ -59,6 +59,21 @@ class PricingDefinitionOrchestrator
             $calculationSucceeded = ($result['calculation_success'] ?? false) === true;
             $conditionsMet = ($result['conditions_met'] ?? false) === true;
             if ($calculationSucceeded && $conditionsMet) {
+                $totalAmount = $result['total_amount'] ?? null;
+                if (
+                    !is_numeric($totalAmount)
+                    || !is_finite((float) $totalAmount)
+                    || (float) $totalAmount < 0
+                ) {
+                    $failures[] = [
+                        'definition_id' => $definitionId,
+                        'reason' => 'invalid_total',
+                        'message' => 'Calculated total must be a finite, non-negative number.',
+                        'missing_variables' => [],
+                    ];
+                    continue;
+                }
+
                 return [
                     'matched' => true,
                     'definition' => $definition,

@@ -2,6 +2,9 @@
 
 use App\Services\BookingFlowService;
 use App\Services\BookingLifecycleService;
+use App\Models\Booking\BookingDispatch;
+use App\Models\Booking\Booking;
+use App\Models\Booking\BookingItem;
 
 uses(Tests\TestCase::class);
 
@@ -83,6 +86,18 @@ it('recognizes exact operational variables so charges can never be appended twic
         ))->toBeFalse();
 });
 
+it('rejects a reversed return odometer while preserving an explicit zero-distance reading', function () {
+    $service = (new ReflectionClass(BookingLifecycleService::class))->newInstanceWithoutConstructor();
+    $valid = new BookingDispatch();
+    $valid->setRawAttributes(['mileage_out' => 1250, 'mileage_in' => 1250]);
+    $reversed = new BookingDispatch();
+    $reversed->setRawAttributes(['mileage_out' => 1250, 'mileage_in' => 1249]);
+
+    expect(invokePrivateMethod($service, 'measuredMileageDistance', [$valid]))->toBe(0.0)
+        ->and(fn () => invokePrivateMethod($service, 'measuredMileageDistance', [$reversed]))
+        ->toThrow(DomainException::class, 'cannot be lower');
+});
+
 it('retains matched slab details in final calculation results for the invoice audit example', function () {
     $service = (new ReflectionClass(BookingFlowService::class))->newInstanceWithoutConstructor();
 
@@ -99,5 +114,34 @@ it('retains matched slab details in final calculation results for the invoice au
     expect($result['slab_information'])->toMatchArray([
         'id' => 'slab-1',
         'name' => '90 to 180 minutes',
+    ]);
+});
+
+it('reuses the booking snapshot exchange rate for final pricing instead of a live rate', function () {
+    $service = (new ReflectionClass(BookingLifecycleService::class))->newInstanceWithoutConstructor();
+    $booking = new Booking();
+    $booking->setRawAttributes(['currency' => 'USD']);
+    $item = new BookingItem();
+    $item->setRawAttributes([
+        'currency' => 'USD',
+        'pricing_breakdown' => json_encode([
+            'base_pricing' => [
+                'original_currency' => 'LKR',
+                'exchange_rate' => 0.0031,
+            ],
+        ]),
+    ]);
+
+    $context = invokePrivateMethod(
+        $service,
+        'resolveFinalPricingCurrencyContext',
+        [$item, $booking]
+    );
+
+    expect($context)->toMatchArray([
+        'calculation_currency' => 'LKR',
+        'booking_currency' => 'USD',
+        'exchange_rate' => 0.0031,
+        'rate_source' => 'base_pricing_snapshot',
     ]);
 });

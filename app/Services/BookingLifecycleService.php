@@ -8,6 +8,8 @@ use App\Models\Booking\BookingDispatch;
 use App\Models\Booking\BookingQC;
 use App\Models\DriverAssignment;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCalculationDefinition;
+use App\Models\Vehicle\VehiclePricing\BookingPriceAdjustmentHistory;
+use App\Models\Vehicle\VehiclePricing\PriceAdjustment;
 use App\Models\Vehicle\Vehicle;
 use App\Services\Driver\NotificationTriggerService;
 use App\Services\Pricing\FinalPricingTelemetryResolver;
@@ -715,12 +717,16 @@ class BookingLifecycleService
 
         $dispatch = $booking->dispatch;
         $isOverdue = $dispatch && $dispatch->isOverdue();
+        $minutesActive = $dispatch?->dispatched_at
+            ? (int) $dispatch->dispatched_at->diffInMinutes(Carbon::now('UTC'))
+            : 0;
 
         return [
             'booking' => $booking,
             'dispatch' => $dispatch,
             'is_overdue' => $isOverdue,
-            'hours_active' => $dispatch ? $dispatch->dispatched_at?->diffInHours(now()) : 0,
+            'minutes_active' => $minutesActive,
+            'hours_active' => $minutesActive / 60,
             'expected_return' => $dispatch?->expected_return_at,
             'late_fee' => $isOverdue ? $dispatch->calculateLateReturnFee() : 0,
             'can_schedule_return' => true,
@@ -1571,9 +1577,7 @@ class BookingLifecycleService
                 ? (float) $activityData['actual_distance']
                 : (is_numeric($activityData['distance_km'] ?? null)
                     ? (float) $activityData['distance_km']
-                    : ($dispatch?->mileage_in !== null && $dispatch?->mileage_out !== null
-                        ? max(0, (float) $dispatch->mileage_in - (float) $dispatch->mileage_out)
-                        : null)),
+                    : $this->measuredMileageDistance($dispatch)),
             'waiting_minutes' => array_key_exists('waiting_minutes', $activityData)
                 ? (int) $activityData['waiting_minutes']
                 : null,
@@ -1589,9 +1593,7 @@ class BookingLifecycleService
             '_source' => $isSelfDriven ? 'self_drive_return' : 'dispatch_return',
             'actual_start_time' => $dispatch->dispatched_at,
             'actual_return_time' => $dispatch->actual_return_at,
-            'distance_km' => $dispatch->mileage_in !== null && $dispatch->mileage_out !== null
-                ? max(0, (float) $dispatch->mileage_in - (float) $dispatch->mileage_out)
-                : null,
+            'distance_km' => $this->measuredMileageDistance($dispatch),
             'waiting_minutes' => null,
         ] : null;
 
@@ -1615,18 +1617,44 @@ class BookingLifecycleService
             }
         }
 
-        $resolvedTelemetry = $this->finalPricingTelemetryResolver->resolve([
-            'driver_mobile_activity' => $driverTelemetry,
-            'system_activity' => $systemTelemetry,
-            'dispatch_return' => $dispatchTelemetry,
-            'customer_mobile_activity' => $customerTelemetry,
-        ], [
+        $isMultiItem = $booking->relationLoaded('bookingItems')
+            ? $booking->bookingItems->count() > 1
+            : BookingItem::query()->where('booking_id', $booking->id)->count() > 1;
+        $itemDurationMetrics = data_get(
+            $booking->duration_metrics,
+            'items.' . (string) $bookingItem->id,
+            []
+        );
+        $itemDistanceMetrics = data_get(
+            $booking->distance_metrics,
+            'items.' . (string) $bookingItem->id,
+            []
+        );
+        $persistedFallback = $isMultiItem ? [
+            '_source' => 'booking_item_persisted_fallback',
+            'actual_start_time' => data_get($bookingItem->lifecycle_data, 'actual_start_time'),
+            'actual_return_time' => $bookingItem->returned_at
+                ?? data_get($bookingItem->lifecycle_data, 'actual_return_time'),
+            'distance_km' => is_numeric($itemDistanceMetrics['actual_km'] ?? null)
+                ? (float) $itemDistanceMetrics['actual_km']
+                : null,
+            'waiting_minutes' => is_numeric($itemDurationMetrics['waiting_minutes'] ?? null)
+                ? (int) $itemDurationMetrics['waiting_minutes']
+                : null,
+        ] : [
             '_source' => 'booking_persisted_fallback',
             'actual_start_time' => $booking->trip_started_at,
             'actual_return_time' => $booking->completed_at,
             'distance_km' => $booking->actual_distance !== null ? (float) $booking->actual_distance : null,
             'waiting_minutes' => data_get($booking->duration_metrics, 'waiting_minutes'),
-        ]);
+        ];
+
+        $resolvedTelemetry = $this->finalPricingTelemetryResolver->resolve([
+            'driver_mobile_activity' => $driverTelemetry,
+            'system_activity' => $systemTelemetry,
+            'dispatch_return' => $dispatchTelemetry,
+            'customer_mobile_activity' => $customerTelemetry,
+        ], $persistedFallback);
 
         $source = (string) $resolvedTelemetry['source'];
         $sourceCategory = (string) $resolvedTelemetry['source_category'];
@@ -1640,16 +1668,15 @@ class BookingLifecycleService
             $startedAt,
             $completedAt
         );
+        $persistedDurationMinutes = $isMultiItem
+            ? ($itemDurationMetrics['actual_minutes'] ?? null)
+            : ($booking->actual_duration ?? data_get($booking->duration_metrics, 'actual_minutes'));
         $durationMinutes = $measuredDurationMinutes
-            ?? (int) ($booking->actual_duration
-                ?? data_get($booking->duration_metrics, 'actual_minutes')
+            ?? (int) ($persistedDurationMinutes
                 ?? $bookingItem->duration_minutes
                 ?? (($bookingItem->duration_hours ?? 0) * 60));
-        $hasDurationSource = $startedAt !== null
-            || $booking->actual_duration !== null
-            || data_get($booking->duration_metrics, 'actual_minutes') !== null
-            || (int) ($bookingItem->duration_minutes ?? 0) > 0
-            || (int) ($bookingItem->duration_hours ?? 0) > 0;
+        $hasDurationSource = $measuredDurationMinutes !== null
+            || $persistedDurationMinutes !== null;
 
         $distanceKm = is_numeric($resolvedTelemetry['distance_km'] ?? null)
             ? (float) $resolvedTelemetry['distance_km']
@@ -1671,7 +1698,11 @@ class BookingLifecycleService
             );
         }
 
-        $waitingMinutes = (int) ($resolvedTelemetry['waiting_minutes'] ?? 0);
+        $hasWaitingSource = array_key_exists('waiting_minutes', $resolvedTelemetry)
+            && is_numeric($resolvedTelemetry['waiting_minutes']);
+        $waitingMinutes = $hasWaitingSource
+            ? max(0, (int) $resolvedTelemetry['waiting_minutes'])
+            : null;
         $metadata = is_array($bookingItem->metadata) ? $bookingItem->metadata : [];
         $hasIncludedDuration = array_key_exists('included_minutes', $metadata)
             || array_key_exists('included_hours', $metadata)
@@ -1714,6 +1745,16 @@ class BookingLifecycleService
         }
         $manualCharges = round($manualCharges, 2);
         $lateFee = round((float) ($dispatch?->late_return_fee ?? $activityData['late_fee'] ?? 0), 2);
+        $recordedManualCharges = $manualCharges;
+        $recordedLateFee = $lateFee;
+        $currencyContext = $this->resolveFinalPricingCurrencyContext($bookingItem, $booking);
+        if ($currencyContext['exchange_rate'] !== 1.0) {
+            $manualCharges = round($recordedManualCharges / $currencyContext['exchange_rate'], 6);
+            $lateFee = round($recordedLateFee / $currencyContext['exchange_rate'], 6);
+        }
+        $approvedCustomizations = is_array($bookingItem->customizations)
+            ? $bookingItem->customizations
+            : [];
 
         $params = [
             'service_type_id' => $bookingItem->service_type_id,
@@ -1733,14 +1774,19 @@ class BookingLifecycleService
             'extra_hours' => $extraMinutes / 60,
             'overtime_minutes' => $extraMinutes,
             'overtime_hours' => $extraMinutes / 60,
-            'waiting_minutes' => $waitingMinutes,
-            'waiting_hours' => $waitingMinutes / 60,
+            'is_self_driven' => $isSelfDriven,
+            'booking_type' => $isSelfDriven ? 'self_drive' : 'with_driver',
             'additional_stops' => $additionalStops,
             'stops' => $additionalStops,
             'manual_additional_charge' => $manualCharges,
             'late_return_fee' => $lateFee,
+            'applied_customizations' => $approvedCustomizations,
             'mode' => 'final_calculation',
         ];
+        if ($hasWaitingSource) {
+            $params['waiting_minutes'] = $waitingMinutes;
+            $params['waiting_hours'] = $waitingMinutes / 60;
+        }
         if ($packageIncludedKm !== null) {
             $params['package_included_km'] = $packageIncludedKm;
         }
@@ -1760,7 +1806,18 @@ class BookingLifecycleService
         $result = $this->bookingFlowService->calculateDynamicPricing($params);
         $definitionId = data_get($result, 'pricing_scope.calculation_definition_id')
             ?? data_get($result, 'calculation_metadata.definition_used');
-        $calculatedBase = (float) ($result['total_amount'] ?? 0);
+        $rawCalculatedBase = $result['total_amount'] ?? null;
+        if (
+            $definitionId
+            && (!is_numeric($rawCalculatedBase)
+                || !is_finite((float) $rawCalculatedBase)
+                || (float) $rawCalculatedBase < 0)
+        ) {
+            throw new \DomainException(
+                'Final pricing returned an invalid total. Completion was stopped before invoice generation.'
+            );
+        }
+        $calculatedBase = is_numeric($rawCalculatedBase) ? (float) $rawCalculatedBase : 0.0;
         $resolvedVariables = data_get($result, 'calculation_metadata.resolved_variables', []);
         $resolvedVariables = is_array($resolvedVariables) ? $resolvedVariables : [];
 
@@ -1775,6 +1832,7 @@ class BookingLifecycleService
             'calculation_definition_name' => data_get($result, 'pricing_scope.calculation_definition_name'),
             'calculated_at' => Carbon::now('UTC')->toIso8601String(),
             'contractual_distance_preserved' => $contractualDistance,
+            'currency' => $currencyContext,
             'context' => [
                 'service_type_id' => (string) $bookingItem->service_type_id,
                 'vehicle_group_id' => (string) $bookingItem->vehicle_group_id,
@@ -1784,14 +1842,18 @@ class BookingLifecycleService
                     ? (string) $booking->corporate_account_id
                     : null,
                 'package_id' => $packageId ? (string) $packageId : null,
+                'is_self_driven' => $isSelfDriven,
+                'booking_type' => $isSelfDriven ? 'self_drive' : 'with_driver',
                 'from_date' => $params['from_date'],
                 'to_date' => $params['to_date'],
                 'from_time' => $params['from_time'],
                 'to_time' => $params['to_time'],
                 'is_weekend' => data_get($result, 'calculation_metadata.runtime_context.is_weekend'),
                 'is_holiday' => data_get($result, 'calculation_metadata.runtime_context.is_holiday'),
+                'holiday_context' => data_get($result, 'calculation_metadata.runtime_context.holiday_context'),
                 'additional_stops' => $additionalStops,
                 'package_included_km' => $packageIncludedKm,
+                'approved_customizations' => $approvedCustomizations,
             ],
             'inputs' => [
                 'duration_minutes' => $durationMinutes,
@@ -1800,18 +1862,24 @@ class BookingLifecycleService
                 'extra_minutes' => $extraMinutes,
                 'manual_additional_charge' => $manualCharges,
                 'late_return_fee' => $lateFee,
+                'recorded_manual_additional_charge' => $recordedManualCharges,
+                'recorded_late_return_fee' => $recordedLateFee,
             ],
             'rates_and_variables' => $resolvedVariables,
+            'rate_sources' => data_get($result, 'calculation_metadata.rate_sources', []),
+            'candidate_failures' => data_get($result, 'calculation_metadata.candidate_failures', []),
             'conditions_evaluated' => data_get($result, 'calculation_metadata.conditions_evaluated', []),
             'matched_slab' => $result['slab_information']
                 ?? data_get($result, 'calculation_metadata.matched_slab'),
             'adjustments' => $result['adjustment_details'] ?? [],
+            'formula_evaluation' => $result['formula_evaluation'] ?? null,
             'breakdown' => $result['breakdown'] ?? [],
             'calculation_example' => $this->buildFinalCalculationExample(
                 $result,
                 0.0,
                 0.0,
-                $calculatedBase
+                round($calculatedBase * $currencyContext['exchange_rate'], 2),
+                $currencyContext
             ),
         ];
 
@@ -1840,9 +1908,19 @@ class BookingLifecycleService
                 'Final distance is required by the selected pricing definition. Completion was stopped until mileage or measured distance is supplied.'
             );
         }
-        if (!$hasDurationSource && $this->formulaReferencesAny($selectedFormula, ['duration_minutes', 'duration_hours', 'duration_days'])) {
+        if (!$hasDurationSource && $this->formulaReferencesAny($selectedFormula, [
+            'duration_minutes', 'duration_hours', 'duration_days',
+            'extra_minutes', 'extra_hours', 'overtime_minutes', 'overtime_hours',
+        ])) {
             throw new \DomainException(
                 'Final duration is required by the selected pricing definition. Completion was stopped until start and return times are supplied.'
+            );
+        }
+        if (!$hasWaitingSource && $this->formulaReferencesAny($selectedFormula, [
+            'waiting_minutes', 'waiting_hours',
+        ])) {
+            throw new \DomainException(
+                'Final waiting time is required by the selected pricing definition. Completion was stopped until a measured value, including explicit zero, is supplied.'
             );
         }
         if (!$hasIncludedDuration && $this->formulaReferencesAny($selectedFormula, [
@@ -1860,25 +1938,46 @@ class BookingLifecycleService
         $lateFeeInFormula = $this->formulaReferencesAny($selectedFormula, ['late_return_fee']);
         $appendedManualCharges = $manualChargeInFormula ? 0.0 : $manualCharges;
         $appendedLateFee = $lateFeeInFormula ? 0.0 : $lateFee;
-        $finalBase = round($calculatedBase + $appendedManualCharges + $appendedLateFee, 2);
+        $finalCalculationCurrencyAmount = round(
+            $calculatedBase + $appendedManualCharges + $appendedLateFee,
+            2
+        );
+        $finalBase = round(
+            $finalCalculationCurrencyAmount * $currencyContext['exchange_rate'],
+            2
+        );
         $audit += [
             'calculated_base' => $calculatedBase,
-            'manual_charges' => $manualCharges,
-            'late_return_fee' => $lateFee,
+            'calculated_base_converted' => round(
+                $calculatedBase * $currencyContext['exchange_rate'],
+                2
+            ),
+            'manual_charges' => $recordedManualCharges,
+            'late_return_fee' => $recordedLateFee,
             'operational_charge_handling' => [
                 'manual_charge_in_formula' => $manualChargeInFormula,
                 'late_fee_in_formula' => $lateFeeInFormula,
-                'manual_charge_appended' => $appendedManualCharges,
-                'late_fee_appended' => $appendedLateFee,
+                'manual_charge_calculation_currency' => $manualCharges,
+                'late_fee_calculation_currency' => $lateFee,
+                'manual_charge_appended_calculation_currency' => $appendedManualCharges,
+                'late_fee_appended_calculation_currency' => $appendedLateFee,
             ],
+            'final_calculation_currency_amount' => $finalCalculationCurrencyAmount,
             'final_base' => $finalBase,
             'calculation_example' => $this->buildFinalCalculationExample(
                 $result,
                 $appendedManualCharges,
                 $appendedLateFee,
-                $finalBase
+                $finalBase,
+                $currencyContext
             ),
         ];
+
+        $this->commitPriceAdjustmentUsage(
+            $booking,
+            $bookingItem,
+            data_get($result, 'adjustment_details.adjustments', [])
+        );
 
         $bookingItem->update([
             'unit_price' => $finalBase,
@@ -1891,6 +1990,9 @@ class BookingLifecycleService
         ]);
 
         $booking->load('bookingItems');
+        $billableBookingItems = $booking->bookingItems->reject(
+            fn (BookingItem $item) => in_array((string) $item->status, ['cancelled', 'rejected'], true)
+        );
         $durationMetrics = is_array($booking->duration_metrics) ? $booking->duration_metrics : [];
         $durationItems = is_array($durationMetrics['items'] ?? null) ? $durationMetrics['items'] : [];
         $durationItems[(string) $bookingItem->id] = [
@@ -1930,7 +2032,7 @@ class BookingLifecycleService
 
         $bookingUpdates = [
             'actual_duration' => $aggregateDurationMinutes,
-            'base_amount' => round((float) $booking->bookingItems->sum('total_price'), 2),
+            'base_amount' => round((float) $billableBookingItems->sum('total_price'), 2),
             'total_actual' => round($booking->calculateTotal(), 2),
             'duration_metrics' => array_merge($durationMetrics, [
                 'source' => count($durationItems) > 1 ? 'multiple_item_sources' : $source,
@@ -1954,8 +2056,9 @@ class BookingLifecycleService
                 'final_pricing_items' => $finalPricingItems,
                 'final_pricing_summary' => [
                     'priced_item_count' => count($finalPricingItems),
-                    'booking_item_count' => $booking->bookingItems->count(),
-                    'calculated_total' => round((float) $booking->bookingItems->sum('total_price'), 2),
+                    'booking_item_count' => $billableBookingItems->count(),
+                    'excluded_terminal_item_count' => $booking->bookingItems->count() - $billableBookingItems->count(),
+                    'calculated_total' => round((float) $billableBookingItems->sum('total_price'), 2),
                     'last_calculated_at' => $audit['calculated_at'],
                 ],
             ]),
@@ -1966,6 +2069,75 @@ class BookingLifecycleService
         $booking->update($bookingUpdates);
 
         return $audit;
+    }
+
+    /**
+     * Commit limited price-adjustment usage only during canonical final pricing.
+     * Preview/test calculations remain read-only, while repeated completion of
+     * the same item updates its audit row without consuming another use.
+     *
+     * @param array<int, array<string, mixed>> $adjustments
+     */
+    private function commitPriceAdjustmentUsage(
+        Booking $booking,
+        BookingItem $bookingItem,
+        array $adjustments
+    ): void {
+        $adjustmentsById = collect($adjustments)
+            ->filter(fn ($adjustment) => is_array($adjustment)
+                && ($adjustment['type'] ?? null) === 'price_adjustment'
+                && !empty($adjustment['price_adjustment_id']))
+            ->keyBy('price_adjustment_id');
+
+        foreach ($adjustmentsById as $adjustmentId => $result) {
+            /** @var PriceAdjustment|null $adjustment */
+            $adjustment = PriceAdjustment::query()
+                ->whereKey($adjustmentId)
+                ->lockForUpdate()
+                ->first();
+
+            if (!$adjustment || !$adjustment->is_active) {
+                throw new \DomainException(
+                    'A price adjustment changed while final pricing was being committed. Please retry completion.'
+                );
+            }
+
+            $history = BookingPriceAdjustmentHistory::query()
+                ->where('booking_item_id', $bookingItem->id)
+                ->where('price_adjustment_id', $adjustmentId)
+                ->first();
+
+            $historyValues = [
+                'booking_id' => $booking->id,
+                'booking_item_id' => $bookingItem->id,
+                'price_adjustment_id' => $adjustmentId,
+                'adjustment_amount' => round((float) ($result['amount'] ?? 0), 2),
+                'original_amount' => round((float) ($result['original_amount'] ?? 0), 2),
+                'final_amount' => round((float) ($result['final_amount'] ?? 0), 2),
+                'adjustment_breakdown' => $result,
+                'adjustment_reason' => $result['description'] ?? $result['name'] ?? 'Final pricing adjustment',
+                'applied_by_user_id' => Auth::id(),
+                'applied_at' => Carbon::now('UTC'),
+            ];
+
+            if ($history) {
+                $history->update($historyValues);
+                continue;
+            }
+
+            $recordedUsage = BookingPriceAdjustmentHistory::query()
+                ->where('price_adjustment_id', $adjustmentId)
+                ->count();
+            $effectiveUsage = max((int) $adjustment->usage_count, $recordedUsage);
+            if ($adjustment->usage_limit !== null && $effectiveUsage >= (int) $adjustment->usage_limit) {
+                throw new \DomainException(
+                    "Price adjustment {$adjustment->name} has reached its usage limit. Final pricing was stopped."
+                );
+            }
+
+            BookingPriceAdjustmentHistory::query()->create($historyValues);
+            $adjustment->forceFill(['usage_count' => $effectiveUsage + 1])->save();
+        }
     }
 
     private function sumOperationalCharges(mixed $charges): float
@@ -1982,6 +2154,23 @@ class BookingLifecycleService
                 ? (float) $charge
                 : (float) ($charge['amount'] ?? $charge['total'] ?? $charge['value'] ?? 0);
         }), 2);
+    }
+
+    private function measuredMileageDistance(?BookingDispatch $dispatch): ?float
+    {
+        if (!$dispatch || $dispatch->mileage_in === null || $dispatch->mileage_out === null) {
+            return null;
+        }
+
+        $mileageIn = (float) $dispatch->mileage_in;
+        $mileageOut = (float) $dispatch->mileage_out;
+        if ($mileageIn < $mileageOut) {
+            throw new \DomainException(
+                'Return mileage cannot be lower than the dispatch mileage. Final pricing was stopped.'
+            );
+        }
+
+        return round($mileageIn - $mileageOut, 2);
     }
 
     private function formulaReferencesAny(string $formula, array $variableNames): bool
@@ -2067,6 +2256,62 @@ class BookingLifecycleService
         }
 
         return null;
+    }
+
+    /**
+     * Final pricing runs in the original calculation currency, then reuses the
+     * exchange rate locked into the booked pricing snapshot. Current market
+     * rates must never rewrite a confirmed booking at return time.
+     *
+     * @return array{calculation_currency:string,booking_currency:string,exchange_rate:float,rate_source:string}
+     */
+    private function resolveFinalPricingCurrencyContext(BookingItem $bookingItem, Booking $booking): array
+    {
+        $pricingBreakdown = is_array($bookingItem->pricing_breakdown)
+            ? $bookingItem->pricing_breakdown
+            : [];
+        $calculationCurrency = strtoupper(trim((string) (
+            data_get($pricingBreakdown, 'base_pricing.original_currency')
+            ?? data_get($pricingBreakdown, 'original_currency')
+            ?? config('booking.base_currency', 'LKR')
+        )));
+        $bookingCurrency = strtoupper(trim((string) (
+            $bookingItem->currency
+            ?? $booking->currency
+            ?? data_get($pricingBreakdown, 'summary.currency')
+            ?? $calculationCurrency
+        )));
+        $calculationCurrency = $calculationCurrency !== '' ? $calculationCurrency : 'LKR';
+        $bookingCurrency = $bookingCurrency !== '' ? $bookingCurrency : $calculationCurrency;
+
+        if ($bookingCurrency === $calculationCurrency) {
+            return [
+                'calculation_currency' => $calculationCurrency,
+                'booking_currency' => $bookingCurrency,
+                'exchange_rate' => 1.0,
+                'rate_source' => 'same_currency',
+            ];
+        }
+
+        $rateCandidates = [
+            'base_pricing_snapshot' => data_get($pricingBreakdown, 'base_pricing.exchange_rate'),
+            'item_summary_snapshot' => data_get($pricingBreakdown, 'summary.exchange_rate'),
+            'item_snapshot' => data_get($pricingBreakdown, 'exchange_rate'),
+        ];
+        foreach ($rateCandidates as $source => $candidate) {
+            if (is_numeric($candidate) && is_finite((float) $candidate) && (float) $candidate > 0) {
+                return [
+                    'calculation_currency' => $calculationCurrency,
+                    'booking_currency' => $bookingCurrency,
+                    'exchange_rate' => (float) $candidate,
+                    'rate_source' => $source,
+                ];
+            }
+        }
+
+        throw new \DomainException(
+            "The locked {$calculationCurrency} to {$bookingCurrency} exchange rate is missing. Final pricing was stopped."
+        );
     }
 
     private function assertItemSafeLifecycle(Booking $booking, ?string $bookingItemId): void
@@ -2265,24 +2510,50 @@ class BookingLifecycleService
         }
     }
 
-    private function buildFinalCalculationExample(array $result, float $manualCharges, float $lateFee, float $finalBase): array
-    {
-        $lines = collect($result['breakdown'] ?? [])->map(function ($line) {
+    private function buildFinalCalculationExample(
+        array $result,
+        float $manualCharges,
+        float $lateFee,
+        float $finalBase,
+        array $currencyContext
+    ): array {
+        $exchangeRate = (float) ($currencyContext['exchange_rate'] ?? 1);
+        $lines = collect($result['breakdown'] ?? [])->map(function ($line) use ($exchangeRate) {
+            $calculationAmount = (float) ($line['amount'] ?? 0);
             return [
                 'label' => $line['name'] ?? $line['description'] ?? $line['component'] ?? 'Charge',
                 'calculation' => $line['calculation'] ?? null,
-                'amount' => (float) ($line['amount'] ?? 0),
+                'calculation_currency_amount' => $calculationAmount,
+                'amount' => round($calculationAmount * $exchangeRate, 2),
             ];
         })->values()->all();
 
         if ($manualCharges > 0) {
-            $lines[] = ['label' => 'Operational charges', 'calculation' => 'Approved return/completion charges', 'amount' => $manualCharges];
+            $lines[] = [
+                'label' => 'Operational charges',
+                'calculation' => 'Approved return/completion charges',
+                'calculation_currency_amount' => $manualCharges,
+                'amount' => round($manualCharges * $exchangeRate, 2),
+            ];
         }
         if ($lateFee > 0) {
-            $lines[] = ['label' => 'Late return fee', 'calculation' => 'Configured late-return rule', 'amount' => $lateFee];
+            $lines[] = [
+                'label' => 'Late return fee',
+                'calculation' => 'Configured late-return rule',
+                'calculation_currency_amount' => $lateFee,
+                'amount' => round($lateFee * $exchangeRate, 2),
+            ];
         }
 
-        return ['lines' => $lines, 'total' => $finalBase];
+        return [
+            'formula_evaluation' => $result['formula_evaluation'] ?? null,
+            'adjustments' => $result['adjustment_details']['adjustments'] ?? [],
+            'calculation_currency' => $currencyContext['calculation_currency'] ?? null,
+            'booking_currency' => $currencyContext['booking_currency'] ?? null,
+            'exchange_rate' => $exchangeRate,
+            'lines' => $lines,
+            'total' => $finalBase,
+        ];
     }
 
     /**

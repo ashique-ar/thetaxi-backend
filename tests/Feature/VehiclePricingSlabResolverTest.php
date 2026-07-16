@@ -12,6 +12,18 @@ use Illuminate\Support\Str;
 beforeEach(function () {
     activity()->disableLogging();
     Schema::dropIfExists('vehicle_pricing_slab_definitions');
+    Schema::dropIfExists('service_types');
+    Schema::create('service_types', function (Blueprint $table) {
+        $table->uuid('id')->primary();
+        $table->string('name');
+        $table->string('code');
+        $table->string('context')->default('public');
+        $table->string('owner_type')->default('');
+        $table->string('owner_id')->default('');
+        $table->boolean('is_active')->default(true);
+        $table->timestamps();
+        $table->softDeletes();
+    });
     Schema::create('vehicle_pricing_slab_definitions', function (Blueprint $table) {
         $table->uuid('id')->primary();
         $table->uuid('service_type_id');
@@ -68,6 +80,109 @@ it('prevents activating a slab that would introduce a same-unit gap', function (
         ->and(VehiclePricingSlabDefinition::withInactive()->findOrFail($blockedId)->is_active)->toBeFalse();
 });
 
+it('activates one range-less per-km fallback and resolves it for every duration', function () {
+    $serviceId = insertSlabTestService();
+    $fallbackId = insertLegacySlab($serviceId, 'Distance fallback', 'per_km', null, null, false);
+
+    $response = slabController()->toggleStatus(Request::create('/toggle', 'PATCH'), $fallbackId);
+    $resolver = app(VehiclePricingSlabConfigurationService::class);
+    $query = VehiclePricingSlabDefinition::query()->where('service_type_id', $serviceId);
+
+    expect($response->getStatusCode())->toBe(200)
+        ->and($response->getData(true)['health']['healthy'])->toBeTrue()
+        ->and(VehiclePricingSlabDefinition::withInactive()->findOrFail($fallbackId)->is_active)->toBeTrue()
+        ->and($resolver->resolve(clone $query, 1)?->id)->toBe($fallbackId)
+        ->and($resolver->resolve(clone $query, 100000)?->id)->toBe($fallbackId);
+});
+
+it('blocks activating a second range-less legacy fallback', function () {
+    $serviceId = insertSlabTestService();
+    insertLegacySlab($serviceId, 'Primary fallback', 'per_km', null, null);
+    $duplicateId = insertLegacySlab($serviceId, 'Duplicate fallback', 'per_km', null, null, false);
+
+    $response = slabController()->toggleStatus(Request::create('/toggle', 'PATCH'), $duplicateId);
+    $codes = collect($response->getData(true)['health']['issues'])->pluck('code');
+
+    expect($response->getStatusCode())->toBe(422)
+        ->and($codes)->toContain('duplicate_duration_independent_fallback')
+        ->and(VehiclePricingSlabDefinition::withInactive()->findOrFail($duplicateId)->is_active)->toBeFalse();
+});
+
+it('blocks activating overlapping legacy hour packages', function () {
+    $serviceId = insertSlabTestService();
+    insertLegacySlab($serviceId, 'Primary package', 'per_km', 1, 6);
+    $overlapId = insertLegacySlab($serviceId, 'Overlapping package', 'per_km', 2, 12, false);
+
+    $response = slabController()->toggleStatus(Request::create('/toggle', 'PATCH'), $overlapId);
+    $codes = collect($response->getData(true)['health']['issues'])->pluck('code');
+
+    expect($response->getStatusCode())->toBe(422)
+        ->and($codes)->toContain('overlap')
+        ->and(VehiclePricingSlabDefinition::withInactive()->findOrFail($overlapId)->is_active)->toBeFalse();
+});
+
+it('activates a bounded flat-rate package and resolves only its explicit duration', function () {
+    $serviceId = insertSlabTestService();
+    $packageId = insertLegacySlab($serviceId, 'Six-hour package', 'flat_rate', 6, 6, false);
+
+    $response = slabController()->toggleStatus(Request::create('/toggle', 'PATCH'), $packageId);
+    $resolver = app(VehiclePricingSlabConfigurationService::class);
+    $query = VehiclePricingSlabDefinition::query()->where('service_type_id', $serviceId);
+    $lookupResponse = slabController()->findForHours(Request::create('/find', 'GET', [
+        'minutes' => 360,
+        'service_type_id' => $serviceId,
+    ]));
+
+    expect($response->getStatusCode())->toBe(200)
+        ->and($response->getData(true)['health']['healthy'])->toBeTrue()
+        ->and(VehiclePricingSlabDefinition::withInactive()->findOrFail($packageId)->is_active)->toBeTrue()
+        ->and($resolver->resolve(clone $query, 360)?->id)->toBe($packageId)
+        ->and($resolver->resolve(clone $query, 361))->toBeNull()
+        ->and($lookupResponse->getData(true)['data']['id'])->toBe($packageId)
+        ->and($lookupResponse->getData(true)['resolution']['precedence'])
+        ->toBe(VehiclePricingSlabConfigurationService::RESOLUTION_PRECEDENCE);
+});
+
+it('blocks activating a legacy package fully shadowed by a higher-precedence duration slab', function () {
+    $serviceId = insertSlabTestService();
+    insertSlab($serviceId, 'All hours', 'hours', 1, null);
+    $packageId = insertLegacySlab($serviceId, 'Six-hour package', 'flat_rate', 6, 6, false);
+
+    $response = slabController()->toggleStatus(Request::create('/toggle', 'PATCH'), $packageId);
+    $codes = collect($response->getData(true)['health']['issues'])->pluck('code');
+
+    expect($response->getStatusCode())->toBe(422)
+        ->and($codes)->toContain('cross_unit_fully_shadowed')
+        ->and(VehiclePricingSlabDefinition::withInactive()->findOrFail($packageId)->is_active)->toBeFalse();
+});
+
+it('blocks activating a standard duration configuration with an unsafe leading gap', function () {
+    $serviceId = insertSlabTestService();
+    $slabId = insertSlab($serviceId, 'Starts late', 'minutes', 30, null, false);
+
+    $response = slabController()->toggleStatus(Request::create('/toggle', 'PATCH'), $slabId);
+    $codes = collect($response->getData(true)['health']['issues'])->pluck('code');
+
+    expect($response->getStatusCode())->toBe(422)
+        ->and($codes)->toContain('unsafe_leading_gap')
+        ->and(VehiclePricingSlabDefinition::withInactive()->findOrFail($slabId)->is_active)->toBeFalse();
+});
+
+it('activates a minute window when an hour slab safely covers the remaining durations', function () {
+    $serviceId = insertSlabTestService();
+    insertSlab($serviceId, 'Hour fallback', 'hours', 1, null);
+    $minuteId = insertSlab($serviceId, 'Minute window', 'minutes', 30, 60, false);
+
+    $response = slabController()->toggleStatus(Request::create('/toggle', 'PATCH'), $minuteId);
+    $resolver = app(VehiclePricingSlabConfigurationService::class);
+    $query = VehiclePricingSlabDefinition::query()->where('service_type_id', $serviceId);
+
+    expect($response->getStatusCode())->toBe(200)
+        ->and($response->getData(true)['health']['healthy'])->toBeTrue()
+        ->and($resolver->resolve(clone $query, 45)?->id)->toBe($minuteId)
+        ->and($resolver->resolve(clone $query, 10)?->name)->toBe('Hour fallback');
+});
+
 function insertSlab(
     string $serviceId,
     string $name,
@@ -98,4 +213,55 @@ function insertSlab(
     ]);
 
     return $id;
+}
+
+function insertLegacySlab(
+    string $serviceId,
+    string $name,
+    string $type,
+    ?int $minimumHours,
+    ?int $maximumHours,
+    bool $active = true
+): string {
+    $id = (string) Str::uuid();
+    DB::table('vehicle_pricing_slab_definitions')->insert([
+        'id' => $id,
+        'service_type_id' => $serviceId,
+        'name' => $name,
+        'type' => $type,
+        'min_hours' => $minimumHours,
+        'max_hours' => $maximumHours,
+        'sort_order' => 1,
+        'priority' => 0,
+        'is_active' => $active,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    return $id;
+}
+
+function insertSlabTestService(): string
+{
+    $id = (string) Str::uuid();
+    DB::table('service_types')->insert([
+        'id' => $id,
+        'name' => 'Slab test service',
+        'code' => 'slab-' . Str::lower(Str::random(8)),
+        'context' => 'public',
+        'owner_type' => '',
+        'owner_id' => '',
+        'is_active' => true,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    return $id;
+}
+
+function slabController(): VehiclePricingSlabDefinitionController
+{
+    return new VehiclePricingSlabDefinitionController(
+        app(VehiclePricingSlabConfigurationService::class)
+    );
 }

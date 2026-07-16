@@ -757,7 +757,9 @@ class Booking extends BaseModel
     {
         // If booking has booking items, sum their totals
         if ($this->bookingItems()->exists()) {
-            return $this->bookingItems->sum(function ($item) {
+            return $this->bookingItems
+                ->reject(fn ($item) => in_array((string) $item->status, ['cancelled', 'rejected'], true))
+                ->sum(function ($item) {
                 return $item->calculateTotalValue();
             });
         }

@@ -32,6 +32,7 @@ beforeEach(function () {
         'booking_qcs',
         'booking_dispatches',
         'booking_items',
+        'vehicle_pricing_calculation_definitions',
         'vehicles',
         'users',
         'bookings',
@@ -103,6 +104,21 @@ beforeEach(function () {
         $table->timestamp('final_priced_at')->nullable();
         $table->timestamp('completed_at')->nullable();
         $table->json('lifecycle_data')->nullable();
+        $table->timestamps();
+        $table->softDeletes();
+    });
+
+    Schema::create('vehicle_pricing_calculation_definitions', function (Blueprint $table) {
+        $table->uuid('id')->primary();
+        $table->uuid('service_type_id');
+        $table->string('name');
+        $table->string('status')->default('active');
+        $table->text('formula');
+        $table->json('variables')->nullable();
+        $table->json('conditions')->nullable();
+        $table->string('owner_type')->nullable();
+        $table->uuid('owner_id')->nullable();
+        $table->integer('priority')->default(0);
         $table->timestamps();
         $table->softDeletes();
     });
@@ -220,9 +236,10 @@ beforeEach(function () {
         default => $default,
     });
 
+    $this->bookingFlowService = Mockery::mock(BookingFlowService::class);
     $this->lifecycle = new BookingLifecycleService(
         Mockery::mock(AssignmentService::class),
-        Mockery::mock(BookingFlowService::class),
+        $this->bookingFlowService,
         Mockery::mock(CurrencyService::class),
         Mockery::mock(NotificationTriggerService::class),
         $this->invoiceService,
@@ -335,6 +352,93 @@ it('rejects an ambiguous multi-item action without booking_item_id', function ()
     expect(fn () => $this->lifecycle->processReturn($this->booking->id, [
         'returned_by' => '00000000-0000-0000-0000-000000000001',
     ]))->toThrow(DomainException::class, 'booking_item_id is required');
+});
+
+it('does not treat booked duration as actual duration for an overtime final calculation', function () {
+    $item = $this->items[0];
+    $item->update([
+        'service_type_id' => '11111111-1111-4111-8111-111111111111',
+        'vehicle_group_id' => '22222222-2222-4222-8222-222222222222',
+        'duration_minutes' => 60,
+    ]);
+    DB::table('vehicle_pricing_calculation_definitions')->insert([
+        'id' => '33333333-3333-4333-8333-333333333333',
+        'service_type_id' => '11111111-1111-4111-8111-111111111111',
+        'name' => 'Overtime final price',
+        'status' => 'active',
+        'formula' => 'base_charge + (overtime_minutes * overtime_rate_per_minute)',
+        'variables' => json_encode([]),
+        'conditions' => json_encode([]),
+        'priority' => 10,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+    $this->bookingFlowService->shouldReceive('calculateDynamicPricing')->once()->andReturn([
+        'total_amount' => 100,
+        'pricing_scope' => [
+            'calculation_definition_id' => '33333333-3333-4333-8333-333333333333',
+            'calculation_definition_name' => 'Overtime final price',
+        ],
+        'calculation_metadata' => ['resolved_variables' => []],
+        'adjustment_details' => ['adjustments' => []],
+        'breakdown' => [],
+    ]);
+
+    $method = new ReflectionMethod($this->lifecycle, 'synchronizeFinalPricing');
+
+    expect(fn () => $method->invoke($this->lifecycle, $this->booking->fresh(), [
+        'booking_item' => $item->fresh(),
+        'is_self_driven' => true,
+        'vehicle_id' => $item->vehicle_id,
+    ], null, [
+        'actual_return_time' => now()->toIso8601String(),
+        'activity_source' => 'system_completion',
+    ], 'booking_completion'))->toThrow(DomainException::class, 'Final duration is required');
+});
+
+it('requires waiting telemetry when the selected final formula bills waiting time', function () {
+    $item = $this->items[0];
+    $item->update([
+        'service_type_id' => '44444444-4444-4444-8444-444444444444',
+        'vehicle_group_id' => '55555555-5555-4555-8555-555555555555',
+    ]);
+    DB::table('vehicle_pricing_calculation_definitions')->insert([
+        'id' => '66666666-6666-4666-8666-666666666666',
+        'service_type_id' => '44444444-4444-4444-8444-444444444444',
+        'name' => 'Waiting final price',
+        'status' => 'active',
+        'formula' => 'base_charge + (waiting_minutes * waiting_rate_per_minute)',
+        'variables' => json_encode([]),
+        'conditions' => json_encode([]),
+        'priority' => 10,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+    $this->bookingFlowService->shouldReceive('calculateDynamicPricing')
+        ->once()
+        ->withArgs(fn (array $params): bool => !array_key_exists('waiting_minutes', $params))
+        ->andReturn([
+            'total_amount' => 100,
+            'pricing_scope' => [
+                'calculation_definition_id' => '66666666-6666-4666-8666-666666666666',
+                'calculation_definition_name' => 'Waiting final price',
+            ],
+            'calculation_metadata' => ['resolved_variables' => []],
+            'adjustment_details' => ['adjustments' => []],
+            'breakdown' => [],
+        ]);
+
+    $method = new ReflectionMethod($this->lifecycle, 'synchronizeFinalPricing');
+
+    expect(fn () => $method->invoke($this->lifecycle, $this->booking->fresh(), [
+        'booking_item' => $item->fresh(),
+        'is_self_driven' => true,
+        'vehicle_id' => $item->vehicle_id,
+    ], null, [
+        'actual_start_time' => now()->subHour()->toIso8601String(),
+        'actual_return_time' => now()->toIso8601String(),
+        'activity_source' => 'system_completion',
+    ], 'booking_completion'))->toThrow(DomainException::class, 'Final waiting time is required');
 });
 
 it('preserves single-item behavior while recording the same item-owned terminal state', function () {

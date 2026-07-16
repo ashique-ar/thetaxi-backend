@@ -51,6 +51,27 @@ class PricingCalculationDefinitionHealthServiceTest extends TestCase
         $this->assertSame('error', $health['checklist']['common_rate_dependencies']['status']);
     }
 
+    public function test_slab_rate_name_cannot_be_downgraded_to_a_runtime_number(): void
+    {
+        $service = new PricingCalculationDefinitionHealthService(
+            $this->createMock(VehiclePricingSlabConfigurationService::class)
+        );
+
+        $health = $service->analyzeDefinition(
+            $this->definition('wrong-type', 'slab_rate', [[
+                'name' => 'slab_rate',
+                'type' => 'number',
+                'is_required' => true,
+            ]]),
+            [
+                'slab_rate' => ['required' => true, 'status' => 'pass', 'issues' => [], 'details' => []],
+            ]
+        );
+
+        $this->assertFalse($health['ready_for_activation']);
+        $this->assertContains('slab_rate_type_mismatch', array_column($health['issues'], 'code'));
+    }
+
     public function test_invalid_and_contradictory_conditions_are_reported(): void
     {
         $service = new PricingCalculationDefinitionHealthService(

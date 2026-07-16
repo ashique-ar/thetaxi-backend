@@ -69,6 +69,26 @@ class PricingDefinitionOrchestratorTest extends TestCase
         self::assertSame('conditional', $resolved['candidate_failures'][0]['definition_id']);
     }
 
+    public function test_it_rejects_an_invalid_total_and_uses_the_next_safe_candidate(): void
+    {
+        $negative = $this->candidate('negative', [
+            'calculation_success' => true,
+            'conditions_met' => true,
+            'total_amount' => -50,
+        ]);
+        $valid = $this->candidate('valid', [
+            'calculation_success' => true,
+            'conditions_met' => true,
+            'total_amount' => 725.0,
+        ]);
+
+        $resolved = (new PricingDefinitionOrchestrator())->resolve([$negative, $valid], []);
+
+        self::assertTrue($resolved['matched']);
+        self::assertSame($valid, $resolved['definition']);
+        self::assertSame('invalid_total', $resolved['candidate_failures'][0]['reason']);
+    }
+
     private function candidate(string $id, array $result): object
     {
         return new class($id, $result) {

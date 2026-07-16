@@ -80,4 +80,20 @@ class FinalPricingTelemetryResolverTest extends TestCase
         self::assertSame('system_activity', $resolved['source_category']);
         self::assertSame(91, $resolved['distance_km']);
     }
+
+    public function test_explicit_zero_waiting_is_authoritative_telemetry(): void
+    {
+        $resolver = new FinalPricingTelemetryResolver();
+
+        $resolved = $resolver->resolve([
+            'system_activity' => [
+                '_source' => 'system_completion',
+                'waiting_minutes' => 0,
+            ],
+        ]);
+
+        self::assertSame('system_activity', $resolved['source_category']);
+        self::assertSame('system_completion', $resolved['source']);
+        self::assertSame(0, $resolved['waiting_minutes']);
+    }
 }

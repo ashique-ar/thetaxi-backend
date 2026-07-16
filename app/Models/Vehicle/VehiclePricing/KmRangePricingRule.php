@@ -190,6 +190,11 @@ class KmRangePricingRule extends BaseModel
                 break;
 
             case 'percentage_multiplier':
+                if (!is_numeric($this->percentage) || (float) $this->percentage < 0 || (float) $this->percentage > 10) {
+                    throw new \DomainException(
+                        'KM range price multiplier must be between 0 and 10 (for example 1.10 means a 10% increase).'
+                    );
+                }
                 $adjustmentAmount = $baseAmount * ($this->percentage - 1);
                 $calculationDetails = [
                     'type' => 'percentage_multiplier',
@@ -266,7 +271,35 @@ class KmRangePricingRule extends BaseModel
             $query->forScope('global');
         }
 
-        return $query->orderByPriority()->get();
+        return $query->orderByPriority()
+            ->get()
+            ->sort(function (self $left, self $right) use ($ownerType, $ownerId): int {
+                $rank = static function (self $rule) use ($ownerType, $ownerId): array {
+                    $ownerExact = $ownerType && $ownerId
+                        && $rule->owner_type === $ownerType
+                        && (string) $rule->owner_id === (string) $ownerId;
+                    $scopeRank = match ($rule->scope) {
+                        'vehicle_group' => 0,
+                        'service' => 1,
+                        default => 2,
+                    };
+                    $rangeWidth = $rule->to_km === null
+                        ? PHP_FLOAT_MAX
+                        : max(0.0, (float) $rule->to_km - (float) $rule->from_km);
+
+                    return [
+                        $ownerExact ? 0 : 1,
+                        -((int) $rule->priority),
+                        $scopeRank,
+                        $rangeWidth,
+                        (string) $rule->created_at,
+                        (string) $rule->id,
+                    ];
+                };
+
+                return $rank($left) <=> $rank($right);
+            })
+            ->values();
     }
 
     /**
@@ -292,32 +325,12 @@ class KmRangePricingRule extends BaseModel
             ];
         }
 
-        $appliedRules = [];
-        $totalAdjustment = 0;
-        $currentAmount = $baseAmount;
-
-        // Apply highest priority rule that gives the best result for customer
-        $bestRule = null;
-        $bestResult = null;
-        $bestFinalAmount = $currentAmount;
-
-        foreach ($applicableRules as $rule) {
-            $result = $rule->calculatePricing($distance, $currentAmount);
-            
-            if ($result['applicable']) {
-                // For customer benefit, choose rule that gives lowest final amount
-                if ($bestResult === null || $result['final_amount'] < $bestFinalAmount) {
-                    $bestRule = $rule;
-                    $bestResult = $result;
-                    $bestFinalAmount = $result['final_amount'];
-                }
-            }
-        }
-
-        if ($bestResult) {
-            $appliedRules[] = $bestResult;
-            $totalAdjustment = $bestResult['adjustment_amount'];
-        }
+        // Configuration order is authoritative. Choosing the cheapest rule
+        // here made the advertised priority field ineffective and could select
+        // a public fallback over a corporate rule.
+        $bestResult = $applicableRules->first()->calculatePricing($distance, $baseAmount);
+        $appliedRules = ($bestResult['applicable'] ?? false) ? [$bestResult] : [];
+        $totalAdjustment = (float) ($bestResult['adjustment_amount'] ?? 0);
 
         return [
             'rules_applied' => $appliedRules,
@@ -346,7 +359,7 @@ class KmRangePricingRule extends BaseModel
             'to_km' => 'nullable|numeric|min:0|gt:from_km',
             'price_type' => 'required|in:fixed_rate,percentage_multiplier,flat_addition',
             'rate_per_km' => 'nullable|numeric|min:0|required_if:price_type,fixed_rate',
-            'percentage' => 'nullable|numeric|min:0|required_if:price_type,percentage_multiplier',
+            'percentage' => 'nullable|numeric|between:0,10|required_if:price_type,percentage_multiplier',
             'flat_amount' => 'nullable|numeric|required_if:price_type,flat_addition',
             'priority' => 'integer|min:0',
             'effective_from' => 'nullable|date',

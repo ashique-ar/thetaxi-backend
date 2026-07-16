@@ -4,15 +4,19 @@ namespace App\Models\Vehicle\VehiclePricing;
 
 use App\Models\BaseModel;
 use App\Models\Booking\Booking;
+use App\Models\Booking\BookingItem;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class BookingPriceAdjustmentHistory extends BaseModel
 {
+    protected $useUserTracking = false;
+
     protected $table = 'booking_price_adjustment_history';
     
     protected $fillable = [
         'booking_id',
+        'booking_item_id',
         'price_adjustment_id',
         'km_range_pricing_rule_id',
         'adjustment_amount',
@@ -43,6 +47,11 @@ class BookingPriceAdjustmentHistory extends BaseModel
     public function priceAdjustment(): BelongsTo
     {
         return $this->belongsTo(PriceAdjustment::class);
+    }
+
+    public function bookingItem(): BelongsTo
+    {
+        return $this->belongsTo(BookingItem::class);
     }
 
     public function kmRangePricingRule(): BelongsTo

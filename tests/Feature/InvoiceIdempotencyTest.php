@@ -115,6 +115,8 @@ beforeEach(function () {
     $migration = require database_path('migrations/2026_07_16_000010_harden_invoice_idempotency_and_delivery.php');
     $migration->up();
     $this->invoiceMigration = $migration;
+    $pdfMigration = require database_path('migrations/2026_07_16_160000_add_pdf_generation_status_to_invoices.php');
+    $pdfMigration->up();
 
     Storage::fake('local');
     Event::forget('composing: *');
@@ -204,7 +206,11 @@ it('delivers only after commit and suppresses duplicate email retries', function
         'line_items' => [],
         'status' => 'issued',
         'issue_date' => now()->toDateString(),
+        'pdf_path' => 'invoices/INV-DELIVERY-TEST.pdf',
+        'pdf_disk' => 'local',
+        'pdf_generated_at' => now(),
     ]);
+    Storage::disk('local')->put('invoices/INV-DELIVERY-TEST.pdf', 'verified invoice PDF');
 
     $deliveryCalls = 0;
     $dispatcher = Mockery::mock(MailDispatchService::class);

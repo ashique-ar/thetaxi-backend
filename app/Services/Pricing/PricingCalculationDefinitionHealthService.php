@@ -9,6 +9,8 @@ use App\Models\Vehicle\VehiclePricing\VehiclePricingCommonRateDefinition;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingSlabDefinition;
 use App\Services\VehiclePricingSlabConfigurationService;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class PricingCalculationDefinitionHealthService
 {
@@ -265,7 +267,21 @@ class PricingCalculationDefinitionHealthService
                 'Move these fields into definition conditions and keep arithmetic variables numeric.'
             );
         }
-        $requiresSlab = $referencedVariables->contains(
+        $slabNameReferenced = in_array('slab_rate', $referencedNames, true);
+        $declaredSlabVariable = $variablesByName->get('slab_rate');
+        if ($slabNameReferenced && is_array($declaredSlabVariable)
+            && ($declaredSlabVariable['type'] ?? null) !== 'slab_rate') {
+            $issues[] = $this->issue(
+                'slab_rate_type_mismatch',
+                'error',
+                'formula',
+                $serviceTypeId,
+                [$id],
+                'The slab_rate variable is referenced but is not declared with type slab_rate.',
+                'Change its variable type to slab_rate so the value always comes from Pricing Management.'
+            );
+        }
+        $requiresSlab = $slabNameReferenced || $referencedVariables->contains(
             fn (array $variable) => ($variable['type'] ?? null) === 'slab_rate'
         );
         $commonRateKeys = $referencedVariables
@@ -399,7 +415,11 @@ class PricingCalculationDefinitionHealthService
             ->whereIn('slab_definition_id', $slabs->pluck('id'))
             ->where('is_active', true)
             ->get();
-        $pricedSlabIds = $pricing->pluck('slab_definition_id')->unique();
+        $publicPricing = $pricing
+            ->whereNull('owner_type')
+            ->whereNull('owner_id')
+            ->values();
+        $pricedSlabIds = $publicPricing->pluck('slab_definition_id')->unique();
         $unpricedSlabs = $slabs->reject(fn ($slab) => $pricedSlabIds->contains($slab->id))->values();
 
         foreach ($unpricedSlabs as $slab) {
@@ -414,6 +434,54 @@ class PricingCalculationDefinitionHealthService
             );
         }
 
+        $applicableGroupIds = $this->applicableVehicleGroupIds($serviceTypeId, [
+            $pricing->pluck('vehicle_group_id'),
+        ]);
+        $missingPublicPairs = [];
+        foreach ($slabs as $slab) {
+            foreach ($applicableGroupIds as $vehicleGroupId) {
+                $hasPublicValue = $publicPricing->contains(
+                    fn ($row) => (string) $row->slab_definition_id === (string) $slab->id
+                        && (string) $row->vehicle_group_id === (string) $vehicleGroupId
+                        && is_numeric($row->rate)
+                );
+                if (!$hasPublicValue) {
+                    $missingPublicPairs[] = [
+                        'slab_definition_id' => (string) $slab->id,
+                        'vehicle_group_id' => (string) $vehicleGroupId,
+                    ];
+                }
+            }
+        }
+        if ($missingPublicPairs !== []) {
+            $issues[] = $this->issue(
+                'missing_public_slab_group_values',
+                'error',
+                'slab_dependency',
+                $serviceTypeId,
+                [$definitionId],
+                count($missingPublicPairs) . ' active slab/vehicle-group combinations have no public price value.',
+                'Configure a public baseline for every applicable vehicle group and slab; corporate rows are overrides only.'
+            );
+        }
+
+        $rateTypes = $pricing
+            ->pluck('rate_type')
+            ->filter(fn ($type) => is_string($type) && trim($type) !== '')
+            ->unique()
+            ->values();
+        if ($rateTypes->count() > 1) {
+            $issues[] = $this->issue(
+                'ambiguous_slab_rate_types',
+                'error',
+                'slab_dependency',
+                $serviceTypeId,
+                [$definitionId],
+                'Active slab values mix rate types: ' . $rateTypes->implode(', ') . '.',
+                'Use one rate type for all public and corporate values consumed by this calculation formula.'
+            );
+        }
+
         return [
             'required' => true,
             'status' => $this->statusForIssues($issues),
@@ -424,6 +492,9 @@ class PricingCalculationDefinitionHealthService
                 'priced_slab_count' => $pricedSlabIds->count(),
                 'pricing_value_count' => $pricing->count(),
                 'unpriced_slab_ids' => $unpricedSlabs->pluck('id')->values()->all(),
+                'applicable_vehicle_group_ids' => $applicableGroupIds->all(),
+                'missing_public_group_values' => $missingPublicPairs,
+                'rate_types' => $rateTypes->all(),
                 'public_value_count' => $pricing->whereNull('owner_type')->count(),
                 'corporate_value_count' => $pricing->where('owner_type', 'corporate')->count(),
             ],
@@ -436,13 +507,22 @@ class PricingCalculationDefinitionHealthService
         string $definitionId,
         string $rateKey
     ): array {
-        $definitions = VehiclePricingCommonRateDefinition::withInactive()
-            ->where('service_type_id', $serviceTypeId)
+        $allDefinitions = VehiclePricingCommonRateDefinition::withInactive()
+            ->where(function ($query) use ($serviceTypeId) {
+                $query->where('service_type_id', $serviceTypeId)
+                    ->orWhereNull('service_type_id');
+            })
             ->where('is_active', true)
             ->where(function ($query) use ($rateKey) {
                 $query->where('code', $rateKey)->orWhere('name', $rateKey);
             })
             ->get();
+        $exactDefinitions = $allDefinitions->where('service_type_id', $serviceTypeId);
+        if ($exactDefinitions->isNotEmpty()) {
+            $definitions = $exactDefinitions->values();
+        } else {
+            $definitions = $allDefinitions->whereNull('service_type_id')->values();
+        }
         $issues = [];
 
         if ($definitions->isEmpty()) {
@@ -468,7 +548,7 @@ class PricingCalculationDefinitionHealthService
         }
 
         $values = VehicleGroupCommonRatePricing::withInactive()
-            ->whereIn('common_rate_definition_id', $definitions->pluck('id'))
+            ->whereIn('common_rate_definition_id', $allDefinitions->pluck('id'))
             ->where('is_active', true)
             ->get();
         if ($definitions->isNotEmpty() && $values->isEmpty()) {
@@ -483,19 +563,113 @@ class PricingCalculationDefinitionHealthService
             );
         }
 
+        $definitionServiceIds = $allDefinitions->mapWithKeys(
+            fn ($definition) => [(string) $definition->id => $definition->service_type_id]
+        );
+        $publicValues = $values
+            ->whereNull('owner_type')
+            ->whereNull('owner_id')
+            ->filter(fn ($row) => is_numeric($row->value))
+            ->values();
+        $applicableGroupIds = $this->applicableVehicleGroupIds($serviceTypeId, [
+            $values->pluck('vehicle_group_id'),
+        ]);
+        $missingPublicGroups = $applicableGroupIds->reject(function ($vehicleGroupId) use (
+            $publicValues,
+            $definitionServiceIds,
+            $serviceTypeId
+        ) {
+            $candidates = $publicValues->filter(
+                fn ($row) => (string) $row->vehicle_group_id === (string) $vehicleGroupId
+            );
+
+            return $candidates->contains(function ($row) use ($definitionServiceIds, $serviceTypeId) {
+                $definitionServiceId = $definitionServiceIds[(string) $row->common_rate_definition_id] ?? null;
+
+                return $definitionServiceId === null
+                    || (string) $definitionServiceId === (string) $serviceTypeId;
+            });
+        })->values();
+        if ($missingPublicGroups->isNotEmpty()) {
+            $issues[] = $this->issue(
+                'missing_public_common_rate_group_values',
+                'error',
+                'common_rate_dependency',
+                $serviceTypeId,
+                [$definitionId],
+                "Common rate {$rateKey} has no public value for " . $missingPublicGroups->count() . ' applicable vehicle group(s).',
+                'Configure a public baseline for each applicable vehicle group; corporate rows are overrides only.'
+            );
+        }
+
         return [
             'required' => true,
             'rate_key' => $rateKey,
             'status' => $this->statusForIssues($issues),
             'issues' => $issues,
             'details' => [
-                'definition_ids' => $definitions->pluck('id')->values()->all(),
-                'definition_count' => $definitions->count(),
+                'definition_ids' => $allDefinitions->pluck('id')->values()->all(),
+                'preferred_definition_ids' => $definitions->pluck('id')->values()->all(),
+                'definition_count' => $allDefinitions->count(),
                 'pricing_value_count' => $values->count(),
                 'public_value_count' => $values->whereNull('owner_type')->count(),
                 'corporate_value_count' => $values->where('owner_type', 'corporate')->count(),
+                'applicable_vehicle_group_ids' => $applicableGroupIds->all(),
+                'missing_public_vehicle_group_ids' => $missingPublicGroups->all(),
             ],
         ];
+    }
+
+    /**
+     * Resolve groups that can be offered for the service. Production uses all
+     * active, non-inquiry, non-hidden groups; focused tests without the group
+     * tables fall back to the group IDs present in their dependency fixtures.
+     *
+     * @param array<int, Collection> $fallbackCollections
+     */
+    private function applicableVehicleGroupIds(
+        string $serviceTypeId,
+        array $fallbackCollections = []
+    ): Collection {
+        if (Schema::hasTable('vehicle_groups')) {
+            $query = DB::table('vehicle_groups')->select('id');
+            if (Schema::hasColumn('vehicle_groups', 'is_active')) {
+                $query->where('is_active', true);
+            }
+            if (Schema::hasColumn('vehicle_groups', 'is_inquiry_only')) {
+                $query->where(function ($scope) {
+                    $scope->whereNull('is_inquiry_only')->orWhere('is_inquiry_only', false);
+                });
+            }
+            if (Schema::hasColumn('vehicle_groups', 'deleted_at')) {
+                $query->whereNull('deleted_at');
+            }
+
+            if (Schema::hasTable('vehicle_group_service_pricing_settings')) {
+                $hidden = DB::table('vehicle_group_service_pricing_settings')
+                    ->where('service_type_id', $serviceTypeId)
+                    ->where(function ($scope) {
+                        $scope->where('is_hidden', true)->orWhere('is_inquiry_only', true);
+                    })
+                    ->when(
+                        Schema::hasColumn('vehicle_group_service_pricing_settings', 'deleted_at'),
+                        fn ($settings) => $settings->whereNull('deleted_at')
+                    )
+                    ->pluck('vehicle_group_id');
+                if ($hidden->isNotEmpty()) {
+                    $query->whereNotIn('id', $hidden);
+                }
+            }
+
+            return $query->pluck('id')->map(fn ($id) => (string) $id)->unique()->values();
+        }
+
+        return collect($fallbackCollections)
+            ->flatMap(fn ($ids) => collect($ids))
+            ->filter()
+            ->map(fn ($id) => (string) $id)
+            ->unique()
+            ->values();
     }
 
     /** @return array<int, array<string, mixed>> */

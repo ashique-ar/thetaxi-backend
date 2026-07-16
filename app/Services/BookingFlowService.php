@@ -42,6 +42,7 @@ use Ramsey\Uuid\Uuid;
 use App\Services\PricingVariableService;
 use App\Services\AssignmentService;
 use App\Services\Pricing\PricingDefinitionOrchestrator;
+use App\Services\Pricing\PricingHolidayCalendarService;
 use App\Notifications\BookingLifecycleNotification;
 use Illuminate\Validation\ValidationException;
 
@@ -3930,11 +3931,21 @@ class BookingFlowService
                 $params['contractual_distance_calculation'] = $calculationInputs;
             }
             $transformed = $this->transformCalculationResult($calculationResult, $params, $mode, $servicePackageInfo);
+            $transformed['calculation_metadata']['candidate_failures'] = collect($candidateFailures)
+                ->map(fn (array $failure) => [
+                    'definition_id' => $failure['definition_id'] ?? null,
+                    'reason' => $failure['reason'] ?? 'unknown',
+                    'missing_variables' => array_values($failure['missing_variables'] ?? []),
+                ])
+                ->values()
+                ->all();
             $transformed['calculation_metadata']['runtime_context'] = collect($calculationInputs)
                 ->only([
                     'from_date', 'to_date', 'from_time', 'to_time',
                     'is_weekend', 'is_holiday', 'month', 'day_of_week',
+                    'holiday_context',
                     'customer_type', 'customer_tier', 'owner_type', 'owner_id',
+                    'is_self_driven', 'booking_type',
                     'package_id', 'package_included_km', 'additional_stops', 'stops',
                     'manual_additional_charge', 'late_return_fee',
                 ])
@@ -3972,23 +3983,35 @@ class BookingFlowService
     {
         $hasDurationMinutes = array_key_exists('duration_minutes', $params) && is_numeric($params['duration_minutes']);
         $hasDurationHours = array_key_exists('duration_hours', $params) && is_numeric($params['duration_hours']);
-        $durationMinutes = $hasDurationMinutes
-            ? (float) $params['duration_minutes']
-            : (float) (($hasDurationHours ? $params['duration_hours'] : 24) * 60);
-        $durationHours = $hasDurationHours
-            ? (float) $params['duration_hours']
-            : $durationMinutes / 60;
-        $durationDays = array_key_exists('duration_days', $params)
-            ? (float) $params['duration_days']
-            : ($durationHours >= 24 ? (float) ceil($durationHours / 24) : 0.0);
+        $hasDurationDays = array_key_exists('duration_days', $params) && is_numeric($params['duration_days']);
 
-        $inputs = [
-            'vehicle_group_id' => $params['vehicle_group_id'],
-            'duration_hours' => $durationHours,
-            'duration_minutes' => $durationMinutes,
-            'duration_days' => $durationDays,
-            'number_of_days' => max(1, (int) ceil($durationMinutes / 1440)),
-        ];
+        $inputs = [];
+        if (array_key_exists('vehicle_group_id', $params)) {
+            $inputs['vehicle_group_id'] = $params['vehicle_group_id'];
+        }
+
+        // Missing duration is missing evidence, not an implicit one-day hire.
+        // When multiple units are supplied, exact minutes are canonical.
+        if ($hasDurationMinutes || $hasDurationHours || $hasDurationDays) {
+            $durationMinutes = $hasDurationMinutes
+                ? (float) $params['duration_minutes']
+                : ($hasDurationHours
+                    ? (float) $params['duration_hours'] * 60
+                    : (float) $params['duration_days'] * 1440);
+            $durationHours = $durationMinutes / 60;
+            $durationDays = $hasDurationDays
+                ? (float) $params['duration_days']
+                : ($durationHours >= 24 ? (float) ceil($durationHours / 24) : 0.0);
+
+            $inputs += [
+                'duration_hours' => $durationHours,
+                'duration_minutes' => $durationMinutes,
+                'duration_days' => $durationDays,
+                'number_of_days' => array_key_exists('number_of_days', $params) && is_numeric($params['number_of_days'])
+                    ? max(1, (int) $params['number_of_days'])
+                    : max(1, (int) ceil($durationMinutes / 1440)),
+            ];
+        }
 
         // Runtime/final-pricing flows provide measured values directly instead
         // of asking Google Maps to estimate the original route again.
@@ -4002,6 +4025,18 @@ class BookingFlowService
             if (array_key_exists($runtimeInput, $params) && is_numeric($params[$runtimeInput])) {
                 $inputs[$runtimeInput] = (float) $params[$runtimeInput];
             }
+        }
+        if (array_key_exists('is_self_driven', $params)) {
+            $inputs['is_self_driven'] = filter_var(
+                $params['is_self_driven'],
+                FILTER_VALIDATE_BOOL,
+                FILTER_NULL_ON_FAILURE
+            ) ?? (bool) $params['is_self_driven'];
+        }
+        if (!empty($params['booking_type'])) {
+            $inputs['booking_type'] = (string) $params['booking_type'];
+        } elseif (array_key_exists('is_self_driven', $inputs)) {
+            $inputs['booking_type'] = $inputs['is_self_driven'] ? 'self_drive' : 'with_driver';
         }
 
         // Preserve the booking/search date window for downstream pricing rules
@@ -4178,8 +4213,10 @@ class BookingFlowService
         // Add time-based factors
         if (isset($params['from_date'])) {
             $fromDate = Carbon::parse($params['from_date']);
-            $inputs['is_weekend'] = $fromDate->isWeekend();
-            $inputs['is_holiday'] = $this->isHoliday($fromDate);
+            $holidayContext = app(PricingHolidayCalendarService::class)->evaluate($fromDate);
+            $inputs['is_weekend'] = $fromDate->isWeekend() ? 1 : 0;
+            $inputs['is_holiday'] = $holidayContext['is_holiday'] ? 1 : 0;
+            $inputs['holiday_context'] = $holidayContext;
             $inputs['month'] = $fromDate->month;
             $inputs['day_of_week'] = $fromDate->dayOfWeek;
         }
@@ -4289,6 +4326,7 @@ class BookingFlowService
             ] : null,
             'distance_details' => $distanceDetails,
             'adjustment_details' => $adjustmentDetails,
+            'formula_evaluation' => $calculationResult['formula_evaluation'] ?? null,
             'distance_policy' => $contractual['distance_policy'] ?? null,
             'contractual_movement_charge' => $movementCharge ?: null,
             'service_type_id' => $params['service_type_id'] ?? null,
@@ -4305,10 +4343,13 @@ class BookingFlowService
             'adjustment_details' => $adjustmentDetails,
             'distance_policy' => $contractual['distance_policy'] ?? null,
             'contractual_movement_charge' => $movementCharge ?: null,
+            'formula_evaluation' => $calculationResult['formula_evaluation'] ?? null,
             'calculation_metadata' => [
                 'definition_used' => $calculationResult['definition_id'] ?? null,
                 'variables_used' => $calculationResult['variables_used'] ?? [],
                 'resolved_variables' => $calculationResult['resolved_variables'] ?? [],
+                'rate_sources' => $calculationResult['rate_sources'] ?? [],
+                'formula_evaluation' => $calculationResult['formula_evaluation'] ?? null,
                 'conditions_evaluated' => $calculationResult['conditions_evaluated'] ?? [],
                 'calculation_mode' => $mode
             ]
@@ -4469,9 +4510,13 @@ class BookingFlowService
     {
         try {
             // Look up the extra_km_rate common rate definition for this service type
-            $commonRatePricing = VehicleGroupCommonRatePricing::whereHas('commonRateDefinition', function ($query) use ($serviceTypeId) {
+            $commonRatePricing = VehicleGroupCommonRatePricing::with('commonRateDefinition')
+                ->whereHas('commonRateDefinition', function ($query) use ($serviceTypeId) {
                 $query->where('code', 'extra_km_rate')
-                    ->where('service_type_id', $serviceTypeId)
+                    ->where(function ($serviceQuery) use ($serviceTypeId) {
+                        $serviceQuery->where('service_type_id', $serviceTypeId)
+                            ->orWhereNull('service_type_id');
+                    })
                     ->where('is_active', true);
             })
                 ->where('vehicle_group_id', $vehicleGroupId)
@@ -4481,6 +4526,18 @@ class BookingFlowService
                 }, fn ($query) => $query->whereNull('owner_type')->whereNull('owner_id'))
                 ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $ownerType, $ownerId))
                 ->orderBy('priority', 'desc')
+                ->get()
+                ->sort(fn ($left, $right) => $this->commonRatePricingRank(
+                    $left,
+                    $serviceTypeId,
+                    $ownerType,
+                    $ownerId
+                ) <=> $this->commonRatePricingRank(
+                    $right,
+                    $serviceTypeId,
+                    $ownerType,
+                    $ownerId
+                ))
                 ->first();
 
             if ($commonRatePricing && $commonRatePricing->value !== null) {
@@ -4494,8 +4551,12 @@ class BookingFlowService
 
             // Fallback: Try to get a default rate from the common rate definition itself
             $commonRateDefinition = VehiclePricingCommonRateDefinition::where('code', 'extra_km_rate')
-                ->where('service_type_id', $serviceTypeId)
+                ->where(function ($query) use ($serviceTypeId) {
+                    $query->where('service_type_id', $serviceTypeId)
+                        ->orWhereNull('service_type_id');
+                })
                 ->where('is_active', true)
+                ->orderByRaw('CASE WHEN service_type_id = ? THEN 0 ELSE 1 END', [$serviceTypeId])
                 ->orderBy('priority', 'desc')
                 ->first();
 
@@ -4533,7 +4594,10 @@ class BookingFlowService
             $commonRatePricing = VehicleGroupCommonRatePricing::with('commonRateDefinition')
                 ->whereHas('commonRateDefinition', function ($query) use ($serviceTypeId, $normalizedCode) {
                     $query->whereRaw('LOWER(code) = ?', [$normalizedCode])
-                        ->where('service_type_id', $serviceTypeId)
+                        ->where(function ($serviceQuery) use ($serviceTypeId) {
+                            $serviceQuery->where('service_type_id', $serviceTypeId)
+                                ->orWhereNull('service_type_id');
+                        })
                         ->where('is_active', true);
                 })
                 ->where('vehicle_group_id', $vehicleGroupId)
@@ -4543,6 +4607,18 @@ class BookingFlowService
                 }, fn ($query) => $query->whereNull('owner_type')->whereNull('owner_id'))
                 ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $ownerType, $ownerId))
                 ->orderBy('priority', 'desc')
+                ->get()
+                ->sort(fn ($left, $right) => $this->commonRatePricingRank(
+                    $left,
+                    $serviceTypeId,
+                    $ownerType,
+                    $ownerId
+                ) <=> $this->commonRatePricingRank(
+                    $right,
+                    $serviceTypeId,
+                    $ownerType,
+                    $ownerId
+                ))
                 ->first();
 
             if (!$commonRatePricing || $commonRatePricing->value === null) {
@@ -4579,6 +4655,25 @@ class BookingFlowService
         }
 
         $query->whereNull('owner_type')->whereNull('owner_id');
+    }
+
+    private function commonRatePricingRank(
+        VehicleGroupCommonRatePricing $pricing,
+        string $serviceTypeId,
+        ?string $ownerType,
+        ?string $ownerId
+    ): array {
+        $ownerExact = $ownerType && $ownerId
+            && $pricing->owner_type === $ownerType
+            && (string) $pricing->owner_id === (string) $ownerId;
+
+        return [
+            (string) $pricing->commonRateDefinition?->service_type_id === (string) $serviceTypeId ? 0 : 1,
+            $ownerExact ? 0 : 1,
+            -((int) $pricing->priority),
+            -((int) ($pricing->commonRateDefinition?->priority ?? 0)),
+            (string) $pricing->id,
+        ];
     }
 
     private function applyOwnerPriorityOrder($query, ?string $ownerType, ?string $ownerId): void
@@ -6000,15 +6095,11 @@ class BookingFlowService
     }
 
     /**
-     * Check if a date is a holiday (simple stub; replace with DB/API as needed)
+     * Check the same configurable holiday calendar used by runtime audits.
      */
     private function isHoliday(Carbon $date): bool
     {
-        $holidays = [
-            '01-01', // New Year's Day
-            '12-25', // Christmas
-        ];
-        return in_array($date->format('m-d'), $holidays, true);
+        return app(PricingHolidayCalendarService::class)->isHoliday($date);
     }
 
     /**

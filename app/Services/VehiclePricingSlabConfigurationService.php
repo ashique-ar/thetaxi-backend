@@ -9,6 +9,10 @@ use Illuminate\Support\Collection;
 class VehiclePricingSlabConfigurationService
 {
     public const DURATION_PRECEDENCE = ['minutes', 'hours', 'days', 'per_day'];
+    public const LEGACY_PRICING_PRECEDENCE = ['flat_rate', 'per_km'];
+    public const RESOLUTION_PRECEDENCE = [
+        'minutes', 'hours', 'days', 'per_day', 'flat_rate', 'per_km',
+    ];
 
     private const UNIT_FACTORS = [
         'minutes' => 1,
@@ -56,6 +60,51 @@ class VehiclePricingSlabConfigurationService
 
             if ($definition) {
                 return $definition;
+            }
+        }
+
+        // Legacy flat-rate and per-km slabs can be either hour-bounded package
+        // rows (as seeded historically) or one duration-independent fallback.
+        // Bounded rows win within their type; the fallback handles durations
+        // outside those explicit packages. Health validation guarantees that
+        // this deterministic order never silently hides another active type.
+        foreach (self::LEGACY_PRICING_PRECEDENCE as $type) {
+            foreach (['minutes', 'hours', 'days'] as $basis) {
+                [$minimumKey, $maximumKey] = $this->rangeKeys($basis);
+                $value = $this->durationValue($basis, $durationMinutes, $durationDays);
+                $definition = (clone $baseQuery)
+                    ->where('type', $type)
+                    ->whereNotNull($minimumKey)
+                    ->where($minimumKey, '<=', $value)
+                    ->where(function (Builder $rangeQuery) use ($maximumKey, $value) {
+                        $rangeQuery->whereNull($maximumKey)->orWhere($maximumKey, '>=', $value);
+                    })
+                    ->orderByDesc('priority')
+                    ->orderByDesc($minimumKey)
+                    ->orderBy('sort_order')
+                    ->orderBy('id')
+                    ->first();
+
+                if ($definition) {
+                    return $definition;
+                }
+            }
+
+            $fallback = (clone $baseQuery)
+                ->where('type', $type)
+                ->whereNull('min_minutes')
+                ->whereNull('max_minutes')
+                ->whereNull('min_hours')
+                ->whereNull('max_hours')
+                ->whereNull('min_days')
+                ->whereNull('max_days')
+                ->orderByDesc('priority')
+                ->orderBy('sort_order')
+                ->orderBy('id')
+                ->first();
+
+            if ($fallback) {
+                return $fallback;
             }
         }
 
@@ -142,6 +191,23 @@ class VehiclePricingSlabConfigurationService
                 );
             }
 
+            $unsupportedDefinitions = $serviceDefinitions->filter(function ($definition) {
+                $type = $this->normalizedType((string) $this->value($definition, 'type', 'hours'));
+                return !in_array($type, self::RESOLUTION_PRECEDENCE, true);
+            });
+            foreach ($unsupportedDefinitions as $definition) {
+                $serviceIssues[] = $this->issue(
+                    'unsupported_slab_type',
+                    'error',
+                    $serviceId,
+                    null,
+                    [(string) $this->value($definition, 'id', '')],
+                    'Slab ' . $this->value($definition, 'name', 'Unnamed slab')
+                        . ' uses an unsupported pricing type.',
+                    'Change it to a supported minute, hour, day, flat-rate, or per-km type.'
+                );
+            }
+
             foreach (self::DURATION_PRECEDENCE as $type) {
                 $unitDefinitions = $serviceDefinitions
                     ->filter(fn ($definition) => $this->normalizedType(
@@ -152,6 +218,19 @@ class VehiclePricingSlabConfigurationService
                 $units[$type] = $unitHealth;
                 array_push($serviceIssues, ...$unitHealth['issues']);
             }
+            foreach (self::LEGACY_PRICING_PRECEDENCE as $type) {
+                $unitDefinitions = $serviceDefinitions
+                    ->filter(fn ($definition) => $this->normalizedType(
+                        (string) $this->value($definition, 'type', '')
+                    ) === $type)
+                    ->values();
+                $unitHealth = $this->analyzeLegacyUnit($serviceId, $type, $unitDefinitions);
+                $units[$type] = $unitHealth;
+                array_push($serviceIssues, ...$unitHealth['issues']);
+            }
+
+            $resolutionIssues = $this->resolutionIntegrityIssues($serviceId, $units, $serviceDefinitions);
+            array_push($serviceIssues, ...$resolutionIssues);
 
             $serviceResult = [
                 'service_type_id' => $serviceId,
@@ -159,6 +238,7 @@ class VehiclePricingSlabConfigurationService
                 'healthy' => !$this->containsErrors($serviceIssues),
                 'active_definitions' => $serviceDefinitions->count(),
                 'units' => $units,
+                'resolution_precedence' => self::RESOLUTION_PRECEDENCE,
                 'issues' => $serviceIssues,
             ];
             $services[$serviceId] = $serviceResult;
@@ -169,11 +249,15 @@ class VehiclePricingSlabConfigurationService
             'healthy' => !$this->containsErrors($allIssues),
             'canonical_unit' => 'minutes',
             'precedence' => self::DURATION_PRECEDENCE,
+            'legacy_pricing_precedence' => self::LEGACY_PRICING_PRECEDENCE,
+            'resolution_precedence' => self::RESOLUTION_PRECEDENCE,
             'matching_rules' => [
                 'minutes' => 'Exact elapsed minutes',
                 'hours' => 'Elapsed minutes rounded up to the next whole hour',
                 'days' => 'Calendar days when supplied; otherwise elapsed minutes rounded up to whole days',
                 'per_day' => 'Calendar days when supplied; otherwise elapsed minutes rounded up to whole days',
+                'flat_rate' => 'Explicit legacy minute/hour/day package range, then one duration-independent fallback',
+                'per_km' => 'Explicit legacy minute/hour/day range, then one duration-independent fallback',
             ],
             'summary' => [
                 'services' => count($services),
@@ -238,6 +322,231 @@ class VehiclePricingSlabConfigurationService
                 return $sameService && $sameType;
             });
         });
+    }
+
+    /**
+     * Legacy flat-rate/per-km definitions historically stored optional hour
+     * package ranges. Range gaps are intentional for discrete packages, while
+     * overlaps are ambiguous. A completely range-less row is an explicit
+     * duration-independent fallback; only one fallback per type is valid.
+     *
+     * @param Collection<int, array<string, mixed>|object> $definitions
+     * @return array<string, mixed>
+     */
+    private function analyzeLegacyUnit(string $serviceId, string $type, Collection $definitions): array
+    {
+        $issues = [];
+        $boundedRanges = collect();
+        $fallbackRanges = collect();
+
+        foreach ($definitions as $definition) {
+            $bases = $this->configuredRangeBases($definition);
+            if ($bases === []) {
+                $fallbackRanges->push($this->fallbackRange($definition, $type));
+                continue;
+            }
+
+            if (count($bases) > 1) {
+                $issues[] = $this->issue(
+                    'mixed_legacy_range_units',
+                    'error',
+                    $serviceId,
+                    $type,
+                    [(string) $this->value($definition, 'id', '')],
+                    $this->value($definition, 'name', 'Legacy slab')
+                        . ' mixes minute, hour, or day boundaries.',
+                    'Keep one range unit on this legacy slab; hours are supported for existing package rows.'
+                );
+            }
+
+            $basis = $bases[0];
+            $range = $this->canonicalRangeForBasis($definition, $type, $basis);
+            if ($range['raw_min'] === null) {
+                $issues[] = $this->issue(
+                    'missing_minimum',
+                    'error',
+                    $serviceId,
+                    $type,
+                    [$range['id']],
+                    "{$range['name']} has a maximum but no minimum {$basis} value.",
+                    'Add the matching minimum or clear every range field to make this the fallback.'
+                );
+            } elseif ($range['raw_max'] !== null && $range['raw_max'] < $range['raw_min']) {
+                $issues[] = $this->issue(
+                    'maximum_below_minimum',
+                    'error',
+                    $serviceId,
+                    $type,
+                    [$range['id']],
+                    "{$range['name']} ends before it starts.",
+                    'Set the maximum equal to or greater than the minimum.'
+                );
+            }
+            $boundedRanges->push($range);
+        }
+
+        if ($fallbackRanges->count() > 1) {
+            $issues[] = $this->issue(
+                'duplicate_duration_independent_fallback',
+                'error',
+                $serviceId,
+                $type,
+                $fallbackRanges->pluck('id')->all(),
+                'More than one duration-independent ' . str_replace('_', ' ', $type) . ' slab is active.',
+                'Keep one fallback for this type, or add explicit legacy hour ranges to the others.'
+            );
+        }
+
+        $validRanges = $boundedRanges
+            ->filter(fn (array $range) => $range['canonical_min_minutes'] !== null
+                && ($range['canonical_max_minutes'] === null
+                    || $range['canonical_max_minutes'] >= $range['canonical_min_minutes']))
+            ->sortBy([
+                ['canonical_min_minutes', 'asc'],
+                ['canonical_max_minutes', 'asc'],
+                ['id', 'asc'],
+            ])
+            ->values();
+        $coverage = null;
+        foreach ($validRanges as $range) {
+            if ($coverage === null) {
+                $coverage = $range;
+                continue;
+            }
+            if ($coverage['canonical_max_minutes'] === null
+                || $range['canonical_min_minutes'] <= $coverage['canonical_max_minutes']) {
+                $issues[] = $this->issue(
+                    'overlap',
+                    'error',
+                    $serviceId,
+                    $type,
+                    [$coverage['id'], $range['id']],
+                    "{$coverage['name']} overlaps {$range['name']}.",
+                    'Make legacy package ranges mutually exclusive; use priority on calculation definitions, not overlapping slabs.'
+                );
+                if ($coverage['canonical_max_minutes'] !== null
+                    && ($range['canonical_max_minutes'] === null
+                        || $range['canonical_max_minutes'] > $coverage['canonical_max_minutes'])) {
+                    $coverage = $range;
+                }
+                continue;
+            }
+            $coverage = $range;
+        }
+
+        $ranges = $validRanges
+            ->concat($fallbackRanges)
+            ->sortBy([
+                ['fallback', 'asc'],
+                ['canonical_min_minutes', 'asc'],
+                ['id', 'asc'],
+            ])
+            ->values();
+
+        return [
+            'type' => $type,
+            'configured' => $definitions->isNotEmpty(),
+            'healthy' => !$this->containsErrors($issues),
+            'definition_count' => $definitions->count(),
+            'fallback_count' => $fallbackRanges->count(),
+            'ranges' => $ranges->all(),
+            'issues' => $issues,
+        ];
+    }
+
+    /**
+     * Ensure the ordered resolver has a safe first billable minute and does
+     * not contain lower-precedence rows that can never be selected.
+     *
+     * @param array<string, array<string, mixed>> $units
+     * @param Collection<int, array<string, mixed>|object> $definitions
+     * @return array<int, array<string, mixed>>
+     */
+    private function resolutionIntegrityIssues(
+        string $serviceId,
+        array $units,
+        Collection $definitions
+    ): array {
+        $issues = [];
+        $ranges = collect($units)
+            ->flatMap(fn (array $unit) => $unit['ranges'] ?? [])
+            ->filter(fn (array $range) => $range['canonical_min_minutes'] !== null
+                && ($range['canonical_max_minutes'] === null
+                    || $range['canonical_max_minutes'] >= $range['canonical_min_minutes']))
+            ->map(function (array $range) {
+                $range['resolution_rank'] = array_search(
+                    $range['type'],
+                    self::RESOLUTION_PRECEDENCE,
+                    true
+                );
+                return $range;
+            })
+            ->filter(fn (array $range) => $range['resolution_rank'] !== false)
+            ->values();
+        $hasDurationDefinitions = $definitions->contains(fn ($definition) => in_array(
+            $this->normalizedType((string) $this->value($definition, 'type', 'hours')),
+            self::DURATION_PRECEDENCE,
+            true
+        ));
+
+        if ($hasDurationDefinitions && !$ranges->contains(
+            fn (array $range) => $this->rangeContainsMinute($range, 1)
+        )) {
+            $first = $ranges->sortBy('canonical_min_minutes')->first();
+            $issues[] = $this->issue(
+                'unsafe_leading_gap',
+                'error',
+                $serviceId,
+                null,
+                $first ? [$first['id']] : [],
+                'No active slab can resolve the first billable minute.',
+                'Start one duration range at the first billable unit or add one duration-independent fallback.'
+            );
+        }
+
+        foreach ($ranges as $range) {
+            if ($range['canonical_max_minutes'] !== null
+                && $range['canonical_max_minutes'] < 1) {
+                $issues[] = $this->issue(
+                    'no_positive_duration_coverage',
+                    'error',
+                    $serviceId,
+                    null,
+                    [$range['id']],
+                    "{$range['name']} cannot resolve any positive booking duration.",
+                    'Use a range that includes at least one billable minute.'
+                );
+                continue;
+            }
+
+            $effectiveStart = max(1, (int) $range['canonical_min_minutes']);
+            $higherRanges = $ranges->filter(fn (array $higher) => $higher['resolution_rank'] < $range['resolution_rank']);
+            if ($higherRanges->isEmpty()
+                || !$this->rangesCover($higherRanges, $effectiveStart, $range['canonical_max_minutes'])) {
+                continue;
+            }
+
+            $coveringIds = $higherRanges
+                ->filter(fn (array $higher) => $this->rangesIntersect(
+                    $higher,
+                    $effectiveStart,
+                    $range['canonical_max_minutes']
+                ))
+                ->pluck('id')
+                ->values()
+                ->all();
+            $issues[] = $this->issue(
+                'cross_unit_fully_shadowed',
+                'error',
+                $serviceId,
+                null,
+                array_values(array_unique(array_merge([$range['id']], $coveringIds))),
+                "{$range['name']} can never resolve because higher-precedence slab types cover its entire range.",
+                'Remove the shadowed slab, narrow the higher-precedence ranges, or use mutually exclusive calculation conditions.'
+            );
+        }
+
+        return $issues;
     }
 
     /**
@@ -372,23 +681,67 @@ class VehiclePricingSlabConfigurationService
     /** @return array<string, mixed> */
     private function canonicalRange(array|object $definition, string $type): array
     {
-        [$minimumKey, $maximumKey] = $this->rangeKeys($type);
+        $basis = match ($this->normalizedType($type)) {
+            'minutes' => 'minutes',
+            'days', 'per_day' => 'days',
+            default => 'hours',
+        };
+
+        return $this->canonicalRangeForBasis($definition, $type, $basis);
+    }
+
+    /** @return array<string, mixed> */
+    private function canonicalRangeForBasis(array|object $definition, string $type, string $basis): array
+    {
+        [$minimumKey, $maximumKey] = $this->rangeKeys($basis);
         $minimum = $this->nullableInteger($this->value($definition, $minimumKey));
         $maximum = $this->nullableInteger($this->value($definition, $maximumKey));
-        $factor = self::UNIT_FACTORS[$type];
+        $factor = self::UNIT_FACTORS[$basis];
 
         return [
             'id' => (string) $this->value($definition, 'id', ''),
             'name' => (string) $this->value($definition, 'name', 'Unnamed slab'),
             'type' => $type,
+            'resolution_basis' => $basis,
             'raw_min' => $minimum,
             'raw_max' => $maximum,
             'canonical_min_minutes' => $minimum === null
                 ? null
-                : ($type === 'minutes' || $minimum === 0 ? $minimum * $factor : (($minimum - 1) * $factor) + 1),
+                : ($basis === 'minutes' || $minimum === 0 ? $minimum * $factor : (($minimum - 1) * $factor) + 1),
             'canonical_max_minutes' => $maximum === null ? null : $maximum * $factor,
             'open_ended' => $maximum === null,
+            'fallback' => false,
         ];
+    }
+
+    /** @return array<string, mixed> */
+    private function fallbackRange(array|object $definition, string $type): array
+    {
+        return [
+            'id' => (string) $this->value($definition, 'id', ''),
+            'name' => (string) $this->value($definition, 'name', 'Unnamed slab'),
+            'type' => $type,
+            'resolution_basis' => 'fallback',
+            'raw_min' => null,
+            'raw_max' => null,
+            'canonical_min_minutes' => 0,
+            'canonical_max_minutes' => null,
+            'open_ended' => true,
+            'fallback' => true,
+        ];
+    }
+
+    /** @return array<int, string> */
+    private function configuredRangeBases(array|object $definition): array
+    {
+        return collect(['minutes', 'hours', 'days'])
+            ->filter(function (string $basis) use ($definition) {
+                [$minimumKey, $maximumKey] = $this->rangeKeys($basis);
+                return $this->value($definition, $minimumKey) !== null
+                    || $this->value($definition, $maximumKey) !== null;
+            })
+            ->values()
+            ->all();
     }
 
     /** @return array{0: string, 1: string} */
@@ -414,6 +767,51 @@ class VehiclePricingSlabConfigurationService
     private function nullableInteger(mixed $value): ?int
     {
         return $value === null || $value === '' ? null : (int) $value;
+    }
+
+    private function rangeContainsMinute(array $range, int $minute): bool
+    {
+        return $range['canonical_min_minutes'] <= $minute
+            && ($range['canonical_max_minutes'] === null
+                || $range['canonical_max_minutes'] >= $minute);
+    }
+
+    /** @param Collection<int, array<string, mixed>> $ranges */
+    private function rangesCover(Collection $ranges, int $minimum, ?int $maximum): bool
+    {
+        $cursor = $minimum;
+        $ordered = $ranges->sortBy([
+            ['canonical_min_minutes', 'asc'],
+            ['canonical_max_minutes', 'asc'],
+        ]);
+
+        foreach ($ordered as $range) {
+            $rangeMaximum = $range['canonical_max_minutes'];
+            if ($rangeMaximum !== null && $rangeMaximum < $cursor) {
+                continue;
+            }
+            if ($range['canonical_min_minutes'] > $cursor) {
+                return false;
+            }
+            if ($rangeMaximum === null) {
+                return true;
+            }
+            $cursor = max($cursor, (int) $rangeMaximum + 1);
+            if ($maximum !== null && $cursor > $maximum) {
+                return true;
+            }
+        }
+
+        return $maximum !== null && $cursor > $maximum;
+    }
+
+    private function rangesIntersect(array $range, int $minimum, ?int $maximum): bool
+    {
+        $rangeMaximum = $range['canonical_max_minutes'];
+        if ($rangeMaximum !== null && $rangeMaximum < $minimum) {
+            return false;
+        }
+        return $maximum === null || $range['canonical_min_minutes'] <= $maximum;
     }
 
     private function value(array|object $definition, string $key, mixed $default = null): mixed

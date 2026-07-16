@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCommonRateDefinition;
+use App\Models\Vehicle\VehiclePricing\VehiclePricingCalculationDefinition;
 use App\Http\Controllers\Api\Vehicle\VehiclePricing\VehiclePricingCommonRateDefinitionController;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\QueryException;
@@ -426,6 +427,29 @@ it('calculates common-rate previews from scoped vehicle-group values', function 
 
     expect($missingResponse->getStatusCode())->toBe(422)
         ->and($missingResponse->getData(true)['message'])->toContain('No active Pricing Management value');
+});
+
+it('resolves a global common-rate definition during the canonical formula runtime', function (): void {
+    $now = now();
+    $rateId = '44444444-4444-4444-8444-444444444444';
+    $vehicleGroupId = '55555555-5555-4555-8555-555555555555';
+    $definitionRow = pricingCommonDefinition($rateId, null, null, $now, 'global_waiting_rate');
+    $definitionRow['service_type_id'] = null;
+
+    DB::table('vehicle_groups')->insert(['id' => $vehicleGroupId]);
+    DB::table('vehicle_pricing_common_rate_definitions')->insert($definitionRow);
+    DB::table('vehicle_group_common_rate_pricing')->insert(
+        pricingCommonValue('global-waiting-value', $rateId, 75, null, null, $now, $vehicleGroupId)
+    );
+
+    $calculation = new VehiclePricingCalculationDefinition([
+        'service_type_id' => 'service-1',
+    ]);
+    $method = new ReflectionMethod($calculation, 'getCommonRateValue');
+
+    expect($method->invoke($calculation, 'global_waiting_rate', [
+        'vehicle_group_id' => $vehicleGroupId,
+    ]))->toEqual(75.0);
 });
 
 function pricingOwnershipMigration(): Migration

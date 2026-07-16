@@ -55,7 +55,11 @@ class InvoiceService
                 ->first();
 
             if ($existing && !$force) {
-                return [$existing, $lockedBooking, false];
+                return [
+                    $existing,
+                    $lockedBooking,
+                    !$existing->pdf_path || !$existing->pdf_generated_at,
+                ];
             }
 
             if ($existing) {
@@ -117,6 +121,25 @@ class InvoiceService
             return;
         }
 
+        $pdfDisk = $invoice->pdf_disk ?? 'local';
+        if (
+            !$invoice->pdf_path
+            || !$invoice->pdf_generated_at
+            || !Storage::disk($pdfDisk)->exists($invoice->pdf_path)
+        ) {
+            $error = 'Invoice PDF is not available; email delivery is pending PDF regeneration.';
+            $invoice->update([
+                'pdf_last_error' => $error,
+                'email_last_error' => $error,
+                'email_sending_at' => null,
+            ]);
+            Log::error('Invoice email blocked because PDF is unavailable', [
+                'invoice_id' => $invoice->id,
+                'pdf_path' => $invoice->pdf_path,
+            ]);
+            return;
+        }
+
         $claimedAt = Carbon::now('UTC');
         $claimAcquired = Invoice::query()
             ->whereKey($invoice->id)
@@ -142,9 +165,7 @@ class InvoiceService
             return;
         }
 
-        $pdfPath = $invoice->pdf_path
-            ? Storage::disk($invoice->pdf_disk ?? 'local')->path($invoice->pdf_path)
-            : null;
+        $pdfPath = Storage::disk($pdfDisk)->path($invoice->pdf_path);
 
         try {
             app(MailDispatchService::class)->sendToCustomer(
@@ -337,11 +358,26 @@ class InvoiceService
         // --- Booking items (trips) ---
         foreach ($booking->bookingItems as $item) {
             /** @var BookingItem $item */
+            if (in_array((string) $item->status, ['cancelled', 'rejected'], true)) {
+                continue;
+            }
+
             $serviceLabel = $item->serviceType?->name ?? 'Transport Service';
             $vehicleLabel = $item->vehicle?->group?->name ?? $item->vehicle?->title ?? null;
             $durationLabel = $this->describeDuration($item);
+            $pricingBreakdown = is_array($item->pricing_breakdown) ? $item->pricing_breakdown : [];
+            $metadata = is_array($item->metadata) ? $item->metadata : [];
+            $hasFinalPricing = data_get($pricingBreakdown, 'final_pricing.audit.status') === 'calculated'
+                || data_get($metadata, 'final_pricing_audit.status') === 'calculated';
+            $hasExplicitComponentBase = !$hasFinalPricing
+                && ($item->base_rate !== null || $item->base_amount !== null);
 
-            $baseAmount = (float) ($item->base_rate ?? $item->base_amount ?? $item->total_price ?? 0);
+            // Final pricing stores an authoritative inclusive item total. Legacy
+            // component columns and extra-KM metadata may still be present, but
+            // appending them would invoice the same charge twice.
+            $baseAmount = $hasFinalPricing || !$hasExplicitComponentBase
+                ? (float) ($item->total_price ?? 0)
+                : (float) ($item->base_rate ?? $item->base_amount ?? 0);
 
             $description = $serviceLabel;
             if ($vehicleLabel) {
@@ -358,7 +394,7 @@ class InvoiceService
             ];
 
             // Driver cost
-            if (!empty($item->driver_cost) && $item->driver_cost > 0) {
+            if ($hasExplicitComponentBase && !empty($item->driver_cost) && $item->driver_cost > 0) {
                 $items[] = [
                     'description' => 'Driver Allowance',
                     'note'        => null,
@@ -370,7 +406,7 @@ class InvoiceService
             }
 
             // Distance cost
-            if (!empty($item->distance_cost) && $item->distance_cost > 0) {
+            if ($hasExplicitComponentBase && !empty($item->distance_cost) && $item->distance_cost > 0) {
                 $items[] = [
                     'description' => 'Distance Charges',
                     'note'        => $item->estimated_distance ? number_format($item->estimated_distance, 1) . ' km' : null,
@@ -381,7 +417,9 @@ class InvoiceService
                 ];
             }
 
-            $extraKmLine = $this->extractExtraKmLineItem($item);
+            $extraKmLine = $hasExplicitComponentBase
+                ? $this->extractExtraKmLineItem($item)
+                : null;
             if ($extraKmLine) {
                 $items[] = $extraKmLine;
             }
@@ -511,18 +549,31 @@ class InvoiceService
                 ->setPaper('a4', 'portrait');
 
             $relativePath = 'invoices/' . $invoice->invoice_number . '.pdf';
-            Storage::disk('local')->put($relativePath, $pdf->output());
+            $stored = Storage::disk('local')->put($relativePath, $pdf->output());
+            if (!$stored || !Storage::disk('local')->exists($relativePath)) {
+                throw new \RuntimeException('Generated invoice PDF could not be verified in storage.');
+            }
 
             $invoice->update([
                 'pdf_path' => $relativePath,
                 'pdf_disk' => 'local',
+                'pdf_generated_at' => Carbon::now('UTC'),
+                'pdf_last_error' => null,
             ]);
         } catch (\Throwable $e) {
-            // PDF generation failure should NOT block the booking completion flow.
+            $invoice->update([
+                'pdf_generated_at' => null,
+                'pdf_last_error' => Str::limit($e->getMessage(), 2000, ''),
+            ]);
             Log::error('Invoice PDF generation failed', [
                 'invoice_id' => $invoice->id,
                 'error'      => $e->getMessage(),
             ]);
+
+            throw new \RuntimeException(
+                'Invoice PDF generation failed; customer delivery remains pending.',
+                previous: $e
+            );
         }
     }
 
