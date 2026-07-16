@@ -4,6 +4,7 @@
 namespace App\Http\Controllers\Api\Vehicle\VehiclePricing;
 
 use App\Http\Controllers\Controller;
+use App\Models\Vehicle\VehiclePricing\VehicleGroupCommonRatePricing;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCommonRateDefinition;
 use App\Models\Service\ServiceType;
 use App\Http\Requests\Vehicle\VehiclePricingCommonRateDefinition\CreateVehiclePricingCommonRateDefinitionRequest;
@@ -14,6 +15,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
 
 /**
  * Controller for managing pricing common rate definitions
@@ -476,29 +478,87 @@ class VehiclePricingCommonRateDefinitionController extends Controller
     public function calculatePreview(Request $request): JsonResponse
     {
         $request->validate([
-            'rate_id' => 'required|string|exists:pricing_common_rates,id',
+            'rate_id' => [
+                'required',
+                'uuid',
+                Rule::exists('vehicle_pricing_common_rate_definitions', 'id')
+                    ->whereNull('owner_type')
+                    ->whereNull('owner_id')
+                    ->whereNull('deleted_at'),
+            ],
+            'vehicle_group_id' => 'required|uuid|exists:vehicle_groups,id',
             'base_amount' => 'required|numeric|min:0',
             'hours' => 'integer|min:1',
             'minutes' => 'integer|min:1',
             'days' => 'integer|min:1',
-            'kilometers' => 'numeric|min:0'
+            'kilometers' => 'numeric|min:0',
+            'context' => 'nullable|string|in:public,portal,corporate',
+            'owner_type' => 'nullable|required_if:context,corporate|string|in:corporate',
+            'owner_id' => 'nullable|required_if:context,corporate|uuid|exists:corporates,id|required_with:owner_type',
         ]);
 
         try {
             $rate = VehiclePricingCommonRateDefinition::findOrFail($request->rate_id);
+            $ownerType = $request->input('owner_type');
+            $ownerId = $request->filled('owner_type') ? $request->input('owner_id') : null;
+
+            $pricingQuery = VehicleGroupCommonRatePricing::query()
+                ->where('common_rate_definition_id', $rate->id)
+                ->where('vehicle_group_id', $request->vehicle_group_id)
+                ->where('is_active', true);
+
+            if ($ownerType && $ownerId) {
+                $pricingQuery
+                    ->where(function ($scope) use ($ownerType, $ownerId) {
+                        $scope->where(function ($owned) use ($ownerType, $ownerId) {
+                            $owned->where('owner_type', $ownerType)
+                                ->where('owner_id', $ownerId);
+                        })->orWhere(function ($global) {
+                            $global->whereNull('owner_type')->whereNull('owner_id');
+                        });
+                    })
+                    ->orderByRaw(
+                        'CASE WHEN owner_type = ? AND owner_id = ? THEN 0 ELSE 1 END',
+                        [$ownerType, $ownerId]
+                    );
+            } else {
+                $pricingQuery->whereNull('owner_type')->whereNull('owner_id');
+            }
+
+            $pricing = $pricingQuery
+                ->orderByDesc('priority')
+                ->orderByDesc('updated_at')
+                ->first();
+
+            if (!$pricing || $pricing->value === null) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'No active Pricing Management value is configured for this vehicle group and rate definition.',
+                ], 422);
+            }
+
+            $rateValue = (float) $pricing->value;
 
             $calculatedAmount = $rate->calculateAmount(
                 $request->base_amount,
                 $request->hours ?? 1,
                 $request->days ?? 1,
                 $request->kilometers ?? 0,
-                $request->minutes ?? 1
+                $request->minutes ?? 1,
+                $rateValue
             );
 
             return response()->json([
                 'status' => 'success',
                 'data' => [
                     'rate' => new VehiclePricingCommonRateDefinitionResource($rate),
+                    'pricing_value' => [
+                        'id' => $pricing->id,
+                        'vehicle_group_id' => $pricing->vehicle_group_id,
+                        'value' => $rateValue,
+                        'owner_type' => $pricing->owner_type,
+                        'owner_id' => $pricing->owner_id,
+                    ],
                     'calculated_amount' => $calculatedAmount,
                     'calculation_details' => [
                         'base_amount' => $request->base_amount,
@@ -509,7 +569,7 @@ class VehiclePricingCommonRateDefinitionController extends Controller
                         'rate_type' => $rate->common_rate_type,
                         'formula' => $this->getCalculationFormula(
                             $rate->common_rate_type,
-                            $rate->value,
+                            $rateValue,
                             $request->base_amount,
                             $request->hours ?? 1,
                             $request->minutes ?? 1,

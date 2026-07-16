@@ -629,6 +629,7 @@ Route::middleware(['auth:api'])->group(function () {
             Route::prefix('pricing-slab-definitions')->group(function () {
                 Route::get('/', [VehiclePricingSlabDefinitionController::class, 'index']);
                 Route::post('/', [VehiclePricingSlabDefinitionController::class, 'store']);
+                Route::get('/health', [VehiclePricingSlabDefinitionController::class, 'health']);
                 Route::get('/{id}', [VehiclePricingSlabDefinitionController::class, 'show']);
                 Route::put('/{id}', [VehiclePricingSlabDefinitionController::class, 'update']);
                 Route::delete('/{id}', [VehiclePricingSlabDefinitionController::class, 'destroy']);

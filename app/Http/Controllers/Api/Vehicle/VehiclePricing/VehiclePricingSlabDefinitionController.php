@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Vehicle\VehiclePricingSlabDefinition\CreateVehiclePricingSlabDefinitionRequest;
 use App\Http\Requests\Vehicle\VehiclePricingSlabDefinition\UpdateVehiclePricingSlabDefinitionRequest;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingSlabDefinition;
+use App\Services\VehiclePricingSlabConfigurationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -13,9 +14,11 @@ use Illuminate\Support\Facades\DB;
 
 class VehiclePricingSlabDefinitionController extends Controller
 {
-    public function __construct()
+    public function __construct(
+        private readonly VehiclePricingSlabConfigurationService $slabConfiguration
+    )
     {
-        $this->middleware('permission:vehicle-pricing-slabs.view')->only(['index', 'show', 'findForHours']);
+        $this->middleware('permission:vehicle-pricing-slabs.view')->only(['index', 'show', 'health', 'findForHours']);
         $this->middleware('permission:vehicle-pricing-slabs.create')->only(['store']);
         $this->middleware('permission:vehicle-pricing-slabs.edit')->only(['update', 'toggleStatus']);
         $this->middleware('permission:vehicle-pricing-slabs.delete')->only(['destroy']);
@@ -70,11 +73,26 @@ class VehiclePricingSlabDefinitionController extends Controller
                 'errors' => ['range' => ['Slab duration ranges must not overlap for the same service and unit.']],
             ], 422);
         }
+
+        $data['is_active'] = $data['is_active'] ?? true;
+        if ($data['is_active']) {
+            $health = $this->slabConfiguration->prospectiveHealth($data);
+            $scope = [[
+                'service_type_id' => $data['service_type_id'],
+                'type' => $data['type'],
+            ]];
+            if ($this->slabConfiguration->hasBlockingIssues($health, $scope)) {
+                return $this->invalidConfigurationResponse($health);
+            }
+        }
+
         $slabDefinition = VehiclePricingSlabDefinition::create($data + ['created_user_id' => $request->user()->id]);
+        $slabDefinition->load('serviceType');
 
         return response()->json([
             'success' => true,
             'data' => $slabDefinition,
+            'health' => $this->currentHealth($slabDefinition->service_type_id),
             'message' => 'Slab definition created successfully'
         ], 201);
     }
@@ -117,11 +135,33 @@ class VehiclePricingSlabDefinitionController extends Controller
                 'errors' => ['range' => ['Slab duration ranges must not overlap for the same service and unit.']],
             ], 422);
         }
+
+        $candidateActive = array_key_exists('is_active', $candidate)
+            ? filter_var($candidate['is_active'], FILTER_VALIDATE_BOOL)
+            : $slabDefinition->is_active;
+        if ($candidateActive) {
+            $health = $this->slabConfiguration->prospectiveHealth($candidate, $slabDefinition);
+            $scopes = collect([
+                [
+                    'service_type_id' => $slabDefinition->service_type_id,
+                    'type' => $slabDefinition->type ?: 'hours',
+                ],
+                [
+                    'service_type_id' => $candidate['service_type_id'],
+                    'type' => $candidate['type'] ?: 'hours',
+                ],
+            ])->unique(fn (array $scope) => $scope['service_type_id'] . ':' . $scope['type'])->values()->all();
+            if ($this->slabConfiguration->hasBlockingIssues($health, $scopes)) {
+                return $this->invalidConfigurationResponse($health);
+            }
+        }
+
         $slabDefinition->update($data);
         $slabDefinition->load('serviceType');
         return response()->json([
             'success' => true,
             'data' => $slabDefinition,
+            'health' => $this->currentHealth($slabDefinition->service_type_id),
             'message' => 'Slab definition updated successfully'
         ]);
     }
@@ -319,13 +359,54 @@ class VehiclePricingSlabDefinitionController extends Controller
     public function toggleStatus(Request $request, string $id): JsonResponse
     {
         $definition = VehiclePricingSlabDefinition::withInactive()->findOrFail($id);
+
+        if (!$definition->is_active) {
+            $candidate = $definition->toArray();
+            $candidate['is_active'] = true;
+            $health = $this->slabConfiguration->prospectiveHealth($candidate, $definition);
+            $scope = [[
+                'service_type_id' => $definition->service_type_id,
+                'type' => $definition->type ?: 'hours',
+            ]];
+            if ($this->slabConfiguration->hasBlockingIssues($health, $scope)) {
+                return $this->invalidConfigurationResponse($health, 'This slab cannot be activated because its duration configuration is invalid.');
+            }
+        }
+
         $definition->update(['is_active' => !$definition->is_active]);
         $definition->load('serviceType');
 
         return response()->json([
+            'success' => true,
             'status'  => 'success',
             'message' => 'Slab definition status updated',
             'data'    => $definition,
+            'health'  => $this->currentHealth($definition->service_type_id),
+        ]);
+    }
+
+    public function health(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'service_type_id' => ['nullable', 'uuid', 'exists:service_types,id'],
+            'context' => ['nullable', 'string', 'in:public,portal,corporate'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $this->slabConfiguration->currentHealth(
+                $request->filled('service_type_id') ? (string) $request->input('service_type_id') : null,
+                $request->filled('context') ? (string) $request->input('context') : null
+            ),
+            'message' => 'Slab configuration health retrieved successfully',
         ]);
     }
 
@@ -344,39 +425,21 @@ class VehiclePricingSlabDefinitionController extends Controller
         $minutes = $request->filled('minutes')
             ? (float) $request->input('minutes')
             : (float) $request->input('hours') * 60;
-        $hours = $minutes / 60;
-
         $baseQuery = VehiclePricingSlabDefinition::active();
         if ($request->filled('service_type_id')) {
             $baseQuery->forServiceType($request->input('service_type_id'));
         }
 
-        $slab = (clone $baseQuery)
-            ->where('type', 'minutes')
-            ->where('min_minutes', '<=', $minutes)
-            ->where(function ($q) use ($minutes) {
-                $q->whereNull('max_minutes')->orWhere('max_minutes', '>=', $minutes);
-            })
-            ->orderByDesc('priority')
-            ->orderByDesc('min_minutes')
-            ->first();
-
-        $query = (clone $baseQuery)
-            ->where(function ($q) {
-                $q->whereNull('type')->orWhere('type', '!=', 'minutes');
-            })
-            ->where('min_hours', '<=', $hours)
-            ->where(function ($q) use ($hours) {
-                $q->whereNull('max_hours')->orWhere('max_hours', '>=', $hours);
-            })
-            ->orderByDesc('priority')
-            ->orderBy('min_hours', 'desc');
-
-        $slab ??= $query->first();
+        $slab = $this->slabConfiguration->resolve($baseQuery, $minutes);
 
         return response()->json([
             'status' => 'success',
             'data'   => $slab,
+            'resolution' => [
+                'duration_minutes' => $minutes,
+                'matched_type' => $slab?->type ?: ($slab ? 'hours' : null),
+                'precedence' => VehiclePricingSlabConfigurationService::DURATION_PRECEDENCE,
+            ],
         ]);
     }
 
@@ -404,5 +467,28 @@ class VehiclePricingSlabDefinitionController extends Controller
             })
             ->orderByDesc('priority')
             ->first();
+    }
+
+    private function currentHealth(string $serviceTypeId): array
+    {
+        return $this->slabConfiguration->currentHealth($serviceTypeId);
+    }
+
+    private function invalidConfigurationResponse(
+        array $health,
+        string $message = 'Slab duration ranges must not contain gaps, overlaps, or multiple open-ended ranges.'
+    ): JsonResponse {
+        return response()->json([
+            'success' => false,
+            'message' => $message,
+            'errors' => [
+                'configuration' => collect($health['issues'] ?? [])
+                    ->where('severity', 'error')
+                    ->pluck('message')
+                    ->values()
+                    ->all(),
+            ],
+            'health' => $health,
+        ], 422);
     }
 }

@@ -95,6 +95,23 @@ class VehiclePricingCommonRateDefinition extends BaseModel
     }
 
     /**
+     * Vehicle-group rows hold the actual public/corporate values for this
+     * shared definition.
+     */
+    public function vehicleGroupPricing(): HasMany
+    {
+        return $this->hasMany(VehicleGroupCommonRatePricing::class, 'common_rate_definition_id');
+    }
+
+    /**
+     * Backward-compatible relationship name used by the definition API.
+     */
+    public function vehicleGroupAddonPricing(): HasMany
+    {
+        return $this->vehicleGroupPricing();
+    }
+
+    /**
      * Scope a query to only include active rate definitions
      */
     public function scopeActive($query)
@@ -131,9 +148,10 @@ class VehiclePricingCommonRateDefinition extends BaseModel
         int $hours = 1,
         int $days = 1,
         float $kilometers = 0,
-        int $minutes = 1
+        int $minutes = 1,
+        ?float $rateValue = null
     ): float {
-        $rate = (float) $this->value;
+        $rate = $rateValue ?? (float) $this->value;
 
         return match ($this->common_rate_type) {
             'percentage' => ($baseAmount * $rate) / 100,

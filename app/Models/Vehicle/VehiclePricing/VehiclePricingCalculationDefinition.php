@@ -14,6 +14,7 @@ use App\Models\Vehicle\VehiclePricing\VehicleGroupPricing;
 use App\Models\Vehicle\VehiclePricing\VehicleGroupCommonRatePricing;
 use App\Models\Vehicle\VehiclePricing\PriceAdjustment;
 use App\Models\Vehicle\VehiclePricing\KmRangePricingRule;
+use App\Services\VehiclePricingSlabConfigurationService;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
@@ -504,47 +505,19 @@ class VehiclePricingCalculationDefinition extends Model
         // Convert days to hours if needed
         if ($durationDays > 0 && $durationHours == 0) {
             $durationHours = $durationDays * 24;
+            $durationMinutes = $durationHours * 60;
         }
 
-        $minuteSlabDefinition = VehiclePricingSlabDefinition::where('service_type_id', $this->service_type_id)
+        $slabQuery = VehiclePricingSlabDefinition::where('service_type_id', $this->service_type_id)
             ->where('is_active', true)
-            ->where('type', 'minutes')
             ->tap(fn ($query) => $this->applyOwnerScope($query, $ownerType, $ownerId))
-            ->where('min_minutes', '<=', $durationMinutes)
-            ->where(function ($query) use ($durationMinutes) {
-                $query->whereNull('max_minutes')->orWhere('max_minutes', '>=', $durationMinutes);
-            })
-            ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $ownerType, $ownerId))
-            ->orderByDesc('priority')
-            ->orderByDesc('min_minutes')
-            ->first();
+            ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $ownerType, $ownerId));
 
-        $slabDefinition = $minuteSlabDefinition ?: VehiclePricingSlabDefinition::where('service_type_id', $this->service_type_id)
-            ->where('is_active', true)
-            ->tap(fn ($query) => $this->applyOwnerScope($query, $ownerType, $ownerId))
-            ->where(function ($query) {
-                $query->whereNull('type')->orWhere('type', '!=', 'minutes');
-            })
-            ->where(function ($query) use ($durationHours, $durationDays) {
-                $query->when($durationDays > 0, function ($q) use ($durationDays) {
-                    return $q->where('min_days', '<=', $durationDays)
-                        ->where(function ($subQ) use ($durationDays) {
-                            $subQ->whereNull('max_days')
-                                ->orWhere('max_days', '>=', $durationDays);
-                        });
-                })->when($durationHours > 0 && $durationDays == 0, function ($q) use ($durationHours) {
-                    return $q->where('min_hours', '<=', $durationHours)
-                        ->where(function ($subQ) use ($durationHours) {
-                            $subQ->whereNull('max_hours')
-                                ->orWhere('max_hours', '>=', $durationHours);
-                        });
-                });
-            })
-            ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $ownerType, $ownerId))
-            ->orderByDesc('priority')
-            ->orderByDesc('min_days')
-            ->orderByDesc('min_hours')
-            ->first();
+        $slabDefinition = app(VehiclePricingSlabConfigurationService::class)->resolve(
+            $slabQuery,
+            (float) $durationMinutes,
+            $durationDays > 0 ? (float) $durationDays : null
+        );
 
         if (!$slabDefinition) {
             return null;

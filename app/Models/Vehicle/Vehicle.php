@@ -109,6 +109,7 @@ class Vehicle extends BaseModel
         'year',
         'tagline',
         'status',
+        'availability_status',
         'description',
 
         

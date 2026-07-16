@@ -77,6 +77,31 @@ class VehiclePricingSlabConfigurationService
     }
 
     /**
+     * Reusable activation/readiness check for calculation definitions and other
+     * pricing configuration workflows.
+     */
+    public function currentHealth(?string $serviceTypeId = null, ?string $context = null): array
+    {
+        $query = VehiclePricingSlabDefinition::withInactive()
+            ->with('serviceType')
+            ->whereNull('owner_type')
+            ->whereNull('owner_id')
+            ->where('is_active', true);
+
+        if ($serviceTypeId) {
+            $query->where('service_type_id', $serviceTypeId);
+        }
+        if ($context) {
+            $query->whereHas('serviceType', fn ($serviceQuery) => $serviceQuery->where('context', $context));
+        }
+
+        return $this->analyze(
+            $query->get(),
+            $serviceTypeId ? [$serviceTypeId] : []
+        );
+    }
+
+    /**
      * Produce configuration health for active definitions. Cross-unit overlap
      * is intentional and is resolved by DURATION_PRECEDENCE; integrity is
      * checked independently inside each service/type scope.

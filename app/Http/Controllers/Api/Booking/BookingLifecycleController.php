@@ -400,14 +400,18 @@ class BookingLifecycleController extends Controller
             DB::commit();
 
             $booking = Booking::find($request->input('booking_id'));
-            if ($booking) {
+            $aggregateCompleted = (string) ($booking?->status ?? '') === 'completed';
+            if ($aggregateCompleted) {
                 $this->smsAutomation->queueTripEnd($booking);
             }
 
             return response()->json([
                 'status' => 'success',
                 'data' => $result,
-                'message' => 'Booking completed successfully'
+                'aggregate_completed' => $aggregateCompleted,
+                'message' => $aggregateCompleted
+                    ? 'Booking completed successfully'
+                    : 'Booking item completed successfully; remaining items are still active'
             ]);
         } catch (\Exception $e) {
             DB::rollBack();

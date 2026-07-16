@@ -34,7 +34,7 @@ class BookingLifecycleStatusResolutionTest extends TestCase
         $this->assertSame(BookingLifecycleStatus::QC_COMPLETED, $booking->getLifecycleStatus());
     }
 
-    public function test_multi_item_completion_is_blocked_until_item_level_dispatch_is_available(): void
+    public function test_multi_item_lifecycle_requires_an_explicit_item_selection(): void
     {
         $booking = $this->modelWithoutConstructor(Booking::class, []);
         $booking->setRelation('bookingItems', collect([
@@ -45,9 +45,23 @@ class BookingLifecycleStatusResolutionTest extends TestCase
         $method = new ReflectionMethod(BookingLifecycleService::class, 'assertItemSafeLifecycle');
 
         $this->expectException(DomainException::class);
-        $this->expectExceptionMessage('Multi-item completion requires item-level dispatch');
+        $this->expectExceptionMessage('booking_item_id is required');
 
         $method->invoke($service, $booking, null);
+    }
+
+    public function test_multi_item_lifecycle_accepts_an_item_owned_selection(): void
+    {
+        $first = $this->modelWithoutConstructor(BookingItem::class, ['id' => 'item-1']);
+        $second = $this->modelWithoutConstructor(BookingItem::class, ['id' => 'item-2']);
+        $booking = $this->modelWithoutConstructor(Booking::class, []);
+        $booking->setRelation('bookingItems', collect([$first, $second]));
+        $service = (new ReflectionClass(BookingLifecycleService::class))->newInstanceWithoutConstructor();
+        $method = new ReflectionMethod(BookingLifecycleService::class, 'assertItemSafeLifecycle');
+
+        $method->invoke($service, $booking, 'item-2');
+
+        $this->assertTrue(true);
     }
 
     public function test_final_telemetry_uses_exact_minutes_and_rejects_reversed_ranges(): void
