@@ -248,10 +248,12 @@ class BookingLifecycleController extends Controller
                 'trace' => $e->getTraceAsString()
             ]);
 
+            $statusCode = $e instanceof \DomainException || $e instanceof \InvalidArgumentException ? 422 : 500;
+
             return response()->json([
                 'status' => 'error',
                 'message' => 'Failed to start QC inspection: ' . $e->getMessage()
-            ], 500);
+            ], $statusCode);
         }
     }
 
@@ -313,10 +315,12 @@ class BookingLifecycleController extends Controller
                 'trace' => $e->getTraceAsString()
             ]);
 
+            $statusCode = $e instanceof \DomainException || $e instanceof \InvalidArgumentException ? 422 : 500;
+
             return response()->json([
                 'status' => 'error',
                 'message' => 'Failed to complete QC inspection: ' . $e->getMessage()
-            ], 500);
+            ], $statusCode);
         }
     }
 
@@ -355,10 +359,12 @@ class BookingLifecycleController extends Controller
                 'trace' => $e->getTraceAsString()
             ]);
 
+            $statusCode = $e instanceof \DomainException || $e instanceof \InvalidArgumentException ? 422 : 500;
+
             return response()->json([
                 'status' => 'error',
                 'message' => 'Failed to complete repairs: ' . $e->getMessage()
-            ], 500);
+            ], $statusCode);
         }
     }
 

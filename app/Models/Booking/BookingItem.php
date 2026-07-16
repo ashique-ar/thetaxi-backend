@@ -189,6 +189,11 @@ class BookingItem extends BaseModel
         return $this->hasOne(BookingDispatch::class, 'booking_item_id');
     }
 
+    public function qc(): HasOne
+    {
+        return $this->hasOne(BookingQC::class, 'booking_item_id');
+    }
+
     /**
      * Get the vehicle group for this item
      */

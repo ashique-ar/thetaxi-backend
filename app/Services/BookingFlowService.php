@@ -3930,6 +3930,15 @@ class BookingFlowService
                 $params['contractual_distance_calculation'] = $calculationInputs;
             }
             $transformed = $this->transformCalculationResult($calculationResult, $params, $mode, $servicePackageInfo);
+            $transformed['calculation_metadata']['runtime_context'] = collect($calculationInputs)
+                ->only([
+                    'from_date', 'to_date', 'from_time', 'to_time',
+                    'is_weekend', 'is_holiday', 'month', 'day_of_week',
+                    'customer_type', 'customer_tier', 'owner_type', 'owner_id',
+                    'package_id', 'package_included_km', 'additional_stops', 'stops',
+                    'manual_additional_charge', 'late_return_fee',
+                ])
+                ->all();
             $transformed['pricing_scope'] = [
                 'source' => 'global_definition',
                 'owner_type' => $ownerType,
@@ -4003,6 +4012,12 @@ class BookingFlowService
         if (!empty($params['to_date'])) {
             $inputs['to_date'] = $params['to_date'];
         }
+        if (!empty($params['from_time'])) {
+            $inputs['from_time'] = $params['from_time'];
+        }
+        if (!empty($params['to_time'])) {
+            $inputs['to_time'] = $params['to_time'];
+        }
         if (!empty($params['pickup_date'])) {
             $inputs['pickup_date'] = $params['pickup_date'];
         }
@@ -4056,8 +4071,8 @@ class BookingFlowService
             $inputs['package_id'] = $params['package_id'];
         }
 
-        if (isset($params['package_included_km'])) {
-            $inputs['package_included_km'] = $params['package_included_km'];
+        if (isset($params['package_included_km']) && is_numeric($params['package_included_km'])) {
+            $inputs['package_included_km'] = (float) $params['package_included_km'];
         }
 
         if (isset($params['pickup_location']) && isset($params['dropoff_location'])) {
@@ -4299,7 +4314,7 @@ class BookingFlowService
         ];
 
         // Add detailed breakdown if full calculation mode
-        if ($mode === 'full_calculation') {
+        if (in_array($mode, ['full_calculation', 'final_calculation'], true)) {
             $result['detailed_breakdown'] = $calculationResult['detailed_breakdown'] ?? [];
             $result['km_calculations'] = $kmCalculations;
             $result['slab_information'] = $slabInfo;

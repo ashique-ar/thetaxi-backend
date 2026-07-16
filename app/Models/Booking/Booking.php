@@ -658,6 +658,14 @@ class Booking extends BaseModel
     }
 
     /**
+     * Get all item-owned QC records for this booking.
+     */
+    public function qcs()
+    {
+        return $this->hasMany(BookingQC::class);
+    }
+
+    /**
      * Get all vehicle assignments for this booking
      */
     public function vehicleAssignments()

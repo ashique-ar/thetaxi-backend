@@ -162,14 +162,20 @@ afterEach(function (): void {
 it('keeps definitions global while preserving corporate vehicle-group prices and references', function (): void {
     $now = now();
 
+    $globalCommonDefinition = pricingCommonDefinition('common-global', null, null, $now);
+    $corporateCommonDefinition = pricingCommonDefinition('common-corporate', 'corporate', 'corporate-1', $now);
+    $corporateCommonDefinition['vehicle_group_id'] = 'group-1';
     DB::table('vehicle_pricing_common_rate_definitions')->insert([
-        pricingCommonDefinition('common-global', null, null, $now),
-        pricingCommonDefinition('common-corporate', 'corporate', 'corporate-1', $now),
+        $globalCommonDefinition,
+        $corporateCommonDefinition,
     ]);
 
+    $globalSlabDefinition = pricingSlabDefinition('slab-global', null, null, $now);
+    $corporateSlabDefinition = pricingSlabDefinition('slab-corporate', 'corporate', 'corporate-1', $now);
+    $corporateSlabDefinition['name'] = 'Corporate First Hour';
     DB::table('vehicle_pricing_slab_definitions')->insert([
-        pricingSlabDefinition('slab-global', null, null, $now),
-        pricingSlabDefinition('slab-corporate', 'corporate', 'corporate-1', $now),
+        $globalSlabDefinition,
+        $corporateSlabDefinition,
     ]);
 
     DB::table('vehicle_group_common_rate_pricing')->insert([
@@ -182,9 +188,12 @@ it('keeps definitions global while preserving corporate vehicle-group prices and
         pricingSlabValue('slab-value-corporate', 'slab-corporate', 80, 'corporate', 'corporate-1', $now),
     ]);
 
+    $globalCalculation = pricingCalculationDefinition('calculation-global', 'common-global', null, null, $now);
+    $corporateCalculation = pricingCalculationDefinition('calculation-corporate', 'common-corporate', 'corporate', 'corporate-1', $now);
+    $corporateCalculation['name'] = 'Corporate Distance Calculation';
     DB::table('vehicle_pricing_calculation_definitions')->insert([
-        pricingCalculationDefinition('calculation-global', 'common-global', null, null, $now),
-        pricingCalculationDefinition('calculation-corporate', 'common-corporate', 'corporate', 'corporate-1', $now),
+        $globalCalculation,
+        $corporateCalculation,
     ]);
 
     DB::table('booking_pricings')->insert([
@@ -212,6 +221,10 @@ it('keeps definitions global while preserving corporate vehicle-group prices and
     ] as $table) {
         expect(DB::table($table)->whereNotNull('owner_type')->orWhereNotNull('owner_id')->count())->toBe(0);
     }
+
+    expect(DB::table('vehicle_pricing_common_rate_definitions')
+        ->where('id', 'common-global')
+        ->value('vehicle_group_id'))->toBeNull();
 
     $corporateCommonPrice = DB::table('vehicle_group_common_rate_pricing')
         ->where('id', 'common-value-corporate')
@@ -253,13 +266,49 @@ it('fails and rolls back when corporate and shared definitions cannot be merged 
     $corporate['common_rate_type'] = 'per_hour';
 
     DB::table('vehicle_pricing_common_rate_definitions')->insert([$global, $corporate]);
+    Schema::table('vehicle_pricing_common_rate_definitions', function (Blueprint $table): void {
+        $table->unique(['id'], 'unique_common_rate_definition_code_owner');
+    });
 
     expect(fn () => pricingOwnershipMigration()->up())
         ->toThrow(RuntimeException::class, 'Unsafe common-rate definition conflict');
 
     expect(DB::table('vehicle_pricing_common_rate_definitions')
         ->where('id', 'common-corporate')
-        ->value('owner_type'))->toBe('corporate');
+        ->value('owner_type'))->toBe('corporate')
+        ->and(collect(Schema::getIndexes('vehicle_pricing_common_rate_definitions'))
+            ->pluck('name')->all())->toContain('unique_common_rate_definition_code_owner');
+});
+
+it('preflights competing corporate calculation formulas before changing ownership', function (): void {
+    $now = now();
+    $first = pricingCalculationDefinition(
+        'calculation-corporate-one',
+        'common-source',
+        'corporate',
+        'corporate-1',
+        $now,
+    );
+    $first['name'] = 'Corporate Distance One';
+
+    $second = pricingCalculationDefinition(
+        'calculation-corporate-two',
+        'common-source',
+        'corporate',
+        'corporate-2',
+        $now,
+    );
+    $second['name'] = 'Corporate Distance Two';
+    $second['formula'] = '(extra_km_rate * extra_km) + 100';
+
+    DB::table('vehicle_pricing_calculation_definitions')->insert([$first, $second]);
+
+    expect(fn () => pricingOwnershipMigration()->up())
+        ->toThrow(RuntimeException::class, 'competing active global formulas');
+
+    expect(DB::table('vehicle_pricing_calculation_definitions')
+        ->whereNotNull('owner_type')
+        ->count())->toBe(2);
 });
 
 it('hides legacy owned definitions and normalizes owner fields on model writes', function (): void {
@@ -282,11 +331,13 @@ it('hides legacy owned definitions and normalizes owner fields on model writes',
         'priority' => 0,
         'owner_type' => 'corporate',
         'owner_id' => 'corporate-1',
+        'vehicle_group_id' => 'group-1',
     ]);
 
     $stored = DB::table('vehicle_pricing_common_rate_definitions')->where('id', $created->id)->first();
     expect($stored->owner_type)->toBeNull()
-        ->and($stored->owner_id)->toBeNull();
+        ->and($stored->owner_id)->toBeNull()
+        ->and($stored->vehicle_group_id)->toBeNull();
 });
 
 it('calculates common-rate previews from scoped vehicle-group values', function (): void {
@@ -318,7 +369,7 @@ it('calculates common-rate previews from scoped vehicle-group values', function 
     );
 
     expect($response->getStatusCode())->toBe(200)
-        ->and($response->getData(true)['data']['calculated_amount'])->toBe(100.0)
+        ->and($response->getData(true)['data']['calculated_amount'])->toEqual(100.0)
         ->and($response->getData(true)['data']['pricing_value']['id'])->toBe('common-value-corporate');
 
     DB::table('vehicle_group_common_rate_pricing')->where('id', 'common-value-corporate')->delete();
@@ -336,7 +387,7 @@ it('calculates common-rate previews from scoped vehicle-group values', function 
     );
 
     expect($fallbackResponse->getStatusCode())->toBe(200)
-        ->and($fallbackResponse->getData(true)['data']['calculated_amount'])->toBe(40.0)
+        ->and($fallbackResponse->getData(true)['data']['calculated_amount'])->toEqual(40.0)
         ->and($fallbackResponse->getData(true)['data']['pricing_value']['id'])->toBe('common-value-global');
 
     DB::table('vehicle_group_common_rate_pricing')->delete();

@@ -110,6 +110,7 @@ class VehiclePricingCommonRateDefinitionController extends Controller
             $data = $request->validated();
             $data['owner_type'] = null;
             $data['owner_id'] = null;
+            $data['vehicle_group_id'] = null;
             $data['created_user_id'] = $request->user()->id;
             $data['updated_user_id'] = $request->user()->id;
 
@@ -183,6 +184,7 @@ class VehiclePricingCommonRateDefinitionController extends Controller
             $data = $request->validated();
             $data['owner_type'] = null;
             $data['owner_id'] = null;
+            $data['vehicle_group_id'] = null;
             $data['updated_user_id'] = $request->user()->id;
 
             $commonRate->update($data);

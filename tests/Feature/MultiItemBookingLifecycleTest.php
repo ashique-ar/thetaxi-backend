@@ -19,6 +19,7 @@ use App\Services\Pricing\FinalPricingTelemetryResolver;
 use App\Services\WebsiteSettingsService;
 use App\Services\Driver\NotificationTriggerService;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 beforeEach(function () {
@@ -27,10 +28,12 @@ beforeEach(function () {
     foreach ([
         'audit_logs',
         'booking_addons',
+        'booking_qc_repair_items',
         'booking_qcs',
         'booking_dispatches',
         'booking_items',
         'vehicles',
+        'users',
         'bookings',
     ] as $table) {
         Schema::dropIfExists($table);
@@ -61,6 +64,21 @@ beforeEach(function () {
         $table->timestamps();
         $table->softDeletes();
     });
+
+    Schema::create('users', function (Blueprint $table) {
+        $table->uuid('id')->primary();
+        $table->string('first_name')->nullable();
+        $table->string('last_name')->nullable();
+        $table->string('email')->nullable();
+        $table->timestamps();
+        $table->softDeletes();
+    });
+    DB::table('users')->insert([
+        'id' => '00000000-0000-0000-0000-000000000001',
+        'first_name' => 'QC',
+        'last_name' => 'Inspector',
+        'email' => 'qc@example.test',
+    ]);
 
     Schema::create('booking_items', function (Blueprint $table) {
         $table->uuid('id')->primary();
@@ -132,7 +150,44 @@ beforeEach(function () {
     Schema::create('booking_qcs', function (Blueprint $table) {
         $table->uuid('id')->primary();
         $table->uuid('booking_id');
-        $table->string('qc_status')->nullable();
+        $table->uuid('booking_item_id')->nullable();
+        $table->uuid('vehicle_id')->nullable();
+        $table->uuid('dispatch_id')->nullable();
+        $table->string('qc_status')->default('pending');
+        $table->uuid('inspector_id')->nullable();
+        $table->timestamp('inspection_started_at')->nullable();
+        $table->timestamp('inspection_completed_at')->nullable();
+        $table->json('interior_condition')->nullable();
+        $table->json('exterior_condition')->nullable();
+        $table->json('mechanical_condition')->nullable();
+        $table->integer('cleanliness_rating')->nullable();
+        $table->decimal('fuel_level', 3, 1)->nullable();
+        $table->integer('mileage')->nullable();
+        $table->json('damages_found')->nullable();
+        $table->json('issues_reported')->nullable();
+        $table->boolean('repair_required')->default(false);
+        $table->decimal('estimated_repair_cost', 10, 2)->nullable();
+        $table->text('repair_notes')->nullable();
+        $table->text('qc_notes')->nullable();
+        $table->json('photos')->nullable();
+        $table->boolean('passed_inspection')->default(false);
+        $table->boolean('requires_maintenance')->default(false);
+        $table->date('next_maintenance_due')->nullable();
+        $table->uuid('created_user_id')->nullable();
+        $table->uuid('updated_user_id')->nullable();
+        $table->timestamps();
+        $table->softDeletes();
+        $table->unique(['booking_id', 'booking_item_id']);
+    });
+
+    Schema::create('booking_qc_repair_items', function (Blueprint $table) {
+        $table->uuid('id')->primary();
+        $table->uuid('qc_id');
+        $table->string('item_type')->nullable();
+        $table->text('description')->nullable();
+        $table->decimal('cost', 10, 2)->default(0);
+        $table->string('status')->default('pending');
+        $table->timestamp('completed_at')->nullable();
         $table->timestamps();
         $table->softDeletes();
     });
@@ -280,4 +335,128 @@ it('rejects an ambiguous multi-item action without booking_item_id', function ()
     expect(fn () => $this->lifecycle->processReturn($this->booking->id, [
         'returned_by' => '00000000-0000-0000-0000-000000000001',
     ]))->toThrow(DomainException::class, 'booking_item_id is required');
+});
+
+it('preserves single-item behavior while recording the same item-owned terminal state', function () {
+    $first = $this->items[0];
+    $second = $this->items[1];
+    BookingDispatch::where('booking_item_id', $second->id)->delete();
+    Vehicle::whereKey($second->vehicle_id)->delete();
+    $second->delete();
+
+    $this->invoiceService->shouldReceive('generateAndSend')->once()->andReturnNull();
+
+    $dispatch = $this->lifecycle->processReturn($this->booking->id, [
+        'returned_by' => '00000000-0000-0000-0000-000000000001',
+        'actual_return_time' => now()->toIso8601String(),
+        'skip_qc' => true,
+    ]);
+
+    expect($dispatch->booking_item_id)->toBe($first->id)
+        ->and($first->fresh()->returned_at)->not->toBeNull()
+        ->and($first->fresh()->final_priced_at)->not->toBeNull()
+        ->and($first->fresh()->completed_at)->not->toBeNull()
+        ->and($first->fresh()->status)->toBe('completed')
+        ->and($this->booking->fresh()->status)->toBe('completed');
+});
+
+it('owns QC and repairs per item and blocks aggregate completion until every item passes', function () {
+    $this->invoiceService->shouldReceive('generateAndSend')->once()->andReturnNull();
+    $this->loyaltyService->shouldReceive('awardPointsForBooking')->once();
+    $this->commissionService->shouldReceive('recordForBooking')->once();
+
+    $settings = Mockery::mock(WebsiteSettingsService::class);
+    $settings->shouldReceive('get')->andReturnUsing(fn (string $key, mixed $default = null) => match ($key) {
+        'feature_vehicle_return_management_enabled' => 'true',
+        'assignment_enable_qc_stage' => 'true',
+        'assignment_enable_maintenance_stage' => 'false',
+        default => $default,
+    });
+    $lifecycle = new BookingLifecycleService(
+        Mockery::mock(AssignmentService::class),
+        Mockery::mock(BookingFlowService::class),
+        Mockery::mock(CurrencyService::class),
+        Mockery::mock(NotificationTriggerService::class),
+        $this->invoiceService,
+        Mockery::mock(AvailabilityEnforcementService::class),
+        $this->loyaltyService,
+        $this->commissionService,
+        $settings,
+        Mockery::mock(CustomerMobileActivityService::class),
+        new FinalPricingTelemetryResolver(),
+    );
+
+    $first = $this->items[0];
+    $second = $this->items[1];
+    $actor = '00000000-0000-0000-0000-000000000001';
+
+    $lifecycle->processReturn($this->booking->id, [
+        'booking_item_id' => $first->id,
+        'returned_by' => $actor,
+        'actual_return_time' => now()->toIso8601String(),
+    ]);
+
+    expect($first->fresh()->returned_at)->not->toBeNull()
+        ->and($first->fresh()->completed_at)->toBeNull()
+        ->and($this->booking->fresh()->status)->toBe('confirmed');
+
+    expect(fn () => $lifecycle->completeBooking($this->booking->id, [], $first->id))
+        ->toThrow(DomainException::class, 'must pass QC');
+
+    $firstQc = $lifecycle->startQCInspection($this->booking->id, $actor, $first->id);
+    $firstRetry = $lifecycle->startQCInspection($this->booking->id, $actor, $first->id);
+    expect($firstQc->booking_item_id)->toBe($first->id)
+        ->and($firstRetry->id)->toBe($firstQc->id);
+
+    $firstQc = $lifecycle->completeQCInspection($this->booking->id, [
+        'cleanliness_rating' => 5,
+        'repair_required' => false,
+    ], $first->id);
+    $firstQcRetry = $lifecycle->completeQCInspection($this->booking->id, [
+        'cleanliness_rating' => 1,
+        'repair_required' => true,
+    ], $first->id);
+    expect($firstQc->qc_status->value)->toBe('completed')
+        ->and($firstQcRetry->id)->toBe($firstQc->id)
+        ->and($firstQcRetry->qc_status->value)->toBe('completed');
+
+    $lifecycle->completeBooking($this->booking->id, [], $first->id);
+    expect($first->fresh()->completed_at)->not->toBeNull()
+        ->and($second->fresh()->completed_at)->toBeNull()
+        ->and($this->booking->fresh()->status)->toBe('confirmed');
+
+    $lifecycle->processReturn($this->booking->id, [
+        'booking_item_id' => $second->id,
+        'returned_by' => $actor,
+        'actual_return_time' => now()->toIso8601String(),
+    ]);
+    $secondQc = $lifecycle->startQCInspection($this->booking->id, $actor, $second->id);
+    $secondQc = $lifecycle->completeQCInspection($this->booking->id, [
+        'cleanliness_rating' => 2,
+        'repair_required' => true,
+        'issues_reported' => [['type' => 'mechanical', 'description' => 'Brake inspection']],
+    ], $second->id);
+
+    expect($secondQc->booking_item_id)->toBe($second->id)
+        ->and($secondQc->qc_status->value)->toBe('issues_found');
+    expect(fn () => $lifecycle->completeBooking($this->booking->id, [], $second->id))
+        ->toThrow(DomainException::class, 'finish any required repairs');
+
+    $repaired = $lifecycle->completeRepairs($this->booking->id, [], $second->id);
+    $repairRetry = $lifecycle->completeRepairs($this->booking->id, [], $second->id);
+    expect($repaired->qc_status->value)->toBe('completed')
+        ->and($repairRetry->id)->toBe($repaired->id);
+
+    $lifecycle->completeBooking($this->booking->id, [], $second->id);
+
+    expect($this->booking->fresh()->status)->toBe('completed')
+        ->and($second->fresh()->completed_at)->not->toBeNull()
+        ->and(DB::table('booking_qcs')->where('booking_id', $this->booking->id)->count())->toBe(2)
+        ->and(DB::table('booking_qcs')->where('booking_item_id', $first->id)->value('id'))->toBe($firstQc->id)
+        ->and(DB::table('booking_qcs')->where('booking_item_id', $second->id)->value('id'))->toBe($secondQc->id);
+
+    $firstDetails = $lifecycle->getQCDetails($this->booking->id, $first->id);
+    $secondDetails = $lifecycle->getQCDetails($this->booking->id, $second->id);
+    expect($firstDetails['id'])->toBe($firstQc->id)
+        ->and($secondDetails['id'])->toBe($secondQc->id);
 });

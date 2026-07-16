@@ -20,6 +20,7 @@ class BookingQC extends BaseModel
 
     protected $fillable = [
         'booking_id',
+        'booking_item_id',
         'vehicle_id',
         'dispatch_id',
         'qc_status',
@@ -72,6 +73,11 @@ class BookingQC extends BaseModel
     public function booking(): BelongsTo
     {
         return $this->belongsTo(Booking::class);
+    }
+
+    public function bookingItem(): BelongsTo
+    {
+        return $this->belongsTo(BookingItem::class, 'booking_item_id');
     }
 
     /**

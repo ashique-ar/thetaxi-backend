@@ -160,6 +160,43 @@ class BookingLifecycleService
         return null;
     }
 
+    /**
+     * Resolve the QC record owned by the selected item. Legacy null-item QC is
+     * accepted only for a single-item booking; an ambiguous multi-item record
+     * is never guessed.
+     */
+    private function resolveItemQc(Booking $booking, array $context, bool $lock = false): ?BookingQC
+    {
+        $query = BookingQC::query()
+            ->where('booking_id', $booking->id);
+
+        if ($lock) {
+            $query->lockForUpdate();
+        }
+
+        $bookingItemId = $context['booking_item_id'] ?? null;
+        if ($bookingItemId) {
+            $itemQc = (clone $query)
+                ->where('booking_item_id', $bookingItemId)
+                ->first();
+            if ($itemQc) {
+                return $itemQc;
+            }
+        }
+
+        if ($booking->bookingItems->count() <= 1) {
+            return (clone $query)->whereNull('booking_item_id')->first();
+        }
+
+        if ((clone $query)->whereNull('booking_item_id')->exists()) {
+            throw new \DomainException(
+                'A legacy booking-level QC record cannot be assigned automatically to a multi-item booking.'
+            );
+        }
+
+        return null;
+    }
+
     // ========================
     // INQUIRY STAGE
     // ========================
@@ -959,6 +996,8 @@ class BookingLifecycleService
                     ]);
                 }
 
+                $this->markBookingItemCompleted($bookingItem?->fresh(), $completionMeta);
+
                 $this->logLifecycleTransition(
                     $booking,
                     $fromStatus,
@@ -999,12 +1038,24 @@ class BookingLifecycleService
     public function startQCInspection(string $bookingId, ?string $inspectorId = null, ?string $bookingItemId = null): BookingQC
     {
         return DB::transaction(function () use ($bookingId, $inspectorId, $bookingItemId) {
-            $booking = Booking::with(['dispatch', 'bookingItems'])->findOrFail($bookingId);
+            $booking = Booking::query()
+                ->lockForUpdate()
+                ->with(['dispatches', 'qcs', 'bookingItems'])
+                ->findOrFail($bookingId);
             $this->assertQcStageAvailable($booking);
+            $this->assertItemSafeLifecycle($booking, $bookingItemId);
             $context = $this->resolveLifecycleContext($booking, $bookingItemId);
-            $vehicleId = $booking->dispatch?->vehicle_id ?: $context['vehicle_id'];
+            $dispatch = $this->resolveItemDispatch($booking, $context, true);
+            $vehicleId = $dispatch?->vehicle_id ?: $context['vehicle_id'];
             if (!$vehicleId) {
                 throw new \Exception('Vehicle must be assigned before QC inspection');
+            }
+            if (
+                $booking->bookingItems->count() > 1
+                && !$context['booking_item']?->returned_at
+                && !$dispatch?->isReturned()
+            ) {
+                throw new \DomainException('The selected booking item must be returned before QC can start.');
             }
             $resolvedInspectorId = $inspectorId ?: Auth::id();
             if (!$resolvedInspectorId) {
@@ -1012,19 +1063,31 @@ class BookingLifecycleService
             }
 
             // Create or get QC record
-            $qc = $booking->qc ?: $booking->qc()->create([
+            $qc = $this->resolveItemQc($booking, $context, true) ?: $booking->qcs()->create([
+                'booking_item_id' => $context['booking_item_id'],
                 'vehicle_id' => $vehicleId,
-                'dispatch_id' => $booking->dispatch?->id,
+                'dispatch_id' => $dispatch?->id,
                 'qc_status' => QCStatus::PENDING,
             ]);
 
+            if ($qc->isInProgress()) {
+                return $qc;
+            }
+            if ($qc->inspection_completed_at || $qc->isCompleted() || $qc->needsRepair()) {
+                throw new \DomainException('The selected booking item QC has already progressed beyond inspection start.');
+            }
+
             $qc->startInspection((string) $resolvedInspectorId);
 
-            $booking->transitionToStatus(BookingLifecycleStatus::QC_IN_PROGRESS, Auth::id());
+            if ($booking->bookingItems->count() > 1) {
+                $this->updateItemQcState($context['booking_item'], $qc, 'qc_in_progress');
+                $this->logItemLifecycleEvent($booking, $context['booking_item'], 'qc_in_progress');
+            } else {
+                $booking->transitionToStatus(BookingLifecycleStatus::QC_IN_PROGRESS, Auth::id());
+                $this->logLifecycleTransition($booking, BookingLifecycleStatus::QC_PENDING, BookingLifecycleStatus::QC_IN_PROGRESS);
+            }
 
-            $this->logLifecycleTransition($booking, BookingLifecycleStatus::QC_PENDING, BookingLifecycleStatus::QC_IN_PROGRESS);
-
-            return $qc;
+            return $qc->fresh();
         });
     }
 
@@ -1034,25 +1097,42 @@ class BookingLifecycleService
     public function completeQCInspection(string $bookingId, array $inspectionData, ?string $bookingItemId = null): BookingQC
     {
         return DB::transaction(function () use ($bookingId, $inspectionData, $bookingItemId) {
-            $booking = Booking::findOrFail($bookingId);
+            $booking = Booking::query()
+                ->lockForUpdate()
+                ->with(['dispatches', 'qcs', 'bookingItems'])
+                ->findOrFail($bookingId);
             $this->assertQcStageAvailable($booking);
-            $this->resolveLifecycleContext($booking, $bookingItemId);
-            $qc = $booking->qc;
+            $this->assertItemSafeLifecycle($booking, $bookingItemId);
+            $context = $this->resolveLifecycleContext($booking, $bookingItemId);
+            $qc = $this->resolveItemQc($booking, $context, true);
 
             if (!$qc) {
                 throw new \Exception('QC record not found');
             }
 
+            if ($qc->inspection_completed_at) {
+                return $qc;
+            }
+            if (!$qc->isInProgress()) {
+                throw new \DomainException('QC inspection must be started before it can be completed.');
+            }
+
             $qc->completeInspection($inspectionData);
+            $qc->refresh();
 
             // Determine next status based on inspection results
             $nextStatus = $qc->needsRepair()
                 ? BookingLifecycleStatus::QC_REPAIR_NEEDED
                 : BookingLifecycleStatus::QC_COMPLETED;
 
-            $booking->transitionToStatus($nextStatus, Auth::id(), $inspectionData);
-
-            $this->logLifecycleTransition($booking, BookingLifecycleStatus::QC_IN_PROGRESS, $nextStatus, $inspectionData);
+            if ($booking->bookingItems->count() > 1) {
+                $itemStage = $qc->needsRepair() ? 'qc_repair_needed' : 'qc_completed';
+                $this->updateItemQcState($context['booking_item'], $qc, $itemStage);
+                $this->logItemLifecycleEvent($booking, $context['booking_item'], $itemStage, $inspectionData);
+            } else {
+                $booking->transitionToStatus($nextStatus, Auth::id(), $inspectionData);
+                $this->logLifecycleTransition($booking, BookingLifecycleStatus::QC_IN_PROGRESS, $nextStatus, $inspectionData);
+            }
 
             // If no repair needed, make vehicle available
             $vehicleId = $qc->vehicle_id ?: $booking->vehicle_id;
@@ -1078,20 +1158,36 @@ class BookingLifecycleService
     public function completeRepairs(string $bookingId, array $repairData = [], ?string $bookingItemId = null): BookingQC
     {
         return DB::transaction(function () use ($bookingId, $repairData, $bookingItemId) {
-            $booking = Booking::findOrFail($bookingId);
+            $booking = Booking::query()
+                ->lockForUpdate()
+                ->with(['dispatches', 'qcs', 'bookingItems'])
+                ->findOrFail($bookingId);
             $this->assertQcStageAvailable($booking);
-            $this->resolveLifecycleContext($booking, $bookingItemId);
-            $qc = $booking->qc;
+            $this->assertItemSafeLifecycle($booking, $bookingItemId);
+            $context = $this->resolveLifecycleContext($booking, $bookingItemId);
+            $qc = $this->resolveItemQc($booking, $context, true);
 
             if (!$qc) {
                 throw new \Exception('QC record not found');
             }
 
+            if ($qc->isCompleted()) {
+                return $qc;
+            }
+            if (!$qc->needsRepair()) {
+                throw new \DomainException('The selected booking item does not have a pending QC repair.');
+            }
+
             $qc->markCompleted();
+            $qc->refresh();
 
-            $booking->transitionToStatus(BookingLifecycleStatus::QC_COMPLETED, Auth::id(), $repairData);
-
-            $this->logLifecycleTransition($booking, BookingLifecycleStatus::QC_REPAIR_NEEDED, BookingLifecycleStatus::QC_COMPLETED, $repairData);
+            if ($booking->bookingItems->count() > 1) {
+                $this->updateItemQcState($context['booking_item'], $qc, 'qc_completed');
+                $this->logItemLifecycleEvent($booking, $context['booking_item'], 'qc_completed', $repairData);
+            } else {
+                $booking->transitionToStatus(BookingLifecycleStatus::QC_COMPLETED, Auth::id(), $repairData);
+                $this->logLifecycleTransition($booking, BookingLifecycleStatus::QC_REPAIR_NEEDED, BookingLifecycleStatus::QC_COMPLETED, $repairData);
+            }
 
             // Make vehicle available
             $vehicleId = $qc->vehicle_id ?: $booking->vehicle_id;
@@ -1178,6 +1274,23 @@ class BookingLifecycleService
                 'booking_completion'
             );
 
+            if ($bookingItem) {
+                $itemTimestamp = Carbon::now('UTC');
+                $bookingItem->update([
+                    'returned_at' => $bookingItem->returned_at
+                        ?? $dispatch?->fresh()->actual_return_at
+                        ?? ($canSkipReturn ? $itemTimestamp : null),
+                    'final_priced_at' => $itemTimestamp,
+                    'lifecycle_data' => array_merge(
+                        is_array($bookingItem->lifecycle_data) ? $bookingItem->lifecycle_data : [],
+                        [
+                            'dispatch_id' => $dispatch?->id,
+                            'final_pricing_trigger' => 'booking_completion',
+                        ]
+                    ),
+                ]);
+            }
+
             $transitioned = $booking->transitionToStatus(
                 BookingLifecycleStatus::COMPLETED,
                 (string) $actorUserId,
@@ -1209,6 +1322,8 @@ class BookingLifecycleService
             } elseif (!$transitioned) {
                 throw new \Exception('Booking cannot be completed from its current lifecycle status');
             }
+
+            $this->markBookingItemCompleted($bookingItem?->fresh(), $completionData);
 
             $this->logLifecycleTransition(
                 $booking,
@@ -1313,6 +1428,15 @@ class BookingLifecycleService
             throw new \DomainException(
                 'The selected booking item must be returned before it can be completed.'
             );
+        }
+
+        if ((bool) ($workflowSettings['enable_qc_stage'] ?? false)) {
+            $qc = $this->resolveItemQc($booking, $context, true);
+            if (!$qc || !$qc->isCompleted()) {
+                throw new \DomainException(
+                    'The selected booking item must pass QC and finish any required repairs before completion.'
+                );
+            }
         }
 
         if (!$returnStageEnabled && $dispatch && !$dispatch->isReturned()) {
@@ -1566,12 +1690,36 @@ class BookingLifecycleService
         }
         $extraMinutes = max(0, $durationMinutes - $includedMinutes);
 
+        $packageId = $metadata['service_package_id'] ?? $metadata['package_id'] ?? null;
+        $additionalStops = $this->resolveBookedAdditionalStops($metadata);
+        $packageIncludedKm = $this->resolvePackageIncludedKilometres(
+            $metadata,
+            is_array($bookingItem->pricing_breakdown) ? $bookingItem->pricing_breakdown : [],
+            $durationMinutes
+        );
+
+        // Operational charges must be available to the calculation graph so a
+        // definition can explicitly include them. If it does not, they are
+        // appended once after the configured formula has been evaluated.
+        $manualCharges = $this->sumOperationalCharges($dispatch?->additional_charges ?? []);
+        if ($trigger === 'booking_completion') {
+            // A staff-approved completion adjustment is additional to charges
+            // already captured at return. During processReturn both arrays
+            // describe the same charges, so only the persisted dispatch copy is
+            // counted there.
+            $manualCharges += $this->sumOperationalCharges($activityData['charges'] ?? []);
+        } elseif (!$dispatch) {
+            $manualCharges += $this->sumOperationalCharges($activityData['charges'] ?? []);
+        }
+        $manualCharges = round($manualCharges, 2);
+        $lateFee = round((float) ($dispatch?->late_return_fee ?? $activityData['late_fee'] ?? 0), 2);
+
         $params = [
             'service_type_id' => $bookingItem->service_type_id,
             'vehicle_group_id' => $bookingItem->vehicle_group_id,
             'vehicle_id' => $bookingItem->vehicle_id ?: $context['vehicle_id'],
             'corporate_account_id' => $booking->corporate_account_id,
-            'package_id' => $metadata['service_package_id'] ?? $metadata['package_id'] ?? null,
+            'package_id' => $packageId,
             'customer_id' => $booking->customer_id,
             'from_date' => $bookingItem->from_date ?? $booking->from_date,
             'to_date' => $bookingItem->to_date ?? $booking->to_date,
@@ -1586,8 +1734,15 @@ class BookingLifecycleService
             'overtime_hours' => $extraMinutes / 60,
             'waiting_minutes' => $waitingMinutes,
             'waiting_hours' => $waitingMinutes / 60,
+            'additional_stops' => $additionalStops,
+            'stops' => $additionalStops,
+            'manual_additional_charge' => $manualCharges,
+            'late_return_fee' => $lateFee,
             'mode' => 'final_calculation',
         ];
+        if ($packageIncludedKm !== null) {
+            $params['package_included_km'] = $packageIncludedKm;
+        }
         if ($distanceKm !== null) {
             $params += [
                 'journey_distance' => (float) $distanceKm,
@@ -1599,28 +1754,58 @@ class BookingLifecycleService
         $activeDefinitions = VehiclePricingCalculationDefinition::query()
             ->where('service_type_id', $bookingItem->service_type_id)
             ->where('status', 'active')
-            ->get(['id', 'variables', 'formula']);
+            ->get(['id', 'name', 'variables', 'formula', 'conditions']);
 
         $result = $this->bookingFlowService->calculateDynamicPricing($params);
         $definitionId = data_get($result, 'pricing_scope.calculation_definition_id')
             ?? data_get($result, 'calculation_metadata.definition_used');
         $calculatedBase = (float) ($result['total_amount'] ?? 0);
+        $resolvedVariables = data_get($result, 'calculation_metadata.variables_used', []);
+        $resolvedVariables = is_array($resolvedVariables) ? $resolvedVariables : [];
 
         $audit = [
             'status' => $definitionId && $calculatedBase >= 0 ? 'calculated' : 'preserved',
             'trigger' => $trigger,
+            'booking_item_id' => (string) $bookingItem->id,
             'source' => $source,
             'source_category' => $sourceCategory,
             'source_selection' => $sourceSelection,
             'calculation_definition_id' => $definitionId,
+            'calculation_definition_name' => data_get($result, 'pricing_scope.calculation_definition_name'),
             'calculated_at' => Carbon::now('UTC')->toIso8601String(),
             'contractual_distance_preserved' => $contractualDistance,
+            'context' => [
+                'service_type_id' => (string) $bookingItem->service_type_id,
+                'vehicle_group_id' => (string) $bookingItem->vehicle_group_id,
+                'vehicle_id' => $params['vehicle_id'] ? (string) $params['vehicle_id'] : null,
+                'customer_id' => $booking->customer_id ? (string) $booking->customer_id : null,
+                'corporate_account_id' => $booking->corporate_account_id
+                    ? (string) $booking->corporate_account_id
+                    : null,
+                'package_id' => $packageId ? (string) $packageId : null,
+                'from_date' => $params['from_date'],
+                'to_date' => $params['to_date'],
+                'from_time' => $params['from_time'],
+                'to_time' => $params['to_time'],
+                'is_weekend' => data_get($result, 'calculation_metadata.runtime_context.is_weekend'),
+                'is_holiday' => data_get($result, 'calculation_metadata.runtime_context.is_holiday'),
+                'additional_stops' => $additionalStops,
+                'package_included_km' => $packageIncludedKm,
+            ],
             'inputs' => [
                 'duration_minutes' => $durationMinutes,
                 'distance_km' => $distanceKm !== null ? round((float) $distanceKm, 2) : null,
                 'waiting_minutes' => $waitingMinutes,
                 'extra_minutes' => $extraMinutes,
+                'manual_additional_charge' => $manualCharges,
+                'late_return_fee' => $lateFee,
             ],
+            'rates_and_variables' => $resolvedVariables,
+            'conditions_evaluated' => data_get($result, 'calculation_metadata.conditions_evaluated', []),
+            'matched_slab' => $result['slab_information']
+                ?? data_get($result, 'calculation_metadata.matched_slab'),
+            'adjustments' => $result['adjustment_details'] ?? [],
+            'breakdown' => $result['breakdown'] ?? [],
         ];
 
         if (!$definitionId) {
@@ -1638,28 +1823,20 @@ class BookingLifecycleService
 
         $selectedDefinition = $activeDefinitions->firstWhere('id', $definitionId);
         $selectedFormula = (string) ($selectedDefinition?->formula ?? '');
-        $formulaUsesAny = static function (array $names) use ($selectedFormula): bool {
-            foreach ($names as $name) {
-                if (preg_match('/(?<![A-Za-z0-9_])' . preg_quote($name, '/') . '(?![A-Za-z0-9_])/', $selectedFormula)) {
-                    return true;
-                }
-            }
-            return false;
-        };
 
-        if (!$contractualDistance && $distanceKm === null && $formulaUsesAny([
+        if (!$contractualDistance && $distanceKm === null && $this->formulaReferencesAny($selectedFormula, [
             'journey_distance', 'total_distance', 'actual_distance', 'distance_km', 'extra_km',
         ])) {
             throw new \DomainException(
                 'Final distance is required by the selected pricing definition. Completion was stopped until mileage or measured distance is supplied.'
             );
         }
-        if (!$hasDurationSource && $formulaUsesAny(['duration_minutes', 'duration_hours', 'duration_days'])) {
+        if (!$hasDurationSource && $this->formulaReferencesAny($selectedFormula, ['duration_minutes', 'duration_hours', 'duration_days'])) {
             throw new \DomainException(
                 'Final duration is required by the selected pricing definition. Completion was stopped until start and return times are supplied.'
             );
         }
-        if (!$hasIncludedDuration && $formulaUsesAny([
+        if (!$hasIncludedDuration && $this->formulaReferencesAny($selectedFormula, [
             'extra_minutes', 'extra_hours', 'overtime_minutes', 'overtime_hours',
         ])) {
             throw new \DomainException(
@@ -1667,25 +1844,31 @@ class BookingLifecycleService
             );
         }
 
-        $manualCharges = $this->sumOperationalCharges($dispatch?->additional_charges ?? []);
-        if ($trigger === 'booking_completion') {
-            // A staff-approved completion adjustment is additional to charges
-            // already captured at return. During processReturn both arrays
-            // describe the same charges, so only the persisted dispatch copy is
-            // counted there.
-            $manualCharges += $this->sumOperationalCharges($activityData['charges'] ?? []);
-        } elseif (!$dispatch) {
-            $manualCharges += $this->sumOperationalCharges($activityData['charges'] ?? []);
-        }
-        $manualCharges = round($manualCharges, 2);
-        $lateFee = (float) ($dispatch?->late_return_fee ?? $activityData['late_fee'] ?? 0);
-        $finalBase = round($calculatedBase + $manualCharges + $lateFee, 2);
+        $manualChargeInFormula = $this->formulaReferencesAny(
+            $selectedFormula,
+            ['manual_additional_charge']
+        );
+        $lateFeeInFormula = $this->formulaReferencesAny($selectedFormula, ['late_return_fee']);
+        $appendedManualCharges = $manualChargeInFormula ? 0.0 : $manualCharges;
+        $appendedLateFee = $lateFeeInFormula ? 0.0 : $lateFee;
+        $finalBase = round($calculatedBase + $appendedManualCharges + $appendedLateFee, 2);
         $audit += [
             'calculated_base' => $calculatedBase,
             'manual_charges' => $manualCharges,
             'late_return_fee' => $lateFee,
+            'operational_charge_handling' => [
+                'manual_charge_in_formula' => $manualChargeInFormula,
+                'late_fee_in_formula' => $lateFeeInFormula,
+                'manual_charge_appended' => $appendedManualCharges,
+                'late_fee_appended' => $appendedLateFee,
+            ],
             'final_base' => $finalBase,
-            'calculation_example' => $this->buildFinalCalculationExample($result, $manualCharges, $lateFee, $finalBase),
+            'calculation_example' => $this->buildFinalCalculationExample(
+                $result,
+                $appendedManualCharges,
+                $appendedLateFee,
+                $finalBase
+            ),
         ];
 
         $bookingItem->update([
@@ -1699,27 +1882,77 @@ class BookingLifecycleService
         ]);
 
         $booking->load('bookingItems');
+        $durationMetrics = is_array($booking->duration_metrics) ? $booking->duration_metrics : [];
+        $durationItems = is_array($durationMetrics['items'] ?? null) ? $durationMetrics['items'] : [];
+        $durationItems[(string) $bookingItem->id] = [
+            'source' => $source,
+            'actual_minutes' => $durationMinutes,
+            'waiting_minutes' => $waitingMinutes,
+            'extra_minutes' => $extraMinutes,
+        ];
+        $aggregateDurationMinutes = (int) collect($durationItems)->sum(
+            fn ($metrics) => (int) ($metrics['actual_minutes'] ?? 0)
+        );
+        $aggregateWaitingMinutes = (int) collect($durationItems)->sum(
+            fn ($metrics) => (int) ($metrics['waiting_minutes'] ?? 0)
+        );
+        $aggregateExtraMinutes = (int) collect($durationItems)->sum(
+            fn ($metrics) => (int) ($metrics['extra_minutes'] ?? 0)
+        );
+
+        $distanceMetrics = is_array($booking->distance_metrics) ? $booking->distance_metrics : [];
+        $distanceItems = is_array($distanceMetrics['items'] ?? null) ? $distanceMetrics['items'] : [];
+        $distanceItems[(string) $bookingItem->id] = [
+            'source' => $source,
+            'actual_km' => $distanceKm !== null ? round((float) $distanceKm, 2) : null,
+            'pricing_effect' => $contractualDistance
+                ? 'contractual_distance_preserved'
+                : 'final_recalculation',
+        ];
+        $measuredItemDistances = collect($distanceItems)
+            ->pluck('actual_km')
+            ->filter(fn ($distance) => is_numeric($distance));
+
+        $pricingSnapshot = is_array($booking->pricing_snapshot) ? $booking->pricing_snapshot : [];
+        $finalPricingItems = is_array($pricingSnapshot['final_pricing_items'] ?? null)
+            ? $pricingSnapshot['final_pricing_items']
+            : [];
+        $finalPricingItems[(string) $bookingItem->id] = $audit;
+
         $bookingUpdates = [
-            'actual_duration' => $durationMinutes,
+            'actual_duration' => $aggregateDurationMinutes,
             'base_amount' => round((float) $booking->bookingItems->sum('total_price'), 2),
             'total_actual' => round($booking->calculateTotal(), 2),
-            'duration_metrics' => array_merge(is_array($booking->duration_metrics) ? $booking->duration_metrics : [], [
-                'source' => $source,
-                'actual_minutes' => $durationMinutes,
-                'waiting_minutes' => $waitingMinutes,
-                'extra_minutes' => $extraMinutes,
+            'duration_metrics' => array_merge($durationMetrics, [
+                'source' => count($durationItems) > 1 ? 'multiple_item_sources' : $source,
+                'actual_minutes' => $aggregateDurationMinutes,
+                'waiting_minutes' => $aggregateWaitingMinutes,
+                'extra_minutes' => $aggregateExtraMinutes,
+                'items' => $durationItems,
             ]),
-            'distance_metrics' => array_merge(is_array($booking->distance_metrics) ? $booking->distance_metrics : [], [
-                'source' => $source,
-                'actual_km' => $distanceKm !== null ? round((float) $distanceKm, 2) : null,
-                'pricing_effect' => $contractualDistance ? 'contractual_distance_preserved' : 'final_recalculation',
+            'distance_metrics' => array_merge($distanceMetrics, [
+                'source' => count($distanceItems) > 1 ? 'multiple_item_sources' : $source,
+                'actual_km' => $measuredItemDistances->isNotEmpty()
+                    ? round((float) $measuredItemDistances->sum(), 2)
+                    : null,
+                'pricing_effect' => collect($distanceItems)->contains(
+                    fn ($metrics) => ($metrics['pricing_effect'] ?? null) === 'contractual_distance_preserved'
+                ) ? 'contains_contractual_distance' : 'final_recalculation',
+                'items' => $distanceItems,
             ]),
-            'pricing_snapshot' => array_merge(is_array($booking->pricing_snapshot) ? $booking->pricing_snapshot : [], [
+            'pricing_snapshot' => array_merge($pricingSnapshot, [
                 'final_pricing' => $audit,
+                'final_pricing_items' => $finalPricingItems,
+                'final_pricing_summary' => [
+                    'priced_item_count' => count($finalPricingItems),
+                    'booking_item_count' => $booking->bookingItems->count(),
+                    'calculated_total' => round((float) $booking->bookingItems->sum('total_price'), 2),
+                    'last_calculated_at' => $audit['calculated_at'],
+                ],
             ]),
         ];
-        if ($distanceKm !== null) {
-            $bookingUpdates['actual_distance'] = round((float) $distanceKm, 2);
+        if ($measuredItemDistances->isNotEmpty()) {
+            $bookingUpdates['actual_distance'] = round((float) $measuredItemDistances->sum(), 2);
         }
         $booking->update($bookingUpdates);
 
@@ -1740,6 +1973,91 @@ class BookingLifecycleService
                 ? (float) $charge
                 : (float) ($charge['amount'] ?? $charge['total'] ?? $charge['value'] ?? 0);
         }), 2);
+    }
+
+    private function formulaReferencesAny(string $formula, array $variableNames): bool
+    {
+        foreach ($variableNames as $variableName) {
+            if (preg_match(
+                '/(?<![A-Za-z0-9_])' . preg_quote((string) $variableName, '/') . '(?![A-Za-z0-9_])/',
+                $formula
+            )) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function resolveBookedAdditionalStops(array $metadata): int
+    {
+        foreach (['additional_stops', 'stops', 'additional_stops_count'] as $key) {
+            if (is_numeric($metadata[$key] ?? null)) {
+                return max(0, (int) $metadata[$key]);
+            }
+        }
+
+        $normalizeList = static function (mixed $value): array {
+            if (is_string($value)) {
+                $decoded = json_decode($value, true);
+                $value = json_last_error() === JSON_ERROR_NONE ? $decoded : [];
+            }
+
+            return is_array($value) ? array_values($value) : [];
+        };
+
+        $orderedStops = $normalizeList(
+            $metadata['multi_route_stop_order']
+                ?? $metadata['ordered_additional_stops']
+                ?? $metadata['additional_route_stops']
+                ?? []
+        );
+        if ($orderedStops !== []) {
+            return count($orderedStops);
+        }
+
+        return count($normalizeList(
+            $metadata['multi_pickup_locations'] ?? $metadata['additional_pickup_locations'] ?? []
+        )) + count($normalizeList(
+            $metadata['multi_dropoff_locations'] ?? $metadata['additional_dropoff_locations'] ?? []
+        ));
+    }
+
+    private function resolvePackageIncludedKilometres(
+        array $metadata,
+        array $pricingBreakdown,
+        int $durationMinutes
+    ): ?float {
+        $packageCandidates = [
+            data_get($metadata, 'package_included_km'),
+            data_get($metadata, 'included_km'),
+            data_get($metadata, 'package_info.max_km_per_package'),
+            data_get($metadata, 'package_info.included_km'),
+            data_get($pricingBreakdown, 'distance_details.allowed_total_km'),
+            data_get($pricingBreakdown, 'base_pricing.distance_details.allowed_total_km'),
+            data_get($pricingBreakdown, 'distance_details.free_km_per_package'),
+            data_get($pricingBreakdown, 'base_pricing.distance_details.free_km_per_package'),
+        ];
+
+        foreach ($packageCandidates as $candidate) {
+            if (is_numeric($candidate) && (float) $candidate >= 0) {
+                return round((float) $candidate, 2);
+            }
+        }
+
+        $dailyCandidates = [
+            data_get($metadata, 'package_info.max_km_per_day'),
+            data_get($metadata, 'max_km_per_day'),
+            data_get($pricingBreakdown, 'distance_details.free_km_per_day'),
+            data_get($pricingBreakdown, 'base_pricing.distance_details.free_km_per_day'),
+        ];
+        foreach ($dailyCandidates as $candidate) {
+            if (is_numeric($candidate) && (float) $candidate >= 0) {
+                return round((float) $candidate * max(1, (int) ceil($durationMinutes / 1440)), 2);
+            }
+        }
+
+        return null;
     }
 
     private function assertItemSafeLifecycle(Booking $booking, ?string $bookingItemId): void
@@ -1778,6 +2096,27 @@ class BookingLifecycleService
                 [
                     'stage' => 'completed',
                     'completed_at' => $completedAt->toIso8601String(),
+                ]
+            ),
+        ]);
+    }
+
+    private function updateItemQcState(?BookingItem $bookingItem, BookingQC $qc, string $stage): void
+    {
+        if (!$bookingItem) {
+            return;
+        }
+
+        $bookingItem->update([
+            'lifecycle_data' => array_merge(
+                is_array($bookingItem->lifecycle_data) ? $bookingItem->lifecycle_data : [],
+                [
+                    'stage' => $stage,
+                    'qc_id' => (string) $qc->id,
+                    'qc_status' => $qc->qc_status?->value,
+                    'qc_inspection_started_at' => $qc->inspection_started_at?->toIso8601String(),
+                    'qc_inspection_completed_at' => $qc->inspection_completed_at?->toIso8601String(),
+                    'qc_updated_at' => Carbon::now('UTC')->toIso8601String(),
                 ]
             ),
         ]);
@@ -2186,10 +2525,13 @@ class BookingLifecycleService
         $booking = Booking::with([
             'dispatch.vehicle',
             'dispatch.driver.user',
+            'dispatches.vehicle',
+            'dispatches.driver.user',
             'dispatch.dispatchedBy',
             'dispatch.returnedBy',
             'dispatches',
             'qc.inspector',
+            'qcs.inspector',
             'customer',
             'bookingItems.serviceType',
             'bookingItems.vehicle',
@@ -2207,12 +2549,20 @@ class BookingLifecycleService
         }
 
         $workflowSettings = $this->getLifecycleWorkflowSettings();
+        $itemQc = $this->resolveItemQc($booking, $context);
+        $itemDispatch = $this->resolveItemDispatch($booking, $context);
         $currentStatus = $this->resolveSelectedItemLifecycleStatus(
             $booking,
             $context['booking_item'],
-            $this->resolveItemDispatch($booking, $context)
+            $itemDispatch,
+            $itemQc
         );
-        $nextActions = $booking->getNextActions();
+        $nextActions = array_map(static fn (BookingLifecycleStatus $status): array => [
+            'status' => $status->value,
+            'display_name' => $status->getDisplayName(),
+            'action' => $status->getPrimaryAction(),
+            'color' => $status->getColor(),
+        ], $currentStatus->getNextStatuses());
         $currentStage = $currentStatus->getStage();
 
         // Do not strand bookings already inside an optional stage when settings change.
@@ -2287,8 +2637,8 @@ class BookingLifecycleService
                 'primaryAction' => $this->getPrimaryActionText($currentStatus, $workflowSettings),
             ],
             'next_actions' => $nextActions,
-            'stage_progress' => $this->getStageProgress($booking, $workflowSettings),
-            'timeline' => $this->getLifecycleTimeline($booking),
+            'stage_progress' => $this->getStageProgress($booking, $workflowSettings, $currentStatus),
+            'timeline' => $this->getLifecycleTimeline($booking, $itemDispatch, $itemQc),
             'lifecycle_history' => $lifecycleHistory,
             'workflow_settings' => $workflowSettings,
             'approval_context' => [
@@ -2310,6 +2660,7 @@ class BookingLifecycleService
             'dispatch',
             'dispatches',
             'qc',
+            'qcs',
             'bookingItems.serviceType',
             'bookingItems.vehicle',
             'bookingItems.driver.user',
@@ -2317,10 +2668,12 @@ class BookingLifecycleService
 
         $context = $this->resolveLifecycleContext($booking, $bookingItemId);
         $itemDispatch = $this->resolveItemDispatch($booking, $context);
+        $itemQc = $this->resolveItemQc($booking, $context);
         $currentStatus = $this->resolveSelectedItemLifecycleStatus(
             $booking,
             $context['booking_item'],
-            $itemDispatch
+            $itemDispatch,
+            $itemQc
         );
         $workflowSettings = $this->getLifecycleWorkflowSettings();
 
@@ -2348,7 +2701,7 @@ class BookingLifecycleService
             'booking_status' => (string) ($booking->status ?? ''),
             'lifecycle_status' => $currentStatus->value,
             'dispatch_status' => $this->enumValue($itemDispatch?->dispatch_status),
-            'qc_status' => $this->enumValue($booking->qc?->qc_status),
+            'qc_status' => $this->enumValue($itemQc?->qc_status),
             'driver_trip_phase' => $this->enumValue($driverAssignment?->trip_phase),
             'approval_status' => $this->resolveApprovalStatus($booking),
             'payment_collection_status' => $booking->payment_collection_status ?? $booking->payment_status ?? 'pending',
@@ -2360,7 +2713,8 @@ class BookingLifecycleService
     private function resolveSelectedItemLifecycleStatus(
         Booking $booking,
         ?BookingItem $bookingItem,
-        ?BookingDispatch $dispatch
+        ?BookingDispatch $dispatch,
+        ?BookingQC $qc = null
     ): BookingLifecycleStatus {
         if ((string) $booking->status === 'completed') {
             return BookingLifecycleStatus::COMPLETED;
@@ -2368,6 +2722,16 @@ class BookingLifecycleService
 
         if ($bookingItem?->completed_at) {
             return BookingLifecycleStatus::COMPLETED;
+        }
+
+        if ($qc) {
+            return match ($qc->qc_status) {
+                QCStatus::PENDING => BookingLifecycleStatus::QC_PENDING,
+                QCStatus::IN_PROGRESS => BookingLifecycleStatus::QC_IN_PROGRESS,
+                QCStatus::ISSUES_FOUND => BookingLifecycleStatus::QC_ISSUES_FOUND,
+                QCStatus::REPAIR_REQUIRED => BookingLifecycleStatus::QC_REPAIR_NEEDED,
+                QCStatus::COMPLETED => BookingLifecycleStatus::QC_COMPLETED,
+            };
         }
 
         if ($bookingItem?->returned_at || $dispatch?->isReturned()) {
@@ -2513,9 +2877,13 @@ class BookingLifecycleService
     /**
      * Get stage progress for UI
      */
-    private function getStageProgress(Booking $booking, array $workflowSettings): array
+    private function getStageProgress(
+        Booking $booking,
+        array $workflowSettings,
+        ?BookingLifecycleStatus $selectedStatus = null
+    ): array
     {
-        $currentStatus = $booking->getLifecycleStatus();
+        $currentStatus = $selectedStatus ?? $booking->getLifecycleStatus();
         $stages = [
             'inquiry' => ['completed' => false, 'current' => false],
             'booking' => ['completed' => false, 'current' => false],
@@ -2550,9 +2918,15 @@ class BookingLifecycleService
     /**
      * Get lifecycle timeline events
      */
-    private function getLifecycleTimeline(Booking $booking): array
+    private function getLifecycleTimeline(
+        Booking $booking,
+        ?BookingDispatch $selectedDispatch = null,
+        ?BookingQC $selectedQc = null
+    ): array
     {
         $timeline = [];
+        $dispatch = $selectedDispatch;
+        $qc = $selectedQc;
 
         // Booking created
         $timeline[] = [
@@ -2573,31 +2947,31 @@ class BookingLifecycleService
         }
 
         // Vehicle dispatched
-        if ($booking->dispatch?->dispatched_at) {
+        if ($dispatch?->dispatched_at) {
             $timeline[] = [
                 'event' => 'Vehicle Dispatched',
-                'timestamp' => $this->toUtcIsoTimestamp($booking->dispatch->dispatched_at),
-                'user' => $booking->dispatch->dispatchedBy?->name ?? 'System',
+                'timestamp' => $this->toUtcIsoTimestamp($dispatch->dispatched_at),
+                'user' => $dispatch->dispatchedBy?->name ?? 'System',
                 'status' => 'dispatched',
             ];
         }
 
         // Vehicle returned
-        if ($booking->dispatch?->actual_return_at) {
+        if ($dispatch?->actual_return_at) {
             $timeline[] = [
                 'event' => 'Vehicle Returned',
-                'timestamp' => $this->toUtcIsoTimestamp($booking->dispatch->actual_return_at),
-                'user' => $booking->dispatch->returnedBy?->name ?? 'System',
+                'timestamp' => $this->toUtcIsoTimestamp($dispatch->actual_return_at),
+                'user' => $dispatch->returnedBy?->name ?? 'System',
                 'status' => 'returned',
             ];
         }
 
         // QC completed
-        if ($booking->qc?->inspection_completed_at) {
+        if ($qc?->inspection_completed_at) {
             $timeline[] = [
                 'event' => 'QC Inspection Completed',
-                'timestamp' => $this->toUtcIsoTimestamp($booking->qc->inspection_completed_at),
-                'user' => $booking->qc->inspector?->name ?? 'System',
+                'timestamp' => $this->toUtcIsoTimestamp($qc->inspection_completed_at),
+                'user' => $qc->inspector?->name ?? 'System',
                 'status' => 'qc_completed',
             ];
         }
@@ -2729,13 +3103,15 @@ class BookingLifecycleService
         $booking = Booking::with([
             'dispatch.vehicle',
             'dispatch.driver.user',
+            'dispatches.vehicle',
+            'dispatches.driver.user',
             'customer',
             'bookingItems.vehicle',
             'bookingItems.driver.user',
         ])->findOrFail($bookingId);
         $context = $this->resolveLifecycleContext($booking, $bookingItemId);
 
-        $dispatch = $booking->dispatch;
+        $dispatch = $this->resolveItemDispatch($booking, $context);
         if (!$dispatch) {
             throw new \Exception('No dispatch found for this booking');
         }
@@ -2781,12 +3157,14 @@ class BookingLifecycleService
         $booking = Booking::with([
             'dispatch.vehicle',
             'dispatch.driver.user',
+            'dispatches.vehicle',
+            'dispatches.driver.user',
             'bookingItems.vehicle',
             'bookingItems.driver.user',
         ])->findOrFail($bookingId);
         $context = $this->resolveLifecycleContext($booking, $bookingItemId);
 
-        $dispatch = $booking->dispatch;
+        $dispatch = $this->resolveItemDispatch($booking, $context);
         if (!$dispatch) {
             throw new \Exception('No dispatch found for this booking');
         }
@@ -2844,11 +3222,13 @@ class BookingLifecycleService
         $booking = Booking::with([
             'qc.repairItems',
             'qc.inspector',
+            'qcs.repairItems',
+            'qcs.inspector',
             'bookingItems',
         ])->findOrFail($bookingId);
         $context = $this->resolveLifecycleContext($booking, $bookingItemId);
 
-        $qc = $booking->qc;
+        $qc = $this->resolveItemQc($booking, $context);
 
         if (!$qc) {
             throw new \Exception('No QC record found for this booking');

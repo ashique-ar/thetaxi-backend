@@ -34,6 +34,13 @@ class VehiclePricingCommonRateDefinition extends BaseModel
 {
     use HasGlobalPricingDefinitionScope;
 
+    protected static function booted(): void
+    {
+        static::saving(function (self $definition): void {
+            $definition->vehicle_group_id = null;
+        });
+    }
+
     /**
      * The table associated with the model.
      */

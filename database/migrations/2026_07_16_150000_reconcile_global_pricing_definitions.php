@@ -14,6 +14,11 @@ return new class extends Migration
 
     public function up(): void
     {
+        // MySQL DDL auto-commits. Complete every semantic/data compatibility
+        // check before dropping an index or changing a row so unsafe legacy
+        // graphs fail without partial reconciliation.
+        $this->preflight();
+
         DB::transaction(function (): void {
             $this->dropLegacyOwnerIndexes();
 
@@ -35,6 +40,282 @@ return new class extends Migration
         throw new RuntimeException(
             'Global pricing-definition reconciliation is intentionally irreversible; restore a database backup to undo it.'
         );
+    }
+
+    private function preflight(): void
+    {
+        $commonRows = $this->liveRows(self::COMMON_RATE_TABLE);
+        $slabRows = $this->liveRows(self::SLAB_TABLE);
+
+        $this->assertCompatibleDefinitionGroups(
+            $commonRows,
+            fn (object $row): string => $this->commonRateIdentity($row),
+            fn (object $left, object $right): bool => $this->commonRatesAreCompatible($left, $right),
+            'common-rate definition',
+        );
+        $this->assertCompatibleDefinitionGroups(
+            $slabRows,
+            fn (object $row): string => $this->slabIdentity($row),
+            fn (object $left, object $right): bool => $this->slabsAreCompatible($left, $right),
+            'slab definition',
+        );
+        $this->assertNoOwnedSlabNameCollisions($slabRows);
+
+        $commonMap = $this->canonicalReferenceMap(
+            $commonRows,
+            fn (object $row): string => $this->commonRateIdentity($row),
+        );
+        $slabMap = $this->canonicalReferenceMap(
+            $slabRows,
+            fn (object $row): string => $this->slabIdentity($row),
+        );
+
+        $this->assertCompatiblePricingScopes(
+            'vehicle_group_common_rate_pricing',
+            'common_rate_definition_id',
+            $commonMap,
+            fn (object $left, object $right): bool => $this->commonRatePricesAreCompatible($left, $right),
+            'common-rate',
+        );
+        $this->assertCompatiblePricingScopes(
+            'vehicle_group_pricing',
+            'slab_definition_id',
+            $slabMap,
+            fn (object $left, object $right): bool => $this->slabPricesAreCompatible($left, $right),
+            'slab',
+        );
+
+        $this->preflightCalculationDefinitions(array_merge($commonMap, $slabMap));
+    }
+
+    private function liveRows(string $table): Collection
+    {
+        if (!Schema::hasTable($table)) {
+            return collect();
+        }
+
+        return DB::table($table)
+            ->whereNull('deleted_at')
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->get();
+    }
+
+    private function assertCompatibleDefinitionGroups(
+        Collection $rows,
+        callable $identity,
+        callable $compatible,
+        string $label,
+    ): void {
+        foreach ($rows->groupBy($identity) as $key => $group) {
+            $canonical = $group->first(fn (object $row): bool => $this->isGlobal($row)) ?? $group->first();
+
+            foreach ($group as $row) {
+                if ($row->id !== $canonical->id && !$compatible($canonical, $row)) {
+                    throw new RuntimeException(
+                        "Unsafe {$label} conflict for {$key}: {$canonical->id} and {$row->id} have incompatible semantics."
+                    );
+                }
+            }
+        }
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function canonicalReferenceMap(Collection $rows, callable $identity): array
+    {
+        $map = [];
+
+        foreach ($rows->groupBy($identity) as $group) {
+            $canonical = $group->first(fn (object $row): bool => $this->isGlobal($row)) ?? $group->first();
+
+            foreach ($group as $row) {
+                if ($row->id !== $canonical->id) {
+                    $map[$row->id] = $canonical->id;
+                }
+            }
+        }
+
+        return $map;
+    }
+
+    private function assertNoOwnedSlabNameCollisions(Collection $rows): void
+    {
+        foreach ($rows->groupBy(fn (object $row): string => strtolower(
+            (string) $row->service_type_id . '|' . trim((string) $row->name)
+        )) as $identity => $group) {
+            if ($group->count() < 2 || !$group->contains(fn (object $row): bool => !$this->isGlobal($row))) {
+                continue;
+            }
+
+            if ($group->map(fn (object $row): string => $this->slabIdentity($row))->unique()->count() > 1) {
+                throw new RuntimeException(
+                    "Unsafe slab definition conflict for {$identity}: the same name is assigned to different boundaries."
+                );
+            }
+        }
+    }
+
+    private function assertCompatiblePricingScopes(
+        string $table,
+        string $definitionColumn,
+        array $definitionMap,
+        callable $compatible,
+        string $label,
+    ): void {
+        if (!Schema::hasTable($table)) {
+            return;
+        }
+
+        $rows = DB::table($table)->whereNull('deleted_at')->get();
+        $groups = $rows->groupBy(function (object $row) use ($definitionColumn, $definitionMap): string {
+            $definitionId = $definitionMap[$row->{$definitionColumn}] ?? $row->{$definitionColumn};
+
+            return implode('|', [
+                $definitionId,
+                $row->vehicle_group_id,
+                $row->owner_type ?? 'global',
+                $row->owner_id ?? 'global',
+            ]);
+        });
+
+        foreach ($groups as $scope => $group) {
+            $canonical = $group->first();
+            foreach ($group->skip(1) as $row) {
+                if (!$compatible($canonical, $row)) {
+                    throw new RuntimeException(
+                        "Unsafe vehicle-group {$label} price conflict for {$scope}: values differ within the same final owner scope."
+                    );
+                }
+            }
+        }
+    }
+
+    private function preflightCalculationDefinitions(array $referenceMap): void
+    {
+        $rows = $this->liveRows(self::CALCULATION_TABLE);
+        if ($rows->isEmpty()) {
+            return;
+        }
+
+        $prepared = $rows->map(function (object $row) use ($referenceMap): object {
+            $copy = clone $row;
+            foreach (['variables', 'conditions'] as $column) {
+                if ($copy->{$column} === null) {
+                    continue;
+                }
+
+                $decoded = $this->decodeJson($copy->{$column}, $copy->id, $column);
+                $copy->{$column} = json_encode(
+                    $this->replaceIdsRecursively($decoded, $referenceMap),
+                    JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR,
+                );
+            }
+
+            return $copy;
+        });
+
+        foreach ($prepared as $row) {
+            if (!$this->isGlobal($row) && $this->containsOwnerSpecificCondition($row)) {
+                throw new RuntimeException(
+                    "Unsafe calculation definition conflict for {$row->id}: an owned definition conditions pricing structure on a corporate owner."
+                );
+            }
+        }
+
+        foreach ($prepared->groupBy(fn (object $row): string => $this->calculationIdentity($row)) as $identity => $group) {
+            $canonical = $group->first();
+            foreach ($group->skip(1) as $row) {
+                if (!$this->calculationsAreCompatible($canonical, $row)) {
+                    throw new RuntimeException("Unsafe calculation definition conflict for {$identity}.");
+                }
+            }
+        }
+
+        foreach ($prepared->groupBy('service_type_id') as $serviceTypeId => $serviceRows) {
+            $globalActiveIdentities = $serviceRows
+                ->filter(fn (object $row): bool => $this->isGlobal($row) && $row->status === 'active')
+                ->map(fn (object $row): string => $this->calculationIdentity($row))
+                ->unique();
+            $ownedActiveIdentities = $serviceRows
+                ->filter(fn (object $row): bool => !$this->isGlobal($row) && $row->status === 'active')
+                ->map(fn (object $row): string => $this->calculationIdentity($row))
+                ->unique();
+
+            if ($ownedActiveIdentities->diff($globalActiveIdentities)->isEmpty()) {
+                continue;
+            }
+
+            $activeCandidates = $serviceRows
+                ->filter(fn (object $row): bool => $row->status === 'active')
+                ->unique(fn (object $row): string => $this->calculationIdentity($row))
+                ->values();
+
+            if ($activeCandidates->count() < 2) {
+                continue;
+            }
+
+            $conditionGroups = $activeCandidates->groupBy(
+                fn (object $row): string => $this->normalizedJson($row->conditions, $row->id, 'conditions')
+            );
+            $hasUnconditional = $activeCandidates->contains(
+                fn (object $row): bool => $this->conditionsAreEmpty($row)
+            );
+            $hasDuplicateConditions = $conditionGroups->contains(fn (Collection $group): bool => $group->count() > 1);
+
+            if ($hasUnconditional || $hasDuplicateConditions) {
+                throw new RuntimeException(
+                    "Unsafe calculation definition conflict for service {$serviceTypeId}: corporate definitions would create competing active global formulas."
+                );
+            }
+        }
+    }
+
+    private function conditionsAreEmpty(object $row): bool
+    {
+        if ($row->conditions === null) {
+            return true;
+        }
+
+        $conditions = $this->decodeJson($row->conditions, $row->id, 'conditions');
+
+        return $conditions === [] || $conditions === null;
+    }
+
+    private function containsOwnerSpecificCondition(object $row): bool
+    {
+        if ($row->conditions === null) {
+            return false;
+        }
+
+        $conditions = $this->decodeJson($row->conditions, $row->id, 'conditions');
+        $ownerFields = [
+            'owner_type',
+            'owner_id',
+            'corporate_id',
+            'corporate_account_id',
+        ];
+
+        $contains = function (mixed $value) use (&$contains, $ownerFields): bool {
+            if (!is_array($value)) {
+                return false;
+            }
+
+            if (isset($value['field']) && in_array(strtolower((string) $value['field']), $ownerFields, true)) {
+                return true;
+            }
+
+            foreach ($value as $nested) {
+                if ($contains($nested)) {
+                    return true;
+                }
+            }
+
+            return false;
+        };
+
+        return $contains($conditions);
     }
 
     /**
@@ -86,6 +367,7 @@ return new class extends Migration
             DB::table(self::COMMON_RATE_TABLE)->where('id', $canonical->id)->update([
                 'owner_type' => null,
                 'owner_id' => null,
+                'vehicle_group_id' => null,
                 'is_active' => $group->contains(fn (object $row): bool => (bool) $row->is_active),
                 'priority' => (int) $group->max('priority'),
                 'sort_order' => (int) $group->min('sort_order'),
@@ -378,15 +660,27 @@ return new class extends Migration
                 continue;
             }
 
+            $updates = [
+                'owner_type' => null,
+                'owner_id' => null,
+                'updated_at' => now(),
+            ];
+            if ($table === self::COMMON_RATE_TABLE) {
+                $updates['vehicle_group_id'] = null;
+            }
+
             DB::table($table)
                 ->where(function ($query) {
                     $query->whereNotNull('owner_type')->orWhereNotNull('owner_id');
                 })
-                ->update([
-                    'owner_type' => null,
-                    'owner_id' => null,
+                ->update($updates);
+
+            if ($table === self::COMMON_RATE_TABLE) {
+                DB::table($table)->whereNotNull('vehicle_group_id')->update([
+                    'vehicle_group_id' => null,
                     'updated_at' => now(),
                 ]);
+            }
         }
     }
 
@@ -406,6 +700,15 @@ return new class extends Migration
             if ($remaining > 0) {
                 throw new RuntimeException("{$table} still contains {$remaining} owned definition rows after reconciliation.");
             }
+
+            if ($table === self::COMMON_RATE_TABLE) {
+                $groupSpecific = DB::table($table)->whereNotNull('vehicle_group_id')->count();
+                if ($groupSpecific > 0) {
+                    throw new RuntimeException(
+                        "{$table} still contains {$groupSpecific} vehicle-group-specific definition rows after reconciliation."
+                    );
+                }
+            }
         }
     }
 
@@ -418,19 +721,31 @@ return new class extends Migration
 
         return implode('|', [
             strtolower((string) ($row->service_type_id ?? 'global')),
-            strtolower((string) ($row->vehicle_group_id ?? 'all-groups')),
             strtolower($identifier),
         ]);
     }
 
     private function slabIdentity(object $row): string
     {
-        return strtolower((string) $row->service_type_id . '|' . trim((string) $row->name));
+        return strtolower(implode('|', [
+            (string) $row->service_type_id,
+            (string) $row->type,
+            (string) ($row->min_minutes ?? 'null'),
+            (string) ($row->max_minutes ?? 'null'),
+            (string) ($row->min_hours ?? 'null'),
+            (string) ($row->max_hours ?? 'null'),
+            (string) ($row->min_days ?? 'null'),
+            (string) ($row->max_days ?? 'null'),
+        ]));
     }
 
     private function calculationIdentity(object $row): string
     {
-        return strtolower((string) $row->service_type_id . '|' . trim((string) $row->name));
+        return strtolower((string) $row->service_type_id) . '|' . hash('sha256', implode('|', [
+            trim((string) $row->formula),
+            $this->normalizedJson($row->variables, $row->id, 'variables'),
+            $this->normalizedJson($row->conditions, $row->id, 'conditions'),
+        ]));
     }
 
     private function commonRatesAreCompatible(object $left, object $right): bool
@@ -597,6 +912,13 @@ return new class extends Migration
                     )
                     WHERE deleted_at IS NULL
                 SQL);
+            } elseif ($driver === 'mysql') {
+                $this->createMysqlGeneratedUniqueIndex(
+                    'vehicle_group_pricing',
+                    'active_pricing_scope_key',
+                    "CASE WHEN deleted_at IS NULL THEN CONCAT(CAST(slab_definition_id AS CHAR), '|', CAST(vehicle_group_id AS CHAR), '|', COALESCE(owner_type, ''), '|', COALESCE(CAST(owner_id AS CHAR), '')) ELSE NULL END",
+                    'vehicle_group_pricing_definition_group_owner_unique',
+                );
             } else {
                 Schema::table('vehicle_group_pricing', function (Blueprint $table) {
                     $table->unique(
@@ -619,6 +941,13 @@ return new class extends Migration
                     )
                     WHERE deleted_at IS NULL
                 SQL);
+            } elseif ($driver === 'mysql') {
+                $this->createMysqlGeneratedUniqueIndex(
+                    'vehicle_group_common_rate_pricing',
+                    'active_pricing_scope_key',
+                    "CASE WHEN deleted_at IS NULL THEN CONCAT(CAST(common_rate_definition_id AS CHAR), '|', CAST(vehicle_group_id AS CHAR), '|', COALESCE(owner_type, ''), '|', COALESCE(CAST(owner_id AS CHAR), '')) ELSE NULL END",
+                    'vehicle_group_common_rate_definition_group_owner_unique',
+                );
             } else {
                 Schema::table('vehicle_group_common_rate_pricing', function (Blueprint $table) {
                     $table->unique(
@@ -635,19 +964,52 @@ return new class extends Migration
                     CREATE UNIQUE INDEX IF NOT EXISTS common_rate_definition_global_identity_unique
                     ON vehicle_pricing_common_rate_definitions (
                         COALESCE(CAST(service_type_id AS TEXT), ''),
-                        COALESCE(CAST(vehicle_group_id AS TEXT), ''),
-                        LOWER(COALESCE(NULLIF(code, ''), name))
+                        LOWER(COALESCE(NULLIF(TRIM(code), ''), name))
                     )
                     WHERE deleted_at IS NULL
                 SQL);
+            } elseif ($driver === 'mysql') {
+                $this->createMysqlGeneratedUniqueIndex(
+                    self::COMMON_RATE_TABLE,
+                    'active_definition_identity_key',
+                    "CASE WHEN deleted_at IS NULL THEN CONCAT(COALESCE(CAST(service_type_id AS CHAR), ''), '|', LOWER(COALESCE(NULLIF(TRIM(code), ''), name))) ELSE NULL END",
+                    'common_rate_definition_global_identity_unique',
+                );
             } else {
                 Schema::table(self::COMMON_RATE_TABLE, function (Blueprint $table) {
                     $table->index(
-                        ['service_type_id', 'vehicle_group_id', 'code', 'name'],
+                        ['service_type_id', 'code', 'name'],
                         'common_rate_definition_global_identity_index'
                     );
                 });
             }
         }
+    }
+
+    private function createMysqlGeneratedUniqueIndex(
+        string $table,
+        string $column,
+        string $expression,
+        string $index,
+    ): void {
+        if (!Schema::hasColumn($table, $column)) {
+            DB::statement(
+                "ALTER TABLE `{$table}` ADD COLUMN `{$column}` VARCHAR(255) GENERATED ALWAYS AS ({$expression}) STORED"
+            );
+        }
+
+        if (!$this->indexExists($table, $index)) {
+            DB::statement("CREATE UNIQUE INDEX `{$index}` ON `{$table}` (`{$column}`)");
+        }
+    }
+
+    private function indexExists(string $table, string $indexName): bool
+    {
+        if (!Schema::hasTable($table)) {
+            return false;
+        }
+
+        return collect(Schema::getIndexes($table))
+            ->contains(fn (array $index): bool => ($index['name'] ?? null) === $indexName);
     }
 };

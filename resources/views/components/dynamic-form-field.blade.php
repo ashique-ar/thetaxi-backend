@@ -269,7 +269,7 @@
             }
         @endphp
         @if($isTransferType)
-            <div class="transfer-type-selector text-center" id="{{ $elementId }}_wrapper">
+            <div class="transfer-type-selector text-center justify-items-center" id="{{ $elementId }}_wrapper">
                 <div class="transfer-type-toggle">
                     @foreach($options as $option)
                         <label class="transfer-type-option">
