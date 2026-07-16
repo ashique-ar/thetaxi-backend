@@ -44,17 +44,16 @@ if ($isCustom && $currentValue) {
 @endphp
 
 <!-- Location Selector (styled like airport select) -->
-<div class="single-search-box location-search-box">
-    <div class="d-flex align-items-center gap-2 py-1">
-        <label class="input-label">{{ $label }}</label>
+<div class="booking-field">
+    <label class="input-label">{{ $label }}</label>
+    <div class="single-search-box location-search-box">
         <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
             <g>
                 <path d="M12.5944 8.99987C12.5944 10.988 10.9826 12.5998 8.99443 12.5998C7.00627 12.5998 5.39465 10.988 5.39465 8.99987C5.39465 7.0117 7.00627 5.40009 8.99443 5.40009C10.9826 5.40009 12.5944 7.0117 12.5944 8.99987Z" />
                 <path d="M17.4601 8.4599H16.2564C15.9858 4.86535 13.1291 2.00812 9.53458 1.7372V0.539976C9.53458 0.241723 9.29268 0 8.9946 0C8.69635 0 8.45462 0.241723 8.45462 0.539976V1.7372C4.85986 2.00812 2.00297 4.86535 1.73235 8.4599H0.540018C0.241723 8.4599 0 8.7017 0 8.99987C0 9.29813 0.241723 9.53985 0.539976 9.53985H1.73239C2.00297 13.1344 4.85991 15.9916 8.45441 16.2625V17.4601C8.45441 17.7583 8.69614 18 8.99439 18C9.29251 18 9.53428 17.7583 9.53428 17.4601V16.2625C13.1289 15.9918 15.9858 13.1346 16.2564 9.53985H17.4601C17.7583 9.53985 18 9.29813 18 8.99987C18 8.70175 17.7583 8.4599 17.4601 8.4599ZM8.99443 15.2096C5.56504 15.2094 2.78509 12.4291 2.78509 8.9997C2.78522 5.57014 5.56554 2.7902 8.99494 2.7902C12.4245 2.7902 15.2046 5.57048 15.2046 8.99987C15.2005 12.428 12.4225 15.2058 8.99443 15.2096Z" />
             </g>
         </svg>
-    </div>
-    <div class="custom-select-dropdown">
+        <div class="custom-select-dropdown">
         {{-- Custom dropdown trigger (looks like a text input) --}}
         <div class="pls-dropdown" id="{{ $selectId }}_dropdown" data-field-name="{{ $name }}">
             <div class="pls-dropdown-trigger" tabindex="0" role="combobox" aria-expanded="false" aria-haspopup="listbox">
@@ -104,6 +103,7 @@ if ($isCustom && $currentValue) {
             @endif
             <option value="custom" data-type="custom" {{ $selectedLocationCode === 'custom' ? 'selected' : '' }}>My Doorstep (Enter Custom Location)</option>
         </select>
+        </div>
     </div>
     @error($name)
         <span class="text-danger small">{{ $message }}</span>
@@ -111,26 +111,26 @@ if ($isCustom && $currentValue) {
 </div>
 
 <!-- Custom Location Input (shown when "My Doorstep" is selected) -->
-<div class="single-search-box location-search-box custom-location-box"
+<div class="booking-field custom-location-box"
      id="{{ $customInputId }}_wrapper"
      style="display: {{ $isCustom && $currentValue ? 'block' : 'none' }};">
-    <div class="d-flex align-items-center gap-2 py-1">
-        <label class="input-label">Enter {{ $label }}</label>
+    <label class="input-label">Enter {{ $label }}</label>
+    <div class="single-search-box location-search-box">
         <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
             <g>
                 <path d="M12.5944 8.99987C12.5944 10.988 10.9826 12.5998 8.99443 12.5998C7.00627 12.5998 5.39465 10.988 5.39465 8.99987C5.39465 7.0117 7.00627 5.40009 8.99443 5.40009C10.9826 5.40009 12.5944 7.0117 12.5944 8.99987Z" />
                 <path d="M17.4601 8.4599H16.2564C15.9858 4.86535 13.1291 2.00812 9.53458 1.7372V0.539976C9.53458 0.241723 9.29268 0 8.9946 0C8.69635 0 8.45462 0.241723 8.45462 0.539976V1.7372C4.85986 2.00812 2.00297 4.86535 1.73235 8.4599H0.540018C0.241723 8.4599 0 8.7017 0 8.99987C0 9.29813 0.241723 9.53985 0.539976 9.53985H1.73239C2.00297 13.1344 4.85991 15.9916 8.45441 16.2625V17.4601C8.45441 17.7583 8.69614 18 8.99439 18C9.29251 18 9.53428 17.7583 9.53428 17.4601V16.2625C13.1289 15.9918 15.9858 13.1346 16.2564 9.53985H17.4601C17.7583 9.53985 18 9.29813 18 8.99987C18 8.70175 17.7583 8.4599 17.4601 8.4599ZM8.99443 15.2096C5.56504 15.2094 2.78509 12.4291 2.78509 8.9997C2.78522 5.57014 5.56554 2.7902 8.99494 2.7902C12.4245 2.7902 15.2046 5.57048 15.2046 8.99987C15.2005 12.428 12.4225 15.2058 8.99443 15.2096Z" />
             </g>
         </svg>
-    </div>
-    <div class="custom-select-dropdown">
-        <input type="text" name="{{ $name }}" id="{{ $customInputId }}"
+        <div class="custom-select-dropdown">
+            <input type="text" name="{{ $name }}" id="{{ $customInputId }}"
                placeholder="Enter your {{ strtolower($label) }}"
                class="location-search @error($name) is-invalid @enderror"
                value="{{ $isCustom ? $currentValue : '' }}"
                {{ $isCustom && $currentValue && $required ? 'required' : '' }}>
-        <input type="hidden" name="{{ $name }}_lat" class="location-lat" value="{{ $currentLat }}">
-        <input type="hidden" name="{{ $name }}_lng" class="location-lng" value="{{ $currentLng }}">
+            <input type="hidden" name="{{ $name }}_lat" class="location-lat" value="{{ $currentLat }}">
+            <input type="hidden" name="{{ $name }}_lng" class="location-lng" value="{{ $currentLng }}">
+        </div>
     </div>
     @error($name)
         <span class="text-danger small">{{ $message }}</span>

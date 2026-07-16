@@ -59,20 +59,20 @@
 
             {{-- Airport selector --}}
             @case('airport')
-                <div class="single-search-box location-search-box">
-                    <div class="d-flex align-items-center gap-2 py-1">
-                        <label class="input-label">{{ $label }}</label>
+                <div class="booking-field">
+                    <label class="input-label">{{ $label }}</label>
+                    <div class="single-search-box location-search-box">
                         @include('components.partials.location-icon')
-                    </div>
-                    <div class="custom-select-dropdown">
-                        @include('components.airport-select', [
+                        <div class="custom-select-dropdown">
+                            @include('components.airport-select', [
                             'selectId' => $elementId,
                             'name' => $submitAs,
                             'airports' => $airportOptions ?? collect(),
                             'selectedValue' => $fieldValue,
                             'placeholder' => $placeholder ?: $airportSelectPlaceholder,
                             'required' => $required,
-                        ])
+                            ])
+                        </div>
                     </div>
                     @error($submitAs)
                         <span class="text-danger small">{{ $message }}</span>
@@ -118,13 +118,12 @@
                         @endphp
                         <div class="conditional-variant" data-condition-value="{{ $condValue }}" style="display:{{ $isActiveVariant ? 'block' : 'none' }};">
                             @if($condType === 'airport')
-                                <div class="single-search-box location-search-box">
-                                    <div class="d-flex align-items-center gap-2 py-1">
-                                        <label class="input-label">{{ $label }}</label>
+                                <div class="booking-field">
+                                    <label class="input-label">{{ $label }}</label>
+                                    <div class="single-search-box location-search-box">
                                         @include('components.partials.location-icon')
-                                    </div>
-                                    <div class="custom-select-dropdown">
-                                        @include('components.airport-select', [
+                                        <div class="custom-select-dropdown">
+                                            @include('components.airport-select', [
                                             'selectId' => $elementId . '_' . $condValue,
                                             'name' => $submitAs,
                                             'airports' => $airportOptions ?? collect(),
@@ -132,20 +131,20 @@
                                             'placeholder' => $airportSelectPlaceholder,
                                             'required' => $required,
                                             'disabled' => !$isActiveVariant,
-                                        ])
+                                            ])
+                                        </div>
                                     </div>
                                     @error($submitAs)
                                         <span class="text-danger small">{{ $message }}</span>
                                     @enderror
                                 </div>
                             @else
-                                <div class="single-search-box location-search-box">
-                                    <div class="d-flex align-items-center gap-2 py-1">
-                                        <label class="input-label">{{ $label }}</label>
+                                <div class="booking-field">
+                                    <label class="input-label">{{ $label }}</label>
+                                    <div class="single-search-box location-search-box">
                                         @include('components.partials.location-icon')
-                                    </div>
-                                    <div class="custom-select-dropdown">
-                                        <input type="text" name="{{ $submitAs }}" id="{{ $elementId }}_{{ $condValue }}"
+                                        <div class="custom-select-dropdown">
+                                            <input type="text" name="{{ $submitAs }}" id="{{ $elementId }}_{{ $condValue }}"
                                                placeholder="{{ $placeholder ?: 'Enter ' . strtolower($label) }}"
                                                class="location-search @error($submitAs) is-invalid @enderror"
                                                value="{{ $isActiveVariant ? $fieldValue : '' }}"
@@ -154,7 +153,8 @@
                                                data-default-lng="{{ $currentLng ?? $fieldDefaultLng }}"
                                                {{ $required ? 'required' : '' }}
                                                {{ !$isActiveVariant ? 'disabled' : '' }}
-                                               autocomplete="off">
+                                                   autocomplete="off">
+                                        </div>
                                     </div>
                                     @error($submitAs)
                                         <span class="text-danger small">{{ $message }}</span>
@@ -168,20 +168,20 @@
 
             {{-- Default: Google Places autocomplete --}}
             @default
-                <div class="single-search-box location-search-box">
-                    <div class="d-flex align-items-center gap-2 py-1">
-                        <label class="input-label">{{ $label }}</label>
+                <div class="booking-field">
+                    <label class="input-label">{{ $label }}</label>
+                    <div class="single-search-box location-search-box">
                         @include('components.partials.location-icon')
-                    </div>
-                    <div class="custom-select-dropdown">
-                        <input type="text" name="{{ $submitAs }}" id="{{ $elementId }}"
+                        <div class="custom-select-dropdown">
+                            <input type="text" name="{{ $submitAs }}" id="{{ $elementId }}"
                                placeholder="{{ $placeholder ?: 'Enter ' . strtolower($label) }}"
                                class="location-search @error($submitAs) is-invalid @enderror"
                                value="{{ $fieldValue }}"
                                {{ $required ? 'required' : '' }}
                                autocomplete="off">
-                        <input type="hidden" name="{{ $submitAs }}_lat" class="location-lat" value="{{ $currentLat ?? ($field['default_lat'] ?? '') }}">
-                        <input type="hidden" name="{{ $submitAs }}_lng" class="location-lng" value="{{ $currentLng ?? ($field['default_lng'] ?? '') }}">
+                            <input type="hidden" name="{{ $submitAs }}_lat" class="location-lat" value="{{ $currentLat ?? ($field['default_lat'] ?? '') }}">
+                            <input type="hidden" name="{{ $submitAs }}_lng" class="location-lng" value="{{ $currentLng ?? ($field['default_lng'] ?? '') }}">
+                        </div>
                     </div>
                     @error($submitAs)
                         <span class="text-danger small">{{ $message }}</span>
@@ -192,12 +192,11 @@
 
     {{-- ===== DATE FIELD ===== --}}
     @case('date')
-        <div class="single-search-box date-field">
-            <div class="d-flex align-items-center gap-2 py-1">
-                <label class="input-label">{{ $label }}</label>
+        <div class="booking-field">
+            <label class="input-label">{{ $label }}</label>
+            <div class="single-search-box date-field">
                 @include('components.partials.calendar-icon')
-            </div>
-            <input type="text" name="{{ $submitAs }}" id="{{ $elementId }}"
+                <input type="text" name="{{ $submitAs }}" id="{{ $elementId }}"
                    placeholder="{{ $placeholder ?: $datePlaceholder }}"
                    class="custom-datepicker @error($submitAs) is-invalid @enderror"
                    value="{{ $fieldValue ?: date('d/m/Y') }}"
@@ -206,7 +205,8 @@
                    data-date-format="d/m/Y"
                    data-min-date="today"
                    autocomplete="off"
-                   readonly>
+                       readonly>
+            </div>
             @error($submitAs)
                 <span class="text-danger small">{{ $message }}</span>
             @enderror
@@ -215,16 +215,16 @@
 
     {{-- ===== TIME FIELD ===== --}}
     @case('time')
-        <div class="single-search-box">
-            <div class="d-flex align-items-center gap-2 py-1">
-                <label class="input-label">{{ $label }}</label>
+        <div class="booking-field">
+            <label class="input-label">{{ $label }}</label>
+            <div class="single-search-box">
                 @include('components.partials.clock-icon')
-            </div>
-            <div class="custom-select-dropdown">
-                <input type="time" name="{{ $submitAs }}" id="{{ $elementId }}"
+                <div class="custom-select-dropdown">
+                    <input type="time" name="{{ $submitAs }}" id="{{ $elementId }}"
                        value="{{ $fieldValue ?: ($defaultValue ?: '09:00') }}"
                        class="@error($submitAs) is-invalid @enderror"
-                       {{ $required ? 'required' : '' }}>
+                           {{ $required ? 'required' : '' }}>
+                </div>
             </div>
             @error($submitAs)
                 <span class="text-danger small">{{ $message }}</span>
@@ -234,12 +234,11 @@
 
     {{-- ===== SELECT FIELD ===== --}}
     @case('select')
-        <div class="single-search-box">
-            <div class="d-flex align-items-center gap-2 py-1">
-                <label class="input-label">{{ $label }}</label>
-            </div>
-            <div class="custom-select-dropdown">
-                <select name="{{ $submitAs }}" id="{{ $elementId }}"
+        <div class="booking-field">
+            <label class="input-label">{{ $label }}</label>
+            <div class="single-search-box">
+                <div class="custom-select-dropdown">
+                    <select name="{{ $submitAs }}" id="{{ $elementId }}"
                         class="no-nice @error($submitAs) is-invalid @enderror"
                         {{ $required ? 'required' : '' }}>
                     <option value="">{{ $placeholder ?: 'Select ' . $label }}</option>
@@ -249,7 +248,8 @@
                             {{ $option['label'] }}
                         </option>
                     @endforeach
-                </select>
+                    </select>
+                </div>
             </div>
             @error($submitAs)
                 <span class="text-danger small">{{ $message }}</span>
