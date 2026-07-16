@@ -260,6 +260,35 @@ it('keeps definitions global while preserving corporate vehicle-group prices and
     ))->toThrow(QueryException::class);
 });
 
+it('reconciles mandatory flag differences without changing common-rate semantics', function (): void {
+    $now = now();
+    $global = pricingCommonDefinition('common-global', null, null, $now);
+    $global['is_mandatory'] = false;
+    $owned = pricingCommonDefinition('common-owned', 'corporate', 'corporate-1', $now);
+    $owned['is_mandatory'] = true;
+
+    DB::table('vehicle_pricing_common_rate_definitions')->insert([$global, $owned]);
+
+    pricingOwnershipMigration()->up();
+
+    expect(DB::table('vehicle_pricing_common_rate_definitions')->where('id', 'common-global')->value('is_mandatory'))
+        ->toBe(1)
+        ->and(DB::table('vehicle_pricing_common_rate_definitions')->where('id', 'common-owned')->value('deleted_at'))
+        ->not->toBeNull();
+});
+
+it('reports the exact unsafe common-rate type difference', function (): void {
+    $now = now();
+    $global = pricingCommonDefinition('common-global', null, null, $now);
+    $owned = pricingCommonDefinition('common-owned', 'corporate', 'corporate-1', $now);
+    $owned['common_rate_type'] = 'fixed_amount';
+
+    DB::table('vehicle_pricing_common_rate_definitions')->insert([$global, $owned]);
+
+    expect(fn () => pricingOwnershipMigration()->up())
+        ->toThrow(RuntimeException::class, "common_rate_type='per_km' versus 'fixed_amount'");
+});
+
 it('fails and rolls back when corporate and shared definitions cannot be merged safely', function (): void {
     $now = now();
     $global = pricingCommonDefinition('common-global', null, null, $now);

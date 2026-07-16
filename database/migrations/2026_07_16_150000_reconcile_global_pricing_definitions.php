@@ -112,8 +112,11 @@ return new class extends Migration
 
             foreach ($group as $row) {
                 if ($row->id !== $canonical->id && !$compatible($canonical, $row)) {
+                    $details = $label === 'common-rate definition'
+                        ? ' Differences: ' . implode(', ', $this->commonRateCompatibilityDifferences($canonical, $row)) . '.'
+                        : '';
                     throw new RuntimeException(
-                        "Unsafe {$label} conflict for {$key}: {$canonical->id} and {$row->id} have incompatible semantics."
+                        "Unsafe {$label} conflict for {$key}: {$canonical->id} and {$row->id} have incompatible semantics.{$details}"
                     );
                 }
             }
@@ -368,6 +371,9 @@ return new class extends Migration
                 'owner_type' => null,
                 'owner_id' => null,
                 'vehicle_group_id' => null,
+                // Mandatory is a configuration-completeness constraint, not a
+                // monetary rate semantic. Preserve the strictest legacy value.
+                'is_mandatory' => $group->contains(fn (object $row): bool => (bool) $row->is_mandatory),
                 'is_active' => $group->contains(fn (object $row): bool => (bool) $row->is_active),
                 'priority' => (int) $group->max('priority'),
                 'sort_order' => (int) $group->min('sort_order'),
@@ -750,8 +756,25 @@ return new class extends Migration
 
     private function commonRatesAreCompatible(object $left, object $right): bool
     {
-        return $this->same($left->common_rate_type, $right->common_rate_type)
-            && $this->same($left->is_mandatory, $right->is_mandatory);
+        return $this->same($left->common_rate_type, $right->common_rate_type);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function commonRateCompatibilityDifferences(object $left, object $right): array
+    {
+        $differences = [];
+
+        if (!$this->same($left->common_rate_type, $right->common_rate_type)) {
+            $differences[] = sprintf(
+                'common_rate_type=%s versus %s',
+                var_export($left->common_rate_type, true),
+                var_export($right->common_rate_type, true),
+            );
+        }
+
+        return $differences;
     }
 
     private function slabsAreCompatible(object $left, object $right): bool
