@@ -311,6 +311,29 @@ it('preflights competing corporate calculation formulas before changing ownershi
         ->count())->toBe(2);
 });
 
+it('rejects owner-conditioned calculation definitions instead of globalizing them', function (): void {
+    $definition = pricingCalculationDefinition(
+        'owner-conditioned-calculation',
+        'common-source',
+        'corporate',
+        'corporate-1',
+        now(),
+    );
+    $definition['conditions'] = json_encode([[
+        'field' => 'owner_id',
+        'operator' => 'equals',
+        'value' => 'corporate-1',
+    ]]);
+    DB::table('vehicle_pricing_calculation_definitions')->insert($definition);
+
+    expect(fn () => pricingOwnershipMigration()->up())
+        ->toThrow(RuntimeException::class, 'conditions pricing structure on a corporate owner');
+
+    expect(DB::table('vehicle_pricing_calculation_definitions')
+        ->where('id', 'owner-conditioned-calculation')
+        ->value('owner_type'))->toBe('corporate');
+});
+
 it('hides legacy owned definitions and normalizes owner fields on model writes', function (): void {
     $now = now();
     DB::table('vehicle_pricing_common_rate_definitions')->insert([

@@ -109,6 +109,7 @@ class VehiclePricingCalculationDefinition extends Model
                 return array_merge($empty, [
                     'definition_id' => $this->id,
                     'variables_used' => [],
+                    'resolved_variables' => [],
                     'conditions_evaluated' => $metadata['conditions_evaluated'],
                     'missing_variables' => [],
                 ]);
@@ -136,6 +137,7 @@ class VehiclePricingCalculationDefinition extends Model
                     'failure_reason' => 'missing_required_variables',
                     'definition_id' => $this->id,
                     'variables_used' => [],
+                    'resolved_variables' => [],
                     'conditions_evaluated' => $metadata['conditions_evaluated'],
                     'missing_variables' => array_values(array_filter(array_map(fn($v) => $v['name'] ?? null, $this->variables ?? []), function ($name) use ($inputs) {
                         return $name !== null && !array_key_exists($name, $inputs);
@@ -201,6 +203,7 @@ class VehiclePricingCalculationDefinition extends Model
             );
             $built['definition_id'] = $this->id;
             $built['variables_used'] = $metadata['variables_used'];
+            $built['resolved_variables'] = $resolvedVariables;
             $built['conditions_evaluated'] = $metadata['conditions_evaluated'];
             $built['pricing_adjustments'] = $adjustmentResults['adjustments'];
             $built['service_package_info'] = $servicePackageInfo;

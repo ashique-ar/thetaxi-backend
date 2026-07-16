@@ -11,6 +11,7 @@ use App\Models\Vehicle\VehiclePricing\VehicleGroupPricing;
 use App\Models\Vehicle\VehiclePricing\VehicleGroupCommonRatePricing;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCommonRateDefinition;
 use App\Models\Vehicle\VehicleGroup;
+use App\Services\Pricing\PricingCalculationDefinitionHealthService;
 use App\Services\Pricing\PricingDefinitionOrchestrator;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -22,9 +23,11 @@ use Illuminate\Validation\Rule;
 
 class VehiclePricingCalculationDefinitionController extends Controller
 {
-    public function __construct()
+    public function __construct(
+        private readonly PricingCalculationDefinitionHealthService $configurationHealth
+    )
     {
-        $this->middleware('permission:vehicle-pricing-calculations.view')->only(['index', 'show', 'getServiceTypes', 'getVehicleGroups', 'getAvailableVariables', 'testCalculation', 'testDefinitionCalculation', 'calculatePrice', 'getSlabRates']);
+        $this->middleware('permission:vehicle-pricing-calculations.view')->only(['index', 'show', 'health', 'definitionHealth', 'getServiceTypes', 'getVehicleGroups', 'getAvailableVariables', 'testCalculation', 'testDefinitionCalculation', 'calculatePrice', 'getSlabRates']);
         $this->middleware('permission:vehicle-pricing-calculations.create')->only(['store']);
         $this->middleware('permission:vehicle-pricing-calculations.edit')->only(['update', 'bulkUpdateStatus']);
         $this->middleware('permission:vehicle-pricing-calculations.delete')->only(['destroy']);
@@ -168,6 +171,25 @@ class VehiclePricingCalculationDefinitionController extends Controller
             ], 422);
         }
 
+        $status = (string) $request->get('status', 'draft');
+        $activationHealth = null;
+        if ($status === 'active') {
+            $activationHealth = $this->configurationHealth->prospectiveDefinitionHealth([
+                'id' => 'candidate',
+                'name' => $request->name,
+                'description' => $request->description,
+                'service_type_id' => $request->service_type_id,
+                'formula' => $request->formula,
+                'variables' => $request->variables ?? [],
+                'conditions' => $request->conditions ?? [],
+                'status' => 'active',
+                'priority' => $request->input('priority', 0),
+            ]);
+            if (!$activationHealth['ready_for_activation']) {
+                return $this->activationBlockedResponse($activationHealth);
+            }
+        }
+
         try {
             $definition = new VehiclePricingCalculationDefinition();
             $definition->name = $request->name;
@@ -176,7 +198,7 @@ class VehiclePricingCalculationDefinitionController extends Controller
             $definition->formula = $request->formula;
             $definition->variables = $request->variables ?? [];
             $definition->conditions = $request->conditions ?? [];
-            $definition->status = $request->get('status', 'draft');
+            $definition->status = $status;
             $definition->owner_type = null;
             $definition->owner_id = null;
             $definition->priority = $request->input('priority', 0);
@@ -189,7 +211,8 @@ class VehiclePricingCalculationDefinitionController extends Controller
                 'message' => 'Calculation definition created successfully',
                 'data' => array_merge($definition->toArray(), [
                     'calculation_example' => $definition->getCalculationExample(),
-                ])
+                ]),
+                'configuration_health' => $activationHealth,
             ], 201);
         } catch (\Exception $e) {
             return response()->json([
@@ -219,6 +242,40 @@ class VehiclePricingCalculationDefinitionController extends Controller
                 'error' => $e->getMessage()
             ], 404);
         }
+    }
+
+    public function health(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'service_type_id' => ['required', 'uuid', 'exists:service_types,id'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $this->configurationHealth->currentServiceHealth(
+                (string) $request->input('service_type_id')
+            ),
+            'message' => 'Calculation-definition health retrieved successfully',
+        ]);
+    }
+
+    public function definitionHealth(string $id): JsonResponse
+    {
+        $definition = VehiclePricingCalculationDefinition::findOrFail($id);
+
+        return response()->json([
+            'success' => true,
+            'data' => $this->configurationHealth->definitionReadiness($definition),
+            'message' => 'Calculation-definition readiness retrieved successfully',
+        ]);
     }
 
     /**
@@ -283,14 +340,32 @@ class VehiclePricingCalculationDefinitionController extends Controller
 
         try {
             $definition = VehiclePricingCalculationDefinition::findOrFail($id);
-            
+            $status = (string) $request->get('status', $definition->status);
+            $activationHealth = null;
+            if ($status === 'active') {
+                $activationHealth = $this->configurationHealth->prospectiveDefinitionHealth([
+                    'id' => $definition->id,
+                    'name' => $request->name,
+                    'description' => $request->description,
+                    'service_type_id' => $request->service_type_id,
+                    'formula' => $request->formula,
+                    'variables' => $request->variables ?? [],
+                    'conditions' => $request->conditions ?? [],
+                    'status' => 'active',
+                    'priority' => $request->input('priority', $definition->priority ?? 0),
+                ], $definition);
+                if (!$activationHealth['ready_for_activation']) {
+                    return $this->activationBlockedResponse($activationHealth);
+                }
+            }
+
             $definition->name = $request->name;
             $definition->description = $request->description;
             $definition->service_type_id = $request->service_type_id;
             $definition->formula = $request->formula;
             $definition->variables = $request->variables ?? [];
             $definition->conditions = $request->conditions ?? [];
-            $definition->status = $request->get('status', $definition->status);
+            $definition->status = $status;
             $definition->owner_type = null;
             $definition->owner_id = null;
             $definition->priority = $request->input('priority', $definition->priority ?? 0);
@@ -303,7 +378,8 @@ class VehiclePricingCalculationDefinitionController extends Controller
                 'message' => 'Calculation definition updated successfully',
                 'data' => array_merge($definition->toArray(), [
                     'calculation_example' => $definition->getCalculationExample(),
-                ])
+                ]),
+                'configuration_health' => $activationHealth,
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -651,6 +727,25 @@ class VehiclePricingCalculationDefinitionController extends Controller
         }
 
         try {
+            $activationHealth = [];
+            if ($request->status === 'active') {
+                $definitions = VehiclePricingCalculationDefinition::whereIn('id', $request->ids)->get();
+                foreach ($definitions->groupBy('service_type_id') as $serviceTypeId => $serviceDefinitions) {
+                    $ids = $serviceDefinitions->pluck('id')->map(fn ($id) => (string) $id)->values()->all();
+                    $health = $this->configurationHealth->prospectiveServiceHealth(
+                        (string) $serviceTypeId,
+                        $serviceDefinitions,
+                        $ids,
+                        $ids
+                    );
+                    $activationHealth[(string) $serviceTypeId] = $health;
+
+                    if (!$health['ready_for_activation']) {
+                        return $this->activationBlockedResponse($health);
+                    }
+                }
+            }
+
             $updatedCount = VehiclePricingCalculationDefinition::whereIn('id', $request->ids)
                 ->update([
                     'status' => $request->status,
@@ -660,7 +755,8 @@ class VehiclePricingCalculationDefinitionController extends Controller
 
             return response()->json([
                 'message' => "Successfully updated {$updatedCount} calculation definitions",
-                'updated_count' => $updatedCount
+                'updated_count' => $updatedCount,
+                'configuration_health' => $activationHealth,
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -1058,12 +1154,24 @@ class VehiclePricingCalculationDefinitionController extends Controller
 
             if ($isValid) {
                 try {
-                    $calculatedPrice = $definition->calculatePrice($testInputs);
-                    $breakdown = $definition->getCalculationBreakdown($testInputs);
+                    $orchestration = app(PricingDefinitionOrchestrator::class)->resolve(
+                        [$definition],
+                        $this->normalizeDurationInputs($testInputs)
+                    );
+                    $calculationResult = $orchestration['result'];
+                    if (!$orchestration['matched'] || !$calculationResult) {
+                        $failure = $orchestration['candidate_failures'][0] ?? [];
+                        $reason = ($failure['reason'] ?? null) === 'missing_required_variables'
+                            ? 'Missing required inputs: ' . implode(', ', $failure['missing_variables'] ?? [])
+                            : ($failure['message'] ?? 'The definition did not match the supplied scenario.');
+                        throw new \InvalidArgumentException($reason);
+                    }
 
                     $response['data']['test_result'] = [
-                        'calculated_price' => $calculatedPrice,
-                        'breakdown' => $breakdown,
+                        'calculated_price' => (float) ($calculationResult['total_amount'] ?? 0),
+                        'breakdown' => $calculationResult['breakdown'] ?? [],
+                        'calculation' => $calculationResult,
+                        'candidate_failures' => $orchestration['candidate_failures'],
                     ];
                 } catch (\Exception $e) {
                     $response['data']['test_result'] = [
@@ -1100,7 +1208,11 @@ class VehiclePricingCalculationDefinitionController extends Controller
                 ['name' => 'duration_hours', 'type' => 'duration', 'description' => 'Service duration in hours', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
                 ['name' => 'duration_minutes', 'type' => 'duration', 'description' => 'Service duration in minutes', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
                 ['name' => 'duration_days', 'type' => 'duration', 'description' => 'Service duration in days', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
+                ['name' => 'number_of_days', 'type' => 'duration', 'description' => 'Billable whole-day count derived from exact booking minutes', 'is_required' => false, 'default_value' => 1, 'category' => 'duration'],
                 ['name' => 'total_distance', 'type' => 'distance', 'description' => 'Total service distance in KM', 'is_required' => false, 'default_value' => 0, 'category' => 'distance'],
+                ['name' => 'journey_distance', 'type' => 'distance', 'description' => 'Contractual journey distance in KM used by pricing', 'is_required' => false, 'default_value' => 0, 'category' => 'distance'],
+                ['name' => 'actual_distance', 'type' => 'distance', 'description' => 'Measured final journey distance in KM when available', 'is_required' => false, 'default_value' => 0, 'category' => 'distance'],
+                ['name' => 'package_included_km', 'type' => 'distance', 'description' => 'Distance included by the selected service package', 'is_required' => false, 'default_value' => 0, 'category' => 'distance'],
                 ['name' => 'delivery_distance', 'type' => 'distance', 'description' => 'Vehicle delivery distance in KM', 'is_required' => false, 'default_value' => 0, 'category' => 'distance'],
                 ['name' => 'pickup_distance', 'type' => 'distance', 'description' => 'Vehicle pickup distance in KM (return distance)', 'is_required' => false, 'default_value' => 0, 'category' => 'distance'],
                 ['name' => 'extra_km', 'type' => 'distance', 'description' => 'Extra KM beyond package/daily limit', 'is_required' => false, 'default_value' => 0, 'category' => 'distance'],
@@ -1118,7 +1230,16 @@ class VehiclePricingCalculationDefinitionController extends Controller
                 ['name' => 'recovery_minutes', 'type' => 'duration', 'description' => 'Minutes spent on recovery operation', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
                 ['name' => 'stops', 'type' => 'fixed_value', 'description' => 'Number of stops in transfer', 'is_required' => false, 'default_value' => 0, 'category' => 'service'],
                 ['name' => 'overtime_hours', 'type' => 'duration', 'description' => 'Overtime hours beyond contract', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
-                ['name' => 'overtime_minutes', 'type' => 'duration', 'description' => 'Overtime minutes beyond contract', 'is_required' => false, 'default_value' => 0, 'category' => 'duration']
+                ['name' => 'overtime_minutes', 'type' => 'duration', 'description' => 'Overtime minutes beyond contract', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
+                ['name' => 'manual_additional_charge', 'type' => 'fixed_value', 'description' => 'Approved manual charge included in final pricing', 'is_required' => false, 'default_value' => 0, 'category' => 'adjustment'],
+                ['name' => 'late_return_fee', 'type' => 'fixed_value', 'description' => 'Late-return charge captured by the return workflow', 'is_required' => false, 'default_value' => 0, 'category' => 'adjustment'],
+                ['name' => 'is_weekend', 'type' => 'number', 'description' => 'Weekend flag supplied as 1 for weekend and 0 otherwise', 'is_required' => false, 'default_value' => 0, 'category' => 'context'],
+                ['name' => 'is_holiday', 'type' => 'number', 'description' => 'Holiday flag supplied as 1 for a holiday and 0 otherwise', 'is_required' => false, 'default_value' => 0, 'category' => 'context'],
+                ['name' => 'month', 'type' => 'number', 'description' => 'Booking start month number from 1 to 12', 'is_required' => false, 'default_value' => 1, 'category' => 'context'],
+                ['name' => 'day_of_week', 'type' => 'number', 'description' => 'Booking start weekday number where Sunday is 0', 'is_required' => false, 'default_value' => 0, 'category' => 'context'],
+                ['name' => 'from_date', 'type' => 'fixed_value', 'description' => 'Booking start date for condition matching only', 'is_required' => false, 'default_value' => null, 'category' => 'context', 'condition_only' => true, 'formula_allowed' => false],
+                ['name' => 'from_time', 'type' => 'fixed_value', 'description' => 'Booking start time for condition matching only', 'is_required' => false, 'default_value' => null, 'category' => 'context', 'condition_only' => true, 'formula_allowed' => false],
+                ['name' => 'customer_type', 'type' => 'fixed_value', 'description' => 'Customer segment for condition matching only', 'is_required' => false, 'default_value' => null, 'category' => 'context', 'condition_only' => true, 'formula_allowed' => false]
             ];
 
             // Get common rate variables for this service type
@@ -1212,5 +1333,21 @@ class VehiclePricingCalculationDefinitionController extends Controller
                 'message' => 'Failed to get metadata: ' . $e->getMessage(),
             ], 500);
         }
+    }
+
+    private function activationBlockedResponse(array $health): JsonResponse
+    {
+        return response()->json([
+            'success' => false,
+            'message' => 'Calculation definition cannot be activated until its configuration health errors are resolved.',
+            'errors' => [
+                'configuration' => collect($health['focus_issues'] ?? $health['issues'] ?? [])
+                    ->where('severity', 'error')
+                    ->pluck('message')
+                    ->values()
+                    ->all(),
+            ],
+            'health' => $health,
+        ], 422);
     }
 }

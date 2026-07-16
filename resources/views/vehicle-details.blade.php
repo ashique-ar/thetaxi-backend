@@ -765,11 +765,9 @@
         }
 
         .booking-form-card .filter-wrapper .filter-input-wrap .filter-input.show {
-            display: block !important;
-            text-align: center !important;
-        }
-        .return-trip-details {
-            display: block !important;
+            display: grid !important;
+            grid-template-columns: minmax(0, 1fr) !important;
+            text-align: left !important;
         }
     </style>
 @endpush

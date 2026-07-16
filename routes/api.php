@@ -687,6 +687,8 @@ Route::middleware(['auth:api'])->group(function () {
                 Route::post('/calculate-price', [VehiclePricingCalculationDefinitionController::class, 'calculatePrice']);
                 Route::post('/slab-rates', [VehiclePricingCalculationDefinitionController::class, 'getSlabRates']);
                 Route::post('/bulk-update-status', [VehiclePricingCalculationDefinitionController::class, 'bulkUpdateStatus']);
+                Route::get('/health', [VehiclePricingCalculationDefinitionController::class, 'health']);
+                Route::get('/{id}/health', [VehiclePricingCalculationDefinitionController::class, 'definitionHealth']);
                 Route::get('/{id}', [VehiclePricingCalculationDefinitionController::class, 'show']);
                 Route::put('/{id}', [VehiclePricingCalculationDefinitionController::class, 'update']);
                 Route::delete('/{id}', [VehiclePricingCalculationDefinitionController::class, 'destroy']);

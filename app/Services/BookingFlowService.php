@@ -4308,6 +4308,7 @@ class BookingFlowService
             'calculation_metadata' => [
                 'definition_used' => $calculationResult['definition_id'] ?? null,
                 'variables_used' => $calculationResult['variables_used'] ?? [],
+                'resolved_variables' => $calculationResult['resolved_variables'] ?? [],
                 'conditions_evaluated' => $calculationResult['conditions_evaluated'] ?? [],
                 'calculation_mode' => $mode
             ]
@@ -8523,6 +8524,8 @@ class BookingFlowService
             'bookingItems.vehicle',
             'bookingItems.driver',
             'bookingItems.approvedBy',
+            'bookingItems.dispatch',
+            'bookingItems.qc.inspector',
             // NEW: Load dispatch and QC records
             'dispatch.vehicle',
             'dispatch.driver',
@@ -8870,15 +8873,57 @@ class BookingFlowService
                 'item_type' => $item->item_type,
                 'notes' => $item->notes,
                 'metadata' => $item->metadata ?? null,
+                'dispatch' => $item->dispatch ? [
+                    'id' => (string) $item->dispatch->id,
+                    'booking_id' => (string) $item->dispatch->booking_id,
+                    'booking_item_id' => $item->dispatch->booking_item_id
+                        ? (string) $item->dispatch->booking_item_id
+                        : null,
+                    'vehicle_id' => $item->dispatch->vehicle_id
+                        ? (string) $item->dispatch->vehicle_id
+                        : null,
+                    'driver_id' => $item->dispatch->driver_id
+                        ? (string) $item->dispatch->driver_id
+                        : null,
+                    'dispatch_status' => $item->dispatch->dispatch_status,
+                    'dispatched_at' => optional($item->dispatch->dispatched_at)->toISOString(),
+                    'expected_return_at' => optional($item->dispatch->expected_return_at)->toISOString(),
+                    'actual_return_at' => optional($item->dispatch->actual_return_at)->toISOString(),
+                    'mileage_out' => $item->dispatch->mileage_out,
+                    'mileage_in' => $item->dispatch->mileage_in,
+                    'late_return_fee' => (float) ($item->dispatch->late_return_fee ?? 0),
+                ] : null,
+                'qc' => $item->qc ? [
+                    'id' => (string) $item->qc->id,
+                    'booking_id' => (string) $item->qc->booking_id,
+                    'booking_item_id' => $item->qc->booking_item_id
+                        ? (string) $item->qc->booking_item_id
+                        : null,
+                    'dispatch_id' => $item->qc->dispatch_id
+                        ? (string) $item->qc->dispatch_id
+                        : null,
+                    'qc_status' => $item->qc->qc_status,
+                    'inspector_id' => $item->qc->inspector_id
+                        ? (string) $item->qc->inspector_id
+                        : null,
+                    'inspection_started_at' => optional($item->qc->inspection_started_at)->toISOString(),
+                    'inspection_completed_at' => optional($item->qc->inspection_completed_at)->toISOString(),
+                    'repair_required' => (bool) $item->qc->repair_required,
+                    'passed_inspection' => (bool) $item->qc->passed_inspection,
+                    'requires_maintenance' => (bool) $item->qc->requires_maintenance,
+                ] : null,
             ];
         })->toArray();
 
         // NEW: Transform dispatch record if exists
         $dispatch = null;
-        if ($booking->dispatch) {
+        if ($booking->bookingItems->count() <= 1 && $booking->dispatch) {
             $dispatch = [
                 'id' => (string) $booking->dispatch->id,
                 'booking_id' => (string) $booking->dispatch->booking_id,
+                'booking_item_id' => $booking->dispatch->booking_item_id
+                    ? (string) $booking->dispatch->booking_item_id
+                    : null,
                 'vehicle_id' => (string) $booking->dispatch->vehicle_id,
                 'driver_id' => $booking->dispatch->driver_id ? (string) $booking->dispatch->driver_id : null,
                 'dispatch_status' => $booking->dispatch->dispatch_status,
@@ -8906,10 +8951,13 @@ class BookingFlowService
 
         // NEW: Transform QC record if exists
         $qc = null;
-        if ($booking->qc) {
+        if ($booking->bookingItems->count() <= 1 && $booking->qc) {
             $qc = [
                 'id' => (string) $booking->qc->id,
                 'booking_id' => (string) $booking->qc->booking_id,
+                'booking_item_id' => $booking->qc->booking_item_id
+                    ? (string) $booking->qc->booking_item_id
+                    : null,
                 'vehicle_id' => (string) $booking->qc->vehicle_id,
                 'dispatch_id' => $booking->qc->dispatch_id ? (string) $booking->qc->dispatch_id : null,
                 'qc_status' => $booking->qc->qc_status,

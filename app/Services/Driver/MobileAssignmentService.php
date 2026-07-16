@@ -577,7 +577,13 @@ class MobileAssignmentService
         $kmCalculations = is_array($kmCalculations) ? $kmCalculations : [];
         $summary = is_array($pricingBreakdown['summary'] ?? null) ? $pricingBreakdown['summary'] : [];
         $basePricing = is_array($pricingBreakdown['base_pricing'] ?? null) ? $pricingBreakdown['base_pricing'] : [];
-        $variables = $pricingBreakdown['calculation_metadata']['variables_used']
+        $finalPricing = is_array($pricingBreakdown['final_pricing'] ?? null)
+            ? $pricingBreakdown['final_pricing']
+            : [];
+        $variables = $finalPricing['calculation_metadata']['resolved_variables']
+            ?? $pricingBreakdown['calculation_metadata']['resolved_variables']
+            ?? $basePricing['calculation_metadata']['resolved_variables']
+            ?? $pricingBreakdown['calculation_metadata']['variables_used']
             ?? $basePricing['calculation_metadata']['variables_used']
             ?? [];
         $variables = is_array($variables) ? $variables : [];

@@ -919,9 +919,6 @@ class BookingLifecycleService
             if (!$vehicleId) {
                 throw new \Exception('Vehicle not found for return processing');
             }
-            if (!$vehicleId) {
-                throw new \Exception('Vehicle not found for return processing');
-            }
             $workflowSettings = $this->getLifecycleWorkflowSettings();
             $forceSkipQc = (bool) ($returnData['skip_qc'] ?? false) || (bool) ($returnData['completed_by_driver'] ?? false);
             $isQcEnabled = !$forceSkipQc && (bool) ($workflowSettings['enable_qc_stage'] ?? true);
@@ -1568,11 +1565,15 @@ class BookingLifecycleService
             '_source' => in_array($declaredActivitySource, ['system_return', 'system_completion'], true)
                 ? $declaredActivitySource
                 : ($trigger === 'system_return' ? 'system_return' : 'system_completion'),
-            'actual_start_time' => $activityData['actual_start_time'] ?? null,
-            'actual_return_time' => $activityData['actual_return_time'] ?? null,
+            'actual_start_time' => $activityData['actual_start_time'] ?? $dispatch?->dispatched_at,
+            'actual_return_time' => $activityData['actual_return_time'] ?? $dispatch?->actual_return_at,
             'distance_km' => is_numeric($activityData['actual_distance'] ?? null)
                 ? (float) $activityData['actual_distance']
-                : (is_numeric($activityData['distance_km'] ?? null) ? (float) $activityData['distance_km'] : null),
+                : (is_numeric($activityData['distance_km'] ?? null)
+                    ? (float) $activityData['distance_km']
+                    : ($dispatch?->mileage_in !== null && $dispatch?->mileage_out !== null
+                        ? max(0, (float) $dispatch->mileage_in - (float) $dispatch->mileage_out)
+                        : null)),
             'waiting_minutes' => array_key_exists('waiting_minutes', $activityData)
                 ? (int) $activityData['waiting_minutes']
                 : null,
@@ -1760,7 +1761,7 @@ class BookingLifecycleService
         $definitionId = data_get($result, 'pricing_scope.calculation_definition_id')
             ?? data_get($result, 'calculation_metadata.definition_used');
         $calculatedBase = (float) ($result['total_amount'] ?? 0);
-        $resolvedVariables = data_get($result, 'calculation_metadata.variables_used', []);
+        $resolvedVariables = data_get($result, 'calculation_metadata.resolved_variables', []);
         $resolvedVariables = is_array($resolvedVariables) ? $resolvedVariables : [];
 
         $audit = [
@@ -1806,6 +1807,12 @@ class BookingLifecycleService
                 ?? data_get($result, 'calculation_metadata.matched_slab'),
             'adjustments' => $result['adjustment_details'] ?? [],
             'breakdown' => $result['breakdown'] ?? [],
+            'calculation_example' => $this->buildFinalCalculationExample(
+                $result,
+                0.0,
+                0.0,
+                $calculatedBase
+            ),
         ];
 
         if (!$definitionId) {
@@ -1815,6 +1822,8 @@ class BookingLifecycleService
                 );
             }
             $audit['reason'] = 'no_active_calculation_definition';
+            $audit['calculation_example']['status'] = 'not_calculated';
+            $audit['calculation_example']['note'] = 'No active calculation definition is configured; the existing item price was preserved.';
             $bookingItem->update([
                 'metadata' => array_merge($metadata, ['final_pricing_audit' => $audit]),
             ]);
