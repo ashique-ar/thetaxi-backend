@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\Booking\BookingFlowController;
 use App\Http\Controllers\Api\Booking\BookingLifecycleController;
+use App\Http\Controllers\Api\Booking\CustomerMobileActivityController;
 use App\Http\Controllers\Api\AssignmentController;
 use App\Http\Controllers\Api\AgreementController;
 use App\Http\Controllers\Api\AuditLogController;
@@ -216,6 +217,13 @@ Route::prefix('utility')->group(function () {
 });
 
 Route::middleware(['auth:api'])->group(function () {
+
+    // Customer mobile telemetry is authenticated by ownership, not staff
+    // permissions. Rates and charges cannot be submitted through this route.
+    Route::post(
+        'customer-mobile/bookings/{bookingId}/items/{bookingItemId}/activity',
+        [CustomerMobileActivityController::class, 'store']
+    )->middleware('throttle:120,1');
 
     /*
     |--------------------------------------------------------------------------

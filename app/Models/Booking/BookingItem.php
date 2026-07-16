@@ -4,6 +4,7 @@ namespace App\Models\Booking;
 
 use App\Models\BaseModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use App\Models\Booking\Booking;
 use App\Models\Vehicle\VehicleGroup;
 use App\Models\Vehicle\Vehicle;
@@ -164,6 +165,11 @@ class BookingItem extends BaseModel
     public function booking(): BelongsTo
     {
         return $this->belongsTo(Booking::class);
+    }
+
+    public function customerMobileActivities(): HasMany
+    {
+        return $this->hasMany(BookingCustomerMobileActivity::class, 'booking_item_id');
     }
 
     /**
