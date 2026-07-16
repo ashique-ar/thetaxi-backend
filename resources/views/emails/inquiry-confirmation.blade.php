@@ -71,7 +71,9 @@
         <table class="info-table">
             <tr>
                 <td>Type</td>
-                <td>{{ $typeLabel }}</td>
+                <td>{{ !empty($form['service_type_select'])
+                    ? $formatDetailValue('service_type_select', $form['service_type_select'])
+                    : $typeLabel }}</td>
             </tr>
             @if (!empty($form['company_name']))
                 <tr>
