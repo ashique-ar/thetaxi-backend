@@ -180,7 +180,7 @@ $type = $section['type'] ?? '';
 
     .inquiry-form-copy {
         /* width: min(100%, 680px); */
-        margin-top: 48px;
+        margin-top: -180px;
     }
 
     .inquiry-form-card .filter-input-wrap .filter-input.show {
