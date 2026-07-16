@@ -43,6 +43,8 @@ class CustomerMobileActivityService
             if ((string) $lockedItem->booking_id !== (string) $booking->id) {
                 throw new AuthorizationException('The booking item does not belong to this booking.');
             }
+            $persistedBooking = Booking::query()->with('customer')->findOrFail($booking->id);
+            $this->assertOwnership($persistedBooking, $lockedItem, $user);
 
             $existing = BookingCustomerMobileActivity::query()
                 ->where('booking_item_id', $lockedItem->id)
@@ -67,9 +69,9 @@ class CustomerMobileActivityService
             $this->assertMonotonicCumulativeMetrics($normalized, $priorSummary);
 
             $activity = BookingCustomerMobileActivity::create([
-                'booking_id' => $booking->id,
+                'booking_id' => $persistedBooking->id,
                 'booking_item_id' => $lockedItem->id,
-                'customer_id' => $booking->customer_id,
+                'customer_id' => $persistedBooking->customer_id,
                 'user_id' => $user->id,
                 'client_event_id' => $normalized['client_event_id'],
                 'event_type' => $normalized['event_type'],
@@ -92,8 +94,8 @@ class CustomerMobileActivityService
                 'entity_id' => $lockedItem->id,
                 'timestamp' => Carbon::now('UTC'),
                 'details' => [
-                    'booking_id' => $booking->id,
-                    'customer_id' => $booking->customer_id,
+                    'booking_id' => $persistedBooking->id,
+                    'customer_id' => $persistedBooking->customer_id,
                     'activity_id' => $activity->id,
                     'client_event_id' => $activity->client_event_id,
                     'event_type' => $activity->event_type,
@@ -219,9 +221,16 @@ class CustomerMobileActivityService
             $normalized['waiting_minutes'] = (int) $payload['waiting_minutes'];
         }
 
+        $latestAllowedTime = Carbon::now('UTC')->addMinutes(5);
         $occurredAt = Carbon::parse($normalized['occurred_at']);
-        if ($occurredAt->greaterThan(Carbon::now('UTC')->addMinutes(5))) {
+        if ($occurredAt->greaterThan($latestAllowedTime)) {
             throw new \DomainException('occurred_at cannot be more than five minutes in the future.');
+        }
+
+        foreach (['actual_start_time', 'actual_return_time'] as $field) {
+            if (isset($normalized[$field]) && Carbon::parse($normalized[$field])->greaterThan($latestAllowedTime)) {
+                throw new \DomainException("{$field} cannot be more than five minutes in the future.");
+            }
         }
 
         $start = isset($normalized['actual_start_time'])
@@ -287,9 +296,14 @@ class CustomerMobileActivityService
         }
 
         $priorStart = $priorSummary['actual_start_time'] ?? null;
+        $priorReturn = $priorSummary['actual_return_time'] ?? null;
+        $newStart = $normalized['actual_start_time'] ?? null;
         $newReturn = $normalized['actual_return_time'] ?? null;
         if ($priorStart && $newReturn && Carbon::parse($newReturn)->lessThan(Carbon::parse($priorStart))) {
             throw new \DomainException('actual_return_time cannot be before the recorded trip start.');
+        }
+        if ($priorReturn && $newStart && Carbon::parse($newStart)->greaterThan(Carbon::parse($priorReturn))) {
+            throw new \DomainException('actual_start_time cannot be after the recorded trip return.');
         }
     }
 }

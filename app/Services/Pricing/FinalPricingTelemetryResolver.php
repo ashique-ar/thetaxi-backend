@@ -2,6 +2,8 @@
 
 namespace App\Services\Pricing;
 
+use Carbon\Carbon;
+
 /**
  * Selects one authoritative operational source for final pricing.
  *
@@ -59,6 +61,29 @@ class FinalPricingTelemetryResolver
                 'selected_label' => $sourceLabel,
             ],
         ]);
+    }
+
+    /**
+     * Convert measured timestamps to billable whole minutes without allowing a
+     * reversed range to be silently converted into a positive duration.
+     */
+    public function elapsedMinutes(mixed $startedAt, mixed $completedAt): ?int
+    {
+        if (!$startedAt) {
+            return null;
+        }
+
+        $start = Carbon::parse($startedAt);
+        $end = $completedAt ? Carbon::parse($completedAt) : Carbon::now('UTC');
+        $seconds = $start->diffInSeconds($end, false);
+
+        if ($seconds < 0) {
+            throw new \DomainException(
+                'Actual return time must be on or after actual start time.'
+            );
+        }
+
+        return (int) ceil($seconds / 60);
     }
 
     /** @param array<string, mixed>|null $telemetry */

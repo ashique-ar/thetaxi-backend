@@ -7,18 +7,24 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class UpdateVehiclePricingSlabDefinitionRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        if ($this->has('type')) {
+            $this->merge($this->durationFieldsForType((string) $this->input('type')));
+        }
+    }
 
     public function rules()
     {
         return [
             'service_type_id' => ['sometimes', 'exists:service_types,id'],
             'name' => ['sometimes', 'string', 'max:255'],
-            'min_days' => ['sometimes'],
-            'max_days' => ['sometimes'],
-            'min_hours' => ['sometimes'],
-            'max_hours' => ['sometimes'],
-            'min_minutes' => ['sometimes', 'nullable', 'integer', 'min:0'],
-            'max_minutes' => ['sometimes', 'nullable', 'integer', 'gte:min_minutes'],
+            'min_days' => ['nullable', 'required_if:type,days,per_day', 'integer', 'min:0'],
+            'max_days' => ['nullable', 'integer', 'gte:min_days'],
+            'min_hours' => ['nullable', 'required_if:type,hours', 'integer', 'min:0'],
+            'max_hours' => ['nullable', 'integer', 'gte:min_hours'],
+            'min_minutes' => ['nullable', 'required_if:type,minutes', 'integer', 'min:0'],
+            'max_minutes' => ['nullable', 'integer', 'gte:min_minutes'],
             'type' => ['sometimes', 'nullable', 'string', 'in:minutes,hours,days,per_day,per_km,flat_rate'],
             'max_km_per_day' => ['sometimes', 'nullable', 'integer', 'min:0'],
             'max_km_per_package' => ['sometimes', 'nullable', 'integer', 'min:0'],
@@ -27,6 +33,18 @@ class UpdateVehiclePricingSlabDefinitionRequest extends FormRequest
             'owner_type' => ['nullable', 'string', 'in:corporate'],
             'owner_id' => ['nullable', 'uuid', 'exists:corporates,id', 'required_with:owner_type'],
             'priority' => ['nullable', 'integer', 'min:0'],
+        ];
+    }
+
+    private function durationFieldsForType(string $type): array
+    {
+        return [
+            'min_minutes' => $type === 'minutes' ? $this->input('min_minutes') : null,
+            'max_minutes' => $type === 'minutes' ? $this->input('max_minutes') : null,
+            'min_hours' => $type === 'hours' ? $this->input('min_hours') : null,
+            'max_hours' => $type === 'hours' ? $this->input('max_hours') : null,
+            'min_days' => in_array($type, ['days', 'per_day'], true) ? $this->input('min_days') : null,
+            'max_days' => in_array($type, ['days', 'per_day'], true) ? $this->input('max_days') : null,
         ];
     }
 }

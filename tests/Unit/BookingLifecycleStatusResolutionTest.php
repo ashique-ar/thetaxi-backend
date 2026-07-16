@@ -10,6 +10,7 @@ use App\Models\Booking\BookingDispatch;
 use App\Models\Booking\BookingItem;
 use App\Models\Booking\BookingQC;
 use App\Services\BookingLifecycleService;
+use App\Services\Pricing\FinalPricingTelemetryResolver;
 use DomainException;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
@@ -47,6 +48,24 @@ class BookingLifecycleStatusResolutionTest extends TestCase
         $this->expectExceptionMessage('Multi-item completion requires item-level dispatch');
 
         $method->invoke($service, $booking, null);
+    }
+
+    public function test_final_telemetry_uses_exact_minutes_and_rejects_reversed_ranges(): void
+    {
+        $resolver = new FinalPricingTelemetryResolver();
+
+        $this->assertSame(62, $resolver->elapsedMinutes(
+            '2026-07-16T09:00:00+00:00',
+            '2026-07-16T10:01:01+00:00'
+        ));
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('Actual return time must be on or after actual start time.');
+
+        $resolver->elapsedMinutes(
+            '2026-07-16T10:00:00+00:00',
+            '2026-07-16T09:59:59+00:00'
+        );
     }
 
     private function modelWithoutConstructor(string $class, array $attributes): object

@@ -10,6 +10,7 @@ use App\Models\DriverAssignment;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCalculationDefinition;
 use App\Models\Vehicle\Vehicle;
 use App\Services\Driver\NotificationTriggerService;
+use App\Services\Pricing\FinalPricingTelemetryResolver;
 use App\Models\AuditLog;
 use App\Notifications\BookingLifecycleNotification;
 use App\Services\InvoiceService;
@@ -41,6 +42,8 @@ class BookingLifecycleService
     protected LoyaltyService $loyaltyService;
     protected AgentCommissionService $agentCommissionService;
     protected WebsiteSettingsService $websiteSettingsService;
+    protected CustomerMobileActivityService $customerMobileActivityService;
+    protected FinalPricingTelemetryResolver $finalPricingTelemetryResolver;
 
     public function __construct(
         AssignmentService $assignmentService,
@@ -51,7 +54,9 @@ class BookingLifecycleService
         AvailabilityEnforcementService $availabilityEnforcement,
         LoyaltyService $loyaltyService,
         AgentCommissionService $agentCommissionService,
-        WebsiteSettingsService $websiteSettingsService
+        WebsiteSettingsService $websiteSettingsService,
+        CustomerMobileActivityService $customerMobileActivityService,
+        FinalPricingTelemetryResolver $finalPricingTelemetryResolver
     ) {
         $this->assignmentService = $assignmentService;
         $this->bookingFlowService = $bookingFlowService;
@@ -62,6 +67,8 @@ class BookingLifecycleService
         $this->loyaltyService = $loyaltyService;
         $this->agentCommissionService = $agentCommissionService;
         $this->websiteSettingsService = $websiteSettingsService;
+        $this->customerMobileActivityService = $customerMobileActivityService;
+        $this->finalPricingTelemetryResolver = $finalPricingTelemetryResolver;
     }
 
     /**
@@ -1096,6 +1103,16 @@ class BookingLifecycleService
             return ['status' => 'preserved', 'reason' => 'booking_item_pricing_context_missing', 'trigger' => $trigger];
         }
 
+        // Serialize final pricing with customer-mobile event writes. Both paths
+        // lock the same item row, so a telemetry event either becomes part of
+        // this calculation or is rejected after completion; it cannot race the
+        // invoice snapshot.
+        $bookingItem = BookingItem::query()
+            ->whereKey($bookingItem->id)
+            ->where('booking_id', $booking->id)
+            ->lockForUpdate()
+            ->firstOrFail();
+
         $isSelfDriven = (bool) ($context['is_self_driven'] ?? $bookingItem->is_self_driven);
         $assignment = null;
         if (!$isSelfDriven) {
@@ -1114,25 +1131,98 @@ class BookingLifecycleService
             || $assignment->total_waiting_time_seconds > 0
         );
 
-        $declaredActivitySource = $activityData['activity_source'] ?? null;
-        $source = $hasDriverTelemetry
-            ? 'driver_mobile_activity'
-            : ($declaredActivitySource === 'customer_mobile'
-                ? 'customer_mobile_activity'
-                : ($isSelfDriven ? 'self_drive_return' : ($trigger === 'system_return' ? 'system_return' : 'system_completion')));
+        $driverTelemetry = $hasDriverTelemetry ? [
+            '_source' => 'driver_mobile_activity',
+            'actual_start_time' => $assignment->trip_started_at ?: $assignment->actual_start,
+            'actual_return_time' => $assignment->trip_completed_at ?: $assignment->actual_end,
+            'distance_km' => $assignment->total_distance_km !== null
+                ? (float) $assignment->total_distance_km
+                : null,
+            'waiting_minutes' => (int) ceil(((int) $assignment->total_waiting_time_seconds) / 60),
+        ] : null;
 
-        $startedAt = $hasDriverTelemetry
-            ? ($assignment->trip_started_at ?: $assignment->actual_start)
-            : (($activityData['actual_start_time'] ?? null) ?: $dispatch?->dispatched_at ?: $booking->trip_started_at);
-        $completedAt = $hasDriverTelemetry
-            ? ($assignment->trip_completed_at ?: $assignment->actual_end)
-            : (($activityData['actual_return_time'] ?? null) ?: $dispatch?->actual_return_at ?: $booking->completed_at ?: Carbon::now('UTC'));
+        // Values submitted through staff lifecycle endpoints are a trusted
+        // system source. A caller merely declaring customer_mobile is never
+        // trusted: customer telemetry must exist in the ownership-scoped table.
+        $declaredActivitySource = $activityData['activity_source'] ?? null;
+        $trustedSystemPayload = !in_array($declaredActivitySource, ['customer_mobile', 'driver_mobile'], true);
+        $systemTelemetry = $trustedSystemPayload ? [
+            '_source' => in_array($declaredActivitySource, ['system_return', 'system_completion'], true)
+                ? $declaredActivitySource
+                : ($trigger === 'system_return' ? 'system_return' : 'system_completion'),
+            'actual_start_time' => $activityData['actual_start_time'] ?? null,
+            'actual_return_time' => $activityData['actual_return_time'] ?? null,
+            'distance_km' => is_numeric($activityData['actual_distance'] ?? null)
+                ? (float) $activityData['actual_distance']
+                : (is_numeric($activityData['distance_km'] ?? null) ? (float) $activityData['distance_km'] : null),
+            'waiting_minutes' => array_key_exists('waiting_minutes', $activityData)
+                ? (int) $activityData['waiting_minutes']
+                : null,
+        ] : null;
+
+        // A dispatch start alone is not final telemetry. It becomes an
+        // authoritative return source once a return time or mileage pair exists.
+        $hasDispatchReturnTelemetry = $dispatch && (
+            $dispatch->actual_return_at
+            || ($dispatch->mileage_in !== null && $dispatch->mileage_out !== null)
+        );
+        $dispatchTelemetry = $hasDispatchReturnTelemetry ? [
+            '_source' => $isSelfDriven ? 'self_drive_return' : 'dispatch_return',
+            'actual_start_time' => $dispatch->dispatched_at,
+            'actual_return_time' => $dispatch->actual_return_at,
+            'distance_km' => $dispatch->mileage_in !== null && $dispatch->mileage_out !== null
+                ? max(0, (float) $dispatch->mileage_in - (float) $dispatch->mileage_out)
+                : null,
+            'waiting_minutes' => null,
+        ] : null;
+
+        $customerTelemetry = null;
+        if (
+            !$this->finalPricingTelemetryResolver->hasTelemetry($driverTelemetry)
+            && !$this->finalPricingTelemetryResolver->hasTelemetry($systemTelemetry)
+            && !$this->finalPricingTelemetryResolver->hasTelemetry($dispatchTelemetry)
+        ) {
+            $persistedCustomerTelemetry = $this->customerMobileActivityService->summaryForItem(
+                (string) $bookingItem->id
+            );
+            if (($persistedCustomerTelemetry['complete'] ?? false) === true) {
+                $customerTelemetry = [
+                    '_source' => 'customer_mobile_activity',
+                    'actual_start_time' => $persistedCustomerTelemetry['actual_start_time'] ?? null,
+                    'actual_return_time' => $persistedCustomerTelemetry['actual_return_time'] ?? null,
+                    'distance_km' => $persistedCustomerTelemetry['distance_km'] ?? null,
+                    'waiting_minutes' => $persistedCustomerTelemetry['waiting_minutes'] ?? null,
+                ];
+            }
+        }
+
+        $resolvedTelemetry = $this->finalPricingTelemetryResolver->resolve([
+            'driver_mobile_activity' => $driverTelemetry,
+            'system_activity' => $systemTelemetry,
+            'dispatch_return' => $dispatchTelemetry,
+            'customer_mobile_activity' => $customerTelemetry,
+        ], [
+            '_source' => 'booking_persisted_fallback',
+            'actual_start_time' => $booking->trip_started_at,
+            'actual_return_time' => $booking->completed_at,
+            'distance_km' => $booking->actual_distance !== null ? (float) $booking->actual_distance : null,
+            'waiting_minutes' => data_get($booking->duration_metrics, 'waiting_minutes'),
+        ]);
+
+        $source = (string) $resolvedTelemetry['source'];
+        $sourceCategory = (string) $resolvedTelemetry['source_category'];
+        $sourceSelection = $resolvedTelemetry['source_selection'];
+        $startedAt = $resolvedTelemetry['actual_start_time'] ?? null;
+        $completedAt = $resolvedTelemetry['actual_return_time'] ?? Carbon::now('UTC');
 
         $startedAt = $startedAt ? Carbon::parse($startedAt) : null;
         $completedAt = $completedAt ? Carbon::parse($completedAt) : Carbon::now('UTC');
-        $durationMinutes = $startedAt
-            ? max(0, (int) ceil($startedAt->diffInSeconds($completedAt) / 60))
-            : (int) ($booking->actual_duration
+        $measuredDurationMinutes = $this->finalPricingTelemetryResolver->elapsedMinutes(
+            $startedAt,
+            $completedAt
+        );
+        $durationMinutes = $measuredDurationMinutes
+            ?? (int) ($booking->actual_duration
                 ?? data_get($booking->duration_metrics, 'actual_minutes')
                 ?? $bookingItem->duration_minutes
                 ?? (($bookingItem->duration_hours ?? 0) * 60));
@@ -1142,18 +1232,9 @@ class BookingLifecycleService
             || (int) ($bookingItem->duration_minutes ?? 0) > 0
             || (int) ($bookingItem->duration_hours ?? 0) > 0;
 
-        $distanceKm = null;
-        if ($hasDriverTelemetry && $assignment->total_distance_km !== null) {
-            $distanceKm = (float) $assignment->total_distance_km;
-        } elseif (is_numeric($activityData['actual_distance'] ?? null)) {
-            $distanceKm = (float) $activityData['actual_distance'];
-        } elseif (is_numeric($activityData['distance_km'] ?? null)) {
-            $distanceKm = (float) $activityData['distance_km'];
-        } elseif ($dispatch?->mileage_in !== null && $dispatch?->mileage_out !== null) {
-            $distanceKm = max(0, (float) $dispatch->mileage_in - (float) $dispatch->mileage_out);
-        } elseif ($booking->actual_distance !== null) {
-            $distanceKm = (float) $booking->actual_distance;
-        }
+        $distanceKm = is_numeric($resolvedTelemetry['distance_km'] ?? null)
+            ? (float) $resolvedTelemetry['distance_km']
+            : null;
 
         $contractualDistance = data_get($booking->pricing_snapshot, 'distance_policy.coordinate_source') === 'corporate_distance_policy'
             || data_get($booking->pricing_snapshot, 'base_pricing.distance_policy.coordinate_source') === 'corporate_distance_policy'
@@ -1171,9 +1252,7 @@ class BookingLifecycleService
             );
         }
 
-        $waitingMinutes = $hasDriverTelemetry
-            ? (int) ceil(((int) $assignment->total_waiting_time_seconds) / 60)
-            : (int) ($activityData['waiting_minutes'] ?? data_get($booking->duration_metrics, 'waiting_minutes', 0));
+        $waitingMinutes = (int) ($resolvedTelemetry['waiting_minutes'] ?? 0);
         $metadata = is_array($bookingItem->metadata) ? $bookingItem->metadata : [];
         $hasIncludedDuration = array_key_exists('included_minutes', $metadata)
             || array_key_exists('included_hours', $metadata)
@@ -1237,6 +1316,8 @@ class BookingLifecycleService
             'status' => $definitionId && $calculatedBase >= 0 ? 'calculated' : 'preserved',
             'trigger' => $trigger,
             'source' => $source,
+            'source_category' => $sourceCategory,
+            'source_selection' => $sourceSelection,
             'calculation_definition_id' => $definitionId,
             'calculated_at' => Carbon::now('UTC')->toIso8601String(),
             'contractual_distance_preserved' => $contractualDistance,
@@ -1292,7 +1373,17 @@ class BookingLifecycleService
             );
         }
 
-        $manualCharges = $this->sumOperationalCharges($dispatch?->additional_charges ?? ($activityData['charges'] ?? []));
+        $manualCharges = $this->sumOperationalCharges($dispatch?->additional_charges ?? []);
+        if ($trigger === 'booking_completion') {
+            // A staff-approved completion adjustment is additional to charges
+            // already captured at return. During processReturn both arrays
+            // describe the same charges, so only the persisted dispatch copy is
+            // counted there.
+            $manualCharges += $this->sumOperationalCharges($activityData['charges'] ?? []);
+        } elseif (!$dispatch) {
+            $manualCharges += $this->sumOperationalCharges($activityData['charges'] ?? []);
+        }
+        $manualCharges = round($manualCharges, 2);
         $lateFee = (float) ($dispatch?->late_return_fee ?? $activityData['late_fee'] ?? 0);
         $finalBase = round($calculatedBase + $manualCharges + $lateFee, 2);
         $audit += [
