@@ -171,6 +171,16 @@ $type = $section['type'] ?? '';
         margin-top: -227.5px;
     }
 
+    .inquiry-form-card-wrap {
+        width: min(100%, 760px);
+        margin-left: auto;
+    }
+
+    .inquiry-form-copy {
+        width: min(100%, 680px);
+        margin-top: 48px;
+    }
+
     .inquiry-form-card .filter-input-wrap .filter-input.show {
         grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     }
@@ -308,6 +318,14 @@ $type = $section['type'] ?? '';
             padding: 24px;
             margin-top: 0;
         }
+
+        .inquiry-form-card-wrap {
+            margin-left: 0;
+        }
+
+        .inquiry-form-copy {
+            margin-top: 40px;
+        }
     }
 
     @media (max-width: 767px) {
@@ -325,6 +343,10 @@ $type = $section['type'] ?? '';
         .inquiry-form-card {
             padding: 18px;
             border-radius: 12px;
+        }
+
+        .inquiry-form-copy {
+            margin-top: 32px;
         }
 
         .inquiry-form-card .filter-input-wrap .filter-input.show {
