@@ -1,9 +1,11 @@
 <?php
 
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCommonRateDefinition;
+use App\Http\Controllers\Api\Vehicle\VehiclePricing\VehiclePricingCommonRateDefinitionController;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\QueryException;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -19,6 +21,8 @@ beforeEach(function (): void {
         'vehicle_pricing_calculation_definitions',
         'vehicle_pricing_common_rate_definitions',
         'vehicle_pricing_slab_definitions',
+        'vehicle_groups',
+        'corporates',
     ] as $table) {
         Schema::dropIfExists($table);
     }
@@ -41,6 +45,14 @@ beforeEach(function (): void {
         $table->string('updated_user_id')->nullable();
         $table->timestamps();
         $table->softDeletes();
+    });
+
+    Schema::create('vehicle_groups', function (Blueprint $table): void {
+        $table->string('id')->primary();
+    });
+
+    Schema::create('corporates', function (Blueprint $table): void {
+        $table->string('id')->primary();
     });
 
     Schema::create('vehicle_pricing_slab_definitions', function (Blueprint $table): void {
@@ -140,6 +152,8 @@ afterEach(function (): void {
         'vehicle_pricing_calculation_definitions',
         'vehicle_pricing_common_rate_definitions',
         'vehicle_pricing_slab_definitions',
+        'vehicle_groups',
+        'corporates',
     ] as $table) {
         Schema::dropIfExists($table);
     }
@@ -275,6 +289,71 @@ it('hides legacy owned definitions and normalizes owner fields on model writes',
         ->and($stored->owner_id)->toBeNull();
 });
 
+it('calculates common-rate previews from scoped vehicle-group values', function (): void {
+    $now = now();
+    $rateId = '11111111-1111-4111-8111-111111111111';
+    $vehicleGroupId = '22222222-2222-4222-8222-222222222222';
+    $corporateId = '33333333-3333-4333-8333-333333333333';
+
+    DB::table('vehicle_groups')->insert(['id' => $vehicleGroupId]);
+    DB::table('corporates')->insert(['id' => $corporateId]);
+    DB::table('vehicle_pricing_common_rate_definitions')->insert(
+        pricingCommonDefinition($rateId, null, null, $now)
+    );
+    DB::table('vehicle_group_common_rate_pricing')->insert([
+        pricingCommonValue('common-value-global', $rateId, 10, null, null, $now, $vehicleGroupId),
+        pricingCommonValue('common-value-corporate', $rateId, 25, 'corporate', $corporateId, $now, $vehicleGroupId),
+    ]);
+
+    $response = (new VehiclePricingCommonRateDefinitionController())->calculatePreview(
+        Request::create('/preview', 'POST', [
+            'rate_id' => $rateId,
+            'vehicle_group_id' => $vehicleGroupId,
+            'base_amount' => 0,
+            'kilometers' => 4,
+            'context' => 'corporate',
+            'owner_type' => 'corporate',
+            'owner_id' => $corporateId,
+        ])
+    );
+
+    expect($response->getStatusCode())->toBe(200)
+        ->and($response->getData(true)['data']['calculated_amount'])->toBe(100.0)
+        ->and($response->getData(true)['data']['pricing_value']['id'])->toBe('common-value-corporate');
+
+    DB::table('vehicle_group_common_rate_pricing')->where('id', 'common-value-corporate')->delete();
+
+    $fallbackResponse = (new VehiclePricingCommonRateDefinitionController())->calculatePreview(
+        Request::create('/preview', 'POST', [
+            'rate_id' => $rateId,
+            'vehicle_group_id' => $vehicleGroupId,
+            'base_amount' => 0,
+            'kilometers' => 4,
+            'context' => 'corporate',
+            'owner_type' => 'corporate',
+            'owner_id' => $corporateId,
+        ])
+    );
+
+    expect($fallbackResponse->getStatusCode())->toBe(200)
+        ->and($fallbackResponse->getData(true)['data']['calculated_amount'])->toBe(40.0)
+        ->and($fallbackResponse->getData(true)['data']['pricing_value']['id'])->toBe('common-value-global');
+
+    DB::table('vehicle_group_common_rate_pricing')->delete();
+
+    $missingResponse = (new VehiclePricingCommonRateDefinitionController())->calculatePreview(
+        Request::create('/preview', 'POST', [
+            'rate_id' => $rateId,
+            'vehicle_group_id' => $vehicleGroupId,
+            'base_amount' => 0,
+            'kilometers' => 4,
+        ])
+    );
+
+    expect($missingResponse->getStatusCode())->toBe(422)
+        ->and($missingResponse->getData(true)['message'])->toContain('No active Pricing Management value');
+});
+
 function pricingOwnershipMigration(): Migration
 {
     return require base_path('database/migrations/2026_07_16_150000_reconcile_global_pricing_definitions.php');
@@ -372,11 +451,12 @@ function pricingCommonValue(
     ?string $ownerType,
     ?string $ownerId,
     mixed $now,
+    string $vehicleGroupId = 'group-1',
 ): array {
     return [
         'id' => $id,
         'common_rate_definition_id' => $definitionId,
-        'vehicle_group_id' => 'group-1',
+        'vehicle_group_id' => $vehicleGroupId,
         'value' => $value,
         'is_active' => true,
         'owner_type' => $ownerType,

@@ -11,6 +11,7 @@ use App\Models\Vehicle\VehiclePricing\VehicleGroupPricing;
 use App\Models\Vehicle\VehiclePricing\VehicleGroupCommonRatePricing;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCommonRateDefinition;
 use App\Models\Vehicle\VehicleGroup;
+use App\Services\Pricing\PricingDefinitionOrchestrator;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
@@ -416,11 +417,16 @@ class VehiclePricingCalculationDefinitionController extends Controller
                 }
             }
     
-            $result = $tempDefinition->calculatePrice($testInputs);
-            if (($result['calculation_success'] ?? false) !== true) {
-                $reason = ($result['failure_reason'] ?? null) === 'missing_required_variables'
-                    ? 'Missing required inputs: ' . implode(', ', $result['missing_variables'] ?? [])
-                    : 'The configured conditions do not match these test inputs.';
+            $orchestration = app(PricingDefinitionOrchestrator::class)->resolve(
+                [$tempDefinition],
+                $testInputs
+            );
+            $result = $orchestration['result'];
+            if (!$orchestration['matched'] || !$result) {
+                $failure = $orchestration['candidate_failures'][0] ?? [];
+                $reason = ($failure['reason'] ?? null) === 'missing_required_variables'
+                    ? 'Missing required inputs: ' . implode(', ', $failure['missing_variables'] ?? [])
+                    : ($failure['message'] ?? 'The configured conditions do not match these test inputs.');
                 throw new \InvalidArgumentException($reason);
             }
 
@@ -712,14 +718,19 @@ class VehiclePricingCalculationDefinitionController extends Controller
                 ? $request->input('owner_id')
                 : null;
 
-            $calculationResult = $definition->calculatePrice($inputs);
-            if (($calculationResult['calculation_success'] ?? false) !== true) {
+            $orchestration = app(PricingDefinitionOrchestrator::class)->resolve([$definition], $inputs);
+            $calculationResult = $orchestration['result'];
+            if (!$orchestration['matched'] || !$calculationResult) {
+                $failure = $orchestration['candidate_failures'][0] ?? [];
                 return response()->json([
                     'success' => false,
-                    'message' => ($calculationResult['failure_reason'] ?? null) === 'missing_required_variables'
-                        ? 'Missing required inputs: ' . implode(', ', $calculationResult['missing_variables'] ?? [])
-                        : 'The calculation definition conditions do not match these test inputs.',
-                    'data' => ['calculation_result' => $calculationResult],
+                    'message' => ($failure['reason'] ?? null) === 'missing_required_variables'
+                        ? 'Missing required inputs: ' . implode(', ', $failure['missing_variables'] ?? [])
+                        : ($failure['message'] ?? 'The calculation definition conditions do not match these test inputs.'),
+                    'data' => [
+                        'calculation_result' => null,
+                        'candidate_failures' => $orchestration['candidate_failures'],
+                    ],
                 ], 422);
             }
             $totalPrice = (float) ($calculationResult['total_amount'] ?? 0);
@@ -894,26 +905,13 @@ class VehiclePricingCalculationDefinitionController extends Controller
                 'owner_id' => $ownerId,
             ]));
 
-            // Match production: shared definitions are evaluated by priority
-            // until one satisfies its conditions and all required inputs resolve.
-            $calculationDefinition = null;
-            $calculationResult = null;
-            $candidateFailures = [];
-            foreach ($calculationDefinitions as $candidate) {
-                $candidateResult = $candidate->calculatePrice($calculationInputs);
-                if (($candidateResult['calculation_success'] ?? false) === true
-                    && ($candidateResult['conditions_met'] ?? false) === true) {
-                    $calculationDefinition = $candidate;
-                    $calculationResult = $candidateResult;
-                    break;
-                }
-
-                $candidateFailures[] = [
-                    'definition_id' => $candidate->id,
-                    'reason' => $candidateResult['failure_reason'] ?? 'conditions_not_met',
-                    'missing_variables' => $candidateResult['missing_variables'] ?? [],
-                ];
-            }
+            $orchestration = app(PricingDefinitionOrchestrator::class)->resolve(
+                $calculationDefinitions,
+                $calculationInputs
+            );
+            $calculationDefinition = $orchestration['definition'];
+            $calculationResult = $orchestration['result'];
+            $candidateFailures = $orchestration['candidate_failures'];
 
             if (!$calculationDefinition || !$calculationResult) {
                 return response()->json([
