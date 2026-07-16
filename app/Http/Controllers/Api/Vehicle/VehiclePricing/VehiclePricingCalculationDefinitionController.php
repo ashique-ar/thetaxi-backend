@@ -137,6 +137,15 @@ class VehiclePricingCalculationDefinitionController extends Controller
             ], 422);
         }
 
+        if (!$this->serviceTypeIsAvailableInScope($request, (string) $request->service_type_id)) {
+            return response()->json([
+                'message' => 'Validation failed',
+                'errors' => [
+                    'service_type_id' => ['The selected service type is not available in this pricing context.'],
+                ],
+            ], 422);
+        }
+
         try {
             $definition = new VehiclePricingCalculationDefinition();
             $definition->name = $request->name;
@@ -215,6 +224,15 @@ class VehiclePricingCalculationDefinitionController extends Controller
             return response()->json([
                 'message' => 'Validation failed',
                 'errors' => $validator->errors()
+            ], 422);
+        }
+
+        if (!$this->serviceTypeIsAvailableInScope($request, (string) $request->service_type_id)) {
+            return response()->json([
+                'message' => 'Validation failed',
+                'errors' => [
+                    'service_type_id' => ['The selected service type is not available in this pricing context.'],
+                ],
             ], 422);
         }
 
@@ -494,6 +512,16 @@ class VehiclePricingCalculationDefinitionController extends Controller
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    private function serviceTypeIsAvailableInScope(Request $request, string $serviceTypeId): bool
+    {
+        $context = (string) $request->input('context', 'public');
+
+        return ServiceType::forContext($context, '', '')
+            ->whereKey($serviceTypeId)
+            ->where('is_active', true)
+            ->exists();
     }
 
     /**
