@@ -408,29 +408,45 @@ HTML,
             $page = InquiryServicePage::create($pageData);
         }
 
-        // Sync sections into inquiry_service_page_sections table (best-effort)
+        // Sync one canonical section per position. Older seeder versions keyed by
+        // type + position, which left the old row active whenever a section moved
+        // and caused duplicate blocks on the public page.
         $desiredSections = $content['sections'] ?? [];
-        $existing = $page->sections()->withInactive()->get()->keyBy(function ($s) {
-            return $s->type . '|' . $s->sort_order;
-        });
+        $existingBySort = $page->sections()
+            ->withInactive()
+            ->get()
+            ->groupBy('sort_order');
+        $retainedSectionIds = [];
 
         foreach ($desiredSections as $index => $sectionData) {
             $sort = $index + 1;
-            $key = ($sectionData['type'] ?? 'unknown') . '|' . $sort;
+            $type = $sectionData['type'] ?? 'unknown';
 
             $payload = [
-                'type' => $sectionData['type'] ?? 'unknown',
+                'type' => $type,
                 'data' => $sectionData['data'] ?? [],
                 'sort_order' => $sort,
                 'is_active' => true,
             ];
 
-            $existingSection = $existing->get($key);
+            $sectionsAtPosition = $existingBySort->get($sort, collect());
+            $existingSection = $sectionsAtPosition->firstWhere('type', $type)
+                ?? $sectionsAtPosition->first();
+
             if ($existingSection) {
                 $existingSection->update($payload);
             } else {
-                $page->sections()->create($payload);
+                $existingSection = $page->sections()->create($payload);
             }
+
+            $retainedSectionIds[] = $existingSection->id;
         }
+
+        $page->sections()
+            ->withInactive()
+            ->whereNotIn('id', $retainedSectionIds)
+            ->delete();
+
+        \Illuminate\Support\Facades\Cache::forget('inquiry_service_page:' . $page->slug);
     }
 }
