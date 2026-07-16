@@ -287,34 +287,34 @@
                     </div>
                 </div>
 
-                <div class="single-search-box date-field">
-                    <div class="d-flex align-items-center gap-2 py-1">
-                        <label class="input-label">{{ $settings['booking_return_date_label'] ?? 'Return Date' }}</label>
+                <div class="booking-field">
+                    <label class="input-label">{{ $settings['booking_return_date_label'] ?? 'Return Date' }}</label>
+                    <div class="single-search-box date-field">
                         @include('components.partials.calendar-icon')
-                    </div>
-                    <input type="text"
+                        <input type="text"
                            name="return_date"
                            id="ride_now-return-date"
                            placeholder="{{ $settings['booking_return_date_placeholder'] ?? 'DD/MM/YYYY' }}"
                            class="custom-datepicker @error('return_date') is-invalid @enderror"
                            value="{{ $rideNowReturnDate }}"
-                           autocomplete="off">
+                               autocomplete="off">
+                    </div>
                     @error('return_date')
                         <span class="text-danger small">{{ $message }}</span>
                     @enderror
                 </div>
 
-                <div class="single-search-box">
-                    <div class="d-flex align-items-center gap-2 py-1">
-                        <label class="input-label">{{ $settings['booking_return_time_label'] ?? 'Return Time' }}</label>
+                <div class="booking-field">
+                    <label class="input-label">{{ $settings['booking_return_time_label'] ?? 'Return Time' }}</label>
+                    <div class="single-search-box">
                         @include('components.partials.clock-icon')
-                    </div>
-                    <div class="custom-select-dropdown">
-                        <input type="time"
+                        <div class="custom-select-dropdown">
+                            <input type="time"
                                name="return_time"
                                id="ride_now-return-time"
                                value="{{ $rideNowReturnTime }}"
-                               class="@error('return_time') is-invalid @enderror">
+                                   class="@error('return_time') is-invalid @enderror">
+                        </div>
                     </div>
                     @error('return_time')
                         <span class="text-danger small">{{ $message }}</span>
@@ -349,23 +349,23 @@
         @endphp
         @if($hasPickupPredefined && !$hasDropoffField)
             {{-- Dropoff wrapper for doorstep (custom) selection --}}
-            <div class="single-search-box location-search-box custom-location-box {{ $prefix }}-dropoff-box"
+            <div class="booking-field custom-location-box {{ $prefix }}-dropoff-box"
                  id="{{ $prefix }}_dropoff_wrapper"
                  style="display: none;">
-                <div class="d-flex align-items-center gap-2 py-1">
-                    <label class="input-label">{{ $settings['booking_dropoff_label'] ?? 'Dropoff Location' }}</label>
+                <label class="input-label">{{ $settings['booking_dropoff_label'] ?? 'Dropoff Location' }}</label>
+                <div class="single-search-box location-search-box">
                     @include('components.partials.location-icon')
-                </div>
-                <div class="custom-select-dropdown">
-                    <input type="text" name="dropoff" id="{{ $prefix }}_dropoff_input"
+                    <div class="custom-select-dropdown">
+                        <input type="text" name="dropoff" id="{{ $prefix }}_dropoff_input"
                            placeholder="{{ $settings['booking_dropoff_placeholder'] ?? 'Enter your dropoff location' }}"
                            class="location-search @error('dropoff') is-invalid @enderror"
                            value="{{ $safeOldOr('dropoff', $dropoffLoc['address'] ?? '') }}"
                            disabled>
-                    <input type="hidden" name="dropoff_lat" id="{{ $prefix }}_dropoff_lat" class="location-lat"
-                           value="{{ $safeOldOr('dropoff_lat', $dropoffLoc['lat'] ?? '') }}">
-                    <input type="hidden" name="dropoff_lng" id="{{ $prefix }}_dropoff_lng" class="location-lng"
-                           value="{{ $safeOldOr('dropoff_lng', $dropoffLoc['lng'] ?? '') }}">
+                        <input type="hidden" name="dropoff_lat" id="{{ $prefix }}_dropoff_lat" class="location-lat"
+                               value="{{ $safeOldOr('dropoff_lat', $dropoffLoc['lat'] ?? '') }}">
+                        <input type="hidden" name="dropoff_lng" id="{{ $prefix }}_dropoff_lng" class="location-lng"
+                               value="{{ $safeOldOr('dropoff_lng', $dropoffLoc['lng'] ?? '') }}">
+                    </div>
                 </div>
                 @error('dropoff')
                     <span class="text-danger small">{{ $message }}</span>

@@ -306,16 +306,16 @@
 
     {{-- ===== TEXT / TEXTAREA / NUMBER ===== --}}
     @case('textarea')
-        <div class="single-search-box">
-            <div class="d-flex align-items-center gap-2 py-1">
-                <label class="input-label">{{ $label }}</label>
-            </div>
-            <div class="custom-select-dropdown">
-                <textarea name="{{ $submitAs }}" id="{{ $elementId }}"
+        <div class="booking-field">
+            <label class="input-label">{{ $label }}</label>
+            <div class="single-search-box">
+                <div class="custom-select-dropdown">
+                    <textarea name="{{ $submitAs }}" id="{{ $elementId }}"
                           placeholder="{{ $placeholder }}"
                           class="@error($submitAs) is-invalid @enderror"
                           {{ $required ? 'required' : '' }}
-                          rows="3">{{ $fieldValue }}</textarea>
+                              rows="3">{{ $fieldValue }}</textarea>
+                </div>
             </div>
             @error($submitAs)
                 <span class="text-danger small">{{ $message }}</span>
@@ -324,18 +324,18 @@
         @break
 
     @case('number')
-        <div class="single-search-box">
-            <div class="d-flex align-items-center gap-2 py-1">
-                <label class="input-label">{{ $label }}</label>
-            </div>
-            <div class="custom-select-dropdown">
-                <input type="number" name="{{ $submitAs }}" id="{{ $elementId }}"
+        <div class="booking-field">
+            <label class="input-label">{{ $label }}</label>
+            <div class="single-search-box">
+                <div class="custom-select-dropdown">
+                    <input type="number" name="{{ $submitAs }}" id="{{ $elementId }}"
                        placeholder="{{ $placeholder }}"
                        value="{{ $fieldValue }}"
                        class="@error($submitAs) is-invalid @enderror"
                        {{ $required ? 'required' : '' }}
                        min="{{ $field['validation']['min'] ?? '' }}"
-                       max="{{ $field['validation']['max'] ?? '' }}">
+                           max="{{ $field['validation']['max'] ?? '' }}">
+                </div>
             </div>
             @error($submitAs)
                 <span class="text-danger small">{{ $message }}</span>
@@ -381,16 +381,16 @@
 
     {{-- ===== DEFAULT: TEXT INPUT ===== --}}
     @default
-        <div class="single-search-box">
-            <div class="d-flex align-items-center gap-2 py-1">
-                <label class="input-label">{{ $label }}</label>
-            </div>
-            <div class="custom-select-dropdown">
-                <input type="text" name="{{ $submitAs }}" id="{{ $elementId }}"
+        <div class="booking-field">
+            <label class="input-label">{{ $label }}</label>
+            <div class="single-search-box">
+                <div class="custom-select-dropdown">
+                    <input type="text" name="{{ $submitAs }}" id="{{ $elementId }}"
                        placeholder="{{ $placeholder }}"
                        value="{{ $fieldValue }}"
                        class="@error($submitAs) is-invalid @enderror"
-                       {{ $required ? 'required' : '' }}>
+                           {{ $required ? 'required' : '' }}>
+                </div>
             </div>
             @error($submitAs)
                 <span class="text-danger small">{{ $message }}</span>
