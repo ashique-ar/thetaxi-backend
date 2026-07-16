@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Website\CmsContent;
 use App\Models\Website\CmsContentType;
 use App\Models\Country;
+use App\Models\Vehicle\VehicleClass;
 use App\Services\WebsiteSettingsService;
 use Illuminate\Http\Request;
 use Illuminate\Contracts\View\View;
@@ -35,7 +36,12 @@ class ContactController extends Controller
             ->orderBy('name')
             ->get();
 
-        return view('contact', compact('contactContent', 'settings', 'countries'));
+        $vehicleClasses = VehicleClass::query()
+            ->whereNotNull('name')
+            ->orderBy('name')
+            ->get(['name']);
+
+        return view('contact', compact('contactContent', 'settings', 'countries', 'vehicleClasses'));
     }
 
     /**

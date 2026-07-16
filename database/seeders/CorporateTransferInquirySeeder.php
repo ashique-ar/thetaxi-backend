@@ -106,8 +106,8 @@ class CorporateTransferInquirySeeder extends Seeder
                 'type' => 'select',
                 'icon' => 'bi bi-briefcase',
                 'help_text' => 'Pick the service type that best matches your needs.',
-                'is_required' => true,
-                'validation_rules' => 'string|in:airport_transfer,corporate_event,employee_shuttle,client_meeting,other',
+                'is_required' => false,
+                'validation_rules' => 'nullable|string|in:airport_transfer,corporate_event,employee_shuttle,client_meeting,other',
                 'options' => [
                     ['value' => 'airport_transfer', 'label' => 'Airport Transfer'],
                     ['value' => 'corporate_event', 'label' => 'Corporate Event'],

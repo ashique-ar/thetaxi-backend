@@ -84,7 +84,7 @@
                                 <div class="row g-4 mb-60">
                                     <div class="col-md-6">
                                         <div class="form-inner">
-                                            <label>{{ $settings['contact_form_name_label'] ?? 'Full Name' }}</label>
+                                            <label>{{ $settings['contact_form_name_label'] ?? 'Full Name' }} *</label>
                                             <input type="text" name="name"
                                                 placeholder="{{ $settings['contact_form_name_placeholder'] ?? 'Wasington Mongla' }}"
                                                 value="{{ old('name') }}" required>
@@ -95,7 +95,7 @@
                                     </div>
                                     <div class="col-md-6">
                                         <div class="form-inner">
-                                            <label>{{ $settings['contact_form_email_label'] ?? 'Email Address' }}</label>
+                                            <label>{{ $settings['contact_form_email_label'] ?? 'Email Address' }} *</label>
                                             <input type="email" name="email"
                                                 placeholder="{{ $settings['contact_form_email_placeholder'] ?? 'info@example.com' }}"
                                                 value="{{ old('email') }}" required>
@@ -106,7 +106,7 @@
                                     </div>
                                     <div class="col-md-6">
                                         <div class="form-inner">
-                                            <label>{{ $settings['contact_form_phone_label'] ?? 'Phone Number' }}</label>
+                                            <label>{{ $settings['contact_form_phone_label'] ?? 'Phone Number' }} *</label>
                                             <input type="text" id="contact-phone" name="phone"
                                                 placeholder="{{ $settings['contact_form_phone_placeholder'] ?? '+92 567 *** ***' }}"
                                                 value="{{ old('phone') }}" required>
@@ -118,7 +118,7 @@
                                     <div class="col-md-6">
                                         <div class="form-inner">
                                             <label>Service Type</label>
-                                            <select name="service_type_select" required>
+                                            <select name="service_type_select">
                                                 <option value="">Select Service Type</option>
                                                 <option value="general_inquiry"
                                                     {{ old('service_type_select') == 'general_inquiry' ? 'selected' : '' }}>
@@ -140,6 +140,23 @@
                                                 </option>
                                             </select>
                                             @error('service_type_select')
+                                                <span class="text-danger small">{{ $message }}</span>
+                                            @enderror
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="form-inner">
+                                            <label>Vehicle Class</label>
+                                            <select name="vehicle_class" class="form-select no-nice">
+                                                <option value="">Select Vehicle Class</option>
+                                                @foreach ($vehicleClasses as $vehicleClass)
+                                                    <option value="{{ $vehicleClass->name }}"
+                                                        {{ old('vehicle_class') === $vehicleClass->name ? 'selected' : '' }}>
+                                                        {{ $vehicleClass->name }}
+                                                    </option>
+                                                @endforeach
+                                            </select>
+                                            @error('vehicle_class')
                                                 <span class="text-danger small">{{ $message }}</span>
                                             @enderror
                                         </div>
@@ -170,7 +187,7 @@
                                     </div>
                                     <div class="col-md-12">
                                         <div class="form-inner">
-                                            <label>{{ $settings['contact_form_message_label'] ?? 'Brief/Message' }}</label>
+                                            <label>{{ $settings['contact_form_message_label'] ?? 'Brief/Message' }} *</label>
                                             <textarea name="message" required
                                                 placeholder="{{ $settings['contact_form_message_placeholder'] ?? 'Write somethings about inquiry' }}">{{ old('message') }}</textarea>
                                             @error('message')

@@ -10,7 +10,6 @@ use App\Http\Requests\Vehicle\VehicleGroup\UpdateVehicleGroupRequest;
 use App\Http\Resources\Vehicle\VehicleGroupResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Cache;
 
 class VehicleGroupController extends Controller
 {
@@ -24,7 +23,7 @@ class VehicleGroupController extends Controller
 
     public function index(Request $request)
     {
-        $q = VehicleGroup::withInactive()->with(
+        $q = VehicleGroup::withInactive()->withCount('vehicles')->with(
             'grade',
             'make',
             'model',
@@ -100,21 +99,6 @@ class VehicleGroupController extends Controller
 
         $perPage = (int) $request->get('per_page', 15);
 
-        $hasFilters = $request->filled('search')
-            || collect(['grade_id', 'make_id', 'is_active', 'class_id', 'fuel_type_id', 'transmission_id', 'category_id', 'model_id'])
-                ->some(fn ($f) => $request->filled($f))
-            || $request->filled('sort');
-
-        if (!$hasFilters) {
-            $v = (int) Cache::get('ref.vehicle-groups.v', 0);
-            $page = (int) $request->get('page', 1);
-            $cacheKey = "ref.vehicle-groups.v{$v}.p{$perPage}.pg{$page}";
-            $results = Cache::remember($cacheKey, 3600, fn () => $q->paginate($perPage));
-            return response()
-                ->json(VehicleGroupResource::collection($results))
-                ->header('Cache-Control', 'private, max-age=3600');
-        }
-
         $results = $q->paginate($perPage);
         return VehicleGroupResource::collection($results);
     }
@@ -122,7 +106,6 @@ class VehicleGroupController extends Controller
     public function store(CreateVehicleGroupRequest $request): JsonResponse
     {
         $vg = VehicleGroup::create($request->validated() + ['created_user_id' => $request->user()->id]);
-        Cache::put('ref.vehicle-groups.v', ((int) Cache::get('ref.vehicle-groups.v', 0)) + 1, 86400);
         return response()->json(['status' => 'success', 'message' => 'Group created', 'data' => ['group' => new VehicleGroupResource($vg)]], 201);
     }
 
@@ -147,7 +130,6 @@ class VehicleGroupController extends Controller
     public function update(UpdateVehicleGroupRequest $request, VehicleGroup $vehicleGroup): JsonResponse
     {
         $vehicleGroup->update($request->validated());
-        Cache::put('ref.vehicle-groups.v', ((int) Cache::get('ref.vehicle-groups.v', 0)) + 1, 86400);
         return response()->json([
             'status' => 'success',
             'message' => 'Group updated',
@@ -168,7 +150,6 @@ class VehicleGroupController extends Controller
     public function destroy(VehicleGroup $vehicleGroup): JsonResponse
     {
         $vehicleGroup->delete();
-        Cache::put('ref.vehicle-groups.v', ((int) Cache::get('ref.vehicle-groups.v', 0)) + 1, 86400);
         return response()->json(['status' => 'success', 'message' => 'Group deleted']);
     }
 }

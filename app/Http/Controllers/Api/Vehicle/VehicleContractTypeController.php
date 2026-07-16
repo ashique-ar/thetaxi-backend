@@ -23,7 +23,7 @@ class VehicleContractTypeController extends Controller
 
     public function index(Request $request)
     {
-        $q = VehicleContractType::query();
+        $q = VehicleContractType::query()->withCount('vehicles');
         if ($request->filled('search')) {
             $q->whereLikeInsensitive('name', $request->search);
         }

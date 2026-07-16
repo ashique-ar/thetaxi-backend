@@ -23,7 +23,7 @@ class VehicleOwnerTypeController extends Controller
 
     public function index(Request $request)
     {
-        $q = VehicleOwnerType::query();
+        $q = VehicleOwnerType::query()->withCount('owners');
         if ($request->filled('search')) {
             $q->whereLikeInsensitive('name', $request->search);
         }

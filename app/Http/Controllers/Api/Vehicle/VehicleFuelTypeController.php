@@ -23,7 +23,7 @@ class VehicleFuelTypeController extends Controller
 
     public function index(Request $request)
     {
-        $q = VehicleFuelType::withInactive();
+        $q = VehicleFuelType::withInactive()->withCount('vehicles');
         if ($request->filled('search')) {
             $q->whereLikeInsensitive('name', $request->search);
         }

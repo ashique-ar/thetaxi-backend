@@ -10,6 +10,42 @@
     @php
         $payload = $inquiry->payload ?? [];
         $form = is_array($payload['form'] ?? null) ? $payload['form'] : [];
+        $detailLabels = [
+            'company_name' => 'Company', 'contact_person' => 'Contact Person', 'name' => 'Name',
+            'email' => 'Email', 'phone' => 'Phone', 'service_type_select' => 'Service Type',
+            'other_service_type' => 'Other Service Type', 'vehicle_class' => 'Vehicle Class',
+            'employee_strength' => 'Employee Strength', 'city_name' => 'City', 'country' => 'Country',
+            'pickup_location' => 'Pickup Location', 'dropoff_location' => 'Dropoff Location',
+            'travel_date' => 'Travel Date', 'travel_time' => 'Travel Time', 'passengers' => 'Passengers',
+            'requirements' => 'Requirements', 'message' => 'Message',
+        ];
+        $excludedDetailFields = [
+            '_token', 'inquiry_type', 'inquiry_service_page_id', 'service_slug', 'service_type',
+        ];
+        $displayedDetailFields = [
+            'company_name', 'contact_person', 'name', 'email', 'phone', 'country',
+            'pickup_location', 'dropoff_location', 'travel_date', 'travel_time', 'passengers',
+            'requirements', 'service_type_select', 'other_service_type', 'employee_strength',
+            'city_name', 'message',
+        ];
+        $formatDetailValue = static function (string $key, $value) use ($form) {
+            if ($key === 'service_type_select') {
+                if ($value === 'other') {
+                    return $form['other_service_type'] ?? 'Other';
+                }
+                return [
+                    'airport_transfer' => 'Airport Transfer', 'corporate_event' => 'Corporate Event',
+                    'employee_shuttle' => 'Employee Shuttle', 'client_meeting' => 'Client Meeting',
+                    'general_inquiry' => 'General Inquiry', 'booking' => 'Booking',
+                    'corporate' => 'Corporate Transport', 'complaint' => 'Complaint',
+                    'feedback' => 'Feedback',
+                ][$value] ?? str($value)->replace('_', ' ')->title();
+            }
+            if (is_array($value)) {
+                return implode(', ', array_filter($value, fn ($item) => is_scalar($item)));
+            }
+            return $value;
+        };
     @endphp
 
     <!-- Greeting -->
@@ -152,6 +188,17 @@
                     <td>{{ $inquiry->message }}</td>
                 </tr>
             @endif
+            @foreach ($form as $key => $value)
+                @continue(in_array($key, $excludedDetailFields, true) || in_array($key, $displayedDetailFields, true))
+                @continue($value === null || $value === '' || $key === 'other_service_type')
+                @php
+                    $label = $detailLabels[$key] ?? str($key)->replace('_', ' ')->title();
+                @endphp
+                <tr>
+                    <td>{{ $label }}</td>
+                    <td>{{ $formatDetailValue($key, $value) }}</td>
+                </tr>
+            @endforeach
             <tr>
                 <td>Submitted</td>
                 <td>{{ $inquiry->created_at?->format('F j, Y \a\t g:i A') }}</td>

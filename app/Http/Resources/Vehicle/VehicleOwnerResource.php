@@ -34,6 +34,7 @@ class VehicleOwnerResource extends JsonResource
             'license_expiry' => $this->license_expiry,
             'dob' => $this->dob,
             'notes' => $this->notes,
+            'vehicle_count' => (int) ($this->vehicles_count ?? 0),
         ];
     }
 }

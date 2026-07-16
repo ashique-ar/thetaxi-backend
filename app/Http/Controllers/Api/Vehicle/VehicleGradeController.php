@@ -23,7 +23,7 @@ class VehicleGradeController extends Controller
 
     public function index(Request $request)
     {
-        $q = VehicleGrade::query();
+        $q = VehicleGrade::query()->withCount('vehicles');
         if ($request->filled('search')) {
             $q->whereLikeInsensitive('name', $request->search);
         }

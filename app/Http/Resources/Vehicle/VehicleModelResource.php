@@ -14,6 +14,9 @@ class VehicleModelResource extends JsonResource
             'make_id'     => $this->make_id,
             'name'        => $this->name,
             'description' => $this->description,
+            'is_active'   => (bool) $this->is_active,
+            'make'        => new VehicleMakeResource($this->whenLoaded('make')),
+            'vehicle_count' => (int) ($this->vehicles_count ?? 0),
             'created_at'  => $this->created_at,
             'updated_at'  => $this->updated_at,
         ];

@@ -3,6 +3,7 @@ namespace App\Models\Vehicle;
 
 use App\Models\BaseModel;
 use App\Traits\UUID;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * App\Models\Vehicle\VehicleOwnerType
@@ -24,4 +25,9 @@ class VehicleOwnerType extends BaseModel
 {
     
     protected $fillable = ['name'];
+
+    public function owners(): HasMany
+    {
+        return $this->hasMany(VehicleOwner::class, 'owner_type_id');
+    }
 }

@@ -107,6 +107,7 @@
                 $shouldShow = $conditionOperator === 'not_equals' ? !$matches : $matches;
             }
             $inputId = 'field-' . $field->id;
+            $displayLabel = $field->label . ($field->is_required ? ' *' : '');
         @endphp
 
         <div class="{{ $wrapperClasses }}"
@@ -118,7 +119,7 @@
 
             @if ($isTextarea)
                 <textarea id="{{ $inputId }}" name="{{ $field->name }}"
-                    placeholder="{{ $field->placeholder ?? $field->label }}"
+                    placeholder="{{ ($field->placeholder ?? $field->label) . ($field->is_required ? ' *' : '') }}"
                     class="@error($field->name) is-invalid @enderror"
                     rows="4"
                     data-required="{{ $isConditionalRequired ? 'true' : 'false' }}"
@@ -128,7 +129,7 @@
                     class="form-select @error($field->name) is-invalid @enderror"
                     data-required="{{ $isConditionalRequired ? 'true' : 'false' }}"
                     @if ($field->is_required) required @endif>
-                    <option value="">Select {{ $field->label }}</option>
+                    <option value="">Select {{ $displayLabel }}</option>
                     @foreach ($field->options ?? [] as $option)
                         @php
                             $optionValue = is_array($option) ? ($option['value'] ?? '') : $option;
@@ -160,7 +161,7 @@
                 </div>
             @else
                 <input id="{{ $inputId }}" type="{{ $field->type }}" name="{{ $field->name }}"
-                    placeholder="{{ $field->placeholder ?? $field->label }}"
+                    placeholder="{{ ($field->placeholder ?? $field->label) . ($field->is_required ? ' *' : '') }}"
                     class="@error($field->name) is-invalid @enderror"
                     value="{{ old($field->name, $field->default_value) }}"
                     data-required="{{ $isConditionalRequired ? 'true' : 'false' }}"

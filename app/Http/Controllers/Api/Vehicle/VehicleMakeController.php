@@ -23,7 +23,7 @@ class VehicleMakeController extends Controller
 
     public function index(Request $request)
     {
-        $q = VehicleMake::withInactive();
+        $q = VehicleMake::withInactive()->withCount(['vehicles', 'models']);
         if ($request->filled('search')) {
             $q->whereLikeInsensitive('name', $request->search);
         }
