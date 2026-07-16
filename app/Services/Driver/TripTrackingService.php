@@ -18,6 +18,7 @@ use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Trip Tracking Service
@@ -920,6 +921,10 @@ class TripTrackingService
         }
 
         $query = BookingDispatch::query()->where('booking_id', $assignment->booking_id);
+        if (!Schema::hasColumn('booking_dispatches', 'booking_item_id')) {
+            return (clone $query)->first();
+        }
+
         if ($assignment->booking_item_id) {
             $itemDispatch = (clone $query)
                 ->where('booking_item_id', $assignment->booking_item_id)

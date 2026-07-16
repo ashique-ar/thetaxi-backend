@@ -1,0 +1,416 @@
+<?php
+
+use App\Models\Vehicle\VehiclePricing\VehiclePricingCommonRateDefinition;
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\QueryException;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+
+beforeEach(function (): void {
+    activity()->disableLogging();
+
+    foreach ([
+        'booking_common_rate_pricings',
+        'booking_pricings',
+        'vehicle_pricing_history',
+        'vehicle_group_common_rate_pricing',
+        'vehicle_group_pricing',
+        'vehicle_pricing_calculation_definitions',
+        'vehicle_pricing_common_rate_definitions',
+        'vehicle_pricing_slab_definitions',
+    ] as $table) {
+        Schema::dropIfExists($table);
+    }
+
+    Schema::create('vehicle_pricing_common_rate_definitions', function (Blueprint $table): void {
+        $table->string('id')->primary();
+        $table->string('service_type_id')->nullable();
+        $table->string('vehicle_group_id')->nullable();
+        $table->string('code')->nullable();
+        $table->string('name');
+        $table->text('description')->nullable();
+        $table->string('common_rate_type');
+        $table->boolean('is_mandatory')->default(false);
+        $table->boolean('is_active')->default(true);
+        $table->integer('sort_order')->default(0);
+        $table->string('owner_type')->nullable();
+        $table->string('owner_id')->nullable();
+        $table->integer('priority')->default(0);
+        $table->string('created_user_id')->nullable();
+        $table->string('updated_user_id')->nullable();
+        $table->timestamps();
+        $table->softDeletes();
+    });
+
+    Schema::create('vehicle_pricing_slab_definitions', function (Blueprint $table): void {
+        $table->string('id')->primary();
+        $table->string('service_type_id');
+        $table->string('name');
+        $table->string('type');
+        $table->integer('min_minutes')->nullable();
+        $table->integer('max_minutes')->nullable();
+        $table->integer('min_hours')->nullable();
+        $table->integer('max_hours')->nullable();
+        $table->integer('min_days')->nullable();
+        $table->integer('max_days')->nullable();
+        $table->integer('max_km_per_day')->nullable();
+        $table->integer('max_km_per_package')->nullable();
+        $table->integer('sort_order')->default(0);
+        $table->boolean('is_active')->default(true);
+        $table->string('owner_type')->nullable();
+        $table->string('owner_id')->nullable();
+        $table->integer('priority')->default(0);
+        $table->timestamps();
+        $table->softDeletes();
+    });
+
+    Schema::create('vehicle_pricing_calculation_definitions', function (Blueprint $table): void {
+        $table->string('id')->primary();
+        $table->string('service_type_id');
+        $table->string('name');
+        $table->text('description')->nullable();
+        $table->string('status');
+        $table->text('formula');
+        $table->json('variables')->nullable();
+        $table->json('conditions')->nullable();
+        $table->string('owner_type')->nullable();
+        $table->string('owner_id')->nullable();
+        $table->integer('priority')->default(0);
+        $table->timestamps();
+        $table->softDeletes();
+    });
+
+    Schema::create('vehicle_group_pricing', function (Blueprint $table): void {
+        $table->string('id')->primary();
+        $table->string('slab_definition_id');
+        $table->string('vehicle_group_id');
+        $table->decimal('rate', 10, 2)->nullable();
+        $table->string('rate_type');
+        $table->decimal('minimum_charge', 10, 2)->nullable();
+        $table->boolean('includes_fuel')->default(false);
+        $table->boolean('includes_driver')->default(false);
+        $table->boolean('is_active')->default(true);
+        $table->string('owner_type')->nullable();
+        $table->string('owner_id')->nullable();
+        $table->integer('priority')->default(0);
+        $table->timestamps();
+        $table->softDeletes();
+    });
+
+    Schema::create('vehicle_group_common_rate_pricing', function (Blueprint $table): void {
+        $table->string('id')->primary();
+        $table->string('common_rate_definition_id');
+        $table->string('vehicle_group_id');
+        $table->decimal('value', 10, 2)->nullable();
+        $table->boolean('is_active')->default(true);
+        $table->string('owner_type')->nullable();
+        $table->string('owner_id')->nullable();
+        $table->integer('priority')->default(0);
+        $table->timestamps();
+        $table->softDeletes();
+    });
+
+    Schema::create('booking_pricings', function (Blueprint $table): void {
+        $table->string('id')->primary();
+        $table->string('slab_definition_id');
+        $table->string('vehicle_group_pricing_id');
+    });
+
+    Schema::create('booking_common_rate_pricings', function (Blueprint $table): void {
+        $table->string('id')->primary();
+        $table->string('common_rate_definition_id');
+        $table->string('vehicle_group_common_rate_pricing_id')->nullable();
+    });
+
+    Schema::create('vehicle_pricing_history', function (Blueprint $table): void {
+        $table->string('id')->primary();
+        $table->string('pricing_slab_definition_id')->nullable();
+        $table->string('common_rate_definition_id')->nullable();
+    });
+});
+
+afterEach(function (): void {
+    foreach ([
+        'booking_common_rate_pricings',
+        'booking_pricings',
+        'vehicle_pricing_history',
+        'vehicle_group_common_rate_pricing',
+        'vehicle_group_pricing',
+        'vehicle_pricing_calculation_definitions',
+        'vehicle_pricing_common_rate_definitions',
+        'vehicle_pricing_slab_definitions',
+    ] as $table) {
+        Schema::dropIfExists($table);
+    }
+});
+
+it('keeps definitions global while preserving corporate vehicle-group prices and references', function (): void {
+    $now = now();
+
+    DB::table('vehicle_pricing_common_rate_definitions')->insert([
+        pricingCommonDefinition('common-global', null, null, $now),
+        pricingCommonDefinition('common-corporate', 'corporate', 'corporate-1', $now),
+    ]);
+
+    DB::table('vehicle_pricing_slab_definitions')->insert([
+        pricingSlabDefinition('slab-global', null, null, $now),
+        pricingSlabDefinition('slab-corporate', 'corporate', 'corporate-1', $now),
+    ]);
+
+    DB::table('vehicle_group_common_rate_pricing')->insert([
+        pricingCommonValue('common-value-global', 'common-global', 10, null, null, $now),
+        pricingCommonValue('common-value-corporate', 'common-corporate', 25, 'corporate', 'corporate-1', $now),
+    ]);
+
+    DB::table('vehicle_group_pricing')->insert([
+        pricingSlabValue('slab-value-global', 'slab-global', 100, null, null, $now),
+        pricingSlabValue('slab-value-corporate', 'slab-corporate', 80, 'corporate', 'corporate-1', $now),
+    ]);
+
+    DB::table('vehicle_pricing_calculation_definitions')->insert([
+        pricingCalculationDefinition('calculation-global', 'common-global', null, null, $now),
+        pricingCalculationDefinition('calculation-corporate', 'common-corporate', 'corporate', 'corporate-1', $now),
+    ]);
+
+    DB::table('booking_pricings')->insert([
+        'id' => 'booking-price',
+        'slab_definition_id' => 'slab-corporate',
+        'vehicle_group_pricing_id' => 'slab-value-corporate',
+    ]);
+    DB::table('booking_common_rate_pricings')->insert([
+        'id' => 'booking-common-price',
+        'common_rate_definition_id' => 'common-corporate',
+        'vehicle_group_common_rate_pricing_id' => 'common-value-corporate',
+    ]);
+    DB::table('vehicle_pricing_history')->insert([
+        'id' => 'history',
+        'pricing_slab_definition_id' => 'slab-corporate',
+        'common_rate_definition_id' => 'common-corporate',
+    ]);
+
+    pricingOwnershipMigration()->up();
+
+    foreach ([
+        'vehicle_pricing_common_rate_definitions',
+        'vehicle_pricing_slab_definitions',
+        'vehicle_pricing_calculation_definitions',
+    ] as $table) {
+        expect(DB::table($table)->whereNotNull('owner_type')->orWhereNotNull('owner_id')->count())->toBe(0);
+    }
+
+    $corporateCommonPrice = DB::table('vehicle_group_common_rate_pricing')
+        ->where('id', 'common-value-corporate')
+        ->first();
+    expect($corporateCommonPrice->common_rate_definition_id)->toBe('common-global')
+        ->and((float) $corporateCommonPrice->value)->toBe(25.0)
+        ->and($corporateCommonPrice->owner_type)->toBe('corporate')
+        ->and($corporateCommonPrice->owner_id)->toBe('corporate-1')
+        ->and($corporateCommonPrice->deleted_at)->toBeNull();
+
+    $corporateSlabPrice = DB::table('vehicle_group_pricing')
+        ->where('id', 'slab-value-corporate')
+        ->first();
+    expect($corporateSlabPrice->slab_definition_id)->toBe('slab-global')
+        ->and((float) $corporateSlabPrice->rate)->toBe(80.0)
+        ->and($corporateSlabPrice->owner_type)->toBe('corporate')
+        ->and($corporateSlabPrice->deleted_at)->toBeNull();
+
+    expect(DB::table('booking_pricings')->value('slab_definition_id'))->toBe('slab-global')
+        ->and(DB::table('booking_common_rate_pricings')->value('common_rate_definition_id'))->toBe('common-global')
+        ->and(DB::table('vehicle_pricing_history')->value('pricing_slab_definition_id'))->toBe('slab-global')
+        ->and(DB::table('vehicle_pricing_history')->value('common_rate_definition_id'))->toBe('common-global');
+
+    $legacyCalculation = DB::table('vehicle_pricing_calculation_definitions')
+        ->where('id', 'calculation-corporate')
+        ->first();
+    expect(data_get(json_decode($legacyCalculation->variables, true), '0.source_id'))->toBe('common-global')
+        ->and($legacyCalculation->deleted_at)->not->toBeNull();
+
+    expect(fn () => DB::table('vehicle_group_common_rate_pricing')->insert(
+        pricingCommonValue('duplicate-corporate-value', 'common-global', 30, 'corporate', 'corporate-1', now())
+    ))->toThrow(QueryException::class);
+});
+
+it('fails and rolls back when corporate and shared definitions cannot be merged safely', function (): void {
+    $now = now();
+    $global = pricingCommonDefinition('common-global', null, null, $now);
+    $corporate = pricingCommonDefinition('common-corporate', 'corporate', 'corporate-1', $now);
+    $corporate['common_rate_type'] = 'per_hour';
+
+    DB::table('vehicle_pricing_common_rate_definitions')->insert([$global, $corporate]);
+
+    expect(fn () => pricingOwnershipMigration()->up())
+        ->toThrow(RuntimeException::class, 'Unsafe common-rate definition conflict');
+
+    expect(DB::table('vehicle_pricing_common_rate_definitions')
+        ->where('id', 'common-corporate')
+        ->value('owner_type'))->toBe('corporate');
+});
+
+it('hides legacy owned definitions and normalizes owner fields on model writes', function (): void {
+    $now = now();
+    DB::table('vehicle_pricing_common_rate_definitions')->insert([
+        pricingCommonDefinition('global-visible', null, null, $now, 'visible_rate'),
+        pricingCommonDefinition('legacy-hidden', 'corporate', 'corporate-1', $now, 'hidden_rate'),
+    ]);
+
+    expect(VehiclePricingCommonRateDefinition::withInactive()->pluck('id')->all())
+        ->toBe(['global-visible']);
+
+    $created = VehiclePricingCommonRateDefinition::create([
+        'name' => 'Attempted Owned Definition',
+        'code' => 'attempted_owned',
+        'common_rate_type' => 'fixed_amount',
+        'is_mandatory' => false,
+        'is_active' => true,
+        'sort_order' => 0,
+        'priority' => 0,
+        'owner_type' => 'corporate',
+        'owner_id' => 'corporate-1',
+    ]);
+
+    $stored = DB::table('vehicle_pricing_common_rate_definitions')->where('id', $created->id)->first();
+    expect($stored->owner_type)->toBeNull()
+        ->and($stored->owner_id)->toBeNull();
+});
+
+function pricingOwnershipMigration(): Migration
+{
+    return require base_path('database/migrations/2026_07_16_150000_reconcile_global_pricing_definitions.php');
+}
+
+function pricingCommonDefinition(
+    string $id,
+    ?string $ownerType,
+    ?string $ownerId,
+    mixed $now,
+    string $code = 'extra_km_rate',
+): array {
+    return [
+        'id' => $id,
+        'service_type_id' => 'service-1',
+        'vehicle_group_id' => null,
+        'code' => $code,
+        'name' => 'Extra KM Rate',
+        'description' => null,
+        'common_rate_type' => 'per_km',
+        'is_mandatory' => true,
+        'is_active' => true,
+        'sort_order' => 1,
+        'owner_type' => $ownerType,
+        'owner_id' => $ownerId,
+        'priority' => 10,
+        'created_user_id' => null,
+        'updated_user_id' => null,
+        'created_at' => $now,
+        'updated_at' => $now,
+        'deleted_at' => null,
+    ];
+}
+
+function pricingSlabDefinition(string $id, ?string $ownerType, ?string $ownerId, mixed $now): array
+{
+    return [
+        'id' => $id,
+        'service_type_id' => 'service-1',
+        'name' => 'First Hour',
+        'type' => 'minutes',
+        'min_minutes' => 0,
+        'max_minutes' => 60,
+        'min_hours' => null,
+        'max_hours' => null,
+        'min_days' => null,
+        'max_days' => null,
+        'max_km_per_day' => null,
+        'max_km_per_package' => null,
+        'sort_order' => 1,
+        'is_active' => true,
+        'owner_type' => $ownerType,
+        'owner_id' => $ownerId,
+        'priority' => 10,
+        'created_at' => $now,
+        'updated_at' => $now,
+        'deleted_at' => null,
+    ];
+}
+
+function pricingCalculationDefinition(
+    string $id,
+    string $sourceId,
+    ?string $ownerType,
+    ?string $ownerId,
+    mixed $now,
+): array {
+    return [
+        'id' => $id,
+        'service_type_id' => 'service-1',
+        'name' => 'Distance Calculation',
+        'description' => null,
+        'status' => 'active',
+        'formula' => 'extra_km_rate * extra_km',
+        'variables' => json_encode([[
+            'name' => 'extra_km_rate',
+            'type' => 'common_rate',
+            'source_id' => $sourceId,
+            'is_required' => true,
+        ]]),
+        'conditions' => json_encode([]),
+        'owner_type' => $ownerType,
+        'owner_id' => $ownerId,
+        'priority' => 10,
+        'created_at' => $now,
+        'updated_at' => $now,
+        'deleted_at' => null,
+    ];
+}
+
+function pricingCommonValue(
+    string $id,
+    string $definitionId,
+    float $value,
+    ?string $ownerType,
+    ?string $ownerId,
+    mixed $now,
+): array {
+    return [
+        'id' => $id,
+        'common_rate_definition_id' => $definitionId,
+        'vehicle_group_id' => 'group-1',
+        'value' => $value,
+        'is_active' => true,
+        'owner_type' => $ownerType,
+        'owner_id' => $ownerId,
+        'priority' => $ownerType ? 100 : 0,
+        'created_at' => $now,
+        'updated_at' => $now,
+        'deleted_at' => null,
+    ];
+}
+
+function pricingSlabValue(
+    string $id,
+    string $definitionId,
+    float $rate,
+    ?string $ownerType,
+    ?string $ownerId,
+    mixed $now,
+): array {
+    return [
+        'id' => $id,
+        'slab_definition_id' => $definitionId,
+        'vehicle_group_id' => 'group-1',
+        'rate' => $rate,
+        'rate_type' => 'flat_rate',
+        'minimum_charge' => null,
+        'includes_fuel' => true,
+        'includes_driver' => true,
+        'is_active' => true,
+        'owner_type' => $ownerType,
+        'owner_id' => $ownerId,
+        'priority' => $ownerType ? 100 : 0,
+        'created_at' => $now,
+        'updated_at' => $now,
+        'deleted_at' => null,
+    ];
+}

@@ -52,6 +52,19 @@ class BookingFlowDurationMinutesTest extends TestCase
         );
     }
 
+    public function test_same_day_window_with_mirrored_pickup_time_is_valid(): void
+    {
+        $service = (new ReflectionClass(BookingFlowService::class))->newInstanceWithoutConstructor();
+        $method = new ReflectionMethod(BookingFlowService::class, 'bookingDateTime');
+        $from = $method->invoke($service, '2026-07-16', '09:00');
+        $to = $method->invoke($service, '2026-07-16', '09:00');
+
+        $result = $service->calculateDurationInDaysAndHours($from, $to);
+
+        $this->assertSame(0, $result['minutes']);
+        $this->assertSame(1, $result['calendar_days']);
+    }
+
     public function test_minute_only_pricing_input_derives_fractional_hours_without_defaulting_to_a_day(): void
     {
         $service = (new ReflectionClass(BookingFlowService::class))->newInstanceWithoutConstructor();

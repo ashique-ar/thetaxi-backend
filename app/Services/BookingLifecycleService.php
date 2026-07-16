@@ -1754,7 +1754,9 @@ class BookingLifecycleService
             );
         }
 
-        if (!$booking->bookingItems->contains(fn (BookingItem $item): bool => (string) $item->id === (string) $bookingItemId)) {
+        if (!$booking->bookingItems->contains(
+            fn (BookingItem $item): bool => (string) ($item->getAttributes()['id'] ?? $item->getKey()) === (string) $bookingItemId
+        )) {
             throw new \InvalidArgumentException('Selected booking item does not belong to this booking');
         }
     }

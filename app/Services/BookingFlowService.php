@@ -41,6 +41,7 @@ use Illuminate\Notifications\DatabaseNotification;
 use Ramsey\Uuid\Uuid;
 use App\Services\PricingVariableService;
 use App\Services\AssignmentService;
+use App\Services\Pricing\PricingDefinitionOrchestrator;
 use App\Notifications\BookingLifecycleNotification;
 use Illuminate\Validation\ValidationException;
 
@@ -942,9 +943,13 @@ class BookingFlowService
                     // Check if service type uses dropoff time
                     $usesDropoffTime = $serviceTypeModel->uses_dropoff_time ?? true;
 
-                    // If service doesn't use dropoff time, set to_date = from_date
+                    // Services without a drop-off time still need a valid pricing
+                    // window. Mirror the pickup date/time so a same-day pickup is
+                    // not interpreted as ending at midnight before it starts.
                     $effectiveToDate = $usesDropoffTime ? $toDate : $fromDate;
-                    $effectiveToTime = $usesDropoffTime ? ($toTime ? $toTime->format('H:i') : null) : null;
+                    $effectiveToTime = $usesDropoffTime
+                        ? ($toTime ? $toTime->format('H:i') : null)
+                        : $fromTime;
 
                     // Use the same comprehensive pricing calculation as the final pricing API
                     // This ensures vehicle card prices match the final calculated prices
@@ -3884,34 +3889,16 @@ class BookingFlowService
             $districtInfo = null;
             // $districtInfo = $this->resolveDistrictPricing($params, $serviceTypeId, $params['package_id'] ?? null, $params['vehicle_group_id'] ?? null);
 
-            // Evaluate definitions by owner/priority until one matches its
-            // configured conditions. A high-priority scenario that does not
-            // match must not suppress the next valid calculation definition.
-            $calculationDefinition = null;
-            $calculationResult = null;
-            $candidateFailures = [];
-            foreach ($calculationDefinitions as $candidate) {
-                try {
-                    $candidateResult = $candidate->calculatePrice(
-                        $calculationInputs,
-                        $appliedCustomizations,
-                        $servicePackageInfo,
-                        $districtInfo
-                    );
-                } catch (\Throwable $exception) {
-                    $candidateFailures[(string) $candidate->id] = $exception->getMessage();
-                    Log::warning('Pricing definition candidate failed; trying the next candidate', [
-                        'definition_id' => $candidate->id,
-                        'error' => $exception->getMessage(),
-                    ]);
-                    continue;
-                }
-                if (($candidateResult['conditions_met'] ?? false) === true) {
-                    $calculationDefinition = $candidate;
-                    $calculationResult = $candidateResult;
-                    break;
-                }
-            }
+            $orchestration = app(PricingDefinitionOrchestrator::class)->resolve(
+                $calculationDefinitions,
+                $calculationInputs,
+                $appliedCustomizations,
+                $servicePackageInfo,
+                $districtInfo
+            );
+            $calculationDefinition = $orchestration['definition'];
+            $calculationResult = $orchestration['result'];
+            $candidateFailures = $orchestration['candidate_failures'];
 
             if (!$calculationDefinition || !$calculationResult) {
                 Log::warning('No calculation definition matched the pricing scenario', [
