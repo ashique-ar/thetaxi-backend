@@ -362,8 +362,10 @@ class MobileAssignmentService
         $payload['currency'] = $bookingItem?->currency ?? $booking?->currency;
         $payload['duration_days'] = $pricingMetrics['duration_days'];
         $payload['duration_hours'] = $pricingMetrics['duration_hours'];
+        $payload['duration_minutes'] = $pricingMetrics['duration_minutes'];
         $payload['hire_km'] = $pricingMetrics['hire_km'];
         $payload['waiting_hours'] = $pricingMetrics['waiting_hours'];
+        $payload['waiting_minutes'] = $pricingMetrics['waiting_minutes'];
         $payload['waiting_charge'] = $pricingMetrics['waiting_charge'];
         $payload['pricing_metrics'] = $this->driverPricingMetrics($pricingMetrics);
         $payload['booking_number'] = $booking?->booking_number;
@@ -597,6 +599,13 @@ class MobileAssignmentService
             $basePricing['waiting_hours'] ?? null,
             $waitingSeconds !== null ? ((int) $waitingSeconds / 3600) : null,
         ]);
+        $waitingMinutes = $this->firstNumeric([
+            $variables['waiting_minutes'] ?? null,
+            $pricingBreakdown['waiting_minutes'] ?? null,
+            $basePricing['waiting_minutes'] ?? null,
+            $waitingSeconds !== null ? ((int) $waitingSeconds / 60) : null,
+            $waitingHours !== null ? $waitingHours * 60 : null,
+        ]);
 
         $waitingRate = $this->firstNumeric([
             $variables['waiting_charge_per_hour'] ?? null,
@@ -627,6 +636,9 @@ class MobileAssignmentService
             ]),
             'duration_days' => $bookingItem?->duration_days !== null ? (int) $bookingItem->duration_days : null,
             'duration_hours' => $bookingItem?->duration_hours !== null ? (int) $bookingItem->duration_hours : null,
+            'duration_minutes' => $bookingItem?->duration_minutes !== null
+                ? (int) $bookingItem->duration_minutes
+                : ($bookingItem?->duration_hours !== null ? (int) $bookingItem->duration_hours * 60 : null),
             'journey_duration_seconds' => $this->firstNumeric([
                 $metadata['journey_duration_seconds'] ?? null,
                 $distanceDetails['journey_duration_seconds'] ?? null,
@@ -643,6 +655,7 @@ class MobileAssignmentService
                 $kmCalculations['extra_km'] ?? null,
             ]),
             'waiting_hours' => $waitingHours,
+            'waiting_minutes' => $waitingMinutes,
             'waiting_rate_per_hour' => $waitingRate,
             'waiting_charge' => $waitingCharge,
             'pricing_breakdown' => $pricingBreakdown,
@@ -660,11 +673,13 @@ class MobileAssignmentService
             'currency',
             'duration_days',
             'duration_hours',
+            'duration_minutes',
             'journey_duration_seconds',
             'hire_km',
             'included_km',
             'extra_km',
             'waiting_hours',
+            'waiting_minutes',
             'waiting_charge',
         ])->all();
     }
@@ -700,6 +715,8 @@ class MobileAssignmentService
             'included_km_per_day' => $package->max_km_per_day !== null ? (float) $package->max_km_per_day : null,
             'included_km_per_package' => $package->max_km_per_package !== null ? (float) $package->max_km_per_package : null,
             'included_hours' => $package->default_duration_hours,
+            'included_minutes' => ((int) $package->default_duration_hours * 60)
+                + (int) $package->default_duration_minutes,
             'rate_type' => $package->rate_type,
         ];
     }

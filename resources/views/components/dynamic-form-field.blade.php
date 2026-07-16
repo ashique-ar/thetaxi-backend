@@ -268,39 +268,55 @@
                 $checkedValue = $options[0]['value'] ?? '';
             }
         @endphp
-        <div class="{{ $isTransferType ? 'transfer-type-selector text-center' : 'single-search-box radio-field' }}" id="{{ $elementId }}_wrapper">
-            @if(!$isTransferType)
-                <div class="d-flex align-items-center gap-2 py-1">
-                    <label class="input-label">{{ $label }}</label>
+        @if($isTransferType)
+            <div class="transfer-type-selector text-center" id="{{ $elementId }}_wrapper">
+                <div class="transfer-type-toggle">
+                    @foreach($options as $option)
+                        <label class="transfer-type-option">
+                            <input type="radio" name="{{ $submitAs }}" value="{{ $option['value'] }}"
+                                   {{ $checkedValue == $option['value'] ? 'checked' : '' }}
+                                   {{ $required ? 'required' : '' }}>
+                            <span>{{ $option['label'] }}</span>
+                        </label>
+                    @endforeach
                 </div>
-            @endif
-            <div class="{{ $isTransferType ? 'transfer-type-toggle' : 'radio-options d-flex gap-3 flex-wrap' }}">
-                @foreach($options as $option)
-                    <label class="{{ $isTransferType ? 'transfer-type-option' : 'radio-option d-flex align-items-center gap-1' }}">
-                        <input type="radio" name="{{ $submitAs }}" value="{{ $option['value'] }}"
-                               {{ $checkedValue == $option['value'] ? 'checked' : '' }}
-                               {{ $required ? 'required' : '' }}>
-                        <span>{{ $option['label'] }}</span>
-                    </label>
-                @endforeach
+                @error($submitAs)
+                    <span class="text-danger small">{{ $message }}</span>
+                @enderror
             </div>
-            @error($submitAs)
-                <span class="text-danger small">{{ $message }}</span>
-            @enderror
-        </div>
+        @else
+            <div class="booking-field" id="{{ $elementId }}_wrapper">
+                <span class="input-label" id="{{ $elementId }}_label">{{ $label }}</span>
+                <div class="single-search-box radio-field" role="radiogroup" aria-labelledby="{{ $elementId }}_label">
+                    <div class="radio-options d-flex gap-3 flex-wrap">
+                        @foreach($options as $option)
+                            <label class="radio-option d-flex align-items-center gap-1">
+                                <input type="radio" name="{{ $submitAs }}" value="{{ $option['value'] }}"
+                                       {{ $checkedValue == $option['value'] ? 'checked' : '' }}
+                                       {{ $required ? 'required' : '' }}>
+                                <span>{{ $option['label'] }}</span>
+                            </label>
+                        @endforeach
+                    </div>
+                </div>
+                @error($submitAs)
+                    <span class="text-danger small">{{ $message }}</span>
+                @enderror
+            </div>
+        @endif
         @break
 
     {{-- ===== CHECKBOX FIELD ===== --}}
     @case('checkbox')
-        <div class="single-search-box checkbox-field">
-            <label class="d-flex align-items-center gap-2">
+        <div class="booking-field">
+            <label class="input-label" for="{{ $elementId }}">{{ $label }}</label>
+            <div class="single-search-box checkbox-field">
                 <input type="checkbox" name="{{ $submitAs }}" id="{{ $elementId }}"
                        value="1" {{ $fieldValue ? 'checked' : '' }}>
-                <span class="input-label">{{ $label }}</span>
-            </label>
-            @if($hint)
-                <small class="text-muted">{{ $hint }}</small>
-            @endif
+                @if($hint)
+                    <small class="text-muted">{{ $hint }}</small>
+                @endif
+            </div>
         </div>
         @break
 

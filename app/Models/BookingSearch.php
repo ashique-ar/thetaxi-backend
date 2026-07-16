@@ -21,6 +21,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string|null $dropoff_location
  * @property float|null $estimated_distance
  * @property int|null $duration_hours
+ * @property int|null $duration_minutes
  * @property int|null $duration_days
  * @property string|null $customer_id
  * @property string|null $ip_address
@@ -46,6 +47,7 @@ class BookingSearch extends BaseModel
         'outbound_duration_seconds',
         'return_duration_seconds',
         'duration_hours',
+        'duration_minutes',
         'duration_days',
         'customer_id',
         'ip_address',
@@ -62,6 +64,7 @@ class BookingSearch extends BaseModel
         'outbound_duration_seconds' => 'integer',
         'return_duration_seconds' => 'integer',
         'duration_hours' => 'integer',
+        'duration_minutes' => 'integer',
         'duration_days' => 'integer',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
@@ -82,7 +85,12 @@ class BookingSearch extends BaseModel
     public function calculateDuration(): void
     {
         if ($this->pickup_date && $this->dropoff_date) {
-            $this->duration_hours = $this->pickup_date->diffInHours($this->dropoff_date);
+            if ($this->dropoff_date->lessThan($this->pickup_date)) {
+                throw new \InvalidArgumentException('Drop-off date/time must be after pickup date/time.');
+            }
+
+            $this->duration_minutes = (int) ceil($this->pickup_date->diffInSeconds($this->dropoff_date) / 60);
+            $this->duration_hours = (int) ceil($this->duration_minutes / 60);
             $this->duration_days = $this->pickup_date->diffInDays($this->dropoff_date) + 1; // Calendar days
 
             if ($this->duration_days == 0) {
@@ -92,6 +100,7 @@ class BookingSearch extends BaseModel
             // For services without a dropoff date (like airport transfers), set default duration
             // Airport transfers are typically point-to-point, so we set 1 hour as a reasonable estimate
             $this->duration_hours = 1;
+            $this->duration_minutes = 60;
             $this->duration_days = 1;
         }
     }
@@ -110,6 +119,7 @@ class BookingSearch extends BaseModel
             'dropoff_location' => $this->dropoff_location,
             'duration_days' => $this->duration_days,
             'duration_hours' => $this->duration_hours,
+            'duration_minutes' => $this->duration_minutes,
         ];
     }
 

@@ -377,8 +377,11 @@ class PricingVariableService
             'extra_km',
             'extra_hours',
             'extra_minutes',
+            'waiting_hours',
             'waiting_minutes',
+            'recovery_hours',
             'recovery_minutes',
+            'overtime_hours',
             'overtime_minutes',
             'number_of_days'
         ];

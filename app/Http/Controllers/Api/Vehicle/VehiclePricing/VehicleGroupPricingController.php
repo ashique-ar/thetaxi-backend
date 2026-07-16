@@ -459,7 +459,7 @@ class VehicleGroupPricingController extends Controller
             'service_pricing.*.slabs' => 'required_with:service_pricing|array',
             'service_pricing.*.slabs.*.slab_definition_id' => 'required_with:service_pricing|uuid|exists:vehicle_pricing_slab_definitions,id',
             'service_pricing.*.slabs.*.rate' => 'required_with:service_pricing|numeric|min:0',
-            'service_pricing.*.slabs.*.rate_type' => 'nullable|in:per_hour,per_day,flat_rate',
+            'service_pricing.*.slabs.*.rate_type' => 'nullable|in:per_hour,per_day,flat_rate,per_km',
             'service_pricing.*.slabs.*.minimum_charge' => 'nullable|numeric|min:0',
             'service_pricing.*.slabs.*.includes_fuel' => 'boolean',
             'service_pricing.*.slabs.*.includes_driver' => 'boolean',
@@ -538,31 +538,39 @@ class VehicleGroupPricingController extends Controller
             // Process slab pricing
             foreach ($request->input('service_pricing', []) as $serviceData) {
                 foreach ($serviceData['slabs'] as $slabData) {
-                    // Set defaults
-                    $data = array_merge($slabData, [
-                        'vehicle_group_id' => $vehicleGroupId,
-                        'is_active' => $slabData['is_active'] ?? true,
-                        'includes_fuel' => $slabData['includes_fuel'] ?? false,
-                        'includes_driver' => $slabData['includes_driver'] ?? false,
-                        'rate_type' => $slabData['rate_type'] ?? 'per_day',
-                        'owner_type' => $ownerType,
-                        'owner_id' => $ownerId,
-                        'priority' => $priority,
-                    ]);
-
                     $existingPricing = VehicleGroupPricing::forVehicleGroup($vehicleGroupId)
                         ->forSlabDefinition($slabData['slab_definition_id'])
                         ->where('owner_type', $ownerType)
                         ->where('owner_id', $ownerId)
                         ->first();
 
+                    // An amount-only save must retain the row's calculation
+                    // semantics. Defaults apply only when this is a new row.
+                    $data = array_merge([
+                        'is_active' => $existingPricing?->is_active ?? true,
+                        'includes_fuel' => $existingPricing?->includes_fuel ?? false,
+                        'includes_driver' => $existingPricing?->includes_driver ?? false,
+                        'rate_type' => $existingPricing?->rate_type
+                            ?? $this->defaultRateTypeForSlab($slabData['slab_definition_id']),
+                        'minimum_charge' => $existingPricing?->minimum_charge,
+                    ], $slabData, [
+                        'vehicle_group_id' => $vehicleGroupId,
+                        'owner_type' => $ownerType,
+                        'owner_id' => $ownerId,
+                        'priority' => $request->has('priority')
+                            ? $priority
+                            : ($existingPricing?->priority ?? 0),
+                    ]);
+
                     if ($existingPricing) {
                         $oldRate = $existingPricing->rate;
                         $newRate = $data['rate'];
 
-                        if ($oldRate != $newRate) {
-                            $oldData = $existingPricing->toArray();
-                            $existingPricing->update($data);
+                        $oldData = $existingPricing->toArray();
+                        $existingPricing->fill($data);
+
+                        if ($existingPricing->isDirty()) {
+                            $existingPricing->save();
                             $newData = $existingPricing->fresh()->toArray();
 
                             // Create history record
@@ -812,7 +820,7 @@ class VehicleGroupPricingController extends Controller
             'slab_definition_id' => [$required, 'uuid', 'exists:vehicle_pricing_slab_definitions,id'],
             'vehicle_group_id' => [$required, 'uuid', 'exists:vehicle_groups,id'],
             'rate' => [$required, 'numeric', 'min:0'],
-            'rate_type' => ['nullable', 'in:per_hour,per_day,flat_rate'],
+            'rate_type' => ['nullable', 'in:per_hour,per_day,flat_rate,per_km'],
             'minimum_charge' => ['nullable', 'numeric', 'min:0'],
             'includes_fuel' => ['nullable', 'boolean'],
             'includes_driver' => ['nullable', 'boolean'],
@@ -825,11 +833,26 @@ class VehicleGroupPricingController extends Controller
             $data['owner_id'] = null;
         }
 
-        $data['rate_type'] = $data['rate_type'] ?? 'per_day';
-        $data['includes_fuel'] = $data['includes_fuel'] ?? false;
-        $data['includes_driver'] = $data['includes_driver'] ?? false;
+        if (!$partial) {
+            $data['rate_type'] = $data['rate_type']
+                ?? $this->defaultRateTypeForSlab($data['slab_definition_id']);
+            $data['includes_fuel'] = $data['includes_fuel'] ?? false;
+            $data['includes_driver'] = $data['includes_driver'] ?? false;
+        }
 
         return $data;
+    }
+
+    private function defaultRateTypeForSlab(string $slabDefinitionId): string
+    {
+        $slabType = VehiclePricingSlabDefinition::whereKey($slabDefinitionId)->value('type');
+
+        return match ($slabType) {
+            'hours' => 'per_hour',
+            'per_km' => 'per_km',
+            'minutes', 'flat_rate' => 'flat_rate',
+            default => 'per_day',
+        };
     }
     /**
      * Copy pricing from one vehicle group to another.
@@ -968,7 +991,7 @@ class VehicleGroupPricingController extends Controller
             'slab_pricing.*.vehicle_group_id' => 'required|uuid|exists:vehicle_groups,id',
             'slab_pricing.*.slab_definition_id' => 'required|uuid|exists:vehicle_pricing_slab_definitions,id',
             'slab_pricing.*.rate' => 'required|numeric|min:0',
-            'slab_pricing.*.rate_type' => 'nullable|in:per_hour,per_day,flat_rate',
+            'slab_pricing.*.rate_type' => 'nullable|in:per_hour,per_day,flat_rate,per_km',
             'slab_pricing.*.minimum_charge' => 'nullable|numeric|min:0',
             'slab_pricing.*.includes_fuel' => 'boolean',
             'slab_pricing.*.includes_driver' => 'boolean',
@@ -1027,29 +1050,36 @@ class VehicleGroupPricingController extends Controller
             // Process slab pricing with history tracking
             if ($request->has('slab_pricing') && is_array($request->slab_pricing)) {
                 foreach ($request->slab_pricing as $slabData) {
-                    // Set defaults
-                    $slabData['is_active'] = $slabData['is_active'] ?? true;
-                    $slabData['includes_fuel'] = $slabData['includes_fuel'] ?? false;
-                    $slabData['includes_driver'] = $slabData['includes_driver'] ?? false;
-                    $slabData['rate_type'] = $slabData['rate_type'] ?? 'per_day';
-                    $slabData['owner_type'] = $ownerType;
-                    $slabData['owner_id'] = $ownerId;
-                    $slabData['priority'] = $priority;
-
                     $existingPricing = VehicleGroupPricing::forVehicleGroup($slabData['vehicle_group_id'])
                         ->forSlabDefinition($slabData['slab_definition_id'])
                         ->where('owner_type', $ownerType)
                         ->where('owner_id', $ownerId)
                         ->first();
 
+                    $slabData = array_merge([
+                        'is_active' => $existingPricing?->is_active ?? true,
+                        'includes_fuel' => $existingPricing?->includes_fuel ?? false,
+                        'includes_driver' => $existingPricing?->includes_driver ?? false,
+                        'rate_type' => $existingPricing?->rate_type
+                            ?? $this->defaultRateTypeForSlab($slabData['slab_definition_id']),
+                        'minimum_charge' => $existingPricing?->minimum_charge,
+                    ], $slabData, [
+                        'owner_type' => $ownerType,
+                        'owner_id' => $ownerId,
+                        'priority' => $request->has('priority')
+                            ? $priority
+                            : ($existingPricing?->priority ?? 0),
+                    ]);
+
                     if ($existingPricing) {
                         $oldRate = $existingPricing->rate;
                         $newRate = $slabData['rate'];
 
-                        // Only update if rate has changed
-                        if ($oldRate != $newRate) {
-                            $oldData = $existingPricing->toArray();
-                            $existingPricing->update($slabData);
+                        $oldData = $existingPricing->toArray();
+                        $existingPricing->fill($slabData);
+
+                        if ($existingPricing->isDirty()) {
+                            $existingPricing->save();
                             $newData = $existingPricing->fresh()->toArray();
 
                             // Create history record

@@ -10,7 +10,6 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingSlabDefinition;
 use App\Models\Vehicle\VehiclePricing\VehicleGroupPricing;
-use App\Models\Vehicle\VehiclePricing\VehiclePricingCommonRateDefinition;
 use App\Models\Vehicle\VehiclePricing\VehicleGroupCommonRatePricing;
 use App\Models\Vehicle\VehiclePricing\PriceAdjustment;
 use App\Models\Vehicle\VehiclePricing\KmRangePricingRule;
@@ -121,14 +120,18 @@ class VehiclePricingCalculationDefinition extends Model
 
                 $resolvedVariablesWithoutCustomizations = $this->resolveAllVariables($inputs, $slabInfo, $kmCalculations, [], $servicePackageInfo, $districtInfo);
             } catch (\InvalidArgumentException $ex) {
-                // Structured error response for missing variables
+                // A definition with unresolved required inputs is not a valid
+                // pricing candidate. In particular, do not let the caller
+                // mistake this structured failure for a matched zero charge.
                 Log::warning("Missing variables for calculation {$this->id}: " . $ex->getMessage());
                 return [
                     'total_amount' => 0,
                     'breakdown' => [],
                     'slab_info' => $slabInfo,
                     'km_calculations' => $kmCalculations,
-                    'conditions_met' => true,
+                    'conditions_met' => false,
+                    'calculation_success' => false,
+                    'failure_reason' => 'missing_required_variables',
                     'definition_id' => $this->id,
                     'variables_used' => [],
                     'conditions_evaluated' => $metadata['conditions_evaluated'],
@@ -140,8 +143,8 @@ class VehiclePricingCalculationDefinition extends Model
 
             $metadata['variables_used'] = array_keys($resolvedVariables);
 
-            $totalAmount = $this->evaluateFormulaWithVariables($this->formula, $resolvedVariables) ?? 0.0;
-            $totalAmountWithoutCustomizations = $this->evaluateFormulaWithVariables($this->formula, $resolvedVariablesWithoutCustomizations) ?? 0.0;
+            $totalAmount = $this->evaluateFormulaWithVariables($this->formula, $resolvedVariables);
+            $totalAmountWithoutCustomizations = $this->evaluateFormulaWithVariables($this->formula, $resolvedVariablesWithoutCustomizations);
 
             // Apply price adjustments and KM range pricing rules after base calculation
             $adjustmentResults = $this->applyPricingAdjustments(
@@ -160,6 +163,31 @@ class VehiclePricingCalculationDefinition extends Model
                 $districtInfo,
                 $kmCalculations
             )['final_amount'];
+
+            // A row-level minimum floors the completed formula. Applying it to
+            // slab_rate itself would incorrectly multiply the minimum again in
+            // per-hour or per-kilometre formulas.
+            $minimumCharge = array_key_exists('slab_rate', $resolvedVariables)
+                ? $this->getSlabMinimumCharge($inputs, $slabInfo)
+                : null;
+            if ($minimumCharge !== null && $finalAmount < $minimumCharge) {
+                $adjustmentResults['adjustments'][] = [
+                    'type' => 'minimum_charge',
+                    'name' => 'Minimum Charge',
+                    'description' => 'Vehicle group slab minimum charge',
+                    'amount' => $minimumCharge - $finalAmount,
+                    'calculation' => "Minimum {$minimumCharge} applied to {$finalAmount}",
+                    'is_discount' => false,
+                    'original_amount' => $finalAmount,
+                    'adjusted_amount' => $minimumCharge,
+                    'adjustment_amount' => $minimumCharge - $finalAmount,
+                ];
+                $finalAmount = $minimumCharge;
+                $adjustmentResults['final_amount'] = $finalAmount;
+            }
+            if ($minimumCharge !== null && $finalAmountWithoutCustomizations < $minimumCharge) {
+                $finalAmountWithoutCustomizations = $minimumCharge;
+            }
 
             $built = $this->buildCalculationBreakdown(
                 $resolvedVariables,
@@ -221,11 +249,22 @@ class VehiclePricingCalculationDefinition extends Model
 
         // Base rate breakdown
         if (isset($resolvedVariables['slab_rate']) && $resolvedVariables['slab_rate'] > 0) {
+            $slabDuration = 'Base rate';
+            if ($slabInfo) {
+                $slabDuration = match ($slabInfo['type'] ?? null) {
+                    'minutes' => ($slabInfo['duration_minutes'] ?? 0) . ' minutes',
+                    default => !empty($slabInfo['duration_days'])
+                        ? $slabInfo['duration_days'] . ' days'
+                        : ($slabInfo['duration_hours'] ?? 0) . ' hours',
+                };
+            }
             $breakdown[] = [
                 'component' => 'base_rate',
                 'description' => 'Base service rate',
                 'amount' => $resolvedVariables['slab_rate'],
-                'calculation' => $slabInfo ? "Based on {$slabInfo['type']} for " . ($slabInfo['duration_days'] ?? $slabInfo['duration_hours']) . ($slabInfo['duration_days'] ? ' days' : 'h') : 'Base rate',
+                'calculation' => $slabInfo
+                    ? "Based on {$slabInfo['type']} slab for {$slabDuration}"
+                    : 'Base rate',
                 'details' => [
                     'slab_rate' => '',
                     'slab_price_id' => '',
@@ -384,6 +423,17 @@ class VehiclePricingCalculationDefinition extends Model
             }
         }
 
+        foreach ($adjustmentResults['adjustments'] ?? [] as $index => $adjustment) {
+            $breakdown[] = [
+                'component' => $adjustment['type'] ?? "pricing_adjustment_{$index}",
+                'description' => $adjustment['name']
+                    ?? $adjustment['description']
+                    ?? 'Pricing adjustment',
+                'amount' => (float) ($adjustment['amount'] ?? $adjustment['adjustment_amount'] ?? 0),
+                'calculation' => $adjustment['calculation'] ?? null,
+            ];
+        }
+
         return [
             'total_amount' => $totalAmount,
             'subtotal' => $totalAmount,
@@ -392,6 +442,7 @@ class VehiclePricingCalculationDefinition extends Model
             'slab_info' => $slabInfo,
             'km_calculations' => $kmCalculations,
             'conditions_met' => true,
+            'calculation_success' => true,
             'calculation_summary' => [
                 'base_amount' => $resolvedVariables['slab_rate'] ?? 0,
                 'delivery_pickup_total' => $totalDeliveryCharge,
@@ -424,6 +475,8 @@ class VehiclePricingCalculationDefinition extends Model
             'slab_info' => null,
             'km_calculations' => null,
             'conditions_met' => false,
+            'calculation_success' => false,
+            'failure_reason' => 'conditions_not_met',
             'service_package' => null,
             'km_range_pricing' => null,
             'price_adjustments' => null,
@@ -440,6 +493,8 @@ class VehiclePricingCalculationDefinition extends Model
         $durationHours = $inputs['duration_hours'] ?? $inputs['hours'] ?? 0;
         $durationMinutes = $inputs['duration_minutes'] ?? ($durationHours * 60);
         $durationDays = $inputs['duration_days'] ?? $inputs['days'] ?? 0;
+        $ownerType = $inputs['owner_type'] ?? null;
+        $ownerId = $inputs['owner_id'] ?? null;
 
         if (!$vehicleGroupId) {
             return null;
@@ -453,16 +508,19 @@ class VehiclePricingCalculationDefinition extends Model
         $minuteSlabDefinition = VehiclePricingSlabDefinition::where('service_type_id', $this->service_type_id)
             ->where('is_active', true)
             ->where('type', 'minutes')
+            ->tap(fn ($query) => $this->applyOwnerScope($query, $ownerType, $ownerId))
             ->where('min_minutes', '<=', $durationMinutes)
             ->where(function ($query) use ($durationMinutes) {
                 $query->whereNull('max_minutes')->orWhere('max_minutes', '>=', $durationMinutes);
             })
+            ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $ownerType, $ownerId))
             ->orderByDesc('priority')
             ->orderByDesc('min_minutes')
             ->first();
 
         $slabDefinition = $minuteSlabDefinition ?: VehiclePricingSlabDefinition::where('service_type_id', $this->service_type_id)
             ->where('is_active', true)
+            ->tap(fn ($query) => $this->applyOwnerScope($query, $ownerType, $ownerId))
             ->where(function ($query) {
                 $query->whereNull('type')->orWhere('type', '!=', 'minutes');
             })
@@ -481,6 +539,7 @@ class VehiclePricingCalculationDefinition extends Model
                         });
                 });
             })
+            ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $ownerType, $ownerId))
             ->orderByDesc('priority')
             ->orderByDesc('min_days')
             ->orderByDesc('min_hours')
@@ -669,7 +728,8 @@ class VehiclePricingCalculationDefinition extends Model
                 $value = $this->resolveVariable($varName, $varType, $inputs, $defaultValue, $slabInfo, $appliedCustomizations, $servicePackageInfo, $districtInfo);
             }
 
-            if ($value === null && $isRequired) {
+            $requiresResolvedRate = in_array($varType, ['slab_rate', 'common_rate'], true);
+            if ($value === null && ($isRequired || $requiresResolvedRate)) {
                 $missingVariables[] = $varName;
                 continue;
             }
@@ -763,10 +823,19 @@ class VehiclePricingCalculationDefinition extends Model
     private function evaluateFormulaWithVariables(string $formula, array $variables): ?float
     {
         try {
-            // Ensure all variable values are numeric (fallback to 0 if not)
+            $validationErrors = self::validateFormulaAgainstVariableNames($formula, array_keys($variables));
+            if ($validationErrors !== []) {
+                throw new \InvalidArgumentException(implode(' ', $validationErrors));
+            }
+
+            // Every value used by a pricing formula must be explicitly numeric.
+            // Silently changing an invalid value into zero can undercharge.
             $numericVars = [];
             foreach ($variables as $k => $v) {
-                $numericVars[$k] = is_numeric($v) ? $v + 0 : 0; // +0 casts to int/float
+                if (!is_numeric($v)) {
+                    throw new \InvalidArgumentException("Formula variable {$k} must be numeric.");
+                }
+                $numericVars[$k] = $v + 0; // +0 casts to int/float
             }
 
             // Replace {var} or bare var names as whole identifiers only (no partials)
@@ -774,7 +843,7 @@ class VehiclePricingCalculationDefinition extends Model
                 '/\{([A-Za-z_][A-Za-z0-9_]*)\}|(?<![A-Za-z0-9_])([A-Za-z_][A-Za-z0-9_]*)(?![A-Za-z0-9_])/',
                 function ($m) use ($numericVars) {
                     $name = $m[1] !== '' ? $m[1] : $m[2];
-                    $val = $numericVars[$name] ?? 0;
+                    $val = $numericVars[$name];
                     return (string) (float) $val;
                 },
                 $formula
@@ -792,7 +861,7 @@ class VehiclePricingCalculationDefinition extends Model
     }
 
 
-    private function getSlabRateValue(array $inputs, ?array $slabInfo = null, ?array $appliedCustomizations = null, ?array $servicePackageInfo = null, ?array $districtInfo = null): float
+    private function getSlabRateValue(array $inputs, ?array $slabInfo = null, ?array $appliedCustomizations = null, ?array $servicePackageInfo = null, ?array $districtInfo = null): ?float
     {
         try {
             $vehicleGroupId = $inputs['vehicle_group_id'] ?? null;
@@ -809,7 +878,7 @@ class VehiclePricingCalculationDefinition extends Model
 
             if (!$vehicleGroupId) {
                 Log::warning("No vehicle group ID provided for slab rate calculation");
-                return $customSlabBase ?? 0;
+                return $customSlabBase;
             }
 
             $durationHours = $slabInfo['duration_hours'] ?? $inputs['duration_hours'] ?? $inputs['hours'] ?? 0;
@@ -855,7 +924,7 @@ class VehiclePricingCalculationDefinition extends Model
 
                 if (!$slabDefinition) {
                     Log::warning("No slab definition found for service type {$this->service_type_id} and duration {$durationHours}h");
-                    return $customSlabBase ?? 0;
+                    return $customSlabBase;
                 }
             }
 
@@ -879,7 +948,7 @@ class VehiclePricingCalculationDefinition extends Model
                 if ($customSlabBase !== null) {
                     return $customSlabBase;
                 }
-                return 0;
+                return null;
             }
 
             // Use customized base rate when provided; otherwise DB base rate
@@ -905,26 +974,49 @@ class VehiclePricingCalculationDefinition extends Model
                 'service_type_id' => $this->service_type_id,
                 'inputs' => $inputs
             ]);
-            return 0;
+            return null;
         }
     }
 
+    private function getSlabMinimumCharge(array $inputs, ?array $slabInfo): ?float
+    {
+        $vehicleGroupId = $inputs['vehicle_group_id'] ?? null;
+        $slabDefinition = $slabInfo['slab_definition'] ?? null;
+        if (!$vehicleGroupId || !$slabDefinition) {
+            return null;
+        }
+
+        $ownerType = $inputs['owner_type'] ?? null;
+        $ownerId = $inputs['owner_id'] ?? null;
+        $pricing = VehicleGroupPricing::where('vehicle_group_id', $vehicleGroupId)
+            ->where('slab_definition_id', $slabDefinition->id)
+            ->where('is_active', true)
+            ->forOwner($ownerType, $ownerId)
+            ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $ownerType, $ownerId))
+            ->orderByDesc('priority')
+            ->first();
+
+        return $pricing?->minimum_charge !== null
+            ? (float) $pricing->minimum_charge
+            : null;
+    }
+
     /**
-     * Get common rate value from database with fallback defaults.
-     * Enhanced to provide default rates for delivery and pickup if not configured.
-     * 
+     * Get the configured vehicle-group common-rate value.
+     * Definitions describe the rate; they never provide a billable fallback.
+     *
      * @param string $rateKey The common rate identifier
      * @param array $inputs Input values containing vehicle_group_id
-     * @return float The common rate value
+     * @return float|null The common rate value, or null when no configured rate exists
      */
-    private function getCommonRateValue(string $rateKey, array $inputs): float
+    private function getCommonRateValue(string $rateKey, array $inputs): ?float
     {
         try {
             $vehicleGroupId = $inputs['vehicle_group_id'] ?? null;
 
             if (!$vehicleGroupId) {
                 Log::warning("No vehicle_group_id provided for common rate lookup: {$rateKey}");
-                return 0;
+                return null;
             }
             $ownerType = $inputs['owner_type'] ?? null;
             $ownerId = $inputs['owner_id'] ?? null;
@@ -954,28 +1046,10 @@ class VehiclePricingCalculationDefinition extends Model
                 return (float) $commonRatePricing->rate;
             }
 
-            // Fallback: Try to get a default rate from the common rate definition itself
-            $commonRateDefinition = VehiclePricingCommonRateDefinition::where(function ($q) use ($rateKey) {
-                $q->where('code', $rateKey)
-                    ->orWhere('name', $rateKey);
-            })
-                ->where('service_type_id', $this->service_type_id)
-                ->where('is_active', true)
-                ->when($ownerType && $ownerId, function ($query) use ($ownerType, $ownerId) {
-                    $this->applyOwnerScope($query, $ownerType, $ownerId);
-                }, fn ($query) => $query->whereNull('owner_type')->whereNull('owner_id'))
-                ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $ownerType, $ownerId))
-                ->orderBy('priority', 'desc')
-                ->first();
-
-            if ($commonRateDefinition) {
-                return (float) $commonRateDefinition->rate;
-            }
-
-            return 0;
+            return null;
         } catch (\Exception $e) {
             Log::error("Error getting common rate value for {$rateKey}: " . $e->getMessage());
-            return 0;
+            return null;
         }
     }
 
@@ -1262,11 +1336,120 @@ class VehiclePricingCalculationDefinition extends Model
     }
 
     /**
+     * Validate the persisted formula contract without resolving database rates.
+     *
+     * @return array<int, string>
+     */
+    public static function validateFormulaConfiguration(string $formula, array $variables): array
+    {
+        $errors = [];
+        $variableNames = [];
+
+        foreach ($variables as $variable) {
+            $name = is_array($variable) ? trim((string) ($variable['name'] ?? '')) : '';
+            if ($name === '') {
+                continue;
+            }
+
+            if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $name)) {
+                $errors[] = "Variable name '{$name}' must start with a letter or underscore and contain only letters, numbers, and underscores.";
+                continue;
+            }
+
+            if (in_array($name, $variableNames, true)) {
+                $errors[] = "Variable '{$name}' is declared more than once.";
+                continue;
+            }
+
+            $variableNames[] = $name;
+        }
+
+        return array_values(array_unique(array_merge(
+            $errors,
+            self::validateFormulaAgainstVariableNames($formula, $variableNames)
+        )));
+    }
+
+    /**
+     * @param array<int, string> $variableNames
+     * @return array<int, string>
+     */
+    private static function validateFormulaAgainstVariableNames(string $formula, array $variableNames): array
+    {
+        $compactFormula = preg_replace('/\s+/', '', trim($formula)) ?? '';
+        if ($compactFormula === '') {
+            return ['Formula is required.'];
+        }
+
+        preg_match_all(
+            '/\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*|\d+(?:\.\d+)?|[+\-*\/()]/',
+            $compactFormula,
+            $matches
+        );
+        $tokens = $matches[0] ?? [];
+
+        if (implode('', $tokens) !== $compactFormula) {
+            return ['Formula may contain only declared variables, numbers, +, -, *, /, and parentheses.'];
+        }
+
+        $errors = [];
+        $referencedVariables = [];
+        $expectsValue = true;
+        $parenthesisDepth = 0;
+
+        foreach ($tokens as $index => $token) {
+            $isNumber = preg_match('/^\d+(?:\.\d+)?$/', $token) === 1;
+            $isVariable = preg_match('/^(?:\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*)$/', $token) === 1;
+
+            if ($isVariable) {
+                $referencedVariables[] = trim($token, '{}');
+            }
+
+            if ($expectsValue) {
+                if ($isNumber || $isVariable) {
+                    $expectsValue = false;
+                } elseif ($token === '(') {
+                    $parenthesisDepth++;
+                } elseif (($token === '+' || $token === '-') && ($index === 0 || $tokens[$index - 1] === '(')) {
+                    continue;
+                } else {
+                    $errors[] = "Formula has an unexpected '{$token}'.";
+                    break;
+                }
+            } elseif (in_array($token, ['+', '-', '*', '/'], true)) {
+                $expectsValue = true;
+            } elseif ($token === ')' && $parenthesisDepth > 0) {
+                $parenthesisDepth--;
+            } else {
+                $errors[] = "Formula has an unexpected '{$token}'.";
+                break;
+            }
+        }
+
+        if ($errors === [] && ($expectsValue || $parenthesisDepth !== 0)) {
+            $errors[] = $parenthesisDepth !== 0
+                ? 'Formula parentheses are not balanced.'
+                : 'Formula must end with a number or declared variable.';
+        }
+
+        $unknownVariables = array_values(array_unique(array_diff($referencedVariables, $variableNames)));
+        if ($unknownVariables !== []) {
+            $errors[] = 'Formula references undeclared variables: ' . implode(', ', $unknownVariables) . '.';
+        }
+
+        return array_values(array_unique($errors));
+    }
+
+    /**
      * Validate that the formula is syntactically correct.
      */
     public function validateFormula(): bool
     {
         try {
+            if (self::validateFormulaConfiguration($this->formula, $this->variables ?? []) !== []) {
+                return false;
+            }
+
             $sampleInputs = $this->generateSampleInputs();
             $result = $this->calculatePrice($sampleInputs);
 
@@ -1405,16 +1588,6 @@ class VehiclePricingCalculationDefinition extends Model
             'less_than' => 'Less than (<)',
             'greater_than_or_equal' => 'Greater than or equal (>=)',
             'less_than_or_equal' => 'Less than or equal (<=)',
-            'between' => 'Between (inclusive)',
-            'contains' => 'Contains (in array)',
-            'not_contains' => 'Does not contain (not in array)',
-            'exists' => 'Field exists (not null)',
-            'not_exists' => 'Field does not exist (is null)',
-            'empty' => 'Field is empty',
-            'not_empty' => 'Field is not empty',
-            'starts_with' => 'Starts with (string)',
-            'ends_with' => 'Ends with (string)',
-            'regex' => 'Matches regex pattern'
         ];
     }
 
@@ -1553,9 +1726,12 @@ class VehiclePricingCalculationDefinition extends Model
      */
     private function getSlabRateBreakdown(array $inputs): array
     {
+        $inputs = $this->normalizeDurationUnits($inputs);
         $breakdown = [
             'vehicle_group_id' => $inputs['vehicle_group_id'] ?? null,
             'duration_hours' => $inputs['duration_hours'] ?? $inputs['hours'] ?? 0,
+            'duration_minutes' => $inputs['duration_minutes'] ?? 0,
+            'duration_days' => $inputs['duration_days'] ?? $inputs['days'] ?? 0,
             'slab_definition' => null,
             'pricing_details' => null,
             'calculated_rate' => 0
@@ -1565,26 +1741,13 @@ class VehiclePricingCalculationDefinition extends Model
             $vehicleGroupId = $breakdown['vehicle_group_id'];
             $ownerType = $inputs['owner_type'] ?? null;
             $ownerId = $inputs['owner_id'] ?? null;
-            $durationHours = $breakdown['duration_hours'];
+            $slabInformation = $this->getSlabInformation($inputs);
 
-            if (!$vehicleGroupId || !$durationHours) {
+            if (!$vehicleGroupId || !$slabInformation) {
                 return $breakdown;
             }
 
-            $slabDefinition = VehiclePricingSlabDefinition::where('service_type_id', $this->service_type_id)
-                ->where('is_active', true)
-                ->forOwner($ownerType, $ownerId)
-                ->where(function ($query) use ($durationHours) {
-                    $query->where('min_hours', '<=', $durationHours)
-                        ->where(function ($q) use ($durationHours) {
-                            $q->whereNull('max_hours')
-                                ->orWhere('max_hours', '>=', $durationHours);
-                        });
-                })
-                ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $ownerType, $ownerId))
-                ->orderByDesc('priority')
-                ->orderBy('min_hours')
-                ->first();
+            $slabDefinition = $slabInformation['slab_definition'];
 
             if ($slabDefinition) {
                 $breakdown['slab_definition'] = [
@@ -1592,6 +1755,10 @@ class VehiclePricingCalculationDefinition extends Model
                     'name' => $slabDefinition->name,
                     'min_hours' => $slabDefinition->min_hours,
                     'max_hours' => $slabDefinition->max_hours,
+                    'min_minutes' => $slabDefinition->min_minutes,
+                    'max_minutes' => $slabDefinition->max_minutes,
+                    'min_days' => $slabDefinition->min_days,
+                    'max_days' => $slabDefinition->max_days,
                     'type' => $slabDefinition->type
                 ];
 
@@ -1599,8 +1766,8 @@ class VehiclePricingCalculationDefinition extends Model
                 $vehicleGroupPricing = VehicleGroupPricing::where('vehicle_group_id', $vehicleGroupId)
                     ->where('slab_definition_id', $slabDefinition->id)
                     ->where('is_active', true)
-                    ->forOwner($inputs['owner_type'] ?? null, $inputs['owner_id'] ?? null)
-                    ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $inputs['owner_type'] ?? null, $inputs['owner_id'] ?? null))
+                    ->forOwner($ownerType, $ownerId)
+                    ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $ownerType, $ownerId))
                     ->orderByDesc('priority')
                     ->first();
 
@@ -1613,13 +1780,7 @@ class VehiclePricingCalculationDefinition extends Model
                         'includes_driver' => $vehicleGroupPricing->includes_driver
                     ];
 
-                    $breakdown['calculated_rate'] = $vehicleGroupPricing->rate;
-                    // $breakdown['calculated_rate'] = $this->calculateSlabRateWithType(
-                    //     (float) $vehicleGroupPricing->rate,
-                    //     $vehicleGroupPricing->rate_type,
-                    //     $durationHours,
-                    //     $vehicleGroupPricing->minimum_charge ? (float) $vehicleGroupPricing->minimum_charge : null
-                    // );
+                    $breakdown['calculated_rate'] = (float) $vehicleGroupPricing->rate;
                 }
             }
         } catch (\Exception $e) {
@@ -1641,8 +1802,8 @@ class VehiclePricingCalculationDefinition extends Model
         $breakdown = [
             'rate_key' => $rateKey,
             'vehicle_group_id' => $inputs['vehicle_group_id'] ?? null,
-            'rate' => 0,
-            'source' => null
+            'rate' => null,
+            'source' => 'missing_vehicle_group_value'
         ];
 
         try {
@@ -1657,7 +1818,9 @@ class VehiclePricingCalculationDefinition extends Model
 
             // Check vehicle group specific pricing first
             $commonRatePricing = VehicleGroupCommonRatePricing::whereHas('commonRateDefinition', function ($query) use ($rateKey, $ownerType, $ownerId) {
-                $query->where('name', $rateKey)
+                $query->where(function ($rateQuery) use ($rateKey) {
+                    $rateQuery->where('code', $rateKey)->orWhere('name', $rateKey);
+                })
                     ->where('service_type_id', $this->service_type_id)
                     ->where('is_active', true);
                 $this->applyOwnerScope($query, $ownerType, $ownerId);
@@ -1672,25 +1835,9 @@ class VehiclePricingCalculationDefinition extends Model
                 ->first();
 
             if ($commonRatePricing) {
-                $breakdown['rate'] = (float) $commonRatePricing->rate;
+                $breakdown['rate'] = (float) ($commonRatePricing->value ?? $commonRatePricing->rate);
                 $breakdown['source'] = 'vehicle_group_specific';
                 return $breakdown;
-            }
-
-            // Fallback to default common rate definition
-            $commonRateDefinition = VehiclePricingCommonRateDefinition::where('name', $rateKey)
-                ->where('service_type_id', $this->service_type_id)
-                ->where('is_active', true)
-                ->when($ownerType && $ownerId, function ($query) use ($ownerType, $ownerId) {
-                    $this->applyOwnerScope($query, $ownerType, $ownerId);
-                }, fn ($query) => $query->whereNull('owner_type')->whereNull('owner_id'))
-                ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $ownerType, $ownerId))
-                ->orderBy('priority', 'desc')
-                ->first();
-
-            if ($commonRateDefinition) {
-                $breakdown['rate'] = (float) $commonRateDefinition->rate;
-                $breakdown['source'] = 'default_definition';
             }
         } catch (\Exception $e) {
             $breakdown['error'] = $e->getMessage();

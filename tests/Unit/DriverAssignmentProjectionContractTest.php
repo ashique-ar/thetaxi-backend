@@ -81,14 +81,30 @@ it('scopes buffered locations to the authenticated driver active assignment', fu
 
 it('preserves actual movement but blocks route-based repricing of contractual snapshots', function () {
     $source = file_get_contents(app_path('Services/Driver/TripTrackingService.php'));
-    $sync = Str::between($source, 'private function syncOpenPackageFinalPricing(', 'private function resolveOpenPackageExtraKmRate(');
+    $sync = Str::between($source, 'private function recordOpenPackageTripCompletionMetrics(', 'private function hasContractualDistanceSnapshot(');
 
     expect($sync)
-        ->toContain('if ($this->hasContractualDistanceSnapshot($booking, $bookingItem))')
+        ->toContain('$contractualDistance = $this->hasContractualDistanceSnapshot($booking, $bookingItem)')
         ->toContain("'actual_distance' => round(\$totalDistance, 2)")
         ->toContain("'source' => 'driver_route_points'")
-        ->toContain("'pricing_effect' => 'none_contractual_snapshot'")
-        ->toContain('return null;');
+        ->toContain("'pricing_effect' => \$contractualDistance")
+        ->toContain("? 'none_contractual_snapshot'")
+        ->not->toContain("'total_actual'")
+        ->not->toContain("'open_package_final'");
+});
+
+it('blocks driver completion when canonical pricing and invoicing cannot finish', function () {
+    $source = file_get_contents(app_path('Services/Driver/TripTrackingService.php'));
+    $sync = Str::between(
+        $source,
+        'private function syncBookingLifecycleAfterDriverTripCompletion(',
+        'private function resolveCanonicalFinalPricingSummary('
+    );
+
+    expect($sync)
+        ->toContain("throw new \\DomainException(")
+        ->toContain('Driver trip completion was stopped')
+        ->not->toContain("'status' => 'completed'");
 });
 
 it('exposes persisted operational milestones separately from contractual pricing', function () {

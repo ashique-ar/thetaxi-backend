@@ -615,7 +615,7 @@
             margin-bottom: 10px !important;
         }
 
-        .vehicle-details-wrapper .booking-shell-body .single-search-box .input-label {
+        .vehicle-details-wrapper .booking-shell-body .booking-field > .input-label {
             font-weight: 600 !important;
             font-size: 12px !important;
         }

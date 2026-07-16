@@ -2,8 +2,10 @@
 
 namespace Tests\Unit;
 
+use App\Http\Controllers\Api\Vehicle\VehiclePricing\VehiclePricingCalculationDefinitionController;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCalculationDefinition;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCommonRateDefinition;
+use App\Services\PricingVariableService;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
 use ReflectionMethod;
@@ -69,6 +71,82 @@ class VehiclePricingDurationMinutesTest extends TestCase
 
         $this->assertSame('30 * 5', $example['substituted_formula']);
         $this->assertSame(150.0, $example['result']);
+    }
+
+    public function test_hour_and_minute_operational_inputs_are_system_managed(): void
+    {
+        $method = new ReflectionMethod(PricingVariableService::class, 'isVariableCustomizable');
+        $service = new PricingVariableService();
+
+        foreach (['waiting', 'recovery', 'overtime'] as $prefix) {
+            $this->assertFalse($method->invoke($service, "{$prefix}_hours", 'duration'));
+            $this->assertFalse($method->invoke($service, "{$prefix}_minutes", 'duration'));
+        }
+    }
+
+    public function test_calculation_tester_normalizes_exact_minutes_without_forcing_a_day(): void
+    {
+        $controller = (new ReflectionClass(VehiclePricingCalculationDefinitionController::class))
+            ->newInstanceWithoutConstructor();
+        $method = new ReflectionMethod($controller, 'normalizeDurationInputs');
+
+        $shortTrip = $method->invoke($controller, ['duration_minutes' => 45]);
+        $longTrip = $method->invoke($controller, ['duration_minutes' => 1500]);
+
+        $this->assertSame(0.75, $shortTrip['duration_hours']);
+        $this->assertSame(0, $shortTrip['duration_days']);
+        $this->assertSame(25.0, $longTrip['duration_hours']);
+        $this->assertSame(2, $longTrip['duration_days']);
+    }
+
+    public function test_minimum_charge_is_visible_in_the_calculation_breakdown(): void
+    {
+        $method = new ReflectionMethod(
+            VehiclePricingCalculationDefinition::class,
+            'buildCalculationBreakdown'
+        );
+        $result = $method->invoke(
+            new VehiclePricingCalculationDefinition(),
+            ['slab_rate' => 100.0],
+            250.0,
+            250.0,
+            null,
+            ['extra_km' => 0, 'journey_distance' => 0],
+            ['adjustments' => [[
+                'type' => 'minimum_charge',
+                'name' => 'Minimum Charge',
+                'amount' => 150.0,
+                'calculation' => 'Minimum 250 applied to 100',
+            ]]]
+        );
+
+        $minimumLine = collect($result['breakdown'])
+            ->firstWhere('component', 'minimum_charge');
+
+        $this->assertSame('Minimum Charge', $minimumLine['description']);
+        $this->assertSame(150.0, $minimumLine['amount']);
+    }
+
+    public function test_minute_slab_breakdown_describes_the_exact_minutes(): void
+    {
+        $method = new ReflectionMethod(
+            VehiclePricingCalculationDefinition::class,
+            'buildCalculationBreakdown'
+        );
+        $result = $method->invoke(
+            new VehiclePricingCalculationDefinition(),
+            ['slab_rate' => 500.0],
+            500.0,
+            500.0,
+            ['type' => 'minutes', 'duration_minutes' => 45, 'duration_hours' => 0.75, 'duration_days' => 0],
+            ['extra_km' => 0, 'journey_distance' => 0],
+            []
+        );
+
+        $this->assertSame(
+            'Based on minutes slab for 45 minutes',
+            $result['breakdown'][0]['calculation']
+        );
     }
 
     private function normalize(array $inputs): array

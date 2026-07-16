@@ -973,7 +973,7 @@ class Booking extends BaseModel
                             QCStatus::IN_PROGRESS => BookingLifecycleStatus::QC_IN_PROGRESS,
                             QCStatus::ISSUES_FOUND => BookingLifecycleStatus::QC_ISSUES_FOUND,
                             QCStatus::REPAIR_REQUIRED => BookingLifecycleStatus::QC_REPAIR_NEEDED,
-                            QCStatus::COMPLETED => BookingLifecycleStatus::COMPLETED,
+                            QCStatus::COMPLETED => BookingLifecycleStatus::QC_COMPLETED,
                         };
                     }
                     return BookingLifecycleStatus::QC_PENDING;

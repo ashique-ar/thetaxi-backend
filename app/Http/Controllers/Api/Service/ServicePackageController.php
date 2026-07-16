@@ -8,6 +8,7 @@ use App\Models\Service\ServicePackageReturnRule;
 use App\Models\Service\ServiceType;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Validation\ValidationException;
 use App\Services\DynamicServiceConfigurationService;
 
 class ServicePackageController extends Controller
@@ -54,6 +55,7 @@ class ServicePackageController extends Controller
                         'price_multiplier' => $package->price_multiplier,
                         'rate_type' => $package->rate_type,
                         'default_duration_hours' => $package->default_duration_hours,
+                        'default_duration_minutes' => $package->default_duration_minutes,
                         'sort_order' => $package->sort_order,
                     ];
                 });
@@ -136,10 +138,12 @@ class ServicePackageController extends Controller
             'max_km_per_package' => 'nullable|numeric|min:0',
             'price_multiplier' => 'required|numeric|min:0',
             'rate_type' => 'required|string|in:flat,per_hour,per_day',
-            'default_duration_hours' => 'required|integer|min:1',
+            'default_duration_hours' => 'required|integer|min:0',
+            'default_duration_minutes' => 'required|integer|min:0|max:59',
             'sort_order' => 'nullable|integer|min:0',
             'supports_return_trip' => 'boolean',
         ]);
+        $this->assertPositiveDefaultDuration($validated);
 
         $validated['created_user_id'] = auth()->id();
         $validated['is_active'] = true;
@@ -167,12 +171,14 @@ class ServicePackageController extends Controller
             'max_km_per_package' => 'nullable|numeric|min:0',
             'price_multiplier' => 'required|numeric|min:0',
             'rate_type' => 'required|string|in:flat,per_hour,per_day',
-            'default_duration_hours' => 'required|integer|min:1',
+            'default_duration_hours' => 'required|integer|min:0',
+            'default_duration_minutes' => 'required|integer|min:0|max:59',
             'sort_order' => 'nullable|integer|min:0',
             'service_type_id' => 'required|exists:service_types,id',
             'is_active' => 'boolean',
             'supports_return_trip' => 'boolean',
         ]);
+        $this->assertPositiveDefaultDuration($validated);
 
         $validated['updated_user_id'] = auth()->id();
 
@@ -196,6 +202,18 @@ class ServicePackageController extends Controller
             'status' => 'success',
             'message' => 'Service package deleted successfully',
         ]);
+    }
+
+    private function assertPositiveDefaultDuration(array $validated): void
+    {
+        $totalMinutes = ((int) $validated['default_duration_hours'] * 60)
+            + (int) $validated['default_duration_minutes'];
+
+        if ($totalMinutes < 1) {
+            throw ValidationException::withMessages([
+                'default_duration_minutes' => 'Package duration must be at least one minute.',
+            ]);
+        }
     }
 
     // ==========================================

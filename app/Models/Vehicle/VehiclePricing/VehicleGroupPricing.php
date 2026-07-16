@@ -34,6 +34,7 @@ class VehicleGroupPricing extends BaseModel
         'minimum_charge',
         'includes_fuel',
         'includes_driver',
+        'is_active',
         'owner_type',
         'owner_id',
         'priority',

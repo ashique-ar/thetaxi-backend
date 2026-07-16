@@ -658,6 +658,7 @@ class ServiceFormConfigController extends Controller
                 'price_multiplier' => $package->price_multiplier,
                 'rate_type' => $package->rate_type,
                 'default_duration_hours' => $package->default_duration_hours,
+                'default_duration_minutes' => $package->default_duration_minutes,
                 'supports_return' => $package->supportsReturnTrip(),
             ];
         })->toArray();

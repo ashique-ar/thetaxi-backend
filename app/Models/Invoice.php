@@ -35,6 +35,10 @@ class Invoice extends BaseModel
         'pdf_disk',
         'payment_terms',
         'notes',
+        'email_sending_at',
+        'email_sent_at',
+        'email_attempts',
+        'email_last_error',
         'created_user_id',
         'updated_user_id',
     ];
@@ -48,6 +52,9 @@ class Invoice extends BaseModel
         'issue_date'      => 'date',
         'due_date'        => 'date',
         'paid_at'         => 'datetime',
+        'email_sending_at' => 'datetime',
+        'email_sent_at'   => 'datetime',
+        'email_attempts'  => 'integer',
     ];
 
     public function booking(): BelongsTo

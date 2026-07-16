@@ -43,6 +43,7 @@ class BookingItem extends BaseModel
         'is_self_driven',
         'duration_days',
         'duration_hours',
+        'duration_minutes',
         'currency',
         'exchange_rate',
         'status',
@@ -76,6 +77,7 @@ class BookingItem extends BaseModel
         'quantity' => 'integer',
         'duration_days' => 'integer',
         'duration_hours' => 'integer',
+        'duration_minutes' => 'integer',
         'requires_approval' => 'boolean',
         'is_self_driven' => 'boolean'
     ];

@@ -1969,6 +1969,7 @@ class BookingFlowService
             'price_multiplier' => $servicePackage->price_multiplier,
             'rate_type' => $servicePackage->rate_type,
             'default_duration_hours' => $servicePackage->default_duration_hours,
+            'default_duration_minutes' => $servicePackage->default_duration_minutes,
         ];
     }
 
@@ -2432,7 +2433,9 @@ class BookingFlowService
                     'dropoff_landmark' => $dropoffLandmark,
                     'is_self_driven' => $params['is_self_driven'] ?? false,
                     'duration_days' => $groupPricing['duration']['days'] ?? 0,
-                    'duration_hours' => $groupPricing['duration']['hours'] ?? 0,
+                    'duration_hours' => (int) ceil($groupPricing['duration']['hours'] ?? 0),
+                    'duration_minutes' => $groupPricing['duration']['minutes']
+                        ?? (int) round(($groupPricing['duration']['hours'] ?? 0) * 60),
                     'currency' => $groupPricing['currency'] ?? 'LKR',
                     'exchange_rate' => '1.000000',
                     'status' => 'confirmed',
@@ -2541,7 +2544,9 @@ class BookingFlowService
             'dropoff_landmark' => $dropoffLandmark,
             'is_self_driven' => $params['is_self_driven'] ?? false,
             'duration_days' => $pricing['duration']['days'] ?? 0,
-            'duration_hours' => $pricing['duration']['hours'] ?? 0,
+            'duration_hours' => (int) ceil($pricing['duration']['hours'] ?? 0),
+            'duration_minutes' => $pricing['duration']['minutes']
+                ?? (int) round(($pricing['duration']['hours'] ?? 0) * 60),
             'currency' => $pricing['currency'] ?? 'LKR',
             'exchange_rate' => '1.000000',
             'status' => $booking->status ?? 'confirmed',
@@ -3261,34 +3266,64 @@ class BookingFlowService
     }
 
     /**
-     * Calculate duration in days and hours format
+     * Calculate one canonical duration while keeping the independent units
+     * needed by minute, hour, and calendar-day pricing rules.
      */
     public function calculateDurationInDaysAndHours(Carbon $fromDate, Carbon $toDate): array
     {
+        if ($toDate->lessThan($fromDate)) {
+            throw new \InvalidArgumentException('Booking end date/time must be after the start date/time.');
+        }
+
         // Calculate calendar days (not 24-hour blocks)
         // This counts the number of calendar days between two dates
         // Example: 10 PM today to 8 PM tomorrow = 2 calendar days
-        $calendarDays = $fromDate->diffInDays($toDate) + 1; // +1 because we count both start and end day
-
-        // For total hours calculation (not used for day pricing, but kept for reference)
-        $totalHours = $fromDate->diffInHours($toDate);
+        $calendarDays = (int) $fromDate->copy()->startOfDay()
+            ->diffInDays($toDate->copy()->startOfDay()) + 1; // +1 because we count both start and end day
+        $totalMinutes = (int) ceil($fromDate->diffInSeconds($toDate) / 60);
+        $totalHours = $totalMinutes / 60;
+        $elapsedDays = intdiv($totalMinutes, 1440);
+        $remainingMinutes = $totalMinutes % 1440;
+        $remainingHours = intdiv($remainingMinutes, 60);
+        $minuteRemainder = $remainingMinutes % 60;
 
         return [
             'total_hours' => $totalHours,
+            'total_minutes' => $totalMinutes,
             'days' => $calendarDays,
-            'hours' => 0,  // Hours not considered when calculating pricing for multi-day rentals with calendar days
-            'formatted' => $this->formatDuration($calendarDays, 0),
+            'calendar_days' => $calendarDays,
+            'elapsed_days' => $elapsedDays,
+            'hours' => $totalHours,
+            'minutes' => $totalMinutes,
+            'remaining_hours' => $remainingHours,
+            'remaining_minutes' => $minuteRemainder,
+            'formatted' => $this->formatDuration($elapsedDays, $remainingHours, $minuteRemainder),
             'breakdown' => [
                 'days_text' => $calendarDays > 0 ? "{$calendarDays} " . ($calendarDays === 1 ? 'day' : 'days') : '',
-                'hours_text' => '',
+                'hours_text' => $remainingHours > 0 ? "{$remainingHours} " . ($remainingHours === 1 ? 'hour' : 'hours') : '',
+                'minutes_text' => $minuteRemainder > 0 ? "{$minuteRemainder} " . ($minuteRemainder === 1 ? 'minute' : 'minutes') : '',
             ]
         ];
+    }
+
+    private function bookingDateTime(mixed $date, mixed $time = null): Carbon
+    {
+        $dateTime = $date instanceof Carbon ? $date->copy() : Carbon::parse($date);
+        if ($time === null || $time === '') {
+            return $dateTime;
+        }
+
+        if (preg_match('/^(\d{1,2}):(\d{2})(?::(\d{2}))?/', (string) $time, $matches)) {
+            $dateTime->setTime((int) $matches[1], (int) $matches[2], (int) ($matches[3] ?? 0));
+        }
+
+        return $dateTime;
     }
 
     /**
      * Format duration as human-readable string
      */
-    private function formatDuration(int $days, int $hours): string
+    private function formatDuration(int $days, int $hours, int $minutes = 0): string
     {
         $parts = [];
 
@@ -3300,8 +3335,12 @@ class BookingFlowService
             $parts[] = "{$hours} " . ($hours === 1 ? 'hour' : 'hours');
         }
 
+        if ($minutes > 0) {
+            $parts[] = "{$minutes} " . ($minutes === 1 ? 'minute' : 'minutes');
+        }
+
         if (empty($parts)) {
-            return '0 hours';
+            return '0 minutes';
         }
 
         return implode(' ', $parts);
@@ -3859,13 +3898,23 @@ class BookingFlowService
             // match must not suppress the next valid calculation definition.
             $calculationDefinition = null;
             $calculationResult = null;
+            $candidateFailures = [];
             foreach ($calculationDefinitions as $candidate) {
-                $candidateResult = $candidate->calculatePrice(
-                    $calculationInputs,
-                    $appliedCustomizations,
-                    $servicePackageInfo,
-                    $districtInfo
-                );
+                try {
+                    $candidateResult = $candidate->calculatePrice(
+                        $calculationInputs,
+                        $appliedCustomizations,
+                        $servicePackageInfo,
+                        $districtInfo
+                    );
+                } catch (\Throwable $exception) {
+                    $candidateFailures[(string) $candidate->id] = $exception->getMessage();
+                    Log::warning('Pricing definition candidate failed; trying the next candidate', [
+                        'definition_id' => $candidate->id,
+                        'error' => $exception->getMessage(),
+                    ]);
+                    continue;
+                }
                 if (($candidateResult['conditions_met'] ?? false) === true) {
                     $calculationDefinition = $candidate;
                     $calculationResult = $candidateResult;
@@ -3877,6 +3926,7 @@ class BookingFlowService
                 Log::warning('No calculation definition matched the pricing scenario', [
                     'service_type_id' => $serviceTypeId,
                     'candidate_ids' => $calculationDefinitions->pluck('id')->all(),
+                    'candidate_failures' => $candidateFailures,
                     'inputs' => $calculationInputs,
                 ]);
                 return $this->calculateFallbackPricing($params);
@@ -3933,8 +3983,14 @@ class BookingFlowService
      */
     private function prepareCalculationInputs(array $params): array
     {
-        $durationHours = (float) ($params['duration_hours'] ?? 24);
-        $durationMinutes = (float) ($params['duration_minutes'] ?? ($durationHours * 60));
+        $hasDurationMinutes = array_key_exists('duration_minutes', $params) && is_numeric($params['duration_minutes']);
+        $hasDurationHours = array_key_exists('duration_hours', $params) && is_numeric($params['duration_hours']);
+        $durationMinutes = $hasDurationMinutes
+            ? (float) $params['duration_minutes']
+            : (float) (($hasDurationHours ? $params['duration_hours'] : 24) * 60);
+        $durationHours = $hasDurationHours
+            ? (float) $params['duration_hours']
+            : $durationMinutes / 60;
         $durationDays = array_key_exists('duration_days', $params)
             ? (float) $params['duration_days']
             : ($durationHours >= 24 ? (float) ceil($durationHours / 24) : 0.0);
@@ -4288,6 +4344,7 @@ class BookingFlowService
                 'price_multiplier' => $packageType['price_multiplier'] ?? null,
                 'rate_type' => $packageType['rate_type'] ?? null,
                 'default_duration_hours' => $packageType['default_duration_hours'] ?? null,
+                'default_duration_minutes' => $packageType['default_duration_minutes'] ?? 0,
             ];
         }
 
@@ -4625,8 +4682,8 @@ class BookingFlowService
 
             // Calculate rental duration (days and hours)
             $duration = $this->calculateDurationInDaysAndHours(
-                Carbon::parse($params['from_date']),
-                Carbon::parse($params['to_date'])
+                $this->bookingDateTime($params['from_date'], $params['from_time'] ?? null),
+                $this->bookingDateTime($params['to_date'], $params['to_time'] ?? null)
             );
 
             // Check if this is multi-group selection or single group
@@ -4776,6 +4833,7 @@ class BookingFlowService
                 'target_currency' => $targetCurrency,
                 'duration_days' => $duration['days'],
                 'duration_hours' => $duration['hours'],
+                'duration_minutes' => $duration['minutes'],
                 'calculated_at' => now()->toISOString()
             ]
         ];
@@ -4810,8 +4868,8 @@ class BookingFlowService
             }
 
             // Calculate duration for this item
-            $fromDate = Carbon::parse($item['from_date']);
-            $toDate = Carbon::parse($item['to_date']);
+            $fromDate = $this->bookingDateTime($item['from_date'], $item['from_time'] ?? null);
+            $toDate = $this->bookingDateTime($item['to_date'], $item['to_time'] ?? null);
             $duration = $this->calculateDurationInDaysAndHours($fromDate, $toDate);
 
             // Get item-specific addons and customizations
@@ -4948,6 +5006,7 @@ class BookingFlowService
             array_merge($params, [
                 'duration_days' => $duration['days'],
                 'duration_hours' => $duration['hours'],
+                'duration_minutes' => $duration['minutes'],
                 'mode' => 'base_with_duration',
                 'duration' => $duration,
                 'applied_customizations' => $appliedCustomizations,
@@ -7131,6 +7190,7 @@ class BookingFlowService
                 'is_self_driven' => (bool) ($item->is_self_driven ?? false),
                 'duration_days' => (int) ($item->duration_days ?? 0),
                 'duration_hours' => (int) ($item->duration_hours ?? 0),
+                'duration_minutes' => (int) ($item->duration_minutes ?? (($item->duration_hours ?? 0) * 60)),
                 'currency' => $item->currency ?? 'LKR',
                 'exchange_rate' => (float) ($item->exchange_rate ?? 1),
                 'status' => $item->status ?? 'pending',
@@ -8813,6 +8873,7 @@ class BookingFlowService
                 'is_self_driven' => (bool) $item->is_self_driven,
                 'duration_days' => (int) $item->duration_days,
                 'duration_hours' => (int) $item->duration_hours,
+                'duration_minutes' => (int) ($item->duration_minutes ?? ($item->duration_hours * 60)),
                 'currency' => $item->currency ?? 'LKR',
                 'exchange_rate' => (float) ($item->exchange_rate ?? 1),
                 'status' => $item->status ?? 'pending',
@@ -10335,6 +10396,9 @@ class BookingFlowService
                         if (str_contains($rateType, 'per_day') || str_contains($rateType, 'daily')) {
                             $multiplier = $duration['days'];
                             $item['amount'] = $originalAmount * $multiplier;
+                        } elseif (str_contains($rateType, 'per_minute')) {
+                            $multiplier = $duration['minutes'];
+                            $item['amount'] = $originalAmount * $multiplier;
                         } elseif (str_contains($rateType, 'per_hour') || str_contains($rateType, 'hourly')) {
                             $multiplier = $duration['hours'];
                             $item['amount'] = $originalAmount * $multiplier;
@@ -10379,6 +10443,10 @@ class BookingFlowService
                     if (str_contains($rateType, 'per_day') || str_contains($rateType, 'daily')) {
                         $multiplier = $duration['days'];
                         $durationInfo = $duration['days'] . ' days';
+                        $item['amount'] = $originalAmount * $multiplier;
+                    } elseif (str_contains($rateType, 'per_minute')) {
+                        $multiplier = $duration['minutes'];
+                        $durationInfo = $duration['minutes'] . ' minutes';
                         $item['amount'] = $originalAmount * $multiplier;
                     } elseif (str_contains($rateType, 'per_hour') || str_contains($rateType, 'hourly')) {
                         $multiplier = $duration['hours'];

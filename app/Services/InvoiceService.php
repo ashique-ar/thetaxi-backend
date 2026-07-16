@@ -9,6 +9,7 @@ use App\Models\Invoice;
 use App\Models\Website\WebsiteSetting;
 use App\Notifications\BookingLifecycleNotification;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -31,51 +32,113 @@ class InvoiceService
      */
     public function generateForBooking(Booking $booking, bool $force = false): Invoice
     {
-        $existing = Invoice::where('booking_id', $booking->id)
-            ->whereNotIn('status', ['void'])
-            ->latest()
-            ->first();
+        [$invoice, $invoiceBooking, $regeneratePdf] = DB::transaction(function () use ($booking, $force) {
+            // Serialize invoice generation per booking. This closes the race where
+            // two completion retries both passed the pre-insert existence check.
+            $lockedBooking = Booking::query()
+                ->whereKey($booking->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        if ($existing && !$force) {
-            return $existing;
+            $lockedBooking->loadMissing([
+                'customer.user',
+                'bookingItems.serviceType',
+                'bookingItems.vehicle.group',
+                'bookingItems.driver.user',
+                'bookingAddons.addon',
+                'bookingCommonRatePricings',
+            ]);
+
+            $existing = Invoice::where('booking_id', $lockedBooking->id)
+                ->where('status', '!=', 'void')
+                ->latest()
+                ->first();
+
+            if ($existing && !$force) {
+                return [$existing, $lockedBooking, false];
+            }
+
+            if ($existing) {
+                // A paid invoice is immutable. Force may rebuild its document, but
+                // must never silently rewrite settled financial values.
+                if (!$existing->isPaid()) {
+                    $existing->fill($this->buildInvoiceAttributes($lockedBooking));
+                    $existing->updated_user_id = auth()->id();
+                    $existing->save();
+                }
+                $invoice = $existing->fresh();
+            } else {
+                $invoice = $this->createInvoiceRecord($lockedBooking);
+            }
+
+            // A re-issued invoice after a void must replace the stale booking link.
+            if ($lockedBooking->invoice_number !== $invoice->invoice_number) {
+                $lockedBooking->update(['invoice_number' => $invoice->invoice_number]);
+            }
+
+            return [$invoice, $lockedBooking, true];
+        }, 3);
+
+        if ($regeneratePdf) {
+            $this->generateAndStorePdf($invoice, $invoiceBooking);
+
+            Log::info('Invoice generated', [
+                'invoice_id'     => $invoice->id,
+                'invoice_number' => $invoice->invoice_number,
+                'booking_id'     => $invoiceBooking->id,
+            ]);
         }
 
-        $booking->loadMissing([
-            'customer.user',
-            'bookingItems.serviceType',
-            'bookingItems.vehicle.group',
-            'bookingItems.driver.user',
-            'bookingAddons.addon',
-            'bookingCommonRatePricings',
-        ]);
-
-        $invoice = $this->createInvoiceRecord($booking);
-
-        $this->generateAndStorePdf($invoice, $booking);
-
-        // Back-fill invoice_number on the booking itself
-        if (!$booking->invoice_number) {
-            $booking->update(['invoice_number' => $invoice->invoice_number]);
-        }
-
-        Log::info('Invoice generated', [
-            'invoice_id'     => $invoice->id,
-            'invoice_number' => $invoice->invoice_number,
-            'booking_id'     => $booking->id,
-        ]);
-
-        return $invoice;
+        return $invoice->fresh();
     }
 
     /**
-     * Send the invoice to the customer by email.
+     * Send only after the surrounding transaction commits. Delivery is claimed
+     * atomically so completion retries cannot send the same invoice twice.
      */
     public function sendToCustomer(Invoice $invoice): void
     {
-        $booking = $invoice->booking ?? Booking::find($invoice->booking_id);
+        $invoiceId = (string) $invoice->getKey();
+
+        DB::afterCommit(function () use ($invoiceId): void {
+            $this->deliverToCustomer($invoiceId);
+        });
+    }
+
+    private function deliverToCustomer(string $invoiceId): void
+    {
+        $invoice = Invoice::find($invoiceId);
+        if (!$invoice || $invoice->isVoid() || $invoice->email_sent_at) {
+            return;
+        }
 
         if (!$invoice->customer_email) {
             Log::warning('Invoice email skipped — no customer email', ['invoice_id' => $invoice->id]);
+            return;
+        }
+
+        $claimedAt = Carbon::now('UTC');
+        $claimAcquired = Invoice::query()
+            ->whereKey($invoice->id)
+            ->whereNull('email_sent_at')
+            ->where(function ($query) use ($claimedAt) {
+                $query->whereNull('email_sending_at')
+                    ->orWhere('email_sending_at', '<', $claimedAt->copy()->subMinutes(15));
+            })
+            ->update([
+                'email_sending_at' => $claimedAt,
+                'email_attempts' => DB::raw('email_attempts + 1'),
+                'email_last_error' => null,
+            ]);
+
+        if ($claimAcquired !== 1) {
+            return;
+        }
+
+        $invoice = Invoice::findOrFail($invoice->id);
+        $booking = $invoice->booking ?? Booking::find($invoice->booking_id);
+        if (!$booking) {
+            $this->releaseFailedDeliveryClaim($invoice, 'Booking not found for invoice delivery.');
             return;
         }
 
@@ -89,6 +152,12 @@ class InvoiceService
                 new InvoiceMail($invoice, $booking, $pdfPath, $this->contractualDistanceBreakdowns($booking))
             );
 
+            $invoice->update([
+                'email_sent_at' => Carbon::now('UTC'),
+                'email_sending_at' => null,
+                'email_last_error' => null,
+            ]);
+
             Log::info('Invoice email sent', [
                 'invoice_id' => $invoice->id,
                 'to'         => $invoice->customer_email,
@@ -98,6 +167,8 @@ class InvoiceService
                 $this->notifyInvoiceSent($booking, $invoice);
             }
         } catch (\Throwable $e) {
+            $this->releaseFailedDeliveryClaim($invoice, $e->getMessage());
+
             Log::error('Invoice email failed', [
                 'invoice_id' => $invoice->id,
                 'error'      => $e->getMessage(),
@@ -105,13 +176,42 @@ class InvoiceService
         }
     }
 
+    private function releaseFailedDeliveryClaim(Invoice $invoice, string $error): void
+    {
+        Invoice::whereKey($invoice->id)->update([
+            'email_sending_at' => null,
+            'email_last_error' => Str::limit($error, 2000, ''),
+        ]);
+    }
+
     /**
      * Generate + send in one call (called from booking completion hook).
      */
-    public function generateAndSend(Booking $booking, bool $force = false): Invoice
+    public function generateAndSend(Booking $booking, bool $force = false): ?Invoice
     {
+        if (DB::transactionLevel() > 0) {
+            $bookingId = (string) $booking->getKey();
+            DB::afterCommit(function () use ($bookingId, $force): void {
+                try {
+                    $committedBooking = Booking::findOrFail($bookingId);
+                    $invoice = $this->generateForBooking($committedBooking, $force);
+                    $this->deliverToCustomer((string) $invoice->getKey());
+                } catch (\Throwable $exception) {
+                    Log::error('Post-commit invoice generation or delivery failed', [
+                        'booking_id' => $bookingId,
+                        'error' => $exception->getMessage(),
+                    ]);
+                }
+            });
+
+            return Invoice::where('booking_id', $bookingId)
+                ->where('status', '!=', 'void')
+                ->latest()
+                ->first();
+        }
+
         $invoice = $this->generateForBooking($booking, $force);
-        $this->sendToCustomer($invoice);
+        $this->deliverToCustomer((string) $invoice->getKey());
         return $invoice;
     }
 
@@ -175,6 +275,19 @@ class InvoiceService
 
     private function createInvoiceRecord(Booking $booking): Invoice
     {
+        return Invoice::create(array_merge(
+            $this->buildInvoiceAttributes($booking),
+            [
+                'invoice_number' => $this->generateInvoiceNumber(),
+                'status' => 'issued',
+                'created_user_id' => auth()->id(),
+            ]
+        ));
+    }
+
+    /** @return array<string, mixed> */
+    private function buildInvoiceAttributes(Booking $booking): array
+    {
         $currency = $booking->currency
             ?? WebsiteSetting::getValue('default_currency', config('booking.default_currency', 'LKR'));
 
@@ -193,8 +306,7 @@ class InvoiceService
 
         $dueDays = (int) (WebsiteSetting::getValue('invoice_due_days', 7) ?? 7);
 
-        return Invoice::create([
-            'invoice_number'  => $this->generateInvoiceNumber(),
+        return [
             'booking_id'      => $booking->id,
             'customer_id'     => $booking->customer_id,
             'customer_name'   => $fullName,
@@ -207,13 +319,11 @@ class InvoiceService
             'tax_amount'      => $taxAmount,
             'total_amount'    => $totalAmount,
             'line_items'      => $lineItems,
-            'status'          => 'issued',
             'issue_date'      => Carbon::today(),
             'due_date'        => $dueDays > 0 ? Carbon::today()->addDays($dueDays) : null,
             'payment_terms'   => WebsiteSetting::getValue('invoice_payment_terms'),
             'notes'           => WebsiteSetting::getValue('invoice_notes'),
-            'created_user_id' => auth()->id(),
-        ]);
+        ];
     }
 
     /**

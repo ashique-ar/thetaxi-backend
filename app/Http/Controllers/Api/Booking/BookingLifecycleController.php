@@ -202,10 +202,12 @@ class BookingLifecycleController extends Controller
                 'trace' => $e->getTraceAsString()
             ]);
 
+            $statusCode = $e instanceof \DomainException || $e instanceof \InvalidArgumentException ? 422 : 500;
+
             return response()->json([
                 'status' => 'error',
                 'message' => 'Failed to process return: ' . $e->getMessage()
-            ], 500);
+            ], $statusCode);
         }
     }
 
@@ -217,12 +219,6 @@ class BookingLifecycleController extends Controller
         $request->validate([
             'booking_id' => 'required|string',
             'booking_item_id' => 'nullable|string',
-            'actual_start_time' => 'nullable|date',
-            'actual_return_time' => 'nullable|date',
-            'actual_distance' => 'nullable|numeric|min:0',
-            'distance_km' => 'nullable|numeric|min:0',
-            'waiting_minutes' => 'nullable|integer|min:0',
-            'activity_source' => 'nullable|string|in:customer_mobile,driver_mobile,system_return,system_completion',
             'inspector_id' => 'nullable|exists:users,id',
         ]);
 
@@ -339,14 +335,7 @@ class BookingLifecycleController extends Controller
 
             $qc = $this->lifecycleService->completeRepairs(
                 $request->booking_id,
-                array_merge($request->only([
-                    'actual_start_time',
-                    'actual_return_time',
-                    'actual_distance',
-                    'distance_km',
-                    'waiting_minutes',
-                    'activity_source',
-                ]), ['completed_by' => Auth::id()]),
+                ['completed_by' => Auth::id()],
                 $request->input('booking_item_id')
             );
 
@@ -381,6 +370,14 @@ class BookingLifecycleController extends Controller
         $request->validate([
             'booking_id' => 'required|string',
             'booking_item_id' => 'nullable|string',
+            'actual_start_time' => 'nullable|date',
+            'actual_return_time' => 'nullable|date',
+            'actual_distance' => 'nullable|numeric|min:0',
+            'distance_km' => 'nullable|numeric|min:0',
+            'waiting_minutes' => 'nullable|integer|min:0',
+            'charges' => 'nullable|array',
+            'charges.*.amount' => 'required_with:charges|numeric|min:0',
+            'activity_source' => 'nullable|string|in:customer_mobile,driver_mobile,system_return,system_completion',
         ]);
 
         try {
@@ -388,9 +385,15 @@ class BookingLifecycleController extends Controller
 
             $result = $this->lifecycleService->completeBooking(
                 $request->booking_id,
-                [
-                    'completed_by' => Auth::id()
-                ],
+                array_merge($request->only([
+                    'actual_start_time',
+                    'actual_return_time',
+                    'actual_distance',
+                    'distance_km',
+                    'waiting_minutes',
+                    'charges',
+                    'activity_source',
+                ]), ['completed_by' => Auth::id()]),
                 $request->input('booking_item_id')
             );
 
@@ -415,10 +418,12 @@ class BookingLifecycleController extends Controller
                 'trace' => $e->getTraceAsString()
             ]);
 
+            $statusCode = $e instanceof \DomainException || $e instanceof \InvalidArgumentException ? 422 : 500;
+
             return response()->json([
                 'status' => 'error',
                 'message' => 'Failed to complete booking: ' . $e->getMessage()
-            ], 500);
+            ], $statusCode);
         }
     }
 

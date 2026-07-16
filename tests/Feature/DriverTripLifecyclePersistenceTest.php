@@ -7,6 +7,7 @@ use App\Models\Driver\RoutePoint;
 use App\Models\DriverAssignment;
 use App\Models\DriverAssignmentStop;
 use App\Models\Booking\Booking;
+use App\Models\Booking\BookingDispatch;
 use App\Models\Booking\BookingItem;
 use App\Models\Corporate\CorporateDistancePricingPolicy;
 use App\Services\AssignmentService;
@@ -261,10 +262,14 @@ beforeEach(function () {
         'waiting_period_count' => 0,
     ]);
     $waiting->shouldReceive('closeOpenWaitingRecords')->byDefault();
-    $this->tripService = new TripTrackingService(
-        $waiting,
-        Mockery::mock(BookingLifecycleService::class),
+    $this->bookingLifecycle = Mockery::mock(BookingLifecycleService::class);
+    $this->bookingLifecycle->shouldReceive('processReturn')->byDefault()->andReturnUsing(
+        fn (string $bookingId) => BookingDispatch::where('booking_id', $bookingId)->firstOrFail()
     );
+    $this->bookingLifecycle->shouldReceive('completeBooking')->byDefault()->andReturnUsing(
+        fn (string $bookingId) => Booking::findOrFail($bookingId)
+    );
+    $this->tripService = new TripTrackingService($waiting, $this->bookingLifecycle);
     $this->assignmentService = new MobileAssignmentService(
         Mockery::mock(NotificationTriggerService::class),
         $this->tripService,
@@ -660,6 +665,81 @@ it('persists actual completion and route distance once without a pricing owner',
         ->and((float) $completed->final_longitude)->toBe(79.85)
         ->and((float) $completed->total_distance_km)->toBeGreaterThan(0)
         ->and($retry['total_distance_km'])->toBe($summary['total_distance_km']);
+});
+
+it('uses lifecycle final pricing as the single open package charge owner', function () {
+    $booking = Booking::create([
+        'status' => 'confirmed',
+        'total_estimated' => 100,
+        'currency' => 'LKR',
+    ]);
+    $item = BookingItem::create([
+        'booking_id' => $booking->id,
+        'metadata' => [
+            'trip_mode' => 'open_package',
+            'included_km' => 0,
+            'extra_km_rate' => 100,
+            'included_minutes' => 0,
+            'extra_hour_rate' => 100,
+        ],
+        'unit_price' => 100,
+        'total_price' => 100,
+    ]);
+    DB::table('booking_dispatches')->insert([
+        'id' => 'dispatch-single-price-owner',
+        'booking_id' => $booking->id,
+        'dispatch_status' => 'dispatched',
+        'dispatched_at' => now()->subHours(2),
+    ]);
+    $dispatch = \App\Models\Booking\BookingDispatch::findOrFail('dispatch-single-price-owner');
+    $driver = Driver::create(['code' => 'OPEN-PACKAGE-OWNER']);
+    $assignment = DriverAssignment::create([
+        'driver_id' => $driver->id,
+        'booking_id' => $booking->id,
+        'booking_item_id' => $item->id,
+        'trip_phase' => TripPhase::IN_PROGRESS,
+        'trip_started_at' => now()->subHours(2),
+        'status' => 'active',
+    ]);
+    RoutePoint::create([
+        'assignment_id' => $assignment->id,
+        'latitude' => 6.90,
+        'longitude' => 79.80,
+        'recorded_at' => now()->subMinute(),
+    ]);
+    RoutePoint::create([
+        'assignment_id' => $assignment->id,
+        'latitude' => 6.95,
+        'longitude' => 79.85,
+        'recorded_at' => now(),
+    ]);
+
+    $this->bookingLifecycle
+        ->shouldReceive('processReturn')
+        ->once()
+        ->withArgs(fn (string $bookingId, array $payload) => $bookingId === $booking->id
+            && $payload['booking_item_id'] === $item->id
+            && $payload['completed_by_driver'] === true)
+        ->andReturnUsing(function () use ($item, $booking, $dispatch) {
+            $audit = ['status' => 'calculated', 'final_base' => 150.0];
+            $item->update([
+                'unit_price' => 150,
+                'total_price' => 150,
+                'pricing_breakdown' => ['final_pricing' => ['audit' => $audit]],
+            ]);
+            $booking->update(['total_actual' => 150]);
+
+            return $dispatch;
+        });
+
+    $summary = $this->tripService->endTrip($assignment, [
+        'latitude' => 6.95,
+        'longitude' => 79.85,
+    ]);
+
+    expect((float) $item->fresh()->total_price)->toBe(150.0)
+        ->and(data_get($item->fresh()->pricing_breakdown, 'open_package_final'))->toBeNull()
+        ->and((float) $summary['package_charges']['final_base'])->toBe(150.0);
 });
 
 it('preserves the enabled contractual snapshot through the full operational lifecycle', function () {

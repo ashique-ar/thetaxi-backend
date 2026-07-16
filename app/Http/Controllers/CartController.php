@@ -600,6 +600,7 @@ class CartController extends Controller
                         'max_km_per_day' => (float) $servicePackage->max_km_per_day,
                         'max_km_per_package' => (float) $servicePackage->max_km_per_package,
                         'default_duration_hours' => (int) $servicePackage->default_duration_hours,
+                        'default_duration_minutes' => (int) $servicePackage->default_duration_minutes,
                     ];
                 }
             }

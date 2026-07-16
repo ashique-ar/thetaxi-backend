@@ -7,6 +7,7 @@ use App\Models\Booking\BookingItem;
 use App\Models\Booking\BookingDispatch;
 use App\Models\Booking\BookingQC;
 use App\Models\DriverAssignment;
+use App\Models\Vehicle\VehiclePricing\VehiclePricingCalculationDefinition;
 use App\Models\Vehicle\Vehicle;
 use App\Services\Driver\NotificationTriggerService;
 use App\Models\AuditLog;
@@ -654,6 +655,7 @@ class BookingLifecycleService
         return DB::transaction(function () use ($bookingId, $returnData) {
             $booking = Booking::with(['dispatch', 'bookingItems'])->findOrFail($bookingId);
             $this->assertReturnStageAvailable($booking);
+            $this->assertItemSafeLifecycle($booking, $returnData['booking_item_id'] ?? null);
             $context = $this->resolveLifecycleContext($booking, $returnData['booking_item_id'] ?? null);
             $dispatch = $booking->dispatch;
             $fromStatus = $booking->getLifecycleStatus();
@@ -928,7 +930,8 @@ class BookingLifecycleService
     public function completeBooking(string $bookingId, array $completionData = [], ?string $bookingItemId = null): Booking
     {
         return DB::transaction(function () use ($bookingId, $completionData, $bookingItemId) {
-            $booking = Booking::with('dispatch')->findOrFail($bookingId);
+            $booking = Booking::with(['dispatch', 'bookingItems'])->findOrFail($bookingId);
+            $this->assertItemSafeLifecycle($booking, $bookingItemId);
             $context = $this->resolveLifecycleContext($booking, $bookingItemId);
             $workflowSettings = $this->getLifecycleWorkflowSettings();
             $fromStatus = $booking->getLifecycleStatus();
@@ -1131,7 +1134,13 @@ class BookingLifecycleService
             ? max(0, (int) ceil($startedAt->diffInSeconds($completedAt) / 60))
             : (int) ($booking->actual_duration
                 ?? data_get($booking->duration_metrics, 'actual_minutes')
+                ?? $bookingItem->duration_minutes
                 ?? (($bookingItem->duration_hours ?? 0) * 60));
+        $hasDurationSource = $startedAt !== null
+            || $booking->actual_duration !== null
+            || data_get($booking->duration_metrics, 'actual_minutes') !== null
+            || (int) ($bookingItem->duration_minutes ?? 0) > 0
+            || (int) ($bookingItem->duration_hours ?? 0) > 0;
 
         $distanceKm = null;
         if ($hasDriverTelemetry && $assignment->total_distance_km !== null) {
@@ -1166,10 +1175,22 @@ class BookingLifecycleService
             ? (int) ceil(((int) $assignment->total_waiting_time_seconds) / 60)
             : (int) ($activityData['waiting_minutes'] ?? data_get($booking->duration_metrics, 'waiting_minutes', 0));
         $metadata = is_array($bookingItem->metadata) ? $bookingItem->metadata : [];
-        $includedMinutes = (int) (
-            $metadata['included_minutes']
-            ?? (($metadata['included_hours'] ?? data_get($metadata, 'package_info.default_duration_hours') ?? 0) * 60)
-        );
+        $hasIncludedDuration = array_key_exists('included_minutes', $metadata)
+            || array_key_exists('included_hours', $metadata)
+            || data_get($metadata, 'package_info.default_duration_hours') !== null
+            || (int) ($bookingItem->duration_minutes ?? 0) > 0
+            || (int) ($bookingItem->duration_hours ?? 0) > 0;
+        if (array_key_exists('included_minutes', $metadata)) {
+            $includedMinutes = (int) $metadata['included_minutes'];
+        } elseif (array_key_exists('included_hours', $metadata)) {
+            $includedMinutes = (int) round((float) $metadata['included_hours'] * 60);
+        } elseif (data_get($metadata, 'package_info.default_duration_hours') !== null) {
+            $includedMinutes = (int) data_get($metadata, 'package_info.default_duration_hours', 0) * 60
+                + (int) data_get($metadata, 'package_info.default_duration_minutes', 0);
+        } else {
+            $includedMinutes = (int) ($bookingItem->duration_minutes
+                ?? ((int) ($bookingItem->duration_hours ?? 0) * 60));
+        }
         $extraMinutes = max(0, $durationMinutes - $includedMinutes);
 
         $params = [
@@ -1178,12 +1199,14 @@ class BookingLifecycleService
             'vehicle_id' => $bookingItem->vehicle_id ?: $context['vehicle_id'],
             'corporate_account_id' => $booking->corporate_account_id,
             'package_id' => $metadata['service_package_id'] ?? $metadata['package_id'] ?? null,
+            'customer_id' => $booking->customer_id,
+            'from_date' => $bookingItem->from_date ?? $booking->from_date,
+            'to_date' => $bookingItem->to_date ?? $booking->to_date,
+            'from_time' => $bookingItem->from_time ?? $booking->from_time,
+            'to_time' => $bookingItem->to_time ?? $booking->to_time,
             'duration_hours' => $durationMinutes / 60,
             'duration_minutes' => $durationMinutes,
             'duration_days' => $durationMinutes >= 1440 ? (int) ceil($durationMinutes / 1440) : 0,
-            'journey_distance' => (float) ($distanceKm ?? 0),
-            'total_distance' => (float) ($distanceKm ?? 0),
-            'actual_distance' => (float) ($distanceKm ?? 0),
             'extra_minutes' => $extraMinutes,
             'extra_hours' => $extraMinutes / 60,
             'overtime_minutes' => $extraMinutes,
@@ -1192,6 +1215,18 @@ class BookingLifecycleService
             'waiting_hours' => $waitingMinutes / 60,
             'mode' => 'final_calculation',
         ];
+        if ($distanceKm !== null) {
+            $params += [
+                'journey_distance' => (float) $distanceKm,
+                'total_distance' => (float) $distanceKm,
+                'actual_distance' => (float) $distanceKm,
+            ];
+        }
+
+        $activeDefinitions = VehiclePricingCalculationDefinition::query()
+            ->where('service_type_id', $bookingItem->service_type_id)
+            ->where('status', 'active')
+            ->get(['id', 'variables', 'formula']);
 
         $result = $this->bookingFlowService->calculateDynamicPricing($params);
         $definitionId = data_get($result, 'pricing_scope.calculation_definition_id')
@@ -1207,18 +1242,54 @@ class BookingLifecycleService
             'contractual_distance_preserved' => $contractualDistance,
             'inputs' => [
                 'duration_minutes' => $durationMinutes,
-                'distance_km' => round((float) ($distanceKm ?? 0), 2),
+                'distance_km' => $distanceKm !== null ? round((float) $distanceKm, 2) : null,
                 'waiting_minutes' => $waitingMinutes,
                 'extra_minutes' => $extraMinutes,
             ],
         ];
 
         if (!$definitionId) {
+            if ($activeDefinitions->isNotEmpty()) {
+                throw new \DomainException(
+                    'Final pricing could not resolve an active calculation definition. Completion was stopped to prevent an incorrect invoice.'
+                );
+            }
             $audit['reason'] = 'no_active_calculation_definition';
             $bookingItem->update([
                 'metadata' => array_merge($metadata, ['final_pricing_audit' => $audit]),
             ]);
             return $audit;
+        }
+
+        $selectedDefinition = $activeDefinitions->firstWhere('id', $definitionId);
+        $selectedFormula = (string) ($selectedDefinition?->formula ?? '');
+        $formulaUsesAny = static function (array $names) use ($selectedFormula): bool {
+            foreach ($names as $name) {
+                if (preg_match('/(?<![A-Za-z0-9_])' . preg_quote($name, '/') . '(?![A-Za-z0-9_])/', $selectedFormula)) {
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        if (!$contractualDistance && $distanceKm === null && $formulaUsesAny([
+            'journey_distance', 'total_distance', 'actual_distance', 'distance_km', 'extra_km',
+        ])) {
+            throw new \DomainException(
+                'Final distance is required by the selected pricing definition. Completion was stopped until mileage or measured distance is supplied.'
+            );
+        }
+        if (!$hasDurationSource && $formulaUsesAny(['duration_minutes', 'duration_hours', 'duration_days'])) {
+            throw new \DomainException(
+                'Final duration is required by the selected pricing definition. Completion was stopped until start and return times are supplied.'
+            );
+        }
+        if (!$hasIncludedDuration && $formulaUsesAny([
+            'extra_minutes', 'extra_hours', 'overtime_minutes', 'overtime_hours',
+        ])) {
+            throw new \DomainException(
+                'Included package duration is missing. Completion was stopped to prevent all trip time from being charged as overtime.'
+            );
         }
 
         $manualCharges = $this->sumOperationalCharges($dispatch?->additional_charges ?? ($activityData['charges'] ?? []));
@@ -1243,8 +1314,7 @@ class BookingLifecycleService
         ]);
 
         $booking->load('bookingItems');
-        $booking->update([
-            'actual_distance' => round((float) ($distanceKm ?? 0), 2),
+        $bookingUpdates = [
             'actual_duration' => $durationMinutes,
             'base_amount' => round((float) $booking->bookingItems->sum('total_price'), 2),
             'total_actual' => round($booking->calculateTotal(), 2),
@@ -1256,13 +1326,17 @@ class BookingLifecycleService
             ]),
             'distance_metrics' => array_merge(is_array($booking->distance_metrics) ? $booking->distance_metrics : [], [
                 'source' => $source,
-                'actual_km' => round((float) ($distanceKm ?? 0), 2),
+                'actual_km' => $distanceKm !== null ? round((float) $distanceKm, 2) : null,
                 'pricing_effect' => $contractualDistance ? 'contractual_distance_preserved' : 'final_recalculation',
             ]),
             'pricing_snapshot' => array_merge(is_array($booking->pricing_snapshot) ? $booking->pricing_snapshot : [], [
                 'final_pricing' => $audit,
             ]),
-        ]);
+        ];
+        if ($distanceKm !== null) {
+            $bookingUpdates['actual_distance'] = round((float) $distanceKm, 2);
+        }
+        $booking->update($bookingUpdates);
 
         return $audit;
     }
@@ -1281,6 +1355,17 @@ class BookingLifecycleService
                 ? (float) $charge
                 : (float) ($charge['amount'] ?? $charge['total'] ?? $charge['value'] ?? 0);
         }), 2);
+    }
+
+    private function assertItemSafeLifecycle(Booking $booking, ?string $bookingItemId): void
+    {
+        if ($booking->bookingItems->count() <= 1) {
+            return;
+        }
+
+        throw new \DomainException(
+            'Multi-item completion requires item-level dispatch and invoice ownership. Completion was stopped to prevent invoicing unfinished trips.'
+        );
     }
 
     private function buildFinalCalculationExample(array $result, float $manualCharges, float $lateFee, float $finalBase): array
