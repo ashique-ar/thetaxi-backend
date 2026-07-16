@@ -186,7 +186,7 @@ class AuthController extends Controller
                 'status' => 'success',
                 'message' => 'Token refreshed successfully',
                 'data' => [
-                    'tokens' => $tokens
+                    'token' => $tokens
                 ]
             ]);
         } catch (\Exception $e) {

@@ -310,7 +310,7 @@ it('fails and rolls back when corporate and shared definitions cannot be merged 
             ->pluck('name')->all())->toContain('unique_common_rate_definition_code_owner');
 });
 
-it('preflights competing corporate calculation formulas before changing ownership', function (): void {
+it('globalizes multiple active calculation formulas for deterministic runtime orchestration', function (): void {
     $now = now();
     $first = pricingCalculationDefinition(
         'calculation-corporate-one',
@@ -320,6 +320,7 @@ it('preflights competing corporate calculation formulas before changing ownershi
         $now,
     );
     $first['name'] = 'Corporate Distance One';
+    $first['priority'] = 20;
 
     $second = pricingCalculationDefinition(
         'calculation-corporate-two',
@@ -330,15 +331,23 @@ it('preflights competing corporate calculation formulas before changing ownershi
     );
     $second['name'] = 'Corporate Distance Two';
     $second['formula'] = '(extra_km_rate * extra_km) + 100';
+    $second['priority'] = 10;
 
     DB::table('vehicle_pricing_calculation_definitions')->insert([$first, $second]);
 
-    expect(fn () => pricingOwnershipMigration()->up())
-        ->toThrow(RuntimeException::class, 'competing active global formulas');
+    pricingOwnershipMigration()->up();
 
     expect(DB::table('vehicle_pricing_calculation_definitions')
-        ->whereNotNull('owner_type')
-        ->count())->toBe(2);
+        ->whereNull('owner_type')
+        ->whereNull('owner_id')
+        ->where('status', 'active')
+        ->count())->toBe(2)
+        ->and(DB::table('vehicle_pricing_calculation_definitions')
+            ->where('id', 'calculation-corporate-one')
+            ->value('priority'))->toBe(20)
+        ->and(DB::table('vehicle_pricing_calculation_definitions')
+            ->where('id', 'calculation-corporate-two')
+            ->value('priority'))->toBe(10);
 });
 
 it('rejects owner-conditioned calculation definitions instead of globalizing them', function (): void {

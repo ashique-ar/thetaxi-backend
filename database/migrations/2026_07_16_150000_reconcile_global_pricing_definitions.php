@@ -236,54 +236,11 @@ return new class extends Migration
             }
         }
 
-        foreach ($prepared->groupBy('service_type_id') as $serviceTypeId => $serviceRows) {
-            $globalActiveIdentities = $serviceRows
-                ->filter(fn (object $row): bool => $this->isGlobal($row) && $row->status === 'active')
-                ->map(fn (object $row): string => $this->calculationIdentity($row))
-                ->unique();
-            $ownedActiveIdentities = $serviceRows
-                ->filter(fn (object $row): bool => !$this->isGlobal($row) && $row->status === 'active')
-                ->map(fn (object $row): string => $this->calculationIdentity($row))
-                ->unique();
-
-            if ($ownedActiveIdentities->diff($globalActiveIdentities)->isEmpty()) {
-                continue;
-            }
-
-            $activeCandidates = $serviceRows
-                ->filter(fn (object $row): bool => $row->status === 'active')
-                ->unique(fn (object $row): string => $this->calculationIdentity($row))
-                ->values();
-
-            if ($activeCandidates->count() < 2) {
-                continue;
-            }
-
-            $conditionGroups = $activeCandidates->groupBy(
-                fn (object $row): string => $this->normalizedJson($row->conditions, $row->id, 'conditions')
-            );
-            $hasUnconditional = $activeCandidates->contains(
-                fn (object $row): bool => $this->conditionsAreEmpty($row)
-            );
-            $hasDuplicateConditions = $conditionGroups->contains(fn (Collection $group): bool => $group->count() > 1);
-
-            if ($hasUnconditional || $hasDuplicateConditions) {
-                throw new RuntimeException(
-                    "Unsafe calculation definition conflict for service {$serviceTypeId}: corporate definitions would create competing active global formulas."
-                );
-            }
-        }
-    }
-
-    private function conditionsAreEmpty(object $row): bool
-    {
-        if ($row->conditions === null) {
-            return true;
-        }
-
-        $conditions = $this->decodeJson($row->conditions, $row->id, 'conditions');
-
-        return $conditions === [] || $conditions === null;
+        // Multiple active definitions are a supported runtime contract. The
+        // orchestrator evaluates them deterministically by priority and then
+        // applies their conditions, allowing scenario formulas and fallbacks.
+        // Globalizing an owned definition must therefore not reject it merely
+        // because another active formula exists for the service.
     }
 
     private function containsOwnerSpecificCondition(object $row): bool
