@@ -6,7 +6,7 @@ use App\Models\BaseModel;
 use App\Traits\UUID;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 
 /**
  * Vehicle Grade Model
@@ -74,8 +74,13 @@ class VehicleGrade extends BaseModel
     /**
      * Get all vehicles with this grade.
      */
-    public function vehicles(): HasMany
+    public function vehicles(): HasManyThrough
     {
-        return $this->hasMany(Vehicle::class, 'vehicle_grade_id');
+        return $this->hasManyThrough(
+            Vehicle::class,
+            VehicleGroup::class,
+            'grade_id',
+            'vehicle_group_id'
+        );
     }
 }

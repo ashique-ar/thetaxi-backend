@@ -65,6 +65,11 @@ class VehicleCategory extends BaseModel
      */
     public function vehicles()
     {
-        return $this->hasMany(Vehicle::class, 'category_id');
+        return $this->hasManyThrough(
+            Vehicle::class,
+            VehicleGroup::class,
+            'category_id',
+            'vehicle_group_id'
+        );
     }
 }

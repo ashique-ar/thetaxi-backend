@@ -65,6 +65,11 @@ class VehicleFuelType extends BaseModel
      */
     public function vehicles()
     {
-        return $this->hasMany(Vehicle::class, 'fuel_type_id');
+        return $this->hasManyThrough(
+            Vehicle::class,
+            VehicleGroup::class,
+            'fuel_type_id',
+            'vehicle_group_id'
+        );
     }
 }

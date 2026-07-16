@@ -64,6 +64,11 @@ class VehicleTransmission extends BaseModel
      */
     public function vehicles()
     {
-        return $this->hasMany(Vehicle::class, 'transmission_id');
+        return $this->hasManyThrough(
+            Vehicle::class,
+            VehicleGroup::class,
+            'transmission_id',
+            'vehicle_group_id'
+        );
     }
 }
