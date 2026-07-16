@@ -168,12 +168,14 @@ $type = $section['type'] ?? '';
         border-radius: 16px;
         padding: 32px;
         box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
-        margin-top: -227.5px;
+        margin-top: 0;
     }
 
     .inquiry-form-card-wrap {
         width: min(100%, 760px);
         margin-left: auto;
+        margin-bottom: -227.5px;
+        transform: translateY(-227.5px);
     }
 
     .inquiry-form-copy {
@@ -291,20 +293,23 @@ $type = $section['type'] ?? '';
     }
 
     @media (min-width: 1400px) and (max-width: 1599px) {
-        .inquiry-form-card {
-            margin-top: -197.5px;
+        .inquiry-form-card-wrap {
+            margin-bottom: -197.5px;
+            transform: translateY(-197.5px);
         }
     }
 
     @media (min-width: 1200px) and (max-width: 1399px) {
-        .inquiry-form-card {
-            margin-top: -192.5px;
+        .inquiry-form-card-wrap {
+            margin-bottom: -192.5px;
+            transform: translateY(-192.5px);
         }
     }
 
     @media (min-width: 992px) and (max-width: 1199px) {
-        .inquiry-form-card {
-            margin-top: -190px;
+        .inquiry-form-card-wrap {
+            margin-bottom: -190px;
+            transform: translateY(-190px);
         }
     }
 
@@ -321,6 +326,8 @@ $type = $section['type'] ?? '';
 
         .inquiry-form-card-wrap {
             margin-left: 0;
+            margin-bottom: 0;
+            transform: none;
         }
 
         .inquiry-form-copy {
