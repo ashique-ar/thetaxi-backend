@@ -159,7 +159,7 @@ $type = $section['type'] ?? '';
     .inquiry-form-block {
         position: relative;
         z-index: 12;
-        margin-top: -187.5px;
+        margin-top: 40px;
         margin-bottom: 80px;
     }
 
@@ -168,6 +168,7 @@ $type = $section['type'] ?? '';
         border-radius: 16px;
         padding: 32px;
         box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+        margin-top: -227.5px;
     }
 
     .inquiry-form-card .filter-input-wrap .filter-input.show {
@@ -280,20 +281,20 @@ $type = $section['type'] ?? '';
     }
 
     @media (min-width: 1400px) and (max-width: 1599px) {
-        .inquiry-form-block {
-            margin-top: -157.5px;
+        .inquiry-form-card {
+            margin-top: -197.5px;
         }
     }
 
     @media (min-width: 1200px) and (max-width: 1399px) {
-        .inquiry-form-block {
-            margin-top: -152.5px;
+        .inquiry-form-card {
+            margin-top: -192.5px;
         }
     }
 
     @media (min-width: 992px) and (max-width: 1199px) {
-        .inquiry-form-block {
-            margin-top: -150px;
+        .inquiry-form-card {
+            margin-top: -190px;
         }
     }
 
@@ -305,6 +306,7 @@ $type = $section['type'] ?? '';
 
         .inquiry-form-card {
             padding: 24px;
+            margin-top: 0;
         }
     }
 
