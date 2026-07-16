@@ -76,9 +76,7 @@ class VehiclePricingCalculationDefinitionController extends Controller
             $query->where('service_type_id', $request->service_type_id);
         }
 
-        if ($request->filled('owner_type') || $request->boolean('global_only', false)) {
-            $query->whereNull('owner_type')->whereNull('owner_id');
-        }
+        $query->whereNull('owner_type')->whereNull('owner_id');
 
         if ($request->filled('status')) {
             $query->where('status', $request->status);
@@ -457,13 +455,12 @@ class VehiclePricingCalculationDefinitionController extends Controller
             // Get vehicle group specific common rate pricing
             $vehicleGroupCommonRates = VehicleGroupCommonRatePricing::where('vehicle_group_id', $vehicleGroupId)
                 ->where('is_active', true)
-                ->whereHas('commonRateDefinition', function ($query) use ($serviceTypeId, $ownerType, $ownerId) {
+                ->whereHas('commonRateDefinition', function ($query) use ($serviceTypeId) {
                     $query->where('is_active', true)
                           ->where(function ($serviceQuery) use ($serviceTypeId) {
                               $serviceQuery->where('service_type_id', $serviceTypeId)
                                   ->orWhereNull('service_type_id');
                           });
-                    $this->applyOwnerScope($query, $ownerType, $ownerId);
                 })
                 ->tap(fn ($query) => $this->applyOwnerScope($query, $ownerType, $ownerId))
                 ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $ownerType, $ownerId))
@@ -784,8 +781,6 @@ class VehiclePricingCalculationDefinitionController extends Controller
             // Get all slab definitions for the service type
             $slabDefinitions = VehiclePricingSlabDefinition::where('service_type_id', $request->service_type_id)
                 ->where('is_active', true)
-                ->tap(fn ($query) => $this->applyOwnerScope($query, $ownerType, $ownerId))
-                ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $ownerType, $ownerId))
                 ->orderByRaw("CASE WHEN type = 'minutes' THEN 0 ELSE 1 END")
                 ->orderBy('min_minutes')
                 ->orderBy('min_hours')
@@ -880,8 +875,6 @@ class VehiclePricingCalculationDefinitionController extends Controller
                     fn ($query) => $query->whereKey($request->input('calculation_definition_id')),
                     fn ($query) => $query->where('status', 'active')
                 )
-                ->tap(fn ($query) => $this->applyOwnerScope($query, $ownerType, $ownerId))
-                ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $ownerType, $ownerId))
                 ->orderByDesc('priority')
                 ->orderByDesc('created_at');
             $calculationDefinitions = $definitionQuery->get();
@@ -901,7 +894,7 @@ class VehiclePricingCalculationDefinitionController extends Controller
                 'owner_id' => $ownerId,
             ]));
 
-            // Match production: definitions are evaluated by owner and priority
+            // Match production: shared definitions are evaluated by priority
             // until one satisfies its conditions and all required inputs resolve.
             $calculationDefinition = null;
             $calculationResult = null;

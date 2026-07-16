@@ -5,6 +5,7 @@ namespace App\Models\Booking;
 use App\Models\BaseModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use App\Models\Booking\Booking;
 use App\Models\Vehicle\VehicleGroup;
 use App\Models\Vehicle\Vehicle;
@@ -48,6 +49,10 @@ class BookingItem extends BaseModel
         'currency',
         'exchange_rate',
         'status',
+        'returned_at',
+        'final_priced_at',
+        'completed_at',
+        'lifecycle_data',
         'requires_approval',
         'approved_at',
         'approved_by',
@@ -80,7 +85,11 @@ class BookingItem extends BaseModel
         'duration_hours' => 'integer',
         'duration_minutes' => 'integer',
         'requires_approval' => 'boolean',
-        'is_self_driven' => 'boolean'
+        'is_self_driven' => 'boolean',
+        'returned_at' => 'datetime',
+        'final_priced_at' => 'datetime',
+        'completed_at' => 'datetime',
+        'lifecycle_data' => 'array',
     ];
 
     /**
@@ -170,6 +179,14 @@ class BookingItem extends BaseModel
     public function customerMobileActivities(): HasMany
     {
         return $this->hasMany(BookingCustomerMobileActivity::class, 'booking_item_id');
+    }
+
+    /**
+     * The item-owned vehicle dispatch/return record.
+     */
+    public function dispatch(): HasOne
+    {
+        return $this->hasOne(BookingDispatch::class, 'booking_item_id');
     }
 
     /**

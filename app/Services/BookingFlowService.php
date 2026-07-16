@@ -3848,21 +3848,12 @@ class BookingFlowService
             $ownerType = !empty($params['corporate_account_id']) ? 'corporate' : null;
             $ownerId = $params['corporate_account_id'] ?? null;
 
-            // Get active calculation definition for this service type, preferring corporate-scoped pricing when present.
+            // Calculation structure is shared. Corporate ownership is applied
+            // only while resolving vehicle-group pricing values below.
             $calculationDefinitionQuery = VehiclePricingCalculationDefinition::where('service_type_id', $serviceTypeId)
-                ->where('status', 'active')
-                ->when($ownerType && $ownerId, function ($query) use ($ownerType, $ownerId) {
-                    $query->where(function ($scopeQuery) use ($ownerType, $ownerId) {
-                        $scopeQuery->where(function ($scoped) use ($ownerType, $ownerId) {
-                            $scoped->where('owner_type', $ownerType)->where('owner_id', $ownerId);
-                        })->orWhereNull('owner_type');
-                    });
-                }, function ($query) {
-                    $query->whereNull('owner_type')->whereNull('owner_id');
-                });
+                ->where('status', 'active');
 
             $calculationDefinitions = $calculationDefinitionQuery
-                ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $ownerType, $ownerId))
                 ->orderBy('priority', 'desc')
                 ->orderBy('created_at', 'desc')
                 ->get();
@@ -3953,9 +3944,9 @@ class BookingFlowService
             }
             $transformed = $this->transformCalculationResult($calculationResult, $params, $mode, $servicePackageInfo);
             $transformed['pricing_scope'] = [
-                'source' => $calculationDefinition->owner_type === 'corporate' ? 'corporate' : 'global',
-                'owner_type' => $calculationDefinition->owner_type,
-                'owner_id' => $calculationDefinition->owner_id,
+                'source' => 'global_definition',
+                'owner_type' => $ownerType,
+                'owner_id' => $ownerId,
                 'calculation_definition_id' => $calculationDefinition->id,
                 'calculation_definition_name' => $calculationDefinition->name,
             ];
@@ -4475,11 +4466,10 @@ class BookingFlowService
     {
         try {
             // Look up the extra_km_rate common rate definition for this service type
-            $commonRatePricing = VehicleGroupCommonRatePricing::whereHas('commonRateDefinition', function ($query) use ($serviceTypeId, $ownerType, $ownerId) {
+            $commonRatePricing = VehicleGroupCommonRatePricing::whereHas('commonRateDefinition', function ($query) use ($serviceTypeId) {
                 $query->where('code', 'extra_km_rate')
                     ->where('service_type_id', $serviceTypeId)
                     ->where('is_active', true);
-                $this->applyOwnerScopeToQuery($query, $ownerType, $ownerId);
             })
                 ->where('vehicle_group_id', $vehicleGroupId)
                 ->where('is_active', true)
@@ -4503,10 +4493,6 @@ class BookingFlowService
             $commonRateDefinition = VehiclePricingCommonRateDefinition::where('code', 'extra_km_rate')
                 ->where('service_type_id', $serviceTypeId)
                 ->where('is_active', true)
-                ->when($ownerType && $ownerId, function ($query) use ($ownerType, $ownerId) {
-                    $this->applyOwnerScopeToQuery($query, $ownerType, $ownerId);
-                }, fn ($query) => $query->whereNull('owner_type')->whereNull('owner_id'))
-                ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $ownerType, $ownerId))
                 ->orderBy('priority', 'desc')
                 ->first();
 
@@ -4542,11 +4528,10 @@ class BookingFlowService
             $normalizedCode = Str::lower($code);
 
             $commonRatePricing = VehicleGroupCommonRatePricing::with('commonRateDefinition')
-                ->whereHas('commonRateDefinition', function ($query) use ($serviceTypeId, $normalizedCode, $ownerType, $ownerId) {
+                ->whereHas('commonRateDefinition', function ($query) use ($serviceTypeId, $normalizedCode) {
                     $query->whereRaw('LOWER(code) = ?', [$normalizedCode])
                         ->where('service_type_id', $serviceTypeId)
                         ->where('is_active', true);
-                    $this->applyOwnerScopeToQuery($query, $ownerType, $ownerId);
                 })
                 ->where('vehicle_group_id', $vehicleGroupId)
                 ->where('is_active', true)

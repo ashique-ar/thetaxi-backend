@@ -122,6 +122,44 @@ class BookingLifecycleService
         ];
     }
 
+    /**
+     * Resolve the dispatch owned by the selected booking item. A null-item
+     * legacy dispatch remains a supported fallback for a single-item booking,
+     * but is never guessed for a multi-item booking.
+     */
+    private function resolveItemDispatch(Booking $booking, array $context, bool $lock = false): ?BookingDispatch
+    {
+        $query = BookingDispatch::query()
+            ->where('booking_id', $booking->id)
+            ->whereNull('deleted_at');
+
+        if ($lock) {
+            $query->lockForUpdate();
+        }
+
+        $bookingItemId = $context['booking_item_id'] ?? null;
+        if ($bookingItemId) {
+            $itemDispatch = (clone $query)
+                ->where('booking_item_id', $bookingItemId)
+                ->first();
+            if ($itemDispatch) {
+                return $itemDispatch;
+            }
+        }
+
+        if ($booking->bookingItems->count() <= 1) {
+            return (clone $query)->whereNull('booking_item_id')->first();
+        }
+
+        if ((clone $query)->whereNull('booking_item_id')->exists()) {
+            throw new \DomainException(
+                'A legacy booking-level dispatch cannot be assigned automatically to a multi-item booking. Select or create the item dispatch explicitly.'
+            );
+        }
+
+        return null;
+    }
+
     // ========================
     // INQUIRY STAGE
     // ========================
@@ -330,26 +368,44 @@ class BookingLifecycleService
     public function prepareForDispatch(string $bookingId, array $dispatchData = []): BookingDispatch
     {
         return DB::transaction(function () use ($bookingId, $dispatchData) {
-            $booking = Booking::findOrFail($bookingId);
+            $booking = Booking::query()
+                ->lockForUpdate()
+                ->with(['bookingItems.vehicle', 'bookingItems.driver.user'])
+                ->findOrFail($bookingId);
+            $bookingItemId = $dispatchData['booking_item_id'] ?? null;
+            $this->assertItemSafeLifecycle($booking, $bookingItemId);
+            $context = $this->resolveLifecycleContext($booking, $bookingItemId);
 
-            if (!$booking->vehicle_id) {
+            if (!$context['vehicle_id']) {
                 throw new \Exception('Vehicle must be assigned before dispatch preparation');
             }
 
+            if ($this->resolveItemDispatch($booking, $context, true)) {
+                throw new \DomainException('A dispatch record already exists for the selected booking item');
+            }
+
             // Create dispatch record
-            $dispatch = $booking->dispatch()->create([
-                'vehicle_id' => $booking->vehicle_id,
-                'driver_id' => $booking->driver_id,
+            $dispatch = $booking->dispatches()->create([
+                'booking_item_id' => $context['booking_item_id'],
+                'vehicle_id' => $context['vehicle_id'],
+                'driver_id' => $context['driver_id'],
                 'dispatch_status' => DispatchStatus::READY_FOR_DISPATCH,
-                'expected_return_at' => $booking->to_date,
-                'is_self_driven' => $booking->is_self_driven,
+                'expected_return_at' => $context['booking_item']?->to_date ?? $booking->to_date,
+                'is_self_driven' => $context['is_self_driven'],
                 'dispatch_notes' => $dispatchData['notes'] ?? null,
                 'created_user_id' => Auth::id(),
             ]);
 
-            $booking->transitionToStatus(BookingLifecycleStatus::DISPATCH_READY, Auth::id(), $dispatchData);
+            if ($booking->bookingItems->count() === 1) {
+                $booking->transitionToStatus(BookingLifecycleStatus::DISPATCH_READY, Auth::id(), $dispatchData);
+            }
 
-            $this->logLifecycleTransition($booking, BookingLifecycleStatus::ALLOCATION_APPROVED, BookingLifecycleStatus::DISPATCH_READY, $dispatchData);
+            $this->logLifecycleTransition(
+                $booking,
+                BookingLifecycleStatus::ALLOCATION_APPROVED,
+                BookingLifecycleStatus::DISPATCH_READY,
+                array_merge($dispatchData, ['booking_item_id' => $context['booking_item_id']])
+            );
 
             return $dispatch;
         });
@@ -361,9 +417,14 @@ class BookingLifecycleService
     public function dispatchVehicle(string $bookingId, array $dispatchData): BookingDispatch
     {
         return DB::transaction(function () use ($bookingId, $dispatchData) {
-            $booking = Booking::with(['dispatch', 'qc.repairItems', 'bookingItems.vehicle', 'bookingItems.driver.user'])->findOrFail($bookingId);
-            $context = $this->resolveLifecycleContext($booking, $dispatchData['booking_item_id'] ?? null);
-            $dispatch = $booking->dispatch;
+            $booking = Booking::query()
+                ->lockForUpdate()
+                ->with(['dispatches', 'qc.repairItems', 'bookingItems.vehicle', 'bookingItems.driver.user'])
+                ->findOrFail($bookingId);
+            $bookingItemId = $dispatchData['booking_item_id'] ?? null;
+            $this->assertItemSafeLifecycle($booking, $bookingItemId);
+            $context = $this->resolveLifecycleContext($booking, $bookingItemId);
+            $dispatch = $this->resolveItemDispatch($booking, $context, true);
             $vehicleId = $context['vehicle_id'];
             $driverId = $context['driver_id'];
             $isSelfDriven = (bool) $context['is_self_driven'];
@@ -394,10 +455,12 @@ class BookingLifecycleService
 
             if ($isReopeningCompletedHire) {
                 $this->resetBookingAfterCompletedHireForRedispatch($booking);
+                $this->resetBookingItemAfterCompletedHireForRedispatch($context['booking_item']);
             }
 
             if (!$dispatch) {
-                $dispatch = $booking->dispatch()->create([
+                $dispatch = $booking->dispatches()->create([
+                    'booking_item_id' => $context['booking_item_id'],
                     'vehicle_id' => $vehicleId,
                     'driver_id' => $driverId,
                     'dispatch_status' => DispatchStatus::NOT_DISPATCHED,
@@ -426,8 +489,15 @@ class BookingLifecycleService
             $vehicle->update(['availability_status' => VehicleAvailabilityStatus::ON_HIRE->value]);
 
             if (!$isRepeatDispatch) {
-                $booking->transitionToStatus(BookingLifecycleStatus::DISPATCH_OUT, Auth::id(), $dispatchData);
-                $this->logLifecycleTransition($booking, BookingLifecycleStatus::DISPATCH_READY, BookingLifecycleStatus::DISPATCH_OUT, $dispatchData);
+                if ($booking->bookingItems->count() === 1) {
+                    $booking->transitionToStatus(BookingLifecycleStatus::DISPATCH_OUT, Auth::id(), $dispatchData);
+                }
+                $this->logLifecycleTransition(
+                    $booking,
+                    BookingLifecycleStatus::DISPATCH_READY,
+                    BookingLifecycleStatus::DISPATCH_OUT,
+                    array_merge($dispatchData, ['booking_item_id' => $context['booking_item_id']])
+                );
             }
 
             DB::afterCommit(function () use ($booking, $driverId, $context, $dispatch, $isRepeatDispatch) {
@@ -467,6 +537,24 @@ class BookingLifecycleService
                 'updated_user_id' => Auth::id(),
             ]);
         }
+    }
+
+    private function resetBookingItemAfterCompletedHireForRedispatch(?BookingItem $bookingItem): void
+    {
+        if (!$bookingItem) {
+            return;
+        }
+
+        $bookingItem->update([
+            'returned_at' => null,
+            'final_priced_at' => null,
+            'completed_at' => null,
+            'status' => 'confirmed',
+            'lifecycle_data' => array_merge(
+                is_array($bookingItem->lifecycle_data) ? $bookingItem->lifecycle_data : [],
+                ['redispatched_at' => Carbon::now('UTC')->toIso8601String()]
+            ),
+        ]);
     }
 
     private function triggerDriverDispatchNotification(string $bookingId, ?string $driverId, ?string $bookingItemId = null, array $notificationContext = []): void
@@ -636,19 +724,35 @@ class BookingLifecycleService
     public function scheduleReturn(string $bookingId, array $returnData): Booking
     {
         return DB::transaction(function () use ($bookingId, $returnData) {
-            $booking = Booking::findOrFail($bookingId);
+            $booking = Booking::query()
+                ->lockForUpdate()
+                ->with(['bookingItems', 'dispatches'])
+                ->findOrFail($bookingId);
             $this->assertReturnStageAvailable($booking);
+            $bookingItemId = $returnData['booking_item_id'] ?? null;
+            $this->assertItemSafeLifecycle($booking, $bookingItemId);
+            $context = $this->resolveLifecycleContext($booking, $bookingItemId);
+            $dispatch = $this->resolveItemDispatch($booking, $context, true);
 
-            if ($booking->dispatch) {
-                $booking->dispatch->update([
-                    'expected_return_at' => $returnData['expected_return_at'] ?? $booking->to_date,
+            if ($dispatch) {
+                $dispatch->update([
+                    'expected_return_at' => $returnData['expected_return_at']
+                        ?? $context['booking_item']?->to_date
+                        ?? $booking->to_date,
                     'return_notes' => $returnData['notes'] ?? null,
                 ]);
             }
 
-            $booking->transitionToStatus(BookingLifecycleStatus::RETURN_SCHEDULED, Auth::id(), $returnData);
+            if ($booking->bookingItems->count() === 1) {
+                $booking->transitionToStatus(BookingLifecycleStatus::RETURN_SCHEDULED, Auth::id(), $returnData);
+            }
 
-            $this->logLifecycleTransition($booking, BookingLifecycleStatus::ONGOING_ACTIVE, BookingLifecycleStatus::RETURN_SCHEDULED, $returnData);
+            $this->logLifecycleTransition(
+                $booking,
+                BookingLifecycleStatus::ONGOING_ACTIVE,
+                BookingLifecycleStatus::RETURN_SCHEDULED,
+                array_merge($returnData, ['booking_item_id' => $context['booking_item_id']])
+            );
 
             return $booking;
         });
@@ -660,11 +764,23 @@ class BookingLifecycleService
     public function processReturn(string $bookingId, array $returnData): BookingDispatch
     {
         return DB::transaction(function () use ($bookingId, $returnData) {
-            $booking = Booking::with(['dispatch', 'bookingItems'])->findOrFail($bookingId);
-            $this->assertReturnStageAvailable($booking);
-            $this->assertItemSafeLifecycle($booking, $returnData['booking_item_id'] ?? null);
-            $context = $this->resolveLifecycleContext($booking, $returnData['booking_item_id'] ?? null);
-            $dispatch = $booking->dispatch;
+            $booking = Booking::query()
+                ->lockForUpdate()
+                ->with(['dispatches', 'bookingItems'])
+                ->findOrFail($bookingId);
+            $bookingItemId = $returnData['booking_item_id'] ?? null;
+            $this->assertItemSafeLifecycle($booking, $bookingItemId);
+            $context = $this->resolveLifecycleContext($booking, $bookingItemId);
+            $bookingItem = $context['booking_item']
+                ? BookingItem::query()
+                    ->whereKey($context['booking_item']->id)
+                    ->where('booking_id', $booking->id)
+                    ->lockForUpdate()
+                    ->firstOrFail()
+                : null;
+            $context['booking_item'] = $bookingItem;
+            $dispatch = $this->resolveItemDispatch($booking, $context, true);
+            $isMultiItem = $booking->bookingItems->count() > 1;
             $fromStatus = $booking->getLifecycleStatus();
             $actorUserId = $returnData['returned_by']
                 ?? Auth::id()
@@ -675,6 +791,23 @@ class BookingLifecycleService
             if (!$dispatch) {
                 throw new \Exception('Dispatch record not found');
             }
+
+            if ($bookingItem?->returned_at && $dispatch->isReturned()) {
+                if ($bookingItem->completed_at) {
+                    $newlyCompleted = $this->finalizeMultiItemBookingIfReady(
+                        $booking,
+                        (string) ($actorUserId ?: $dispatch->returned_by ?: $dispatch->dispatched_by),
+                        $returnData
+                    );
+                    if ($newlyCompleted) {
+                        $this->runAggregateCompletionEffects($booking->fresh());
+                    }
+                }
+
+                return $dispatch;
+            }
+
+            $this->assertReturnStageAvailable($booking);
             if (!$actorUserId) {
                 throw new \Exception('Authenticated user is required to process return');
             }
@@ -696,6 +829,25 @@ class BookingLifecycleService
                 !empty($returnData['completed_by_driver']) ? 'driver_mobile_return' : 'system_return'
             );
             $returnData['final_pricing'] = $finalPricing;
+
+            if ($bookingItem) {
+                $returnedAt = $dispatch->fresh()->actual_return_at ?? Carbon::now('UTC');
+                $bookingItem->update([
+                    'returned_at' => $returnedAt,
+                    'final_priced_at' => Carbon::now('UTC'),
+                    'lifecycle_data' => array_merge(
+                        is_array($bookingItem->lifecycle_data) ? $bookingItem->lifecycle_data : [],
+                        [
+                            'stage' => 'returned',
+                            'dispatch_id' => (string) $dispatch->id,
+                            'returned_at' => $returnedAt->toIso8601String(),
+                            'final_pricing_trigger' => !empty($returnData['completed_by_driver'])
+                                ? 'driver_mobile_return'
+                                : 'system_return',
+                        ]
+                    ),
+                ]);
+            }
 
             // Post-trip maintenance trigger check (non-blocking)
             $vehicleId = $dispatch->vehicle_id ?: $context['vehicle_id'];
@@ -745,14 +897,23 @@ class BookingLifecycleService
                     ? BookingLifecycleStatus::RETURN_LATE
                     : BookingLifecycleStatus::RETURN_COMPLETED;
 
-                $booking->transitionToStatus($lifecycleStatus, (string) $actorUserId, $returnData);
+                if ($isMultiItem) {
+                    $this->logItemLifecycleEvent(
+                        $booking,
+                        $bookingItem,
+                        'returned',
+                        array_merge($returnData, ['qc_required' => true])
+                    );
+                } else {
+                    $booking->transitionToStatus($lifecycleStatus, (string) $actorUserId, $returnData);
 
-                $this->logLifecycleTransition(
-                    $booking,
-                    $fromStatus,
-                    $lifecycleStatus,
-                    $returnData
-                );
+                    $this->logLifecycleTransition(
+                        $booking,
+                        $fromStatus,
+                        $lifecycleStatus,
+                        $returnData
+                    );
+                }
             } else {
                 // Skip QC stage for businesses that disable it in website settings.
                 $this->makeVehicleAvailable($vehicleId);
@@ -763,6 +924,21 @@ class BookingLifecycleService
                         'maintenance_stage_enabled' => (bool) ($workflowSettings['enable_maintenance_stage'] ?? true),
                     ]
                 );
+                if ($isMultiItem) {
+                    $this->markBookingItemCompleted($bookingItem, $completionMeta);
+                    $this->logItemLifecycleEvent($booking, $bookingItem, 'completed', $completionMeta);
+                    $newlyCompleted = $this->finalizeMultiItemBookingIfReady(
+                        $booking,
+                        (string) $actorUserId,
+                        $completionMeta
+                    );
+                    if ($newlyCompleted) {
+                        $this->runAggregateCompletionEffects($booking->fresh());
+                    }
+
+                    return $dispatch;
+                }
+
                 $transitioned = $booking->transitionToStatus(
                     BookingLifecycleStatus::COMPLETED,
                     (string) $actorUserId,
@@ -937,18 +1113,41 @@ class BookingLifecycleService
     public function completeBooking(string $bookingId, array $completionData = [], ?string $bookingItemId = null): Booking
     {
         return DB::transaction(function () use ($bookingId, $completionData, $bookingItemId) {
-            $booking = Booking::with(['dispatch', 'bookingItems'])->findOrFail($bookingId);
+            $booking = Booking::query()
+                ->lockForUpdate()
+                ->with(['dispatches', 'dispatch', 'bookingItems'])
+                ->findOrFail($bookingId);
             $this->assertItemSafeLifecycle($booking, $bookingItemId);
             $context = $this->resolveLifecycleContext($booking, $bookingItemId);
+            $bookingItem = $context['booking_item']
+                ? BookingItem::query()
+                    ->whereKey($context['booking_item']->id)
+                    ->where('booking_id', $booking->id)
+                    ->lockForUpdate()
+                    ->firstOrFail()
+                : null;
+            $context['booking_item'] = $bookingItem;
+            $dispatch = $this->resolveItemDispatch($booking, $context, true);
             $workflowSettings = $this->getLifecycleWorkflowSettings();
             $fromStatus = $booking->getLifecycleStatus();
             $actorUserId = Auth::id()
                 ?? $booking->updated_user_id
                 ?? $booking->created_user_id
-                ?? $booking->dispatch?->dispatched_by;
+                ?? $dispatch?->dispatched_by;
 
             if (!$actorUserId) {
                 throw new \Exception('Authenticated user is required to complete the booking');
+            }
+
+            if ($booking->bookingItems->count() > 1) {
+                return $this->completeMultiItemBookingItem(
+                    $booking,
+                    $context,
+                    $dispatch,
+                    $completionData,
+                    $workflowSettings,
+                    (string) $actorUserId
+                );
             }
 
             $canSkipReturn = !($workflowSettings['enable_return_stage'] ?? false)
@@ -963,8 +1162,8 @@ class BookingLifecycleService
                     BookingLifecycleStatus::RETURN_LATE,
                 ], true);
 
-            if ($canSkipReturn && $booking->dispatch) {
-                $booking->dispatch->markReturned((string) $actorUserId, [
+            if ($canSkipReturn && $dispatch) {
+                $dispatch->markReturned((string) $actorUserId, [
                     'actual_return_time' => Carbon::now('UTC'),
                     'notes' => 'Trip completed without return management.',
                     'completed_by_driver' => true,
@@ -974,7 +1173,7 @@ class BookingLifecycleService
             $completionData['final_pricing'] = $this->synchronizeFinalPricing(
                 $booking,
                 $context,
-                $booking->dispatch?->fresh(),
+                $dispatch?->fresh(),
                 $completionData,
                 'booking_completion'
             );
@@ -1003,7 +1202,7 @@ class BookingLifecycleService
                     ),
                 ]);
 
-                $vehicleId = $booking->dispatch?->vehicle_id ?: $context['vehicle_id'];
+                $vehicleId = $dispatch?->vehicle_id ?: $context['vehicle_id'];
                 if ($vehicleId) {
                     $this->makeVehicleAvailable($vehicleId);
                 }
@@ -1078,6 +1277,101 @@ class BookingLifecycleService
 
             return $booking;
         });
+    }
+
+    private function completeMultiItemBookingItem(
+        Booking $booking,
+        array $context,
+        ?BookingDispatch $dispatch,
+        array $completionData,
+        array $workflowSettings,
+        string $actorUserId
+    ): Booking {
+        /** @var BookingItem|null $bookingItem */
+        $bookingItem = $context['booking_item'] ?? null;
+        if (!$bookingItem) {
+            throw new \DomainException('A booking item is required for multi-item completion');
+        }
+
+        if ($bookingItem->completed_at) {
+            $newlyCompleted = $this->finalizeMultiItemBookingIfReady(
+                $booking,
+                $actorUserId,
+                $completionData
+            );
+            if ($newlyCompleted) {
+                $this->runAggregateCompletionEffects($booking->fresh());
+            }
+
+            return $booking->fresh(['bookingItems', 'dispatches']);
+        }
+
+        $returnStageEnabled = (bool) ($workflowSettings['enable_return_stage'] ?? false);
+        $hasReturned = (bool) ($bookingItem->returned_at || $dispatch?->isReturned());
+
+        if ($returnStageEnabled && !$hasReturned) {
+            throw new \DomainException(
+                'The selected booking item must be returned before it can be completed.'
+            );
+        }
+
+        if (!$returnStageEnabled && $dispatch && !$dispatch->isReturned()) {
+            $dispatch->markReturned($actorUserId, [
+                'actual_return_time' => $completionData['actual_return_time'] ?? Carbon::now('UTC'),
+                'notes' => 'Item completed without return management.',
+                'completed_by_driver' => (bool) ($completionData['completed_by_driver'] ?? false),
+            ]);
+            $hasReturned = true;
+        }
+
+        $finalPricing = $this->synchronizeFinalPricing(
+            $booking,
+            $context,
+            $dispatch?->fresh(),
+            $completionData,
+            'booking_completion'
+        );
+
+        $completedAt = Carbon::now('UTC');
+        $returnTimestamp = $bookingItem->returned_at
+            ?? $dispatch?->fresh()->actual_return_at
+            ?? (!$returnStageEnabled ? $completedAt : null);
+        $bookingItem->update([
+            'returned_at' => $returnTimestamp,
+            'final_priced_at' => $completedAt,
+            'lifecycle_data' => array_merge(
+                is_array($bookingItem->lifecycle_data) ? $bookingItem->lifecycle_data : [],
+                [
+                    'dispatch_id' => $dispatch?->id,
+                    'return_skipped' => !$returnStageEnabled && !$hasReturned,
+                    'qc_skipped' => !(bool) ($workflowSettings['enable_qc_stage'] ?? false),
+                    'final_pricing_trigger' => 'booking_completion',
+                    'final_pricing' => $finalPricing,
+                ]
+            ),
+        ]);
+        $this->markBookingItemCompleted($bookingItem->fresh(), array_merge($completionData, [
+            'booking_item_id' => $bookingItem->id,
+            'dispatch_id' => $dispatch?->id,
+        ]));
+        $bookingItem->refresh();
+
+        $vehicleId = $dispatch?->vehicle_id ?: $context['vehicle_id'];
+        if ($vehicleId) {
+            $this->makeVehicleAvailable((string) $vehicleId);
+        }
+
+        $this->logItemLifecycleEvent($booking, $bookingItem, 'completed', $completionData);
+        $newlyCompleted = $this->finalizeMultiItemBookingIfReady(
+            $booking,
+            $actorUserId,
+            $completionData
+        );
+        if ($newlyCompleted) {
+            $this->runAggregateCompletionEffects($booking->fresh());
+        }
+
+        return $booking->fresh(['bookingItems', 'dispatches']);
     }
 
     // ========================
@@ -1454,9 +1748,171 @@ class BookingLifecycleService
             return;
         }
 
-        throw new \DomainException(
-            'Multi-item completion requires item-level dispatch and invoice ownership. Completion was stopped to prevent invoicing unfinished trips.'
+        if (!$bookingItemId) {
+            throw new \DomainException(
+                'booking_item_id is required for every multi-item dispatch, return, and completion action.'
+            );
+        }
+
+        if (!$booking->bookingItems->contains(fn (BookingItem $item): bool => (string) $item->id === (string) $bookingItemId)) {
+            throw new \InvalidArgumentException('Selected booking item does not belong to this booking');
+        }
+    }
+
+    private function markBookingItemCompleted(?BookingItem $bookingItem, array $completionData): void
+    {
+        if (!$bookingItem || $bookingItem->completed_at) {
+            return;
+        }
+
+        $completedAt = Carbon::now('UTC');
+        $bookingItem->update([
+            'status' => 'completed',
+            'final_priced_at' => $bookingItem->final_priced_at ?: $completedAt,
+            'completed_at' => $completedAt,
+            'lifecycle_data' => array_merge(
+                is_array($bookingItem->lifecycle_data) ? $bookingItem->lifecycle_data : [],
+                $completionData,
+                [
+                    'stage' => 'completed',
+                    'completed_at' => $completedAt->toIso8601String(),
+                ]
+            ),
+        ]);
+    }
+
+    /**
+     * Promote the booking to its aggregate terminal state only when every
+     * billable item is complete. Cancelled/rejected items are already terminal
+     * and are not required to carry a completion timestamp.
+     */
+    private function finalizeMultiItemBookingIfReady(
+        Booking $booking,
+        string $actorUserId,
+        array $completionData
+    ): bool {
+        $items = BookingItem::query()
+            ->where('booking_id', $booking->id)
+            ->lockForUpdate()
+            ->get();
+        $requiredItems = $items->reject(
+            fn (BookingItem $item): bool => in_array((string) $item->status, ['cancelled', 'rejected'], true)
         );
+
+        if ($requiredItems->isEmpty() || $requiredItems->contains(fn (BookingItem $item): bool => !$item->completed_at)) {
+            return false;
+        }
+
+        if ((string) $booking->status === 'completed' && $booking->completed_at) {
+            return false;
+        }
+
+        $fromStatus = $booking->getLifecycleStatus();
+        $completedAt = Carbon::now('UTC');
+        $booking->update([
+            'status' => 'completed',
+            'completed_at' => $completedAt,
+            'updated_user_id' => $actorUserId,
+            'workflow_data' => array_merge(
+                is_array($booking->workflow_data) ? $booking->workflow_data : [],
+                [
+                    'completed_via' => 'all_booking_items_terminal',
+                    'completed_at' => $completedAt->toIso8601String(),
+                    'completed_booking_item_ids' => $requiredItems->pluck('id')->map(fn ($id) => (string) $id)->values()->all(),
+                ]
+            ),
+        ]);
+
+        $this->logLifecycleTransition(
+            $booking,
+            $fromStatus,
+            BookingLifecycleStatus::COMPLETED,
+            array_merge($completionData, [
+                'source' => 'all_booking_items_terminal',
+                'booking_item_id' => null,
+            ])
+        );
+
+        return true;
+    }
+
+    private function logItemLifecycleEvent(
+        Booking $booking,
+        ?BookingItem $bookingItem,
+        string $stage,
+        array $data = []
+    ): void {
+        if (!$bookingItem) {
+            return;
+        }
+
+        AuditLog::create([
+            'user_id' => Auth::id(),
+            'action' => 'booking_item_lifecycle_transitioned',
+            'entity' => 'BookingItem',
+            'entity_id' => $bookingItem->id,
+            'timestamp' => Carbon::now('UTC'),
+            'details' => [
+                'booking_id' => $booking->id,
+                'booking_number' => $booking->booking_number,
+                'booking_item_id' => $bookingItem->id,
+                'stage' => $stage,
+                'source' => $data['source'] ?? $data['activity_source'] ?? 'booking_lifecycle',
+            ],
+        ]);
+    }
+
+    private function runAggregateCompletionEffects(Booking $booking): void
+    {
+        try {
+            $this->invoiceService->generateAndSend($booking->fresh([
+                'customer.user',
+                'bookingItems.serviceType',
+                'bookingItems.vehicle.group',
+                'bookingItems.driver.user',
+                'bookingAddons',
+            ]));
+        } catch (\Throwable $e) {
+            Log::error('Aggregate invoice generation failed after all booking items completed', [
+                'booking_id' => $booking->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        try {
+            $this->loyaltyService->awardPointsForBooking($booking->fresh());
+        } catch (\Throwable $e) {
+            Log::error('Loyalty points award failed on aggregate booking completion', [
+                'booking_id' => $booking->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        try {
+            $this->agentCommissionService->recordForBooking($booking->fresh());
+        } catch (\Throwable $e) {
+            Log::error('Agent commission recording failed on aggregate booking completion', [
+                'booking_id' => $booking->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        if ($booking->is_corporate_booking && $booking->corporate_account_id) {
+            $auditTimestamp = Carbon::now('UTC');
+            AuditLog::create([
+                'user_id' => Auth::id(),
+                'action' => 'corporate_booking_completed',
+                'entity' => 'Booking',
+                'entity_id' => $booking->id,
+                'timestamp' => $auditTimestamp,
+                'details' => [
+                    'corporate_id' => $booking->corporate_account_id,
+                    'employee_id' => $booking->employee_id,
+                    'booking_number' => $booking->booking_number,
+                    'completed_at' => $auditTimestamp->toIso8601String(),
+                ],
+            ]);
+        }
     }
 
     private function buildFinalCalculationExample(array $result, float $manualCharges, float $lateFee, float $finalBase): array
@@ -1730,6 +2186,7 @@ class BookingLifecycleService
             'dispatch.driver.user',
             'dispatch.dispatchedBy',
             'dispatch.returnedBy',
+            'dispatches',
             'qc.inspector',
             'customer',
             'bookingItems.serviceType',
@@ -1748,7 +2205,11 @@ class BookingLifecycleService
         }
 
         $workflowSettings = $this->getLifecycleWorkflowSettings();
-        $currentStatus = $booking->getLifecycleStatus();
+        $currentStatus = $this->resolveSelectedItemLifecycleStatus(
+            $booking,
+            $context['booking_item'],
+            $this->resolveItemDispatch($booking, $context)
+        );
         $nextActions = $booking->getNextActions();
         $currentStage = $currentStatus->getStage();
 
@@ -1845,6 +2306,7 @@ class BookingLifecycleService
     {
         $booking->loadMissing([
             'dispatch',
+            'dispatches',
             'qc',
             'bookingItems.serviceType',
             'bookingItems.vehicle',
@@ -1852,7 +2314,12 @@ class BookingLifecycleService
         ]);
 
         $context = $this->resolveLifecycleContext($booking, $bookingItemId);
-        $currentStatus = $booking->getLifecycleStatus();
+        $itemDispatch = $this->resolveItemDispatch($booking, $context);
+        $currentStatus = $this->resolveSelectedItemLifecycleStatus(
+            $booking,
+            $context['booking_item'],
+            $itemDispatch
+        );
         $workflowSettings = $this->getLifecycleWorkflowSettings();
 
         if ($currentStatus->getStage() === 'return') {
@@ -1878,7 +2345,7 @@ class BookingLifecycleService
         return [
             'booking_status' => (string) ($booking->status ?? ''),
             'lifecycle_status' => $currentStatus->value,
-            'dispatch_status' => $this->enumValue($booking->dispatch?->dispatch_status),
+            'dispatch_status' => $this->enumValue($itemDispatch?->dispatch_status),
             'qc_status' => $this->enumValue($booking->qc?->qc_status),
             'driver_trip_phase' => $this->enumValue($driverAssignment?->trip_phase),
             'approval_status' => $this->resolveApprovalStatus($booking),
@@ -1886,6 +2353,34 @@ class BookingLifecycleService
             'allowed_actions' => $allowedActions,
             'blocking_reasons' => $blockingReasons,
         ];
+    }
+
+    private function resolveSelectedItemLifecycleStatus(
+        Booking $booking,
+        ?BookingItem $bookingItem,
+        ?BookingDispatch $dispatch
+    ): BookingLifecycleStatus {
+        if ((string) $booking->status === 'completed') {
+            return BookingLifecycleStatus::COMPLETED;
+        }
+
+        if ($bookingItem?->completed_at) {
+            return BookingLifecycleStatus::COMPLETED;
+        }
+
+        if ($bookingItem?->returned_at || $dispatch?->isReturned()) {
+            return BookingLifecycleStatus::RETURN_COMPLETED;
+        }
+
+        if ($dispatch) {
+            return match ($dispatch->dispatch_status) {
+                DispatchStatus::READY_FOR_DISPATCH => BookingLifecycleStatus::DISPATCH_READY,
+                DispatchStatus::DISPATCHED, DispatchStatus::IN_PROGRESS => BookingLifecycleStatus::ONGOING_ACTIVE,
+                default => $booking->getLifecycleStatus(),
+            };
+        }
+
+        return $booking->getLifecycleStatus();
     }
 
     private function enumValue(mixed $value): ?string
@@ -2003,7 +2498,9 @@ class BookingLifecycleService
         }
 
         if ($currentStatus === BookingLifecycleStatus::COMPLETED) {
-            $blockingReasons[] = 'Booking is already completed';
+            $blockingReasons[] = (string) $booking->status === 'completed'
+                ? 'Booking is already completed'
+                : 'Selected booking item is complete; the booking is waiting for its remaining items';
         } elseif ($currentStatus === BookingLifecycleStatus::CANCELLED) {
             $blockingReasons[] = 'Booking is cancelled';
         }

@@ -6,6 +6,7 @@ use App\Enums\DispatchStatus;
 use App\Enums\TripPhase;
 use App\Enums\VehicleAvailabilityStatus;
 use App\Models\Booking\BookingItem;
+use App\Models\Booking\BookingDispatch;
 use App\Models\Driver\Driver;
 use App\Models\Driver\DriverSession;
 use App\Models\Driver\RoutePoint;
@@ -167,8 +168,8 @@ class TripTrackingService
         }
 
         // Keep dispatch state aligned once the trip actually starts.
-        $assignment->loadMissing('booking.dispatch');
-        $dispatch = $assignment->booking?->dispatch;
+        $assignment->loadMissing('booking');
+        $dispatch = $this->resolveAssignmentDispatch($assignment);
         if ($dispatch && $dispatch->dispatch_status === DispatchStatus::DISPATCHED) {
             $dispatch->update(['dispatch_status' => DispatchStatus::IN_PROGRESS]);
         }
@@ -851,7 +852,7 @@ class TripTrackingService
             return null;
         }
 
-        $assignment->loadMissing(['booking.dispatch', 'bookingItem']);
+        $assignment->loadMissing(['booking', 'bookingItem']);
         $booking = $assignment->booking;
         if (!$booking) {
             return null;
@@ -859,7 +860,7 @@ class TripTrackingService
 
         // Primary path: use lifecycle service so dispatch + booking tracking stay consistent.
         try {
-            if ($booking->dispatch) {
+            if ($this->resolveAssignmentDispatch($assignment)) {
                 $this->bookingLifecycleService->processReturn((string) $booking->id, [
                     'booking_item_id' => $assignment->booking_item_id,
                     'actual_return_time' => $completedAt->toIso8601String(),
@@ -910,6 +911,31 @@ class TripTrackingService
                 previous: $exception
             );
         }
+    }
+
+    private function resolveAssignmentDispatch(DriverAssignment $assignment): ?BookingDispatch
+    {
+        if (!$assignment->booking_id) {
+            return null;
+        }
+
+        $query = BookingDispatch::query()->where('booking_id', $assignment->booking_id);
+        if ($assignment->booking_item_id) {
+            $itemDispatch = (clone $query)
+                ->where('booking_item_id', $assignment->booking_item_id)
+                ->first();
+            if ($itemDispatch) {
+                return $itemDispatch;
+            }
+        }
+
+        $itemCount = BookingItem::query()
+            ->where('booking_id', $assignment->booking_id)
+            ->count();
+
+        return $itemCount <= 1
+            ? (clone $query)->whereNull('booking_item_id')->first()
+            : null;
     }
 
     private function resolveCanonicalFinalPricingSummary(DriverAssignment $assignment): ?array

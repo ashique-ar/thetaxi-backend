@@ -4,6 +4,7 @@ namespace App\Models\Vehicle\VehiclePricing;
 
 use App\Models\BaseModel;
 use App\Models\Service\ServiceType;
+use App\Models\Vehicle\VehiclePricing\Concerns\HasGlobalPricingDefinitionScope;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -13,7 +14,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class VehiclePricingSlabDefinition extends BaseModel
 {
-    use HasFactory, HasUuids, SoftDeletes;
+    use HasFactory, HasGlobalPricingDefinitionScope, HasUuids, SoftDeletes;
 
     /**
      * The table associated with the model.
@@ -98,14 +99,8 @@ class VehiclePricingSlabDefinition extends BaseModel
 
     public function scopeForOwner($query, ?string $ownerType, ?string $ownerId)
     {
-        if ($ownerType && $ownerId) {
-            return $query->where(function ($q) use ($ownerType, $ownerId) {
-                $q->where(function ($scoped) use ($ownerType, $ownerId) {
-                    $scoped->where('owner_type', $ownerType)->where('owner_id', $ownerId);
-                })->orWhereNull('owner_type');
-            });
-        }
-
+        // Kept for callers that also scope the associated value rows. Slab
+        // definitions themselves are always shared.
         return $query->whereNull('owner_type')->whereNull('owner_id');
     }
 

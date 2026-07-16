@@ -5,6 +5,7 @@ namespace App\Models\Vehicle\VehiclePricing;
 use App\Models\BaseModel;
 use App\Models\Service\ServiceType;
 use App\Models\User;
+use App\Models\Vehicle\VehiclePricing\Concerns\HasGlobalPricingDefinitionScope;
 use App\Traits\UUID;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -31,7 +32,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  */
 class VehiclePricingCommonRateDefinition extends BaseModel
 {
-    
+    use HasGlobalPricingDefinitionScope;
 
     /**
      * The table associated with the model.

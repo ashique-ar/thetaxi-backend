@@ -22,6 +22,7 @@ class BookingDispatch extends BaseModel
 
     protected $fillable = [
         'booking_id',
+        'booking_item_id',
         'vehicle_id',
         'driver_id',
         'dispatch_status',
@@ -216,6 +217,11 @@ class BookingDispatch extends BaseModel
         }
 
         return round($hoursLate * $hourlyRate, 2);
+    }
+
+    public function bookingItem(): BelongsTo
+    {
+        return $this->belongsTo(BookingItem::class, 'booking_item_id');
     }
 
     public function calculateLateReturnFeeAt(Carbon|string|null $returnedAt = null): float

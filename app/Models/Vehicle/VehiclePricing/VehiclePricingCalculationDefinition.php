@@ -4,6 +4,7 @@ namespace App\Models\Vehicle\VehiclePricing;
 
 use App\Models\Service\ServiceType;
 use App\Models\User;
+use App\Models\Vehicle\VehiclePricing\Concerns\HasGlobalPricingDefinitionScope;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -22,7 +23,7 @@ use Carbon\Carbon;
  */
 class VehiclePricingCalculationDefinition extends Model
 {
-    use HasFactory, SoftDeletes;
+    use HasFactory, HasGlobalPricingDefinitionScope, SoftDeletes;
 
     protected $keyType = 'string';
     public $incrementing = false;

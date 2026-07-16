@@ -642,6 +642,14 @@ class Booking extends BaseModel
     }
 
     /**
+     * Get all item-owned dispatch records for this booking.
+     */
+    public function dispatches()
+    {
+        return $this->hasMany(BookingDispatch::class);
+    }
+
+    /**
      * Get QC record for this booking
      */
     public function qc()
