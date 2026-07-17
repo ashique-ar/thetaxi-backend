@@ -26,6 +26,7 @@ use App\Models\Vehicle\VehiclePricing\VehiclePricingCommonRateDefinition;
 use App\Models\Vehicle\VehiclePricing\VehicleGroupCommonRatePricing;
 use App\Models\Vehicle\VehiclePricing\VehicleGroupServicePricingSetting;
 use App\Models\Vehicle\VehiclePricing\DistrictPricingAdjustment;
+use App\Models\Vehicle\VehiclePricing\PriceAdjustment;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -980,6 +981,9 @@ class BookingFlowService
                             FILTER_VALIDATE_BOOL
                         ),
                         'corporate_account_id' => $corporateAccountId,
+                        'pricing_context' => !empty($corporateAccountId)
+                            ? 'corporate'
+                            : (($isPublic || $this->shouldUsePublicServiceContext($params)) ? 'public' : 'portal'),
                         'currency' => config('booking.base_currency', 'LKR'),
                         'base_currency' => config('booking.base_currency', 'LKR'),
                         'is_preview_calculation' => true,
@@ -3972,6 +3976,7 @@ class BookingFlowService
                     'is_weekend', 'is_holiday', 'month', 'day_of_week',
                     'holiday_context',
                     'customer_type', 'customer_tier', 'owner_type', 'owner_id',
+                    'pricing_context',
                     'is_self_driven', 'booking_type',
                     'package_id', 'package_included_km', 'additional_stops', 'stops',
                     'manual_additional_charge', 'late_return_fee',
@@ -3981,6 +3986,7 @@ class BookingFlowService
                 'source' => 'global_definition',
                 'owner_type' => $ownerType,
                 'owner_id' => $ownerId,
+                'pricing_context' => $calculationInputs['pricing_context'] ?? 'public',
                 'calculation_definition_id' => $calculationDefinition->id,
                 'calculation_definition_name' => $calculationDefinition->name,
             ];
@@ -4100,6 +4106,7 @@ class BookingFlowService
 
         // Get service type for minimum KM lookup
         $serviceTypeId = $params['service_type_id'] ?? $params['service_type'] ?? null;
+        $serviceType = null;
         $minimumKm = null;
 
         if ($serviceTypeId) {
@@ -4128,6 +4135,8 @@ class BookingFlowService
                 ]);
             }
         }
+
+        $inputs['pricing_context'] = $this->resolvePricingContext($params, $serviceType);
 
         if (isset($params['district_id'])) {
             $inputs['district_id'] = $params['district_id'];
@@ -4278,13 +4287,40 @@ class BookingFlowService
 
     private function shouldUsePublicServiceContext(array $params): bool
     {
-        $flag = $params['service_type_context'] ?? $params['service_context'] ?? $params['request_context'] ?? null;
+        $flag = $params['service_type_context']
+            ?? $params['service_context']
+            ?? $params['request_context']
+            ?? $params['pricing_context']
+            ?? null;
 
         if (is_string($flag)) {
             return strtolower(trim($flag)) === 'public';
         }
 
         return $flag === true;
+    }
+
+    private function resolvePricingContext(array $params, ?ServiceType $serviceType = null): string
+    {
+        $isCorporate = !empty($params['corporate_account_id']) || filter_var(
+            $params['is_corporate_booking'] ?? false,
+            FILTER_VALIDATE_BOOL
+        );
+
+        if ($isCorporate) {
+            return 'corporate';
+        }
+
+        $candidate = $params['pricing_context']
+            ?? $params['service_type_context']
+            ?? $params['service_context']
+            ?? $params['request_context']
+            ?? $serviceType?->context;
+        $candidate = is_string($candidate) ? strtolower(trim($candidate)) : null;
+
+        return in_array($candidate, PriceAdjustment::APPLICABLE_CONTEXTS, true)
+            ? $candidate
+            : 'public';
     }
 
     /**

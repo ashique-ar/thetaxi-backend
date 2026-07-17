@@ -14,6 +14,9 @@ use Illuminate\Support\Facades\Log;
 
 class PriceAdjustment extends BaseModel
 {
+    public const APPLICABLE_CONTEXTS = ['portal', 'public', 'corporate'];
+    public const DEFAULT_APPLICABLE_CONTEXTS = ['public'];
+
     protected $table = 'price_adjustments';
 
     protected $fillable = [
@@ -28,6 +31,7 @@ class PriceAdjustment extends BaseModel
         'percentage_change',
         'fixed_amount_change',
         'applies_to',
+        'applicable_contexts',
         'minimum_booking_amount',
         'maximum_discount_amount',
         'is_active',
@@ -44,6 +48,7 @@ class PriceAdjustment extends BaseModel
     protected $casts = [
         'percentage_change' => 'decimal:4',
         'fixed_amount_change' => 'decimal:2',
+        'applicable_contexts' => 'array',
         'minimum_booking_amount' => 'decimal:2',
         'maximum_discount_amount' => 'decimal:2',
         'is_active' => 'boolean',
@@ -124,6 +129,22 @@ class PriceAdjustment extends BaseModel
         return $query->where(function (Builder $q) use ($amount) {
             $q->whereNull('minimum_booking_amount')
                 ->orWhere('minimum_booking_amount', '<=', $amount);
+        });
+    }
+
+    public function scopeForPricingContext(Builder $query, ?string $pricingContext): Builder
+    {
+        $context = in_array($pricingContext, self::APPLICABLE_CONTEXTS, true)
+            ? $pricingContext
+            : 'public';
+
+        return $query->where(function (Builder $q) use ($context) {
+            $q->whereJsonContains('applicable_contexts', $context);
+
+            // Legacy rows without a saved selection use the Website default.
+            if ($context === 'public') {
+                $q->orWhereNull('applicable_contexts');
+            }
         });
     }
 
@@ -279,6 +300,7 @@ class PriceAdjustment extends BaseModel
                 'description' => $this->description,
                 'scope' => $this->scope,
                 'applies_to' => $this->applies_to,
+                'applicable_contexts' => $this->applicable_contexts ?? self::DEFAULT_APPLICABLE_CONTEXTS,
                 'adjustment_type' => $this->adjustment_type,
                 'priority' => $this->priority,
                 'is_cumulative' => $this->is_cumulative,
@@ -305,13 +327,15 @@ class PriceAdjustment extends BaseModel
         Carbon $date = null,
         Carbon $endDate = null,
         ?string $ownerType = null,
-        ?string $ownerId = null
+        ?string $ownerId = null,
+        ?string $pricingContext = null
     ): \Illuminate\Database\Eloquent\Collection {
         $query = static::active()
             ->valid($date, $endDate)
             ->withinUsageLimit()
             ->forAmount($amount)
-            ->where('applies_to', $priceComponent);
+            ->where('applies_to', $priceComponent)
+            ->forPricingContext($pricingContext);
         static::applyOwnerScope($query, $ownerType, $ownerId);
 
         if ($serviceTypeId) {
@@ -351,7 +375,8 @@ class PriceAdjustment extends BaseModel
         Carbon $date = null,
         Carbon $endDate = null,
         ?string $ownerType = null,
-        ?string $ownerId = null
+        ?string $ownerId = null,
+        ?string $pricingContext = null
     ): array {
         $originalAmount = $amount;
 
@@ -363,7 +388,8 @@ class PriceAdjustment extends BaseModel
             $date,
             $endDate,
             $ownerType,
-            $ownerId
+            $ownerId,
+            $pricingContext
         );
 
         if ($adjustments->isEmpty()) {
@@ -466,6 +492,8 @@ class PriceAdjustment extends BaseModel
             'percentage_change' => 'nullable|numeric|required_if:adjustment_type,percentage',
             'fixed_amount_change' => 'nullable|numeric|required_if:adjustment_type,fixed_amount',
             'applies_to' => 'nullable|in:base_price,total_price,km_charges',
+            'applicable_contexts' => 'required|array|min:1',
+            'applicable_contexts.*' => 'required|string|in:portal,public,corporate|distinct',
             'minimum_booking_amount' => 'nullable|numeric|min:0',
             'maximum_discount_amount' => 'nullable|numeric|min:0',
             'priority' => 'integer|min:0',

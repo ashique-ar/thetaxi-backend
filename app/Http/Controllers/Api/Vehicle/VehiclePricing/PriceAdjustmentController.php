@@ -28,6 +28,10 @@ class PriceAdjustmentController extends Controller
     {
         $payload = $request->all();
         $payload['applies_to'] = $payload['applies_to'] ?? 'total_price';
+        $contexts = $payload['applicable_contexts'] ?? PriceAdjustment::DEFAULT_APPLICABLE_CONTEXTS;
+        $payload['applicable_contexts'] = is_array($contexts)
+            ? array_values($contexts)
+            : $contexts;
         if (($payload['scope'] ?? null) === 'service_vehicle_group') {
             $payload['scope'] = 'vehicle_group';
         }
@@ -58,6 +62,7 @@ class PriceAdjustmentController extends Controller
             'owner_id' => 'nullable|uuid|exists:corporates,id|required_with:owner_type',
             'adjustment_type' => 'in:percentage,fixed_amount',
             'applies_to' => 'in:base_price,total_price,km_charges',
+            'applicable_context' => 'nullable|string|in:portal,public,corporate',
             'is_active' => 'any',
             'is_cumulative' => 'boolean',
             'sort_by' => 'in:name,created_at,priority,valid_from,valid_to',
@@ -171,6 +176,10 @@ class PriceAdjustmentController extends Controller
 
             if ($request->filled('applies_to')) {
                 $query->where('applies_to', $request->applies_to);
+            }
+
+            if ($request->filled('applicable_context')) {
+                $query->forPricingContext((string) $request->applicable_context);
             }
 
             // Only apply is_active filter if explicitly set (not empty or 'all')
@@ -392,6 +401,7 @@ class PriceAdjustmentController extends Controller
             'vehicle_group_id' => 'nullable|uuid|exists:vehicle_groups,id',
             'price_component' => 'string|in:base_price,total_price,km_charges',
             'date' => 'nullable|date',
+            'pricing_context' => 'nullable|string|in:portal,public,corporate',
         ]);
 
         if ($validator->fails()) {
@@ -413,7 +423,11 @@ class PriceAdjustmentController extends Controller
                 $serviceTypeId,
                 $vehicleGroupId,
                 $priceComponent,
-                $date
+                $date,
+                null,
+                null,
+                null,
+                $request->input('pricing_context', 'public')
             );
 
             return response()->json([
@@ -426,6 +440,7 @@ class PriceAdjustmentController extends Controller
                     'vehicle_group_id' => $vehicleGroupId,
                     'price_component' => $priceComponent,
                     'date' => $date->toISOString(),
+                    'pricing_context' => $request->input('pricing_context', 'public'),
                 ]
             ]);
 
@@ -451,6 +466,7 @@ class PriceAdjustmentController extends Controller
             'vehicle_group_id' => 'nullable|uuid|exists:vehicle_groups,id',
             'price_component' => 'string|in:base_price,total_price,km_charges',
             'date' => 'nullable|date',
+            'pricing_context' => 'nullable|string|in:portal,public,corporate',
         ]);
 
         if ($validator->fails()) {
@@ -472,7 +488,11 @@ class PriceAdjustmentController extends Controller
                 $serviceTypeId,
                 $vehicleGroupId,
                 $priceComponent,
-                $date
+                $date,
+                null,
+                null,
+                null,
+                $request->input('pricing_context', 'public')
             );
 
             return response()->json([
@@ -484,6 +504,7 @@ class PriceAdjustmentController extends Controller
                     'vehicle_group_id' => $vehicleGroupId,
                     'price_component' => $priceComponent,
                     'date' => $date->toISOString(),
+                    'pricing_context' => $request->input('pricing_context', 'public'),
                 ]
             ]);
 

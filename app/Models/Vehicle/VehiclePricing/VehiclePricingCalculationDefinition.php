@@ -1458,7 +1458,8 @@ class VehiclePricingCalculationDefinition extends Model
                 $pricingStartDate,
                 $pricingEndDate,
                 $inputs['owner_type'] ?? null,
-                $inputs['owner_id'] ?? null
+                $inputs['owner_id'] ?? null,
+                $inputs['pricing_context'] ?? 'public'
             );
         };
 
