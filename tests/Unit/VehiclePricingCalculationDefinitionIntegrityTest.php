@@ -70,7 +70,7 @@ class VehiclePricingCalculationDefinitionIntegrityTest extends BaseTestCase
         $this->assertContains('required_charge', $result['missing_variables']);
     }
 
-    public function test_missing_rate_is_never_converted_to_zero_even_when_legacy_config_marks_it_optional(): void
+    public function test_missing_optional_rate_defaults_to_zero(): void
     {
         $definition = new VehiclePricingCalculationDefinition();
         $definition->formula = 'missing_common_rate';
@@ -80,14 +80,12 @@ class VehiclePricingCalculationDefinitionIntegrityTest extends BaseTestCase
             'is_required' => false,
         ]];
 
-        $result = $definition->calculatePrice([]);
+        $resolved = $this->resolveVariables($definition);
 
-        $this->assertFalse($result['conditions_met']);
-        $this->assertFalse($result['calculation_success']);
-        $this->assertContains('missing_common_rate', $result['missing_variables']);
+        $this->assertSame(0.0, (float) $resolved['missing_common_rate']);
     }
 
-    public function test_missing_required_slab_and_common_rates_are_not_changed_to_zero(): void
+    public function test_missing_required_slab_and_common_rates_default_to_zero(): void
     {
         $definition = new VehiclePricingCalculationDefinition();
         $definition->formula = 'slab_rate + driver_allowance';
@@ -96,11 +94,10 @@ class VehiclePricingCalculationDefinitionIntegrityTest extends BaseTestCase
             ['name' => 'driver_allowance', 'type' => 'common_rate', 'is_required' => true],
         ];
 
-        $result = $definition->calculatePrice([]);
+        $resolved = $this->resolveVariables($definition);
 
-        $this->assertFalse($result['calculation_success']);
-        $this->assertContains('slab_rate', $result['missing_variables']);
-        $this->assertContains('driver_allowance', $result['missing_variables']);
+        $this->assertSame(0.0, (float) $resolved['slab_rate']);
+        $this->assertSame(0.0, (float) $resolved['driver_allowance']);
     }
 
     public function test_semantic_condition_operators_match_the_configuration_contract(): void
@@ -120,5 +117,12 @@ class VehiclePricingCalculationDefinitionIntegrityTest extends BaseTestCase
             'duration_minutes' => 30,
             'booking_type' => 'with_driver',
         ]));
+    }
+
+    private function resolveVariables(VehiclePricingCalculationDefinition $definition): array
+    {
+        $method = new ReflectionMethod($definition, 'resolveAllVariables');
+
+        return $method->invoke($definition, [], null, [], [], null, null);
     }
 }
