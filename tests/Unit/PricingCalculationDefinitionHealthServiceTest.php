@@ -25,7 +25,7 @@ class PricingCalculationDefinitionHealthServiceTest extends TestCase
         $this->assertFalse($health['dependencies']['slab_rate']['required']);
     }
 
-    public function test_referenced_slab_and_common_rate_dependencies_block_activation_on_errors(): void
+    public function test_referenced_pricing_dependencies_are_reported_without_blocking_activation(): void
     {
         $service = new PricingCalculationDefinitionHealthService(
             $this->createMock(VehiclePricingSlabConfigurationService::class)
@@ -46,9 +46,10 @@ class PricingCalculationDefinitionHealthServiceTest extends TestCase
             ]
         );
 
-        $this->assertFalse($health['ready_for_activation']);
-        $this->assertSame('error', $health['checklist']['slab_dependency']['status']);
-        $this->assertSame('error', $health['checklist']['common_rate_dependencies']['status']);
+        $this->assertTrue($health['ready_for_activation']);
+        $this->assertSame('warning', $health['checklist']['slab_dependency']['status']);
+        $this->assertSame('warning', $health['checklist']['common_rate_dependencies']['status']);
+        $this->assertSame(['warning', 'warning'], array_column($health['issues'], 'severity'));
     }
 
     public function test_slab_rate_name_cannot_be_downgraded_to_a_runtime_number(): void

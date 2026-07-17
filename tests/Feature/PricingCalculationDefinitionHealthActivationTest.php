@@ -304,7 +304,7 @@ it('activates when referenced slab and common-rate dependencies are complete', f
         ->and(VehiclePricingCalculationDefinition::findOrFail($definitionId)->status)->toBe('active');
 });
 
-it('requires public slab and common-rate values for every applicable vehicle group', function () {
+it('reports missing public pricing values without blocking calculation definition activation', function () {
     $definitionId = healthTestInsertCalculationDefinition($this->serviceId, 'Coverage pricing', 'inactive');
     $publicGroupId = (string) Str::uuid();
     $overrideOnlyGroupId = (string) Str::uuid();
@@ -386,11 +386,14 @@ it('requires public slab and common-rate values for every applicable vehicle gro
     );
     $response = app(VehiclePricingCalculationDefinitionController::class)
         ->update(Request::create('/definition', 'PUT', $payload), $definitionId);
-    $codes = collect($response->getData(true)['health']['focus_issues'])->pluck('code');
+    $health = $response->getData(true)['configuration_health'];
+    $issues = collect($health['focus_issues']);
 
-    expect($response->getStatusCode())->toBe(422)
-        ->and($codes)->toContain('missing_public_slab_group_values')
-        ->and($codes)->toContain('missing_public_common_rate_group_values');
+    expect($response->getStatusCode())->toBe(200)
+        ->and($health['ready_for_activation'])->toBeTrue()
+        ->and($issues->pluck('code'))->toContain('missing_public_slab_group_values')
+        ->and($issues->pluck('code'))->toContain('missing_public_common_rate_group_values')
+        ->and($issues->pluck('severity')->unique()->values()->all())->toBe(['warning']);
 });
 
 it('returns reusable service and definition health response fields', function () {

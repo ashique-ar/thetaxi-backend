@@ -302,12 +302,16 @@ class PricingCalculationDefinitionHealthService
                 'issues' => [],
                 'details' => ['reason' => 'The formula does not reference a slab_rate variable.'],
             ];
+        if ($requiresSlab) {
+            $slabDependency = $this->asNonBlockingPricingDependency($slabDependency);
+        }
         array_push($issues, ...($slabDependency['issues'] ?? []));
 
         $commonDependencies = [];
         foreach ($commonRateKeys as $rateKey) {
             $dependency = $dependencySnapshot['common_rates'][$rateKey]
                 ?? $this->commonRateDependencyHealth($serviceTypeId, $id, $rateKey);
+            $dependency = $this->asNonBlockingPricingDependency($dependency);
             $commonDependencies[$rateKey] = $dependency;
             array_push($issues, ...($dependency['issues'] ?? []));
         }
@@ -981,6 +985,29 @@ class PricingCalculationDefinitionHealthService
         return collect($issues)->contains(fn (array $issue) => ($issue['severity'] ?? null) === 'warning')
             ? 'warning'
             : 'pass';
+    }
+
+    /**
+     * Pricing dependencies are configured after the calculation definition.
+     * Keep their diagnostics visible, but do not prevent the definition itself
+     * from being created, updated, or activated.
+     *
+     * @param array<string, mixed> $dependency
+     * @return array<string, mixed>
+     */
+    private function asNonBlockingPricingDependency(array $dependency): array
+    {
+        $dependency['issues'] = collect($dependency['issues'] ?? [])
+            ->map(function (array $issue) {
+                $issue['severity'] = 'warning';
+
+                return $issue;
+            })
+            ->values()
+            ->all();
+        $dependency['status'] = $this->statusForIssues($dependency['issues']);
+
+        return $dependency;
     }
 
     /** @param array<string, array<string, mixed>> $checklist */
