@@ -971,6 +971,15 @@ class BookingFlowService
                         'package_id' => $params['package_id'] ?? ($params['service_package_id'] ?? null),
                         'package_type' => $params['package_type'] ?? null,
                         'customer_id' => $customerId,
+                        // Preserve the booking owner context while calculating each
+                        // availability card. Corporate vehicle-group rates are stored
+                        // separately from the shared calculation definition, so dropping
+                        // these fields makes assigned groups resolve public rates instead.
+                        'is_corporate_booking' => filter_var(
+                            $params['is_corporate_booking'] ?? !empty($corporateAccountId),
+                            FILTER_VALIDATE_BOOL
+                        ),
+                        'corporate_account_id' => $corporateAccountId,
                         'currency' => config('booking.base_currency', 'LKR'),
                         'base_currency' => config('booking.base_currency', 'LKR'),
                         'is_preview_calculation' => true,
