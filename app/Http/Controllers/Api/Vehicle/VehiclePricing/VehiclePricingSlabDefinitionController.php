@@ -128,14 +128,6 @@ class VehiclePricingSlabDefinitionController extends Controller
         $data['owner_type'] = null;
         $data['owner_id'] = null;
         $candidate = array_merge($slabDefinition->toArray(), $data);
-        if ($overlap = $this->findOverlappingSlab($candidate, $slabDefinition->id)) {
-            return response()->json([
-                'success' => false,
-                'message' => "Duration range overlaps with '{$overlap->name}'",
-                'errors' => ['range' => ['Slab duration ranges must not overlap for the same service and unit.']],
-            ], 422);
-        }
-
         $candidateActive = array_key_exists('is_active', $candidate)
             ? filter_var($candidate['is_active'], FILTER_VALIDATE_BOOL)
             : $slabDefinition->is_active;
@@ -152,7 +144,20 @@ class VehiclePricingSlabDefinitionController extends Controller
                 ],
             ])->unique(fn (array $scope) => $scope['service_type_id'] . ':' . $scope['type'])->values()->all();
             if ($this->slabConfiguration->hasBlockingIssues($health, $scopes)) {
-                return $this->invalidConfigurationResponse($health);
+                $currentBlockingIssueCount = collect($scopes)
+                    ->pluck('service_type_id')
+                    ->unique()
+                    ->sum(fn (string $serviceTypeId) => $this->blockingIssueCount(
+                        $this->currentHealth($serviceTypeId),
+                        $scopes
+                    ));
+                $prospectiveBlockingIssueCount = $this->blockingIssueCount($health, $scopes);
+
+                // Permit one-at-a-time repairs of legacy-invalid configurations
+                // only when this edit strictly reduces the affected errors.
+                if ($prospectiveBlockingIssueCount >= $currentBlockingIssueCount) {
+                    return $this->invalidConfigurationResponse($health);
+                }
             }
         }
 
@@ -472,6 +477,25 @@ class VehiclePricingSlabDefinitionController extends Controller
     private function currentHealth(string $serviceTypeId): array
     {
         return $this->slabConfiguration->currentHealth($serviceTypeId);
+    }
+
+    /** @param array<int, array{service_type_id: string, type: string}> $scopes */
+    private function blockingIssueCount(array $health, array $scopes): int
+    {
+        return collect($health['issues'] ?? [])->filter(function (array $issue) use ($scopes) {
+            if (($issue['severity'] ?? null) !== 'error') {
+                return false;
+            }
+
+            return collect($scopes)->contains(function (array $scope) use ($issue) {
+                if (($issue['service_type_id'] ?? null) !== $scope['service_type_id']) {
+                    return false;
+                }
+
+                return ($issue['type'] ?? null) === null
+                    || (string) $issue['type'] === (string) $scope['type'];
+            });
+        })->count();
     }
 
     private function invalidConfigurationResponse(
