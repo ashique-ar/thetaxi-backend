@@ -993,6 +993,7 @@ class PricingCalculationDefinitionHealthService
         return collect($matches)
             ->map(fn (array $match) => (string) (($match[1] ?? '') !== '' ? $match[1] : ($match[2] ?? '')))
             ->filter()
+            ->reject(fn (string $name): bool => in_array($name, ['max', 'min'], true))
             ->unique()
             ->values()
             ->all();

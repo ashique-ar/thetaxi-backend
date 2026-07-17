@@ -3868,7 +3868,11 @@ class BookingFlowService
                 Log::warning("No active calculation definition found for service type", [
                     'service_type_id' => $serviceTypeId
                 ]);
-                return $this->calculateFallbackPricing($params);
+                return $this->calculateFallbackPricing(
+                    $params,
+                    'No active calculation definition found for this service type',
+                    ['reason_code' => 'no_active_calculation_definition']
+                );
             }
 
             // Prepare calculation inputs
@@ -3908,7 +3912,21 @@ class BookingFlowService
                     'candidate_failures' => $candidateFailures,
                     'inputs' => $calculationInputs,
                 ]);
-                return $this->calculateFallbackPricing($params);
+                return $this->calculateFallbackPricing(
+                    $params,
+                    'No calculation definition could price this scenario',
+                    [
+                        'reason_code' => 'no_matching_calculation_definition',
+                        'candidate_failures' => collect($candidateFailures)
+                            ->map(fn (array $failure) => [
+                                'definition_id' => $failure['definition_id'] ?? null,
+                                'reason' => $failure['reason'] ?? 'unknown',
+                                'missing_variables' => array_values($failure['missing_variables'] ?? []),
+                            ])
+                            ->values()
+                            ->all(),
+                    ]
+                );
             }
 
             Log::debug('calculateDynamicPricing: Matched calculation definition', [
@@ -3970,7 +3988,11 @@ class BookingFlowService
                 'trace' => $e->getTraceAsString()
             ]);
 
-            return $this->calculateFallbackPricing($params);
+            return $this->calculateFallbackPricing(
+                $params,
+                'Pricing calculation failed unexpectedly',
+                ['reason_code' => 'calculation_error']
+            );
         }
     }
 
@@ -4712,7 +4734,11 @@ class BookingFlowService
     /**
      * Calculate fallback pricing when dynamic calculation fails
      */
-    private function calculateFallbackPricing(array $params): array
+    private function calculateFallbackPricing(
+        array $params,
+        string $reason = 'No active calculation definition found for this service type',
+        array $metadata = []
+    ): array
     {
         // Do NOT return fake prices — vehicles without proper pricing
         // should show "Request Quotation" instead of misleading amounts
@@ -4720,11 +4746,11 @@ class BookingFlowService
             'base_amount' => 0,
             'total_amount' => 0,
             'breakdown' => [],
-            'calculation_metadata' => [
+            'calculation_metadata' => array_merge([
                 'fallback_used' => true,
                 'requires_quotation' => true,
-                'reason' => 'No active calculation definition found for this service type'
-            ]
+                'reason' => $reason,
+            ], $metadata)
         ];
     }
 

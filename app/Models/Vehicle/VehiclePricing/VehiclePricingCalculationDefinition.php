@@ -132,6 +132,13 @@ class VehiclePricingCalculationDefinition extends Model
                 // pricing candidate. In particular, do not let the caller
                 // mistake this structured failure for a matched zero charge.
                 Log::warning("Missing variables for calculation {$this->id}: " . $ex->getMessage());
+                $missingVariables = str_starts_with($ex->getMessage(), 'Missing required variables: ')
+                    ? array_values(array_filter(array_map(
+                        'trim',
+                        explode(',', Str::after($ex->getMessage(), 'Missing required variables: '))
+                    )))
+                    : [];
+
                 return [
                     'total_amount' => 0,
                     'breakdown' => [],
@@ -144,9 +151,7 @@ class VehiclePricingCalculationDefinition extends Model
                     'variables_used' => [],
                     'resolved_variables' => [],
                     'conditions_evaluated' => $metadata['conditions_evaluated'],
-                    'missing_variables' => array_values(array_filter(array_map(fn($v) => $v['name'] ?? null, $this->variables ?? []), function ($name) use ($inputs) {
-                        return $name !== null && !array_key_exists($name, $inputs);
-                    }))
+                    'missing_variables' => $missingVariables,
                 ];
             }
 
@@ -791,6 +796,12 @@ class VehiclePricingCalculationDefinition extends Model
         foreach ($this->variables ?? [] as $variable) {
 
             $varName = $variable['name'];
+            // Only variables referenced by the active formula are runtime
+            // dependencies. Configuration health reports retained editor or
+            // legacy variables as unused without blocking a valid formula.
+            if (!$this->formulaReferencesVariable($varName)) {
+                continue;
+            }
             $varType = $variable['type'] ?? 'number';
             $isRequired = $variable['is_required'] ?? true;
             $defaultValue = $variable['default_value'] ?? null;
@@ -951,6 +962,9 @@ class VehiclePricingCalculationDefinition extends Model
                 '/\{([A-Za-z_][A-Za-z0-9_]*)\}|(?<![A-Za-z0-9_])([A-Za-z_][A-Za-z0-9_]*)(?![A-Za-z0-9_])/',
                 function ($m) use ($numericVars) {
                     $name = $m[1] !== '' ? $m[1] : $m[2];
+                    if (in_array($name, ['max', 'min'], true)) {
+                        return $name;
+                    }
                     $val = $numericVars[$name];
                     return (string) (float) $val;
                 },
@@ -974,6 +988,10 @@ class VehiclePricingCalculationDefinition extends Model
             '/\{([A-Za-z_][A-Za-z0-9_]*)\}|(?<![A-Za-z0-9_])([A-Za-z_][A-Za-z0-9_]*)(?![A-Za-z0-9_])/',
             static function (array $match) use ($variables): string {
                 $name = ($match[1] ?? '') !== '' ? $match[1] : ($match[2] ?? '');
+
+                if (in_array($name, ['max', 'min'], true)) {
+                    return $name;
+                }
 
                 return array_key_exists($name, $variables) && is_numeric($variables[$name])
                     ? (string) ((float) $variables[$name])
@@ -1323,9 +1341,16 @@ class VehiclePricingCalculationDefinition extends Model
             // Clean and validate the formula
             $cleanFormula = trim($formula);
 
-            // Allow numbers, basic math operators, parentheses, and dots for decimals
-            if (!preg_match('/^[0-9+\-*\/().\\s]+$/', $cleanFormula)) {
+            // Allow arithmetic plus the explicitly supported min/max helpers.
+            if (!preg_match('/^[0-9A-Za-z_+\-*\/(),.\\s]+$/', $cleanFormula)) {
                 throw new \Exception("Formula contains invalid characters: {$cleanFormula}");
+            }
+            preg_match_all('/[A-Za-z_][A-Za-z0-9_]*/', $cleanFormula, $identifiers);
+            $unsupportedFunctions = array_diff(array_unique($identifiers[0] ?? []), ['max', 'min']);
+            if ($unsupportedFunctions !== []) {
+                throw new \Exception(
+                    'Formula contains unsupported functions: ' . implode(', ', $unsupportedFunctions)
+                );
             }
 
             // Additional security: prevent multiple consecutive operators
@@ -1362,9 +1387,14 @@ class VehiclePricingCalculationDefinition extends Model
         // Remove all whitespace
         $expression = preg_replace('/\s+/', '', $expression);
 
-        // Final validation: only allow safe characters
-        if (!preg_match('/^[0-9+\-*\/().]+$/', $expression)) {
+        // Final validation: identifiers are limited to the two allowlisted
+        // numeric helpers before the controlled evaluation below.
+        if (!preg_match('/^[0-9A-Za-z_+\-*\/(),.]+$/', $expression)) {
             throw new \Exception("Expression failed final validation: {$expression}");
+        }
+        preg_match_all('/[A-Za-z_][A-Za-z0-9_]*/', $expression, $identifiers);
+        if (array_diff(array_unique($identifiers[0] ?? []), ['max', 'min']) !== []) {
+            throw new \Exception("Expression contains an unsupported function: {$expression}");
         }
 
         // Check for balanced parentheses
@@ -1661,28 +1691,41 @@ class VehiclePricingCalculationDefinition extends Model
         }
 
         preg_match_all(
-            '/\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*|\d+(?:\.\d+)?|[+\-*\/()]/',
+            '/\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*|\d+(?:\.\d+)?|[+\-*\/(),]/',
             $compactFormula,
             $matches
         );
-        $tokens = $matches[0] ?? [];
+        $originalTokens = $matches[0] ?? [];
 
-        if (implode('', $tokens) !== $compactFormula) {
-            return ['Formula may contain only declared variables, numbers, +, -, *, /, and parentheses.'];
+        if (implode('', $originalTokens) !== $compactFormula) {
+            return ['Formula may contain only declared variables, numbers, min/max, commas, +, -, *, /, and parentheses.'];
         }
 
+        $referencedVariables = collect($originalTokens)
+            ->filter(fn (string $token): bool => preg_match('/^(?:\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*)$/', $token) === 1)
+            ->map(fn (string $token): string => trim($token, '{}'))
+            ->reject(fn (string $name): bool => in_array($name, ['max', 'min'], true))
+            ->values()
+            ->all();
+
+        $syntaxFormula = self::normalizeSupportedFunctionsForValidation($compactFormula);
+        if ($syntaxFormula === null) {
+            return ['Formula functions must use max(value, value) or min(value, value).'];
+        }
+        preg_match_all(
+            '/\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*|\d+(?:\.\d+)?|[+\-*\/()]/',
+            $syntaxFormula,
+            $syntaxMatches
+        );
+        $tokens = $syntaxMatches[0] ?? [];
+
         $errors = [];
-        $referencedVariables = [];
         $expectsValue = true;
         $parenthesisDepth = 0;
 
         foreach ($tokens as $index => $token) {
             $isNumber = preg_match('/^\d+(?:\.\d+)?$/', $token) === 1;
             $isVariable = preg_match('/^(?:\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*)$/', $token) === 1;
-
-            if ($isVariable) {
-                $referencedVariables[] = trim($token, '{}');
-            }
 
             if ($expectsValue) {
                 if ($isNumber || $isVariable) {
@@ -1717,6 +1760,37 @@ class VehiclePricingCalculationDefinition extends Model
         }
 
         return array_values(array_unique($errors));
+    }
+
+    private static function normalizeSupportedFunctionsForValidation(string $formula): ?string
+    {
+        $normalized = $formula;
+
+        do {
+            $previous = $normalized;
+            $invalid = false;
+            $normalized = preg_replace_callback(
+                '/\b(?:max|min)\(([^()]*)\)/',
+                static function (array $match) use (&$invalid): string {
+                    $arguments = array_map('trim', explode(',', $match[1]));
+                    if (count($arguments) !== 2 || in_array('', $arguments, true)) {
+                        $invalid = true;
+                        return $match[0];
+                    }
+
+                    return '0';
+                },
+                $normalized
+            ) ?? $normalized;
+
+            if ($invalid) {
+                return null;
+            }
+        } while ($normalized !== $previous);
+
+        return preg_match('/\b(?:max|min)\s*\(/', $normalized) === 1
+            ? null
+            : $normalized;
     }
 
     /**

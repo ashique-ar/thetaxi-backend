@@ -52,6 +52,60 @@ class VehiclePricingCalculationDefinitionIntegrityTest extends BaseTestCase
         );
     }
 
+    public function test_max_function_floors_hourly_package_overages_at_zero(): void
+    {
+        $method = new ReflectionMethod(VehiclePricingCalculationDefinition::class, 'evaluateFormulaWithVariables');
+        $definition = new VehiclePricingCalculationDefinition();
+        $formula = 'Hourly_Package + (max(0, total_distance - Minimum_KM) * extra_km_rate)'
+            . ' + (max(0, duration_hours - Minimum_Hours) * extra_hour_rate)';
+
+        $baseOnly = $method->invoke($definition, $formula, [
+            'Hourly_Package' => 6900,
+            'total_distance' => 25,
+            'Minimum_KM' => 150,
+            'extra_km_rate' => 150,
+            'duration_hours' => 0,
+            'Minimum_Hours' => 3,
+            'extra_hour_rate' => 150,
+        ]);
+        $withOverages = $method->invoke($definition, $formula, [
+            'Hourly_Package' => 6900,
+            'total_distance' => 160,
+            'Minimum_KM' => 150,
+            'extra_km_rate' => 150,
+            'duration_hours' => 5,
+            'Minimum_Hours' => 3,
+            'extra_hour_rate' => 150,
+        ]);
+
+        $this->assertSame(6900.0, $baseOnly);
+        $this->assertSame(8700.0, $withOverages);
+        $this->assertSame([], VehiclePricingCalculationDefinition::validateFormulaConfiguration($formula, [
+            ['name' => 'Hourly_Package'],
+            ['name' => 'total_distance'],
+            ['name' => 'Minimum_KM'],
+            ['name' => 'extra_km_rate'],
+            ['name' => 'duration_hours'],
+            ['name' => 'Minimum_Hours'],
+            ['name' => 'extra_hour_rate'],
+        ]));
+    }
+
+    public function test_unused_required_declarations_do_not_block_the_active_formula(): void
+    {
+        $definition = new VehiclePricingCalculationDefinition();
+        $definition->formula = 'base_rate';
+        $definition->variables = [
+            ['name' => 'base_rate', 'type' => 'number', 'is_required' => true],
+            ['name' => 'legacy_extra_hours', 'type' => 'duration', 'is_required' => true],
+        ];
+        $method = new ReflectionMethod($definition, 'resolveAllVariables');
+
+        $resolved = $method->invoke($definition, ['base_rate' => 6900], null, [], [], null, null);
+
+        $this->assertSame(['base_rate' => 6900.0], $resolved);
+    }
+
     public function test_missing_required_variable_is_not_reported_as_a_matched_zero_price(): void
     {
         $definition = new VehiclePricingCalculationDefinition();
