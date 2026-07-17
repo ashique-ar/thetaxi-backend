@@ -251,6 +251,9 @@ class VehiclePricingCalculationDefinitionController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'service_type_id' => ['required', 'uuid', 'exists:service_types,id'],
+            'context' => ['nullable', 'string', 'in:public,portal,corporate'],
+            'owner_type' => ['nullable', 'required_if:context,corporate', 'string', 'in:corporate'],
+            'owner_id' => ['nullable', 'required_if:context,corporate', 'uuid', 'exists:corporates,id'],
         ]);
 
         if ($validator->fails()) {
@@ -261,19 +264,42 @@ class VehiclePricingCalculationDefinitionController extends Controller
             ], 422);
         }
 
+        if ($request->input('context') === 'corporate') {
+            $assigned = Corporate::findOrFail($request->input('owner_id'))
+                ->serviceTypes()
+                ->where('service_types.id', $request->input('service_type_id'))
+                ->exists();
+            if (!$assigned) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'The selected service is not assigned to this corporate.',
+                ], 422);
+            }
+        }
+
         return response()->json([
             'success' => true,
             'data' => $this->configurationHealth->currentServiceHealth(
-                (string) $request->input('service_type_id')
+                (string) $request->input('service_type_id'),
+                $request->input('context') === 'corporate' ? 'corporate' : null,
+                $request->input('context') === 'corporate' ? (string) $request->input('owner_id') : null
             ),
             'message' => 'Calculation-definition health retrieved successfully',
         ]);
     }
 
-    public function definitionHealth(string $id): JsonResponse
+    public function definitionHealth(Request $request, string $id): JsonResponse
     {
         $definition = VehiclePricingCalculationDefinition::findOrFail($id);
-        $serviceHealth = $this->configurationHealth->definitionReadiness($definition);
+        $ownerType = $request->input('context') === 'corporate' ? 'corporate' : null;
+        $ownerId = $ownerType ? (string) $request->input('owner_id') : null;
+        if ($ownerType && !$ownerId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Select a corporate before checking definition readiness.',
+            ], 422);
+        }
+        $serviceHealth = $this->configurationHealth->definitionReadiness($definition, $ownerType, $ownerId);
         $definitionHealth = $serviceHealth['definitions'][$definition->id] ?? null;
 
         return response()->json([
