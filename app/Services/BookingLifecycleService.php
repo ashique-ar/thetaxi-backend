@@ -1409,6 +1409,29 @@ class BookingLifecycleService
         array $completionData = [],
         ?string $bookingItemId = null
     ): Booking {
+        $bookingForStatus = Booking::query()->findOrFail($bookingId);
+        $currentStatus = $bookingForStatus->getLifecycleStatus();
+        if ($currentStatus === BookingLifecycleStatus::COMPLETED) {
+            return $bookingForStatus->fresh(['bookingItems', 'dispatches']);
+        }
+        if (!in_array($currentStatus, [
+            BookingLifecycleStatus::DISPATCH_OUT,
+            BookingLifecycleStatus::ONGOING_ACTIVE,
+            BookingLifecycleStatus::ONGOING_REPLACEMENT_NEEDED,
+            BookingLifecycleStatus::ONGOING_BREAKDOWN,
+            BookingLifecycleStatus::RETURN_SCHEDULED,
+            BookingLifecycleStatus::RETURN_OVERDUE,
+            BookingLifecycleStatus::RETURN_COMPLETED,
+            BookingLifecycleStatus::RETURN_LATE,
+            BookingLifecycleStatus::QC_PENDING,
+            BookingLifecycleStatus::QC_IN_PROGRESS,
+            BookingLifecycleStatus::QC_ISSUES_FOUND,
+            BookingLifecycleStatus::QC_REPAIR_NEEDED,
+            BookingLifecycleStatus::QC_COMPLETED,
+        ], true)) {
+            throw new \DomainException('A hire can only be force ended after it has been dispatched.');
+        }
+
         $completionData = array_filter($completionData, static fn ($value) => $value !== null && $value !== '');
         $completionData['force_completion'] = true;
         $completionData['force_completed_by'] = Auth::id();
@@ -1960,8 +1983,8 @@ class BookingLifecycleService
             'vehicle_id' => $bookingItem->vehicle_id ?: $context['vehicle_id'],
             'corporate_account_id' => $booking->corporate_account_id,
             'is_corporate_booking' => (bool) ($booking->is_corporate_booking && $booking->corporate_account_id),
-            'pricing_context' => $booking->corporate_account_id ? 'corporate' : 'public',
-            'service_type_context' => $booking->corporate_account_id ? 'corporate' : 'public',
+            'pricing_context' => $booking->corporate_account_id ? 'corporate' : 'portal',
+            'service_type_context' => $booking->corporate_account_id ? 'corporate' : 'portal',
             'package_id' => $packageId,
             'customer_id' => $booking->customer_id,
             'from_date' => $bookingItem->from_date ?? $booking->from_date,

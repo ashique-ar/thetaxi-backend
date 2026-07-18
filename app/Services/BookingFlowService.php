@@ -4063,6 +4063,15 @@ class BookingFlowService
                 $inputs[$runtimeInput] = (float) $params[$runtimeInput];
             }
         }
+        $inputs['pickup_distance'] = is_numeric($inputs['pickup_distance'] ?? null)
+            ? (float) $inputs['pickup_distance']
+            : 0.0;
+        $inputs['delivery_distance'] = is_numeric($inputs['delivery_distance'] ?? null)
+            ? (float) $inputs['delivery_distance']
+            : 0.0;
+        $inputs['additional_stops_count'] = is_numeric($params['additional_stops_count'] ?? null)
+            ? (float) $params['additional_stops_count']
+            : (float) ($inputs['additional_stops'] ?? $inputs['stops'] ?? 0);
         if (array_key_exists('is_self_driven', $params)) {
             $inputs['is_self_driven'] = filter_var(
                 $params['is_self_driven'],
@@ -4111,12 +4120,18 @@ class BookingFlowService
 
         if ($serviceTypeId) {
             // Avoid UUID comparison errors in PostgreSQL when service type is passed as code.
-            $serviceTypeQuery = $this->shouldUsePublicServiceContext($params)
-                ? ServiceType::publicContext()
-                : ServiceType::query();
             if (is_string($serviceTypeId) && Str::isUuid($serviceTypeId)) {
-                $serviceTypeQuery->where('id', $serviceTypeId);
+                // A persisted booking item already owns an exact service UUID.
+                // Do not hide it by re-scoping to a different request surface
+                // during final pricing; the booking context controls rates.
+                $serviceTypeQuery = ServiceType::query()->where('id', $serviceTypeId);
             } else {
+                $requestedContext = $this->resolvePricingContext($params);
+                $serviceTypeQuery = match ($requestedContext) {
+                    'portal' => ServiceType::portalContext(),
+                    'public' => ServiceType::publicContext(),
+                    default => ServiceType::query(),
+                };
                 $serviceTypeQuery->where(function ($query) use ($serviceTypeId) {
                     $query->where('code', $serviceTypeId)
                         ->orWhere('name', $serviceTypeId);
