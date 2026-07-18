@@ -7,7 +7,7 @@
 @endphp
 
 @push('meta')
-<meta name="description" content="View our comprehensive vehicle rental rate chart with daily and monthly pricing for all vehicle categories in Sri Lanka.">
+@include('partials.seo')
 @endpush
 
 @push('styles')

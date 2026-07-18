@@ -41,21 +41,6 @@ class PageSeoSettingsSeeder extends Seeder
             'seo_contact_description' => 'Contact to reserve a taxi at Company via Address, Phone or Email. Book Online now to get on-time pickups, fair rates and friendly local drivers.',
             'seo_contact_keywords' => 'taxi Sri Lanka, Sri Lanka taxi service, airport taxi Sri Lanka, Colombo taxi, Bandaranaike airport transfer, airport pickup Sri Lanka, city taxi Colombo, private car hire Sri Lanka, chauffeur service Sri Lanka, tour taxi Sri Lanka, day tour Sri Lanka, Galle taxi, Kandy taxi, Ella taxi, Negombo taxi, cheap taxi Sri Lanka, online taxi booking, 24/7 taxi service, airport drop Sri Lanka, Company',
 
-            // Things to do (Address: https://Company/things-to-do)
-            'seo_things_to_do_title' => 'Book Taxi | Things to do in Sri Lanka | Company',
-            'seo_things_to_do_description' => 'Plan your trip with Pre-book taxi in Sri Lanka for smooth pickups, safe rides and 24/7 customer support. Enjoy things to do in Sri Lanka with Company',
-            'seo_things_to_do_keywords' => 'taxi to things do, taxi Sri Lanka, Sri Lanka taxi service, airport taxi Sri Lanka, Colombo taxi, Bandaranaike airport transfer, airport pickup Sri Lanka, city taxi Colombo, private car hire Sri Lanka, chauffeur service Sri Lanka, tour taxi Sri Lanka, day tour Sri Lanka, Galle taxi, Kandy taxi, Ella taxi, Negombo taxi, cheap taxi Sri Lanka, online taxi booking, 24/7 taxi service, airport drop Sri Lanka',
-
-            // Services (Address: https://Company/services)
-            'seo_services_title' => 'Taxi Services Sri Lanka | Book a Taxi Hire | Company',
-            'seo_services_description' => 'Book a Taxi Hire in Sri Lanka with Company. Enjoy the best Taxi serivices in Sri Lanka. Get on-time pickups, fair rates and friendly local drivers.',
-            'seo_services_keywords' => 'services, taxi Sri Lanka, Sri Lanka taxi service, airport taxi Sri Lanka, Colombo taxi, Bandaranaike airport transfer, airport pickup Sri Lanka, city taxi Colombo, private car hire Sri Lanka, chauffeur service Sri Lanka, tour taxi Sri Lanka, day tour Sri Lanka, Galle taxi, Kandy taxi, Ella taxi, Negombo taxi, cheap taxi Sri Lanka, online taxi booking, 24/7 taxi service, airport drop Sri Lanka',
-
-            // Corporate Transfers (Address: https://Company/corporate-transfers)
-            'seo_corporate_transfers_title' => 'Book Taxi to Corporate Transfers in Sri Lanka | Company',
-            'seo_corporate_transfers_description' => 'Plan your trip with Company. Pre-book taxi for your corporate transfers in Sri Lanka for smooth pickups, safe rides and 24/7 customer support.',
-            'seo_corporate_transfers_keywords' => 'corporate transfers, taxi Sri Lanka, Sri Lanka taxi service, airport taxi Sri Lanka, Colombo taxi, Bandaranaike airport transfer, airport pickup Sri Lanka, city taxi Colombo, private car hire Sri Lanka, chauffeur service Sri Lanka, tour taxi Sri Lanka, day tour Sri Lanka, Galle taxi, Kandy taxi, Ella taxi, Negombo taxi, cheap taxi Sri Lanka, online taxi booking, 24/7 taxi service, airport drop Sri Lanka',
-
             // Checkout (Address: https://Company/checkout)
             'seo_checkout_title' => 'Book Online | Taxi Booking in Sri Lanka | Company',
             'seo_checkout_description' => 'Book your Sri Lanka taxi online with Company. Enjoy quick confirmation, secure checkout and professional drivers. Book Taxi Hire Online Now.',
@@ -63,7 +48,7 @@ class PageSeoSettingsSeeder extends Seeder
         ];
 
         foreach ($seoData as $key => $value) {
-            WebsiteSetting::updateOrCreate(
+            WebsiteSetting::firstOrCreate(
                 ['type' => $key],
                 ['value' => $value]
             );

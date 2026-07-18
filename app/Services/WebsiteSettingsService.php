@@ -798,6 +798,15 @@ class WebsiteSettingsService
             'seo_keywords',
             'seo_og_image',
             'seo_twitter_card',
+            'seo_robots',
+            'seo_canonical_enabled',
+            'seo_schema_enabled',
+            'seo_business_type',
+            'seo_service_area',
+            'seo_price_range',
+            'seo_default_locale',
+            'seo_ai_summary',
+            'seo_ai_topics',
             'google_analytics_id',
             'google_tag_manager_id',
             'google_ads_id',
@@ -814,14 +823,41 @@ class WebsiteSettingsService
         ];
 
         // Add page-specific SEO keys
-        $pages = ['home', 'about', 'taxi', 'contact', 'things_to_do', 'services', 'corporate_transfers', 'cart', 'checkout'];
+        $pages = ['home', 'about', 'taxi', 'contact', 'faq', 'point_to_point', 'rate_chart', 'cart', 'checkout'];
         foreach ($pages as $page) {
             $types[] = "seo_{$page}_title";
             $types[] = "seo_{$page}_description";
             $types[] = "seo_{$page}_keywords";
         }
 
-        return $this->getMultiple($types);
+        return $this->withSeoDefaults($this->getMultiple($types));
+    }
+
+    /**
+     * Supply safe search defaults without replacing company/user overrides.
+     * These values are also returned to the Angular settings form, so an
+     * administrator can customize every default used by the public site.
+     */
+    public function withSeoDefaults(array $settings): array
+    {
+        $defaults = [
+            'seo_twitter_card' => 'summary_large_image',
+            'seo_robots' => 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1',
+            'seo_canonical_enabled' => 'true',
+            'seo_schema_enabled' => 'true',
+            'seo_business_type' => 'TaxiService',
+            'seo_service_area' => 'Sri Lanka',
+            'seo_price_range' => '$$',
+            'seo_default_locale' => 'en_LK',
+        ];
+
+        foreach ($defaults as $key => $value) {
+            if (!$this->filled($settings[$key] ?? null)) {
+                $settings[$key] = $value;
+            }
+        }
+
+        return $settings;
     }
 
     /**

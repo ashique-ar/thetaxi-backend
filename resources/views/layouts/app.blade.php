@@ -51,17 +51,29 @@
         $pageTitle = trim($__env->yieldContent('title'));
         $siteName = $settings['site_name'] ?? $settings['brand_name'] ?? 'Company';
         $titleTemplate = $settings['seo_title_template'] ?? '';
+        $seoExactTitle = trim($__env->yieldContent('seo_exact_title')) === 'true';
         // Prefer explicit page title when available
         $computedTitle = $pageTitle !== '' ? $pageTitle : $siteName;
-        // Support templates with placeholders {page_title} and {year}
-        if ($titleTemplate) {
-            $computedTitle = str_replace('{page_title}', $pageTitle !== '' ? $pageTitle : $siteName, $titleTemplate);
-            $computedTitle = str_replace('{year}', date('Y'), $computedTitle);
+        // Support the same editable placeholders used by the shared SEO partial.
+        if (!$seoExactTitle && $titleTemplate) {
+            $computedTitle = strtr($titleTemplate, [
+                '{page_title}' => $pageTitle !== '' ? $pageTitle : $siteName,
+                '{site_name}' => $siteName,
+                '{company_name}' => $settings['company_name'] ?? $siteName,
+                '{tagline}' => $settings['site_tagline'] ?? ($settings['brand_tagline'] ?? ''),
+                '{year}' => date('Y'),
+            ]);
         }
 
         // Override with custom page title if set
-        if (!empty($settings['seo_title_custom'])) {
-            $computedTitle = $settings['seo_title_custom'];
+        if (!$seoExactTitle && !empty($settings['seo_title_custom'])) {
+            $computedTitle = strtr($settings['seo_title_custom'], [
+                '{page_title}' => $pageTitle !== '' ? $pageTitle : $siteName,
+                '{site_name}' => $siteName,
+                '{company_name}' => $settings['company_name'] ?? $siteName,
+                '{tagline}' => $settings['site_tagline'] ?? ($settings['brand_tagline'] ?? ''),
+                '{year}' => date('Y'),
+            ]);
         }
         $metaDescription = trim($settings['seo_meta_description'] ?? '');
         $metaKeywords = trim($settings['seo_keywords'] ?? '');
@@ -84,20 +96,15 @@
 
     <!-- Title -->
     <title>{{ $computedTitle }}</title>
-    @if (trim($metaStack) === '' && $metaDescription !== '')
-        <meta name="description" content="{{ $metaDescription }}">
+    @if (trim($metaStack) === '')
+        @include('partials.seo', ['pageTitle' => $pageTitle])
+    @else
+        {!! $metaStack !!}
     @endif
-    @if (trim($metaStack) === '' && $metaKeywords !== '')
-        <meta name="keywords" content="{{ $metaKeywords }}">
-    @endif
-    <meta property="og:site_name" content="{{ $settings['site_name'] ?? config('app.name') }}">
-    <meta name="twitter:card" content="{{ $twitterCard }}">
     @php($favicon = $settings['brand_favicon'] ?? $settings['favicon'] ?? null)
     <link rel="icon"
         href="{{ $favicon ? s3_asset($favicon) : asset('assets/img/favicon.ico') }}"
         type="image/x-icon">
-
-    {!! $metaStack !!}
 
     @if (!empty($settings['google_tag_manager_id']))
         <!-- Google Tag Manager -->

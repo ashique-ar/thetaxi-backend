@@ -1,4 +1,5 @@
 @extends('layouts.app')
+@section('seo_exact_title', 'true')
 
 @section('title', ($vehicleGroup->name ?? 'Vehicle Details'))
 

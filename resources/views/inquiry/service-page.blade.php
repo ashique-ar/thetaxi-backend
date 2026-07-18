@@ -1,6 +1,7 @@
 @extends('layouts.app')
+@section('seo_exact_title', 'true')
 
-@section('title', ($servicePage->seo_title ?: $servicePage->name) . ' - ' . config('app.name'))
+@section('title', $servicePage->seo_title ?: $servicePage->name)
 
 @push('meta')
 @include('partials.seo', ['model' => $servicePage, 'sections' => $sections])

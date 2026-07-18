@@ -1,6 +1,7 @@
 @extends('layouts.app')
 
-@section('title', $content->meta_title ?? $content->title . ' - ' . ($settings['site_name'] ?? $settings['brand_name'] ?? 'Company') . '')
+@section('title', $content->meta_title ?: $content->title)
+@section('seo_exact_title', 'true')
 
 @php
     $quotationCountries = $countries ?? \App\Models\Country::orderBy('name')->get(['id', 'name', 'code', 'callcode']);

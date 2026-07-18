@@ -1,6 +1,11 @@
 @extends('layouts.app')
+@section('seo_exact_title', 'true')
 
 @section('title', 'Featured Content - ' . ($settings['site_name'] ?? $settings['brand_name'] ?? 'Company') . '')
+
+@push('meta')
+    @include('partials.seo', ['managedSeo' => true])
+@endpush
 
 @section('content')
     <!-- Breadcrumb section Start-->

@@ -1,20 +1,14 @@
 @extends('layouts.app')
 
 @section('title', $contentType->title . ' - ' . ($settings['site_name'] ?? $settings['brand_name'] ?? 'Company') . '')
+@section('seo_exact_title', 'true')
 
 @push('meta')
-    <meta name="description"
-        content="{{ $contentType->description ?? 'Explore our ' . strtolower($contentType->title) . ' collection. Find the latest updates and information.' }}">
-    <meta name="keywords" content="{{ strtolower($contentType->title) }}, taxi, car rental, sri lanka">
-    <meta property="og:title" content="{{ $contentType->title }} - {{ $settings['site_name'] ?? $settings['brand_name'] ?? 'Company' }}">
-    <meta property="og:description"
-        content="{{ $contentType->description ?? 'Explore our ' . strtolower($contentType->title) . ' collection.' }}">
-    <meta property="og:type" content="website">
-    <meta property="og:url" content="{{ request()->url() }}">
-    <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="{{ $contentType->title }} - {{ $settings['site_name'] ?? $settings['brand_name'] ?? 'Company' }}">
-    <meta name="twitter:description"
-        content="{{ $contentType->description ?? 'Explore our ' . strtolower($contentType->title) . ' collection.' }}">
+    @include('partials.seo', [
+        'pageTitle' => $contentType->title,
+        'metaDescription' => $contentType->description ?? '',
+        'managedSeo' => true,
+    ])
 @endpush
 
 @push('styles')

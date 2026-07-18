@@ -43,6 +43,15 @@ class SettingsViewComposer
                     'seo_keywords',
                     'seo_og_image',
                     'seo_twitter_card',
+                    'seo_robots',
+                    'seo_canonical_enabled',
+                    'seo_schema_enabled',
+                    'seo_business_type',
+                    'seo_service_area',
+                    'seo_price_range',
+                    'seo_default_locale',
+                    'seo_ai_summary',
+                    'seo_ai_topics',
                     'google_analytics_id',
                     'google_tag_manager_id',
                     'google_ads_id',
@@ -167,9 +176,9 @@ class SettingsViewComposer
                     'seo_about_title', 'seo_about_description', 'seo_about_keywords',
                     'seo_taxi_title', 'seo_taxi_description', 'seo_taxi_keywords',
                     'seo_contact_title', 'seo_contact_description', 'seo_contact_keywords',
-                    'seo_things_to_do_title', 'seo_things_to_do_description', 'seo_things_to_do_keywords',
-                    'seo_services_title', 'seo_services_description', 'seo_services_keywords',
-                    'seo_corporate_transfers_title', 'seo_corporate_transfers_description', 'seo_corporate_transfers_keywords',
+                    'seo_faq_title', 'seo_faq_description', 'seo_faq_keywords',
+                    'seo_point_to_point_title', 'seo_point_to_point_description', 'seo_point_to_point_keywords',
+                    'seo_rate_chart_title', 'seo_rate_chart_description', 'seo_rate_chart_keywords',
                     'seo_cart_title', 'seo_cart_description', 'seo_cart_keywords',
                     'seo_checkout_title', 'seo_checkout_description', 'seo_checkout_keywords',
 
@@ -487,10 +496,12 @@ class SettingsViewComposer
                     'tertiary_color' => '#FFFFFF'
                 ];
 
-                return $this->settingsService->withCanonicalBranding(array_merge($defaults, $essentialSettings));
+                $settings = $this->settingsService->withCanonicalBranding(array_merge($defaults, $essentialSettings));
+
+                return $this->settingsService->withSeoDefaults($settings);
             } catch (\Exception $e) {
                 // Fallback settings if database fails
-                return [
+                return $this->settingsService->withSeoDefaults([
                     'brand_name' => 'Company',
                     'brand_tagline' => 'Your Trusted Transport Partner',
                     'brand_short_name' => 'Company',
@@ -500,7 +511,7 @@ class SettingsViewComposer
                     'primary_color' => '#BF2629',
                     'secondary_color' => '#717171',
                     'tertiary_color' => '#FFFFFF'
-                ];
+                ]);
             }
         });
 
@@ -511,13 +522,14 @@ class SettingsViewComposer
         $routeMap = [
             'home' => 'home',
             'about' => 'about',
-            'taxi' => 'taxi',
+            'vehicles' => 'taxi',
             'contact' => 'contact',
-            'things-to-do' => 'things_to_do',
-            'services.index' => 'services',
-            'corporate-transfers' => 'corporate_transfers',
-            'cart.index' => 'cart',
-            'checkout.index' => 'checkout',
+            'inquiry' => 'contact',
+            'faq' => 'faq',
+            'point-to-point' => 'point_to_point',
+            'rate-chart' => 'rate_chart',
+            'cart' => 'cart',
+            'checkout' => 'checkout',
         ];
 
         if ($routeName && isset($routeMap[$routeName])) {
