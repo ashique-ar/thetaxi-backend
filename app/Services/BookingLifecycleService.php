@@ -1977,14 +1977,15 @@ class BookingLifecycleService
             ? $bookingItem->customizations
             : [];
 
+        $bookingPricingContext = $this->resolvePersistedBookingPricingContext($booking, $bookingItem);
         $params = [
             'service_type_id' => $bookingItem->service_type_id,
             'vehicle_group_id' => $bookingItem->vehicle_group_id,
             'vehicle_id' => $bookingItem->vehicle_id ?: $context['vehicle_id'],
             'corporate_account_id' => $booking->corporate_account_id,
             'is_corporate_booking' => (bool) ($booking->is_corporate_booking && $booking->corporate_account_id),
-            'pricing_context' => $booking->corporate_account_id ? 'corporate' : 'portal',
-            'service_type_context' => $booking->corporate_account_id ? 'corporate' : 'portal',
+            'pricing_context' => $bookingPricingContext,
+            'service_type_context' => $bookingPricingContext,
             'package_id' => $packageId,
             'customer_id' => $booking->customer_id,
             'from_date' => $bookingItem->from_date ?? $booking->from_date,
@@ -2411,6 +2412,41 @@ class BookingLifecycleService
         }
 
         return round($mileageIn - $mileageOut, 2);
+    }
+
+    private function resolvePersistedBookingPricingContext(
+        Booking $booking,
+        ?BookingItem $bookingItem = null
+    ): string {
+        if ($booking->corporate_account_id || (bool) $booking->is_corporate_booking) {
+            return 'corporate';
+        }
+
+        $snapshotCandidates = [
+            data_get($bookingItem?->pricing_breakdown, 'pricing_scope.pricing_context'),
+            data_get($bookingItem?->pricing_breakdown, 'base_pricing.pricing_scope.pricing_context'),
+            data_get($bookingItem?->pricing_breakdown, 'calculation_metadata.runtime_context.pricing_context'),
+            data_get($booking->pricing_snapshot, 'pricing_scope.pricing_context'),
+            data_get($booking->pricing_snapshot, 'base_pricing.pricing_scope.pricing_context'),
+            data_get($booking->pricing_snapshot, 'calculation_metadata.runtime_context.pricing_context'),
+            data_get($booking->pricing_snapshot, 'base_pricing.calculation_metadata.runtime_context.pricing_context'),
+        ];
+        foreach ($snapshotCandidates as $candidate) {
+            $context = is_string($candidate) ? strtolower(trim($candidate)) : null;
+            if (in_array($context, ['public', 'portal'], true)) {
+                return $context;
+            }
+        }
+
+        $source = strtolower(trim((string) ($booking->booking_source ?: $booking->created_from ?: '')));
+        if (in_array($source, [
+            'public', 'website', 'web', 'online', 'customer',
+            'customer_portal', 'guest', 'mobile', 'customer_mobile',
+        ], true)) {
+            return 'public';
+        }
+
+        return 'portal';
     }
 
     private function formulaReferencesAny(string $formula, array $variableNames): bool

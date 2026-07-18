@@ -145,3 +145,37 @@ it('reuses the booking snapshot exchange rate for final pricing instead of a liv
         'rate_source' => 'base_pricing_snapshot',
     ]);
 });
+
+it('preserves the original booking channel throughout final pricing', function () {
+    $service = (new ReflectionClass(BookingLifecycleService::class))->newInstanceWithoutConstructor();
+
+    $website = new Booking();
+    $website->setRawAttributes(['booking_source' => 'website']);
+
+    $dashboard = new Booking();
+    $dashboard->setRawAttributes(['booking_source' => 'dashboard', 'created_from' => 'internal']);
+
+    $snapshotPublic = new Booking();
+    $snapshotPublic->setRawAttributes([
+        'booking_source' => 'dashboard',
+        'pricing_snapshot' => json_encode([
+            'base_pricing' => ['pricing_scope' => ['pricing_context' => 'public']],
+        ]),
+    ]);
+
+    $corporate = new Booking();
+    $corporate->setRawAttributes([
+        'booking_source' => 'website',
+        'is_corporate_booking' => true,
+        'corporate_account_id' => 'corporate-1',
+    ]);
+
+    expect(invokePrivateMethod($service, 'resolvePersistedBookingPricingContext', [$website]))
+        ->toBe('public')
+        ->and(invokePrivateMethod($service, 'resolvePersistedBookingPricingContext', [$dashboard]))
+        ->toBe('portal')
+        ->and(invokePrivateMethod($service, 'resolvePersistedBookingPricingContext', [$snapshotPublic]))
+        ->toBe('public')
+        ->and(invokePrivateMethod($service, 'resolvePersistedBookingPricingContext', [$corporate]))
+        ->toBe('corporate');
+});
