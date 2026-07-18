@@ -1311,6 +1311,8 @@ Route::middleware(['auth:api'])->group(function () {
                 ->middleware('permission:bookings.complete_repairs');
             Route::post('complete-booking', [BookingLifecycleController::class, 'completeBooking'])
                 ->middleware('permission:bookings.complete');
+            Route::post('{bookingId}/force-complete', [BookingLifecycleController::class, 'forceCompleteBooking'])
+                ->middleware('permission:bookings.complete');
             Route::post('check-vehicle-availability', [BookingLifecycleController::class, 'checkVehicleAvailability'])
                 ->middleware('permission:bookings.view');
             Route::get('maintenance-blocks', [BookingLifecycleController::class, 'getMaintenanceBlocks'])

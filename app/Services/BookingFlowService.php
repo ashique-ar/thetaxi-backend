@@ -4127,6 +4127,7 @@ class BookingFlowService
             if ($serviceType && $serviceType->minimum_km > 0) {
                 $minimumKm = (float) $serviceType->minimum_km;
                 $inputs['minimum_km'] = $minimumKm;
+                $inputs['minimum_km_source'] = 'service_type';
 
                 Log::debug('prepareCalculationInputs: Minimum KM configured', [
                     'service_type_id' => $serviceType->id,
@@ -4136,7 +4137,48 @@ class BookingFlowService
             }
         }
 
+        if ($serviceType !== null && $minimumKm === null) {
+            $configuredMinimumKm = (float) config('booking.default_minimum_km', 1);
+            if ($configuredMinimumKm > 0) {
+                $minimumKm = $configuredMinimumKm;
+                $inputs['minimum_km'] = $minimumKm;
+                $inputs['minimum_km_source'] = 'system_default';
+
+                Log::warning('prepareCalculationInputs: Using configured system minimum KM', [
+                    'service_type_id' => $serviceType?->id ?? $serviceTypeId,
+                    'minimum_km' => $minimumKm,
+                ]);
+            }
+        }
+
         $inputs['pricing_context'] = $this->resolvePricingContext($params, $serviceType);
+
+        // Final/mobile pricing supplies measured telemetry directly rather than
+        // route locations. Enforce the same minimum charge used by route-based
+        // pricing while retaining the measured value for audit/display.
+        if (
+            $minimumKm !== null
+            && isset($inputs['journey_distance'])
+            && is_numeric($inputs['journey_distance'])
+            && (float) $inputs['journey_distance'] < $minimumKm
+        ) {
+            $actualDistance = max(0, (float) $inputs['journey_distance']);
+            $inputs['actual_journey_distance'] = $actualDistance;
+            $inputs['journey_distance'] = $minimumKm;
+            $inputs['total_distance'] = max(
+                $minimumKm,
+                is_numeric($inputs['total_distance'] ?? null)
+                    ? (float) $inputs['total_distance']
+                    : 0
+            );
+            $inputs['minimum_km_applied'] = true;
+            $inputs['distance_source'] = 'measured_below_'
+                . ($inputs['minimum_km_source'] ?? 'service_type')
+                . '_minimum';
+        } elseif (isset($inputs['journey_distance']) && is_numeric($inputs['journey_distance'])) {
+            $inputs['minimum_km_applied'] = false;
+            $inputs['distance_source'] = $inputs['distance_source'] ?? 'measured';
+        }
 
         if (isset($params['district_id'])) {
             $inputs['district_id'] = $params['district_id'];
@@ -4267,9 +4309,11 @@ class BookingFlowService
             $inputs['total_distance'] = $inputs['minimum_km'];
             $inputs['journey_distance'] = $inputs['minimum_km'];
             $inputs['minimum_km_applied'] = true;
+            $inputs['distance_source'] = ($inputs['minimum_km_source'] ?? 'service_type') . '_minimum';
 
             Log::info('prepareCalculationInputs: Using minimum_km as fallback for total_distance', [
                 'minimum_km' => $inputs['minimum_km'],
+                'minimum_km_source' => $inputs['minimum_km_source'] ?? null,
                 'reason' => 'no_locations_provided',
             ]);
         }
@@ -4490,6 +4534,8 @@ class BookingFlowService
             'actual_journey_distance' => $kmCalculations['actual_journey_distance'] ?? ($kmCalculations['journey_distance'] ?? 0),
             'minimum_km' => $kmCalculations['minimum_km'] ?? null,
             'minimum_km_applied' => $kmCalculations['minimum_km_applied'] ?? false,
+            'minimum_km_source' => $kmCalculations['minimum_km_source'] ?? null,
+            'distance_source' => $kmCalculations['distance_source'] ?? null,
             'allowed_total_km' => null,
             'extra_km' => $kmCalculations['extra_km'] ?? 0,
             'extra_km_price' => null,

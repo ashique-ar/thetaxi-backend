@@ -438,6 +438,56 @@ class BookingLifecycleController extends Controller
     }
 
     /**
+     * Administratively end a hire when normal mobile/lifecycle completion is
+     * unavailable. Every manual telemetry field is optional.
+     */
+    public function forceCompleteBooking(Request $request, string $bookingId): JsonResponse
+    {
+        $validated = $request->validate([
+            'booking_item_id' => 'nullable|string',
+            'actual_start_time' => 'nullable|date',
+            'actual_return_time' => 'nullable|date',
+            'actual_distance' => 'nullable|numeric|min:0',
+            'distance_km' => 'nullable|numeric|min:0',
+            'waiting_minutes' => 'nullable|integer|min:0',
+            'notes' => 'nullable|string|max:2000',
+        ]);
+
+        try {
+            $result = $this->lifecycleService->forceCompleteBooking(
+                $bookingId,
+                $validated,
+                $validated['booking_item_id'] ?? null
+            );
+            $aggregateCompleted = (string) $result->status === 'completed';
+            if ($aggregateCompleted) {
+                $this->smsAutomation->queueTripEnd($result);
+            }
+
+            return response()->json([
+                'status' => 'success',
+                'data' => $result,
+                'aggregate_completed' => $aggregateCompleted,
+                'message' => $aggregateCompleted
+                    ? 'Hire force ended successfully'
+                    : 'Booking item force ended; remaining items are still active',
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Error force ending hire', [
+                'booking_id' => $bookingId,
+                'booking_item_id' => $validated['booking_item_id'] ?? null,
+                'user_id' => Auth::id(),
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to force end hire: ' . $e->getMessage(),
+            ], $e instanceof \DomainException || $e instanceof \InvalidArgumentException ? 422 : 500);
+        }
+    }
+
+    /**
      * Get available inspectors
      */
     public function getAvailableInspectors(): JsonResponse

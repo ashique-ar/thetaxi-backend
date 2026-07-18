@@ -467,6 +467,10 @@ class TripController extends Controller
                 TripPhase::ACCEPTED,
                 TripPhase::PICKUP_ARRIVED,
                 TripPhase::IN_PROGRESS,
+                // Administrative force completion can win a race with a final
+                // mobile request. Let endTrip return its stored idempotent
+                // summary instead of reporting the assignment as missing.
+                TripPhase::COMPLETED,
             ])
             ->first();
     }

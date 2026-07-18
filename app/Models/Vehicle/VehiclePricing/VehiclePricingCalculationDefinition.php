@@ -567,6 +567,16 @@ class VehiclePricingCalculationDefinition extends Model
         $result = [
             'journey_distance' => $journeyDistance,
             'distance_supplied' => $distanceSupplied,
+            'actual_journey_distance' => array_key_exists('actual_journey_distance', $inputs)
+                && is_numeric($inputs['actual_journey_distance'])
+                    ? (float) $inputs['actual_journey_distance']
+                    : (($inputs['minimum_km_applied'] ?? false) ? null : $journeyDistance),
+            'minimum_km' => isset($inputs['minimum_km']) && is_numeric($inputs['minimum_km'])
+                ? (float) $inputs['minimum_km']
+                : null,
+            'minimum_km_applied' => (bool) ($inputs['minimum_km_applied'] ?? false),
+            'minimum_km_source' => $inputs['minimum_km_source'] ?? null,
+            'distance_source' => $inputs['distance_source'] ?? ($distanceSupplied ? 'measured' : null),
             'allowance_supplied' => false,
             'allowed_km' => null,
             'extra_km' => null,

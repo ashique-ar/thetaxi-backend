@@ -7,6 +7,7 @@ use App\Models\Booking\BookingItem;
 use App\Models\Booking\BookingDispatch;
 use App\Models\Booking\BookingQC;
 use App\Models\DriverAssignment;
+use App\Models\Driver\DriverSession;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCalculationDefinition;
 use App\Models\Vehicle\VehiclePricing\BookingPriceAdjustmentHistory;
 use App\Models\Vehicle\VehiclePricing\PriceAdjustment;
@@ -19,6 +20,7 @@ use App\Services\InvoiceService;
 use App\Models\User;
 use App\Enums\BookingLifecycleStatus;
 use App\Enums\DispatchStatus;
+use App\Enums\TripPhase;
 use App\Enums\QCStatus;
 use App\Enums\VehicleAvailabilityStatus;
 use Illuminate\Support\Facades\DB;
@@ -1397,6 +1399,202 @@ class BookingLifecycleService
         });
     }
 
+    /**
+     * Administratively end an active hire. Canonical completion is attempted
+     * first. If operational telemetry or workflow prerequisites are missing,
+     * close the hire without synthesizing pricing and flag it for manual review.
+     */
+    public function forceCompleteBooking(
+        string $bookingId,
+        array $completionData = [],
+        ?string $bookingItemId = null
+    ): Booking {
+        $completionData = array_filter($completionData, static fn ($value) => $value !== null && $value !== '');
+        $completionData['force_completion'] = true;
+        $completionData['force_completed_by'] = Auth::id();
+        $completionData['force_completed_at'] = Carbon::now('UTC')->toIso8601String();
+
+        try {
+            $booking = $this->completeBooking($bookingId, $completionData, $bookingItemId);
+            $completedAt = isset($completionData['actual_return_time'])
+                ? Carbon::parse($completionData['actual_return_time'])->utc()
+                : Carbon::now('UTC');
+            $this->closeDriverAssignmentsForAdministrativeCompletion(
+                $bookingId,
+                $bookingItemId,
+                $completedAt,
+                $completionData
+            );
+
+            return $booking->fresh(['bookingItems', 'dispatches']);
+        } catch (\Throwable $exception) {
+            $isExpectedLifecycleBlock = $exception instanceof \DomainException
+                || $exception instanceof \InvalidArgumentException
+                || $exception->getMessage() === 'Booking cannot be completed from its current lifecycle status';
+            if (!$isExpectedLifecycleBlock) {
+                throw $exception;
+            }
+
+            return DB::transaction(function () use (
+                $bookingId,
+                $bookingItemId,
+                $completionData,
+                $exception
+            ) {
+                $actorUserId = Auth::id();
+                if (!$actorUserId) {
+                    throw new \DomainException('Authenticated staff user is required to force end a hire.');
+                }
+
+                $booking = Booking::query()
+                    ->lockForUpdate()
+                    ->with(['bookingItems', 'dispatches'])
+                    ->findOrFail($bookingId);
+                $context = $this->resolveLifecycleContext($booking, $bookingItemId);
+                /** @var BookingItem|null $bookingItem */
+                $bookingItem = $context['booking_item'];
+                if (!$bookingItem) {
+                    throw new \DomainException('The hire has no booking item to complete.');
+                }
+
+                $completedAt = isset($completionData['actual_return_time'])
+                    ? Carbon::parse($completionData['actual_return_time'])->utc()
+                    : Carbon::now('UTC');
+                $manualData = array_intersect_key($completionData, array_flip([
+                    'actual_start_time', 'actual_return_time', 'actual_distance',
+                    'distance_km', 'waiting_minutes', 'notes',
+                ]));
+                $forceAudit = [
+                    'status' => 'manual_review_required',
+                    'reason' => 'administrative_force_completion',
+                    'canonical_completion_error' => $exception->getMessage(),
+                    'manual_data' => $manualData,
+                    'actor_user_id' => (string) $actorUserId,
+                    'completed_at' => $completedAt->toIso8601String(),
+                ];
+
+                $bookingItem->update([
+                    'status' => 'completed',
+                    'returned_at' => $bookingItem->returned_at ?? $completedAt,
+                    'completed_at' => $completedAt,
+                    'final_priced_at' => null,
+                    'lifecycle_data' => array_merge(
+                        is_array($bookingItem->lifecycle_data) ? $bookingItem->lifecycle_data : [],
+                        ['force_completion' => $forceAudit]
+                    ),
+                ]);
+
+                $dispatch = $this->resolveItemDispatch($booking, $context, false);
+                if ($dispatch && !$dispatch->isReturned()) {
+                    $dispatch->update([
+                        'dispatch_status' => DispatchStatus::RETURNED,
+                        'actual_return_at' => $completedAt,
+                        'returned_by' => $actorUserId,
+                        'return_notes' => $completionData['notes'] ?? 'Administratively force ended.',
+                    ]);
+                }
+
+                $assignments = DriverAssignment::query()
+                    ->where('booking_id', $booking->id)
+                    ->when($bookingItemId, fn ($query) => $query->where('booking_item_id', $bookingItemId))
+                    ->where('trip_phase', '!=', TripPhase::COMPLETED->value)
+                    ->get();
+                $assignmentIds = $assignments->pluck('id');
+                foreach ($assignments as $assignment) {
+                    $updates = [
+                        'status' => 'completed',
+                        'trip_phase' => TripPhase::COMPLETED,
+                        'trip_completed_at' => $completedAt,
+                        'actual_end' => $completedAt,
+                    ];
+                    $manualDistance = $completionData['actual_distance'] ?? $completionData['distance_km'] ?? null;
+                    if (is_numeric($manualDistance)) {
+                        $updates['total_distance_km'] = round((float) $manualDistance, 2);
+                    }
+                    $assignment->update($updates);
+                }
+                if ($assignmentIds->isNotEmpty()) {
+                    DriverSession::query()
+                        ->whereIn('assignment_id', $assignmentIds)
+                        ->update(['assignment_id' => null]);
+                }
+
+                $vehicleId = $dispatch?->vehicle_id ?: $context['vehicle_id'];
+                if ($vehicleId) {
+                    $this->makeVehicleAvailable((string) $vehicleId);
+                }
+
+                $allItemsCompleted = $booking->bookingItems()->whereNull('completed_at')->doesntExist();
+                if ($allItemsCompleted) {
+                    $booking->update([
+                        'status' => 'completed',
+                        'completed_at' => $completedAt,
+                        'updated_user_id' => $actorUserId,
+                        'workflow_data' => array_merge(
+                            is_array($booking->workflow_data) ? $booking->workflow_data : [],
+                            ['force_completion' => $forceAudit]
+                        ),
+                    ]);
+                }
+
+                AuditLog::create([
+                    'user_id' => $actorUserId,
+                    'action' => 'booking_force_completed',
+                    'entity' => 'Booking',
+                    'entity_id' => $booking->id,
+                    'timestamp' => Carbon::now('UTC'),
+                    'details' => array_merge($forceAudit, ['booking_item_id' => $bookingItem->id]),
+                ]);
+
+                Log::warning('Booking hire administratively force completed without canonical final pricing', [
+                    'booking_id' => $booking->id,
+                    'booking_item_id' => $bookingItem->id,
+                    'actor_user_id' => $actorUserId,
+                    'canonical_error' => $exception->getMessage(),
+                ]);
+
+                return $booking->fresh(['bookingItems', 'dispatches']);
+            });
+        }
+    }
+
+    private function closeDriverAssignmentsForAdministrativeCompletion(
+        string $bookingId,
+        ?string $bookingItemId,
+        Carbon $completedAt,
+        array $completionData
+    ): void {
+        DB::transaction(function () use ($bookingId, $bookingItemId, $completedAt, $completionData) {
+            $assignments = DriverAssignment::query()
+                ->where('booking_id', $bookingId)
+                ->when($bookingItemId, fn ($query) => $query->where('booking_item_id', $bookingItemId))
+                ->where('trip_phase', '!=', TripPhase::COMPLETED->value)
+                ->lockForUpdate()
+                ->get();
+            $assignmentIds = $assignments->pluck('id');
+            $manualDistance = $completionData['actual_distance'] ?? $completionData['distance_km'] ?? null;
+
+            foreach ($assignments as $assignment) {
+                $updates = [
+                    'status' => 'completed',
+                    'trip_phase' => TripPhase::COMPLETED,
+                    'trip_completed_at' => $completedAt,
+                    'actual_end' => $completedAt,
+                ];
+                if (is_numeric($manualDistance)) {
+                    $updates['total_distance_km'] = round((float) $manualDistance, 2);
+                }
+                $assignment->update($updates);
+            }
+
+            if ($assignmentIds->isNotEmpty()) {
+                DriverSession::query()
+                    ->whereIn('assignment_id', $assignmentIds)
+                    ->update(['assignment_id' => null]);
+            }
+        });
+    }
+
     private function completeMultiItemBookingItem(
         Booking $booking,
         array $context,
@@ -1761,6 +1959,9 @@ class BookingLifecycleService
             'vehicle_group_id' => $bookingItem->vehicle_group_id,
             'vehicle_id' => $bookingItem->vehicle_id ?: $context['vehicle_id'],
             'corporate_account_id' => $booking->corporate_account_id,
+            'is_corporate_booking' => (bool) ($booking->is_corporate_booking && $booking->corporate_account_id),
+            'pricing_context' => $booking->corporate_account_id ? 'corporate' : 'public',
+            'service_type_context' => $booking->corporate_account_id ? 'corporate' : 'public',
             'package_id' => $packageId,
             'customer_id' => $booking->customer_id,
             'from_date' => $bookingItem->from_date ?? $booking->from_date,
@@ -1911,10 +2112,13 @@ class BookingLifecycleService
         $referencesDistanceOverage = $this->formulaReferencesAny($selectedFormula, ['extra_km']);
         $distanceOverageNeedsTelemetry = $referencesDistanceOverage
             && data_get($result, 'km_calculations.calculation_type') !== 'unlimited';
+        $minimumDistanceResolved = data_get($result, 'distance_details.minimum_km_applied') === true
+            && is_numeric(data_get($result, 'distance_details.journey_distance'));
 
         if (
             !$contractualDistance
             && $distanceKm === null
+            && !$minimumDistanceResolved
             && ($referencesMeasuredDistance || $distanceOverageNeedsTelemetry)
         ) {
             throw new \DomainException(

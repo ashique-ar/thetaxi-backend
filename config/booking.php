@@ -122,4 +122,10 @@ return [
      */
     'base_currency' => env('BOOKING_BASE_CURRENCY', 'LKR'),
 
+    /**
+     * Last-resort billable distance when final route telemetry is unavailable
+     * and the selected service has no minimum_km configured.
+     */
+    'default_minimum_km' => (float) env('BOOKING_DEFAULT_MINIMUM_KM', 1),
+
 ];
