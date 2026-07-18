@@ -5,6 +5,7 @@ namespace App\Services\Driver;
 use App\Enums\TripPhase;
 use App\Events\AssignmentStatusChanged;
 use App\Models\Driver\Driver;
+use App\Models\Driver\DriverSession;
 use App\Models\DriverAssignment;
 use Carbon\Carbon;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -46,6 +47,7 @@ class MobileAssignmentService
      */
     public function getDriverAssignments(Driver $driver, array $filters = []): LengthAwarePaginator
     {
+        $this->reconcileCompletedBookingAssignments($driver);
         $query = $this->baseAssignmentQuery($driver);
 
         if (!empty($filters['status'])) {
@@ -72,6 +74,13 @@ class MobileAssignmentService
                     }
                     break;
             }
+        } else {
+            // The assignments endpoint is the operational inbox. Completed
+            // hires belong to the dedicated /hires history endpoint; returning
+            // them here makes older mobile clients reopen the end-hire screen.
+            $query->whereIn('status', ['active', 'pending_approval', 'confirmed', 'approved'])
+                ->whereNotIn('trip_phase', [TripPhase::COMPLETED, TripPhase::DECLINED]);
+            $this->excludeTerminalBookings($query);
         }
 
         if (!empty($filters['date'])) {
@@ -108,6 +117,7 @@ class MobileAssignmentService
      */
     public function getCurrentAssignment(Driver $driver): ?DriverAssignment
     {
+        $this->reconcileCompletedBookingAssignments($driver);
         $now = Carbon::now();
 
         $query = $this->baseAssignmentQuery($driver)
@@ -123,6 +133,83 @@ class MobileAssignmentService
             })
             ->orderByDesc('assigned_from')
             ->first();
+    }
+
+    /**
+     * Return the driver's operational trip without allowing a completed parent
+     * booking to leak back through heartbeat or status responses.
+     */
+    public function getActiveTripAssignment(Driver $driver): ?DriverAssignment
+    {
+        $this->reconcileCompletedBookingAssignments($driver);
+
+        $query = $this->baseAssignmentQuery($driver)
+            ->whereIn('trip_phase', [
+                TripPhase::ACCEPTED,
+                TripPhase::PICKUP_ARRIVED,
+                TripPhase::IN_PROGRESS,
+            ]);
+        $this->excludeTerminalBookings($query);
+
+        return $query->orderByDesc('updated_at')->first();
+    }
+
+    public function getPendingAssignments(Driver $driver): Collection
+    {
+        $this->reconcileCompletedBookingAssignments($driver);
+
+        $query = $this->baseAssignmentQuery($driver)
+            ->whereIn('status', ['active', 'pending_approval', 'confirmed', 'approved'])
+            ->whereNotIn('trip_phase', [TripPhase::COMPLETED, TripPhase::DECLINED]);
+        $this->excludeTerminalBookings($query);
+
+        return $query->orderBy('assigned_from')->get();
+    }
+
+    /**
+     * Repair stale assignment/session rows left behind when a booking was
+     * completed administratively before the mobile assignment was closed.
+     */
+    public function reconcileCompletedBookingAssignments(Driver $driver): int
+    {
+        return DB::transaction(function () use ($driver) {
+            $assignments = DriverAssignment::query()
+                ->where('driver_id', $driver->id)
+                ->where(function (Builder $query) {
+                    $query->whereNull('trip_phase')
+                        ->orWhereNotIn('trip_phase', [TripPhase::COMPLETED, TripPhase::DECLINED]);
+                })
+                ->whereHas('booking', fn (Builder $query) => $query->where('status', 'completed'))
+                ->with('booking:id,completed_at')
+                ->lockForUpdate()
+                ->get();
+
+            if ($assignments->isEmpty()) {
+                return 0;
+            }
+
+            foreach ($assignments as $assignment) {
+                $completedAt = $assignment->booking?->completed_at ?? Carbon::now('UTC');
+                $assignment->update([
+                    'status' => 'completed',
+                    'trip_phase' => TripPhase::COMPLETED,
+                    'trip_completed_at' => $assignment->trip_completed_at ?? $completedAt,
+                    'actual_end' => $assignment->actual_end ?? $completedAt,
+                ]);
+            }
+
+            DriverSession::query()
+                ->whereIn('assignment_id', $assignments->pluck('id'))
+                ->update(['assignment_id' => null]);
+            $driver->unsetRelation('activeSession');
+
+            Log::warning('Reconciled stale driver assignments for completed bookings', [
+                'driver_id' => $driver->id,
+                'assignment_ids' => $assignments->pluck('id')->all(),
+            ]);
+
+            return $assignments->count();
+        });
     }
 
     /**

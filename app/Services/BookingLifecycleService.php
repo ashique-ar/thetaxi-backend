@@ -1426,6 +1426,19 @@ class BookingLifecycleService
         $bookingForStatus = Booking::query()->findOrFail($bookingId);
         $currentStatus = $bookingForStatus->getLifecycleStatus();
         if ($currentStatus === BookingLifecycleStatus::COMPLETED) {
+            $completedAt = isset($completionData['actual_return_time'])
+                ? Carbon::parse($completionData['actual_return_time'])->utc()
+                : ($bookingForStatus->completed_at ?? Carbon::now('UTC'));
+            // A completed booking is terminal for every assignment. Do not let
+            // an older or duplicate assignment/session keep the driver app in
+            // an in-progress trip after an administrative force-end retry.
+            $this->closeDriverAssignmentsForCompletion(
+                $bookingId,
+                null,
+                $completedAt,
+                $completionData
+            );
+
             return $bookingForStatus->fresh(['bookingItems', 'dispatches']);
         }
         if (!in_array($currentStatus, [

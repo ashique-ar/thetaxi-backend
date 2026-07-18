@@ -2,10 +2,9 @@
 
 namespace App\Http\Controllers\Api\Driver\Mobile;
 
-use App\Enums\TripPhase;
 use App\Http\Controllers\Controller;
-use App\Models\DriverAssignment;
 use App\Services\Driver\DriverAuthService;
+use App\Services\Driver\MobileAssignmentService;
 use App\Services\Driver\SessionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -28,7 +27,8 @@ class HeartbeatController extends Controller
      */
     public function __construct(
         private SessionService $sessionService,
-        private DriverAuthService $authService
+        private DriverAuthService $authService,
+        private MobileAssignmentService $assignmentService
     ) {}
 
     /**
@@ -62,13 +62,7 @@ class HeartbeatController extends Controller
             $driver->refresh();
 
             // Check for active trip
-            $activeAssignment = DriverAssignment::where('driver_id', $driver->id)
-                ->whereIn('trip_phase', [
-                    TripPhase::ACCEPTED,
-                    TripPhase::PICKUP_ARRIVED,
-                    TripPhase::IN_PROGRESS,
-                ])
-                ->first();
+            $activeAssignment = $this->assignmentService->getActiveTripAssignment($driver);
 
             $responseData = [
                 'last_active_at' => $driver->last_active_at?->toIso8601String(),

@@ -2,13 +2,12 @@
 
 namespace App\Http\Controllers\Api\Driver\Mobile;
 
-use App\Enums\TripPhase;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Driver\Mobile\GoOnlineRequest;
 use App\Http\Requests\Driver\Mobile\GoOfflineRequest;
 use App\Http\Resources\Driver\DriverSessionResource;
-use App\Models\DriverAssignment;
 use App\Services\Driver\DriverAuthService;
+use App\Services\Driver\MobileAssignmentService;
 use App\Services\Driver\SessionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -31,7 +30,8 @@ class StatusController extends Controller
      */
     public function __construct(
         private SessionService $sessionService,
-        private DriverAuthService $authService
+        private DriverAuthService $authService,
+        private MobileAssignmentService $assignmentService
     ) {}
 
     /**
@@ -76,10 +76,7 @@ class StatusController extends Controller
             $session = $this->sessionService->startSession($driver, $sessionData);
 
             // Check for pending assignments
-            $pendingAssignments = DriverAssignment::where('driver_id', $driver->id)
-                ->whereIn('status', ['active', 'pending_approval'])
-                ->with(['booking', 'bookingItem'])
-                ->get();
+            $pendingAssignments = $this->assignmentService->getPendingAssignments($driver);
 
             return response()->json([
                 'status' => 'success',
@@ -133,13 +130,7 @@ class StatusController extends Controller
             }
 
             // Check for active trip tracking session
-            $activeTrip = DriverAssignment::where('driver_id', $driver->id)
-                ->whereIn('trip_phase', [
-                    TripPhase::ACCEPTED,
-                    TripPhase::PICKUP_ARRIVED,
-                    TripPhase::IN_PROGRESS,
-                ])
-                ->first();
+            $activeTrip = $this->assignmentService->getActiveTripAssignment($driver);
 
             $session = $this->sessionService->endSession($driver, $request->validated());
 
@@ -195,6 +186,7 @@ class StatusController extends Controller
             }
 
             // Refresh driver to get latest state
+            $this->assignmentService->reconcileCompletedBookingAssignments($driver);
             $driver->refresh();
 
             return response()->json([

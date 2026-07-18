@@ -703,13 +703,19 @@ it('does not expose terminal parent bookings as upcoming or current assignments'
     $completedBooking = Booking::create(['status' => 'completed', 'completed_at' => now()]);
     $activeBooking = Booking::create(['status' => 'confirmed']);
 
-    DriverAssignment::create([
+    $staleAssignment = DriverAssignment::create([
         'driver_id' => $driver->id,
         'booking_id' => $completedBooking->id,
         'trip_phase' => TripPhase::IN_PROGRESS,
         'status' => 'active',
         'assigned_from' => now()->subHour(),
         'assigned_to' => now()->addHour(),
+    ]);
+    $staleSession = DriverSession::create([
+        'driver_id' => $driver->id,
+        'assignment_id' => $staleAssignment->id,
+        'status' => 'active',
+        'start_time' => now()->subHour(),
     ]);
     $activeAssignment = DriverAssignment::create([
         'driver_id' => $driver->id,
@@ -721,9 +727,14 @@ it('does not expose terminal parent bookings as upcoming or current assignments'
     ]);
 
     $upcoming = $this->assignmentService->getDriverAssignments($driver, ['status' => 'upcoming']);
+    $defaultInbox = $this->assignmentService->getDriverAssignments($driver);
 
     expect($upcoming->pluck('id')->all())->toBe([$activeAssignment->id])
-        ->and($this->assignmentService->getCurrentAssignment($driver)?->id)->toBe($activeAssignment->id);
+        ->and($defaultInbox->pluck('id')->all())->toBe([$activeAssignment->id])
+        ->and($this->assignmentService->getCurrentAssignment($driver)?->id)->toBe($activeAssignment->id)
+        ->and($staleAssignment->fresh()->trip_phase)->toBe(TripPhase::COMPLETED)
+        ->and($staleAssignment->fresh()->status)->toBe('completed')
+        ->and($staleSession->fresh()->assignment_id)->toBeNull();
 });
 
 it('uses lifecycle final pricing as the single open package charge owner', function () {

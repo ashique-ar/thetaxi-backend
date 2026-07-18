@@ -70,6 +70,24 @@ it('returns canonical assignment and stop actions from the shared trip state own
         ->toContain("return \$stops->isEmpty() || \$this->allStopsTerminal(\$stops) ? ['complete'] : ['stop_action'];");
 });
 
+it('uses the canonical mobile assignment owner for heartbeat and driver status feeds', function () {
+    $heartbeat = file_get_contents(app_path('Http/Controllers/Api/Driver/Mobile/HeartbeatController.php'));
+    $status = file_get_contents(app_path('Http/Controllers/Api/Driver/Mobile/StatusController.php'));
+    $lifecycle = file_get_contents(app_path('Services/BookingLifecycleService.php'));
+
+    expect($heartbeat)
+        ->toContain('$this->assignmentService->getActiveTripAssignment($driver)')
+        ->not->toContain('DriverAssignment::where')
+        ->and($status)
+        ->toContain('$this->assignmentService->getPendingAssignments($driver)')
+        ->toContain('$this->assignmentService->getActiveTripAssignment($driver)')
+        ->toContain('$this->assignmentService->reconcileCompletedBookingAssignments($driver)')
+        ->not->toContain('DriverAssignment::where')
+        ->and($lifecycle)
+        ->toContain('A completed booking is terminal for every assignment')
+        ->toContain("\$this->closeDriverAssignmentsForCompletion(");
+});
+
 it('scopes buffered locations to the authenticated driver active assignment', function () {
     $source = file_get_contents(app_path('Services/Driver/LocationService.php'));
     $sync = Str::between($source, 'public function syncBufferedLocations(', 'private function buildLocationDedupeKey(');
