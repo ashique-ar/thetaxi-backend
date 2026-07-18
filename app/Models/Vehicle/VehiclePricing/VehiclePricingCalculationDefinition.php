@@ -691,9 +691,9 @@ class VehiclePricingCalculationDefinition extends Model
             $result['calculation_type'] = 'unlimited';
             $result['allowed_km'] = null;
             // With no configured allowance there is no overage boundary. A
-            // supplied journey therefore has zero extra kilometres; keeping
-            // this null incorrectly rejects formulas that include extra_km.
-            $result['extra_km'] = $actualKm !== null ? 0.0 : null;
+            // journey therefore has zero extra kilometres even when final
+            // mileage is unavailable. There is no boundary to exceed.
+            $result['extra_km'] = 0.0;
         }
         Log::debug('KM overages calculated', $result);
         return $result;

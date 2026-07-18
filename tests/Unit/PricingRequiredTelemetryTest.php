@@ -215,14 +215,13 @@ class PricingRequiredTelemetryTest extends TestCase
         self::assertSame(10.0, (float) $daily['extra_km']);
     }
 
-    public function test_unlimited_slab_resolves_supplied_distance_to_zero_extra_kilometres(): void
+    public function test_unlimited_slab_resolves_extra_kilometres_to_zero_without_distance_telemetry(): void
     {
         $definition = (new ReflectionClass(VehiclePricingCalculationDefinition::class))
             ->newInstanceWithoutConstructor();
         $method = new ReflectionMethod($definition, 'calculateKmOverages');
 
         $result = $method->invoke($definition, [
-            'journey_distance' => 25,
             'from_date' => '2026-07-17',
             'to_date' => '2026-07-17',
             'from_time' => '16:15:00',

@@ -1901,9 +1901,18 @@ class BookingLifecycleService
         $selectedDefinition = $activeDefinitions->firstWhere('id', $definitionId);
         $selectedFormula = (string) ($selectedDefinition?->formula ?? '');
 
-        if (!$contractualDistance && $distanceKm === null && $this->formulaReferencesAny($selectedFormula, [
-            'journey_distance', 'total_distance', 'actual_distance', 'distance_km', 'extra_km',
-        ])) {
+        $referencesMeasuredDistance = $this->formulaReferencesAny($selectedFormula, [
+            'journey_distance', 'total_distance', 'actual_distance', 'distance_km',
+        ]);
+        $referencesDistanceOverage = $this->formulaReferencesAny($selectedFormula, ['extra_km']);
+        $distanceOverageNeedsTelemetry = $referencesDistanceOverage
+            && data_get($result, 'km_calculations.calculation_type') !== 'unlimited';
+
+        if (
+            !$contractualDistance
+            && $distanceKm === null
+            && ($referencesMeasuredDistance || $distanceOverageNeedsTelemetry)
+        ) {
             throw new \DomainException(
                 'Final distance is required by the selected pricing definition. Completion was stopped until mileage or measured distance is supplied.'
             );
