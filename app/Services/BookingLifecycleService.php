@@ -1769,7 +1769,11 @@ class BookingLifecycleService
             'to_time' => $bookingItem->to_time ?? $booking->to_time,
             'duration_hours' => $durationMinutes / 60,
             'duration_minutes' => $durationMinutes,
-            'duration_days' => $durationMinutes >= 1440 ? (int) ceil($durationMinutes / 1440) : 0,
+            // A known positive final duration always occupies at least one
+            // billable calendar day. Missing duration is handled separately.
+            'duration_days' => $durationMinutes > 0
+                ? max(1, (int) ceil($durationMinutes / 1440))
+                : 0,
             'extra_minutes' => $extraMinutes,
             'extra_hours' => $extraMinutes / 60,
             'overtime_minutes' => $extraMinutes,

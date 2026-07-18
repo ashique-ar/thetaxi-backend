@@ -227,6 +227,8 @@ class TripTrackingService
             // Close open waiting records
             $this->waitingTimeService->closeOpenWaitingRecords($assignment);
 
+            // Final distance comes only from recorded mobile route points;
+            // never use booked/minimum KM or a client-supplied total.
             $totalDistance = $this->calculateTripDistance($assignment);
             $waitingTime = $this->waitingTimeService->getTotalWaitingTime($assignment);
 
@@ -1339,6 +1341,30 @@ class TripTrackingService
         $points = $assignment->routePoints()
             ->orderBy('recorded_at', 'asc')
             ->get(['latitude', 'longitude']);
+
+        // Location uploads made during a short assignment/session state gap can
+        // be valid trip telemetry while having a null assignment_id. Recover
+        // only points from this driver's active session and actual trip window;
+        // never include points owned by another assignment.
+        if ($assignment->trip_started_at) {
+            $session = $assignment->driver?->activeSession;
+            if ($session) {
+                $sessionPoints = RoutePoint::query()
+                    ->where('session_id', $session->id)
+                    ->where(function ($query) use ($assignment) {
+                        $query->where('assignment_id', $assignment->id)
+                            ->orWhereNull('assignment_id');
+                    })
+                    ->where('recorded_at', '>=', $assignment->trip_started_at)
+                    ->where('recorded_at', '<=', $assignment->trip_completed_at ?? Carbon::now('UTC'))
+                    ->orderBy('recorded_at', 'asc')
+                    ->get(['latitude', 'longitude']);
+
+                if ($sessionPoints->count() > $points->count()) {
+                    $points = $sessionPoints;
+                }
+            }
+        }
 
         if ($points->count() < 2) {
             return null;

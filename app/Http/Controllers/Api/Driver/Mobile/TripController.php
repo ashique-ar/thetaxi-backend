@@ -423,6 +423,23 @@ class TripController extends Controller
                 'message' => 'Trip completed',
                 'data' => $summary,
             ]);
+        } catch (\DomainException $e) {
+            $distanceRequired = str_contains($e->getMessage(), 'Final distance is required');
+
+            return response()->json([
+                'status' => 'error',
+                'message' => $distanceRequired
+                    ? 'Trip route records are required to calculate the final package price.'
+                    : $e->getMessage(),
+                'error_code' => $distanceRequired
+                    ? 'FINAL_DISTANCE_REQUIRED'
+                    : 'TRIP_COMPLETION_BLOCKED',
+                'errors' => $distanceRequired ? [
+                    'route_points' => [
+                        'Sync at least two buffered GPS route points for this trip before retrying completion.',
+                    ],
+                ] : [],
+            ], 422);
         } catch (\InvalidArgumentException $e) {
             return response()->json([
                 'status' => 'error',
