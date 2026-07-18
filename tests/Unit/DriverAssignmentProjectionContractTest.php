@@ -125,6 +125,21 @@ it('blocks driver completion when canonical pricing and invoicing cannot finish'
         ->not->toContain("'status' => 'completed'");
 });
 
+it('accepts persisted driver trip completion as lifecycle evidence without a dispatch', function () {
+    $source = file_get_contents(app_path('Services/BookingLifecycleService.php'));
+    $completion = Str::between(
+        $source,
+        '$driverDirectCompletion = (bool) ($completionData[\'completed_by_driver\'] ?? false);',
+        '$canSkipQc ='
+    );
+
+    expect($completion)
+        ->toContain('$hasCompletedDriverAssignment = $driverDirectCompletion')
+        ->toContain("->where('trip_phase', TripPhase::COMPLETED->value)")
+        ->toContain("->whereNotNull('trip_completed_at')")
+        ->toContain('$isActiveLifecycleStatus || $hasActiveResolvedDispatch || $hasCompletedDriverAssignment');
+});
+
 it('exposes persisted operational milestones separately from contractual pricing', function () {
     $source = file_get_contents(app_path('Http/Controllers/Api/AssignmentController.php'));
 

@@ -1263,8 +1263,18 @@ class BookingLifecycleService
                 DispatchStatus::IN_PROGRESS,
                 DispatchStatus::RETURNED,
             ], true);
+            $hasCompletedDriverAssignment = $driverDirectCompletion
+                && DriverAssignment::query()
+                    ->where('booking_id', $booking->id)
+                    ->when(
+                        $bookingItem?->id && Schema::hasColumn('driver_assignments', 'booking_item_id'),
+                        fn ($query) => $query->where('booking_item_id', $bookingItem->id)
+                    )
+                    ->where('trip_phase', TripPhase::COMPLETED->value)
+                    ->whereNotNull('trip_completed_at')
+                    ->exists();
             $canSkipReturn = ($driverDirectCompletion || !($workflowSettings['enable_return_stage'] ?? false))
-                && ($isActiveLifecycleStatus || $hasActiveResolvedDispatch);
+                && ($isActiveLifecycleStatus || $hasActiveResolvedDispatch || $hasCompletedDriverAssignment);
             $canSkipQc = ($driverDirectCompletion || !($workflowSettings['enable_qc_stage'] ?? false))
                 && in_array($fromStatus, [
                     BookingLifecycleStatus::RETURN_COMPLETED,
