@@ -185,6 +185,8 @@ beforeEach(function () {
         $table->uuid('booking_item_id')->nullable();
         $table->uuid('confirmed_by')->nullable();
         $table->timestamp('confirmed_at')->nullable();
+        $table->timestamp('assigned_from')->nullable();
+        $table->timestamp('assigned_to')->nullable();
         $table->string('status')->default('active');
         $table->string('trip_phase')->default('active');
         $table->timestamp('pickup_arrived_at')->nullable();
@@ -665,6 +667,63 @@ it('persists actual completion and route distance once without a pricing owner',
         ->and((float) $completed->final_longitude)->toBe(79.85)
         ->and((float) $completed->total_distance_km)->toBeGreaterThan(0)
         ->and($retry['total_distance_km'])->toBe($summary['total_distance_km']);
+});
+
+it('reconciles a stale mobile assignment when the parent booking is already completed', function () {
+    $booking = Booking::create([
+        'status' => 'completed',
+        'completed_at' => now()->subMinute(),
+    ]);
+    $item = BookingItem::create(['booking_id' => $booking->id]);
+    $driver = Driver::create(['code' => 'STALE-COMPLETED-HIRE']);
+    $assignment = DriverAssignment::create([
+        'driver_id' => $driver->id,
+        'booking_id' => $booking->id,
+        'booking_item_id' => $item->id,
+        'trip_phase' => TripPhase::IN_PROGRESS,
+        'status' => 'active',
+        'trip_started_at' => now()->subMinutes(10),
+    ]);
+
+    $summary = $this->tripService->endTrip($assignment, [
+        'latitude' => 6.95,
+        'longitude' => 79.85,
+    ]);
+
+    $completed = $assignment->fresh();
+    expect($completed->trip_phase)->toBe(TripPhase::COMPLETED)
+        ->and($completed->status)->toBe('completed')
+        ->and($completed->trip_completed_at)->not->toBeNull()
+        ->and($summary['hire_completed'])->toBeTrue();
+    $this->bookingLifecycle->shouldNotHaveReceived('completeBooking');
+});
+
+it('does not expose terminal parent bookings as upcoming or current assignments', function () {
+    $driver = Driver::create(['code' => 'TERMINAL-FILTER']);
+    $completedBooking = Booking::create(['status' => 'completed', 'completed_at' => now()]);
+    $activeBooking = Booking::create(['status' => 'confirmed']);
+
+    DriverAssignment::create([
+        'driver_id' => $driver->id,
+        'booking_id' => $completedBooking->id,
+        'trip_phase' => TripPhase::IN_PROGRESS,
+        'status' => 'active',
+        'assigned_from' => now()->subHour(),
+        'assigned_to' => now()->addHour(),
+    ]);
+    $activeAssignment = DriverAssignment::create([
+        'driver_id' => $driver->id,
+        'booking_id' => $activeBooking->id,
+        'trip_phase' => TripPhase::ACCEPTED,
+        'status' => 'active',
+        'assigned_from' => now()->subHour(),
+        'assigned_to' => now()->addHour(),
+    ]);
+
+    $upcoming = $this->assignmentService->getDriverAssignments($driver, ['status' => 'upcoming']);
+
+    expect($upcoming->pluck('id')->all())->toBe([$activeAssignment->id])
+        ->and($this->assignmentService->getCurrentAssignment($driver)?->id)->toBe($activeAssignment->id);
 });
 
 it('uses lifecycle final pricing as the single open package charge owner', function () {

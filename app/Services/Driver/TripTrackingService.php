@@ -863,6 +863,20 @@ class TripTrackingService
             return null;
         }
 
+        // The booking may have been completed from the portal while the mobile
+        // assignment was still open. Treat mobile completion as reconciliation:
+        // endTrip() has already persisted the driver's final telemetry and closes
+        // the stale assignment in this transaction, so canonical completion must
+        // not be attempted a second time.
+        if ((string) $booking->status === 'completed') {
+            Log::info('Driver trip completion reconciled with an already completed booking', [
+                'assignment_id' => $assignment->id,
+                'booking_id' => $booking->id,
+            ]);
+
+            return $this->resolveCanonicalFinalPricingSummary($assignment);
+        }
+
         // Primary path: use lifecycle service so dispatch + booking tracking stay consistent.
         try {
             if ($this->resolveAssignmentDispatch($assignment)) {

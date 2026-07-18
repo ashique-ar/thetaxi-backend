@@ -57,14 +57,19 @@ class MobileAssignmentService
                 case 'upcoming':
                     $query->whereIn('status', ['active', 'pending_approval', 'confirmed', 'approved'])
                         ->whereNotIn('trip_phase', [TripPhase::COMPLETED, TripPhase::DECLINED]);
+                    $this->excludeTerminalBookings($query);
                     break;
 
                 case 'in_progress':
                     $query->whereIn('trip_phase', [TripPhase::ACCEPTED, TripPhase::PICKUP_ARRIVED, TripPhase::IN_PROGRESS]);
+                    $this->excludeTerminalBookings($query);
                     break;
 
                 default:
                     $query->where('status', $filters['status']);
+                    if (!in_array($statusFilter, ['completed', 'cancelled', 'declined'], true)) {
+                        $this->excludeTerminalBookings($query);
+                    }
                     break;
             }
         }
@@ -105,8 +110,12 @@ class MobileAssignmentService
     {
         $now = Carbon::now();
 
-        return $this->baseAssignmentQuery($driver)
+        $query = $this->baseAssignmentQuery($driver)
             ->whereIn('status', ['active', 'confirmed', 'approved'])
+            ->whereNotIn('trip_phase', [TripPhase::COMPLETED, TripPhase::DECLINED]);
+        $this->excludeTerminalBookings($query);
+
+        return $query
             ->where('assigned_from', '<=', $now)
             ->where(function (Builder $query) use ($now) {
                 $query->whereNull('assigned_to')
@@ -114,6 +123,24 @@ class MobileAssignmentService
             })
             ->orderByDesc('assigned_from')
             ->first();
+    }
+
+    /**
+     * Prevent stale assignment rows from resurfacing completed/cancelled hires
+     * in driver-facing active and upcoming views.
+     */
+    private function excludeTerminalBookings(Builder $query): void
+    {
+        $query->where(function (Builder $assignmentQuery) {
+            $assignmentQuery->whereDoesntHave('booking')
+                ->orWhereHas('booking', fn (Builder $bookingQuery) => $bookingQuery
+                    ->whereNotIn('status', $this->terminalBookingStatuses()));
+        });
+    }
+
+    private function terminalBookingStatuses(): array
+    {
+        return ['completed', 'cancelled', 'booking_cancelled', 'booking_rejected', 'rejected'];
     }
 
     /**
