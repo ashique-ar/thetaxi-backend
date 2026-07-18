@@ -1251,13 +1251,15 @@ class BookingLifecycleService
                 );
             }
 
-            $canSkipReturn = !($workflowSettings['enable_return_stage'] ?? false)
+            $driverDirectCompletion = (bool) ($completionData['completed_by_driver'] ?? false);
+            $canSkipReturn = ($driverDirectCompletion || !($workflowSettings['enable_return_stage'] ?? false))
                 && in_array($fromStatus, [
+                    BookingLifecycleStatus::DISPATCH_OUT,
                     BookingLifecycleStatus::ONGOING_ACTIVE,
                     BookingLifecycleStatus::ONGOING_REPLACEMENT_NEEDED,
                     BookingLifecycleStatus::ONGOING_BREAKDOWN,
                 ], true);
-            $canSkipQc = !($workflowSettings['enable_qc_stage'] ?? false)
+            $canSkipQc = ($driverDirectCompletion || !($workflowSettings['enable_qc_stage'] ?? false))
                 && in_array($fromStatus, [
                     BookingLifecycleStatus::RETURN_COMPLETED,
                     BookingLifecycleStatus::RETURN_LATE,
@@ -1645,7 +1647,9 @@ class BookingLifecycleService
             return $booking->fresh(['bookingItems', 'dispatches']);
         }
 
-        $returnStageEnabled = (bool) ($workflowSettings['enable_return_stage'] ?? false);
+        $driverDirectCompletion = (bool) ($completionData['completed_by_driver'] ?? false);
+        $returnStageEnabled = (bool) ($workflowSettings['enable_return_stage'] ?? false)
+            && !$driverDirectCompletion;
         $hasReturned = (bool) ($bookingItem->returned_at || $dispatch?->isReturned());
 
         if ($returnStageEnabled && !$hasReturned) {
@@ -1654,7 +1658,7 @@ class BookingLifecycleService
             );
         }
 
-        if ((bool) ($workflowSettings['enable_qc_stage'] ?? false)) {
+        if ((bool) ($workflowSettings['enable_qc_stage'] ?? false) && !$driverDirectCompletion) {
             $qc = $this->resolveItemQc($booking, $context, true);
             if (!$qc || !$qc->isCompleted()) {
                 throw new \DomainException(
