@@ -17,8 +17,12 @@ class DriverResource extends JsonResource
         $fullName = trim(($this->user?->first_name ?? '') . ' ' . ($this->user?->last_name ?? ''));
         $status = $this->availability_status ?: ($this->is_online ? 'available' : 'off_duty');
         $activeAssignment = $this->assignments()
+            ->with('booking:id,booking_number')
             ->whereIn('trip_phase', ['active', 'confirmed', 'accepted', 'pickup_arrived', 'in_progress'])
             ->where('status', '!=', 'cancelled')
+            ->whereHas('booking', function ($query) {
+                $query->whereNotIn('status', ['completed', 'cancelled', 'inquiry_cancelled']);
+            })
             ->latest('assigned_from')
             ->first();
 
@@ -70,6 +74,7 @@ class DriverResource extends JsonResource
                 ],
             ],
             'current_booking_id' => $activeAssignment?->booking_id,
+            'current_booking_number' => $activeAssignment?->booking?->booking_number,
             'rating' => (float) ($this->rating ?? 0),
             'total_trips' => (int) ($this->total_trips ?? 0),
             'assigned_vehicle' => $this->whenLoaded('defaultVehicle', fn () => $this->defaultVehicle ? [

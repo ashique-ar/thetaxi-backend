@@ -1252,13 +1252,19 @@ class BookingLifecycleService
             }
 
             $driverDirectCompletion = (bool) ($completionData['completed_by_driver'] ?? false);
-            $canSkipReturn = ($driverDirectCompletion || !($workflowSettings['enable_return_stage'] ?? false))
-                && in_array($fromStatus, [
+            $isActiveLifecycleStatus = in_array($fromStatus, [
                     BookingLifecycleStatus::DISPATCH_OUT,
                     BookingLifecycleStatus::ONGOING_ACTIVE,
                     BookingLifecycleStatus::ONGOING_REPLACEMENT_NEEDED,
                     BookingLifecycleStatus::ONGOING_BREAKDOWN,
                 ], true);
+            $hasActiveResolvedDispatch = $dispatch && in_array($dispatch->dispatch_status, [
+                DispatchStatus::DISPATCHED,
+                DispatchStatus::IN_PROGRESS,
+                DispatchStatus::RETURNED,
+            ], true);
+            $canSkipReturn = ($driverDirectCompletion || !($workflowSettings['enable_return_stage'] ?? false))
+                && ($isActiveLifecycleStatus || $hasActiveResolvedDispatch);
             $canSkipQc = ($driverDirectCompletion || !($workflowSettings['enable_qc_stage'] ?? false))
                 && in_array($fromStatus, [
                     BookingLifecycleStatus::RETURN_COMPLETED,
@@ -1331,6 +1337,12 @@ class BookingLifecycleService
             }
 
             $this->markBookingItemCompleted($bookingItem?->fresh(), $completionData);
+            $this->closeDriverAssignmentsForCompletion(
+                $bookingId,
+                $bookingItem?->id,
+                Carbon::now('UTC'),
+                $completionData
+            );
 
             $this->logLifecycleTransition(
                 $booking,
@@ -1444,7 +1456,7 @@ class BookingLifecycleService
             $completedAt = isset($completionData['actual_return_time'])
                 ? Carbon::parse($completionData['actual_return_time'])->utc()
                 : Carbon::now('UTC');
-            $this->closeDriverAssignmentsForAdministrativeCompletion(
+            $this->closeDriverAssignmentsForCompletion(
                 $bookingId,
                 $bookingItemId,
                 $completedAt,
@@ -1522,7 +1534,10 @@ class BookingLifecycleService
                 $assignments = DriverAssignment::query()
                     ->where('booking_id', $booking->id)
                     ->when($bookingItemId, fn ($query) => $query->where('booking_item_id', $bookingItemId))
-                    ->where('trip_phase', '!=', TripPhase::COMPLETED->value)
+                    ->where(function ($query) {
+                        $query->whereNull('trip_phase')
+                            ->orWhere('trip_phase', '!=', TripPhase::COMPLETED->value);
+                    })
                     ->get();
                 $assignmentIds = $assignments->pluck('id');
                 foreach ($assignments as $assignment) {
@@ -1583,7 +1598,7 @@ class BookingLifecycleService
         }
     }
 
-    private function closeDriverAssignmentsForAdministrativeCompletion(
+    private function closeDriverAssignmentsForCompletion(
         string $bookingId,
         ?string $bookingItemId,
         Carbon $completedAt,
@@ -1593,7 +1608,10 @@ class BookingLifecycleService
             $assignments = DriverAssignment::query()
                 ->where('booking_id', $bookingId)
                 ->when($bookingItemId, fn ($query) => $query->where('booking_item_id', $bookingItemId))
-                ->where('trip_phase', '!=', TripPhase::COMPLETED->value)
+                ->where(function ($query) {
+                    $query->whereNull('trip_phase')
+                        ->orWhere('trip_phase', '!=', TripPhase::COMPLETED->value);
+                })
                 ->lockForUpdate()
                 ->get();
             $assignmentIds = $assignments->pluck('id');
@@ -1706,6 +1724,12 @@ class BookingLifecycleService
             'booking_item_id' => $bookingItem->id,
             'dispatch_id' => $dispatch?->id,
         ]));
+        $this->closeDriverAssignmentsForCompletion(
+            (string) $booking->id,
+            (string) $bookingItem->id,
+            $completedAt,
+            $completionData
+        );
         $bookingItem->refresh();
 
         $vehicleId = $dispatch?->vehicle_id ?: $context['vehicle_id'];
