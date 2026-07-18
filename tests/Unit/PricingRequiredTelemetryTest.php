@@ -14,6 +14,7 @@ class PricingRequiredTelemetryTest extends TestCase
     public function test_missing_required_journey_distance_is_not_synthesized_as_zero(): void
     {
         $definition = new VehiclePricingCalculationDefinition();
+        $definition->formula = 'journey_distance';
         $definition->variables = [[
             'name' => 'journey_distance',
             'type' => 'distance',
@@ -40,6 +41,7 @@ class PricingRequiredTelemetryTest extends TestCase
     public function test_explicit_zero_journey_distance_remains_a_valid_measurement(): void
     {
         $definition = new VehiclePricingCalculationDefinition();
+        $definition->formula = 'journey_distance';
         $definition->variables = [[
             'name' => 'journey_distance',
             'type' => 'distance',
@@ -96,6 +98,7 @@ class PricingRequiredTelemetryTest extends TestCase
     public function test_required_package_overage_is_unresolved_without_an_allowance_source(): void
     {
         $definition = new VehiclePricingCalculationDefinition();
+        $definition->formula = 'allowed_km + extra_km';
         $definition->variables = [
             ['name' => 'allowed_km', 'type' => 'distance', 'is_required' => true],
             ['name' => 'extra_km', 'type' => 'distance', 'is_required' => true],
@@ -210,5 +213,42 @@ class PricingRequiredTelemetryTest extends TestCase
         self::assertTrue($daily['allowance_supplied']);
         self::assertSame(0.0, (float) $daily['allowed_km']);
         self::assertSame(10.0, (float) $daily['extra_km']);
+    }
+
+    public function test_unlimited_slab_resolves_supplied_distance_to_zero_extra_kilometres(): void
+    {
+        $definition = (new ReflectionClass(VehiclePricingCalculationDefinition::class))
+            ->newInstanceWithoutConstructor();
+        $method = new ReflectionMethod($definition, 'calculateKmOverages');
+
+        $result = $method->invoke($definition, [
+            'journey_distance' => 25,
+            'from_date' => '2026-07-17',
+            'to_date' => '2026-07-17',
+            'from_time' => '16:15:00',
+            'to_time' => '20:00:00',
+        ], [
+            'type' => 'days',
+            'max_km_per_package' => null,
+            'max_km_per_day' => null,
+        ], null);
+
+        self::assertSame('unlimited', $result['calculation_type']);
+        self::assertSame(0.0, $result['extra_km']);
+    }
+
+    public function test_pricing_window_accepts_database_dates_that_already_include_midnight(): void
+    {
+        $definition = new VehiclePricingCalculationDefinition();
+        $method = new ReflectionMethod($definition, 'assertValidDateWindow');
+
+        $method->invoke($definition, [
+            'from_date' => '2026-07-17 00:00:00',
+            'to_date' => '2026-07-17 00:00:00',
+            'from_time' => '16:15:00',
+            'to_time' => '20:00:00',
+        ]);
+
+        self::assertTrue(true);
     }
 }

@@ -690,7 +690,10 @@ class VehiclePricingCalculationDefinition extends Model
             // No limits (e.g., KM-based services like point-to-point transfers)
             $result['calculation_type'] = 'unlimited';
             $result['allowed_km'] = null;
-            $result['extra_km'] = null;
+            // With no configured allowance there is no overage boundary. A
+            // supplied journey therefore has zero extra kilometres; keeping
+            // this null incorrectly rejects formulas that include extra_km.
+            $result['extra_km'] = $actualKm !== null ? 0.0 : null;
         }
         Log::debug('KM overages calculated', $result);
         return $result;
@@ -726,8 +729,8 @@ class VehiclePricingCalculationDefinition extends Model
 
         try {
             // Parse dates and times with proper timezone handling
-            $startDateTime = Carbon::parse($fromDate . ' ' . $fromTime);
-            $endDateTime = Carbon::parse($toDate . ' ' . $toTime);
+            $startDateTime = $this->combinePricingDateAndTime($fromDate, $fromTime, '00:00');
+            $endDateTime = $this->combinePricingDateAndTime($toDate, $toTime, '23:59');
 
             // For daily packages, we count calendar days not 24-hour periods
             // This means if you take a car on Dec 1st at 8 PM and return on Dec 2nd at 6 PM,
@@ -776,13 +779,27 @@ class VehiclePricingCalculationDefinition extends Model
 
         $fromTime = $inputs['from_time'] ?? '00:00';
         $toTime = $inputs['to_time'] ?? '23:59';
-        $start = Carbon::parse("{$fromDate} {$fromTime}");
-        $end = Carbon::parse("{$toDate} {$toTime}");
+        $start = $this->combinePricingDateAndTime($fromDate, $fromTime, '00:00');
+        $end = $this->combinePricingDateAndTime($toDate, $toTime, '23:59');
         if ($end->lessThan($start)) {
             throw new \InvalidArgumentException(
                 'Pricing end date and time must be on or after the start date and time.'
             );
         }
+    }
+
+    private function combinePricingDateAndTime(mixed $date, mixed $time, string $defaultTime): Carbon
+    {
+        $dateTime = Carbon::parse($date);
+        $timeValue = $time === null || $time === '' ? $defaultTime : $time;
+        $parsedTime = Carbon::parse($timeValue);
+
+        return $dateTime->setTime(
+            $parsedTime->hour,
+            $parsedTime->minute,
+            $parsedTime->second,
+            $parsedTime->micro
+        );
     }
 
     /**
