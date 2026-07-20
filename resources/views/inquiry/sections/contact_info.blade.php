@@ -202,7 +202,7 @@
                         @endif
 
                         @if (!empty($location['map_embed']))
-                            <div class="map-container" style="border-radius: 8px; overflow: hidden; height: 400px;">
+                            <div class="map-container inquiry-location-map" style="border-radius: 8px; overflow: hidden; height: 80vh; height: 80dvh; min-height: 24rem;">
                                 {!! $location['map_embed'] !!}
                             </div>
                         @endif
@@ -214,6 +214,12 @@
 </div>
 
 <style>
+    .inquiry-location-map iframe {
+        width: 100% !important;
+        height: 100% !important;
+        min-height: 24rem;
+    }
+
     .contact-card:hover {
         transform: translateY(-5px);
         box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
