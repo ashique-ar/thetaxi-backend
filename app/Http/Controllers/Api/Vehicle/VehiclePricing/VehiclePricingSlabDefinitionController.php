@@ -113,6 +113,9 @@ class VehiclePricingSlabDefinitionController extends Controller
         $data = $request->validated();
         $data['owner_type'] = null;
         $data['owner_id'] = null;
+        if ($nameConflict = $this->findNameConflict($data['service_type_id'], $data['name'])) {
+            return $this->duplicateNameResponse($nameConflict);
+        }
         if ($overlap = $this->findOverlappingSlab($data)) {
             return response()->json([
                 'success' => false,
@@ -175,6 +178,13 @@ class VehiclePricingSlabDefinitionController extends Controller
         $data['owner_type'] = null;
         $data['owner_id'] = null;
         $candidate = array_merge($slabDefinition->toArray(), $data);
+        if ($nameConflict = $this->findNameConflict(
+            $candidate['service_type_id'],
+            $candidate['name'],
+            $slabDefinition->id
+        )) {
+            return $this->duplicateNameResponse($nameConflict);
+        }
         $candidateActive = array_key_exists('is_active', $candidate)
             ? filter_var($candidate['is_active'], FILTER_VALIDATE_BOOL)
             : $slabDefinition->is_active;
@@ -232,19 +242,25 @@ class VehiclePricingSlabDefinitionController extends Controller
             ], 404);
         }
 
-        // Check if slab definition is being used in pricing records
-        $pricingCount = $slabDefinition->vehicleGroupPricing()->count();
-        if ($pricingCount > 0) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Cannot delete slab definition. It is being used in pricing records.'
-            ], 422);
-        }
+        $retiredPricingCount = DB::transaction(function () use ($slabDefinition): int {
+            // Slab deletion is soft. Retire its current rate rows as well so an
+            // active price cannot continue pointing at a deleted definition.
+            // Historical calculation and booking references remain intact.
+            $pricingRows = $slabDefinition->vehicleGroupPricing()
+                ->withInactive()
+                ->get();
 
-        $slabDefinition->delete();
+            $pricingRows->each->delete();
+            $slabDefinition->delete();
+
+            return $pricingRows->count();
+        });
 
         return response()->json([
             'success' => true,
+            'data' => [
+                'retired_pricing_records' => $retiredPricingCount,
+            ],
             'message' => 'Slab definition deleted successfully'
         ]);
     }
@@ -519,6 +535,39 @@ class VehiclePricingSlabDefinitionController extends Controller
             })
             ->orderByDesc('priority')
             ->first();
+    }
+
+    private function findNameConflict(
+        string $serviceTypeId,
+        string $name,
+        ?string $excludeId = null
+    ): ?VehiclePricingSlabDefinition {
+        return VehiclePricingSlabDefinition::withInactive()
+            ->where('service_type_id', $serviceTypeId)
+            ->where('name', trim($name))
+            ->when($excludeId, fn ($query) => $query->where('id', '!=', $excludeId))
+            ->first();
+    }
+
+    private function duplicateNameResponse(VehiclePricingSlabDefinition $conflict): JsonResponse
+    {
+        $status = $conflict->is_active ? 'active' : 'inactive';
+
+        return response()->json([
+            'success' => false,
+            'message' => "A {$status} slab named '{$conflict->name}' already exists for this service type.",
+            'errors' => [
+                'name' => [
+                    $conflict->is_active
+                        ? 'Use a different name or edit the existing slab.'
+                        : 'Reactivate or edit the existing inactive slab instead of creating a duplicate.',
+                ],
+            ],
+            'conflict' => [
+                'id' => $conflict->id,
+                'is_active' => (bool) $conflict->is_active,
+            ],
+        ], 422);
     }
 
     private function currentHealth(string $serviceTypeId): array
