@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Vehicle\VehiclePricing;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Vehicle\VehiclePricingSlabDefinition\CreateVehiclePricingSlabDefinitionRequest;
 use App\Http\Requests\Vehicle\VehiclePricingSlabDefinition\UpdateVehiclePricingSlabDefinitionRequest;
+use App\Models\Service\ServiceType;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingSlabDefinition;
 use App\Services\VehiclePricingSlabConfigurationService;
 use Illuminate\Http\JsonResponse;
@@ -18,7 +19,7 @@ class VehiclePricingSlabDefinitionController extends Controller
         private readonly VehiclePricingSlabConfigurationService $slabConfiguration
     )
     {
-        $this->middleware('permission:vehicle-pricing-slabs.view')->only(['index', 'show', 'health', 'findForHours']);
+        $this->middleware('permission:vehicle-pricing-slabs.view')->only(['index', 'show', 'health', 'findForHours', 'getServiceTypes']);
         $this->middleware('permission:vehicle-pricing-slabs.create')->only(['store']);
         $this->middleware('permission:vehicle-pricing-slabs.edit')->only(['update', 'toggleStatus']);
         $this->middleware('permission:vehicle-pricing-slabs.delete')->only(['destroy']);
@@ -55,6 +56,47 @@ class VehiclePricingSlabDefinitionController extends Controller
             'success' => true,
             'data' => $slabDefinitions,
             'message' => 'Slab definitions retrieved successfully'
+        ]);
+    }
+
+    /**
+     * Return the service types available to the shared slab-definition editor.
+     *
+     * This lookup intentionally belongs to the slab-definition permission
+     * boundary. Pricing administrators should not also need the unrelated
+     * service-types.view permission just to select a service while managing
+     * slabs.
+     */
+    public function getServiceTypes(Request $request): JsonResponse
+    {
+        $context = (string) $request->input('context', 'public');
+        if (!in_array($context, ['public', 'portal', 'corporate'], true)) {
+            return response()->json([
+                'message' => 'The selected pricing context is invalid.',
+            ], 422);
+        }
+
+        $serviceTypes = ServiceType::withInactive()
+            ->forContext($context, '', '')
+            ->where('is_active', true)
+            ->select([
+                'id',
+                'name',
+                'description',
+                'code',
+                'context',
+                'owner_type',
+                'owner_id',
+                'is_active',
+            ])
+            ->orderBy('priority')
+            ->orderBy('name')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $serviceTypes,
+            'message' => 'Service types retrieved successfully',
         ]);
     }
 
