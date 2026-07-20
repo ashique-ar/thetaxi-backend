@@ -10,6 +10,7 @@ use App\Models\Vehicle\VehiclePricing\VehiclePricingSlabDefinition;
 use App\Services\VehiclePricingSlabConfigurationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 
@@ -113,10 +114,11 @@ class VehiclePricingSlabDefinitionController extends Controller
         $data = $request->validated();
         $data['owner_type'] = null;
         $data['owner_id'] = null;
+        $data['is_active'] = $data['is_active'] ?? true;
         if ($nameConflict = $this->findNameConflict($data['service_type_id'], $data['name'])) {
             return $this->duplicateNameResponse($nameConflict);
         }
-        if ($overlap = $this->findOverlappingSlab($data)) {
+        if ($data['is_active'] && ($overlap = $this->findOverlappingSlab($data))) {
             return response()->json([
                 'success' => false,
                 'message' => "Duration range overlaps with '{$overlap->name}'",
@@ -124,7 +126,6 @@ class VehiclePricingSlabDefinitionController extends Controller
             ], 422);
         }
 
-        $data['is_active'] = $data['is_active'] ?? true;
         if ($data['is_active']) {
             $health = $this->slabConfiguration->prospectiveHealth($data);
             $scope = [
@@ -138,7 +139,13 @@ class VehiclePricingSlabDefinitionController extends Controller
             }
         }
 
-        $slabDefinition = VehiclePricingSlabDefinition::create($data + ['created_user_id' => $request->user()->id]);
+        try {
+            $slabDefinition = VehiclePricingSlabDefinition::create($data + ['created_user_id' => $request->user()->id]);
+        } catch (UniqueConstraintViolationException) {
+            return $this->duplicateNameResponse(
+                $this->findNameConflict($data['service_type_id'], $data['name'])
+            );
+        }
         $slabDefinition->load('serviceType');
 
         return response()->json([
@@ -222,7 +229,17 @@ class VehiclePricingSlabDefinitionController extends Controller
             }
         }
 
-        $slabDefinition->update($data);
+        try {
+            $slabDefinition->update($data);
+        } catch (UniqueConstraintViolationException) {
+            return $this->duplicateNameResponse(
+                $this->findNameConflict(
+                    $candidate['service_type_id'],
+                    $candidate['name'],
+                    $slabDefinition->id
+                )
+            );
+        }
         $slabDefinition->load('serviceType');
         return response()->json([
             'success' => true,
@@ -531,7 +548,10 @@ class VehiclePricingSlabDefinitionController extends Controller
             return null;
         }
 
-        return VehiclePricingSlabDefinition::withInactive()
+        // Inactive slabs do not participate in runtime matching. They may
+        // overlap an active replacement, but cannot be reactivated until the
+        // resulting active configuration passes the health check.
+        return VehiclePricingSlabDefinition::query()
             ->where('service_type_id', $data['service_type_id'])
             ->where('type', $type)
             ->when($excludeId, fn($query) => $query->where('id', '!=', $excludeId))
@@ -556,8 +576,18 @@ class VehiclePricingSlabDefinitionController extends Controller
             ->first();
     }
 
-    private function duplicateNameResponse(VehiclePricingSlabDefinition $conflict): JsonResponse
+    private function duplicateNameResponse(?VehiclePricingSlabDefinition $conflict): JsonResponse
     {
+        if (!$conflict) {
+            return response()->json([
+                'success' => false,
+                'message' => 'A slab with this name already exists for this service type.',
+                'errors' => [
+                    'name' => ['Use a different name or edit the existing slab.'],
+                ],
+            ], 422);
+        }
+
         $status = $conflict->is_active ? 'active' : 'inactive';
 
         return response()->json([
