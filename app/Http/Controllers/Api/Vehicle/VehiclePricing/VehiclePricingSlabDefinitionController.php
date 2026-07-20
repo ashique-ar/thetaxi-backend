@@ -127,10 +127,12 @@ class VehiclePricingSlabDefinitionController extends Controller
         $data['is_active'] = $data['is_active'] ?? true;
         if ($data['is_active']) {
             $health = $this->slabConfiguration->prospectiveHealth($data);
-            $scope = [[
-                'service_type_id' => $data['service_type_id'],
-                'type' => $data['type'],
-            ]];
+            $scope = [
+                [
+                    'service_type_id' => $data['service_type_id'],
+                    'type' => $data['type'],
+                ]
+            ];
             if ($this->slabConfiguration->hasBlockingIssues($health, $scope)) {
                 return $this->invalidConfigurationResponse($health);
             }
@@ -178,11 +180,13 @@ class VehiclePricingSlabDefinitionController extends Controller
         $data['owner_type'] = null;
         $data['owner_id'] = null;
         $candidate = array_merge($slabDefinition->toArray(), $data);
-        if ($nameConflict = $this->findNameConflict(
-            $candidate['service_type_id'],
-            $candidate['name'],
-            $slabDefinition->id
-        )) {
+        if (
+            $nameConflict = $this->findNameConflict(
+                $candidate['service_type_id'],
+                $candidate['name'],
+                $slabDefinition->id
+            )
+        ) {
             return $this->duplicateNameResponse($nameConflict);
         }
         $candidateActive = array_key_exists('is_active', $candidate)
@@ -199,12 +203,12 @@ class VehiclePricingSlabDefinitionController extends Controller
                     'service_type_id' => $candidate['service_type_id'],
                     'type' => $candidate['type'] ?: 'hours',
                 ],
-            ])->unique(fn (array $scope) => $scope['service_type_id'] . ':' . $scope['type'])->values()->all();
+            ])->unique(fn(array $scope) => $scope['service_type_id'] . ':' . $scope['type'])->values()->all();
             if ($this->slabConfiguration->hasBlockingIssues($health, $scopes)) {
                 $currentBlockingIssueCount = collect($scopes)
                     ->pluck('service_type_id')
                     ->unique()
-                    ->sum(fn (string $serviceTypeId) => $this->blockingIssueCount(
+                    ->sum(fn(string $serviceTypeId) => $this->blockingIssueCount(
                         $this->currentHealth($serviceTypeId),
                         $scopes
                     ));
@@ -311,33 +315,33 @@ class VehiclePricingSlabDefinitionController extends Controller
                             $maxMinutes = $definitionData['max_minutes'] ?? 999999;
                             $query->where(function ($q) use ($minMinutes, $maxMinutes) {
                                 $q->whereBetween('min_minutes', [$minMinutes, $maxMinutes])
-                                  ->orWhereBetween('max_minutes', [$minMinutes, $maxMinutes])
-                                  ->orWhere(function ($subQ) use ($minMinutes, $maxMinutes) {
-                                      $subQ->where('min_minutes', '<=', $minMinutes)
-                                           ->where('max_minutes', '>=', $maxMinutes);
-                                  });
+                                    ->orWhereBetween('max_minutes', [$minMinutes, $maxMinutes])
+                                    ->orWhere(function ($subQ) use ($minMinutes, $maxMinutes) {
+                                        $subQ->where('min_minutes', '<=', $minMinutes)
+                                            ->where('max_minutes', '>=', $maxMinutes);
+                                    });
                             });
                         } elseif ($definitionData['type'] === 'hours') {
                             $minHours = $definitionData['min_hours'] ?? 0;
                             $maxHours = $definitionData['max_hours'] ?? 999999;
                             $query->where(function ($q) use ($minHours, $maxHours) {
                                 $q->whereBetween('min_hours', [$minHours, $maxHours])
-                                  ->orWhereBetween('max_hours', [$minHours, $maxHours])
-                                  ->orWhere(function ($subQ) use ($minHours, $maxHours) {
-                                      $subQ->where('min_hours', '<=', $minHours)
-                                           ->where('max_hours', '>=', $maxHours);
-                                  });
+                                    ->orWhereBetween('max_hours', [$minHours, $maxHours])
+                                    ->orWhere(function ($subQ) use ($minHours, $maxHours) {
+                                        $subQ->where('min_hours', '<=', $minHours)
+                                            ->where('max_hours', '>=', $maxHours);
+                                    });
                             });
                         } else {
                             $minDays = $definitionData['min_days'] ?? 0;
                             $maxDays = $definitionData['max_days'] ?? 999;
                             $query->where(function ($q) use ($minDays, $maxDays) {
                                 $q->whereBetween('min_days', [$minDays, $maxDays])
-                                  ->orWhereBetween('max_days', [$minDays, $maxDays])
-                                  ->orWhere(function ($subQ) use ($minDays, $maxDays) {
-                                      $subQ->where('min_days', '<=', $minDays)
-                                           ->where('max_days', '>=', $maxDays);
-                                  });
+                                    ->orWhereBetween('max_days', [$minDays, $maxDays])
+                                    ->orWhere(function ($subQ) use ($minDays, $maxDays) {
+                                        $subQ->where('min_days', '<=', $minDays)
+                                            ->where('max_days', '>=', $maxDays);
+                                    });
                             });
                         }
                     })
@@ -432,10 +436,12 @@ class VehiclePricingSlabDefinitionController extends Controller
             $candidate = $definition->toArray();
             $candidate['is_active'] = true;
             $health = $this->slabConfiguration->prospectiveHealth($candidate, $definition);
-            $scope = [[
-                'service_type_id' => $definition->service_type_id,
-                'type' => $definition->type ?: 'hours',
-            ]];
+            $scope = [
+                [
+                    'service_type_id' => $definition->service_type_id,
+                    'type' => $definition->type ?: 'hours',
+                ]
+            ];
             if ($this->slabConfiguration->hasBlockingIssues($health, $scope)) {
                 return $this->invalidConfigurationResponse($health, 'This slab cannot be activated because its duration configuration is invalid.');
             }
@@ -446,10 +452,10 @@ class VehiclePricingSlabDefinitionController extends Controller
 
         return response()->json([
             'success' => true,
-            'status'  => 'success',
+            'status' => 'success',
             'message' => 'Slab definition status updated',
-            'data'    => $definition,
-            'health'  => $this->currentHealth($definition->service_type_id),
+            'data' => $definition,
+            'health' => $this->currentHealth($definition->service_type_id),
         ]);
     }
 
@@ -481,8 +487,8 @@ class VehiclePricingSlabDefinitionController extends Controller
     public function findForHours(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
-            'hours'           => 'nullable|required_without:minutes|numeric|min:0',
-            'minutes'         => 'nullable|required_without:hours|numeric|min:0',
+            'hours' => 'nullable|required_without:minutes|numeric|min:0',
+            'minutes' => 'nullable|required_without:hours|numeric|min:0',
             'service_type_id' => 'nullable|uuid|exists:service_types,id',
         ]);
 
@@ -502,7 +508,7 @@ class VehiclePricingSlabDefinitionController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'data'   => $slab,
+            'data' => $slab,
             'resolution' => [
                 'duration_minutes' => $minutes,
                 'matched_type' => $slab?->type ?: ($slab ? 'hours' : null),
@@ -528,7 +534,7 @@ class VehiclePricingSlabDefinitionController extends Controller
         return VehiclePricingSlabDefinition::withInactive()
             ->where('service_type_id', $data['service_type_id'])
             ->where('type', $type)
-            ->when($excludeId, fn ($query) => $query->where('id', '!=', $excludeId))
+            ->when($excludeId, fn($query) => $query->where('id', '!=', $excludeId))
             ->where($minKey, '<=', $maximum ?? PHP_INT_MAX)
             ->where(function ($query) use ($maxKey, $minimum) {
                 $query->whereNull($maxKey)->orWhere($maxKey, '>=', $minimum);
@@ -541,11 +547,12 @@ class VehiclePricingSlabDefinitionController extends Controller
         string $serviceTypeId,
         string $name,
         ?string $excludeId = null
-    ): ?VehiclePricingSlabDefinition {
+    ): ?VehiclePricingSlabDefinition
+    {
         return VehiclePricingSlabDefinition::withInactive()
             ->where('service_type_id', $serviceTypeId)
             ->where('name', trim($name))
-            ->when($excludeId, fn ($query) => $query->where('id', '!=', $excludeId))
+            ->when($excludeId, fn($query) => $query->where('id', '!=', $excludeId))
             ->first();
     }
 
@@ -559,8 +566,8 @@ class VehiclePricingSlabDefinitionController extends Controller
             'errors' => [
                 'name' => [
                     $conflict->is_active
-                        ? 'Use a different name or edit the existing slab.'
-                        : 'Reactivate or edit the existing inactive slab instead of creating a duplicate.',
+                    ? 'Use a different name or edit the existing slab.'
+                    : 'Reactivate or edit the existing inactive slab instead of creating a duplicate.',
                 ],
             ],
             'conflict' => [
@@ -597,7 +604,8 @@ class VehiclePricingSlabDefinitionController extends Controller
     private function invalidConfigurationResponse(
         array $health,
         string $message = 'Slab duration ranges must not contain gaps, overlaps, or multiple open-ended ranges.'
-    ): JsonResponse {
+    ): JsonResponse
+    {
         return response()->json([
             'success' => false,
             'message' => $message,
