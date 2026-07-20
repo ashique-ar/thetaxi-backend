@@ -50,7 +50,12 @@ class VehiclePricingSlabDefinitionController extends Controller
             $query->where('is_active', $request->boolean('is_active'));
         }
 
-        $slabDefinitions = $query->orderByDesc('priority')->orderBy('sort_order')->get();
+        $slabDefinitions = $query
+            ->orderBy('service_type_id')
+            ->orderBy('sort_order')
+            ->orderByDesc('priority')
+            ->orderBy('name')
+            ->get();
 
         return response()->json([
             'success' => true,
