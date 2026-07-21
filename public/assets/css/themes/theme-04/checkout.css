@@ -1,0 +1,12 @@
+/**
+ * Theme 04 checkout entry point.
+ *
+ * Theme 04 remains release-gated. Phase 5 will provide the complete
+ * Executive Redline checkout presentation without inheriting Theme 01/02.
+ */
+
+body.theme-theme-04 .checkout-page,
+body.theme-theme-04 .checkout-success {
+    background: var(--t4-surface);
+    color: var(--t4-text);
+}

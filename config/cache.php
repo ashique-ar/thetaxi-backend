@@ -18,6 +18,13 @@ return [
     'default' => env('CACHE_STORE', 'database'),
 
     /*
+    | Existing application caches include Eloquent collections and paginators.
+    | Keep object serialization enabled until those entries are normalized to
+    | arrays and can be replaced with an explicit class allow-list.
+    */
+    'serializable_classes' => true,
+
+    /*
     |--------------------------------------------------------------------------
     | Cache Stores
     |--------------------------------------------------------------------------

@@ -25,33 +25,61 @@ return new class extends Migration
             return;
         }
 
-        foreach (self::SERVICE_NAMES as $legacyCode => $replacement) {
-            DB::table('service_types')
-                ->where('context', 'corporate')
-                ->where('code', $legacyCode)
-                ->update([
-                    'code' => $replacement['code'],
-                    'name' => $replacement['name'],
-                    'slug' => Str::slug($replacement['code']),
-                    'description' => DB::raw(
-                        "replace(replace(description, 'Corporate pricing', 'Pricing'), 'corporate pricing', 'pricing')"
-                    ),
-                    'updated_at' => now(),
-                ]);
-        }
+        DB::transaction(function (): void {
+            foreach (self::SERVICE_NAMES as $legacyCode => $replacement) {
+                $legacyServices = DB::table('service_types')
+                    ->where('context', 'corporate')
+                    ->where('code', $legacyCode)
+                    ->get();
 
-        foreach (self::SERVICE_NAMES as $replacement) {
-            DB::table('service_types')
-                ->where('context', 'corporate')
-                ->where('code', $replacement['code'])
-                ->update([
-                    'name' => $replacement['name'],
-                    'description' => DB::raw(
-                        "replace(replace(description, 'Corporate pricing', 'Pricing'), 'corporate pricing', 'pricing')"
-                    ),
-                    'updated_at' => now(),
-                ]);
-        }
+                foreach ($legacyServices as $legacyService) {
+                    $canonicalExists = DB::table('service_types')
+                        ->where('context', 'corporate')
+                        ->where('owner_type', $legacyService->owner_type)
+                        ->where('owner_id', $legacyService->owner_id)
+                        ->where('id', '!=', $legacyService->id)
+                        ->where(function ($query) use ($replacement): void {
+                            $query->where('code', $replacement['code'])
+                                ->orWhere('slug', Str::slug($replacement['code']));
+                        })
+                        ->exists();
+
+                    // A canonical service may already have been created by the corporate
+                    // pricing seeder. Preserve the legacy internal identifier in that case
+                    // so this terminology cleanup cannot violate either scoped unique key
+                    // or disconnect existing pricing and booking references.
+                    $values = [
+                        'name' => $replacement['name'],
+                        'description' => DB::raw(
+                            "replace(replace(description, 'Corporate pricing', 'Pricing'), 'corporate pricing', 'pricing')"
+                        ),
+                        'updated_at' => now(),
+                    ];
+
+                    if (!$canonicalExists) {
+                        $values['code'] = $replacement['code'];
+                        $values['slug'] = Str::slug($replacement['code']);
+                    }
+
+                    DB::table('service_types')
+                        ->where('id', $legacyService->id)
+                        ->update($values);
+                }
+            }
+
+            foreach (self::SERVICE_NAMES as $replacement) {
+                DB::table('service_types')
+                    ->where('context', 'corporate')
+                    ->where('code', $replacement['code'])
+                    ->update([
+                        'name' => $replacement['name'],
+                        'description' => DB::raw(
+                            "replace(replace(description, 'Corporate pricing', 'Pricing'), 'corporate pricing', 'pricing')"
+                        ),
+                        'updated_at' => now(),
+                    ]);
+            }
+        });
     }
 
     public function down(): void

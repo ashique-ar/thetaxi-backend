@@ -122,9 +122,10 @@ Route::get('/test-render', function () {
 Route::get('/search/{id?}', [BookingController::class, 'showResults'])->name('search');
 
 
-Route::get('/vehicles', function () {
-    return view('vehicles');
-})->name('vehicles');
+// Keep the legacy fleet URL, but route it to the canonical CMS-backed vehicle
+// catalogue instead of the removed resources/views/vehicles.blade.php view.
+Route::get('/vehicles', fn () => redirect()->route('cms.index', ['contentType' => 'ride_now']))
+    ->name('vehicles');
 
 // Vehicle routes
 Route::get('/vehicle/{id}', [VehicleController::class, 'show'])->name('vehicle.details');
@@ -136,10 +137,6 @@ Route::get('/about', function () {
 
 Route::get('/contact', [\App\Http\Controllers\Website\ContactController::class, 'index'])->name('contact');
 Route::get('/inquiry', [\App\Http\Controllers\Website\ContactController::class, 'index'])->name('inquiry');
-
-Route::get('/faq', function () {
-    return view('faq');
-})->name('faq');
 
 // Cart routes
 Route::get('/cart', fn () => redirect()->route('checkout'))->name('cart');
@@ -224,7 +221,6 @@ Route::get('/api/services/{serviceCode}/validation-rules', [BookingController::c
 Route::get('/api/services/{serviceCode}/packages', [ServicePackageController::class, 'getPackagesByService'])->name('api.services.packages');
 // FAQ routes
 Route::get('/faq', [FAQController::class, 'index'])->name('faq');
-// Route::get('/faq', [FAQController::class, 'index'])->name('faq.index');  
 Route::get('/faq/category/{category}', [FAQController::class, 'category'])->name('faq.category');
 
 // Rate Chart route (must be before dynamic CMS routes)

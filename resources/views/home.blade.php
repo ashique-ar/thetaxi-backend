@@ -11,14 +11,25 @@
 @include(theme_partial('hero'))
 
 <!-- Booking Form Section (Separate from Hero) -->
-<div class="home-booking-form-section mb-5">
-    <div class="container">
-        @include('components.booking-form')
+@if (is_theme('theme-03'))
+    @include('partials.themes.theme-03.booking-form')
+@elseif (is_theme('theme-04'))
+    @include('partials.themes.theme-04.booking-form')
+@else
+    <div class="home-booking-form-section mb-5">
+        <div class="container">
+            @include('components.booking-form')
+        </div>
     </div>
-</div>
+@endif
 <!-- End Booking Form Section -->
 
 @if (isset($partners) && $partners->count() > 0)
+@if (is_theme('theme-03'))
+    @include('partials.themes.theme-03.partner-register')
+@elseif (is_theme('theme-04'))
+    @include('partials.themes.theme-04.partner-register')
+@else
 <!-- home4 partner area Section Start-->
 <div class="partner-section mb-100">
     <div class="container">
@@ -41,10 +52,16 @@
     </div>
 </div>
 @endif
+@endif
 <!-- home4 partner area Section End-->
 
 <!-- Featured Vehicles Section Start -->
 @if (isset($featuredVehicles) && count($featuredVehicles['data']) > 0)
+@if (is_theme('theme-03'))
+    @include('partials.themes.theme-03.featured-vehicles')
+@elseif (is_theme('theme-04'))
+    @include('partials.themes.theme-04.featured-vehicles')
+@else
 <div class="featured-vehicles-section home4-offer-slider-section mb-100">
     <div class="container">
         <div class="row">
@@ -129,30 +146,54 @@
     </div>
 </div>
 @endif
+@endif
 <!-- Featured Vehicles Section End -->
 
 @if ($inspirations->count() > 0)
+@if (is_theme('theme-03'))
+    @include('partials.themes.theme-03.services')
+@elseif (is_theme('theme-04'))
+    @include('partials.themes.theme-04.services')
+@else
 <x-cms-section :title="$settings['inspirations_section_title'] ?? 'Our Services'" :description="$settings['inspirations_section_description'] ??
             'Professional transportation and travel services designed to meet your unique needs'" :items="$inspirations" type="services" :showPrice="true"
     :showDuration="false" :showRating="false" viewAllText="View All Services" sectionId="services-section"
     :limit="6" customTemplate="blog-card2" />
 @endif
+@endif
 
 @if ($destinations->count() > 0)
+@if (is_theme('theme-03'))
+    @include('partials.themes.theme-03.destinations')
+@elseif (is_theme('theme-04'))
+    @include('partials.themes.theme-04.destinations')
+@else
 <x-cms-section :title="$settings['destinations_section_title'] ?? 'Top Destinations'" :description="$settings['destinations_section_description'] ??
             'Discover the most spectacular destinations Sri Lanka has to offer'" :items="$destinations" type="taxi" :showPrice="false"
     :showDuration="false" :showRating="true" viewAllText="View All Destinations" sectionId="destinations-section"
     :limit="6" />
 @endif
+@endif
 
 @if ($packages->count() > 0)
+@if (is_theme('theme-03'))
+    @include('partials.themes.theme-03.packages')
+@elseif (is_theme('theme-04'))
+    @include('partials.themes.theme-04.packages')
+@else
 <x-cms-section :title="$settings['packages_section_title'] ?? 'Things to Do'" :description="$settings['packages_section_description'] ??
             'Discover exciting activities and experiences Sri Lanka has to offer'" :items="$packages" type="things-to-do" :showPrice="true"
     :showDuration="true" :showRating="true" viewAllText="View All Activities" sectionId="things-to-do-section"
     :limit="6" />
 @endif
+@endif
 
 @if ($settings['offer_slider_img_1'])
+@if (is_theme('theme-03'))
+    @include('partials.themes.theme-03.offer-slider')
+@elseif (is_theme('theme-04'))
+    @include('partials.themes.theme-04.offer-slider')
+@else
 <div class="home4-offer-slider-section mb-100">
     <div class="container">
         <div class="row mb-40">
@@ -181,11 +222,17 @@
     </div>
 </div>
 @endif
+@endif
 <!-- home4 Offer Slider Section Start-->
 
 <!-- home4 Offer Slider Section End-->
 
 @if ($settings['why_video_image'])
+@if (is_theme('theme-03'))
+    @include('partials.themes.theme-03.why-choose-us')
+@elseif (is_theme('theme-04'))
+    @include('partials.themes.theme-04.why-choose-us')
+@else
 <!-- home4 Why Choose Us Section Start-->
 <div class="home4-why-choose-us-section">
     <div class="container">
@@ -296,8 +343,14 @@
 </div>
 <!-- home4 Why Choose Us Section End-->
 @endif
+@endif
 <!-- home4 Testimonial Section Start-->
 @if ($testimonials && $testimonials->count() > 0)
+@if (is_theme('theme-03'))
+    @include('partials.themes.theme-03.testimonials')
+@elseif (is_theme('theme-04'))
+    @include('partials.themes.theme-04.testimonials')
+@else
 <div class="home4-testimonial-section mb-100">
     <div class="container">
         <div class="testimonial-wrap">
@@ -414,16 +467,28 @@
         alt="" class="vector" loading="lazy">
 </div>
 @endif
+@endif
 <!-- home4 Testimonial Section End-->
 @if ($blogs->count() > 0)
+@if (is_theme('theme-03'))
+    @include('partials.themes.theme-03.blog-editorial')
+@elseif (is_theme('theme-04'))
+    @include('partials.themes.theme-04.blog-editorial')
+@else
 <x-cms-section :title="$settings['blog_section_title'] ?? 'Travel Stories & Inspiration'" :description="$settings['blog_section_description'] ??
             'Discover inspiring travel stories, destination guides, and insider tips for your next adventure'" :items="$blogs" type="blogs" :showPrice="false"
     :showDuration="false" :showRating="false" viewAllText="View All Stories" sectionId="travel-blog-section"
     :limit="3" customTemplate="blog-card2" />
 @endif
+@endif
 
 <!-- home4 faq Section Start-->
 @if ($faqs->count() > 0)
+@if (is_theme('theme-03'))
+    @include('partials.themes.theme-03.faq')
+@elseif (is_theme('theme-04'))
+    @include('partials.themes.theme-04.faq')
+@else
 <div class="home4-faq-section mb-100">
     <div class="container">
         <div class="row justify-content-center mb-50 wow animate fadeInDown" data-wow-delay="200ms"
@@ -474,10 +539,12 @@
         alt="" class="vector" loading="lazy">
 </div>
 @endif
+@endif
 <!-- home4 faq Section End-->
 @endsection
 
 @push('styles')
+@if (!is_theme('theme-03') && !is_theme('theme-04'))
 <style>
     /* Home Booking Form Section - Separate from Hero */
     .home-booking-form-section {
@@ -820,6 +887,7 @@
         opacity: 0.7;
     }
 </style>
+@endif
 @endpush
 
 @push('scripts')
@@ -1272,4 +1340,3 @@
     }
 </script>
 @endpush
-

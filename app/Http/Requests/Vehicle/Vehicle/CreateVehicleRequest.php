@@ -3,6 +3,7 @@
 
 namespace App\Http\Requests\Vehicle\Vehicle;
 
+use App\Rules\UniqueVehiclePlate;
 use Illuminate\Foundation\Http\FormRequest;
 
 class CreateVehicleRequest extends FormRequest
@@ -44,7 +45,7 @@ class CreateVehicleRequest extends FormRequest
             'registration_no' => ['nullable', 'string', 'max:255', 'unique:vehicles,registration_no'],
             'chasis_no' => ['nullable', 'string', 'max:255', 'different:engine_no'],
             'engine_no' => ['nullable', 'string', 'max:255', 'different:chasis_no'],
-            'license_plate' => ['nullable', 'string', 'max:255', 'unique:vehicles,license_plate'],
+            'license_plate' => ['nullable', 'string', 'max:255', new UniqueVehiclePlate],
             'model_year' => ['nullable', 'integer'],
             'color' => ['nullable', 'string', 'max:100'],
             'no_od_doors' => ['nullable', 'integer'],

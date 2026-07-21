@@ -1,8 +1,36 @@
 @extends('layouts.app')
 
-@section('title', 'Your Cart - ' . ($settings['site_name'] ?? $settings['brand_name'] ?? 'Company') . '')
+@section('title', in_array(get_active_theme(), ['theme-03', 'theme-04'], true)
+    ? 'Page Not Found - ' . ($settings['site_name'] ?? $settings['brand_name'] ?? 'Company')
+    : 'Your Cart - ' . ($settings['site_name'] ?? $settings['brand_name'] ?? 'Company') . '')
 
 @section('content')
+
+    @if (is_theme('theme-03'))
+        <main class="t3-error-page">
+            <div class="t3-error-page__frame">
+                <div class="t3-error-page__code" aria-hidden="true">
+                    <span>4</span><i></i><span>4</span>
+                </div>
+                <div class="t3-error-page__content">
+                    <span class="t3-kicker">Route unavailable</span>
+                    <h1>Looks like you have taken a wrong turn.</h1>
+                    <p>The page you are looking for does not exist. Let us get your journey back on track.</p>
+                    <a href="{{ route('home') }}" class="primary-btn1">Go to Homepage</a>
+                </div>
+            </div>
+        </main>
+    @elseif (is_theme('theme-04'))
+        <main class="t4-error-page">
+            <div class="t4-error-page__card">
+                <strong aria-hidden="true">404</strong>
+                <span class="t4-kicker">Route unavailable</span>
+                <h1>Looks like you have taken a wrong turn.</h1>
+                <p>The page you are looking for does not exist. Let us get your journey back on track.</p>
+                <a href="{{ route('home') }}" class="primary-btn1">Go to Homepage</a>
+            </div>
+        </main>
+    @else
 
     <!-- Error Page Start-->
     <div class="error-page">
@@ -54,4 +82,5 @@
         <img src="assets/img/innerpages/vector/error-page-vector2.svg" alt="" class="vector2">
     </div>
     <!--Error Page End-->
+    @endif
 @endsection

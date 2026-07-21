@@ -18,7 +18,22 @@ if (!function_exists('get_allowed_themes')) {
      */
     function get_allowed_themes(): array
     {
-        return ['default', 'theme-02'];
+        return array_keys(array_filter(
+            config('website_themes.themes', []),
+            static fn (array $theme): bool => (bool) ($theme['released'] ?? false)
+        ));
+    }
+}
+
+if (!function_exists('normalize_theme_identifier')) {
+    /**
+     * Normalize a stored theme identifier against the released theme manifest.
+     */
+    function normalize_theme_identifier(?string $theme): string
+    {
+        $defaultTheme = (string) config('website_themes.default', 'default');
+
+        return in_array($theme, get_allowed_themes(), true) ? $theme : $defaultTheme;
     }
 }
 
@@ -37,14 +52,7 @@ if (!function_exists('get_active_theme')) {
         
         return Cache::remember($cacheKey, 3600, function () {
             $theme = WebsiteSetting::getValue('active_theme', 'default');
-            $allowedThemes = get_allowed_themes();
-            
-            // Validate against allowed themes, fallback to default if invalid
-            if (!in_array($theme, $allowedThemes, true)) {
-                return 'default';
-            }
-            
-            return $theme;
+            return normalize_theme_identifier(is_string($theme) ? $theme : null);
         });
     }
 }
@@ -62,6 +70,33 @@ if (!function_exists('is_theme')) {
     }
 }
 
+if (!function_exists('theme_partial_for')) {
+    /**
+     * Resolve a partial for a specific theme.
+     *
+     * Mandatory partials never fall back to default markup. This keeps an
+     * incomplete theme from accidentally presenting another theme's shell.
+     */
+    function theme_partial_for(string $theme, string $partial): string
+    {
+        if ($theme === 'default') {
+            return "partials.{$partial}";
+        }
+
+        $themePartialPath = "partials.themes.{$theme}.{$partial}";
+        if (view()->exists($themePartialPath)) {
+            return $themePartialPath;
+        }
+
+        $requiredPartials = config("website_themes.themes.{$theme}.required_partials", []);
+        if (in_array($partial, is_array($requiredPartials) ? $requiredPartials : [], true)) {
+            throw new LogicException("Required {$theme} partial [{$themePartialPath}] is missing.");
+        }
+
+        return "partials.{$partial}";
+    }
+}
+
 if (!function_exists('theme_partial')) {
     /**
      * Get the path to a theme-specific partial view.
@@ -74,23 +109,19 @@ if (!function_exists('theme_partial')) {
      */
     function theme_partial(string $partial): string
     {
-        $activeTheme = get_active_theme();
-        
-        // If default theme, return the standard partial path
-        if ($activeTheme === 'default') {
-            return "partials.{$partial}";
-        }
-        
-        // Build theme-specific partial path
-        $themePartialPath = "partials.themes.{$activeTheme}.{$partial}";
-        
-        // Check if theme-specific partial exists, fallback to default if not
-        if (view()->exists($themePartialPath)) {
-            return $themePartialPath;
-        }
-        
-        // Fallback to default partial
-        return "partials.{$partial}";
+        return theme_partial_for(get_active_theme(), $partial);
+    }
+}
+
+if (!function_exists('theme_asset')) {
+    /**
+     * Get a manifest-backed asset path for the active theme.
+     */
+    function theme_asset(string $key): ?string
+    {
+        $asset = config('website_themes.themes.' . get_active_theme() . '.' . $key);
+
+        return is_string($asset) && $asset !== '' ? $asset : null;
     }
 }
 

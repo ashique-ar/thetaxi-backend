@@ -448,7 +448,7 @@ class FileUploadController extends Controller
             $height = $request->get('height');
             $quality = $request->get('quality', 90);
 
-            $image = Image::read($file);
+            $image = Image::decode($file);
             $dimensions = [
                 'width' => $image->width(),
                 'height' => $image->height()
@@ -469,11 +469,11 @@ class FileUploadController extends Controller
 
             // Encode to WebP for better compression (if supported)
             if (extension_loaded('gd') && function_exists('imagewebp')) {
-                $encoded = $image->encodeByExtension('webp', quality: $quality);
+                $encoded = $image->encodeUsingFileExtension('webp', quality: $quality);
                 $convertedPath = preg_replace('/\.[^.]+$/', '.webp', $path);
             } else {
                 $ext = pathinfo($file->getClientOriginalName(), PATHINFO_EXTENSION);
-                $encoded = $image->encodeByExtension($ext, quality: $quality);
+                $encoded = $image->encodeUsingFileExtension($ext, quality: $quality);
             }
 
             $imageData = (string) $encoded;
@@ -511,12 +511,14 @@ class FileUploadController extends Controller
         $fullThumbnailPath = $thumbnailPath . '/' . $thumbnailFileName;
 
         // Create thumbnail image
-        $thumbnail = Image::read($file)
-            ->fit(150, 150) // Square thumbnail
-            ->encode('webp', 85);
+        $thumbnail = Image::decode($file)
+            ->cover(150, 150)
+            ->encodeUsingFileExtension('webp', quality: 85);
+
+        $thumbnailData = (string) $thumbnail;
 
         // Store thumbnail
-        $this->storeFile($fullThumbnailPath, $thumbnail->getEncoded());
+        $this->storeFile($fullThumbnailPath, $thumbnailData);
 
         // Create thumbnail media record
         $thumbnailMedia = UserMedia::create([
@@ -525,7 +527,7 @@ class FileUploadController extends Controller
             'file_path' => $thumbnailPath,
             'full_path' => $fullThumbnailPath,
             'mime_type' => 'image/webp',
-            'size' => strlen($thumbnail->getEncoded()),
+            'size' => strlen($thumbnailData),
             'width' => 150,
             'height' => 150,
             'user_id' => $user?->id,

@@ -24,5 +24,6 @@ Homestead.json
 Homestead.yaml
 Thumbs.db
 *.lock
+!composer.lock
 
 /storage/*.json

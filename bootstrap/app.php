@@ -51,7 +51,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->appendToGroup('api', \App\Http\Middleware\SentryUserContext::class);
 
         // Exclude payment callback routes from CSRF verification
-        $middleware->validateCsrfTokens(except: [
+        $middleware->preventRequestForgery(except: [
             '/checkout/webxpay/callback',
             '/checkout/*/callback*',
             '/payment/callback',

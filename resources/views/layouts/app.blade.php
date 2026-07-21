@@ -32,17 +32,19 @@
     <!--  Style CSS  -->
     <link rel="stylesheet" href="{{ assetVersion('assets/css/style.css') }}">
 
-    <!-- Theme-specific CSS (loaded conditionally) -->
-    @if (is_theme('theme-02'))
-        <script src="https://cdn.tailwindcss.com"></script>
-        <link rel="stylesheet" href="{{ assetVersion('assets/css/theme-02-tw.css') }}">
-    @else
-        <link rel="stylesheet" href="{{ assetVersion('assets/css/theme-01.css') }}">
-    @endif
-
-    <!-- Booking Form CSS -->
+    <!-- Shared booking behavior and component primitives -->
     <link rel="stylesheet" href="{{ assetVersion('assets/css/booking-form.css') }}">
     <link rel="stylesheet" href="{{ assetVersion('assets/css/package-buttons.css') }}">
+
+    <!-- Active-theme presentation must follow shared booking primitives. -->
+    @if (is_theme('theme-02'))
+        <script src="https://cdn.tailwindcss.com"></script>
+        <link data-theme-presentation="theme-02" rel="stylesheet" href="{{ assetVersion('assets/css/theme-02-tw.css') }}">
+    @elseif (in_array(get_active_theme(), ['theme-03', 'theme-04'], true))
+        <link data-theme-presentation="{{ get_active_theme() }}" rel="stylesheet" href="{{ assetVersion(theme_asset('stylesheet')) }}">
+    @else
+        <link data-theme-presentation="default" rel="stylesheet" href="{{ assetVersion('assets/css/theme-01.css') }}">
+    @endif
 
     <!-- Popup Modal CSS -->
     <link rel="stylesheet" href="{{ assetVersion('assets/css/popup-modal.css') }}">
@@ -178,6 +180,9 @@
     @endif
 
     @stack('styles')
+    @if (theme_asset('page_stylesheet') && !request()->routeIs('home'))
+        <link rel="stylesheet" href="{{ assetVersion(theme_asset('page_stylesheet')) }}">
+    @endif
     <style>
         :root {
             --primary-color1: {{ $settings['primary_color'] ?? '#BF2629' }} !important;
@@ -265,7 +270,13 @@
     </style>
 </head>
 
-<body class="tt-magic-cursor theme-{{ get_active_theme() }}">
+<?php
+    $themeRouteName = request()->route()?->getName() ?? 'unrouted';
+    $themePageSlug = \Illuminate\Support\Str::slug(str_replace('.', '-', $themeRouteName));
+    $themeContentType = request()->route('contentType');
+?>
+<body class="tt-magic-cursor theme-{{ get_active_theme() }} theme-page-{{ $themePageSlug }}"
+    @if (is_theme('theme-04')) data-theme-page="{{ $themePageSlug }}" @if ($themeContentType) data-theme-content-type="{{ $themeContentType }}" @endif @endif>
     @if (!empty($settings['google_tag_manager_id']))
         <!-- Google Tag Manager (noscript) -->
         <noscript>
@@ -292,7 +303,17 @@
 
     @include(theme_partial('header'))
 
-    @yield('content')
+    @if (is_theme('theme-03'))
+        <main id="main-content" class="t3-site-main t3-page--{{ $themePageSlug }}">
+            @yield('content')
+        </main>
+    @elseif (is_theme('theme-04'))
+        <main id="main-content" class="t4-site-main t4-page--{{ $themePageSlug }}">
+            @yield('content')
+        </main>
+    @else
+        @yield('content')
+    @endif
 
     @include(theme_partial('footer'))
 
@@ -325,6 +346,9 @@
 
     <script src="{{ asset('assets/js/select-dropdown.js') }}"></script>
     <script src="{{ assetVersion('assets/js/custom.js') }}"></script>
+    @if (theme_asset('script'))
+        <script src="{{ assetVersion(theme_asset('script')) }}"></script>
+    @endif
     <script src="{{ assetVersion('assets/js/booking-form.js') }}"></script>
     <script src="{{ assetVersion('assets/js/package-selector.js') }}"></script>
 
@@ -562,6 +586,7 @@
         }
     </style>
     @endif
+
 </body>
 
 </html>

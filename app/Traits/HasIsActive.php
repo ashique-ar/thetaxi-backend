@@ -18,8 +18,10 @@ trait HasIsActive
     protected static function bootHasIsActive(): void
     {
         static::addGlobalScope('active', function (Builder $q) {
-            if ((new static)->hasIsActiveColumn()) {
-                $q->where($q->getModel()->getTable() . '.is_active', true);
+            $model = $q->getModel();
+
+            if ($model->hasIsActiveColumn()) {
+                $q->where($model->getTable() . '.is_active', true);
             }
         });
     }

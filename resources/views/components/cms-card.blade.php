@@ -5,6 +5,8 @@
     'showPrice' => false,
     'showDuration' => false,
     'showRating' => false,
+    'template' => null,
+    'itemIndex' => null,
 ])
 
 @php
@@ -69,6 +71,279 @@
         : '#';
 @endphp
 
+@if ($template === 'theme-03-editorial-service')
+<article class="t3-services__item" data-t3-service-item>
+    <div class="t3-services__media">
+        <a href="{{ $detailLink }}" class="t3-services__image" aria-label="{{ $title }}">
+            <img src="{{ $imageUrl }}" alt="{{ $title }}" width="1200" height="800" loading="lazy">
+        </a>
+
+        @if ($isSpecialOffer && $discount > 0)
+            <span class="t3-services__discount">-{{ $discount }}%</span>
+        @endif
+
+        <span class="t3-services__index" aria-hidden="true">{{ str_pad((string) ($itemIndex ?? 1), 2, '0', STR_PAD_LEFT) }}</span>
+    </div>
+
+    <div class="t3-services__content">
+        <div class="t3-services__meta">
+            @if ($location)
+                <a href="{{ $categoryLink }}" class="t3-services__location">
+                    <i class="bi bi-geo-alt" aria-hidden="true"></i>
+                    {{ $location }}
+                </a>
+            @endif
+
+            @if ($category)
+                <a href="{{ $categoryLink }}" class="t3-services__category">{{ $category }}</a>
+            @endif
+        </div>
+
+        <h3><a href="{{ $detailLink }}">{{ $title }}</a></h3>
+        <p>{{ $excerpt }}</p>
+
+        @if ($pickupLocation)
+            <dl class="t3-services__facts">
+                <div>
+                    <dt>Pickup</dt>
+                    <dd>{{ Str::limit($pickupLocation, 20) }}</dd>
+                </div>
+                @if ($minDays)
+                    <div>
+                        <dt>Min duration</dt>
+                        <dd>{{ $minDays }} day{{ $minDays != 1 ? 's' : '' }}</dd>
+                    </div>
+                @endif
+            </dl>
+        @endif
+
+        <div class="t3-services__footer">
+            @if ($showPrice && $price)
+                <p class="t3-services__price">
+                    <span>{{ $currency }} {{ $price }}</span>
+                    @if ($duration)
+                        <small>/ {{ $duration }}</small>
+                    @endif
+                </p>
+            @endif
+
+            <a href="{{ $detailLink }}" class="t3-services__detail" aria-label="{{ $title }}">
+                <i class="bi bi-arrow-up-right" aria-hidden="true"></i>
+            </a>
+        </div>
+    </div>
+</article>
+@elseif ($template === 'theme-03-destination-index')
+<article class="t3-destinations__item" data-t3-destination-item>
+    <a href="{{ $detailLink }}" class="t3-destinations__image" aria-label="{{ $title }}">
+        <img src="{{ $imageUrl }}" alt="{{ $title }}" width="1600" height="720" loading="lazy">
+    </a>
+
+    <span class="t3-destinations__index" aria-hidden="true">{{ str_pad((string) ($itemIndex ?? 1), 2, '0', STR_PAD_LEFT) }}</span>
+
+    @if ($isSpecialOffer && $discount > 0)
+        <span class="t3-destinations__discount">-{{ $discount }}%</span>
+    @endif
+
+    <div class="t3-destinations__content">
+        <div class="t3-destinations__meta">
+            <div>
+                @if ($location)
+                    <a href="{{ $categoryLink }}" class="t3-destinations__location">
+                        <i class="bi bi-geo-alt" aria-hidden="true"></i>
+                        {{ $location }}
+                    </a>
+                @endif
+
+                @if ($category)
+                    <a href="{{ $categoryLink }}" class="t3-destinations__category">{{ $category }}</a>
+                @endif
+            </div>
+
+            @if ($showRating && $rating > 0)
+                <div class="t3-destinations__rating" aria-label="{{ $rating }} out of 5 stars">
+                    <span aria-hidden="true">
+                        @for ($i = 1; $i <= 5; $i++)
+                            <i class="{{ $i <= $rating ? 'is-filled' : '' }}">&#9733;</i>
+                        @endfor
+                    </span>
+                    @if ($reviewsCount > 0)
+                        <small>{{ $reviewsCount }} reviews</small>
+                    @endif
+                </div>
+            @endif
+        </div>
+
+        <h3><a href="{{ $detailLink }}">{{ $title }}</a></h3>
+        <p>{{ $excerpt }}</p>
+
+        <footer class="t3-destinations__footer">
+            @if ($pickupLocation)
+                <dl class="t3-destinations__facts">
+                    <div>
+                        <dt>Pickup</dt>
+                        <dd>{{ Str::limit($pickupLocation, 20) }}</dd>
+                    </div>
+                    @if ($minDays)
+                        <div>
+                            <dt>Min duration</dt>
+                            <dd>{{ $minDays }} day{{ $minDays != 1 ? 's' : '' }}</dd>
+                        </div>
+                    @endif
+                </dl>
+            @endif
+
+            <a href="{{ $detailLink }}" class="t3-destinations__detail" aria-label="{{ $title }}">
+                <i class="bi bi-arrow-right" aria-hidden="true"></i>
+            </a>
+        </footer>
+    </div>
+</article>
+@elseif ($template === 'theme-03-itinerary')
+<article class="t3-itinerary__item" data-t3-itinerary-item>
+    <div class="t3-itinerary__marker" aria-hidden="true">
+        <span>{{ str_pad((string) ($itemIndex ?? 1), 2, '0', STR_PAD_LEFT) }}</span>
+        <i></i>
+    </div>
+
+    <div class="t3-itinerary__media">
+        <a href="{{ $detailLink }}" aria-label="{{ $title }}">
+            <img src="{{ $imageUrl }}" alt="{{ $title }}" width="720" height="540" loading="lazy">
+        </a>
+
+        @if ($isSpecialOffer && $discount > 0)
+            <span class="t3-itinerary__discount">-{{ $discount }}%</span>
+        @endif
+    </div>
+
+    <div class="t3-itinerary__content">
+        <div class="t3-itinerary__meta">
+            @if ($location)
+                <a href="{{ $categoryLink }}" class="t3-itinerary__location">
+                    <i class="bi bi-geo-alt" aria-hidden="true"></i>
+                    {{ $location }}
+                </a>
+            @endif
+
+            @if ($category)
+                <a href="{{ $categoryLink }}" class="t3-itinerary__category">{{ $category }}</a>
+            @endif
+        </div>
+
+        <h3><a href="{{ $detailLink }}">{{ $title }}</a></h3>
+        <p>{{ $excerpt }}</p>
+
+        <div class="t3-itinerary__facts">
+            @if ($showRating && $rating > 0)
+                <div class="t3-itinerary__rating" aria-label="{{ $rating }} out of 5 stars">
+                    <span aria-hidden="true">
+                        @for ($i = 1; $i <= 5; $i++)
+                            <i class="{{ $i <= $rating ? 'is-filled' : '' }}">&#9733;</i>
+                        @endfor
+                    </span>
+                    @if ($reviewsCount > 0)
+                        <small>{{ $reviewsCount }} reviews</small>
+                    @endif
+                </div>
+            @endif
+
+            @if ($pickupLocation)
+                <span><i class="bi bi-geo" aria-hidden="true"></i> {{ Str::limit($pickupLocation, 20) }}</span>
+                @if ($minDays)
+                    <span><i class="bi bi-calendar-event" aria-hidden="true"></i> {{ $minDays }} day{{ $minDays != 1 ? 's' : '' }} minimum</span>
+                @endif
+            @endif
+        </div>
+    </div>
+
+    <div class="t3-itinerary__action">
+        @if ($showPrice && $price)
+            <p>
+                <small>From</small>
+                <strong>{{ $currency }} {{ $price }}</strong>
+                @if ($showDuration && $duration)
+                    <span>/ {{ $duration }}</span>
+                @endif
+            </p>
+        @endif
+
+        <a href="{{ $detailLink }}" aria-label="{{ $title }}">
+            <i class="bi bi-arrow-up-right" aria-hidden="true"></i>
+        </a>
+    </div>
+</article>
+@elseif ($template === 'theme-04-media-card')
+<article class="t4-media-card t4-media-card--{{ Str::slug($type) }} {{ ($itemIndex ?? 1) === 1 ? 't4-media-card--lead' : '' }}" data-t4-media-card>
+    <div class="t4-media-card__media">
+        <a href="{{ $detailLink }}" aria-label="{{ $title }}">
+            <img src="{{ $imageUrl }}" alt="{{ $title }}" width="1200" height="760" loading="lazy">
+        </a>
+        @if ($isSpecialOffer && $discount > 0)<span class="t4-media-card__discount">-{{ $discount }}%</span>@endif
+        <span class="t4-media-card__index" aria-hidden="true">{{ str_pad((string) ($itemIndex ?? 1), 2, '0', STR_PAD_LEFT) }}</span>
+    </div>
+    <div class="t4-media-card__content">
+        <div class="t4-media-card__meta">
+            @if ($location)<a href="{{ $categoryLink }}"><i class="bi bi-geo-alt" aria-hidden="true"></i>{{ $location }}</a>@endif
+            @if ($category)<a href="{{ $categoryLink }}">{{ $category }}</a>@endif
+        </div>
+        <h3><a href="{{ $detailLink }}">{{ $title }}</a></h3>
+        <p>{{ $excerpt }}</p>
+
+        @if ($showRating && $rating > 0)
+            <div class="t4-media-card__rating" aria-label="{{ $rating }} out of 5 stars">
+                <span aria-hidden="true">@for ($i = 1; $i <= 5; $i++)<i class="{{ $i <= $rating ? 'is-filled' : '' }}">&#9733;</i>@endfor</span>
+                @if ($reviewsCount > 0)<small>{{ $reviewsCount }} reviews</small>@endif
+            </div>
+        @endif
+
+        @if ($pickupLocation)
+            <div class="t4-media-card__facts">
+                <span><i class="bi bi-geo" aria-hidden="true"></i>{{ Str::limit($pickupLocation, 20) }}</span>
+                @if ($minDays)<span><i class="bi bi-calendar-event" aria-hidden="true"></i>{{ $minDays }} day{{ $minDays != 1 ? 's' : '' }} minimum</span>@endif
+            </div>
+        @endif
+
+        <footer>
+            @if ($showPrice && $price)
+                <p><small>From</small><strong>{{ $currency }} {{ $price }}</strong>@if ($showDuration && $duration)<span>/ {{ $duration }}</span>@endif</p>
+            @endif
+            <a href="{{ $detailLink }}" class="t4-media-card__detail" aria-label="Explore {{ $title }}"><span>Explore</span><i class="bi bi-arrow-right" aria-hidden="true"></i></a>
+        </footer>
+    </div>
+</article>
+@elseif ($template === 'theme-03-editorial-story')
+<article class="t3-journal__story {{ ($itemIndex ?? 1) === 1 ? 't3-journal__story--lead' : '' }}" data-t3-journal-story>
+    <div class="t3-journal__media">
+        <a href="{{ $detailLink }}" aria-label="{{ $title }}">
+            <img src="{{ $imageUrl }}" alt="{{ $title }}" width="1400" height="900" loading="lazy">
+        </a>
+
+        @if ($isSpecialOffer && $discount > 0)
+            <span class="t3-journal__discount">-{{ $discount }}%</span>
+        @endif
+
+        <span class="t3-journal__index" aria-hidden="true">{{ str_pad((string) ($itemIndex ?? 1), 2, '0', STR_PAD_LEFT) }}</span>
+    </div>
+
+    <div class="t3-journal__content">
+        <div class="t3-journal__meta">
+            @if ($location)
+                <a href="{{ $categoryLink }}" class="t3-journal__location">
+                    <i class="bi bi-geo-alt" aria-hidden="true"></i>
+                    {{ $location }}
+                </a>
+            @endif
+
+            @if ($category)
+                <a href="{{ $categoryLink }}" class="t3-journal__category">{{ $category }}</a>
+            @endif
+        </div>
+
+        <h3><a href="{{ $detailLink }}">{{ $title }}</a></h3>
+        <p>{{ $excerpt }}</p>
+    </div>
+</article>
+@else
 <div class="col-lg-3 col-md-4 col-sm-6 wow animate fadeInDown" data-wow-delay="{{ $delayMs }}ms" data-wow-duration="1500ms">
     <div class="blog-card2 two cms-content-card">
         <div class="blog-img-wrap">
@@ -139,6 +414,7 @@
         </div>
     </div>
 </div>
+@endif
 
 <style>
     .discount-badge {

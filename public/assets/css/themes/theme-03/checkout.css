@@ -1,0 +1,12 @@
+/**
+ * Theme 03 checkout entry point.
+ *
+ * The release gate prevents this placeholder foundation from being selected
+ * in production. Phase 5 will add the complete paper-ledger checkout design.
+ */
+
+body.theme-theme-03 .checkout-page,
+body.theme-theme-03 .checkout-success {
+    background: var(--t3-paper);
+    color: var(--t3-text);
+}

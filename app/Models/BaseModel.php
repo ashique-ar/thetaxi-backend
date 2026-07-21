@@ -7,8 +7,8 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Spatie\Activitylog\LogOptions;
-use Spatie\Activitylog\Traits\LogsActivity;
+use Spatie\Activitylog\Models\Concerns\LogsActivity;
+use Spatie\Activitylog\Support\LogOptions;
 
 class BaseModel extends Model
 {
@@ -49,7 +49,7 @@ class BaseModel extends Model
         return LogOptions::defaults()
             ->logFillable()
             ->logOnlyDirty()
-            ->dontSubmitEmptyLogs()
+            ->dontLogEmptyChanges()
             ->dontLogIfAttributesChangedOnly(['updated_at', 'created_at'])
             ->useLogName(isset($this->logName) && !empty($this->logName)
                 ? $this->logName

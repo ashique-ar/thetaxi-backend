@@ -3,6 +3,7 @@
 
 namespace App\Http\Requests\Vehicle\Vehicle;
 
+use App\Rules\UniqueVehiclePlate;
 use Illuminate\Foundation\Http\FormRequest;
 
 class UpdateVehicleRequest extends FormRequest
@@ -46,7 +47,7 @@ class UpdateVehicleRequest extends FormRequest
             'registration_no' => ["sometimes", "nullable", "string", "max:255", "unique:vehicles,registration_no,{$id}"],
             'chasis_no' => ['sometimes', 'nullable', 'string', 'max:255', 'different:engine_no'],
             'engine_no' => ['sometimes', 'nullable', 'string', 'max:255', 'different:chasis_no'],
-            'license_plate' => ['sometimes', 'nullable', 'string', 'max:255', "unique:vehicles,license_plate,{$id}"],
+            'license_plate' => ['sometimes', 'nullable', 'string', 'max:255', new UniqueVehiclePlate($id)],
             'model_year' => ['sometimes', 'nullable', 'integer'],
             'color' => ['sometimes', 'nullable', 'string', 'max:100'],
             'no_od_doors' => ['sometimes', 'nullable', 'integer'],

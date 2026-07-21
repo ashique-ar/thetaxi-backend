@@ -32,7 +32,10 @@ class WebsiteSettingsSecurity
         $maintenanceMode = $this->normalizeBoolean($settings['maintenance_mode'] ?? null, false);
         if ($maintenanceMode && !$this->isMaintenanceBypass($request)) {
             $message = $settings['maintenance_message'] ?? 'We are currently performing scheduled maintenance.';
-            return response()->view('errors.maintenance', ['message' => $message], 503);
+            return response()->view('errors.maintenance', [
+                'message' => $message,
+                'theme' => get_active_theme(),
+            ], 503);
         }
 
         $response = $next($request);

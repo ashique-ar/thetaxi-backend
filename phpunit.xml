@@ -29,5 +29,7 @@
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
+        <env name="WEBSITE_THEME_03_ENABLED" value="false"/>
+        <env name="WEBSITE_THEME_04_ENABLED" value="false"/>
     </php>
 </phpunit>

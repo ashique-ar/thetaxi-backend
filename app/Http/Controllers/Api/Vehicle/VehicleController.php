@@ -15,6 +15,7 @@ use App\Models\Vehicle\VehicleMaintenanceSchedule;
 use App\Http\Requests\Vehicle\Vehicle\CreateVehicleRequest;
 use App\Http\Requests\Vehicle\Vehicle\UpdateVehicleRequest;
 use App\Http\Resources\Vehicle\VehicleResource;
+use App\Rules\UniqueVehiclePlate;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Carbon;
@@ -112,6 +113,27 @@ class VehicleController extends Controller
         return response()->json([
             'status' => 'success',
             'data' => new VehicleResource($vehicle)
+        ]);
+    }
+
+    public function checkPlateAvailability(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'plate' => ['required', 'string', 'max:255'],
+            'exclude_vehicle_id' => ['nullable', 'uuid', 'exists:vehicles,id'],
+        ]);
+
+        $validator = validator(
+            ['license_plate' => $validated['plate']],
+            ['license_plate' => [new UniqueVehiclePlate($validated['exclude_vehicle_id'] ?? null)]]
+        );
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'available' => !$validator->fails(),
+                'normalized_plate' => UniqueVehiclePlate::normalize($validated['plate']),
+            ],
         ]);
     }
 

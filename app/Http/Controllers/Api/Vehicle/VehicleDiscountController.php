@@ -149,7 +149,7 @@ class VehicleDiscountController extends Controller
 
     public function history(VehicleDiscount $vehicleDiscount): JsonResponse
     {
-        $activities = $vehicleDiscount->activities()
+        $activities = $vehicleDiscount->activitiesAsSubject()
             ->with('causer:id,first_name,last_name,email')
             ->latest()
             ->limit(50)
@@ -158,7 +158,7 @@ class VehicleDiscountController extends Controller
                 'id' => $activity->id,
                 'event' => $activity->event,
                 'description' => $activity->description,
-                'changes' => $activity->properties,
+                'changes' => $activity->attribute_changes,
                 'causer' => $activity->causer ? [
                     'id' => $activity->causer->id,
                     'name' => trim($activity->causer->first_name . ' ' . $activity->causer->last_name),

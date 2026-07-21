@@ -445,7 +445,7 @@ class UserService
      */
     public function getUserActivityLog(User $user, int $limit = 50): \Illuminate\Support\Collection
     {
-        return $user->activities()
+        return $user->activitiesAsSubject()
             ->latest()
             ->limit($limit)
             ->get();

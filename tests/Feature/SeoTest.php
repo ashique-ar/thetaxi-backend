@@ -4,7 +4,7 @@ use function Pest\Laravel\get;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
 
-beforeAll(function () {
+beforeEach(function () {
     // Ensure database seeded for known content like 'corporate-transfers'
     Artisan::call('db:seed', ['--class' => 'CorporateTransferInquirySeeder']);
     Artisan::call('db:seed', ['--class' => 'WebsiteContentSeeder']);

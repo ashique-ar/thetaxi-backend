@@ -30,6 +30,7 @@ class PricingAdjustmentComponentCoverageTest extends TestCase
             $table->string('applies_to');
             $table->decimal('minimum_booking_amount', 12, 2)->nullable();
             $table->decimal('maximum_discount_amount', 12, 2)->nullable();
+            $table->json('applicable_contexts')->nullable();
             $table->boolean('is_active')->default(true);
             $table->integer('priority')->default(0);
             $table->boolean('is_cumulative')->default(false);

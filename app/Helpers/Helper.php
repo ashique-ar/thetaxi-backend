@@ -38,9 +38,8 @@ if (!function_exists('image_upload')) {
         $fullPath = public_path($destinationPath);
 
         createFileIfNotExist($fullPath);
-        Image::read($file)
-            ->encodeByExtension($format, 90)
-            ->save($fullPath . '/' . $imageName);
+        Image::decode($file)
+            ->save($fullPath . '/' . $imageName, quality: 90);
 
         Storage::disk('s3')->put($destinationPath . '/' . $imageName, file_get_contents($fullPath . '/' . $imageName));
 

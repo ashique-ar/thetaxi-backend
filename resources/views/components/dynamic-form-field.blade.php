@@ -193,7 +193,7 @@
     {{-- ===== DATE FIELD ===== --}}
     @case('date')
         <div class="booking-field">
-            <label class="input-label">{{ $label }}</label>
+            <label class="input-label" for="{{ $elementId }}">{{ $label }}</label>
             <div class="single-search-box date-field">
                 @include('components.partials.calendar-icon')
                 <input type="text" name="{{ $submitAs }}" id="{{ $elementId }}"

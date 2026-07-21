@@ -63,9 +63,63 @@
             font-weight: bold;
             color: #667eea;
         }
+
+        body.theme-theme-04 {
+            position: relative;
+            overflow: hidden;
+            background: #f4f4f5;
+            color: #17191d;
+            font-family: Inter, "Segoe UI", Arial, sans-serif;
+        }
+        body.theme-theme-04::before,
+        body.theme-theme-04::after {
+            position: fixed;
+            border: 1px solid #e3e4e7;
+            border-radius: 50%;
+            content: "";
+        }
+        body.theme-theme-04::before { top: -170px; right: -110px; width: 390px; height: 390px; }
+        body.theme-theme-04::after { bottom: -130px; left: -90px; width: 280px; height: 280px; }
+        body.theme-theme-04 .container {
+            position: relative;
+            z-index: 1;
+            max-width: 460px;
+            padding: 52px 46px;
+            border: 1px solid #e3e4e7;
+            border-top: 4px solid #d71920;
+            border-radius: 10px;
+            background: #fff;
+            box-shadow: 0 18px 55px rgb(20 24 31 / 10%);
+        }
+        body.theme-theme-04 .spinner {
+            width: 52px;
+            height: 52px;
+            border-color: #f6cacc;
+            border-top-color: #d71920;
+        }
+        body.theme-theme-04 h1 {
+            color: #17191d;
+            font-family: Georgia, "Times New Roman", serif;
+            font-size: 30px;
+            font-weight: 500;
+        }
+        body.theme-theme-04 p { color: #656970; }
+        body.theme-theme-04 .order-id { color: #b40f16; }
+        body.theme-theme-04 .warning {
+            border: 1px solid #e3e4e7;
+            border-left: 4px solid #d71920;
+            border-radius: 7px;
+            background: #f7f7f8;
+            color: #4c5057;
+        }
+        body.theme-theme-04 .continue-button { background: #d71920 !important; border-radius: 7px !important; }
+
+        @media (prefers-reduced-motion: reduce) {
+            body.theme-theme-04 .spinner { animation-duration: 1.6s; }
+        }
     </style>
 </head>
-<body>
+<body class="theme-{{ get_active_theme() }}">
     <div class="container">
         <div class="spinner"></div>
         <h1>Redirecting to Payment Gateway</h1>
@@ -103,7 +157,7 @@
             @endif
             
             <noscript>
-                <button type="submit" style="
+                <button type="submit" class="continue-button" style="
                     background: #667eea;
                     color: white;
                     border: none;

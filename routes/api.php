@@ -782,6 +782,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::patch('/vehicles/{id}/availability', [VehicleController::class, 'updateAvailability']);
         Route::get('/vehicles/service-types', [VehicleController::class, 'getServiceTypes']);
         Route::get('/vehicles/insurance-types', [VehicleController::class, 'getInsuranceTypes']);
+        Route::get('/vehicles/check-plate-availability', [VehicleController::class, 'checkPlateAvailability']);
         Route::apiResource('vehicles', VehicleController::class);
 
         // Default driver management for vehicles

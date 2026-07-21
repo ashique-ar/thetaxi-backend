@@ -7,8 +7,8 @@ use App\Enums\PricingCalculationStatus;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Spatie\Activitylog\Traits\LogsActivity;
-use Spatie\Activitylog\LogOptions;
+use Spatie\Activitylog\Models\Concerns\LogsActivity;
+use Spatie\Activitylog\Support\LogOptions;
 
 class KmRangePricingRule extends BaseModel
 {
@@ -260,7 +260,7 @@ class KmRangePricingRule extends BaseModel
                 'priority', 'valid_from', 'valid_to', 'is_active'
             ])
             ->logOnlyDirty()
-            ->dontSubmitEmptyLogs();
+            ->dontLogEmptyChanges();
     }
 
     // Validation Rules

@@ -481,7 +481,7 @@ class RoleController extends Controller
             ->where('role_id', $role->id)
             ->where('model_type', User::class)
             ->pluck('model_id')
-            ->map(fn ($id) => (int) $id)
+            ->map(fn ($id) => (string) $id)
             ->values();
 
         if ($roleUserIds->isEmpty()) {
@@ -496,7 +496,7 @@ class RoleController extends Controller
             ->whereIn('role_has_permissions.permission_id', $permissionIds->all())
             ->select('model_has_roles.model_id', 'role_has_permissions.permission_id')
             ->get()
-            ->groupBy(fn ($row) => (int) $row->model_id)
+            ->groupBy(fn ($row) => (string) $row->model_id)
             ->map(fn ($rows) => $rows->pluck('permission_id')->map(fn ($id) => (int) $id)->all());
 
         DB::table('model_has_permissions')
@@ -505,7 +505,7 @@ class RoleController extends Controller
             ->whereIn('permission_id', $permissionIds->all())
             ->get(['model_id', 'permission_id'])
             ->each(function ($row) use ($permissionIdsStillGrantedByOtherRoles) {
-                $modelId = (int) $row->model_id;
+                $modelId = (string) $row->model_id;
                 $permissionId = (int) $row->permission_id;
 
                 if (in_array($permissionId, $permissionIdsStillGrantedByOtherRoles->get($modelId, []), true)) {
@@ -528,7 +528,7 @@ class RoleController extends Controller
             ->where('role_id', $role->id)
             ->where('model_type', User::class)
             ->pluck('model_id')
-            ->map(fn ($id) => (int) $id)
+            ->map(fn ($id) => (string) $id)
             ->values();
 
         if ($roleUserIds->isEmpty()) {
@@ -541,7 +541,7 @@ class RoleController extends Controller
             ->whereIn('model_has_roles.model_id', $roleUserIds->all())
             ->select('model_has_roles.model_id', 'role_has_permissions.permission_id')
             ->get()
-            ->groupBy(fn ($row) => (int) $row->model_id)
+            ->groupBy(fn ($row) => (string) $row->model_id)
             ->map(fn ($rows) => $rows->pluck('permission_id')->map(fn ($id) => (int) $id)->all());
 
         DB::table('model_has_permissions')
@@ -549,7 +549,7 @@ class RoleController extends Controller
             ->whereIn('model_id', $roleUserIds->all())
             ->get(['model_id', 'permission_id'])
             ->each(function ($row) use ($roleGrantedPermissionIdsByUser) {
-                $modelId = (int) $row->model_id;
+                $modelId = (string) $row->model_id;
                 $permissionId = (int) $row->permission_id;
 
                 if (in_array($permissionId, $roleGrantedPermissionIdsByUser->get($modelId, []), true)) {
