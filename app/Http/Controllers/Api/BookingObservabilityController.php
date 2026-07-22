@@ -45,10 +45,13 @@ class BookingObservabilityController extends Controller
 
     public function activeTrips(Request $request): JsonResponse
     {
+        $validated = $request->validate([
+            'dashboard_scope' => ['nullable', 'in:standard'],
+        ]);
         $limit = max(1, min((int) $request->query('limit', 100), 200));
         return response()->json([
             'status' => 'success',
-            'data' => $this->observability->activeTrips($limit),
+            'data' => $this->observability->activeTrips($limit, $validated['dashboard_scope'] ?? null),
         ]);
     }
 

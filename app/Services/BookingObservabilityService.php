@@ -150,7 +150,7 @@ class BookingObservabilityService
         ];
     }
 
-    public function activeTrips(int $limit = 100): array
+    public function activeTrips(int $limit = 100, ?string $dashboardScope = null): array
     {
         $assignments = DriverAssignment::query()
             ->with([
@@ -160,6 +160,9 @@ class BookingObservabilityService
                 'driver.user:id,first_name,last_name',
             ])
             ->where('status', 'active')
+            ->when($dashboardScope === 'standard', function ($query) {
+                $query->whereHas('booking', fn ($bookingQuery) => $bookingQuery->whereNull('corporate_account_id'));
+            })
             ->where(function ($query) {
                 $query->whereNull('trip_phase')
                     ->orWhereNotIn('trip_phase', ['completed', 'declined']);

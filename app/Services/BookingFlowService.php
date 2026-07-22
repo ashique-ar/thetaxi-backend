@@ -8082,6 +8082,12 @@ class BookingFlowService
             });
         }
 
+        if (($filters['dashboard_scope'] ?? null) === 'standard') {
+            $query->whereHas('booking', function ($bookingQuery) {
+                $bookingQuery->whereNull('corporate_account_id');
+            });
+        }
+
         if (!empty($filters['search'])) {
             $search = trim((string) $filters['search']);
 
@@ -9845,6 +9851,10 @@ class BookingFlowService
         [$startDate, $endDate] = $this->getDateRange($period, $dateFrom, $dateTo);
 
         $query = Booking::whereBetween('created_at', [$startDate, $endDate]);
+
+        if (($params['dashboard_scope'] ?? null) === 'standard') {
+            $query->whereNull('corporate_account_id');
+        }
 
         return [
             'overview' => [

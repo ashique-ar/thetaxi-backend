@@ -15,7 +15,8 @@ trait BookingAnalyticsTrait
             'period' => 'nullable|string|in:today,week,month,quarter,year,custom',
             'date_from' => 'nullable|date',
             'date_to' => 'nullable|date|after_or_equal:date_from',
-            'filters' => 'nullable|array'
+            'filters' => 'nullable|array',
+            'dashboard_scope' => 'nullable|string|in:standard',
         ]);
 
         try {

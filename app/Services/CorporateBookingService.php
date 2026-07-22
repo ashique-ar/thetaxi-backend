@@ -836,10 +836,10 @@ class CorporateBookingService
         $query = Booking::where('corporate_account_id', $corporateId);
 
         if (!empty($filters['date_from'])) {
-            $query->where('created_at', '>=', $filters['date_from']);
+            $query->whereDate('created_at', '>=', $filters['date_from']);
         }
         if (!empty($filters['date_to'])) {
-            $query->where('created_at', '<=', $filters['date_to']);
+            $query->whereDate('created_at', '<=', $filters['date_to']);
         }
 
         $totalCount = (clone $query)->count();
@@ -853,10 +853,11 @@ class CorporateBookingService
             ->toArray();
 
         $byDepartment = (clone $query)
-            ->select('corporate_department_id')
+            ->leftJoin('corporate_departments', 'bookings.corporate_department_id', '=', 'corporate_departments.id')
+            ->selectRaw("COALESCE(corporate_departments.name, 'Unassigned') as department_name")
             ->selectRaw('count(*) as count')
-            ->groupBy('corporate_department_id')
-            ->pluck('count', 'corporate_department_id')
+            ->groupByRaw("COALESCE(corporate_departments.name, 'Unassigned')")
+            ->pluck('count', 'department_name')
             ->toArray();
 
         return [
